@@ -75,6 +75,8 @@
       ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
+      "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
       "@elizaos/plugin-discord-local": [
         "../../plugins/plugin-discord-local/src/index.ts"
       ],
@@ -109,6 +111,8 @@
       ],
       "@elizaos/plugin-workflow/*": ["../../plugins/plugin-workflow/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/auth": ["../auth/src/index.ts"],
+      "@elizaos/auth/*": ["../auth/src/*"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../shared/src/local-inference/index.ts"
@@ -128,6 +132,8 @@
         "../../plugins/plugin-native-canvas/src/index.ts"
       ],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/capacitor-location": [
         "../../plugins/plugin-native-location/src/index.ts"
       ],
@@ -160,7 +166,6 @@
   },
   "exclude": [
     "src/cli/**",
-    "src/benchmark/**",
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx"
   ],

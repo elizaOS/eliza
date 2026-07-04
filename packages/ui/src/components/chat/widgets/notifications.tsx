@@ -1,3 +1,9 @@
+/**
+ * Home Notifications widget: shows the most recent, highest-attention agent
+ * notifications (see the `NotificationsWidget` JSDoc below), reading the shared
+ * notification store directly rather than polling. Renders nothing until there
+ * is real activity so the always-visible home surface stays quiet when empty.
+ */
 import type { AgentNotification } from "@elizaos/core";
 import { Bell, ChevronRight } from "lucide-react";
 import { memo, useCallback } from "react";

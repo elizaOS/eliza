@@ -1,5 +1,5 @@
 /**
- * SHELL action — runs a shell command on the server.
+ * TERMINAL_SHELL action — runs one explicit shell command on the server.
  *
  * When triggered the action:
  *   1. Extracts the command from parameters or MCP-style JSON
@@ -28,10 +28,9 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
-import { hasOwnerAccess } from "../security/access.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
-const TERMINAL_ACTION_NAME = "SHELL";
+const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
 
 const FAIL = { success: false, text: "" } as const;
@@ -269,15 +268,7 @@ export const terminalAction: Action = {
   contexts: ["terminal", "code", "files", "admin"],
   roleGate: { minRole: "OWNER" },
 
-  similes: [
-    "RUN_IN_TERMINAL",
-    "RUN_COMMAND",
-    "EXECUTE_COMMAND",
-    "TERMINAL",
-    "RUN_SHELL",
-    "EXEC",
-    "CALL_MCP_TOOL",
-  ],
+  similes: ["RUN_IN_TERMINAL", "EXECUTE_COMMAND", "TERMINAL", "RUN_SHELL"],
 
   description:
     "Run a single explicit shell command that the user provided directly. " +
@@ -286,6 +277,8 @@ export const terminalAction: Action = {
     "The command output is captured as a document attachment for native planner follow-up. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
   descriptionCompressed:
     "run one explicit shell command; not build/create/multi-step -> START_CODING_TASK",
+  routingHint:
+    "run ONE explicit user-provided command and capture its output as an attachment in the terminal view -> TERMINAL_SHELL; general shell/build/history or scripted commands -> SHELL (coding-tools); multi-step dev work -> START_CODING_TASK; MCP tools -> MCP",
 
   validate: async () => isLocalCodeExecutionAllowed(),
 
@@ -298,18 +291,6 @@ export const terminalAction: Action = {
           actionName: TERMINAL_ACTION_NAME,
           suppressPostActionContinuation: true,
           terminal: { storeBuildBlocked: true },
-        },
-      };
-    }
-
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return {
-        success: false,
-        text: "Permission denied: only the owner may run terminal commands.",
-        data: {
-          actionName: TERMINAL_ACTION_NAME,
-          suppressPostActionContinuation: true,
-          terminal: { permissionDenied: true },
         },
       };
     }

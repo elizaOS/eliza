@@ -1,5 +1,13 @@
+/**
+ * Covers the settings-section registry: register + list back (so apps can add
+ * sections), re-registering an id replaces the prior entry, and sections sort by
+ * explicit order before registration sequence. Pure in-memory registry, no
+ * render.
+ */
+
 import { Cog } from "lucide-react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   getSettingsSection,
   listSettingsSections,
@@ -27,6 +35,10 @@ function makeSection(
 }
 
 describe("settings-section-registry", () => {
+  beforeEach(() => {
+    resetUiRegistryHostForTests();
+  });
+
   it("registers a section and lists it back (apps can add settings)", () => {
     registerSettingsSection(makeSection("test-plugin-section"));
     const ids = listSettingsSections().map((s) => s.id);

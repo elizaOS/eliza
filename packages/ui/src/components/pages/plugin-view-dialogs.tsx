@@ -1,3 +1,9 @@
+/**
+ * The plugin settings dialog for `PluginsView`: shows a plugin's config form,
+ * install progress, save/test results, and install/reset/save actions in a
+ * modal. Fully controlled — all state and callbacks are owned by the parent
+ * view and passed in as props.
+ */
 import { CheckCircle2 } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo } from "../../api";
@@ -5,7 +11,7 @@ import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
-import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { PluginConfigForm } from "./PluginConfigForm";
 import {
   iconImageSource,
   resolveIcon,
@@ -220,19 +226,11 @@ export function PluginSettingsDialog({
           )}
 
           <div className="px-5 py-3">
-            {plugin.id === "telegram" ? (
-              <TelegramPluginConfig
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={onParamChange}
-              />
-            ) : (
-              <PluginConfigForm
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={onParamChange}
-              />
-            )}
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={onParamChange}
+            />
             <ConnectorSetupPanel pluginId={plugin.id} />
           </div>
         </AdminDialog.BodyScroll>

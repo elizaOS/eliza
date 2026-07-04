@@ -1,0 +1,57 @@
+{
+  "id": "wechat",
+  "name": "WeChat",
+  "description": "WeChat connector for DM and group messaging through a trusted proxy service.",
+  "npmName": "@elizaos/plugin-wechat",
+  "version": "2.0.3-beta.7",
+  "source": "bundled",
+  "tags": ["connector", "messaging", "wechat", "social", "social-chat"],
+  "config": {
+    "WECHAT_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "API Key",
+      "help": "WeChat proxy service API key",
+      "advanced": false
+    },
+    "WECHAT_PROXY_URL": {
+      "type": "url",
+      "required": true,
+      "sensitive": false,
+      "label": "Proxy URL",
+      "help": "HTTPS base URL of the trusted WeChat proxy service",
+      "advanced": false
+    },
+    "ELIZA_WECHAT_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Local webhook listener port",
+      "advanced": true,
+      "min": 1,
+      "max": 65535
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "MessageCircle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#wechat"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["WECHAT_API_KEY"]
+  },
+  "channels": ["wechat"]
+}

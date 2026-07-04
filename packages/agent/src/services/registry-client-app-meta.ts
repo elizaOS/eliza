@@ -138,6 +138,10 @@ export function mergeAppMeta(
     developerOnly: patch.developerOnly ?? base.developerOnly,
     visibleInAppStore: patch.visibleInAppStore ?? base.visibleInAppStore,
     mainTab: patch.mainTab ?? base.mainTab,
+    catalogSection: patch.catalogSection ?? base.catalogSection,
+    featured: patch.featured ?? base.featured,
+    defaultHidden: patch.defaultHidden ?? base.defaultHidden,
+    scope: patch.scope ?? base.scope,
   };
 }
 

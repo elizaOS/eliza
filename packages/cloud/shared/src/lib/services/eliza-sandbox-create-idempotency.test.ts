@@ -128,7 +128,7 @@ function baseRow(): AgentSandbox {
     bridge_port: null,
     web_ui_port: null,
     headscale_ip: null,
-    docker_image: "ghcr.io/example/agent:latest",
+    docker_image: "ghcr.io/elizaos/agent:latest",
     image_digest: null,
     previous_image_digest: null,
     previous_docker_image: null,
@@ -176,7 +176,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "alpha",
-      dockerImage: "ghcr.io/example/agent:latest",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
     expect(first.idempotent).toBe(false);
@@ -189,7 +189,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "alpha-retry",
-      dockerImage: "ghcr.io/example/agent:latest",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
     expect(second.idempotent).toBe(true);
@@ -209,7 +209,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_B,
       userId: USER,
       agentName: "beta",
-      dockerImage: "ghcr.io/example/agent:latest",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
     expect(res.idempotent).toBe(false);
@@ -228,7 +228,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "gamma",
-      dockerImage: "ghcr.io/example/agent:latest",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
     expect(res.idempotent).toBe(false);
@@ -258,7 +258,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
         organizationId: ORG_A,
         userId: USER,
         agentName: "no-reuse",
-        dockerImage: "ghcr.io/example/agent:latest",
+        dockerImage: "ghcr.io/elizaos/agent:latest",
       });
       expect(res.idempotent).toBe(false);
       expect(res.agent.id).toBe("repo-created");
@@ -283,7 +283,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
       organizationId: ORG_A,
       userId: USER,
       agentName: "forced-under-cap",
-      dockerImage: "ghcr.io/example/agent:latest",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: false,
       maxNonTerminalAgents: 5,
     });
@@ -319,7 +319,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
         organizationId: ORG_A,
         userId: USER,
         agentName: "forced-at-cap",
-        dockerImage: "ghcr.io/example/agent:latest",
+        dockerImage: "ghcr.io/elizaos/agent:latest",
         reuseExistingNonTerminal: false,
         maxNonTerminalAgents: 5,
       }),
@@ -345,7 +345,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
         organizationId: ORG_A,
         userId: USER,
         agentName: "waifu-launch",
-        dockerImage: "ghcr.io/example/agent:latest",
+        dockerImage: "ghcr.io/elizaos/agent:latest",
         reuseExistingNonTerminal: false,
         // maxNonTerminalAgents intentionally unset
       });

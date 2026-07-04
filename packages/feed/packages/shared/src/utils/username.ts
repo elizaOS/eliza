@@ -1,3 +1,7 @@
+/**
+ * Sanitize and validate proposed onboarding usernames, matching the
+ * onboarding/check-username endpoint's normalization so client and server agree.
+ */
 const ONBOARDING_USERNAME_MIN_LENGTH = 3;
 
 /**

@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * The renderer OCR bridge (`ocr-bridge`): its interval poll of the Tesseract
+ * Capacitor plugin and the request/frame round-trip. jsdom with fake timers;
+ * the Capacitor core and Tesseract plugin are mocked — no native OCR.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetOcrBridgeForTests, initOcrBridge } from "./ocr-bridge";
 

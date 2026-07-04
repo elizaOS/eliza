@@ -1,3 +1,7 @@
+/**
+ * Tests the KMS key namespace builders, parser, validation, and version helpers.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   baseKeyId,

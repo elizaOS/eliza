@@ -1,3 +1,4 @@
+/** Barrel re-exporting every model handler wired into `anthropicPlugin`. */
 export { handleImageDescription } from "./image";
 export {
   handleActionPlanner,

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    VoiceInteractionService metadata for Eliza's digital-assistant integration
+    (android.voice_interaction meta-data on ElizaVoiceInteractionService).
+
+    sessionService + recognitionService are BOTH mandatory: the framework's
+    VoiceInteractionServiceInfo parser rejects the service ("No recognitionService
+    specified") if either is absent, and a rejected service never appears as an
+    assistant candidate. supportsAssist enables the assist-gesture / long-press-
+    power invocation; supportsLaunchVoiceAssistFromKeyguard lets it fire from the
+    lock screen; supportsLocalInteraction reflects the on-device (local-first)
+    session, no always-on hotword service required.
+-->
+<voice-interaction-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="ai.elizaos.app.ElizaVoiceInteractionSessionService"
+    android:recognitionService="ai.elizaos.app.ElizaRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="true" />

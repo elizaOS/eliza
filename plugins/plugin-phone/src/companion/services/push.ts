@@ -1,12 +1,3 @@
-import { Capacitor } from "@capacitor/core";
-import {
-  type PushNotificationSchema,
-  PushNotifications,
-  type Token,
-} from "@capacitor/push-notifications";
-import { logger } from "./logger";
-import { decodePairingPayload, type PairingPayload } from "./session-client";
-
 /**
  * APNs integration.
  *
@@ -18,6 +9,15 @@ import { decodePairingPayload, type PairingPayload } from "./session-client";
  * On web: unavailable — logged once. This lets `bun run build` + `bun run dev`
  * work in a browser without a simulator.
  */
+
+import { Capacitor } from "@capacitor/core";
+import {
+  type PushNotificationSchema,
+  PushNotifications,
+  type Token,
+} from "@capacitor/push-notifications";
+import { logger } from "./logger";
+import { decodePairingPayload, type PairingPayload } from "./session-client";
 
 export interface SessionStartIntent {
   kind: "session-start";

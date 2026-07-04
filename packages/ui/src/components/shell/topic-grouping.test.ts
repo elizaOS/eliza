@@ -1,3 +1,7 @@
+// Unit coverage for the pure topic-clustering helpers (#8928): groupMessagesByTopic
+// segments a transcript by dominant topic (untagged messages extend the current
+// run, no fragmentation) and deriveChannelTopics ranks the channel's chips.
+// Pure functions, no harness.
 import { describe, expect, it } from "vitest";
 import {
   deriveChannelTopics,

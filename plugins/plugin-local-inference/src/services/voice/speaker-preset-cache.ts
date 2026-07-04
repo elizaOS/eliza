@@ -1,3 +1,8 @@
+/**
+ * LRU cache of speaker presets (embedding + seed-phrase PCM) loaded from voice
+ * bundles, so switching voices per connector does not re-read and re-parse the
+ * preset file each time. Presets are KB-scale, so the default bound is generous.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { SpeakerPreset } from "./types";

@@ -1,0 +1,8 @@
+{"role": "session_meta", "tools": [{"type": "function", "function": {"name": "browser_click"}}], "model": "test-model-x", "platform": "discord", "timestamp": "2026-01-01T12:00:00.000000"}
+{"role": "user", "content": "hey there", "timestamp": "2026-01-01T12:00:05.000000"}
+{"role": "assistant", "content": "hey", "reasoning": "user greeted me, respond briefly per SOUL.md", "finish_reason": "stop", "timestamp": "2026-01-01T12:00:06.000000"}
+{"role": "assistant", "content": "let me check that", "reasoning": "need to call a tool", "finish_reason": "tool_calls", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "skill_view", "arguments": "{\"name\":\"demo\"}"}}], "timestamp": "2026-01-01T12:00:07.000000"}
+{"role": "tool", "content": "{\"success\": true}", "tool_call_id": "call_1", "timestamp": "2026-01-01T12:00:08.000000"}
+{"role": "assistant", "content": "done", "reasoning": null, "finish_reason": "stop", "timestamp": "2026-01-01T12:00:09.000000"}
+{ this line is malformed json and must be skipped
+{"role": "user", "content": "thanks", "timestamp": "2026-01-01T12:00:10.000000"}

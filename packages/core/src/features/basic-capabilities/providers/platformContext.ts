@@ -282,9 +282,9 @@ function normalizeUserContext(
 export const platformChatContextProvider: Provider = {
 	name: PLATFORM_CHAT_CONTEXT_PROVIDER_NAME,
 	description:
-		"Current platform chat context from registered message connectors.",
+		"Connector-specific room metadata for the current platform target, including source, channel/thread identifiers, summaries, and output guidance; not the canonical transcript.",
 	descriptionCompressed:
-		"Current chat/room context from relevant message connector hooks.",
+		"Connector room metadata and output guidance; not the canonical transcript.",
 	dynamic: true,
 	position: 125,
 	contexts: PLATFORM_CONTEXTS,
@@ -384,9 +384,9 @@ export const platformChatContextProvider: Provider = {
 export const platformUserContextProvider: Provider = {
 	name: PLATFORM_USER_CONTEXT_PROVIDER_NAME,
 	description:
-		"Current platform user/contact identity from registered message connectors.",
+		"Connector-specific sender identity metadata for the current platform user/contact, including handles, aliases, and account labels; not conversation history.",
 	descriptionCompressed:
-		"Current user/contact identity from relevant message connector hooks.",
+		"Connector sender identity and handles; not conversation history.",
 	dynamic: true,
 	position: 126,
 	contexts: PLATFORM_CONTEXTS,

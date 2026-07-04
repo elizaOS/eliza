@@ -107,10 +107,15 @@ describe("response field transcript — looksLikeRawFieldTranscript (send-bounda
 		expect(looksLikeRawFieldTranscript("shouldRespond: IGNORE")).toBe(true);
 	});
 
-	it("flags text containing a replyText: line", () => {
-		expect(looksLikeRawFieldTranscript("some preamble\nreplyText: hello")).toBe(
-			true,
-		);
+	it("flags text that leads with replyText: (reply-bearing echo without routing field)", () => {
+		expect(looksLikeRawFieldTranscript("replyText: hello")).toBe(true);
+		expect(looksLikeRawFieldTranscript("\n\n  replyText: hello")).toBe(true);
+	});
+
+	it("flags an echo that leads with a secondary field before the hallmark", () => {
+		expect(
+			looksLikeRawFieldTranscript("contexts: simple\nreplyText: hello"),
+		).toBe(true);
 	});
 
 	it("does NOT flag normal replies without field markers", () => {
@@ -124,6 +129,101 @@ describe("response field transcript — looksLikeRawFieldTranscript (send-bounda
 		).toBe(false);
 		expect(looksLikeRawFieldTranscript("")).toBe(false);
 		expect(looksLikeRawFieldTranscript(null)).toBe(false);
+	});
+});
+
+// A reply that QUOTES a transcript is content, not a leak. This repo's own
+// daily workflow: a user pastes a leaked `shouldRespond:/replyText:` transcript
+// into chat and asks the bot to diagnose it. The diagnosis legitimately carries
+// quoted field lines; the guard must not rewrite it (previously the send
+// boundary replaced the whole diagnosis with the QUOTED replyText value,
+// silently dropping the actual answer).
+const QUOTING_DIAGNOSIS = `the bug is in your parser — when the model emits:
+
+shouldRespond: RESPOND
+
+replyText: it works
+
+the blank line inside the value is where naive blank-line segmentation breaks. terminate values only at the next known-field line.`;
+
+const FENCED_QUOTING_DIAGNOSIS = `here's the transcript that leaked:
+
+\`\`\`
+shouldRespond: RESPOND
+
+replyText: it works
+\`\`\`
+
+that skeleton is the raw HANDLE_RESPONSE envelope — your text-mode provider echoed the field set instead of JSON.`;
+
+describe("response field transcript — replies that QUOTE a transcript are not leaks", () => {
+	it("does NOT flag a diagnosis that opens with prose and quotes field lines", () => {
+		expect(looksLikeRawFieldTranscript(QUOTING_DIAGNOSIS)).toBe(false);
+	});
+
+	it("does NOT flag a reply whose quoted transcript sits inside a code fence", () => {
+		expect(looksLikeRawFieldTranscript(FENCED_QUOTING_DIAGNOSIS)).toBe(false);
+	});
+
+	it("does NOT flag a reply that LEADS with a fenced transcript quote", () => {
+		expect(
+			looksLikeRawFieldTranscript(
+				"```\nshouldRespond: RESPOND\nreplyText: hi\n```\nthat's the leak — fence it off in your parser.",
+			),
+		).toBe(false);
+	});
+
+	it("still flags the genuine leak even when its replyText mentions a fence", () => {
+		expect(
+			looksLikeRawFieldTranscript(
+				"shouldRespond: RESPOND\n\nreplyText: wrap it in ``` fences",
+			),
+		).toBe(true);
+	});
+
+	it("parseMessageHandlerOutput does NOT claim quoting prose (falls through with preamble intact)", () => {
+		// Claiming it would drop every line before the quoted `replyText:` and
+		// ship only the quote's tail ("it works\n\nthe blank line…").
+		expect(parseMessageHandlerOutput(QUOTING_DIAGNOSIS)).toBeNull();
+		expect(parseMessageHandlerOutput(FENCED_QUOTING_DIAGNOSIS)).toBeNull();
+	});
+
+	it("extractReplyTextFromTranscript is never consulted for quoting prose at the send boundary (guard=false), preserving the diagnosis", () => {
+		// The send boundary only rewrites when looksLikeRawFieldTranscript is
+		// true; assert the exact guard predicate the boundary uses.
+		expect(looksLikeRawFieldTranscript(QUOTING_DIAGNOSIS)).toBe(false);
+		expect(looksLikeRawFieldTranscript(FENCED_QUOTING_DIAGNOSIS)).toBe(false);
+	});
+});
+
+describe("response field transcript — fenced field lines never split a value", () => {
+	it("keeps a fenced quoted transcript inside the replyText value of a REAL leak", () => {
+		// Text-mode echo whose replyText value itself quotes an envelope inside a
+		// code fence (the bot diagnosing a transcript, answered in text mode).
+		// The fenced `contexts:`/`replyText:` lines are content — the value must
+		// terminate only at the next UNFENCED known-field line (`emotion:`).
+		const t = `shouldRespond: RESPOND
+
+replyText: the parser bug is here:
+
+\`\`\`
+contexts: simple
+replyText: it works
+\`\`\`
+
+fields split only at unfenced field lines.
+
+emotion: none`;
+		const parsed = parseFieldTranscript(t);
+		expect(parsed?.fields.shouldRespond).toBe("RESPOND");
+		expect(parsed?.fields.replyText).toContain("the parser bug is here:");
+		expect(parsed?.fields.replyText).toContain("contexts: simple");
+		expect(parsed?.fields.replyText).toContain(
+			"fields split only at unfenced field lines.",
+		);
+		// The fenced `contexts:` line did NOT open a contexts field.
+		expect(parsed?.fields.contexts).toBeUndefined();
+		expect(parsed?.fields.emotion).toBe("none");
 	});
 });
 

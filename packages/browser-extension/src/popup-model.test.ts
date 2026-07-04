@@ -1,3 +1,7 @@
+/**
+ * Unit tests for derivePopupStatusModel across the connection states; pure
+ * model, no browser environment.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePopupStatusModel } from "./popup-model";
 import type { BackgroundState } from "./protocol";

@@ -27,6 +27,8 @@ import {
 } from "../services/handler-registry";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { snapshotProviders } from "../services/providers";
+import { resolveDeviceTier } from "../services/router-handler";
+import { assessVoiceModality } from "../services/routing-policy";
 import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
@@ -409,8 +411,18 @@ export async function handleLocalInferenceCompatRoutes(
 	if (method === "GET" && pathname === "/api/local-inference/providers") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
-			const providers = await snapshotProviders();
-			sendJsonResponse(res, 200, { providers });
+			const [providers, deviceTier] = await Promise.all([
+				snapshotProviders(),
+				resolveDeviceTier(),
+			]);
+			// voiceModality tells the UI whether the local voice stack (Kokoro TTS /
+			// local ASR) can run on this device tier. When not viable, a cloud voice
+			// is the *configured* default — surfacing the reason here lets the UI
+			// explain that instead of the router silently swapping engines (#12253).
+			sendJsonResponse(res, 200, {
+				providers,
+				voiceModality: assessVoiceModality(deviceTier),
+			});
 		} catch (err) {
 			sendJsonErrorResponse(
 				res,

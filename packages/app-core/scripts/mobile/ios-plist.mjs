@@ -15,7 +15,16 @@ export const IOS_BONJOUR_SERVICES = [
   "_eliza._tcp",
 ];
 
-const IOS_BACKGROUND_MODES = ["fetch", "processing", "remote-notification"];
+// `audio` keeps the AVAudioSession (and the in-process Bun engine) alive while a
+// voice/dictation session runs with the screen locked (#12185 D10). The
+// packages/app `patch-ios-plist.mjs` adds it on `cap:sync`; this merger adds it
+// on the full build so both plist patchers agree.
+const IOS_BACKGROUND_MODES = [
+  "fetch",
+  "processing",
+  "remote-notification",
+  "audio",
+];
 const IOS_BG_TASK_IDENTIFIERS = [
   "ai.eliza.tasks.refresh",
   "ai.eliza.tasks.processing",
@@ -79,6 +88,18 @@ export function replaceOrInsertPlistString(content, key, value) {
   return content.replace(
     "</dict>",
     `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
+  );
+}
+
+/** Ensure a plist carries `<key>…</key><true/>` (idempotent). */
+export function ensurePlistTrueBool(content, key) {
+  const keyRe = escapeRegExp(key);
+  if (new RegExp(`<key>${keyRe}</key>`).test(content)) {
+    return content;
+  }
+  return content.replace(
+    "</dict>",
+    `\t<key>${key}</key>\n\t<true/>\n</dict>`,
   );
 }
 
@@ -173,6 +194,9 @@ export function mergeIosInfoPlist(
     ),
     urlScheme,
   );
+  // Live Activities (voice/dictation session on Lock Screen + Dynamic Island,
+  // #12185) require this opt-in in the app Info.plist.
+  nextContent = ensurePlistTrueBool(nextContent, "NSSupportsLiveActivities");
   return {
     changed: nextContent !== content,
     content: nextContent,

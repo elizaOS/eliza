@@ -1,3 +1,8 @@
+/**
+ * Exercises the Twitch plugin surface and its chat-formatting helpers (channel
+ * normalization, message splitting/length caps, markdown stripping) against a
+ * mocked runtime — no live Twitch/IRC connection.
+ */
 import type {
   Content,
   IAgentRuntime,
@@ -442,10 +447,8 @@ describe("Twitch message connector accounts", () => {
 // ===========================================================================
 // 7. sendMessage path
 // ===========================================================================
-// Twitch send used to be a standalone action; now the Twitch
-// MessageConnector (registered by TwitchService.registerSendHandlers) is the
-// canonical send path through MESSAGE operation=send. Action-shape and handler
-// tests retired with the action.
+// The Twitch MessageConnector (registered by TwitchService.registerSendHandlers)
+// is the canonical send path, via MESSAGE operation=send.
 
 // ===========================================================================
 // 12. Type Construction

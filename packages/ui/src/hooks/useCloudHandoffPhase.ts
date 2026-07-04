@@ -1,3 +1,8 @@
+/**
+ * Tracks the cloud-handoff banner phase from CLOUD_HANDOFF_PHASE_EVENT. Terminal
+ * phases linger briefly then self-clear; migrating/failed/timed-out persist until
+ * the swap or a retry resolves so a failure is never silent.
+ */
 import { useEffect, useState } from "react";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,

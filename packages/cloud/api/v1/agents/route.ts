@@ -17,6 +17,7 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import {
   failureResponse,
+  jsonError,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
 import { toCompatStatus } from "@/lib/api/compat-envelope";
@@ -24,7 +25,10 @@ import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { charactersService } from "@/lib/services/characters/characters";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import {
+  AgentImageNotAllowedError,
+  elizaSandboxService,
+} from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import {
   checkProvisioningWorkerHealth,
@@ -581,6 +585,20 @@ app.post("/", async (c) => {
       202,
     );
   } catch (error) {
+    if (error instanceof AgentImageNotAllowedError) {
+      logger.warn("[service-api] Agent creation blocked: image not allowed", {
+        image: error.image,
+        reason: error.reason,
+      });
+      return jsonError(
+        c,
+        403,
+        error.message,
+        error.reason === "not_digest_pinned"
+          ? "agent_image_not_digest_pinned"
+          : "agent_image_not_allowed",
+      );
+    }
     return failureResponse(c, error);
   }
 });

@@ -547,12 +547,16 @@ export const recentMessagesProvider: Provider = {
 				}
 			}
 
-			const metaData = message.metadata as CustomMetadata;
+			// `Memory.metadata` is optional — a message with no metadata from a
+			// sender whose entity row is unavailable must not throw here, or the
+			// catch below silently drops the ENTIRE conversation history for the
+			// turn ("No recent messages available").
+			const metaData = message.metadata as CustomMetadata | undefined;
 			const foundEntity = entitiesForFormatting.find(
 				(entity: Entity) => entity.id === message.entityId,
 			);
 			const senderName =
-				foundEntity?.names?.[0] || metaData.entityName || "Unknown User";
+				foundEntity?.names?.[0] || metaData?.entityName || "Unknown User";
 			const receivedMessageContent = message.content.text;
 
 			const hasReceivedMessage = !!receivedMessageContent?.trim();

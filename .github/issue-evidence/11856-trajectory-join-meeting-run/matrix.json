@@ -1,0 +1,119 @@
+{
+  "runId": "022a5392-502d-4624-ad64-b8d4d0bf3831",
+  "startedAtIso": "2026-07-03T09:48:33.725Z",
+  "completedAtIso": "2026-07-03T09:48:47.954Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "live-join-meeting",
+      "title": "Real LLM routes a Meet link to JOIN_MEETING (plugin-meetings)",
+      "domain": "meetings",
+      "tags": [
+        "live",
+        "real-llm",
+        "meetings",
+        "join-meeting"
+      ],
+      "status": "passed",
+      "durationMs": 3386,
+      "turns": [
+        {
+          "name": "user asks the agent to join a Google Meet and take notes",
+          "kind": "message",
+          "text": "Please join this meeting and take notes: https://meet.google.com/abc-defg-hij",
+          "responseText": "I've joined the meeting and am now taking notes. You can view the live transcript in the Transcripts view.",
+          "actionsCalled": [
+            {
+              "actionName": "JOIN_MEETING",
+              "parameters": {
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "data": {
+                  "sessionId": "60375528-4250-4de0-aacc-f779b3772790",
+                  "transcriptId": "901eb0cb-22fd-462d-8fab-be9fc1cfb294"
+                },
+                "text": "Joining the Google Meet meeting abc-defg-hij as \"ScenarioAgent Notetaker\". I'll transcribe it live — watch it land in the Transcripts view (transcript 901eb0cb-22fd-462d-8fab-be9fc1cfb294).",
+                "raw": {
+                  "success": true,
+                  "text": "Joining the Google Meet meeting abc-defg-hij as \"ScenarioAgent Notetaker\". I'll transcribe it live — watch it land in the Transcripts view (transcript 901eb0cb-22fd-462d-8fab-be9fc1cfb294).",
+                  "data": {
+                    "sessionId": "60375528-4250-4de0-aacc-f779b3772790",
+                    "transcriptId": "901eb0cb-22fd-462d-8fab-be9fc1cfb294"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 3190,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "planner selected JOIN_MEETING",
+          "type": "selectedAction",
+          "status": "passed",
+          "detail": "selected JOIN_MEETING"
+        },
+        {
+          "label": "JOIN_MEETING handler executed",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "JOIN_MEETING called 1x"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "JOIN_MEETING",
+          "parameters": {
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "sessionId": "60375528-4250-4de0-aacc-f779b3772790",
+              "transcriptId": "901eb0cb-22fd-462d-8fab-be9fc1cfb294"
+            },
+            "text": "Joining the Google Meet meeting abc-defg-hij as \"ScenarioAgent Notetaker\". I'll transcribe it live — watch it land in the Transcripts view (transcript 901eb0cb-22fd-462d-8fab-be9fc1cfb294).",
+            "raw": {
+              "success": true,
+              "text": "Joining the Google Meet meeting abc-defg-hij as \"ScenarioAgent Notetaker\". I'll transcribe it live — watch it land in the Transcripts view (transcript 901eb0cb-22fd-462d-8fab-be9fc1cfb294).",
+              "data": {
+                "sessionId": "60375528-4250-4de0-aacc-f779b3772790",
+                "transcriptId": "901eb0cb-22fd-462d-8fab-be9fc1cfb294"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/meetings/.github/issue-evidence/11856-trajectory-join-meeting-run/viewer/data.js"
+  }
+}

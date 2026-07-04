@@ -1,3 +1,9 @@
+/**
+ * Data contracts shared between the extension and the agent's
+ * `/api/browser-bridge/*` routes: bridge settings, action kinds, and the sync
+ * request/response shapes. Both sides depend on these types to agree on the
+ * wire format; type-only, no runtime code.
+ */
 export type BrowserBridgeKind = "chrome" | "safari";
 
 export type BrowserBridgeTrackingMode = "off" | "current_tab" | "active_tabs";

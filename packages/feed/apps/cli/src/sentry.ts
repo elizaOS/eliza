@@ -1,3 +1,10 @@
+/**
+ * Sentry wiring for the Feed CLI: initializes the `@sentry/bun` client per
+ * command run and flushes captured exceptions before the process exits.
+ * No-ops when `DISABLE_SENTRY=true` or no `SENTRY_DSN` is configured, so local
+ * and CI runs stay silent. Release is derived from Sentry/Vercel commit-sha env vars.
+ */
+
 import * as Sentry from "@sentry/bun";
 
 type CliSentryContext = {

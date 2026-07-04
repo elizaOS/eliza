@@ -1,3 +1,5 @@
+/** Storybook stories for AppPageSidebar: default/collapsible/header+action/mobile variants over a stub nav list. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { AppPageSidebar } from "./AppPageSidebar";
 

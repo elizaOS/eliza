@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the llms.txt badge.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router-dom";
 import { LlmsTxtBadge } from "./llms-txt-badge";

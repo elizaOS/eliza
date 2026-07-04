@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for workflow JSON round-tripping (parse, to-write-request,
+ * to-text). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseWorkflowJson,

@@ -1,3 +1,9 @@
+/**
+ * Dynamic-prompt-execution (DPE) optimization payloads: additive `ScoreSignal`s,
+ * an aggregated `ScoreCardData` snapshot, and one `ExecutionTrace` row per attempt.
+ * Plain JSON-friendly structs (no ORM coupling) so traces can be appended to logs
+ * or analytics; `traceVersion` lets offline consumers pin parsers.
+ */
 import type { UUID } from "./primitives";
 
 /**

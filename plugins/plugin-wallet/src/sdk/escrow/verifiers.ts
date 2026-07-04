@@ -1,3 +1,8 @@
+/**
+ * Verifier registry and encoding helpers for the mutual-stake escrow: known
+ * verifier contract addresses per chain/type, and ABI-encoding of verifier
+ * data (optimistic vs hash-based) passed into `createEscrow`.
+ */
 import {
   type Address,
   encodeAbiParameters,

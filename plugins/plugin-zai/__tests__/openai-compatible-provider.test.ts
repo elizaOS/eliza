@@ -1,3 +1,4 @@
+/** Unit tests for `createZaiClient`, verifying the base URL and API key passed into a mocked `@ai-sdk/openai-compatible` factory (no live API). */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createOpenAICompatibleMock = vi.fn((config: unknown) => config);

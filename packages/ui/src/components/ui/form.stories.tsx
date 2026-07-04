@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the react-hook-form field primitives (Form/FormField/FormItem/…).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";

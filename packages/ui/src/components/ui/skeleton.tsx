@@ -3,10 +3,9 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 /**
- * The only Skeleton primitive with consumers. The other variants
- * (SkeletonLine, SkeletonText, SkeletonCard, SkeletonChat,
- * SkeletonMessage, SkeletonSidebar) were deleted in the Layer 5b sweep
- * — none had consumers outside this file.
+ * Base skeleton block: an aria-hidden pulsing placeholder. The single skeleton
+ * primitive in the kit — composite shapes live in `skeleton-layouts.tsx`, built
+ * on this.
  */
 const Skeleton = React.forwardRef<
   HTMLDivElement,

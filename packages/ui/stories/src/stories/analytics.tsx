@@ -1,3 +1,6 @@
+/**
+ * Story group for the cloud analytics components (cost alerts/insights, export).
+ */
 import {
   CostAlerts,
   CostInsightsCard,

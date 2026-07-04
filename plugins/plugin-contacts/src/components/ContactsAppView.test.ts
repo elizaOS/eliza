@@ -176,8 +176,8 @@ describe("ContactsAppView — list → detail navigation", () => {
       screen.getByRole("heading", { level: 2, name: "Ada Lovelace" }),
     ).toBeTruthy();
 
-    // Phone numbers no longer use a tel: OS handoff — each renders the number
-    // text plus in-app "Call" and "Text" controls. The duplicate "+15550100"
+    // Phone numbers render as number text plus in-app "Call" and "Text"
+    // controls rather than a tel: OS handoff. The duplicate "+15550100"
     // collapses to a single entry (dedupePreservingOrder), so two phone rows →
     // two Call + two Text controls.
     expect(screen.queryByRole("link", { name: /tel:/ })).toBeNull();

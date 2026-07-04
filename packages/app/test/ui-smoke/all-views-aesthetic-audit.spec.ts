@@ -30,6 +30,7 @@ import {
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
 import { VIEW_CASES } from "./plugin-view-cases";
+import { VIEW_ROUTES } from "./view-routes";
 
 // Strict-gate config (#9304). The audit was a pure reporter — `broken` /
 // `needs-work` verdicts only landed in report.json and never failed a run, so a
@@ -104,6 +105,8 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   automations: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
+  "character-skills": "/character/skills",
+  experience: "/character/experience",
   files: "/apps/files",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
@@ -223,7 +226,7 @@ const SYSTEM_VIEW_METRIC_BUDGETS: Record<
   "builtin-chat": viewportBudgets(
     budget(520, 34, 0.34),
     budget(560, 36, 0.28),
-    budget(240, 24, 0.48),
+    budget(240, 24, 0.46),
     budget(360, 28, 0.42),
   ),
   "builtin-phone": viewportBudgets(
@@ -500,6 +503,12 @@ async function collectAestheticDensityMetrics(
         },
       },
     );
+    const isInsideGlobalOverlay = (element: Element): boolean =>
+      Boolean(
+        element.closest(
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay']",
+        ),
+      );
 
     for (
       let textNode = walker.nextNode();
@@ -522,6 +531,7 @@ async function collectAestheticDensityMetrics(
     let borderDividerCount = 0;
     const nodes = Array.from(document.querySelectorAll("*")).slice(0, 4000);
     for (const node of nodes) {
+      if (isInsideGlobalOverlay(node)) continue;
       if (!visibleElement(node)) continue;
       const style = getComputedStyle(node);
       const rects = Array.from(node.getClientRects()).filter(
@@ -897,6 +907,32 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     expect(
       uncovered,
       `navigation TAB_PATHS adds routes the audit does not cover: ${uncovered.join(", ")}`,
+    ).toEqual([]);
+
+    // Same guard for the shared `./view-routes` VIEW_ROUTES table (consumed by
+    // all-views-interaction.spec.ts and tap-target-geometry-all-views.spec.ts):
+    // it must stay a superset of navigation TAB_PATHS — agree on the path for
+    // every shared id and cover every distinct navigation route. Extra
+    // VIEW_ROUTES entries (non-tab surfaces like /settings/voice) are allowed.
+    const viewRoutePaths = Object.fromEntries(
+      VIEW_ROUTES.map((r) => [r.id, r.path]),
+    );
+    const viewRouteDistinctPaths = new Set(Object.values(viewRoutePaths));
+
+    const viewRouteMismatched = Object.keys(viewRoutePaths).filter(
+      (k) => k in navPaths && viewRoutePaths[k] !== navPaths[k],
+    );
+    expect(
+      viewRouteMismatched,
+      `view-routes VIEW_ROUTES path drift vs navigation: ${viewRouteMismatched.join(", ")}`,
+    ).toEqual([]);
+
+    const viewRouteUncovered = [...navDistinctPaths].filter(
+      (p) => !viewRouteDistinctPaths.has(p),
+    );
+    expect(
+      viewRouteUncovered,
+      `navigation TAB_PATHS adds routes view-routes VIEW_ROUTES does not cover: ${viewRouteUncovered.join(", ")}`,
     ).toEqual([]);
   });
 

@@ -1,3 +1,4 @@
+/** Vitest config scoping the Solana chain sub-suite to its own test/spec globs, run under Node. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,6 @@
+/**
+ * List view of cloud apps with per-item status and quick actions.
+ */
 import {
   Activity,
   Copy,

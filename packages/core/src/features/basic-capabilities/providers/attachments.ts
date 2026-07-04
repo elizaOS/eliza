@@ -8,6 +8,7 @@ import {
 	type Provider,
 	type ProviderResult,
 } from "../../../types/index.ts";
+import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
@@ -93,7 +94,7 @@ function shouldRenderAttachmentPromptText(
 ): boolean {
 	if (allAttachments.length === 0) return false;
 	if ((message.content.attachments ?? []).length > 0) return true;
-	if (message.content.source === "sub_agent") return false;
+	if (message.content.source === MESSAGE_SOURCE_SUB_AGENT) return false;
 	const text = messageTextForAttachmentRelevance(message);
 	return (
 		ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)

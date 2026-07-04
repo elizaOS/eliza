@@ -1,3 +1,10 @@
+/**
+ * Master-key resolvers for vault encryption.
+ *
+ * Supports OS keychain storage, passphrase-derived keys, in-memory test keys,
+ * and fail-closed TEE attestation before releasing sealed-volume keys.
+ */
+
 import { execFile, spawn } from "node:child_process";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";

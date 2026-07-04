@@ -1,3 +1,8 @@
+/**
+ * Reads the desktop-injected external API base origin from the window global and
+ * validates it as an http(s) origin. Used to route the client at an external
+ * agent when the desktop host points it there.
+ */
 function getWindowExternalApiBase(): unknown {
   if (typeof window === "undefined") return null;
   return (window as { __ELIZA_DESKTOP_EXTERNAL_API_BASE__?: unknown })

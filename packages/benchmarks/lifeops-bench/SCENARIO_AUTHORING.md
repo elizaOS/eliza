@@ -4,6 +4,10 @@ How to add a new scenario to the corpus. The canonical Python-level
 contract is in `eliza_lifeops_bench/types.py::Scenario`; this guide is
 the operator-facing playbook for using it well.
 
+For LifeOps persona-pack scenarios, also follow
+`../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs/LIFEOPS_PERSONA_SCENARIO_AUTHORING.md`
+and update the owning pack catalog.
+
 ## Table of contents
 
 - [Static vs Live mode](#static-vs-live-mode)

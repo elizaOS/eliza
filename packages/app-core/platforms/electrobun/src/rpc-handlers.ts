@@ -83,6 +83,8 @@ import {
 } from "./inbox-rpc";
 import { isKioskShellMode } from "./kiosk-mode";
 import { LaunchOrchestrator } from "./launch";
+import { requireActiveLocalAgentDispatcher } from "./local-agent-dispatcher-registry";
+import { createLocalAgentRequestHandler } from "./local-agent-request";
 import { logger } from "./logger";
 import {
   getAgentManager,
@@ -692,6 +694,26 @@ export function buildBunRpcHandlers({
       };
     },
     desktopHttpRequest,
+
+    // ---- Local-agent IPC transport (#12180 / #12355) ----
+    // Buffered agent request routed over the child stdio bridge (no loopback
+    // socket). The dispatcher is attached by the agent-child spawn only in
+    // local-agent IPC mode; in default HTTP mode the renderer never addresses
+    // the IPC api base, so this handler is not reached.
+    localAgentRequest: createLocalAgentRequestHandler({
+      request: (request) =>
+        requireActiveLocalAgentDispatcher().request(request),
+    }),
+    // Streaming (chat token SSE) over the IPC bridge is registered so the wire
+    // contract exists for the renderer's native streaming adapter; the
+    // child-side streaming consumer lands with the desktop capture proof
+    // (#12180 phase 4). It fails loudly rather than silently degrading to a
+    // non-streaming or socket path.
+    localAgentStreamRequest: async () => {
+      throw new Error(
+        "localAgentStreamRequest is not yet available: the desktop IPC streaming leg lands with its child-side consumer (#12180 phase 4).",
+      );
+    },
 
     // ---- Renderer diagnostics ----
     rendererReportDiagnostic: async (

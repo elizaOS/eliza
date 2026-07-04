@@ -199,8 +199,8 @@ export function warnIfRepliesSuppressed(runtime: IAgentRuntime): void {
 
 	// Case 2 (DM-ONLY): channel replies work, but DM replies are silently dropped
 	// by the DM-ignore flag and/or a restrictive dmPolicy (the default 'pairing'
-	// blocks unpaired senders — issue #10216 root cause #1, previously never
-	// surfaced because everything sat behind the global gate above).
+	// blocks unpaired senders — issue #10216 root cause #1). Case 1's global gate
+	// returns above, so this branch handles the DM-only sub-case it does not cover.
 	const dmReasons: string[] = [];
 	if (dmIgnoredOnReplyEnabled) {
 		dmReasons.push(

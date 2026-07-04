@@ -1,3 +1,9 @@
+/**
+ * Feishu-specific type definitions: inbound event/message/chat/user payloads,
+ * card and rich-text shapes, and the FeishuEventTypes enum with its payload map.
+ * Local declarations for structures the Lark SDK does not export. Shared across
+ * the service, message manager, and formatting.
+ */
 import type {
 	Content,
 	EntityPayload,

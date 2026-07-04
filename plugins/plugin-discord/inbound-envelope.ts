@@ -1,3 +1,8 @@
+/**
+ * Normalises a raw Discord message into the runtime's inbound envelope: formats
+ * the message content and classifies the chat surface (dm / channel / thread /
+ * forum) plus reply context, before `DiscordService` builds the `Memory`.
+ */
 import {
 	ChannelType as DiscordChannelType,
 	type Message as DiscordMessage,

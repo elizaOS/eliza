@@ -1,13 +1,14 @@
-// Self-contained fixture for the connectors-card e2e: mounts the REAL
-// `ConnectorPluginGroups` (plugin-view-connectors.tsx) with one expanded
-// Signal connector. Signal's default mode is `plugin-managed`, whose setup
-// panel is delegated to `connector-account-management:signal:signal` — a
-// different plugin id than the card's own — which is exactly the
-// `setupPanelPluginId !== plugin.id` case #10705 fixes. The real
-// `PluginConfigForm` and the real `ConnectorSetupPanel` (account list fed by
-// the canned api stub) both render; only the `state`/`api` barrels are
-// stubbed (see connectors-fixture-*-stub.ts). No app server, no network.
-// Paired with run-connectors-e2e.mjs.
+/**
+ * Self-contained fixture for the connectors-card e2e: mounts the REAL
+ * `ConnectorPluginGroups` (plugin-view-connectors.tsx) with one expanded Signal
+ * connector. Signal's default mode is `plugin-managed`, whose setup panel is
+ * delegated to `connector-account-management:signal:signal` — a different plugin
+ * id than the card's own — which is exactly the `setupPanelPluginId !== plugin.id`
+ * case (#10705). The real `PluginConfigForm` and `ConnectorSetupPanel` (account
+ * list fed by the canned api stub) both render; only the `state`/`api` barrels
+ * are stubbed (see connectors-fixture-*-stub.ts). No app server, no network.
+ * Paired with run-connectors-e2e.mjs.
+ */
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";

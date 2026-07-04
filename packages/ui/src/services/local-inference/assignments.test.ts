@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for model slot assignments: recommended defaults, read/write, and
+ * ensure-default. Temp-dir filesystem, no engine.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

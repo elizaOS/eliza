@@ -75,6 +75,7 @@ export * from "./organizations";
 export * from "./phone-gateway-devices";
 export * from "./platform-credentials";
 export * from "./pooled-credentials";
+export * from "./press-releases";
 export * from "./provider-health";
 export * from "./redeemable-earnings";
 export * from "./referrals";

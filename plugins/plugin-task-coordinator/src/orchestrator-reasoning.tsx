@@ -1,3 +1,4 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { MarkdownText } from "./orchestrator-markdown";
@@ -108,7 +109,8 @@ export function ReasoningCell({
       className="rounded-md border border-border/50 bg-card/50"
       data-testid="orchestrator-reasoning"
     >
-      <button
+      <Button
+        unstyled
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
@@ -129,7 +131,7 @@ export function ReasoningCell({
         >
           {header}
         </span>
-      </button>
+      </Button>
       {open ? (
         <div className="px-2.5 pb-2">
           <div

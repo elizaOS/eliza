@@ -1,7 +1,7 @@
-// ---------------------------------------------------------------------------
-// Types barrel — re-exports all domain type modules so consumers can continue
-// importing from this single path without changes.
-// ---------------------------------------------------------------------------
+/**
+ * Barrel for the ElizaClient DTO surface: re-exports every client-types-*
+ * domain module so consumers import the whole type surface from one path.
+ */
 
 export * from "./client-types-character";
 export * from "./client-types-chat";

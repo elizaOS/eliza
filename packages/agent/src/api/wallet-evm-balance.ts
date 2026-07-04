@@ -444,7 +444,7 @@ async function fetchAlchemyChainBalances(
         balance: formatWei(BigInt(tok.tokenBalance), decimals),
         decimals,
         valueUsd: "0",
-        logoUrl: meta?.logo ?? "",
+        logoUrl: meta?.logo || "",
       };
     }),
   );

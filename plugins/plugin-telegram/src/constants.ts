@@ -1,3 +1,7 @@
+/**
+ * Shared constants for the Telegram connector: message-window / interest-decay
+ * tunables and the `"telegram"` service-type name.
+ */
 export const MESSAGE_CONSTANTS = {
   MAX_MESSAGES: 50,
   RECENT_MESSAGE_COUNT: 5,

@@ -6,8 +6,8 @@
  * Auth model: Cloud = Steward, unified across web AND native.
  * The Steward JWT in `localStorage.steward_session_token` is the canonical auth
  * source for every Cloud connection, so the join flow reads it directly via the
- * shared steward-session client rather than the legacy `__ELIZA_CLOUD_AUTH_TOKEN__`
- * global.
+ * shared steward-session client. The device-code/pairing flow persists its own
+ * session token through the same store, so there is one cloud-token channel.
  */
 
 import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";

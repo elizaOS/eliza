@@ -1,7 +1,8 @@
-// ---------------------------------------------------------------------------
-// Cloud types — Cloud*, App*, Trajectory*, Registry*, Whitelist*,
-// Verification*, Wallet display types, CodingAgent*, Pty*
-// ---------------------------------------------------------------------------
+/**
+ * Cloud-domain client DTOs: Cloud*, App*, Trajectory*, Registry*, Whitelist*,
+ * Verification*, wallet display types, CodingAgent*, Pty*. One slice of the
+ * ElizaClient type surface, re-exported through client-types.ts.
+ */
 
 import type {
   TrajectoryExportOptions as CoreTrajectoryExportOptions,
@@ -230,9 +231,9 @@ export interface CloudLoginPollResponse {
   status: "pending" | "authenticated" | "expired" | "error";
   /**
    * Cloud API key, returned only on `status: "authenticated"`. The renderer
-   * uses this to populate `globalThis.__ELIZA_CLOUD_AUTH_TOKEN__` so the
-   * direct cloud path (`/api/v1/eliza/...`) can be used for agent
-   * provisioning. Without it the renderer falls back to the proxy compat
+   * persists this through the steward-session store (the canonical cloud-token
+   * channel) so the direct cloud path (`/api/v1/eliza/...`) can be used for
+   * agent provisioning. Without it the renderer falls back to the proxy compat
    * path whose queue doesn't drain.
    */
   token?: string;

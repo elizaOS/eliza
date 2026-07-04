@@ -1,3 +1,8 @@
+/**
+ * Eliza Classic brand tokens: asset base path + resolver, canonical colors, and
+ * logo references for the Classic variant. Parallel to the default `brand/`
+ * tokens; surfaces select one variant at render time.
+ */
 export const BRAND_ASSET_BASE_PATH = "/brand" as const;
 
 export function brandAssetPath(path: string, basePath = BRAND_ASSET_BASE_PATH) {

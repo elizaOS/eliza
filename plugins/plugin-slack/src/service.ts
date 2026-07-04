@@ -1,3 +1,24 @@
+/**
+ * `SlackService` — the Socket Mode connection manager and message connector that
+ * gives an Eliza agent its live Slack presence. On start it opens one `@slack/bolt`
+ * `App` per configured workspace account, registers the bolt event handlers, and
+ * registers itself as a `MessageConnector` so the runtime can send, read, search,
+ * react to, edit, delete, and pin messages across channels, threads, and DMs.
+ *
+ * Inbound Slack events are mapped into the runtime's message envelope
+ * (`createUniqueUuid` / `stringToUuid` for stable room/entity IDs) and emitted as
+ * `SlackEventTypes`; outbound `Content` is rendered to Slack mrkdwn via
+ * `formatting.ts` and posted through the account's web client. Media attachments
+ * are fetched through the SSRF-guarded `resolveAttachmentBytes` and uploaded as
+ * file bytes rather than URLs.
+ *
+ * Multi-account state lives in a `Map<string, SlackAccountRuntime>`; the default
+ * account is the first entry. OWNER-role accounts with a user token (`xoxp-`) post
+ * as the user, AGENT-role accounts (the default) post as the bot (`xoxb-`).
+ * Inbound filtering: `SLACK_CHANNEL_IDS` plus runtime-joined `dynamicChannelIds`
+ * form the allowlist, and non-DM messages carrying the bot mention are handled
+ * exclusively by the app-mention path to avoid double-processing.
+ */
 import {
   ChannelType,
   type Character,
@@ -3047,11 +3068,17 @@ export class SlackService extends Service implements ISlackService {
     let lastTs = "";
 
     for (const msg of messages) {
+      type SlackPostMessageArgs = Parameters<
+        typeof client.chat.postMessage
+      >[0] & {
+        attachments?: SlackAttachment[];
+        blocks?: SlackBlock[];
+      };
       const messageArgs = {
         channel: channelId,
         text: msg,
         mrkdwn: options?.mrkdwn ?? true,
-      } as Parameters<typeof client.chat.postMessage>[0];
+      } as SlackPostMessageArgs;
       if (options?.threadTs !== undefined) {
         messageArgs.thread_ts = options.threadTs;
       }
@@ -3065,12 +3092,10 @@ export class SlackService extends Service implements ISlackService {
         messageArgs.unfurl_media = options.unfurlMedia;
       }
       if (options?.attachments) {
-        (messageArgs as unknown as Record<string, unknown>).attachments =
-          options.attachments;
+        messageArgs.attachments = options.attachments;
       }
       if (options?.blocks) {
-        (messageArgs as unknown as Record<string, unknown>).blocks =
-          options.blocks;
+        messageArgs.blocks = options.blocks;
       }
 
       const result = await client.chat.postMessage(messageArgs);

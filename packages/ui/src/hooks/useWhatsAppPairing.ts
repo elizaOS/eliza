@@ -1,3 +1,7 @@
+/**
+ * WhatsApp connector pairing state: polls the pairing status and exposes the
+ * handshake verbs for the WhatsApp setup surface.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "./useConnectorAccounts";

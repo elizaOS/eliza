@@ -1,3 +1,9 @@
+/**
+ * Covers `loadMergedCatalogApps`, focusing on the AOSP overlay-app filter: the
+ * api client, Capacitor platform, and navigator user-agent are mocked so the
+ * androidOnly-tile gating is asserted across Eliza-AOSP vs stock-Android hosts.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ELIZAOS_AOSP_UA =
@@ -33,10 +39,9 @@ vi.stubGlobal("Capacitor", {
 });
 vi.stubGlobal("navigator", navigatorMock);
 
+import { resetUiRegistryHostForTests } from "../../registry-host";
 import { loadMergedCatalogApps } from "./catalog-loader";
 import { registerOverlayApp } from "./overlay-app-registry";
-
-const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
 
 interface ServerAppRow {
   name: string;
@@ -86,11 +91,7 @@ function makeServerApp(name: string): ServerAppRow {
 
 describe("loadMergedCatalogApps AOSP filter", () => {
   beforeEach(() => {
-    (
-      globalThis as {
-        [OVERLAY_REGISTRY_KEY]?: Map<string, unknown>;
-      }
-    )[OVERLAY_REGISTRY_KEY] = new Map();
+    resetUiRegistryHostForTests();
     registerOverlayApp({
       name: "@elizaos/plugin-phone",
       displayName: "Phone",
@@ -133,11 +134,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
   });
 
   afterEach(() => {
-    (
-      globalThis as {
-        [OVERLAY_REGISTRY_KEY]?: Map<string, unknown>;
-      }
-    )[OVERLAY_REGISTRY_KEY] = new Map();
+    resetUiRegistryHostForTests();
   });
 
   const ANDROID_ONLY_APP_NAMES = [

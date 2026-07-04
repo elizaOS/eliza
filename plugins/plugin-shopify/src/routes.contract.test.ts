@@ -1,21 +1,22 @@
 // @vitest-environment node
-//
-// Contract test for the REAL Shopify route parser (handleShopifyRoute in
-// routes.ts). It sets SHOPIFY_* env so the handler treats itself as configured,
-// stubs global fetch with REAL-SHAPED Shopify Admin GraphQL **2025-04** payloads
-// ({ data: { ... } }), and asserts the handler transforms each provider shape
-// into the flat DTOs the views consume. The payload shapes mirror the exact
-// selection sets in routes.ts and the Shopify Admin GraphQL 2025-04 schema:
-//   - shop.myshopifyDomain / plan.displayName / currencyCode
-//   - products.edges[].node.priceRangeV2.{min,max}VariantPrice.amount, featuredImage.url
-//   - orders.edges[].node.totalPriceSet.shopMoney + displayFinancial/FulfillmentStatus
-//     + lineItems.edges (length → lineItemCount)
-//   - inventory: products→variants→inventoryItem.inventoryLevels.edges + locations.isActive
-//     + "Default Title"→"" + zero-level fallback
-//   - customers: numberOfOrders (UnsignedInt64 string) → Number, amountSpent MoneyV2
-//
-// This runs the actual parser with no live creds, retiring the recorded-replay
-// debt noted in external-api-mock-validation.test.ts.
+
+/**
+ * Contract test for the REAL Shopify route parser (handleShopifyRoute in
+ * routes.ts). It sets SHOPIFY_* env so the handler treats itself as configured,
+ * stubs global fetch with REAL-SHAPED Shopify Admin GraphQL **2025-04** payloads
+ * ({ data: { ... } }), and asserts the handler transforms each provider shape
+ * into the flat DTOs the views consume. The payload shapes mirror the exact
+ * selection sets in routes.ts and the Shopify Admin GraphQL 2025-04 schema:
+ *   - shop.myshopifyDomain / plan.displayName / currencyCode
+ *   - products.edges[].node.priceRangeV2.{min,max}VariantPrice.amount, featuredImage.url
+ *   - orders.edges[].node.totalPriceSet.shopMoney + displayFinancial/FulfillmentStatus
+ *     + lineItems.edges (length → lineItemCount)
+ *   - inventory: products→variants→inventoryItem.inventoryLevels.edges + locations.isActive
+ *     + "Default Title"→"" + zero-level fallback
+ *   - customers: numberOfOrders (UnsignedInt64 string) → Number, amountSpent MoneyV2
+ *
+ * Runs the actual parser with no live creds.
+ */
 
 import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

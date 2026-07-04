@@ -1,6 +1,19 @@
-import { resolveDesktopApiPort } from "@elizaos/shared";
+import { resolveApiExposePort, resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 import { logger } from "./logger";
+
+/**
+ * Renderer-facing API base for the desktop local-agent IPC transport (#12180
+ * phase 2 / #12355). When local-agent IPC mode is active the renderer's API base
+ * is this custom scheme instead of `http://127.0.0.1:<port>`: requests to it are
+ * routed through the Electrobun `localAgentRequest`/`localAgentStreamRequest` RPC
+ * methods (main process → in-process route kernel), so the agent binds no TCP
+ * listener. Mirrors the mobile local-agent IPC base string the iOS/Android
+ * transports already use, so one renderer resolver chain serves every platform.
+ */
+export const DESKTOP_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+
+const LOCAL_AGENT_IPC_ENV_KEY = "ELIZA_DESKTOP_LOCAL_AGENT_IPC";
 
 type ExternalApiBaseEnvKey =
   | "ELIZA_DESKTOP_TEST_API_BASE"
@@ -194,12 +207,35 @@ export function resolveDesktopRuntimeModeSignal(
   return null;
 }
 
+/**
+ * True when the desktop local agent should reach the runtime over native
+ * Electrobun IPC (`localAgentRequest`/`localAgentStreamRequest`) rather than a
+ * loopback HTTP port (#12180 / #12355). Opt-in via `ELIZA_DESKTOP_LOCAL_AGENT_IPC`.
+ *
+ * `ELIZA_API_EXPOSE_PORT=1` wins: when the operator explicitly re-opens the
+ * agent's TCP listener (dev tooling, LAN access, e2e/Playwright HTTP harnesses)
+ * the api base stays the loopback HTTP URL so those flows keep working. Off by
+ * default, so a desktop boot with neither flag set is byte-for-byte identical to
+ * today (loopback HTTP api base, port bound).
+ */
+export function resolveLocalAgentIpcMode(
+  env: Record<string, string | undefined>,
+): boolean {
+  if (resolveApiExposePort(env) === true) return false;
+  const raw = env[LOCAL_AGENT_IPC_ENV_KEY];
+  return isEnabledFlag(raw);
+}
+
 export function resolveInitialApiBase(
   env: Record<string, string | undefined>,
 ): string | null {
   const resolution = resolveDesktopRuntimeMode(env);
   if (resolution.mode === "external") {
     return resolution.externalApi.base;
+  }
+
+  if (resolveLocalAgentIpcMode(env)) {
+    return DESKTOP_LOCAL_AGENT_IPC_BASE;
   }
 
   const agentPort = resolveDesktopApiPort(env) || DEFAULT_API_PORT;
@@ -245,6 +281,12 @@ export function resolveRendererFacingApiBase(
   env: Record<string, string | undefined>,
   apiListenPort: number,
 ): string {
+  // Local-agent IPC mode has no reachable HTTP listener to proxy to; the
+  // renderer must address the IPC scheme so requests ride the Electrobun RPC
+  // transport instead of a same-origin dev-server proxy or a loopback port.
+  if (resolveLocalAgentIpcMode(env)) {
+    return DESKTOP_LOCAL_AGENT_IPC_BASE;
+  }
   const fromDevServer = resolveHttpLoopbackRendererOriginForApiClient(env);
   if (fromDevServer) return fromDevServer;
   return `http://127.0.0.1:${apiListenPort}`;

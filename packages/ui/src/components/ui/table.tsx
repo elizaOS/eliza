@@ -1,6 +1,7 @@
 /**
- * Table component system for displaying tabular data.
- * Provides table, header, body, footer, row, and cell components with consistent styling.
+ * Table primitives — `Table` wrapper plus header/body/footer/row/head/cell parts
+ * with shared styling. Derived from shadcn/ui `table`
+ * (https://ui.shadcn.com/docs/components/table).
  */
 import * as React from "react";
 

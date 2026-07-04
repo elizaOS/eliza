@@ -1,3 +1,5 @@
+/** Storybook stories for the Release Center sections (status, notes, build/runtime, session, WebGPU), under a stub AppContext supplying `t`. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useRef } from "react";
 import type { AppContextValue } from "../../state/internal";

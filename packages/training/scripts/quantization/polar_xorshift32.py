@@ -2,8 +2,8 @@
 
 This is the Python port of the C reference implementation that lives in:
 
-    eliza/packages/native-plugins/polarquant-cpu/src/polar_qjl.c
-    eliza/packages/inference/verify/qjl_polar_ref.c          (eliza_polar_qjl_signs)
+    eliza/packages/native/plugins/polarquant-cpu/src/polar_qjl.c
+    eliza/plugins/plugin-local-inference/native/verify/qjl_polar_ref.c          (eliza_polar_qjl_signs)
 
 Per packages/training/AGENTS.md S3 ("kernel side wins") the C reference is
 canonical. The Python recipe must produce a sign sequence that is bit-exact

@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Mounts VoiceSectionMount (the fetch-and-persist wrapper around VoiceSection)
+ * and asserts the wake-word toggle wiring, the continuous-chat localStorage
+ * mirror, and that mount-time fetch failures fall back to default prefs.
+ * jsdom, with an in-memory localStorage shim.
+ */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

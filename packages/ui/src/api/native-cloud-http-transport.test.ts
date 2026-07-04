@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the native cloud transport: CapacitorHttp for direct cloud
+ * hosts, fetch otherwise. CapacitorHttp mocked, no live cloud.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { capacitorState, capacitorHttpRequestMock } = vi.hoisted(() => ({

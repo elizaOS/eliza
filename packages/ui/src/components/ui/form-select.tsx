@@ -1,3 +1,8 @@
+/**
+ * Convenience wrapper that assembles the Select primitive parts (trigger +
+ * placeholder + content) into a single labelled control for forms, so callers
+ * pass children items and a value instead of wiring the sub-parts each time.
+ */
 import type * as SelectPrimitive from "@radix-ui/react-select";
 import * as React from "react";
 

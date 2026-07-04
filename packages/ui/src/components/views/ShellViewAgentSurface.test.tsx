@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// ShellViewAgentSurface: a wrapped shell page answers list-elements / agent-click
+// through the WS interact dispatch, and reports an error for an unsupported
+// capability. The `client` WS transport is mocked; the surface + registry are real.
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

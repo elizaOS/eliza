@@ -1,3 +1,4 @@
+/** Storybook stories for the "My Runtimes" runtime-switcher section. */
 import type { Meta, StoryObj } from "@storybook/react";
 
 import type { AgentProfile } from "../../state/agent-profile-types";

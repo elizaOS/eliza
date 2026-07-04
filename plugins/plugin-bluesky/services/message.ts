@@ -1,3 +1,13 @@
+/**
+ * DM connector implementation for one BlueSky account: backs the runtime's
+ * message-connector surface over `chat.bsky` conversations. Sends and fetches
+ * DMs through `BlueSkyClient`, maps AT Protocol messages into runtime `Memory`
+ * records (with deterministic `createUniqueUuid` room/entity ids), and resolves
+ * connector targets/rooms/user-context by fuzzy-matching handles, display names,
+ * and DIDs across the agent's conversations. Empty outbound text falls back to
+ * an LLM-generated reply via the DM prompt template. Registered by
+ * `BlueSkyService`; not an elizaOS `Service` subclass despite the name.
+ */
 import {
 	ChannelType,
 	type Content,

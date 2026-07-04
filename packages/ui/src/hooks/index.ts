@@ -1,3 +1,6 @@
+/**
+ * Barrel for the shared hooks surface (@elizaos/ui/hooks).
+ */
 export { BugReportProvider } from "./BugReportProvider";
 export * from "./frame-budget";
 export * from "./useActivityEvents";
@@ -19,10 +22,12 @@ export * from "./useLayoutShiftMonitor";
 export * from "./useLinkedSidebarSelection";
 export * from "./useMediaQuery";
 export * from "./useModalState";
+export * from "./usePushToTalk";
 export * from "./useRenderGuard";
 export * from "./useRole.tsx";
 export * from "./useRuntimeMode";
 export * from "./useSignalPairing";
+export * from "./useThreadAutoScroll";
 export * from "./useTimeout";
 export * from "./useViewEvent";
 export * from "./useVoiceChat";

@@ -1,3 +1,8 @@
+/**
+ * Verifies the plugin-owned facewear entry validates against the first-party
+ * schema and is discoverable by both id and npm package name through the loaded
+ * registry.
+ */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

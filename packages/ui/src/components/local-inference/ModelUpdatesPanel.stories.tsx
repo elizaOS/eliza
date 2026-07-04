@@ -1,3 +1,5 @@
+/** Storybook stories for ModelUpdatesPanel — owner, non-owner, checking, and never-checked states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { TranslationProvider } from "../../state/TranslationProvider";

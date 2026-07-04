@@ -756,7 +756,7 @@ function DomainCard({
                   onClick={(e) => {
                     // Native studio: open the verified domain in the system
                     // browser (WebView target="_blank" is unreliable). No-op on
-                    // web — the anchor opens a new tab as before.
+                    // web — the anchor opens a new tab normally.
                     if (openExternalUrlOnNative(url)) {
                       e.preventDefault();
                     }

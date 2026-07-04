@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+/**
+ * Unit coverage for the CSRF-token fetch wrapper. Boot config mocked, no live
+ * server.
+ */
+import { setBootConfig as setSharedBootConfig } from "@elizaos/shared/config/boot-config";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const bootConfigMock = vi.hoisted(() => ({
   getBootConfig: vi.fn(),
@@ -14,6 +19,10 @@ vi.mock("./desktop-http-transport", () => desktopTransportMock);
 import { fetchWithCsrf } from "./csrf-client";
 
 describe("fetchWithCsrf", () => {
+  afterEach(() => {
+    setSharedBootConfig({ branding: {} });
+  });
+
   it("routes external desktop HTTP auth requests through the desktop transport", async () => {
     bootConfigMock.getBootConfig.mockReturnValue({ apiToken: "secret-token" });
     const transport = {
@@ -46,6 +55,10 @@ describe("fetchWithCsrf", () => {
       apiToken: "secret-token",
       apiBase: "http://127.0.0.1:41337",
     });
+    setSharedBootConfig({
+      branding: {},
+      apiBase: "http://127.0.0.1:41337",
+    });
     const transport = {
       request: vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
     };
@@ -61,6 +74,10 @@ describe("fetchWithCsrf", () => {
   it("never rewrites an already-absolute URL even with an apiBase configured", async () => {
     bootConfigMock.getBootConfig.mockReturnValue({
       apiToken: "secret-token",
+      apiBase: "http://127.0.0.1:41337",
+    });
+    setSharedBootConfig({
+      branding: {},
       apiBase: "http://127.0.0.1:41337",
     });
     const transport = {

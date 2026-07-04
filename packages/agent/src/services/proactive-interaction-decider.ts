@@ -376,6 +376,10 @@ export function registerProactiveInteractionDecider(
           now: clock(),
         });
         if (decision.text) {
+          logger.info(
+            { surface, delivery: decision.delivery },
+            "[proactive-interaction] suggestion admitted",
+          );
           if (isSuppressed()) return;
           if (decision.delivery === "notify") {
             if (wiring.notify) {
@@ -394,6 +398,11 @@ export function registerProactiveInteractionDecider(
           } else {
             await wiring.route(decision.text);
           }
+        } else {
+          logger.debug(
+            { surface, reason: decision.reason },
+            "[proactive-interaction] suggestion suppressed",
+          );
         }
       } catch (err) {
         logger.debug({ err }, "[proactive-interaction] decider failed");

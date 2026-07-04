@@ -1,3 +1,9 @@
+/**
+ * EVM sub-plugin composed into `@elizaos/plugin-wallet`'s top-level
+ * `walletPlugin` — not intended to be loaded standalone. Registers
+ * `EVMService`, the EVM wallet/balance providers, the sign HTTP routes, and
+ * the `WALLET` subactions promoted from `walletRouterAction`.
+ */
 import type { Action, IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { walletRouterAction } from "../wallet-action";

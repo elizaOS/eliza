@@ -1,3 +1,10 @@
+/**
+ * QR-pairing route helpers backing the Baileys onboarding flow. `handleWhatsAppRoute`
+ * dispatches the pair/status/stop/disconnect actions over raw Node http request
+ * and response objects, driving a WhatsAppPairingSession and persisting auth
+ * state on connect; `applyWhatsAppQrOverride` folds a completed pairing's
+ * credentials back into the connector config. Enforces MAX_PAIRING_SESSIONS.
+ */
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";

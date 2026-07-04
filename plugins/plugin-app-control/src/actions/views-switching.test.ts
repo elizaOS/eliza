@@ -811,6 +811,119 @@ describe("view switching — VIEWS action resolver", () => {
 			);
 			expect(ok).toBe(true);
 		});
+
+		// The runtime composes the planner's action surface by calling validate
+		// WITHOUT planner options: the mode is inferable from the message text
+		// alone or not at all. On a text connector with no view surface, a turn
+		// whose text carries no view intent must NOT expose VIEWS — the planner
+		// otherwise sees a "view switching is a proactive default" tool it can
+		// only hallucinate with ("Opening your Relationships now" into a Discord
+		// channel that renders no views, observed live).
+		function runtimeWithTasks(tasks: ReadonlyArray<Record<string, unknown>>) {
+			return {
+				agentId: "agent-1",
+				getTasks: vi.fn(async ({ tags }: { tags?: string[] }) =>
+					tasks.filter((task) =>
+						(tags ?? []).some((tag) =>
+							(task.tags as string[] | undefined)?.includes(tag),
+						),
+					),
+				),
+			};
+		}
+
+		it.each([
+			"discord",
+			"telegram",
+			"slack",
+			"whatsapp",
+		])("keeps VIEWS off the planner surface for a no-view-intent turn on %s (surface-composition validate: no options)", async (source) => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				runtimeWithTasks([]) as never,
+				sourcedMessage(
+					"lol did you catch what happened on the server last night",
+					source,
+				) as never,
+			);
+			expect(ok).toBe(false);
+		});
+
+		it("still exposes VIEWS for a no-view-intent turn on a local view-capable surface", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			for (const source of [undefined, "chat", "user_chat", "app"]) {
+				const ok = await action.validate(
+					runtimeWithTasks([]) as never,
+					{
+						entityId: "user-1",
+						roomId: "room-1",
+						agentId: "agent-1",
+						content: {
+							text: "lol did you catch what happened on the server last night",
+							...(source ? { source } : {}),
+						},
+					} as never,
+				);
+				expect(ok).toBe(true);
+			}
+		});
+
+		it("keeps a pending multi-turn create flow reachable on a text connector", async () => {
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const ok = await action.validate(
+				runtimeWithTasks([
+					{
+						id: "task-1",
+						tags: ["views-create-intent"],
+						metadata: { roomId: "room-1", intent: "make a habit tracker" },
+					},
+				]) as never,
+				sourcedMessage("yes go ahead", "discord") as never,
+			);
+			expect(ok).toBe(true);
+		});
+
+		it("keeps a pending delete confirmation reachable on a text connector (owner only)", async () => {
+			const owner = vi.fn(async () => true);
+			const action = createViewsAction({
+				client: clientFor(REGISTRY),
+				hasOwnerAccess: owner,
+			});
+			const pendingDelete = [
+				{
+					id: "task-2",
+					tags: ["views-delete-confirm"],
+					metadata: {
+						roomId: "room-1",
+						viewId: "wallet",
+						viewLabel: "Wallet",
+						pluginName: "plugin-wallet-ui",
+					},
+				},
+			];
+			const ok = await action.validate(
+				runtimeWithTasks(pendingDelete) as never,
+				sourcedMessage("yes", "discord") as never,
+			);
+			expect(ok).toBe(true);
+			expect(owner).toHaveBeenCalled();
+
+			owner.mockResolvedValue(false);
+			const denied = await action.validate(
+				runtimeWithTasks(pendingDelete) as never,
+				sourcedMessage("yes", "discord") as never,
+			);
+			expect(denied).toBe(false);
+		});
 	});
 
 	describe("BUG PROBE: developerMode-gated views reachable by ACTIVE command", () => {

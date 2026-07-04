@@ -1,3 +1,6 @@
+/**
+ * Entry point of the voice-orb gallery: mounts the concept picker and renders each orb concept.
+ */
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";

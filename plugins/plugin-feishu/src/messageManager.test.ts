@@ -1,3 +1,7 @@
+/**
+ * Tests inbound message handling in MessageManager — envelope mapping, dedup,
+ * and event emission — against a mocked runtime (no live Feishu API).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

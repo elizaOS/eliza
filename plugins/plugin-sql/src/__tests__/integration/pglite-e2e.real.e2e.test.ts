@@ -1,3 +1,9 @@
+/**
+ * End-to-end tests for `PgliteDatabaseAdapter` across the full adapter
+ * surface (agents, entities, memories, components, concurrency, error
+ * handling) against a real in-process PGlite instance with migrations
+ * applied — no mocks, standing in for a real PostgreSQL backend.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import type { Agent, ChannelType, Component, Entity, Memory, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
@@ -9,7 +15,6 @@ import * as schema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { expectCreatedEntityIds } from "./entity-create-assertions";
 
-// Use PGLite for testing instead of real PostgreSQL
 describe("PostgreSQL E2E Tests", () => {
   const createTestAdapter = async () => {
     const client = new PGlite();
@@ -18,7 +23,6 @@ describe("PostgreSQL E2E Tests", () => {
     const adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();
 
-    // Run migrations for each adapter
     const migrationService = new DatabaseMigrationService();
     const db = adapter.getDatabase() as DrizzleDatabase;
     await migrationService.initializeWithDatabase(db);
@@ -123,7 +127,6 @@ describe("PostgreSQL E2E Tests", () => {
     it("should create and retrieve entities", async () => {
       const { adapter, agentId } = await createTestAdapter();
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",
@@ -163,7 +166,6 @@ describe("PostgreSQL E2E Tests", () => {
     it("should update an entity", async () => {
       const { adapter, agentId } = await createTestAdapter();
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",
@@ -204,7 +206,6 @@ describe("PostgreSQL E2E Tests", () => {
       adapter = result.adapter;
       agentId = result.agentId;
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",
@@ -213,7 +214,6 @@ describe("PostgreSQL E2E Tests", () => {
       roomId = uuidv4() as UUID;
       entityId = uuidv4() as UUID;
 
-      // Create room first
       await adapter.createRooms([
         {
           id: roomId,
@@ -224,7 +224,6 @@ describe("PostgreSQL E2E Tests", () => {
         },
       ]);
 
-      // Create required entity
       await adapter.createEntities([
         {
           id: entityId,
@@ -379,7 +378,6 @@ describe("PostgreSQL E2E Tests", () => {
       adapter = result.adapter;
       agentId = result.agentId;
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",
@@ -397,7 +395,6 @@ describe("PostgreSQL E2E Tests", () => {
         name: "Test World",
       });
 
-      // Create room
       await adapter.createRooms([
         {
           id: roomId,
@@ -512,7 +509,6 @@ describe("PostgreSQL E2E Tests", () => {
     it("should handle concurrent operations", async () => {
       const { adapter, agentId } = await createTestAdapter();
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",
@@ -540,7 +536,6 @@ describe("PostgreSQL E2E Tests", () => {
     it("should handle large batch operations", async () => {
       const { adapter, agentId } = await createTestAdapter();
 
-      // Create agent first
       await adapter.createAgent({
         id: agentId,
         name: "Test Agent",

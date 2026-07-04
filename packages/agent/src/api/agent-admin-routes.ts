@@ -7,6 +7,7 @@ import {
 } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
@@ -19,21 +20,6 @@ type AgentStateStatus =
   | "stopped"
   | "restarting"
   | "error";
-
-type AppCoreRuntimeModule = {
-  sharedVault: () => {
-    remove: (key: string) => Promise<void> | void;
-  };
-};
-
-async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  // String-literal dynamic import — see comment in
-  // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
-  // that requires Bun.build to statically follow this specifier.
-  return import(
-    /* webpackIgnore: true */ "@elizaos/app-core/services/vault-mirror"
-  ) as Promise<AppCoreRuntimeModule>;
-}
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {
   const ui = config.ui as
@@ -201,8 +187,7 @@ export async function handleAgentAdminRoutes(
       // → useCloudState reports cloud connected → user sees themselves still
       // logged in even though they just hit "Reset".
       try {
-        const { sharedVault } = await importAppCoreRuntime();
-        const vault = sharedVault();
+        const vault = getAgentHostBridge().sharedVault();
         const cloudKeys = [
           "ELIZAOS_CLOUD_API_KEY",
           "ELIZAOS_CLOUD_BASE_URL",

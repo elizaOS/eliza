@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the LogViewer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import * as React from "react";
 import { LogViewer } from "./log-viewer";

@@ -332,7 +332,7 @@ export function parseFalPricingEntries(
 export async function fetchFalCatalogEntries(): Promise<PreparedPricingEntry[]> {
   return await getCachedExternalEntries("fal", async () => {
     const entryArrays = await Promise.all(
-      SUPPORTED_VIDEO_MODELS.map(async (model) => {
+      SUPPORTED_VIDEO_MODELS.filter((model) => model.billingSource === "fal").map(async (model) => {
         try {
           const html = await fetchText(model.pageUrl);
           const paragraph = extractFalPricingParagraph(html);

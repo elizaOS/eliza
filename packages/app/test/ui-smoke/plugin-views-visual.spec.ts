@@ -61,10 +61,18 @@ test.describe("registered plugin views visual coverage", () => {
         : "renders with assistant pill suppressed";
     test(`${view.id} ${view.viewType} ${assistantExpectation}`, async ({
       page,
-    }) => {
+    }, testInfo) => {
+      // The chromium and (opt-in) webkit projects both run this spec; scope
+      // artifacts per engine so the WebKit rerun cannot clobber the Chromium
+      // screenshots and audit JSON.
       const screenshotDir =
         process.env.ELIZA_VIEW_SCREENSHOT_DIR ??
-        path.join(process.cwd(), "test-results", "plugin-views");
+        path.join(
+          process.cwd(),
+          "test-results",
+          "plugin-views",
+          testInfo.project.name,
+        );
       await mkdir(screenshotDir, { recursive: true });
 
       const pageErrors: string[] = [];

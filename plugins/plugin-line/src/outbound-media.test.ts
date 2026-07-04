@@ -1,11 +1,14 @@
+/**
+ * Verifies the LINE connector sends image attachments as native image messages
+ * and appends non-image media to the text as a link rather than dropping it
+ * (#8876). Mocked send/push — runs offline.
+ */
 import type { Content } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LineService } from "./service.js";
 
-// Outbound media coverage for the LINE connector (#8876). LINE has a dedicated
-// url-based image message but no generic file message, so image attachments are
-// sent as image messages and non-image media is appended to the text as a link
-// (rather than dropped). Mocked send/push → runs offline.
+// LINE has a dedicated url-based image message but no generic file message,
+// which is why non-image media degrades to a text link.
 
 type SendableService = LineService & {
   sendConnectorContent: (to: string, content: Content) => Promise<void>;

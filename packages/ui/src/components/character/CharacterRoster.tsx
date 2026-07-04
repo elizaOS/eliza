@@ -1,3 +1,9 @@
+/**
+ * Horizontal picker of available character presets, each shown as a slanted
+ * clipped tile with a VRM avatar preview; selecting one drives the character
+ * editor. Entries derive from the shared style presets (see
+ * CharacterRoster.helpers); preview URLs resolve lazily from the VRM state.
+ */
 import type { StylePreset } from "@elizaos/shared";
 import { useEffect, useState } from "react";
 import { useAppSelector } from "../../state";

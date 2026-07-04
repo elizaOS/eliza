@@ -1,3 +1,10 @@
+/**
+ * Cast-mapping and content helpers shared across the plugin: `neynarCastToCast`
+ * translates a Neynar cast into the domain `Cast`, `castId`/`castUuid` derive a
+ * stable memory id (`stringToUuid`) from a cast hash, `extractCastEmbedUrls`
+ * pulls attachment URLs for outbound embeds, and `splitPostContent` chunks
+ * over-length prose into a cast thread.
+ */
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
@@ -95,7 +102,15 @@ export function splitParagraph(paragraph: string, maxLength: number): string[] {
             if (currentChunk) {
               chunks.push(currentChunk.trim());
             }
-            currentChunk = word;
+            // A single unbroken word (long URL, hash, etc.) can exceed the
+            // platform limit on its own — hard-slice it so no emitted chunk
+            // is ever longer than maxLength.
+            let rest = word;
+            while (rest.length > maxLength) {
+              chunks.push(rest.slice(0, maxLength));
+              rest = rest.slice(maxLength);
+            }
+            currentChunk = rest;
           }
         }
       }

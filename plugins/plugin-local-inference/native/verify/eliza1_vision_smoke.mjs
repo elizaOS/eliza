@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Inspects an Eliza-1 bundle for its per-tier vision (mmproj) asset and, when
+ * present, runs llama-mtmd-cli on an image to confirm the multimodal describe
+ * path answers. Emits a report used as vision-capability gate evidence; hits a
+ * real native binary and model files when a bundle is supplied.
+ */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `MessageManager` URL enrichment plus the in-flight
+ * task-agent/timeout-suppression guards, with a mocked runtime and stubbed
+ * document-URL fetch.
+ */
 import {
 	__setDocumentUrlFetchImplForTests,
 	ContentType,

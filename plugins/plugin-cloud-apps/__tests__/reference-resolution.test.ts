@@ -1,3 +1,6 @@
+/**
+ * Tests for the ambiguity-safe app resolver (matchAppByReference / findAppByReference / resolveApp): id then exact name/slug then whole-word then fragment; ties are ambiguous. Pure, no SDK.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   extractAppReference,

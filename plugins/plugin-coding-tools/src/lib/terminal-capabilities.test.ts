@@ -1,3 +1,4 @@
+/** Unit tests for shell resolution and coding-tool capability detection. */
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -1,3 +1,11 @@
+/**
+ * Handles the update_issue Linear op. Extracts the issue id and a partial update
+ * (title, description, priority, team, assignee, status, labels) from the message
+ * via the updateIssue prompt, resolving team/assignee/state/label names to Linear
+ * ids, then applies it through LinearService.updateIssue; falls back to regex
+ * extraction of the issue id when model parsing fails. `handleUpdateIssue` is the
+ * router entry, `updateIssueAction` the standalone action.
+ */
 import {
   type Action,
   type ActionResult,

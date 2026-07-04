@@ -1,3 +1,8 @@
+/**
+ * `KAMINO_LIQUIDITY` provider: renders Kamino liquidity pool/strategy data
+ * (optionally scoped to a token address found in the message) into planner
+ * context, using an LLM pass to turn raw pool stats into a readable report.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type {
@@ -86,10 +91,6 @@ function formatPromptValue(value: unknown): string {
   return String(value);
 }
 
-/**
- * Kamino Liquidity Protocol Provider
- * Provides information about Kamino liquidity pools and strategies
- */
 export const kaminoLiquidityProvider: Provider = {
   name: "KAMINO_LIQUIDITY",
   description:
@@ -106,7 +107,6 @@ export const kaminoLiquidityProvider: Provider = {
     let liquidityInfo = "";
 
     try {
-      // Extract token address from message content
       const content = message.content.text || "";
       const tokenMatch = content.match(/([A-Za-z0-9]{32,44})/);
 
@@ -115,7 +115,6 @@ export const kaminoLiquidityProvider: Provider = {
         tokenIdentifier = tokenMatch[1];
       }
 
-      // Get Kamino liquidity service
       const kaminoLiquidityService = runtime.getService(
         "KAMINO_LIQUIDITY_SERVICE",
       ) as KaminoLiquidityService;
@@ -126,7 +125,6 @@ export const kaminoLiquidityProvider: Provider = {
           liquidityInfo += `=== KAMINO LIQUIDITY POOL STATS ===\n\n`;
           liquidityInfo += `Token: ${tokenIdentifier}\n\n`;
 
-          // Resolve token information using Birdeye through the service
           const tokenInfo =
             await kaminoLiquidityService.resolveTokenWithBirdeye(
               tokenIdentifier,
@@ -142,13 +140,11 @@ export const kaminoLiquidityProvider: Provider = {
             liquidityInfo += `   📈 24h Change: ${tokenInfo.priceChange24h?.toFixed(2) || "N/A"}%\n\n`;
           }
 
-          // Get liquidity pool stats for the specific token using optimized method
           const poolStats = await getKaminoLiquidityStats(
             kaminoLiquidityService,
             tokenIdentifier,
           );
 
-          // Generate enhanced response using LLM
           const enhancedReport = await generateEnhancedKaminoLiquidityReport(
             runtime,
             {
@@ -161,11 +157,11 @@ export const kaminoLiquidityProvider: Provider = {
 
           liquidityInfo += enhancedReport;
         } else {
-          // No specific token provided, show protocol overview without wasting RPC calls
+          // No specific token given: show a protocol overview via
+          // testConnection() instead of the more expensive per-token RPC lookups.
           liquidityInfo += `=== KAMINO LIQUIDITY PROTOCOL OVERVIEW ===\n\n`;
           liquidityInfo += `🔍 Kamino Liquidity Protocol Information\n\n`;
 
-          // Use testConnection to get basic info without making expensive RPC calls
           const testResults = await kaminoLiquidityService.testConnection();
 
           liquidityInfo += `📊 Protocol Status:\n`;
@@ -174,10 +170,8 @@ export const kaminoLiquidityProvider: Provider = {
           liquidityInfo += `   🔗 RPC Endpoint: ${testResults.rpcEndpoint}\n`;
           liquidityInfo += `   📈 Available Strategies: ${testResults.strategyCount}\n\n`;
 
-          // Add general Kamino liquidity protocol info
           liquidityInfo += await getKaminoProtocolInfo(kaminoLiquidityService);
 
-          // Add usage instructions
           liquidityInfo += `💡 How to use:\n`;
           liquidityInfo += `   • Provide a token address to search for specific liquidity pools\n`;
           liquidityInfo += `   • Example: "Check Kamino liquidity for HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC"\n`;
@@ -203,9 +197,6 @@ export const kaminoLiquidityProvider: Provider = {
   },
 };
 
-/**
- * Get Kamino liquidity pool statistics for a specific token using optimized method
- */
 async function getKaminoLiquidityStats(
   kaminoLiquidityService: KaminoLiquidityService,
   tokenIdentifier: string,
@@ -215,7 +206,6 @@ async function getKaminoLiquidityStats(
   try {
     statsInfo += `🔍 SEARCHING FOR KAMINO LIQUIDITY POOLS...\n\n`;
 
-    // Use the optimized getTokenLiquidityStats method that uses filters and getStrategyByAddress
     const tokenStats =
       await kaminoLiquidityService.getTokenLiquidityStats(tokenIdentifier);
 
@@ -226,7 +216,6 @@ async function getKaminoLiquidityStats(
       statsInfo += `24h Volume: $${tokenStats.totalVolume.toLocaleString()}\n`;
       statsInfo += `APY Range: ${tokenStats.apyRange.min.toFixed(2)}% - ${tokenStats.apyRange.max.toFixed(2)}%\n\n`;
 
-      // Group strategies by type for better organization
       const strategyTypes = new Map<string, KaminoStrategy[]>();
       tokenStats.strategies.forEach((strategy) => {
         const type = strategy.strategyType;
@@ -248,13 +237,11 @@ async function getKaminoLiquidityStats(
         statsInfo += `   💰 Total TVL: $${totalTvl.toLocaleString()}\n`;
         statsInfo += `   🎯 Average APY: ${avgApy.toFixed(2)}%\n\n`;
 
-        // Show details for each strategy in this type
         for (const strategy of strategies) {
           statsInfo += await getStrategyDetails(strategy);
         }
       }
 
-      // Add direct link to Kamino app for found strategies
       statsInfo += `🔗 **View on Kamino:** https://app.kamino.finance/liquidity\n\n`;
     } else {
       statsInfo += `❌ No Kamino liquidity strategies found for ${tokenIdentifier}\n\n`;
@@ -270,7 +257,6 @@ async function getKaminoLiquidityStats(
       statsInfo += `🔗 Check available strategies at: https://app.kamino.finance/liquidity\n`;
     }
 
-    // Add general Kamino liquidity protocol info
     statsInfo += await getKaminoProtocolInfo(kaminoLiquidityService);
   } catch (error) {
     console.error("Error getting Kamino liquidity stats:", error);
@@ -280,9 +266,6 @@ async function getKaminoLiquidityStats(
   return statsInfo;
 }
 
-/**
- * Get detailed information about a specific strategy
- */
 async function getStrategyDetails(strategy: KaminoStrategy): Promise<string> {
   let details = `   🏊‍♂️ STRATEGY: ${strategy.address}\n`;
   details += `      📈 Type: ${strategy.strategyType}\n`;
@@ -305,9 +288,6 @@ async function getStrategyDetails(strategy: KaminoStrategy): Promise<string> {
   return details;
 }
 
-/**
- * Get general Kamino protocol information
- */
 async function getKaminoProtocolInfo(
   kaminoLiquidityService: KaminoLiquidityService,
 ): Promise<string> {
@@ -338,9 +318,7 @@ async function getKaminoProtocolInfo(
   return info;
 }
 
-/**
- * Generate enhanced Kamino liquidity report using LLM
- */
+/** Turns raw pool stats + market context into a narrative report via an LLM pass. */
 async function generateEnhancedKaminoLiquidityReport(
   runtime: IAgentRuntime,
   data: {
@@ -351,10 +329,8 @@ async function generateEnhancedKaminoLiquidityReport(
   },
 ): Promise<string> {
   try {
-    // Get additional market context
     const marketStats = await data.kaminoLiquidityService.getMarketStatistics();
 
-    // Create a focused prompt for the LLM
     const liquidityPrompt = `Generate a comprehensive liquidity analysis report for token ${data.tokenIdentifier} on Kamino Finance.
 
 TOKEN INFORMATION:
@@ -389,7 +365,6 @@ Make it comprehensive yet easy to read. Be specific about the data and provide c
 
 Generate a professional Kamino liquidity analysis report:`;
 
-    // Use LLM to generate the enhanced report
     const enhancedReport = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: liquidityPrompt,
     });
@@ -397,6 +372,6 @@ Generate a professional Kamino liquidity analysis report:`;
     return enhancedReport || data.poolStats;
   } catch (error) {
     console.error("Error generating enhanced Kamino liquidity report:", error);
-    return data.poolStats; // Fallback to original stats
+    return data.poolStats;
   }
 }

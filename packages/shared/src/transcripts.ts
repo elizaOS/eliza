@@ -41,7 +41,12 @@ export interface TranscriptSegment {
   confidence?: number;
 }
 
-export type TranscriptSource = "voice-session" | "import" | "call" | "unknown";
+export type TranscriptSource =
+  | "voice-session"
+  | "import"
+  | "call"
+  | "meeting"
+  | "unknown";
 
 /** Visibility scope — mirrors the documents store's `DocumentVisibilityScope`. */
 export type TranscriptScope =
@@ -77,6 +82,18 @@ export interface Transcript {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Meeting-specific list-row fields, computed server-side from a meeting
+ * transcript's metadata (never derived on the client). Present only on
+ * `source: "meeting"` summaries.
+ */
+export interface TranscriptSummaryMeetingMeta {
+  /** Meeting platform (a {@link MeetingPlatform} value) for the row badge. */
+  platform?: string;
+  /** Roster size at finalize — the "N participants" the list row shows. */
+  participantCount: number;
+}
+
 /** Compact list-row projection for the transcripts index. */
 export interface TranscriptSummary {
   id: string;
@@ -85,9 +102,13 @@ export interface TranscriptSummary {
   durationMs: number;
   speakerCount: number;
   status: TranscriptStatus;
+  /** How the transcript was captured — drives meeting-aware row rendering. */
+  source: TranscriptSource;
   /** First slice of the transcript text, for the list row. */
   preview: string;
   hasAudio: boolean;
+  /** Server-computed meeting fields; present only for `source: "meeting"`. */
+  meeting?: TranscriptSummaryMeetingMeta;
 }
 
 /** Default characters of transcript text kept for a list-row preview. */
@@ -144,6 +165,27 @@ export function transcriptPreview(
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
 
+/**
+ * Read the meeting list-row fields off a meeting transcript's metadata. The
+ * meetings writer stores `{ platform, participants }` (see
+ * plugin-meetings' meeting-transcript-writer); the participant COUNT is
+ * computed here, server-side, so the list row never counts a roster array in
+ * the client.
+ */
+function summarizeMeetingMeta(
+  metadata: Record<string, unknown> | undefined,
+): TranscriptSummaryMeetingMeta {
+  const platform =
+    typeof metadata?.platform === "string" ? metadata.platform : undefined;
+  const participants = metadata?.participants;
+  const participantCount = Array.isArray(participants)
+    ? participants.length
+    : 0;
+  return platform === undefined
+    ? { participantCount }
+    : { platform, participantCount };
+}
+
 /** Project a full transcript to its list-row summary. */
 export function summarizeTranscript(transcript: Transcript): TranscriptSummary {
   return {
@@ -153,8 +195,12 @@ export function summarizeTranscript(transcript: Transcript): TranscriptSummary {
     durationMs: transcript.durationMs,
     speakerCount: transcript.speakerCount,
     status: transcript.status,
+    source: transcript.source,
     preview: transcriptPreview(transcript.segments),
     hasAudio: Boolean(transcript.audioUrl),
+    ...(transcript.source === "meeting"
+      ? { meeting: summarizeMeetingMeta(transcript.metadata) }
+      : {}),
   };
 }
 

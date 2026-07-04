@@ -1,6 +1,3 @@
-import { bigint, boolean, foreignKey, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import { authIdentityTable } from "./authIdentity";
-
 /**
  * Active authenticated session.
  *
@@ -12,6 +9,9 @@ import { authIdentityTable } from "./authIdentity";
  * Machine sessions list explicit scopes; browser sessions get an empty list
  * which the auth layer treats as "all scopes".
  */
+import { bigint, boolean, foreignKey, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
+import { authIdentityTable } from "./authIdentity";
+
 export const authSessionTable = pgTable(
   "auth_sessions",
   {

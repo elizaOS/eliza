@@ -1,3 +1,10 @@
+/**
+ * Pure shaping, normalization, and callback-parsing helpers for
+ * `ElizaCloudDashboard` — billing summary/settings normalizers, the auto-top-up
+ * form reducer, checkout-URL resolution, status-badge maps, and the managed
+ * Discord/GitHub OAuth callback-URL consumers. No React, no network: the view
+ * owns the `client` calls; this module keeps the derivation out of the component.
+ */
 import type {
   CloudBillingCheckoutResponse,
   CloudBillingSettings,
@@ -34,18 +41,10 @@ export const STATUS_BADGE: Record<
     className: "bg-muted/10 text-muted border-border/40",
   },
   failed: {
-    i18nKey: "heartbeatsview.statusFailed",
+    i18nKey: "triggersview.statusFailed",
     className: "bg-danger/10 text-danger border-danger/20",
   },
 };
-
-export function getCloudAuthToken(): string {
-  if (typeof window === "undefined") return "";
-  return (
-    ((globalThis as Record<string, unknown>)
-      .__ELIZA_CLOUD_AUTH_TOKEN__ as string) || ""
-  );
-}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

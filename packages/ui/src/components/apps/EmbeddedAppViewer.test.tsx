@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `EmbeddedAppViewer`'s `*_READY` → auth postMessage handshake and its
+ * origin-pinning: runs in jsdom with hand-dispatched `MessageEvent`s standing in
+ * for the iframe, asserting the auth payload only posts to a verified origin.
+ */
+
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EmbeddedAppViewer } from "./EmbeddedAppViewer";

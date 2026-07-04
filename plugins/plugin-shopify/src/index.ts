@@ -1,3 +1,11 @@
+/**
+ * Plugin entry: assembles the default `shopifyPlugin` (the SHOPIFY action, the
+ * store-context provider, and {@link ShopifyService}) and, in `init`, registers
+ * the Shopify {@link createShopifyConnectorAccountProvider} with the runtime's
+ * ConnectorAccountManager. Auto-enables when `SHOPIFY_ACCESS_TOKEN` or
+ * `SHOPIFY_ACCOUNTS` is set. Also re-exports the route/views plugin (as
+ * `shopifyRoutePlugin`) and the dashboard surface.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   getConnectorAccountManager,
@@ -16,8 +24,8 @@ const shopifyPlugin: Plugin = {
   actions: [...promoteSubactionsToActions(shopifyAction)],
   providers: [storeContextProvider],
   services: [ShopifyService],
-  // Self-declared auto-enable: activate when the SHOPIFY_ACCESS_TOKEN env var
-  // is set. (Manifest-only auto-enable — see ./auto-enable.ts.)
+  // Self-declared auto-enable: activate when SHOPIFY_ACCESS_TOKEN or
+  // SHOPIFY_ACCOUNTS is set in the agent's environment.
   autoEnable: {
     envKeys: ["SHOPIFY_ACCESS_TOKEN", "SHOPIFY_ACCOUNTS"],
   },
@@ -45,9 +53,9 @@ const shopifyPlugin: Plugin = {
 export default shopifyPlugin;
 export * from "./accounts.js";
 export { createShopifyConnectorAccountProvider } from "./connector-account-provider.js";
-// Dashboard UI surface (merged from the former @elizaos/plugin-shopify-ui).
-// `shopifyPlugin` from ./plugin is the route + views plugin; re-exported under
-// a distinct name so it does not collide with the default agent plugin above.
+// Dashboard UI surface: `shopifyPlugin` from ./plugin is the route + views
+// plugin, re-exported under a distinct name so it does not collide with the
+// default agent plugin above.
 export { shopifyPlugin as shopifyRoutePlugin } from "./plugin";
 export * from "./register";
 export * from "./routes";

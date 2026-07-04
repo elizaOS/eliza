@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Account-readiness harness (#9960): the loud gate that asserts the pool has
  * ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each for local rotation), instead
@@ -95,9 +96,7 @@ describe("assessCodingAccountReadiness", () => {
   });
 });
 
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 
 function makeService(): OrchestratorTaskService {
   return new OrchestratorTaskService(

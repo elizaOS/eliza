@@ -1,6 +1,13 @@
+/**
+ * End-to-end `RuntimeMigrator` tests against a real isolated database proving
+ * core (`@elizaos/plugin-sql`) and plugin (polymarket test fixture) schemas
+ * migrate into separate Postgres schemas, stay isolated (no table
+ * cross-contamination, correct per-schema table/index/FK counts), are
+ * idempotent on re-migration, and support real read/write/upsert/transaction
+ * operations against the plugin's schema-qualified tables.
+ */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Helper type for database query result rows
 interface MigrationRow {
   plugin_name: string;
   hash: string;
@@ -29,10 +36,8 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     testAgentId = testSetup.testAgentId;
     db = testSetup.db;
 
-    // Create a new migrator for testing
     migrator = new RuntimeMigrator(db);
 
-    // Initialize migration infrastructure
     await migrator.initialize();
   });
 
@@ -50,7 +55,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         verbose: true,
       });
 
-      // Verify core tables were created in public schema
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 
@@ -98,7 +102,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
         verbose: true,
       });
 
-      // Check if polymarket schema was created
       const schemaResult = await db.execute(
         sql.raw(`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
@@ -112,7 +115,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     });
 
     it("should create plugin tables in polymarket schema", async () => {
-      // Verify plugin tables were created in polymarket schema
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'polymarket' 
@@ -130,7 +132,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     });
 
     it("should verify no plugin tables in public schema", async () => {
-      // Ensure plugin tables are NOT in public schema
       const publicTablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 
@@ -156,7 +157,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     });
 
     it("should verify foreign key constraints work across tables in polymarket schema", async () => {
-      // Check that foreign key constraints were properly created
       const fkResult = await db.execute(
         sql.raw(`
           SELECT 
@@ -181,7 +181,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const foreignKeys = fkResult.rows;
       console.log(`Found ${foreignKeys.length} foreign keys in polymarket schema`);
 
-      // Verify at least some expected foreign keys exist
       interface ForeignKeyResult {
         table_name: string;
         foreign_table_name: string;
@@ -202,7 +201,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     });
 
     it("should create indexes in polymarket schema", async () => {
-      // Check that indexes were created
       const indexResult = await db.execute(
         sql.raw(`
           SELECT 
@@ -218,7 +216,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const indexes = indexResult.rows;
       console.log(`Found ${indexes.length} indexes in polymarket schema`);
 
-      // Verify some expected indexes exist
       interface IndexResult {
         tablename: string;
         indexname: string;
@@ -226,7 +223,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
       const marketIndexes = indexes.filter((idx) => (idx as IndexResult).tablename === "markets");
       expect(marketIndexes.length).toBeGreaterThan(0);
 
-      // Check for specific index
       const conditionIdIdx = indexes.find(
         (idx) => (idx as IndexResult).indexname === "markets_condition_id_idx"
       );
@@ -238,22 +234,18 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
     it("should skip re-migration when schema has not changed", async () => {
       console.log("\n🔄 Testing migration idempotency...\n");
 
-      // Try to migrate core schema again
       const _coreResult = await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
         verbose: true,
       });
 
-      // Check logs to verify it was skipped
       const coreMigrations = await db.execute(
         sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
                  WHERE plugin_name = '@elizaos/plugin-sql'`)
       );
 
-      // Should only have 1 migration record
       const coreMigrationsRows0 = coreMigrations.rows[0];
       expect(Number(coreMigrationsRows0?.count ?? 0)).toBe(1);
 
-      // Try to migrate plugin schema again
       const _pluginResult = await migrator.migrate("polymarket", testPolymarketSchema, {
         verbose: true,
       });
@@ -263,7 +255,6 @@ describe("Runtime Migrator - Core + Plugin Schema Tests", () => {
                  WHERE plugin_name = 'polymarket'`)
       );
 
-      // Should only have 1 migration record
       const pluginMigrationsRows0 = pluginMigrations.rows[0];
       expect(Number(pluginMigrationsRows0?.count ?? 0)).toBe(1);
     });

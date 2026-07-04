@@ -84,7 +84,7 @@ describe("validateIntentActionMap", () => {
     expect(warned).toHaveLength(1);
     expect(warned[0]).toContain("INTENT_ACTION_MAP:");
     expect(warned[0]).toContain("not registered");
-    expect(warned[0]).toContain("terminal: SHELL, RUNTIME");
+    expect(warned[0]).toContain("terminal: SHELL, TERMINAL_SHELL, RUNTIME");
     expect(warned[0]).toContain("plugins not loaded in this config");
     // Per-action detail is preserved at debug level (opt-in TASKS still skipped).
     expect(

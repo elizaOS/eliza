@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// ChatSurface presentation + send wiring: renders the greeting on an empty
+// thread, bubbles for prior messages, and gates the send button on non-empty
+// input (firing onSend with the trimmed text). Real component in jsdom.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -207,6 +211,56 @@ describe("ChatSurface", () => {
       (screen.getByRole("button", { name: /my screen/i }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it("hides the jump-to-latest control while resting at the bottom", () => {
+    const messages: ShellMessage[] = [
+      { id: "u", role: "user", content: "Hi", createdAt: 0 },
+      { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
+    ];
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
+    // jsdom reports zero geometry → the reader counts as at-bottom → no control.
+    expect(screen.queryByTestId("chat-surface-jump-to-latest")).toBeNull();
+  });
+
+  it("reveals a jump-to-latest control when scrolled up and snaps to the bottom on click", () => {
+    const messages: ShellMessage[] = [
+      { id: "u", role: "user", content: "Hi", createdAt: 0 },
+      { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
+    ];
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
+    const scroller = screen
+      .getByTestId("shell-chat-surface")
+      .querySelector(".overflow-y-auto") as HTMLDivElement;
+    // Stub a tall, scrolled-up scroller so `atBottom` reads false.
+    Object.defineProperty(scroller, "scrollHeight", {
+      configurable: true,
+      get: () => 2000,
+    });
+    Object.defineProperty(scroller, "clientHeight", {
+      configurable: true,
+      get: () => 400,
+    });
+    let top = 100;
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+    });
+    scroller.scrollTo = ((opts: ScrollToOptions) => {
+      top = opts.top ?? top;
+    }) as HTMLElement["scrollTo"];
+    fireEvent.scroll(scroller);
+    const jump = screen.getByTestId("chat-surface-jump-to-latest");
+    expect(jump).toBeTruthy();
+    fireEvent.click(jump);
+    expect(scroller.scrollTop).toBe(2000);
   });
 
   it("marks the conversation list as a polite aria-live region for streaming announcements", () => {

@@ -842,7 +842,10 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(operatorDetail).toBeHidden();
     await expect(page.getByTestId("orchestrator-inspector")).toBeVisible();
 
-    await page.getByTestId("orchestrator-priority-select").selectOption("high");
+    // The inspector priority control is a Radix Select (a role="combobox"
+    // button), not a native <select>; open it and pick the "high" option.
+    await page.getByTestId("orchestrator-priority-select").click();
+    await page.getByRole("option", { name: /high/i }).click();
     await expect
       .poll(() => requests.patchBodies)
       .toContainEqual({

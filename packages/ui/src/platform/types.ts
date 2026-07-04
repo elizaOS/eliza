@@ -1,3 +1,8 @@
+/**
+ * Shared shim types for the platform permission/first-run clients — the narrow
+ * client/history/storage surfaces the desktop and mobile implementations depend
+ * on.
+ */
 import type { client as appClient } from "../api/client";
 
 // ── desktop-permissions-client ──────────────────────────────────────────

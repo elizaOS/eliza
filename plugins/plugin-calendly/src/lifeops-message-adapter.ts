@@ -1,3 +1,10 @@
+/**
+ * Projects Calendly scheduled events into the core `MessageRef` triage shape so
+ * assistant/LifeOps surfaces can list them alongside other message sources.
+ * Prefers the running CalendlyService when connected and falls back to
+ * env-configured credentials via the raw client.
+ */
+
 import {
   BaseMessageAdapter,
   type IAgentRuntime,

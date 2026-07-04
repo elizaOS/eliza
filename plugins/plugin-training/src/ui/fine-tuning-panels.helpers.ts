@@ -1,7 +1,7 @@
 // Non-component constants, formatters, and the training-event parser used by the
 // fine-tuning panels and the dashboard view. Kept out of fine-tuning-panels.tsx
 // so that file exports only React components and stays Fast-Refresh-compatible.
-import type { StreamEventEnvelope, TrainingStreamEvent } from "@elizaos/ui/api";
+import type { TrainingStreamEvent } from "@elizaos/ui/api";
 
 export type TranslateFn = (
   key: string,
@@ -34,7 +34,7 @@ export const FINE_TUNING_PANEL_CLASS =
 export const FINE_TUNING_PANEL_HEADER_CLASS =
   "px-3 py-2 text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70";
 export const FINE_TUNING_ACTION_CLASS =
-  "h-10 rounded-xl px-3 text-xs shadow-sm hover:border-accent disabled:opacity-50";
+  "min-h-11 rounded-xl px-3 text-xs shadow-sm hover:border-accent disabled:opacity-50";
 export const FINE_TUNING_STATUS_CARD_CLASS =
   "rounded-xl border border-border/35 bg-bg/30 px-3 py-3 shadow-sm";
 

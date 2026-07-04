@@ -264,7 +264,6 @@ function Harness(): React.JSX.Element {
     unlockAudio: () => {},
     openSettings: () => {},
     navigateHome: () => {},
-    navigateToViews: () => {},
     clearConversation: () => {},
     stop: () => {},
   };

@@ -1,5 +1,15 @@
-import type { ChatSidebarWidgetProps } from "@elizaos/ui/components";
-import { EmptyWidgetState, WidgetSection } from "@elizaos/ui/components";
+/**
+ * `WalletStatusSidebarWidget` — the chat-sidebar widget showing abbreviated
+ * EVM/Solana addresses, per-chain badges, asset count, and total USD value.
+ * Renders `null` when `walletEnabled` is false; lazily loads wallet config
+ * and balances the first time it mounts with data missing.
+ */
+import {
+  Button,
+  type ChatSidebarWidgetProps,
+  EmptyWidgetState,
+  WidgetSection,
+} from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -149,7 +159,8 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
   }
 
   return (
-    <button
+    <Button
+      unstyled
       type="button"
       onClick={onClick}
       aria-label={copied ? `${label} copied` : `Copy ${label}`}
@@ -161,7 +172,7 @@ function CopyAddressButton({ value, label }: CopyButtonProps) {
       ) : (
         <Copy className="h-3 w-3" aria-hidden />
       )}
-    </button>
+    </Button>
   );
 }
 

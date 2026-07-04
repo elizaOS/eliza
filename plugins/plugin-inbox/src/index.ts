@@ -1,5 +1,6 @@
 export {
   __resetInboxFetchersForTests,
+  type InboxDegradedPlatform,
   type InboxFetcher,
   type InboxFetchers,
   type InboxPlatform,
@@ -9,6 +10,7 @@ export {
 export {
   EMPTY_INBOX_SNAPSHOT,
   type InboxChannelFilter,
+  type InboxDegradedSource,
   type InboxSnapshot,
   InboxSpatialView,
   type InboxStatus,
@@ -70,6 +72,15 @@ export {
   createInboxGmailGateway,
   type InboxGmailGateway,
 } from "./inbox/google-gmail-seam.ts";
+// Per-source health projection (LifeOpsInboxSourceStatus producers) used by
+// the aggregate's pull and cache paths.
+export {
+  gmailSourceStatusFromConnector,
+  type InboxFetchResult,
+  type InboxSourceFetchResult,
+  probeSourceStatuses,
+  xDmSourceStatusFromConnector,
+} from "./inbox/message-fetcher.ts";
 export {
   INBOX_MIGRATION_SERVICE_TYPE,
   InboxMigrationService,

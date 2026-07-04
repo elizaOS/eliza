@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// Per-package testing coverage matrix generator (issue #9943).
-//
-// Walks every workspace package (tracked files only, via `git ls-files`), counts
-// its test/spec files and skipped tests, and reads whether the package exposes a
-// `test` script — the signal the root workspace test runner (run-all-tests.mjs)
-// uses to decide whether to sweep it. Emits docs/TESTING_COVERAGE_MATRIX.md.
-//
-// "In CI" is a heuristic, not a proof: a package is swept by the root runner iff
-// it is a workspace member with a `test` script AND is not excluded from the root
-// workspace. packages/feed is excluded from the root workspace (`!packages/feed`)
-// and runs via its own path-gated feed-test.yml lane (test:unit) instead.
-//
-// Usage:
-//   node scripts/testing-coverage-matrix.mjs            # write the doc
-//   node scripts/testing-coverage-matrix.mjs --check    # fail if the doc is stale
+/**
+ * Per-package testing coverage matrix generator for issue #9943.
+ *
+ * Walks every workspace package using tracked files from `git ls-files`, counts
+ * test/spec files and skipped tests, and records whether the package exposes the
+ * `test` script used by the root workspace runner. Emits
+ * docs/TESTING_COVERAGE_MATRIX.md.
+ *
+ * "In CI" is a heuristic: a package is swept by the root runner when it is a
+ * workspace member with a `test` script and is not excluded from the root
+ * workspace. packages/feed is excluded from the root workspace and runs through
+ * its own path-gated feed-test.yml lane instead.
+ *
+ * Usage:
+ *   node scripts/testing-coverage-matrix.mjs
+ *   node scripts/testing-coverage-matrix.mjs --check
+ */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

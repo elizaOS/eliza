@@ -1,3 +1,10 @@
+/**
+ * Drizzle schema for `session_summaries` — rolling, embeddable summaries of a
+ * room's conversation, produced incrementally as messages accumulate.
+ * `lastMessageOffset` tracks how far the summarizer has read so later runs can
+ * resume rather than resummarize the whole room; `embedding` lets summaries be
+ * retrieved semantically alongside raw memories.
+ */
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

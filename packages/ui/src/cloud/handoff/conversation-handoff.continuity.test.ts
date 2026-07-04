@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for conversation-handoff message continuity (no drops/dupes
+ * across the swap). Deps injected, no live cloud.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type ConversationHandoffDeps,

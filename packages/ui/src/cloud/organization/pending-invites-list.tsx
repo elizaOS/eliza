@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import type { OrgInviteDto } from "./data/cloud-org-types";
 
 interface PendingInvitesListProps {
@@ -169,12 +170,13 @@ export function PendingInvitesList({
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       className="p-2 hover:bg-white/5 transition-colors border border-white/10"
                     >
                       <X className="h-4 w-4 text-[#EB4335]" />
-                    </button>
+                    </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
                     <AlertDialogHeader>

@@ -1,3 +1,7 @@
+/**
+ * Tests the AES-256-GCM helper against authenticated round-trips and rejection paths.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   AEAD_KEY_BYTES,

@@ -260,16 +260,8 @@ export function promoteSubactionsToActions(
 		const description = `${parent.description} — ${subBlurb}`;
 		const similes = Array.from(
 			new Set([
-				// Parent's name is FIRST simile so ACTION_ROLE_POLICY lookups
-				// (and any other simile-based lookup that does an exact name
-				// match across the simile list) resolve to the parent's
-				// declared role/policy. Without this, virtuals like
-				// `TASKS_SPAWN_AGENT` have no name in the policy table and
-				// fall through to the contextGate (which checks contexts
-				// like ["tasks", "code"]) — failing when the active context
-				// is just "general". The parent's similes are listed after,
-				// so the virtual still inherits everything the parent
-				// matched on.
+				// Parent's name is first so simile-based search/routing can still
+				// find promoted actions through the parent surface.
 				toUpperSnake(parent.name),
 				...(parent.similes ?? []),
 				...(override.similes ?? []),

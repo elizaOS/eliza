@@ -1,9 +1,11 @@
-// Auto-enable check for @elizaos/plugin-twitch.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
-// no service init, no transitive imports of the full plugin runtime. The
-// auto-enable engine loads dozens of these per boot.
+/**
+ * Auto-enable check for @elizaos/plugin-twitch.
+ *
+ * Plugin manifest entry-point — referenced by package.json's
+ * `elizaos.plugin.autoEnableModule`. Kept light: env reads only, no service
+ * init, no transitive imports of the full plugin runtime. The auto-enable
+ * engine loads dozens of these per boot.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when a `twitch` connector block is present and not explicitly disabled. */
@@ -16,6 +18,6 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   // The full per-connector field check (clientId/oauth token/channel) lives
   // in the central engine's isConnectorConfigured. We delegate to a simple
   // "block present + not explicitly disabled" check here; the central
-  // engine's stricter check remains as a fallback during migration.
+  // engine's stricter check remains as a fallback.
   return true;
 }

@@ -70,6 +70,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sweep-inference-charges",
     // #11169 synchronous-reservation backstop for dropped waitUntil settles.
     "/api/cron/sweep-credit-reservations",
+    // #11862: settle poll-timeout video holds against the upstream terminal
+    // state — charge on late success, refund once on verified failure.
+    "/api/cron/reconcile-video-generations",
   ],
   "0 */6 * * *": [
     "/api/cron/cleanup-anonymous-sessions",

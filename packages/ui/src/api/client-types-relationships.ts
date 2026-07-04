@@ -1,3 +1,7 @@
+/**
+ * Wire types for the relationships graph: query params, identity handles, and
+ * the node/edge shapes the relationships views render.
+ */
 export interface RelationshipsGraphQuery {
   search?: string;
   platform?: string;

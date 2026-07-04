@@ -5,8 +5,10 @@
 //
 //   - `resolveLocalInferenceLoadArgs` — catalog + manifest + overrides merge,
 //     including the separate-drafter MTP rule: a hosted-MTP tier (eliza-1-2b
-//     declares `runtime.mtp.drafterFile`) with a bundleRoot but NO drafter
-//     GGUF on disk must throw, never silently load without speculation.
+//     declares `runtime.mtp.drafterFile`) with NO drafter GGUF on disk falls
+//     back to a plain non-speculative load (warn, no MTP args) — a
+//     pre-cutover install must never be bricked over the perf-only drafter
+//     (#11517 back-compat).
 //   - `validateLocalInferenceLoadArgs` — differential fuzz against an oracle
 //     mirroring the documented acceptance rules (stock vs fork KV cache
 //     types, contextSize/gpuLayers integrality, kvOffload shapes).
@@ -23,7 +25,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
 	isForkOnlyKvCacheType,
 	isStockKvCacheType,
@@ -149,29 +151,53 @@ describe("resolveLocalInferenceLoadArgs — separate-drafter MTP resolution", ()
 		expect(catalog2b?.runtime?.mtp?.drafterFile).toMatch(/drafter-2b\.gguf$/);
 	});
 
-	it("throws when the declared drafter GGUF is missing under bundleRoot", async () => {
-		const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
-		const installed = installedModel({
-			id: "eliza-1-2b",
-			path: bundle.textPath,
-			bundleRoot: bundle.bundleRoot,
-		});
-		await expect(resolveLocalInferenceLoadArgs(installed)).rejects.toThrow(
-			/separate-drafter MTP but no bundled drafter GGUF/,
-		);
+	it("falls back to a non-speculative load when the declared drafter GGUF is missing under bundleRoot", async () => {
+		// #11517 back-compat: a bundle installed before the Gemma-4 MTP cutover
+		// has no mtp/drafter-2b.gguf. The drafter is perf-only — the text model
+		// must still load (warn + plain decode), never throw.
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
+			const installed = installedModel({
+				id: "eliza-1-2b",
+				path: bundle.textPath,
+				bundleRoot: bundle.bundleRoot,
+			});
+			const resolved = await resolveLocalInferenceLoadArgs(installed);
+			expect(resolved.modelPath).toBe(bundle.textPath);
+			expect(resolved.draftModelPath).toBeUndefined();
+			expect(resolved.draftMin).toBeUndefined();
+			expect(resolved.draftMax).toBeUndefined();
+			expect(resolved.mobileSpeculative).toBeUndefined();
+			expect(warnSpy).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Re-download the model to enable the MTP drafter",
+				),
+			);
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 
-	it("does not throw for an external-scan install (no bundleRoot); drafter stays unset", async () => {
-		const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
-		const installed = installedModel({
-			id: "eliza-1-2b",
-			path: bundle.textPath,
-		});
-		const resolved = await resolveLocalInferenceLoadArgs(installed);
-		expect(resolved.draftModelPath).toBeUndefined();
-		// The MTP block still applies the catalog draft window defaults.
-		expect(resolved.draftMin).toBe(catalog2b?.runtime?.mtp?.draftMin);
-		expect(resolved.draftMax).toBe(catalog2b?.runtime?.mtp?.draftMax);
+	it("does not throw for an external-scan install (no bundleRoot); MTP stays fully unset", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const bundle = makeTempBundle({ tier: "2b", hasDrafter: false });
+			const installed = installedModel({
+				id: "eliza-1-2b",
+				path: bundle.textPath,
+			});
+			const resolved = await resolveLocalInferenceLoadArgs(installed);
+			expect(resolved.draftModelPath).toBeUndefined();
+			// No drafter on disk ⇒ the whole MTP block is skipped — a
+			// half-configured speculative state (draft window without a draft
+			// model) must never leak into the loader.
+			expect(resolved.draftMin).toBeUndefined();
+			expect(resolved.draftMax).toBeUndefined();
+			expect(resolved.mobileSpeculative).toBeUndefined();
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 
 	it("prefers a manifest files.mtp entry that exists on disk over the catalog path", async () => {

@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+// Renders the real FilesView against a mocked `../../api` client to cover the
+// stored-file grid: per-file rows with kind facets, facet filtering, and the
+// download/share hand-off (with the Share control hidden when unsupported).
+// jsdom; the api client and the download/share helper are stubbed.
+
 import {
   cleanup,
   fireEvent,

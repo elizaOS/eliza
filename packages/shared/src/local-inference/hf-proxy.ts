@@ -1,15 +1,15 @@
 /**
  * HuggingFace download routing for local-inference bundle fetches.
  *
- * The product never holds a local HuggingFace token. When the device is linked
- * to Eliza Cloud, ALL HuggingFace `resolve` traffic is routed through the cloud
- * HF proxy (`/api/v1/hf-proxy/<repo>/resolve/<rev>/<path>`), which attaches the
+ * The product never holds a local HuggingFace token. Explicit mirrors are tried
+ * first, then a cloud-linked device can route through the Eliza Cloud HF proxy
+ * (`/api/v1/hf-proxy/<repo>/resolve/<rev>/<path>`), which attaches the
  * cloud-side `HF_TOKEN` so gated repos resolve without exposing a token to the
- * client. When the device is not cloud-linked, downloads go directly to the
- * public (ungated) HuggingFace host — the shipping eliza-1 bundles are public.
+ * client. Direct public HuggingFace remains the final fallback for public
+ * bundles and local-only devices.
  *
  * Precedence:
- *   1. `ELIZA_HF_BASE_URL` override (explicit mirror/base) — always wins.
+ *   1. `ELIZA_HF_BASE_URLS` / `ELIZA_HF_BASE_URL` mirrors — first in order.
  *   2. Cloud proxy base + bearer — when an Eliza Cloud API key is present.
  *   3. Direct public HuggingFace host — no auth header.
  *
@@ -38,10 +38,22 @@ export interface HfDownloadBase {
   authHeader?: { authorization: string };
   /** True when traffic is routed through the Eliza Cloud HF proxy. */
   viaCloud: boolean;
+  /** Stable diagnostic label for logs and failover reporting. */
+  label?: "mirror" | "cloud" | "direct";
 }
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function parseMirrorBases(): string[] {
+  const list = [process.env.ELIZA_HF_BASE_URLS, process.env.ELIZA_HF_BASE_URL]
+    .filter((value): value is string => typeof value === "string")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(trimTrailingSlash);
+  return [...new Set(list)];
 }
 
 /** Read the Eliza Cloud API key from the sealed store (falls back to env). */
@@ -50,24 +62,35 @@ function cloudApiKey(): string {
 }
 
 /**
- * Resolve where HuggingFace `resolve` traffic should go and how it should
- * authenticate. See the module doc for precedence.
+ * Resolve every HuggingFace `resolve` base in the order downloads should try
+ * them. See the module doc for precedence.
  */
-export function resolveHfDownloadBase(): HfDownloadBase {
-  const override = process.env.ELIZA_HF_BASE_URL?.trim();
-  if (override) {
-    return { base: trimTrailingSlash(override), viaCloud: false };
-  }
+export function resolveHfDownloadBases(): HfDownloadBase[] {
+  const bases: HfDownloadBase[] = parseMirrorBases().map((base) => ({
+    base,
+    viaCloud: false,
+    label: "mirror",
+  }));
 
   const apiKey = cloudApiKey();
   if (apiKey) {
     const cloudApi = resolveCloudApiBaseUrl(process.env.ELIZAOS_CLOUD_BASE_URL);
-    return {
+    bases.push({
       base: `${trimTrailingSlash(cloudApi)}/hf-proxy`,
       authHeader: { authorization: `Bearer ${apiKey}` },
       viaCloud: true,
-    };
+      label: "cloud",
+    });
   }
 
-  return { base: DEFAULT_HF_HOST, viaCloud: false };
+  bases.push({ base: DEFAULT_HF_HOST, viaCloud: false, label: "direct" });
+  return bases;
+}
+
+/**
+ * Backward-compatible single-base resolver for callers that do not implement
+ * failover. New download paths should use {@link resolveHfDownloadBases}.
+ */
+export function resolveHfDownloadBase(): HfDownloadBase {
+  return resolveHfDownloadBases()[0];
 }

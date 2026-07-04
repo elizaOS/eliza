@@ -16,18 +16,26 @@ from dataclasses import replace
 
 from ..types import Domain, Scenario
 from ._smoke_scenarios import SMOKE_SCENARIOS
+from .adhd_capture import ADHD_CAPTURE_SCENARIOS
 from .calendar import CALENDAR_SCENARIOS
+from .comms_flood_triage import COMMS_FLOOD_TRIAGE_SCENARIOS
 from .contacts import CONTACTS_SCENARIOS
 from .expanded import EXPANDED_SCENARIOS
 from .finance import FINANCE_SCENARIOS
 from .focus import FOCUS_SCENARIOS
 from .health import HEALTH_SCENARIOS
 from .live import ALL_LIVE_SCENARIOS
+from .low_activation import LOW_ACTIVATION_SCENARIOS
 from .mail import MAIL_SCENARIOS
 from .messages import MESSAGES_SCENARIOS
+from .neurotypical_control import NEUROTYPICAL_CONTROL_SCENARIOS
+from .night_owl_anchored_day import NIGHT_OWL_ANCHORED_DAY_SCENARIOS
+from .personas import PERSONA_SCENARIOS
 from .reminders import REMINDERS_SCENARIOS
+from .shift_rotation import SHIFT_ROTATION_SCENARIOS
 from .sleep import SLEEP_SCENARIOS
 from .travel import TRAVEL_SCENARIOS
+from .traveler_timezone import TRAVELER_TIMEZONE_SCENARIOS
 
 EDGE_EXPANSION_MULTIPLIER = 10
 EDGE_VARIANTS: tuple[tuple[str, str, str], ...] = (
@@ -51,18 +59,26 @@ if len(EDGE_VARIANTS) != EDGE_EXPANSION_MULTIPLIER:
 
 CORE_SCENARIOS: list[Scenario] = [
     *SMOKE_SCENARIOS,
+    *ADHD_CAPTURE_SCENARIOS,
     *CALENDAR_SCENARIOS,
+    *COMMS_FLOOD_TRIAGE_SCENARIOS,
     *MAIL_SCENARIOS,
     *MESSAGES_SCENARIOS,
+    *NEUROTYPICAL_CONTROL_SCENARIOS,
+    *NIGHT_OWL_ANCHORED_DAY_SCENARIOS,
     *CONTACTS_SCENARIOS,
     *REMINDERS_SCENARIOS,
     *FINANCE_SCENARIOS,
+    *SHIFT_ROTATION_SCENARIOS,
     *TRAVEL_SCENARIOS,
+    *TRAVELER_TIMEZONE_SCENARIOS,
     *HEALTH_SCENARIOS,
+    *LOW_ACTIVATION_SCENARIOS,
     *SLEEP_SCENARIOS,
     *FOCUS_SCENARIOS,
     *ALL_LIVE_SCENARIOS,
     *EXPANDED_SCENARIOS,
+    *PERSONA_SCENARIOS,
 ]
 
 EDGE_EXPANDED_SCENARIOS: list[Scenario] = [
@@ -159,9 +175,11 @@ def validate_lifeops_scenarios() -> dict[str, object]:
 
 
 __all__ = [
+    "ADHD_CAPTURE_SCENARIOS",
     "ALL_LIVE_SCENARIOS",
     "ALL_SCENARIOS",
     "CALENDAR_SCENARIOS",
+    "COMMS_FLOOD_TRIAGE_SCENARIOS",
     "CONTACTS_SCENARIOS",
     "CORE_SCENARIOS",
     "EDGE_EXPANDED_SCENARIOS",
@@ -169,14 +187,20 @@ __all__ = [
     "FINANCE_SCENARIOS",
     "FOCUS_SCENARIOS",
     "HEALTH_SCENARIOS",
+    "LOW_ACTIVATION_SCENARIOS",
     "MAIL_SCENARIOS",
     "MESSAGES_SCENARIOS",
+    "NEUROTYPICAL_CONTROL_SCENARIOS",
+    "NIGHT_OWL_ANCHORED_DAY_SCENARIOS",
+    "PERSONA_SCENARIOS",
     "REMINDERS_SCENARIOS",
+    "SHIFT_ROTATION_SCENARIOS",
     "SCENARIOS_BY_DOMAIN",
     "SCENARIOS_BY_ID",
     "SLEEP_SCENARIOS",
     "SMOKE_SCENARIOS",
     "TRAVEL_SCENARIOS",
+    "TRAVELER_TIMEZONE_SCENARIOS",
     "count_lifeops_scenarios",
     "validate_lifeops_scenarios",
 ]

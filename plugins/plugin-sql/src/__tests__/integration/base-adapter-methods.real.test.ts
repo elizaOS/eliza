@@ -1,3 +1,9 @@
+/**
+ * Real-database integration tests for `BaseDrizzleAdapter` CRUD/query methods
+ * (memories, entities, components, rooms) against an isolated test database,
+ * covering room/count filters, updates, cascade behavior on delete, and
+ * idempotent/no-op handling of duplicate or missing records.
+ */
 import type { ChannelType, Component, Content, Entity, Memory, Room, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

@@ -50,6 +50,8 @@ type SkillTruncationMarker = NonNullable<
 	TrajectorySkillInvocationRecord["truncated"]
 >[number];
 
+export const USE_SKILL_ACTION_NAME = "USE_SKILL";
+
 const USE_SKILL_PARAMETERS: ActionParameter[] = [
 	{
 		name: "slug",
@@ -334,7 +336,7 @@ async function recordSkillInvocation(
 }
 
 export const useSkillAction: Action = {
-	name: "USE_SKILL",
+	name: USE_SKILL_ACTION_NAME,
 	contexts: ["automation", "knowledge", "connectors"],
 	contextGate: { anyOf: ["automation", "knowledge", "connectors"] },
 	roleGate: { minRole: "USER" },
@@ -345,12 +347,12 @@ export const useSkillAction: Action = {
 		"CALL_SKILL",
 		"USE_AGENT_SKILL",
 		"RUN_AGENT_SKILL",
-		"USE_CAPABILITY",
-		"RUN_CAPABILITY",
 	],
 	description:
 		"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 	descriptionCompressed: "Invoke an enabled skill by slug.",
+	routingHint:
+		"invoke an already-enabled agent skill by slug -> USE_SKILL; do NOT use to call an external MCP tool -> MCP (action=call_tool), or to search/install/toggle the skill catalog -> SKILL",
 	parameters: USE_SKILL_PARAMETERS,
 
 	validate: async (runtime: IAgentRuntime): Promise<boolean> => {

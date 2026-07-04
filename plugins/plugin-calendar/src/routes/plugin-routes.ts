@@ -39,6 +39,8 @@ interface RateLimitConfig {
 
 const CALENDAR_ROUTE_SPECS: readonly CalendarRouteSpec[] = [
   { type: "GET", path: "/api/lifeops/calendar/feed" },
+  { type: "GET", path: "/api/lifeops/calendar/meeting-auto-join" },
+  { type: "PUT", path: "/api/lifeops/calendar/meeting-auto-join" },
   { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },

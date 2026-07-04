@@ -5,9 +5,9 @@
 // undo/redo buttons.
 //
 // The set/undo/redo history uses the SAME pure reducer production does
-// (state/background-history: applyBackgroundSet/Undo/Redo) — it no longer
-// hand-mirrors the semantics, so mirror-vs-real drift is impossible (#10694).
-// That reducer is deliberately persistence-free, so this stays a browser-safe
+// (state/background-history: applyBackgroundSet/Undo/Redo) rather than a
+// hand-mirrored copy, so mirror-vs-real drift is impossible (#10694). That
+// reducer is deliberately persistence-free, so this stays a browser-safe
 // import graph esbuild can bundle (no `client`/`persistence`). The real
 // BackgroundView DOM is covered by BackgroundView.test.tsx; the reducer math by
 // state/__tests__/background-history.test.ts; the persisted round-trip by
@@ -18,6 +18,7 @@
 import * as React from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { AppBackground } from "../../../backgrounds/AppBackground";
 import {
   applyBackgroundRedo,
@@ -128,7 +129,7 @@ function Harness(): React.JSX.Element {
 
   useLayoutEffect(() => {
     (window as Win).__emitBgApply = (payload) =>
-      emitViewEvent("background:apply", payload, "agent");
+      emitViewEvent(BACKGROUND_APPLY_EVENT, payload, "agent");
   }, []);
 
   const onFile = useCallback(

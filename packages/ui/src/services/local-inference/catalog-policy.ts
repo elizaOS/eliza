@@ -1,3 +1,7 @@
+/**
+ * Policy predicates over the model catalog: which models are the default Eliza-1
+ * family and thus eligible for the first-run local path.
+ */
 import { DEFAULT_ELIGIBLE_MODEL_IDS } from "./catalog";
 import type { CatalogModel, InstalledModel } from "./types";
 

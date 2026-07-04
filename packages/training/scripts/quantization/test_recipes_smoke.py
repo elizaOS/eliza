@@ -20,6 +20,7 @@ data. Run them by hand from the repo root.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -212,8 +213,7 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
 # Kernel-vs-recipe parity tests
 #
 # These tests pin the recipes to the canonical kernel references in
-# eliza/packages/inference/{reference,verify}/ and
-# eliza/packages/native-plugins/{qjl-cpu,polarquant-cpu}/.
+# packages/native/plugins/{turboquant-cpu,qjl-cpu,polarquant-cpu}/.
 #
 # Per packages/training/AGENTS.md §3:
 #   "Bit-exact with kernels — when a quantization recipe and a kernel
@@ -226,18 +226,33 @@ def test_legacy_push_model_to_hf_redirects_to_canonical_publishers():
 # ---------------------------------------------------------------------------
 
 
-# _HERE = .../eliza/packages/training/scripts/quantization
-# parents: [0]=quantization, [1]=scripts, [2]=training, [3]=packages
-_KERNEL_PACKAGES_DIR = _HERE.parents[2]
-_REF_C = _KERNEL_PACKAGES_DIR / "inference" / "verify" / "qjl_polar_ref.c"
-_REF_H = _KERNEL_PACKAGES_DIR / "inference" / "verify" / "qjl_polar_ref.h"
-_TURBO_C = _KERNEL_PACKAGES_DIR / "inference" / "reference" / "turbo_kernels.c"
-_TURBO_H = _KERNEL_PACKAGES_DIR / "inference" / "reference" / "turbo_kernels.h"
+# _HERE = <repo>/packages/training/scripts/quantization
+# parents: [0]=quantization, [1]=scripts, [2]=training, [3]=packages, [4]=<repo>
+#
+# The canonical qjl/polar/turbo C references live in the local-inference plugin
+# at plugins/plugin-local-inference/native/{verify,reference}/. The old path
+# (_HERE.parents[2] / "inference" / ...) pointed at a nonexistent
+# packages/training/inference/ tree, so every C-parity test silently skipped —
+# a false green. Resolve the real location relative to the repo root, with an
+# ELIZA_KERNEL_REF_DIR override for layouts where the plugin tree is not a
+# sibling of packages/training (e.g. the CI container that mounts only
+# packages/training — see the loud-skip note in the parity tests).
+_REPO_ROOT = _HERE.parents[3]
+_KERNEL_REF_DIR = Path(
+    os.environ.get(
+        "ELIZA_KERNEL_REF_DIR",
+        str(_REPO_ROOT / "plugins" / "plugin-local-inference" / "native"),
+    )
+)
+_REF_C = _KERNEL_REF_DIR / "verify" / "qjl_polar_ref.c"
+_REF_H = _KERNEL_REF_DIR / "verify" / "qjl_polar_ref.h"
+_TURBO_C = _KERNEL_REF_DIR / "reference" / "turbo_kernels.c"
+_TURBO_H = _KERNEL_REF_DIR / "reference" / "turbo_kernels.h"
 
 
 # Canonical 4-bit Lloyd-Max centroids for N(0,1), bit-exact match required
-# against eliza/packages/native-plugins/polarquant-cpu/include/polarquant/polar_centroids.h
-# and eliza/packages/inference/verify/qjl_polar_ref.c.
+# against packages/native/plugins/polarquant-cpu/include/polarquant/polar_centroids.h
+# and the qjl-cpu reference kernels (packages/native/plugins/qjl-cpu/src/).
 _C_POLAR_Q4_CENTROIDS = (
     -2.754354807, -2.093562707, -1.643041510, -1.279739752,
     -0.962640978, -0.672392117, -0.397897103, -0.131757782,
@@ -325,6 +340,7 @@ def test_recipe_sidecar_manifest_fragment_complete():
     recipe. Verify the helper produces all four for every method.
     """
     from _kernel_manifest import (
+        KERNEL_CODEBOOK_HASHES,
         KERNEL_TARGETS,
         kernel_manifest_fragment,
     )
@@ -348,9 +364,33 @@ def test_recipe_sidecar_manifest_fragment_complete():
             assert frag["codebook_hash"][target], (
                 f"{method}/{target}: empty codebook_hash"
             )
+            assert frag["codebook_hash"][target] == KERNEL_CODEBOOK_HASHES[target]
+            assert frag["codebook_hash"][target].startswith("sha256:"), (
+                f"{method}/{target}: codebook_hash must be a real sha256 digest"
+            )
+            assert len(frag["codebook_hash"][target]) == len("sha256:") + 64
             assert frag["per_block_tolerance"][target] > 0, (
                 f"{method}/{target}: non-positive per_block_tolerance"
             )
+
+
+def test_kernel_manifest_codebook_hashes_match_pinned_sources():
+    """Manifest codebook hashes are computed from C/kernel source content.
+
+    Any drift in the committed C codebook/layout source must fail here until
+    the pinned digest is reviewed and updated in the same PR.
+    """
+    from _kernel_manifest import (
+        KERNEL_CODEBOOK_HASHES,
+        PINNED_KERNEL_CODEBOOK_SHA256,
+        assert_kernel_codebook_hashes_current,
+    )
+
+    observed = assert_kernel_codebook_hashes_current()
+    assert observed == PINNED_KERNEL_CODEBOOK_SHA256
+    assert KERNEL_CODEBOOK_HASHES == {
+        target: f"sha256:{digest}" for target, digest in observed.items()
+    }
 
 
 def test_kernel_manifest_fragment_rejects_unknown_method():
@@ -799,26 +839,32 @@ _KQUANT_SIBLINGS = (
     ("gguf-q6_k_apply",   "Q6_K"),
 )
 
+_CANONICAL_LLAMA_CPP_SUFFIX = Path(
+    "plugins/plugin-local-inference/native/llama.cpp"
+)
+
+
+def _load_module_from_quantization_file(module_basename: str):
+    import importlib.util
+
+    importable = module_basename.replace("-", "_")
+    quant_dir = Path(__file__).resolve().parent
+    spec_path = quant_dir / f"{module_basename}.py"
+    assert spec_path.exists(), f"missing quantization module: {spec_path}"
+
+    spec = importlib.util.spec_from_file_location(importable, spec_path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 @pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
 def test_kquant_sibling_exports_constant(module_basename: str, expected_level: str):
     """Every K-quant ladder sibling exports a `QUANT_LEVEL` constant matching
     its filename. The publish path keys on this constant to pick the
     llama-quantize target type."""
-    import importlib
-
-    # Module names use hyphens on disk; importlib needs the underscore form.
-    importable = module_basename.replace("-", "_")
-    # Add the quantization dir to sys.path so the modules import on their
-    # own (they do `from _common import ...`).
-    quant_dir = Path(__file__).resolve().parent
-    spec_path = quant_dir / f"{module_basename}.py"
-    assert spec_path.exists(), f"missing K-quant sibling: {spec_path}"
-
-    spec = importlib.util.spec_from_file_location(importable, spec_path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _load_module_from_quantization_file(module_basename)
     assert getattr(mod, "QUANT_LEVEL") == expected_level
 
 
@@ -829,16 +875,7 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     """Every K-quant sibling supports the same --dry-run surface as the
     Q4_K_M baseline. Output is JSON and contains the recipe-level
     metadata."""
-    import importlib
-
-    importable = module_basename.replace("-", "_")
-    quant_dir = Path(__file__).resolve().parent
-    spec_path = quant_dir / f"{module_basename}.py"
-
-    spec = importlib.util.spec_from_file_location(importable, spec_path)
-    assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = _load_module_from_quantization_file(module_basename)
     rc = mod.main([
         "--model", "google/gemma-4-E2B",
         "--output", str(tmp_path),
@@ -848,6 +885,46 @@ def test_kquant_sibling_dry_run_prints_quant_level(
     payload = json.loads(capsys.readouterr().out)
     assert payload["quant_level"] == _expected_level
     assert payload["dry_run"] is True
+
+
+@pytest.mark.parametrize(
+    "module_basename",
+    (
+        "gguf-q3_k_m_apply",
+        "gguf-q4_k_m_apply",
+        "gguf-q5_k_m_apply",
+        "gguf-q6_k_apply",
+        "gguf_asr_apply",
+        "gguf_kokoro_apply",
+    ),
+)
+def test_gguf_wrappers_default_to_runtime_llama_cpp_submodule(module_basename: str):
+    """Converter wrappers must default to the real in-repo llama.cpp fork.
+
+    The old `packages/inference/llama.cpp` path no longer exists; resolving it
+    made publish recipes fail unless callers remembered to set LLAMA_CPP_DIR.
+    """
+    source = (Path(__file__).resolve().parent / f"{module_basename}.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        _CANONICAL_LLAMA_CPP_SUFFIX.as_posix() in source
+        or '"plugins" / "plugin-local-inference" / "native" / "llama.cpp"' in source
+    )
+    assert '"packages" / "inference" / "llama.cpp"' not in source
+    assert "packages/inference/llama.cpp" not in source
+
+
+def test_eliza_typed_gguf_resolver_uses_runtime_llama_cpp_submodule():
+    source = (Path(__file__).resolve().parent / "gguf_eliza1_apply.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        _CANONICAL_LLAMA_CPP_SUFFIX.as_posix() in source
+        or '"plugins" / "plugin-local-inference" / "native" / "llama.cpp"' in source
+    )
+    assert '"packages" / "inference" / "llama.cpp"' not in source
+    assert "packages/inference/llama.cpp" not in source
 
 
 def test_gguf_asr_apply_dry_run_single_quant(capsys, tmp_path):

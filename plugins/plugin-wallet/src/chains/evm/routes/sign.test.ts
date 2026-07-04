@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the browser EVM signing HTTP routes (`evmSignRoutes`):
+ * token-gating (503 when unconfigured, 401 on a wrong token), CORS behavior
+ * (no credentialed cross-origin reflection, loopback origins allowed), and
+ * request validation (chain id, bigint fields) short-circuiting before the
+ * wallet backend is ever touched. `resolveWalletBackend` is mocked — no
+ * real signing occurs.
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { evmSignRoutes } from "./sign";

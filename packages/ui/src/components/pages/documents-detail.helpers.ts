@@ -1,3 +1,9 @@
+/**
+ * Pure label formatters for the Documents detail view: derives a type label
+ * from a content type, a translated source label (YouTube/URL/upload), and a
+ * one-line summary (source, fragment count, byte size) for a document record.
+ */
+
 import type { DocumentRecord } from "../../api/client-types-chat";
 import { formatByteSize } from "../../utils/format";
 

@@ -232,6 +232,20 @@ export const MEDIA_MODEL_ROSTER: readonly MediaModelRosterEntry[] = [
       "These adjacent FAL video families are already explicit supported video models with parser coverage.",
   },
   {
+    family: "Atlas-hosted Vidu video",
+    provider: "atlascloud",
+    surfaces: ["video"],
+    status: "wired",
+    sourceUrls: [
+      "https://www.atlascloud.ai/docs/en/models/video",
+      "https://www.atlascloud.ai/models/vidu/q3-turbo/text-to-video",
+      "https://www.atlascloud.ai/models/vidu/image-to-video-2.0",
+    ],
+    wiredModelIds: ["vidu/q3-turbo/text-to-video", "vidu/image-to-video-2.0"],
+    rationale:
+      "Vidu text-to-video and image-to-video are routed through the Atlas Cloud async video provider with snapshot per-second pricing.",
+  },
+  {
     family: "Google Nano Banana image generation",
     provider: "atlascloud",
     surfaces: ["image"],

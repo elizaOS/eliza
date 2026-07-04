@@ -1,3 +1,8 @@
+/**
+ * Unit tests for WeChat inbound/outbound internals with mocked collaborators:
+ * webhook payload normalization, `Bot` dedup/gating, and `ReplyDispatcher`
+ * chunking. No live proxy service.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";

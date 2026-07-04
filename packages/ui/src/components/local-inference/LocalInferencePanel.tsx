@@ -1,3 +1,10 @@
+/**
+ * Top-level local-inference settings surface: the model hub (curated catalog +
+ * download queue), active-model bar, hardware badge, connected device bridges,
+ * and the voice sub-model updater. Streams live download/active deltas over SSE
+ * and drives the hub through the local-inference API client.
+ */
+
 import type { VoiceModelId } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -10,6 +17,7 @@ import type {
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useRole } from "../../hooks/useRole";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useAppSelectorShallow } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
@@ -353,9 +361,9 @@ export function LocalInferencePanel() {
         ).map(([id, label]) => {
           const active = tab === id;
           return (
-            <button
+            <Button
               key={id}
-              type="button"
+              variant="ghost"
               onClick={() => setTab(id)}
               className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
                 active ? "bg-card text-txt " : "text-muted hover:text-txt"
@@ -369,7 +377,7 @@ export function LocalInferencePanel() {
                   </span>
                 ) : null}
               </span>
-            </button>
+            </Button>
           );
         })}
       </nav>
@@ -442,7 +450,9 @@ function VoiceModelUpdatesSection() {
     autoUpdateOnCellular: false,
     autoUpdateOnMetered: false,
   });
-  const [isOwner, setIsOwner] = useState(false);
+  // #12087 Item 25: owner-tier gating comes from the canonical role context
+  // (useRole), not a per-endpoint `isOwner` flag threaded through fetched state.
+  const { isOwner } = useRole();
   const [installations, setInstallations] = useState<
     ReadonlyArray<VoiceModelInstallationView>
   >([]);
@@ -464,7 +474,6 @@ function VoiceModelUpdatesSection() {
           autoUpdateOnCellular: prefsResp.preferences.autoUpdateOnCellular,
           autoUpdateOnMetered: prefsResp.preferences.autoUpdateOnMetered,
         });
-        setIsOwner(prefsResp.isOwner);
         setInstallations(
           listResp.installations.map((i) => ({
             id: i.id,

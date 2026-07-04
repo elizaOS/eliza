@@ -1,3 +1,11 @@
+/**
+ * Shared tsup configuration for workspace plugin packages that emit unbundled ESM.
+ *
+ * The build discovers source entries, rewrites relative TypeScript import
+ * specifiers to runtime `.js` paths, and cleans the package `dist/` directory
+ * once before esbuild writes per-file output.
+ */
+
 import { existsSync, promises as fsp, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 

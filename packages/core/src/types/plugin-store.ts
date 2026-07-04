@@ -1,3 +1,9 @@
+/**
+ * Generic plugin data-store contract: a small adapter-agnostic CRUD + schema-
+ * registration interface so plugins can persist custom tables (goals, todos, …)
+ * without casting `runtime.db` to Drizzle types. Works across SQL and in-memory
+ * adapters; deliberately not a full ORM (no joins/subqueries).
+ */
 import type { UUID } from "./primitives";
 
 /**

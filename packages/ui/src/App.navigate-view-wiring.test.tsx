@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for App-level navigate-view event wiring: a dispatched
+ * navigate-view event drives the tab switch through the rendered shell. Boot
+ * config + desktop tabs mocked, no runtime.
+ */
+
+import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
   cleanup,
   fireEvent,
@@ -9,6 +16,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
@@ -199,7 +207,12 @@ vi.mock("./hooks", () => ({
   useRenderGuard: vi.fn(),
 }));
 
-vi.mock("./state", () => {
+vi.mock("./state", async () => {
+  // Pure static constants pass through from the real leaf module (side-effect
+  // free by design) so the mock never drifts from product preset data.
+  const { ACCENT_PRESETS } = await vi.importActual<
+    typeof import("./state/ui-preferences")
+  >("./state/ui-preferences");
   // Rebuilt on each access so `appState.tab`/`setTab` are read LIVE — the
   // navigation tests mutate appState between renders, and useApp / the selector
   // hooks must reflect that (mirrors the original fresh-object-per-call mock).
@@ -244,6 +257,7 @@ vi.mock("./state", () => {
     uiThemeMode: "system",
   });
   return {
+    ACCENT_PRESETS,
     useApp: () => getAppValue(),
     useAppSelector: <T,>(
       selector: (s: ReturnType<typeof getAppValue>) => T,
@@ -358,13 +372,13 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 import { App } from "./App";
 
 function navigateView(detail: Record<string, unknown>) {
-  window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  window.dispatchEvent(createNavigateViewEvent(detail));
 }
 
 describe("App navigate-view event wiring", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
-    Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
@@ -479,21 +493,24 @@ describe("App navigate-view event wiring", () => {
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
 
-  it("renders shell back chrome on app routes and uses browser history", async () => {
+  it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {
     appState.tab = "apps";
     window.history.replaceState(null, "", "/chat");
     window.history.pushState(null, "", "/apps/remote-ledger");
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
 
-    render(<App />);
+    const { queryByTestId } = render(<App />);
 
+    // The route mounts (its remote view loader is requested)…
     await waitFor(() => {
-      expect(screen.getByTestId("shell-back-button")).toBeTruthy();
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalled();
     });
-    fireEvent.click(screen.getByTestId("shell-back-button"));
 
-    expect(back).toHaveBeenCalledTimes(1);
-    expect(appState.setTab).not.toHaveBeenCalledWith("chat");
+    // …but the floating top-left corner back button that used to overlap page
+    // content (Apps gallery section headings, the Character/Knowledge
+    // breadcrumb) is gone. Pages that need a back affordance render their own
+    // in-context control; everyone can also use browser/OS back.
+    expect(queryByTestId("shell-back-button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
   });
 
   it("lets a view explicitly share the Home/Launcher background", async () => {
@@ -527,12 +544,7 @@ describe("App navigate-view event wiring", () => {
         pinned: true,
       },
     ];
-    (
-      window as Window & {
-        __ELIZA_API_BASE__?: string;
-        __ELIZAOS_API_BASE__?: string;
-      }
-    ).__ELIZA_API_BASE__ = "http://agent.local";
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://agent.local" });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {

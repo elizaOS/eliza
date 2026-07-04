@@ -7,20 +7,21 @@
  *   - MATCHER_VIEW_IDS/VIEW_NOUNS (plugin-app-control view-command-matcher)
  *   - INTENT_VIEW_IDS            (plugin-app-control views-show resolveIntentView)
  *   - CONTEXT_VIEWS             (plugin-app-control view-context evaluator)
- *   - VIEW_ACTION_MAP           (this package's view-action-affinity)
+ *   - view action affinity      (this package's view-action-affinity)
  *
  * Nothing previously asserted they agree on the set of view ids, so a change to
  * one (rename a view, add a contextual surface) could silently leave the others
  * stale. This test fails when they drift: every contextual/intent view must be
  * reachable by the rigid matcher, every user-facing builtin must have matcher
- * nouns, and the action map must be structurally sound.
+ * nouns, and host/plugin action affinity must be structurally sound.
  */
 import { describe, expect, it } from "vitest";
 import { MATCHER_VIEW_IDS } from "../../../../plugins/plugin-app-control/src/actions/view-command-matcher.ts";
 import { INTENT_VIEW_IDS } from "../../../../plugins/plugin-app-control/src/actions/views-show.ts";
 import { CONTEXT_VIEWS } from "../../../../plugins/plugin-app-control/src/evaluators/view-context.ts";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
-import { VIEW_ACTION_MAP } from "./view-action-affinity.ts";
+import { registerBuiltinViews } from "../api/views-registry.ts";
+import { viewActionAffinityMap } from "./view-action-affinity.ts";
 
 const MATCHER = new Set<string>(MATCHER_VIEW_IDS);
 
@@ -61,8 +62,9 @@ describe("view-id drift guard (#8797)", () => {
     ).toEqual([]);
   });
 
-  it("VIEW_ACTION_MAP entries are non-empty action lists", () => {
-    for (const [viewId, actions] of Object.entries(VIEW_ACTION_MAP)) {
+  it("view action affinity entries are non-empty action lists", () => {
+    registerBuiltinViews();
+    for (const [viewId, actions] of Object.entries(viewActionAffinityMap())) {
       expect(Array.isArray(actions), `${viewId} actions not array`).toBe(true);
       expect(actions.length, `${viewId} has empty action list`).toBeGreaterThan(
         0,

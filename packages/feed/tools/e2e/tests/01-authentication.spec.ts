@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Exercises the wallet login and logout flow and the authenticated/unauthenticated view split.
+ */
 import { expect, test } from "./fixtures";
 import { pageContainsText } from "./helpers/interaction-helpers";
 import {

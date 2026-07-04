@@ -1,3 +1,10 @@
+/**
+ * Docs site integrity tests for Mintlify navigation and markdown links.
+ *
+ * Runs against the real files on disk so docs.json, redirects, frontmatter,
+ * local assets, and internal links stay deployable together.
+ */
+
 import assert from "node:assert";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";

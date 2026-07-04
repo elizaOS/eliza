@@ -1,0 +1,178 @@
+{
+  "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
+  "id": "eliza-1-4b",
+  "tier": "4b",
+  "version": "1.0.0",
+  "publishedAt": "2026-05-10T00:00:00Z",
+  "lineage": {
+    "text": {
+      "base": "eliza-1-text-backbone",
+      "license": "apache-2.0"
+    },
+    "voice": {
+      "base": "eliza-1-voice-backbone",
+      "license": "apache-2.0"
+    },
+    "drafter": {
+      "base": "eliza-1-drafter",
+      "license": "apache-2.0"
+    },
+    "asr": {
+      "base": "eliza-1-asr-backbone",
+      "license": "apache-2.0"
+    },
+    "vision": {
+      "base": "eliza-1-vision-backbone",
+      "license": "apache-2.0"
+    },
+    "vad": {
+      "base": "eliza-1-vad-backbone",
+      "license": "apache-2.0"
+    }
+  },
+  "files": {
+    "text": [
+      {
+        "path": "text/eliza-1-4b-128k.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "ctx": 131072
+      }
+    ],
+    "voice": [
+      {
+        "path": "tts/omnivoice-base-Q4_K_M.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "asr": [
+      {
+        "path": "asr/asr.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "vision": [
+      {
+        "path": "vision/mmproj-4b.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "mtp": [
+      {
+        "path": "mtp/drafter-4b.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "cache": [
+      {
+        "path": "cache/voice-preset-default.bin",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "vad": [
+      {
+        "path": "vad/silero-vad-v5.gguf",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ]
+  },
+  "kernels": {
+    "required": [
+      "turboquant_q4",
+      "turbo3_tcq"
+    ],
+    "optional": [],
+    "verifiedBackends": {
+      "metal": {
+        "status": "pass",
+        "atCommit": "abc1234",
+        "report": "metal.txt"
+      },
+      "vulkan": {
+        "status": "pass",
+        "atCommit": "abc1234",
+        "report": "vulkan.txt"
+      },
+      "cuda": {
+        "status": "pass",
+        "atCommit": "abc1234",
+        "report": "cuda.txt"
+      },
+      "rocm": {
+        "status": "pass",
+        "atCommit": "abc1234",
+        "report": "rocm.txt"
+      },
+      "cpu": {
+        "status": "pass",
+        "atCommit": "abc1234",
+        "report": "cpu.txt"
+      }
+    },
+    "recipeManifest": {
+      "turbo3": {
+        "blockLayoutVersion": "block_turbo3_0:v1",
+        "codebookHash": "turbo_centroids_3bit:8xfp32:seed42:v1",
+        "perBlockTolerance": 0.05
+      },
+      "turbo4": {
+        "blockLayoutVersion": "block_turbo4_0:v1",
+        "codebookHash": "turbo_centroids_4bit:16xfp32:seed42:v1",
+        "perBlockTolerance": 0.01
+      },
+      "turbo3_tcq": {
+        "blockLayoutVersion": "block_turbo3_tcq:v1",
+        "codebookHash": "turbo3_tcq_codebook:512xfp32:seed42:v1",
+        "perBlockTolerance": 0.03
+      },
+      "qjl1_256": {
+        "blockLayoutVersion": "block_qjl1_256:v1:34bytes:packed",
+        "codebookHash": "qjl1_256_layout:34bytes:lsb_first:bf16_norm:v1",
+        "perBlockTolerance": 0.05
+      },
+      "polar_q4": {
+        "blockLayoutVersion": "block_q4_polar:v1:82bytes:packed",
+        "codebookHash": "polar_q4_centroids:16xfp32:lloyd_max_niter100:v1",
+        "perBlockTolerance": 0.001
+      }
+    }
+  },
+  "evals": {
+    "textEval": {
+      "score": 0.71,
+      "passed": true
+    },
+    "voiceRtf": {
+      "rtf": 0.42,
+      "passed": true
+    },
+    "e2eLoopOk": true,
+    "thirtyTurnOk": true,
+    "asrWer": {
+      "wer": 0.05,
+      "passed": true
+    },
+    "vadLatencyMs": {
+      "median": 16.0,
+      "passed": true,
+      "boundaryMs": 24.0,
+      "endpointMs": 80.0,
+      "falseBargeInRate": 0.01
+    },
+    "mtp": {
+      "acceptanceRate": 0.71,
+      "speedup": 1.8,
+      "passed": true
+    }
+  },
+  "tokenizer": {
+    "family": "gemma4",
+    "vocabSize": 262144
+  },
+  "kv": "stock-q8_0",
+  "mtp": "separate-drafter",
+  "ramBudgetMb": {
+    "min": 7000,
+    "recommended": 9500
+  },
+  "defaultEligible": true
+}

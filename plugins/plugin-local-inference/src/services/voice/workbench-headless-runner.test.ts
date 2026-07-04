@@ -1,3 +1,4 @@
+/** Covers the headless voice-scenario runner: honesty contract, scoring, and audio-capture sink (#8934). Deterministic. */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -220,6 +221,91 @@ describe("runVoiceScenarioHeadless — audio capture sink (#8934)", () => {
 		expect(run.audioArtifacts).toBeUndefined();
 		// No capture sink ⇒ zero audio IO into the run dir.
 		expect(existsSync(path.join(runDir, "audio"))).toBe(false);
+	});
+});
+
+describe("runVoiceScenarioHeadless — speaker-gated barge-in / ERLE / partials", () => {
+	function scenario(id: string): VoiceScenario {
+		const found = VOICE_WORKBENCH_SCENARIOS.find((s) => s.id === id);
+		if (!found) throw new Error(`missing scenario ${id}`);
+		return found;
+	}
+
+	it("fails barge-in gating when the agent's own echo hard-stops it", async () => {
+		const s = scenario("speaker-gated-barge-in");
+		const corpus = await generateVoiceCorpus(s);
+		// A backend that cancels TTS on EVERY barge-in — including the echo and the
+		// bystander — is exactly the speaker-gating regression the gate must catch.
+		const overEager: VoiceWorkbenchServices = {
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+					...(label.bargeIn ? { bargeInCancelMs: 90 } : {}),
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario: s,
+			corpus,
+			services: overEager,
+		});
+		const gating = run.cases.find((c) => c.kind === "barge-in-gating");
+		expect(gating?.passed).toBe(false);
+		if (gating?.kind === "barge-in-gating") expect(gating.wrongCancels).toBe(2);
+	});
+
+	it("scores ERLE + echo rejection on the desktop-AEC scenario (mock lane)", async () => {
+		const s = scenario("desktop-aec-echo");
+		const corpus = await generateVoiceCorpus(s);
+		const run = await runVoiceScenarioHeadless({
+			scenario: s,
+			corpus,
+			services: groundTruthMockServices(),
+		});
+		const kinds = new Set(run.cases.map((c) => c.kind));
+		expect(kinds.has("erle")).toBe(true);
+		expect(kinds.has("echo-rejection")).toBe(true);
+		expect(run.cases.every((c) => c.passed)).toBe(true);
+	});
+
+	it("scores partial monotonicity only when the lane emits a partial stream", async () => {
+		const s = scenario("streaming-partials-monotonic");
+		const corpus = await generateVoiceCorpus(s);
+		// Mock emits partials for streaming-partials scenarios → scored + passes.
+		const withPartials = await runVoiceScenarioHeadless({
+			scenario: s,
+			corpus,
+			services: groundTruthMockServices(),
+		});
+		expect(
+			withPartials.cases.some((c) => c.kind === "partial-monotonicity"),
+		).toBe(true);
+		// A batch-only backend emits no partials → honestly unscored (never faked).
+		const batchOnly: VoiceWorkbenchServices = {
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario: s,
+			corpus,
+			services: batchOnly,
+		});
+		expect(run.cases.some((c) => c.kind === "partial-monotonicity")).toBe(
+			false,
+		);
 	});
 });
 

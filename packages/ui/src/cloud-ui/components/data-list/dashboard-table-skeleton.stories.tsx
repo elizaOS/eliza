@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the dashboard table loading skeleton.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { DashboardTableSkeleton } from "./dashboard-table-skeleton";
 

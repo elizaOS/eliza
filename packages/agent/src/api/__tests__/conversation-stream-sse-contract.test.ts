@@ -276,6 +276,7 @@ function createState(): {
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     getSetting: vi.fn(() => null),
+    drainChatPreHandlers: vi.fn(async () => null),
     adapter: {},
   } as unknown as AgentRuntime;
 

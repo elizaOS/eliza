@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for deployApp's contract (endpoint/method, gated-error
+ * propagation) against a mocked api client, no network (#9145).
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // #9145 — deployApp's contract (endpoint + method) and gated-error propagation,

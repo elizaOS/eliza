@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the separator primitive (horizontal/vertical divider).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Separator } from "./separator";
 

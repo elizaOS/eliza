@@ -1,9 +1,10 @@
 /**
- * Phone-companion surface — the iOS-paired-handset experience.
+ * Barrel for the Phone Companion services — the non-React layer behind the
+ * iOS-paired-handset experience: the native intent facade, env accessors,
+ * scoped logger, nav hook, push registration, and the session WebSocket client.
  *
- * Originally shipped as a standalone top-level app Capacitor project;
- * folded into the main Eliza iOS bundle so one binary handles both the full
- * Eliza UI and the pairing / chat-mirror / remote-session flow.
+ * These run inside the main Eliza iOS bundle, so one binary handles both the
+ * full Eliza UI and the pairing / chat-mirror / remote-session flow.
  */
 
 export {

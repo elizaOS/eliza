@@ -1,3 +1,9 @@
+/**
+ * Tests the `train-parallel` generation flow end to end against mocked agents
+ * and DB (via `mock.module`), writing real trajectory/manifest files into temp
+ * dirs and asserting the emitted artifacts and arg parsing.
+ */
+
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

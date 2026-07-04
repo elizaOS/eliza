@@ -1,3 +1,11 @@
+/**
+ * `DatabaseMigrationService` orchestrates startup schema migration for every
+ * registered plugin: collects each plugin's `schema` export, runs the
+ * legacy entity-RLS backfill (`migrateToEntityRLS`), drives `RuntimeMigrator`
+ * per plugin (continuing past individual failures and aggregating them into
+ * one error), and — when `ENABLE_DATA_ISOLATION=true` — re-applies Row Level
+ * Security across all tables once every migration succeeds.
+ */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";

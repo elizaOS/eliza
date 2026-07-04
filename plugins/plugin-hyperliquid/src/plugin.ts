@@ -1,3 +1,12 @@
+/**
+ * The `@elizaos/plugin-hyperliquid` `Plugin` object: registers the
+ * `PERPETUAL_MARKET` action, `PerpetualMarketService`, the read-only
+ * `/api/hyperliquid/*` routes (all POST routes 501 — execution is disabled),
+ * and the single Hyperliquid view rendered across GUI/XR/TUI modalities.
+ * Route handlers bridge the elizaOS `RouteRequest`/`RouteResponse` shape to
+ * Node's `http.IncomingMessage`/`http.ServerResponse`, which is what
+ * `handleHyperliquidRoute` in `routes.ts` expects.
+ */
 import type http from "node:http";
 import type {
   IAgentRuntime,
@@ -136,10 +145,12 @@ export const hyperliquidPlugin: Plugin = {
         "Hyperliquid perpetual markets — positions, trading status, and market data",
       icon: "TrendingUp",
       path: "/hyperliquid",
+      group: "wallet",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "HyperliquidView",
       tags: ["trading", "perps", "hyperliquid", "crypto"],
+      relatedActions: ["PERPETUAL_MARKET"],
       // Reached as a sub-view of Wallet (WalletSectionNav), not a launcher tile.
       visibleInManager: false,
       desktopTabEnabled: false,

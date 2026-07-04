@@ -1,3 +1,7 @@
+/**
+ * Fuzz coverage for the wake-controller state machine: randomized event
+ * sequences must never violate the wake-path invariants. Pure, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONFIRM_WINDOW_MS,

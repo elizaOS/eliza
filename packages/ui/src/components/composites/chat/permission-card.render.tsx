@@ -1,3 +1,8 @@
+/**
+ * Bridges a parsed permission-request payload to a rendered PermissionCard,
+ * returning null when the payload's permission id is unknown so callers can
+ * inline-render permission prompts detected in message text without guarding.
+ */
 import { isPermissionId } from "@elizaos/shared";
 import type * as React from "react";
 

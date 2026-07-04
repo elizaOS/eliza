@@ -1,5 +1,10 @@
 import { spawn } from "node:child_process";
-import { elizaLogger, type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  elizaLogger,
+  type IAgentRuntime,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
 import { z } from "zod";
 import { readTailscaleAccounts, resolveTailscaleAccount } from "../accounts";
 import { validateTailscaleConfig } from "../environment";
@@ -90,7 +95,7 @@ async function defaultFetch(
 }
 
 export class CloudTailscaleService extends Service implements ITunnelService {
-  static override serviceType = "tunnel";
+  static override serviceType = ServiceType.TUNNEL;
   readonly capabilityDescription =
     "Provides Tailscale tunnel functionality via Eliza Cloud — auth keys are minted server-side and the local CLI joins the tailnet.";
 

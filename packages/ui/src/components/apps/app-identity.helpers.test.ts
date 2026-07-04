@@ -1,3 +1,9 @@
+/**
+ * Covers `resolveRuntimeImageUrl` — how runtime-relative icon/hero paths resolve
+ * to fetchable URLs. The api client and asset-url resolvers are mocked so URL
+ * routing is asserted without a running server.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 
 const clientMock = vi.hoisted(() => ({

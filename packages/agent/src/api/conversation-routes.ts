@@ -24,11 +24,17 @@ import {
   type Content,
   createMessageMemory,
   logger,
+  MESSAGE_SOURCE_AGENT_GREETING,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  type RolesWorldMetadata,
+  recordOwnerGrant,
+  recordRoleGrant,
   stringToUuid,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import type { ChatFailureKind } from "@elizaos/shared";
 import {
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
@@ -40,7 +46,6 @@ import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type {
   AccountConnectRequest,
-  ChatFailureKind,
   ChatGenerationResult,
   LogEntry,
 } from "./chat-routes.ts";
@@ -91,10 +96,9 @@ interface DiscordProfileLike {
   username?: string;
 }
 
-// Lazy memoized loader — previously module-scope `await import`, which forced
-// @elizaos/plugin-discord (and its transitive deps) to load on every agent
-// boot. Now only loads when a conversation actually contains Discord-sourced
-// messages.
+// Lazy memoized loader: @elizaos/plugin-discord (and its transitive deps) loads
+// only when a conversation actually contains Discord-sourced messages. A
+// module-scope `await import` would load it on every agent boot.
 type DiscordConversationModule = {
   cacheDiscordAvatarForRuntime: (
     runtime: AgentRuntime,
@@ -630,18 +634,20 @@ async function ensureWorldOwnershipAndRoles(
     world.metadata.ownership = { ownerId };
     needsUpdate = true;
   }
-  const metadataWithRoles = world.metadata as {
-    roles?: Record<string, string>;
-  };
-  const roles = metadataWithRoles.roles ?? {};
-  if (roles[ownerId] !== "OWNER") {
-    roles[ownerId] = "OWNER";
-    metadataWithRoles.roles = roles;
+  // #12087 Item 11: route role writes through the auditable grant helpers so each
+  // grant pairs roles[id] with a roleSources[id] entry (the #9948 invariant),
+  // instead of mutating metadata.roles directly with raw literals. The owner grant
+  // is recorded as source "owner"; the caller's connector-derived role is recorded
+  // as "connector_admin" (revocable/demotable), and never overwrites the owner's
+  // grant when the caller IS the owner.
+  const metadata = world.metadata as RolesWorldMetadata;
+  if (recordOwnerGrant(metadata, ownerId)) {
     needsUpdate = true;
   }
-  if (roles[callerId] !== callerRole) {
-    roles[callerId] = callerRole;
-    metadataWithRoles.roles = roles;
+  if (
+    callerId !== ownerId &&
+    recordRoleGrant(metadata, callerId, callerRole, "connector_admin")
+  ) {
     needsUpdate = true;
   }
   if (needsUpdate) {
@@ -796,7 +802,7 @@ async function ensureConversationRoom(
     roomId: conv.roomId,
     worldId,
     userName: caller.userName,
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     channelId: `web-conv-${conv.id}`,
     type: ChannelType.DM,
     messageServerId,
@@ -1246,7 +1252,7 @@ async function ensureConversationGreetingStored(
     const content = memory.content as Record<string, unknown> | undefined;
     return (
       memory.entityId === runtime.agentId &&
-      content?.source === "agent_greeting" &&
+      content?.source === MESSAGE_SOURCE_AGENT_GREETING &&
       typeof content.text === "string" &&
       content.text.trim().length > 0
     );
@@ -1295,7 +1301,7 @@ async function ensureConversationGreetingStored(
         roomId: conv.roomId,
         content: {
           text: greeting,
-          source: "agent_greeting",
+          source: MESSAGE_SOURCE_AGENT_GREETING,
           channelType: ChannelType.DM,
         },
       }),
@@ -1659,7 +1665,7 @@ export async function handleConversationRoutes(
           const normalizedSource =
             typeof contentSource === "string" &&
             contentSource.length > 0 &&
-            contentSource !== "client_chat"
+            contentSource !== MESSAGE_SOURCE_CLIENT_CHAT
               ? contentSource
               : undefined;
           const actionName =

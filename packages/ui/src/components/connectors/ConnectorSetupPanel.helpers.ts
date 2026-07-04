@@ -1,6 +1,13 @@
+/**
+ * Registry + resolution helpers for `ConnectorSetupPanel`. Holds the runtime
+ * registry that lets plugins register their own setup-panel component for a
+ * connector id (normalized to lowercase alphanumerics) instead of editing a
+ * hardcoded switch, and the lookups the dispatcher uses to pick a panel.
+ */
+
 import type React from "react";
-import { getBootConfig } from "../../config/boot-config";
 import { parseConnectorAccountManagementPanelPluginId } from "./connector-account-options";
+import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 
 export function normalizePluginId(pluginId: string): string {
   return pluginId
@@ -9,11 +16,11 @@ export function normalizePluginId(pluginId: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// ---------------------------------------------------------------------------
-// Connector setup panel registry — allows plugins to register their own
-// setup panels at runtime without modifying the hardcoded switch statement.
-// ---------------------------------------------------------------------------
-
+// Runtime registry of plugin-provided setup panel components, keyed by
+// normalized connector id. Plugins register their own panel here so the setup
+// UI resolves it without any connector-id knowledge in this helper; built-in
+// panels resolve through the separate token registry in
+// connector-setup-panel-registry.ts.
 export const connectorSetupRegistry = new Map<string, React.ComponentType>();
 
 /**
@@ -33,31 +40,9 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   if (parseConnectorAccountManagementPanelPluginId(pluginId)) {
     return true;
   }
-  // Check registry first
+  // Plugin-registered panels take precedence over the built-in registry.
   if (connectorSetupRegistry.has(normalized)) {
     return true;
   }
-  if (
-    normalized.includes("lifeopsbrowser") ||
-    normalized.includes("browserbridg")
-  ) {
-    return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
-  }
-  if (normalized.includes("telegramaccount")) {
-    return true;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return true;
-  }
-  switch (normalized) {
-    case "whatsapp":
-    case "signal":
-    case "discordlocal":
-    case "bluebubbles":
-    case "imessage":
-    case "telegram":
-      return true;
-    default:
-      return false;
-  }
+  return resolveConnectorSetupPanelToken(normalized) !== null;
 }

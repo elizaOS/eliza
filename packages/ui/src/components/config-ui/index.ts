@@ -1,3 +1,4 @@
+/** Barrel for the config-ui surface: plugin-config form renderers (schema-driven `ConfigRenderer`), the agent-spec `UiRenderer`, and their shared field controls. */
 export * from "./config-control-primitives";
 export * from "./config-control-primitives.helpers";
 export * from "./config-field";

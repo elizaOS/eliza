@@ -1,3 +1,8 @@
+/**
+ * `runGitCommand` helper: runs a git subcommand with `execFile` (no shell) under a
+ * given cwd and timeout, brokered through the core capability router so git access
+ * can be gated or denied by the host. Used by the worktree actions.
+ */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 

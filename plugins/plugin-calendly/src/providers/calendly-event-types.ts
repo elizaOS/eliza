@@ -3,9 +3,9 @@
  * @description calendlyEventTypes — read-only provider that surfaces the
  * connected Calendly user's active event types as JSON context.
  *
- * Replaces the legacy LIST_CALENDLY_EVENT_TYPES action: enumerating the user's
- * own event types is read-only context for planning a booking, not a
- * side-effecting agent operation.
+ * This is a provider rather than an action because enumerating the user's own
+ * event types is read-only context for planning a booking, not a side-effecting
+ * agent operation.
  */
 
 import type {

@@ -1,3 +1,10 @@
+/**
+ * Shared helpers for the EVM wallet actions: the EVM-private-key validator
+ * gate, the `confirmationRequired` response shape that stages an on-chain
+ * action pending a user confirmation turn, and `buildSendTxParams` for
+ * assembling viem `SendTransactionParameters` from optional fields. See
+ * `isConfirmed` for why LLM-supplied confirmation flags are never trusted.
+ */
 import type {
   Action,
   ActionResult,

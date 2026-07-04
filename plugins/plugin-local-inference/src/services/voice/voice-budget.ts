@@ -28,17 +28,16 @@
  * (TTS engine, ASR loader, etc.) holds the typed reservation and runs
  * `release()` on unload.
  *
- * Wire-up plan (handed to follow-up commits, NOT done by I9):
- *   - `ffi-streaming-backend.ts`     → `reserve(role="text-target")` + `reserve(role="drafter")` at spawn.
- *   - `voice/pipeline.ts`    → `reserve(role="tts", bytes=transientPeakMb*MB)` per synth.
- *   - `voice/wake-word.ts`, `vad.ts`, `eot-classifier.ts` → reserve at session arm.
- *   - I2/I3 add `emotion` + `speaker-id` reservations when those models register.
- *
- * NOTE: the wire-up is intentionally separate from the allocator
- * implementation because the in-flight I-agents (I1/I2/I3/I5) own those
- * loader files and we must not race their edits. The allocator + the
- * `evictionPriority` hooks are in place; the loaders adopt it as they
- * land.
+ * Live call sites (#12254): `ffi-streaming-backend.ts` reserves
+ * `text-target` + `drafter` (weights file sizes) at load; `voice/pipeline.ts`
+ * reserves the TTS transient peak per voice turn; `GgmlSileroVad.load`,
+ * `GgmlWakeWordModel.load`, and `tryBuildFusedEotClassifier` reserve at
+ * session arm and release on close/dispose. Loaders without an injected
+ * budget fall through to the process-wide shared budget
+ * (`ensureSharedVoiceBudget`). Reservation failure maps to
+ * `VoiceLifecycleError("ram-pressure")` via `reserveOrRamPressure` — never
+ * log-and-continue. `emotion` + `speaker-id` reservations land when those
+ * models register.
  */
 
 import {
@@ -47,7 +46,9 @@ import {
 	type DeviceTierAssessment,
 	effectiveModelMemoryGb,
 } from "../device-tier";
+import { probeHardware } from "../hardware";
 import type { HardwareProbe } from "../types";
+import { VoiceLifecycleError } from "./lifecycle";
 import {
 	RESIDENT_ROLE_PRIORITY,
 	type ResidentModelRole,
@@ -632,4 +633,78 @@ export function createVoiceBudgetForTest(args: {
 		totalBytes: args.totalBytes,
 		assessment: args.assessment,
 	});
+}
+
+/* ==================================================================== *
+ * Shared process-wide budget + loader reservation envelopes (#12254).
+ * ==================================================================== */
+
+/**
+ * Per-component reservation envelopes for the small always-armed voice
+ * models, sourced from the R9 §2.3 ensemble table above:
+ *   - VAD: Silero v5 GGML weights + recurrent state (`vadMb` = 2 MB).
+ *   - Wake word: openWakeWord backbone + head (`wakeWordMb` = 4 MB).
+ *   - Fused EOT scorer: no separate weights (it scores P(<end_of_turn>)
+ *     through the resident text model) — this covers its dedicated native
+ *     scoring context (≤128-token KV cleared per call + logits buffer).
+ */
+export const VAD_RESERVE_BYTES = 2 * BYTES_PER_MB;
+export const WAKE_WORD_RESERVE_BYTES = 4 * BYTES_PER_MB;
+export const FUSED_EOT_SCORER_RESERVE_BYTES = 8 * BYTES_PER_MB;
+
+/**
+ * Per-turn TTS transient decode peaks reserved by `VoicePipeline.run()`:
+ * OmniVoice's MaskGIT decode peak is ~1.17 GB measured on Metal
+ * (`transientTtsBufferMb` above); Kokoro's ONNX/GGML compute path is kept
+ * at the table's 100 MB envelope.
+ */
+export const OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES = Math.round(
+	1.17 * BYTES_PER_GB,
+);
+export const KOKORO_TTS_TRANSIENT_PEAK_BYTES = 100 * BYTES_PER_MB;
+
+/**
+ * Reserve against `budget`, translating allocator exhaustion into the
+ * lifecycle's structured RAM-pressure failure so an over-budget arm
+ * surfaces exactly like an over-budget mmap (`lifecycle.ts` error
+ * taxonomy). All loader call sites go through this — no log-and-continue.
+ */
+export async function reserveOrRamPressure(
+	budget: VoiceBudget,
+	args: {
+		modelId: string;
+		role: ResidentModelRole;
+		bytes: number;
+		priority?: AllocationPriority;
+	},
+): Promise<BudgetReservation> {
+	try {
+		return await budget.reserve(args);
+	} catch (err) {
+		if (err instanceof BudgetExhaustedError) {
+			throw new VoiceLifecycleError("ram-pressure", err.message);
+		}
+		throw err;
+	}
+}
+
+let sharedBudget: Promise<VoiceBudget> | null = null;
+
+/**
+ * The process-wide budget every loader falls back to when no budget is
+ * injected. Memory is a process-wide resource, so one allocator instance
+ * arbitrates all reservations; the hardware probe runs once and is cached.
+ */
+export function ensureSharedVoiceBudget(): Promise<VoiceBudget> {
+	if (!sharedBudget) {
+		sharedBudget = probeHardware().then((probe) =>
+			createVoiceBudget({ probe }),
+		);
+	}
+	return sharedBudget;
+}
+
+/** Test seam — pin (or clear, with `null`) the shared budget instance. */
+export function setSharedVoiceBudgetForTest(budget: VoiceBudget | null): void {
+	sharedBudget = budget ? Promise.resolve(budget) : null;
 }

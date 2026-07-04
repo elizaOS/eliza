@@ -1,3 +1,8 @@
+/**
+ * Browser build of `./utils`: filesystem-backed path resolution has no
+ * meaning in-browser, so these are fixed-value stubs; `sanitizeJsonObject` is
+ * the real, shared implementation (mirrored in `./utils.node.ts`).
+ */
 export function expandTildePath(filepath: string): string {
   return filepath;
 }
@@ -16,12 +21,13 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
   }
 
   if (typeof value === "string") {
-    const nullChar = String.fromCharCode(0);
-    const nullCharRegex = new RegExp(nullChar, "g");
-    return value
-      .replace(nullCharRegex, "")
-      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
-      .replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u");
+    // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
+    // escape JSON.stringify emits for them. Nothing else needs rewriting here --
+    // the value is serialized with JSON.stringify, which already escapes
+    // backslashes and control characters correctly; re-escaping them here
+    // would corrupt already-escaped strings (e.g. "C:\Users") on a
+    // write/read round-trip.
+    return value.replace(new RegExp(String.fromCharCode(0), "g"), "");
   }
 
   if (typeof value === "object") {
@@ -35,13 +41,9 @@ export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new W
     }
 
     const result: Record<string, unknown> = {};
-    const nullChar = String.fromCharCode(0);
-    const nullCharRegex = new RegExp(nullChar, "g");
     for (const [key, val] of Object.entries(value)) {
       const sanitizedKey =
-        typeof key === "string"
-          ? key.replace(nullCharRegex, "").replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u")
-          : key;
+        typeof key === "string" ? key.replace(new RegExp(String.fromCharCode(0), "g"), "") : key;
       result[sanitizedKey] = sanitizeJsonObject(val, seen);
     }
     return result;

@@ -1,3 +1,5 @@
+/** Unit tests for `ElizaCloudClient` against a recording mock fetch: auth-header injection, request shaping, and `CloudApiError` on non-2xx. */
+
 import { describe, expect, it } from "vitest";
 import { ElizaCloudClient } from "./client.js";
 import { CloudApiError } from "./http.js";

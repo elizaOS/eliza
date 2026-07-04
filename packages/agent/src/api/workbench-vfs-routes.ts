@@ -5,11 +5,12 @@ import {
   isLocalCodeExecutionAllowed,
 } from "@elizaos/core";
 import type {
+  CloudCodingContainerService,
   CloudVfsBundle,
   PromoteVfsToCloudContainerRequest,
-  PromoteVfsToCloudContainerResponse,
 } from "@elizaos/shared";
 import {
+  CLOUD_CONTAINER_SERVICE_TYPE,
   PostWorkbenchVfsCompilePluginRequestSchema,
   PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
@@ -481,23 +482,17 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
   ctx.error(ctx.res, err instanceof Error ? err.message : String(err), 500);
 }
 
-interface CloudCodingContainerServiceLike {
-  promoteVfsToCloudContainer(
-    request: PromoteVfsToCloudContainerRequest,
-  ): Promise<PromoteVfsToCloudContainerResponse>;
-}
-
 function getCloudCodingContainerService(
   runtime: AgentRuntime,
-): CloudCodingContainerServiceLike | null {
-  const service =
-    runtime.getService("CLOUD_CONTAINER") ??
-    runtime.getService("cloud-container") ??
-    runtime.getService("cloudContainer");
+): Pick<CloudCodingContainerService, "promoteVfsToCloudContainer"> | null {
+  const service = runtime.getService(CLOUD_CONTAINER_SERVICE_TYPE);
   if (!service || typeof service !== "object") return null;
-  const candidate = service as Partial<CloudCodingContainerServiceLike>;
+  const candidate = service as Partial<CloudCodingContainerService>;
   return typeof candidate.promoteVfsToCloudContainer === "function"
-    ? (candidate as CloudCodingContainerServiceLike)
+    ? (candidate as Pick<
+        CloudCodingContainerService,
+        "promoteVfsToCloudContainer"
+      >)
     : null;
 }
 

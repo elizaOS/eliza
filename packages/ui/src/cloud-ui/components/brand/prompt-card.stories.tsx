@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for PromptCard / PromptCardGrid.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { PromptCard, PromptCardGrid } from "./prompt-card";
 

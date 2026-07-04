@@ -12,10 +12,14 @@
  *
  *   - `read` / `dry-run`            → never need authorization (unchanged);
  *   - `destructive`                 → ALWAYS require human confirmation;
- *   - self-spend commands           → auto-authorize only while the running
- *     (debit our own credits)         total + the command's estimated cost stays
- *                                     within the cap; otherwise fall back to
- *                                     confirmation;
+ *   - self-spend, server-known cost → auto-authorize only while the running
+ *     (containers.*)                  total + the base cost stays within the
+ *                                     cap; otherwise fall back to confirmation;
+ *   - self-spend, variable cost     → ALWAYS require human confirmation — the
+ *     (domains.buy, media.*,          real price is server-quoted and the only
+ *      promote.*, advertising.*)      in-band estimate is the child's untrusted
+ *                                     self-declared hint, which must never
+ *                                     auto-authorize a real external spend;
  *   - other `mutating` / `paid`     → auto-authorize while the allowance is
  *     (state changes + revenue        active. These do not debit our balance
  *      ops the *payer* funds, e.g.    (e.g. `apps.charges.create` creates a
@@ -76,6 +80,25 @@ export const SELF_SPEND_COMMANDS: ReadonlySet<string> = new Set([
   "advertising.creatives.create",
 ]);
 
+/**
+ * Self-spend commands whose real charge is a fixed, server-known base cost that
+ * the operator cannot under-declare below. Only these may auto-authorize from a
+ * cost estimate — the estimate is floored to the base, so a rogue/injected
+ * sub-agent cannot meter them under the cap.
+ *
+ * Every OTHER self-spend command (domains.buy, media.*, promote.*,
+ * advertising.*) has a variable, quote-time price the server determines. Its
+ * only in-band cost signal is the child sub-agent's own `spendEstimateUsd`
+ * hint, which is untrusted (parsed verbatim from the child directive JSON). A
+ * self-declared price can therefore never auto-authorize a real external
+ * spend — those commands always fall through to human confirmation (#11952,
+ * the positive-under-declaration residual of #10980).
+ */
+export const SERVER_KNOWN_COST_COMMANDS: ReadonlySet<string> = new Set([
+  "containers.create",
+  "containers.update",
+]);
+
 /** Coerce an unknown value to a finite, non-negative number, or `null`. */
 function toNonNegativeNumber(value: unknown): number | null {
   if (typeof value === "number") {
@@ -105,21 +128,21 @@ export function estimateSelfSpendCostUsd(
   command: string,
   params?: Record<string, unknown>,
 ): number | null {
-  const rawHint = toNonNegativeNumber(params?.[SPEND_HINT_PARAM]);
-  // A declared cost of exactly 0 for a *paid* command is not a credible price —
-  // treat it as "no hint". Otherwise an attacker-declared `spendEstimateUsd: 0`
-  // meters the command at $0 and slips under any cap forever (the old
-  // `hint ?? default` also returned 0, because `??` only catches null/undefined).
-  const positiveHint = rawHint !== null && rawHint > 0 ? rawHint : null;
-  if (command === "containers.create" || command === "containers.update") {
-    // Containers have a known base daily cost. Never meter below it — a caller
-    // that omits or under-declares the hint is still charged at least the base.
+  if (SERVER_KNOWN_COST_COMMANDS.has(command)) {
+    // Containers have a known base daily cost. Meter at least the base — a
+    // caller that omits or under-declares the hint is still charged the floor,
+    // and a hint above the base is honored. A declared cost of exactly 0 (which
+    // `??` would NOT catch) can never pull the estimate below the base.
+    const rawHint = toNonNegativeNumber(params?.[SPEND_HINT_PARAM]);
+    const positiveHint = rawHint !== null && rawHint > 0 ? rawHint : null;
     return Math.max(positiveHint ?? 0, CONTAINER_DAILY_COST_USD);
   }
-  // domains.buy, media.*, promote.*, advertising.* — require an explicit,
-  // positive hint (e.g. the quoted price from domains.check). Unknown or a
-  // non-positive declared cost → null → the caller asks a human to confirm.
-  return positiveHint;
+  // domains.buy, media.*, promote.*, advertising.* — variable, server-quoted
+  // price. The only in-band signal is the child's self-declared hint, which is
+  // untrusted, so it can never auto-authorize a real external spend. Always
+  // return null → the caller (decideSpendAuthorization) requires a human
+  // confirm regardless of the declared amount (#11952).
+  return null;
 }
 
 export interface SpendDecisionInput {

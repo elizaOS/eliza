@@ -1,3 +1,8 @@
+/**
+ * Keyless coverage that a generated app lands in the real registry with a catalog
+ * tile, hero, and dispatchable routes. Runs on the pr-deterministic lane under the
+ * LLM proxy.
+ */
 import { promises as fs } from "node:fs";
 import type http from "node:http";
 import os from "node:os";

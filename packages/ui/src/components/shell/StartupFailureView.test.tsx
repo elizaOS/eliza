@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// StartupFailureView recovery affordances per failure reason (e.g. an
+// unreachable saved backend offers a cloud-first reset). Real component in jsdom;
+// branding, bug-report, platform reload, and translation are mocked.
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

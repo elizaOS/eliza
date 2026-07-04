@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 // iOS Simulator first-run REMOTE-CONNECT smoke. WKWebView is not CDP-drivable
-// like Android, so the harness writes a Capacitor Preferences request (which
-// arms the in-app verifier), launches the installed app, then fires the real
-// `<scheme>://first-run/runtime/remote?api=<url>` deep link via `simctl
-// openurl`. The app connects to the remote + completes first-run on its own;
-// the in-app verifier proves it landed on home and reports back via Preferences.
-// No onboarding DOM is driven, so the lane survives the in-chat redesign.
+// like Android, so the harness writes a Capacitor Preferences request, launches
+// the installed app, and lets the in-app verifier drive the same hardened
+// first-run remote-connect handler used by the OS deep-link path. The verifier
+// proves the app landed on home and reports back via Preferences. No onboarding
+// DOM is driven, so the lane survives the in-chat redesign.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +26,9 @@ const cleanupHelperScript = path.join(
 );
 const REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const RESULT_KEY = "eliza:ios-onboarding-smoke:result";
-const DEFAULT_API_BASE = "http://127.0.0.1:31337";
+const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
+const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
+const DEFAULT_API_BASE = "http://127.0.0.1:31338";
 
 const has = (flag) => process.argv.includes(flag);
 const val = (flag, fallback = null) => {
@@ -303,6 +304,8 @@ function clearFirstRunState(udid, appId) {
   for (const key of [
     REQUEST_KEY,
     RESULT_KEY,
+    ATTACHMENT_REQUEST_KEY,
+    ATTACHMENT_RESULT_KEY,
     "elizaos:active-server",
     "eliza:first-run-complete",
     "eliza:setup:step",
@@ -406,12 +409,13 @@ async function main() {
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
-    // Fire the real OS deep link that carries the remote agent URL. The app's
-    // CONNECT_EVENT path connects + completes first-run; the in-app verifier
-    // (runIosOnboardingSmokeIfRequested) then proves it landed on home.
     const deepLink = `${urlScheme}://first-run/runtime/remote?api=${encodeURIComponent(apiBase)}`;
-    log(`opening first-run remote deep link: ${deepLink}`);
-    simctl(["openurl", udid, deepLink]);
+    if (has("--os-deep-link")) {
+      log(`opening first-run remote deep link: ${deepLink}`);
+      simctl(["openurl", udid, deepLink]);
+    } else {
+      log(`armed in-app first-run remote connect for ${apiBase}`);
+    }
     takeScreenshot(udid, "fresh-onboarding");
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "home-landing");

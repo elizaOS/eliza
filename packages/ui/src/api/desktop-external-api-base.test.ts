@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for reading and validating the desktop-injected external API
+ * base origin from the window global. Window global stubbed, no real shell.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getDesktopExternalApiBaseOrigin,

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for CalendlyAdapter: mapping scheduled events into MessageRefs
+ * (tolerating malformed start times), delegating to a connected CalendlyService,
+ * and the env-credential fallback — with a mocked service, no live Calendly.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CalendlyAdapter } from "./lifeops-message-adapter.js";

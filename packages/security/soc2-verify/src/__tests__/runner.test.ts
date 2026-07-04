@@ -1,3 +1,7 @@
+/**
+ * Tests the SOC2 verification orchestrator and critical-failure summary logic.
+ */
+
 import { describe, expect, it } from "vitest";
 import { hasCriticalFailures, runVerification } from "../runners/run.js";
 

@@ -1,3 +1,4 @@
+/** Unit test for `fetchRetweetersPage`, asserting Twitter API v2 retweeter payloads map into plugin retweeters; mocked API. */
 import { describe, expect, it, vi } from "vitest";
 import { fetchRetweetersPage } from "./tweets";
 

@@ -42,6 +42,8 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   // packages/app/test/route-coverage.test.ts). Kept in exact lockstep by
   // plugin-view-llm-mock-coverage.test.ts; PLUGIN_VIEW_LLM_MOCK_JOURNEYS derives
   // one journey per case below.
+  { id: "birdclaw", viewType: "gui", path: "/birdclaw" },
+  { id: "birdclaw", viewType: "tui", path: "/birdclaw" },
   { id: "contacts", viewType: "gui", path: "/contacts" },
   { id: "contacts", viewType: "tui", path: "/contacts" },
   { id: "hyperliquid", viewType: "gui", path: "/hyperliquid" },
@@ -125,6 +127,7 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "social-alpha", viewType: "xr", path: "/social-alpha" },
   { id: "facewear", viewType: "xr", path: "/apps/facewear" },
   { id: "smartglasses", viewType: "xr", path: "/apps/smartglasses" },
+  { id: "birdclaw", viewType: "xr", path: "/birdclaw" },
 ];
 
 const formatPluginViewLabel = (id: string) =>

@@ -1,3 +1,4 @@
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -70,7 +71,8 @@ export function PlanDock({
       className="rounded-md border border-border/50 bg-card/40"
       data-testid="orchestrator-plan"
     >
-      <button
+      <Button
+        unstyled
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
@@ -83,7 +85,7 @@ export function PlanDock({
         <span className="font-mono text-2xs tabular-nums text-muted">
           {done}/{entries.length}
         </span>
-      </button>
+      </Button>
       {open ? (
         <ul className="space-y-0.5 px-2.5 pb-2">
           {entries.map((entry, index) => (

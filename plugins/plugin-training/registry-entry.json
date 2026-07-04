@@ -49,6 +49,10 @@
     "routePlugin": {
       "specifier": "@elizaos/plugin-training/setup-routes",
       "exportName": "trainingPlugin"
+    },
+    "runtimeHook": {
+      "specifier": "@elizaos/plugin-training",
+      "exportName": "registerTrainingRuntimeHooks"
     }
   }
 }

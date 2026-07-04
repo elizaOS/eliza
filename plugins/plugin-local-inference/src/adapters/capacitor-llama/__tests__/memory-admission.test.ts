@@ -1,3 +1,10 @@
+/**
+ * Deterministic fit-math tests for the mobile GPU memory-admission planner
+ * (#11612). Feeds the measured iPhone 16 Pro Max (A18) numbers into
+ * `planMobileGpuAdmission` and pins the n_ubatch=256 fit against the pre-fix
+ * OOM configuration; arithmetic only, no device.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	extractLayerCount,

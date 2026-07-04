@@ -1,3 +1,8 @@
+/**
+ * Storybook states for UiRenderer over sample `UiSpec`s: a form spec, a
+ * dashboard spec, the loading skeleton, and auth-gated visibility for an
+ * unauthenticated viewer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { UiSpec } from "../../config/ui-spec";
 import { withMockApp } from "../../storybook/mock-providers.helpers";

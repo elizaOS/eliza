@@ -1,3 +1,8 @@
+/**
+ * Exercises the local-inference route handler (catalog / download / status /
+ * chat-command) against mocked service and device-bridge seams — no real model
+ * or FFI backend is loaded.
+ */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import { tmpdir } from "node:os";

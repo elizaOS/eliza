@@ -1,3 +1,11 @@
+/**
+ * `tokenBalanceProvider` injects an ERC-20 balance into planner context when
+ * the incoming message looks balance/token-related (keyword + regex gate).
+ * It runs a small-model intent extraction to pull the token symbol and chain
+ * from free text, resolves the token address via Li.Fi, and reads the
+ * on-chain balance directly. Returns an empty result on no-match, and a
+ * text-only error result (never throws) when resolution fails.
+ */
 import {
   type IAgentRuntime,
   type Memory,

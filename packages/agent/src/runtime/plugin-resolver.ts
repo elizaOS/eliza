@@ -60,21 +60,19 @@ import {
   scanDropInPlugins,
 } from "./plugin-types.ts";
 
-const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
-  "@elizaos/plugin-resolver/last-failed-plugin-names",
-);
+/** {name,error} for a plugin that failed to load on the last resolve pass. */
+export interface FailedPluginDetail {
+  name: string;
+  error: string;
+}
 
-type GlobalWithLastFailedPluginNames = typeof globalThis & {
-  [LAST_FAILED_PLUGIN_NAMES]?: string[];
-};
-
-const LAST_FAILED_PLUGIN_DETAILS = Symbol.for(
-  "@elizaos/plugin-resolver/last-failed-plugin-details",
-);
-
-type GlobalWithLastFailedPluginDetails = typeof globalThis & {
-  [LAST_FAILED_PLUGIN_DETAILS]?: Array<{ name: string; error: string }>;
-};
+/**
+ * The failure list from the most recent `resolvePlugins` pass in this module
+ * instance. Owned by the resolver rather than stashed on globalThis: readers
+ * (dev boot-history route, PGlite recovery skip-list) import the typed accessors
+ * below, which resolve to the same `@elizaos/agent` copy that ran the resolve.
+ */
+let lastFailedPluginDetails: readonly FailedPluginDetail[] = [];
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-calendar",
@@ -541,6 +539,27 @@ function resolveWorkspaceRoots(): string[] {
   return uniquePaths([process.cwd()]);
 }
 
+/**
+ * Whether the runtime may fall back to importing a plugin's unbuilt workspace
+ * `src/` tree (bypassing package `exports`/`dist`) when normal resolution fails.
+ *
+ * Dev-only escape hatch: a production build must resolve plugins through the
+ * bundle or node_modules, never a sibling `src/` tree. Honors the existing
+ * `ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES` kill switch, refuses in a
+ * production runtime (mirrors crash-injection's production signal), and allows
+ * an explicit `ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC=1` override for production
+ * debugging.
+ */
+export function isWorkspacePluginSourceFallbackAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") return false;
+  const isProduction =
+    env.NODE_ENV === "production" || env.ELIZA_BUILD_VARIANT === "production";
+  if (isProduction) return env.ELIZA_ALLOW_WORKSPACE_PLUGIN_SRC === "1";
+  return true;
+}
+
 function getWorkspacePluginOverridePath(pluginName: string): string | null {
   if (process.env.ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES === "1") {
     return null;
@@ -828,22 +847,15 @@ async function findNearestNodeModulesDir(
   }
 }
 
-function setLastFailedPlugins(
-  failed: ReadonlyArray<{ name: string; error: string }>,
-): void {
-  (globalThis as GlobalWithLastFailedPluginNames)[LAST_FAILED_PLUGIN_NAMES] =
-    failed.map((plugin) => plugin.name);
-  (globalThis as GlobalWithLastFailedPluginDetails)[
-    LAST_FAILED_PLUGIN_DETAILS
-  ] = failed.map((plugin) => ({ name: plugin.name, error: plugin.error }));
+function setLastFailedPlugins(failed: ReadonlyArray<FailedPluginDetail>): void {
+  lastFailedPluginDetails = failed.map((plugin) => ({
+    name: plugin.name,
+    error: plugin.error,
+  }));
 }
 
 export function getLastFailedPluginNames(): string[] {
-  return [
-    ...((globalThis as GlobalWithLastFailedPluginNames)[
-      LAST_FAILED_PLUGIN_NAMES
-    ] ?? []),
-  ];
+  return lastFailedPluginDetails.map((plugin) => plugin.name);
 }
 
 /**
@@ -852,15 +864,11 @@ export function getLastFailedPluginNames(): string[] {
  * the error message (e.g. a missing-export from a stale @elizaos/* copy) so the
  * dev boot-history endpoint can surface it without log scraping.
  */
-export function getLastFailedPluginDetails(): Array<{
-  name: string;
-  error: string;
-}> {
-  return [
-    ...((globalThis as GlobalWithLastFailedPluginDetails)[
-      LAST_FAILED_PLUGIN_DETAILS
-    ] ?? []),
-  ];
+export function getLastFailedPluginDetails(): FailedPluginDetail[] {
+  return lastFailedPluginDetails.map((plugin) => ({
+    name: plugin.name,
+    error: plugin.error,
+  }));
 }
 
 async function findAncestorNodeModulesDirs(

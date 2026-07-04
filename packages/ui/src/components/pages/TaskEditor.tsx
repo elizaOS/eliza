@@ -1,37 +1,47 @@
 /**
- * TaskEditor — single-screen editor for a "simple" automation: title,
- * prompt, and a schedule (once / recurring cron / on-event).
+ * TaskEditor — single-screen editor for a prompt automation (glossary term):
+ * title, prompt, and a schedule (once / recurring cron / on-event). No node
+ * graph — that's a workflow, a separate surface (WorkflowEditor).
  *
- * Most users land here and don't need a node graph. The editor calls
- * `client.createWorkbenchTask` / `client.updateWorkbenchTask`. The
- * schedule is stored as `tags` because the WorkbenchTask shape doesn't
- * have a dedicated schedule field — the existing AutomationsView already
- * uses tags as free-form metadata. When the workflow plugin grows a
- * dedicated `cron` field on WorkbenchTask we can drop the tag encoding.
+ * Most users land here and don't need a node graph. A recurring or
+ * on-event schedule is a prompt-kind `TriggerConfig` — the editor creates
+ * it via the trigger API (`client.createTrigger` with `kind: "prompt"`,
+ * no workflowId), and the one trigger clock fires the prompt as an agent
+ * turn. A plain "once" task with no recurrence stays a workbench task
+ * (`client.createWorkbenchTask`). Schedule is never encoded onto tags.
  */
 
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
-import type { WorkbenchTask } from "../../api/client-types-config";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
-import {
-  encodeScheduleTags,
-  type TaskScheduleKind,
-} from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 
-export type { TaskScheduleKind } from "../../utils/task-schedule";
+/** How the simple automation recurs. Drives which persistence path runs. */
+export type TaskScheduleKind = "once" | "recurring" | "event";
 
 export interface TaskEditorInitialValue {
+  /** Workbench-task id, set only when editing a plain "once" task. */
   id?: string;
+  /**
+   * Trigger id, set only when editing an existing prompt-kind trigger
+   * (`scheduleKind` is "recurring" or "event"). Mutually exclusive with `id`.
+   */
+  triggerId?: string;
   name: string;
   prompt: string;
   scheduleKind: TaskScheduleKind;
@@ -47,7 +57,7 @@ export interface TaskEditorProps {
    * prop so this component stays free of upstream coupling.
    */
   availableEvents?: ReadonlyArray<{ id: string; label: string }>;
-  onSaved?: (task: WorkbenchTask) => void;
+  onSaved?: () => void;
   onCancel?: () => void;
 }
 
@@ -72,6 +82,10 @@ export function TaskEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Editing an existing automation when either a workbench-task id (plain
+  // "once" task) or a trigger id (recurring/event prompt trigger) is present.
+  const isEditing = Boolean(initial?.id || initial?.triggerId);
+
   const cronPreview = useMemo(
     () => (scheduleKind === "recurring" ? formatSchedule(cron) : null),
     [scheduleKind, cron],
@@ -82,7 +96,7 @@ export function TaskEditor({
     role: "text-input",
     label: t("taskeditor.titleLabel", { defaultValue: "Title" }),
     group: "task-editor",
-    description: "Task title",
+    description: "Prompt automation title",
     getValue: () => name,
     onFill: (value) => setName(value),
   });
@@ -91,7 +105,7 @@ export function TaskEditor({
     role: "textarea",
     label: t("taskeditor.promptLabel", { defaultValue: "Prompt" }),
     group: "task-editor",
-    description: "Prompt the agent runs for this task",
+    description: "Prompt the agent runs for this prompt automation",
     getValue: () => prompt,
     onFill: (value) => setPrompt(value),
   });
@@ -104,12 +118,12 @@ export function TaskEditor({
     getValue: () => cron,
     onFill: (value) => setCron(value),
   });
-  const eventField = useAgentElement<HTMLSelectElement>({
+  const eventField = useAgentElement<HTMLButtonElement>({
     id: "task-event",
     role: "select",
     label: t("taskeditor.eventLabel", { defaultValue: "Trigger event" }),
     group: "task-editor",
-    description: "Trigger event that runs this task",
+    description: "Trigger event that runs this prompt automation",
     options: availableEvents.map((event) => event.id),
     getValue: () => eventName,
     onFill: (value) => setEventName(value),
@@ -125,11 +139,13 @@ export function TaskEditor({
   const saveButton = useAgentElement<HTMLButtonElement>({
     id: "task-save",
     role: "button",
-    label: initial?.id
-      ? t("taskeditor.saveTask", { defaultValue: "Save task" })
-      : t("taskeditor.createTask", { defaultValue: "Create task" }),
+    label: isEditing
+      ? t("taskeditor.saveTask", { defaultValue: "Save prompt automation" })
+      : t("taskeditor.createTask", {
+          defaultValue: "Create prompt automation",
+        }),
     group: "task-editor",
-    description: "Save the task",
+    description: "Save the prompt automation",
   });
 
   const submit = useCallback(async () => {
@@ -150,26 +166,69 @@ export function TaskEditor({
     setError(null);
     setBusy(true);
     try {
-      const tags = encodeScheduleTags(scheduleKind, cron, eventName);
-      const payload = {
-        name: trimmedName,
-        description: trimmedPrompt,
-        tags,
-      };
-      const res = initial?.id
-        ? await client.updateWorkbenchTask(initial.id, payload)
-        : await client.createWorkbenchTask(payload);
-      onSaved?.(res.task);
+      if (scheduleKind === "recurring" || scheduleKind === "event") {
+        // A recurring or on-event schedule is a prompt-kind trigger: the one
+        // trigger clock fires `instructions` as an agent turn. No workflowId.
+        const request = {
+          kind: "prompt" as const,
+          displayName: trimmedName,
+          instructions: trimmedPrompt,
+          triggerType:
+            scheduleKind === "recurring" ? ("cron" as const) : ("event" as const),
+          cronExpression: scheduleKind === "recurring" ? cron.trim() : undefined,
+          eventKind: scheduleKind === "event" ? eventName.trim() : undefined,
+          wakeMode: "inject_now" as const,
+          enabled: true,
+        };
+        if (initial?.triggerId) {
+          await client.updateTrigger(initial.triggerId, request);
+        } else {
+          await client.createTrigger(request);
+          // Cross-boundary edit: this automation was a workbench "once" task and
+          // is now a trigger. Delete the stale workbench task so it doesn't keep
+          // existing alongside the new trigger (no duplicate).
+          if (initial?.id) {
+            await client.deleteWorkbenchTask(initial.id);
+          }
+        }
+      } else {
+        // Plain "once" task with no recurrence — a workbench task.
+        const payload = { name: trimmedName, description: trimmedPrompt };
+        if (initial?.id) {
+          await client.updateWorkbenchTask(initial.id, payload);
+        } else {
+          await client.createWorkbenchTask(payload);
+          // Cross-boundary edit: this automation was a recurring/event trigger
+          // and is now a plain "once" task. Delete the stale trigger so it stops
+          // firing (no duplicate).
+          if (initial?.triggerId) {
+            await client.deleteTrigger(initial.triggerId);
+          }
+        }
+      }
+      onSaved?.();
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
-          : t("taskeditor.saveError", { defaultValue: "Failed to save task." }),
+          : t("taskeditor.saveError", {
+              defaultValue: "Failed to save prompt automation.",
+            }),
       );
     } finally {
       setBusy(false);
     }
-  }, [name, prompt, scheduleKind, cron, eventName, initial?.id, onSaved, t]);
+  }, [
+    name,
+    prompt,
+    scheduleKind,
+    cron,
+    eventName,
+    initial?.id,
+    initial?.triggerId,
+    onSaved,
+    t,
+  ]);
 
   return (
     <PagePanel variant="padded" className="space-y-5">
@@ -201,7 +260,7 @@ export function TaskEditor({
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={t("taskeditor.promptPlaceholder", {
-            defaultValue: "What should the agent do when this task runs?",
+            defaultValue: "What should the agent do when this runs?",
           })}
           rows={5}
           data-testid="task-editor-prompt"
@@ -272,20 +331,23 @@ export function TaskEditor({
         )}
 
         {scheduleKind === "event" && availableEvents.length > 0 && (
-          <select
-            ref={eventField.ref}
-            value={eventName}
-            onChange={(e) => setEventName(e.target.value)}
-            className="w-full rounded-sm border border-border/40 bg-bg px-3 py-2 text-sm text-txt"
-            data-testid="task-editor-event"
-            {...eventField.agentProps}
-          >
-            {availableEvents.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.label}
-              </option>
-            ))}
-          </select>
+          <Select value={eventName} onValueChange={setEventName}>
+            <SelectTrigger
+              ref={eventField.ref}
+              className="w-full rounded-sm border-border/40 bg-bg text-sm text-txt"
+              data-testid="task-editor-event"
+              {...eventField.agentProps}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableEvents.map((event) => (
+                <SelectItem key={event.id} value={event.id}>
+                  {event.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </fieldset>
 
@@ -312,9 +374,13 @@ export function TaskEditor({
           {...saveButton.agentProps}
         >
           {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
-          {initial?.id
-            ? t("taskeditor.saveTask", { defaultValue: "Save task" })
-            : t("taskeditor.createTask", { defaultValue: "Create task" })}
+          {isEditing
+            ? t("taskeditor.saveTask", {
+                defaultValue: "Save prompt automation",
+              })
+            : t("taskeditor.createTask", {
+                defaultValue: "Create prompt automation",
+              })}
         </Button>
       </div>
     </PagePanel>
@@ -356,7 +422,7 @@ function ScheduleRadio({
             : "border-border/40 text-muted-strong hover:border-border"
       }`}
     >
-      <input
+      <Input
         ref={ref}
         id={id}
         type="radio"
@@ -395,10 +461,11 @@ function CronPresetButton({
     onActivate: () => onSelect(expression),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onSelect(expression)}
+      variant="ghost"
+      size="sm"
       className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
         active
           ? "border-accent bg-accent/10 text-accent"
@@ -407,6 +474,6 @@ function CronPresetButton({
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }

@@ -1,3 +1,4 @@
+/** Unit tests for the embeddings auto-enable predicate: on only when EMBEDDING_BASE_URL or EMBEDDING_API_KEY is set. */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 

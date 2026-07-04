@@ -1,3 +1,4 @@
+/** Storybook stories for the running-session Fast/Smart tier toggle. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 

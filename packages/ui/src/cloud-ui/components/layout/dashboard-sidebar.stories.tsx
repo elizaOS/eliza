@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the full DashboardSidebar.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   BarChart3,

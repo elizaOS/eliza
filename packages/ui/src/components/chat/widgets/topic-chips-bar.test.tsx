@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// TopicChipsBar: empty state with no topics, one chip per topic with selection
+// reporting, marking the active chip selected, and collapsing chips beyond
+// maxVisible into a +N overflow chip. Pure jsdom render over props (no backend).
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

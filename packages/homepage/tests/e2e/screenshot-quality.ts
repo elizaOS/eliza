@@ -1,3 +1,7 @@
+/**
+ * Screenshot quality helpers for rejecting blank or effectively single-color homepage captures.
+ */
+
 import { expect, type Page } from "playwright/test";
 import sharp from "sharp";
 

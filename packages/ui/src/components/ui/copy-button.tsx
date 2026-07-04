@@ -1,3 +1,7 @@
+/**
+ * Button that copies a string to the clipboard and briefly swaps its icon to a
+ * checkmark as copied-confirmation feedback (`feedbackDuration` ms).
+ */
 import { Check, Copy } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

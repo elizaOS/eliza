@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
+import { resolveModelGatewayConfig } from "./model-gateway.js";
 
 const ELIZA_CLOUD_OPENAI_BASE = "https://elizacloud.ai/api/v1";
 const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
@@ -145,6 +146,30 @@ export function buildOpencodeSpawnConfig(
     setting(runtime, env, "ELIZA_OPENCODE_MODEL_POWERFUL") ||
     setting(runtime, env, "OPENCODE_MODEL");
   const fast = setting(runtime, env, "ELIZA_OPENCODE_MODEL_FAST");
+
+  // Gateway mode (#11536 E2) — checked BEFORE any provider-credential read so
+  // no raw key (env, runtime settings, or config-env; `setting()` falls back
+  // to all three) can be embedded into OPENCODE_CONFIG_CONTENT, and the
+  // opencode child cannot bypass the gateway by talking to Cerebras / Eliza
+  // Cloud / a custom base URL directly. Provider auto-detection and custom
+  // base URLs are deliberately ignored here: gateway mode centralizes egress.
+  // Model names pass through unchanged (the gateway routes by model name),
+  // defaulting to the same chain the direct cerebras-api path uses, so
+  // flipping the gateway on changes transport + credentials, never the model.
+  const gateway = resolveModelGatewayConfig();
+  if (gateway) {
+    return providerConfig(
+      "eliza-gateway",
+      "Eliza Model Gateway",
+      OPENCODE_OPENAI_COMPATIBLE_NPM,
+      gateway.url,
+      gateway.token,
+      powerful ||
+        setting(runtime, env, "CEREBRAS_MODEL") ||
+        CEREBRAS_DEFAULT_MODEL,
+      fast,
+    );
+  }
 
   if (llmProvider === "cloud") {
     const cloudKey = readConfigCloudKey("apiKey");

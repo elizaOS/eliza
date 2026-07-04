@@ -1,0 +1,32 @@
+# aapt2 dump — Eliza Voice IME contract in the packaged APK
+# APK: packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+# Built: ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 ./gradlew :app:assembleDebug (compile-verification build)
+# aapt2: /Users/shawwalters/Library/Android/sdk/build-tools/36.0.0/aapt2
+
+## AndroidManifest.xml — ElizaVoiceInputMethodService service block
+            A: http://schemas.android.com/apk/res/android:label(0x01010001)=@0x7f0f0051
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="ai.elizaos.app.ElizaVoiceInputMethodService" (Raw: "ai.elizaos.app.ElizaVoiceInputMethodService")
+            A: http://schemas.android.com/apk/res/android:permission(0x01010006)="android.permission.BIND_INPUT_METHOD" (Raw: "android.permission.BIND_INPUT_METHOD")
+            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true
+              E: intent-filter (line=274)
+                  E: action (line=275)
+                    A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.view.InputMethod" (Raw: "android.view.InputMethod")
+              E: meta-data (line=278)
+                A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.view.im" (Raw: "android.view.im")
+                A: http://schemas.android.com/apk/res/android:resource(0x01010025)=@0x7f120006
+          E: activity (line=283)
+            A: http://schemas.android.com/apk/res/android:theme(0x01010000)=@0x7f100006
+            A: http://schemas.android.com/apk/res/android:label(0x01010001)=@0x7f0f0022
+            A: http://schemas.android.com/apk/res/android:name(0x01010003)="ai.elizaos.app.ElizaShareActivity" (Raw: "ai.elizaos.app.ElizaShareActivity")
+            A: http://schemas.android.com/apk/res/android:exported(0x01010010)=true
+              E: intent-filter (line=288)
+
+## res/xml/method.xml — voice-mode subtype + switch-back
+N: android=http://schemas.android.com/apk/res/android (line=15)
+  E: input-method (line=15)
+    A: http://schemas.android.com/apk/res/android:supportsSwitchingToNextInputMethod(0x010103eb)=true
+      E: subtype (line=20)
+        A: http://schemas.android.com/apk/res/android:label(0x01010001)=@0x7f0f0057
+        A: http://schemas.android.com/apk/res/android:imeSubtypeLocale(0x010102ec)="en_US" (Raw: "en_US")
+        A: http://schemas.android.com/apk/res/android:imeSubtypeMode(0x010102ed)="voice" (Raw: "voice")
+        A: http://schemas.android.com/apk/res/android:isAsciiCapable(0x010103e9)=false

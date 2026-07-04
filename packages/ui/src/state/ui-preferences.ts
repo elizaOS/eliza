@@ -1,3 +1,8 @@
+/**
+ * Types and defaults for persisted UI preferences — theme mode (light/dark/
+ * system), shell mode, and the app background config (shader uniforms, image).
+ * Owned by useDisplayPreferences; persisted to localStorage.
+ */
 export type UiTheme = "light" | "dark";
 
 /**
@@ -124,6 +129,63 @@ function shaderConfigsEqual(a?: ShaderConfig, b?: ShaderConfig): boolean {
     (a.presetId ?? "") === (b.presetId ?? "") &&
     uniformsEqual(a.uniforms, b.uniforms)
   );
+}
+
+/* ── Accent color presets ─────────────────────────────────────────────── */
+
+/**
+ * The default accent id — keeps the app's built-in brand accent (orange) by
+ * applying no `--accent` override, so base.css / the host brand theme wins.
+ */
+export const DEFAULT_ACCENT_ID = "default";
+
+/**
+ * A named accent color the user can pick for the app's `--accent` token. The
+ * `default` preset carries `color: null` (clears the override → brand accent).
+ * Kept to the app's curated warm/neutral palette — never blue (brand rule
+ * #8796).
+ */
+export interface AccentPreset {
+  /** Stable slug persisted + used by onboarding + Appearance settings. */
+  id: string;
+  /** Human-readable name shown on the swatch and to screen readers. */
+  label: string;
+  /**
+   * 6-digit hex applied to `--accent` (+ derived tokens), or `null` for the
+   * built-in brand accent.
+   */
+  color: string | null;
+  /** Emoji swatch used where only text labels render (in-chat onboarding). */
+  swatch: string;
+}
+
+/**
+ * The curated accent choices. Single source of truth shared by the Appearance
+ * settings swatches and the first-run onboarding accent step, so both drive the
+ * exact same persisted preference.
+ */
+export const ACCENT_PRESETS: readonly AccentPreset[] = [
+  { id: "default", label: "Eliza Orange", color: null, swatch: "🟠" },
+  { id: "amber", label: "Amber", color: "#f59e0b", swatch: "🟡" },
+  { id: "rose", label: "Rose", color: "#e11d48", swatch: "🌹" },
+  { id: "red", label: "Red", color: "#dc2626", swatch: "🔴" },
+  { id: "green", label: "Green", color: "#059669", swatch: "🟢" },
+  { id: "olive", label: "Olive", color: "#65a30d", swatch: "🫒" },
+];
+
+/** Coerce an unknown persisted value to a valid accent id (default fallback). */
+export function normalizeAccentId(value: unknown): string {
+  return typeof value === "string" && ACCENT_PRESETS.some((p) => p.id === value)
+    ? value
+    : DEFAULT_ACCENT_ID;
+}
+
+/**
+ * Resolve an accent id to its hex color, or `null` for the built-in brand
+ * accent (the `default` preset, or any unknown id).
+ */
+export function resolveAccentColor(id: string): string | null {
+  return ACCENT_PRESETS.find((p) => p.id === id)?.color ?? null;
 }
 
 /** Build a normalized glsl `BackgroundConfig` from a shader source + partials.

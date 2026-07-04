@@ -1,3 +1,4 @@
+/** Exercises `setAssignment` validation — rejecting unfit/unservable model assignments — against a real temp state dir. No model. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

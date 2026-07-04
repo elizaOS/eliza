@@ -1,3 +1,4 @@
+/** Barrel for the sidebar composite: shell root, body regions, and item primitives. */
 export * from "./nav-active";
 export * from "./sidebar-body";
 export * from "./sidebar-collapsed-rail";

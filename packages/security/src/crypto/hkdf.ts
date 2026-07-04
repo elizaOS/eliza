@@ -1,3 +1,7 @@
+/**
+ * HKDF-SHA256 derivation primitive used by KMS adapters to derive scoped subkeys.
+ */
+
 import { hkdfSync } from "node:crypto";
 
 /**

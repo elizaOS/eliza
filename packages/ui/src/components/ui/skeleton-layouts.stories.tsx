@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the skeleton-layout primitives (list/detail/table loading placeholders).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   DetailSkeleton,

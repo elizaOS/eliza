@@ -20,6 +20,8 @@ export type ApiErrorCode =
   | "insufficient_credits"
   | "session_not_ready"
   | "agent_quota_exceeded"
+  | "agent_image_not_allowed"
+  | "agent_image_not_digest_pinned"
   | "internal_error";
 
 export interface ApiErrorOptions {

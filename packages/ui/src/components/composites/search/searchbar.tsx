@@ -1,6 +1,13 @@
+/**
+ * Text search input with a leading magnifier and a trailing clear button that
+ * appears once there is a value; can show a loading spinner in place of the
+ * icon. Used for filter fields inside sidebars (e.g. the chat conversation list).
+ */
 import { Search, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../../lib/utils";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
 
 export interface SidebarSearchBarProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
@@ -37,7 +44,7 @@ export const SidebarSearchBar = React.forwardRef<
     return (
       <div className={cn("relative flex items-center", className)}>
         <Search className="pointer-events-none absolute left-3.5 h-4 w-4 text-muted" />
-        <input
+        <Input
           ref={ref}
           type="text"
           value={value}
@@ -48,14 +55,15 @@ export const SidebarSearchBar = React.forwardRef<
         {loading ? (
           <div className="absolute right-3.5 h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted/35 border-t-accent" />
         ) : hasValue && onClear ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label={clearLabel}
-            className="absolute right-2.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition-colors hover:text-txt   "
+            className="absolute right-2.5 h-6 w-6 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt"
             onClick={onClear}
           >
             <X className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         ) : null}
       </div>
     );

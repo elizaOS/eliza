@@ -1,3 +1,21 @@
+/**
+ * x402 **seller** middleware for plugin HTTP routes.
+ *
+ * **Why one middleware layer:** plugins should not each reimplement 402 bodies,
+ * header encodings, facilitator POSTs, replay semantics, or chain RPC checks.
+ * This module is the single integration point for “paid route” behavior.
+ *
+ * **Why multiple verification strategies coexist:** deployments differ—some
+ * have on-chain receipts only, some use facilitator payment IDs, some use modern
+ * `PAYMENT-SIGNATURE` payloads. Keeping strategies behind one `verifyPayment`
+ * function preserves one gate while letting operators choose what their clients send.
+ *
+ * **Why standard path calls settle:** see `x402-standard-payment.ts`—settlement is
+ * the economically meaningful step after verify for facilitator-backed flows.
+ *
+ * **Why we still emit legacy JSON 402:** backward compatibility for wallets and
+ * tools that parse the body; V2 clients additionally read `PAYMENT-REQUIRED`.
+ */
 import type {
   Character,
   IAgentRuntime,
@@ -75,25 +93,6 @@ import {
   type PaymentExtraMetadata,
   type X402Response,
 } from "./x402-types.js";
-
-/**
- * x402 **seller** middleware for plugin HTTP routes.
- *
- * **Why one middleware layer:** plugins should not each reimplement 402 bodies,
- * header encodings, facilitator POSTs, replay semantics, or chain RPC checks.
- * This module is the single integration point for “paid route” behavior.
- *
- * **Why multiple verification strategies coexist:** deployments differ—some
- * have on-chain receipts only, some use facilitator payment IDs, some use modern
- * `PAYMENT-SIGNATURE` payloads. Keeping strategies behind one `verifyPayment`
- * function preserves one gate while letting operators choose what their clients send.
- *
- * **Why standard path calls settle:** see `x402-standard-payment.ts`—settlement is
- * the economically meaningful step after verify for facilitator-backed flows.
- *
- * **Why we still emit legacy JSON 402:** backward compatibility for wallets and
- * tools that parse the body; V2 clients additionally read `PAYMENT-REQUIRED`.
- */
 
 /**
  * Set on routes returned by {@link applyPaymentProtection} so HTTP dispatch
@@ -612,15 +611,12 @@ async function verifyPayment(
  * Sanitize and validate payment ID format
  */
 function sanitizePaymentId(paymentId: string): string {
-  // Remove any whitespace
   const cleaned = paymentId.trim();
 
-  // Validate format (alphanumeric, hyphens, underscores only)
   if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
     throw new Error("Invalid payment ID format");
   }
 
-  // Limit length to prevent abuse
   if (cleaned.length > 128) {
     throw new Error("Payment ID too long");
   }
@@ -638,7 +634,6 @@ async function verifyPaymentIdViaFacilitator(
 ): Promise<boolean> {
   logSection("FACILITATOR VERIFICATION");
 
-  // Sanitize payment ID
   let cleanPaymentId: string;
   try {
     cleanPaymentId = sanitizePaymentId(paymentId);
@@ -1084,7 +1079,6 @@ async function verifyEip712Authorization(
 ): Promise<boolean> {
   log("Verifying EIP-712 authorization signature");
 
-  // Type guard for payment data
   if (typeof paymentData !== "object" || paymentData === null) {
     logError("Invalid payment data: must be an object");
     return false;
@@ -1113,7 +1107,6 @@ async function verifyEip712Authorization(
       return false;
     }
 
-    // Validate authorization fields
     if (
       !authorization.from ||
       !authorization.to ||
@@ -1130,7 +1123,6 @@ async function verifyEip712Authorization(
       value: authorization.value,
     });
 
-    // Null check before toLowerCase()
     if (!authorization.to) {
       logError('Authorization missing "to" field');
       return false;
@@ -1943,7 +1935,6 @@ function generateDescription(route: PaymentEnabledRoute): string {
   return `${action} ${resource}`;
 }
 
-// Re-export types from core
 export type { X402RequestValidator, X402ValidationResult } from "@elizaos/core";
 
 /**

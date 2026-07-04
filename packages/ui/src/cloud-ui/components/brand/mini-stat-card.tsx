@@ -1,3 +1,6 @@
+/**
+ * A compact label+value stat card for dense dashboard rows.
+ */
 import { cn } from "../../lib/utils";
 
 interface MiniStatCardProps {

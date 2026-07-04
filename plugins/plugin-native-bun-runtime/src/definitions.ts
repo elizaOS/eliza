@@ -89,6 +89,24 @@ export interface CallResult {
   result: unknown;
 }
 
+/** Handle returned by `addListener`; call `remove` to detach the listener. */
+export interface PluginListenerHandle {
+  remove: () => Promise<void>;
+}
+
+/**
+ * Chat token-stream events the native side pushes to the WebView while a
+ * `call({ method: "http_request_stream" })` runs (#12354). They mirror the
+ * Android `Agent` plugin's streaming contract so the shared
+ * `createNativeStreamingResponse` adapter reconstructs a live `ReadableStream`:
+ * one `agentStreamResponse` head, then `agentStreamChunk` per token, then
+ * `agentStreamComplete`.
+ */
+export type AgentStreamEventName =
+  | "agentStreamResponse"
+  | "agentStreamChunk"
+  | "agentStreamComplete";
+
 export interface LocalTtsStatusResult {
   ready: boolean;
   status: "assets-ready" | "engine-ready" | "ready" | "missing" | "unavailable";
@@ -149,4 +167,13 @@ export interface ElizaBunRuntimePlugin {
    * traffic from the React UI into the agent.
    */
   call(options: CallOptions): Promise<CallResult>;
+  /**
+   * Subscribe to a native event. Used for the chat token stream: the streaming
+   * adapter attaches `agentStream*` listeners before invoking
+   * `call({ method: "http_request_stream" })` (#12354).
+   */
+  addListener(
+    eventName: AgentStreamEventName,
+    listener: (event: unknown) => void,
+  ): Promise<PluginListenerHandle>;
 }

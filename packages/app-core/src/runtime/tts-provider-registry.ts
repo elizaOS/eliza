@@ -1,6 +1,5 @@
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import firstPartyRegistry from "@elizaos/registry/first-party/generated.json" with {
   type: "json",
 };
@@ -20,19 +19,21 @@ export type TtsModelHandler = (
   input: unknown,
 ) => Promise<unknown>;
 
+/**
+ * Metadata-only description of a TTS provider. The concrete handler is NOT
+ * referenced here — voice plugins self-register their `TEXT_TO_SPEECH` handler
+ * on the runtime at plugin load (via their `models` map / `registerModel`), and
+ * the fallback loader for the default provider lives in `tts-default-handler.ts`
+ * behind a bundler-resolvable literal import. This entry carries no importable
+ * module path, so it stays browser-safe and bundler-analyzable.
+ */
 export interface TextToSpeechProviderRegistration {
   pluginName: string;
   pluginConfigKey: string;
   providerName: string;
   priority: number;
-  loadHandler: () => Promise<TtsModelHandler>;
   wrapHandler?: (handler: TtsModelHandler) => Promise<TtsModelHandler | null>;
 }
-
-type TtsPluginModule = {
-  default?: { models?: Record<string, TtsModelHandler> };
-  edgeTTSPlugin?: { models?: Record<string, TtsModelHandler> };
-};
 
 type FirstPartyRegistryEntry = {
   id?: string;
@@ -40,47 +41,57 @@ type FirstPartyRegistryEntry = {
   subtype?: string;
 };
 
-function readHandler(
-  plugin: TtsPluginModule["default"],
-): TtsModelHandler | undefined {
-  const handler = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
-  return typeof handler === "function" ? handler : undefined;
-}
-
-function resolveDefaultTtsPluginName(): string {
-  const entries = (
+function findDefaultTtsPluginName(
+  entries: FirstPartyRegistryEntry[] | undefined = (
     firstPartyRegistry as { entries?: FirstPartyRegistryEntry[] }
-  ).entries;
+  ).entries,
+): string | null {
   const entry = entries?.find(
     (candidate) => candidate.id === "edge-tts" && candidate.subtype === "voice",
   );
-  if (!entry?.npmName) {
+  return entry?.npmName ?? null;
+}
+
+function createDefaultTextToSpeechProvider(
+  pluginName: string,
+): TextToSpeechProviderRegistration {
+  return {
+    pluginName,
+    pluginConfigKey: "edge-tts",
+    providerName: "edge-tts",
+    priority: 0,
+    wrapHandler: (handler) =>
+      wrapEdgeTtsHandlerWithFirstLineCache(handler as EdgeTtsHandler),
+  };
+}
+
+export function resolveDefaultTextToSpeechProvider(): TextToSpeechProviderRegistration {
+  return resolveDefaultTextToSpeechProviderFromEntries();
+}
+
+function resolveDefaultTextToSpeechProviderFromEntries(
+  entries?: FirstPartyRegistryEntry[],
+): TextToSpeechProviderRegistration {
+  const pluginName = findDefaultTtsPluginName(entries);
+  if (!pluginName) {
     throw new Error(
       "First-party registry entry edge-tts did not expose a voice plugin package name",
     );
   }
-  return entry.npmName;
+  return createDefaultTextToSpeechProvider(pluginName);
+}
+
+export function resolveDefaultTextToSpeechPluginName(): string | null {
+  return findDefaultTtsPluginName();
 }
 
 export const DEFAULT_TEXT_TO_SPEECH_PROVIDER: TextToSpeechProviderRegistration =
-  {
-    pluginName: resolveDefaultTtsPluginName(),
-    pluginConfigKey: "edge-tts",
-    providerName: "edge-tts",
-    priority: 0,
-    async loadHandler(): Promise<TtsModelHandler> {
-      const nodeModule = (await import(this.pluginName)) as TtsPluginModule;
-      const handler = readHandler(nodeModule.default);
-      if (!handler) {
-        throw new Error(
-          `${DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName} did not expose a TEXT_TO_SPEECH handler`,
-        );
-      }
-      return handler;
-    },
-    wrapHandler: (handler) =>
-      wrapEdgeTtsHandlerWithFirstLineCache(handler as EdgeTtsHandler),
-  };
+  createDefaultTextToSpeechProvider(findDefaultTtsPluginName() ?? "");
+
+export const __ttsProviderRegistryTestHooks = {
+  findDefaultTtsPluginName,
+  resolveDefaultTextToSpeechProviderFromEntries,
+};
 
 export function isTextToSpeechProviderDisabled(
   config: TextToSpeechProviderConfig,

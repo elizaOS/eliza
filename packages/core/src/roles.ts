@@ -1,10 +1,8 @@
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
-import type { IAgentRuntime, Memory, Role, UUID, World } from "./types";
+import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-
-const DEFAULT_SERVER_ROLE: Role = "NONE";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -37,6 +35,29 @@ export const ROLE_RANK: Record<RoleName, number> = {
 	OWNER: CANONICAL_ROLE_RANK.OWNER,
 };
 
+/**
+ * True iff `role` ranks at least `minRole` on {@link CANONICAL_ROLE_RANK}. The
+ * rank-aware replacement for the scattered `isAdminRank(role)`
+ * string comparisons (#12087 Item 31) — those silently miss any tier added between
+ * ADMIN and OWNER and don't recognize the MEMBER/USER aliasing. Unknown/empty roles
+ * fall to the NONE floor (rank 0), so the predicate fails closed.
+ */
+export function hasAtLeastRole(
+	role: string | undefined | null,
+	minRole: keyof typeof CANONICAL_ROLE_RANK,
+): boolean {
+	const rank =
+		CANONICAL_ROLE_RANK[
+			(role ?? "").toUpperCase() as keyof typeof CANONICAL_ROLE_RANK
+		] ?? 0;
+	return rank >= CANONICAL_ROLE_RANK[minRole];
+}
+
+/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). #12087 Item 31. */
+export function isAdminRank(role: string | undefined | null): boolean {
+	return hasAtLeastRole(role, "ADMIN");
+}
+
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };
 	roles?: Record<string, RoleName>;
@@ -66,13 +87,12 @@ export interface ServerOwnershipState {
 const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
 const CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
 const OWNER_CONTACTS_SETTING_KEY = "ELIZA_OWNER_CONTACTS_JSON";
-const CONNECTOR_ID_FIELDS = ["userId", "id", "username", "userName"] as const;
 const CONNECTOR_STABLE_ID_FIELDS = ["userId", "id"] as const;
-type ConnectorIdField = (typeof CONNECTOR_ID_FIELDS)[number];
+type ConnectorStableIdField = (typeof CONNECTOR_STABLE_ID_FIELDS)[number];
 type ConnectorAdminMatch = {
 	connector: string;
 	matchedValue: string;
-	matchedField: ConnectorIdField;
+	matchedField: ConnectorStableIdField;
 };
 
 type ResolveEntityRoleOptions = {
@@ -222,28 +242,6 @@ async function getEntityMetadata(
 		);
 		return undefined;
 	}
-}
-
-export async function getUserServerRole(
-	runtime: IAgentRuntime,
-	entityId: string,
-	serverId: string,
-): Promise<Role> {
-	const worldId = createUniqueUuid(runtime, serverId);
-	const world = await runtime.getWorld(worldId);
-
-	const worldMetadata = world?.metadata;
-	const roles = worldMetadata?.roles;
-	if (!roles) {
-		return DEFAULT_SERVER_ROLE;
-	}
-
-	const role = roles[entityId as UUID];
-	if (role) {
-		return role;
-	}
-
-	return DEFAULT_SERVER_ROLE;
 }
 
 export async function findWorldsForOwner(
@@ -526,7 +524,7 @@ export function matchEntityToConnectorAdminWhitelist(
 			continue;
 		}
 
-		for (const field of CONNECTOR_ID_FIELDS) {
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
 			const value = connectorMeta[field];
 			if (typeof value === "string" && platformIds.includes(value)) {
 				return { connector, matchedValue: value, matchedField: field };
@@ -540,6 +538,12 @@ export function matchEntityToConnectorAdminWhitelist(
 export function normalizeRole(raw: string | undefined | null): RoleName {
 	const upper = (raw ?? "").toUpperCase();
 	if (upper === "OWNER" || upper === "ADMIN" || upper === "USER") return upper;
+	// MEMBER is the USER-tier alias (CANONICAL_ROLE_RANK.MEMBER === .USER). Folding
+	// it to GUEST here (rank 2 → 1) silently demoted a stored "MEMBER" world role
+	// below a `minRole: USER` gate that the context-gate path (normalizeGateRole
+	// folds USER→MEMBER) would grant — the #12087 Item 6 asymmetry. Resolve MEMBER
+	// to its canonical USER tier so both paths agree.
+	if (upper === "MEMBER") return "USER";
 	return "GUEST";
 }
 
@@ -786,8 +790,8 @@ export async function checkSenderPrivateAccess(
 		entityId,
 		role,
 		isOwner: false,
-		isAdmin: role === "OWNER" || role === "ADMIN",
-		canManageRoles: role === "OWNER" || role === "ADMIN",
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
 		hasPrivateAccess: explicitAccess !== null,
 		accessRole: explicitAccess?.role ?? null,
 		accessSource: explicitAccess?.source ?? null,
@@ -857,8 +861,8 @@ export async function checkSenderRole(
 		entityId,
 		role,
 		isOwner: role === "OWNER",
-		isAdmin: role === "OWNER" || role === "ADMIN",
-		canManageRoles: role === "OWNER" || role === "ADMIN",
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
 	};
 }
 
@@ -895,12 +899,32 @@ export function isAgentSelf(
 	return context.message.entityId === context.runtime.agentId;
 }
 
+/**
+ * Injectable role-resolution seam for {@link hasRoleAccess} (#12087 Item 18).
+ * Lets callers (e.g. plugin-manager/security.ts wrappers, and tests) substitute
+ * the sender-role check / canonical-owner resolution without monkey-patching the
+ * module.
+ */
+export type RoleAccessDeps = {
+	checkSenderRole?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<RoleCheckResult | null>;
+	resolveCanonicalOwnerIdForMessage?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<string | null | undefined>;
+};
+
 async function isCanonicalOwner(
 	runtime: IAgentRuntime,
 	message: Memory,
+	resolveFn: NonNullable<
+		RoleAccessDeps["resolveCanonicalOwnerIdForMessage"]
+	> = resolveCanonicalOwnerIdForMessage,
 ): Promise<boolean> {
 	try {
-		const ownerId = await resolveCanonicalOwnerIdForMessage(runtime, message);
+		const ownerId = await resolveFn(runtime, message);
 		return typeof ownerId === "string" && ownerId === message.entityId;
 	} catch {
 		return false;
@@ -920,6 +944,7 @@ export async function hasRoleAccess(
 	runtime: IAgentRuntime | undefined,
 	message: Memory | undefined,
 	requiredRole: RoleName,
+	deps: RoleAccessDeps = {},
 ): Promise<boolean> {
 	if (requiredRole === "GUEST") {
 		return true;
@@ -934,12 +959,19 @@ export async function hasRoleAccess(
 		return true;
 	}
 
-	if (await isCanonicalOwner(context.runtime, context.message)) {
+	if (
+		await isCanonicalOwner(
+			context.runtime,
+			context.message,
+			deps.resolveCanonicalOwnerIdForMessage,
+		)
+	) {
 		return true;
 	}
 
+	const checkRoleFn = deps.checkSenderRole ?? checkSenderRole;
 	try {
-		const result = await checkSenderRole(context.runtime, context.message);
+		const result = await checkRoleFn(context.runtime, context.message);
 		if (!result) {
 			// Fail CLOSED. When the sender's role cannot be resolved (missing or
 			// inaccessible world, no world id on the message), treat them as USER —
@@ -985,6 +1017,39 @@ export function recordOwnerGrant(
 	}
 	if (metadata.roleSources[ownerId] !== "owner") {
 		metadata.roleSources[ownerId] = "owner";
+		changed = true;
+	}
+	return changed;
+}
+
+/**
+ * Record an explicit, auditable role grant on a world's metadata: pairs
+ * `roles[entityId] = role` with `roleSources[entityId] = source` (GUEST clears the
+ * source, matching {@link setEntityRole}). Use when you hold the metadata but not
+ * a Memory — {@link setEntityRole} needs a message and {@link recordOwnerGrant}
+ * only records the canonical OWNER. Pure + idempotent: mutates `metadata` in place
+ * and returns `true` iff it changed something (#12087 Item 11).
+ */
+export function recordRoleGrant(
+	metadata: RolesWorldMetadata,
+	entityId: string,
+	role: RoleName,
+	source: RoleGrantSource = "manual",
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[entityId] !== role) {
+		metadata.roles[entityId] = role;
+		changed = true;
+	}
+	if (role === "GUEST") {
+		if (metadata.roleSources[entityId] !== undefined) {
+			delete metadata.roleSources[entityId];
+			changed = true;
+		}
+	} else if (metadata.roleSources[entityId] !== source) {
+		metadata.roleSources[entityId] = source;
 		changed = true;
 	}
 	return changed;

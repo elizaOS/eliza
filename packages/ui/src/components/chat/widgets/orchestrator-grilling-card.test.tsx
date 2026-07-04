@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// OrchestratorGrillingCard: renders the goal, verdict, and one row per criterion,
+// stamps each criterion's state (for icon selection), shows a note only when
+// present, and shows the reviewing verdict for the pending status. Pure jsdom
+// render over fixture props — presentational component, no backend.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

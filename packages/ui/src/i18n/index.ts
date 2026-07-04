@@ -1,3 +1,8 @@
+/**
+ * Barrel for i18n: message catalogs, translator factory, region helpers, and
+ * re-exported language-code primitives owned by @elizaos/shared.
+ */
+import { normalizeLanguage } from "@elizaos/shared";
 import {
   DEFAULT_UI_LANGUAGE,
   ensureLanguageLoaded,
@@ -7,9 +12,13 @@ import {
   type UiLanguage,
 } from "./messages";
 
-export type TranslationVars = Record<string, unknown>;
+// `normalizeLanguage` (and the language-code constants below) are owned by
+// @elizaos/shared so Node route handlers can normalize without the renderer's
+// message dictionaries. Re-exported here to preserve the `@elizaos/ui/i18n`
+// public surface.
+export { normalizeLanguage };
 
-const UI_LANGUAGE_SET = new Set<string>(UI_LANGUAGES);
+export type TranslationVars = Record<string, unknown>;
 
 function interpolate(template: string, vars?: TranslationVars): string {
   if (!vars) return template;
@@ -18,28 +27,6 @@ function interpolate(template: string, vars?: TranslationVars): string {
     if (raw == null) return "";
     return String(raw);
   });
-}
-
-export function normalizeLanguage(input: unknown): UiLanguage {
-  if (typeof input !== "string") return DEFAULT_UI_LANGUAGE;
-  const trimmed = input.trim();
-  if (!trimmed) return DEFAULT_UI_LANGUAGE;
-  if (UI_LANGUAGE_SET.has(trimmed)) return trimmed as UiLanguage;
-
-  const lower = trimmed.toLowerCase();
-  if (lower === "zh" || lower === "zh-cn" || lower.startsWith("zh-hans")) {
-    return "zh-CN";
-  }
-  if (lower === "en" || lower.startsWith("en-")) {
-    return "en";
-  }
-  if (lower.startsWith("ko")) return "ko";
-  if (lower.startsWith("es")) return "es";
-  if (lower.startsWith("pt")) return "pt";
-  if (lower.startsWith("vi")) return "vi";
-  if (lower.startsWith("tl") || lower.startsWith("fil")) return "tl";
-  if (lower.startsWith("ja")) return "ja";
-  return DEFAULT_UI_LANGUAGE;
 }
 
 function messageForLanguage(lang: UiLanguage): MessageDict {

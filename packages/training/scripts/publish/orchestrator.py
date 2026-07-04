@@ -88,6 +88,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     build_manifest,
     canonical_source_repo_error,
     required_voice_artifacts_for_tier,
+    text_architecture_for_manifest,
     text_context_for_manifest,
 )
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
@@ -210,6 +211,7 @@ TIER_TAGLINES: Mapping[str, str] = {
     "4b": "flagship phones, small desktops",
     "9b": "workstations, tablets, and high-memory local hosts",
     "27b": "GPU workstations",
+    "27b-256k": "long-context GPU workstations",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -226,6 +228,7 @@ DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
     "4b": (10000, 12000),
     "9b": (12000, 16000),
     "27b": (32000, 48000),
+    "27b-256k": (24000, 32000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -1985,6 +1988,9 @@ def _collect_files_for_manifest(
                 path=rel(p),
                 sha256=_sha256_file(p),
                 ctx=text_context_for_manifest(p) if kind_src == "text" else None,
+                architecture=(
+                    text_architecture_for_manifest(p) if kind_src == "text" else None
+                ),
             )
             files[kind_dst].append(entry)
 

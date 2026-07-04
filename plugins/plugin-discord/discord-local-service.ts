@@ -2,9 +2,8 @@
  * Discord local IPC connector.
  *
  * Connects to the Discord desktop app via the local RPC socket, enabling
- * message ingestion and macOS UI-automation-based replies.  Previously
- * lived in `@elizaos/agent` as `discord-local-plugin.ts`; moved here so
- * the Discord plugin package owns its own runtime service.
+ * message ingestion and macOS UI-automation-based replies without a bot token.
+ * Registered as the `discord-local` service.
  */
 
 import { execFile } from "node:child_process";
@@ -1268,6 +1267,14 @@ const discordLocalPlugin: Plugin = {
 	name: DISCORD_LOCAL_PLUGIN_NAME,
 	description:
 		"Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
+	connectorSources: [
+		{
+			source: "discord",
+			aliases: ["discord", "discord-local"],
+			sourceKind: "passive",
+			isPassive: true,
+		},
+	],
 	services: [DiscordLocalService],
 };
 

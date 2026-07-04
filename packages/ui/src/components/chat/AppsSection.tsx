@@ -16,6 +16,7 @@ import { loadMergedCatalogApps } from "../apps/catalog-loader";
 import { getAppShortName } from "../apps/helpers";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
 import { isOverlayApp } from "../apps/overlay-app-registry";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -285,14 +286,14 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                 className="group relative"
                 data-testid={`apps-section-tile-${app.name}`}
               >
-                <button
-                  type="button"
+                <Button
                   title={displayName}
                   aria-label={t("chatsidebar.launchApp", {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  className={`rounded-sm transition-transform hover:scale-105 ${ringClass}`}
+                  variant="ghost"
+                  className={`h-auto rounded-sm p-0 transition-transform hover:bg-transparent hover:scale-105 ${ringClass}`}
                   onClick={() => void handleLaunch(app)}
                 >
                   <AppIdentityTile
@@ -301,18 +302,19 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     size="sm"
                     imageOnly
                   />
-                </button>
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
+                    <Button
                       aria-label={`Actions for ${displayName}`}
                       data-testid={`apps-section-kebab-${app.name}`}
                       onClick={(event) => event.stopPropagation()}
-                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:text-txt   group-hover:opacity-100"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="absolute -right-1 -top-1 h-5 w-5 rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:bg-bg hover:text-txt group-hover:opacity-100"
                     >
                       <MoreHorizontal className="h-3 w-3" aria-hidden />
-                    </button>
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"

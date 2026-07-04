@@ -1,3 +1,9 @@
+/**
+ * Covers the catalog icon helpers `getAppEmoji` / `getAppIconName` in `helpers.ts`,
+ * asserting section apps resolve to Lucide icon names rather than raw emoji glyphs.
+ * Pure functions over in-memory `RegistryAppInfo` fixtures.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../../api";
 import { getAppEmoji, getAppIconName } from "./helpers";

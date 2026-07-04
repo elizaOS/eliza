@@ -119,9 +119,8 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
       const baselinePrompt = await loadBaselinePrompt(parsed);
       // Real-model adapter: scoring + variant generation run through the
-      // Cerebras client (lifeops-eval-model.ts; default gemma-4-31b). This is
-      // the path `bun run lifeops:optimize` exercises against captured
-      // trajectories.
+      // Cerebras client (core/cerebras-eval-model.ts; default gemma-4-31b),
+      // which serializes + paces the fan-out under the Cerebras rate limits.
       const trainProvider =
         process.env.TRAIN_MODEL_PROVIDER?.trim() ??
         process.env.TRAINING_PROVIDER?.trim();
@@ -132,22 +131,15 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         );
         return 1;
       }
-      // The eval helper lives in plugin-personal-assistant's test tree, which is
-      // outside this package's emit rootDir. Declare the single export's real
-      // signature locally so the dynamic import stays fully typed without a
-      // static `typeof import()` reference dragging an out-of-rootDir file into
-      // the build program (TS6059).
-      interface LifeOpsEvalModelModule {
-        getTrainingUseModelAdapter(): (input: {
-          prompt: string;
-          temperature?: number;
-          maxTokens?: number;
-        }) => Promise<string>;
-      }
-      const helperPath =
-        "../../../plugin-personal-assistant/test/helpers/lifeops-eval-model.ts";
-      const helperModule: LifeOpsEvalModelModule = await import(helperPath);
-      const useModel = helperModule.getTrainingUseModelAdapter();
+      // The training adapter lives in this package (cerebras-eval-model.ts).
+      // It carries the global request-pacing gate + 429 backoff that keeps a
+      // GEPA fan-out (hundreds of scoring calls) under the Cerebras queue/TPM
+      // ceilings — the un-paced PA test helper this used to import throws on the
+      // first `queue_exceeded`/`token_quota_exceeded` and aborts the whole run.
+      const { getTrainingUseModelAdapter } = await import(
+        "../core/cerebras-eval-model.js"
+      );
+      const useModel = getTrainingUseModelAdapter();
       const adapter = {
         async complete(input: {
           system?: string;

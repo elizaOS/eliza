@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Renders ChatMessage in jsdom and asserts the proactive-suggestion affordance
+ * (#8792): it appears only for the proactive-interaction source on an assistant
+ * turn, offers one-tap dismiss and accept ("Do it"), and stays hidden without
+ * the corresponding handlers. RTL, no live model.
+ */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `applyLaunchConnectionFromUrl`: a launch URL's connection params are
+ * parsed into a persisted active server + agent profile and pushed into the API
+ * client (base URL + token). The API client, boot-config, and persistence
+ * layers are mocked so the URL→connection wiring is under test in isolation.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyLaunchConnectionFromUrl } from "./browser-launch";
 

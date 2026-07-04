@@ -110,6 +110,22 @@ metadata used by the Play build. `ElizaAssistActivity` handles
 `android.intent.action.ASSIST` for sideload/AOSP assistant-role testing;
 the Play build strips that activity.
 
+For the retail digital-assistant integration the sideload/AOSP builds also
+ship a `VoiceInteractionService` trio — `ElizaVoiceInteractionService`
+(the assistant), `ElizaVoiceInteractionSessionService` +
+`ElizaVoiceInteractionSession` (the ChatGPT-style overlay voice bar that
+hands off via `elizaos://voice?source=android-assistant-session`), and
+`ElizaRecognitionService` (required by the VIS contract) — declared with
+`BIND_VOICE_INTERACTION` and wired through
+[`res/xml/eliza_voice_interaction_service.xml`](app/src/main/res/xml/eliza_voice_interaction_service.xml).
+This is what surfaces Eliza under Settings → Apps → Default apps → Digital
+assistant app and lets the assist gesture / long-press-power invoke it.
+Users request the role at runtime through the `@elizaos/capacitor-system`
+bridge (`System.requestRole({ role: "assistant" })`, surfaced in the
+Device Settings overlay). The Play build strips all four components. The
+matching AOSP ROM glue that pre-grants the role for the VIS is follow-up
+sub-issue 6 of #12185.
+
 ## `build:android:system` — AOSP privileged platform-signed APK
 
 ```bash

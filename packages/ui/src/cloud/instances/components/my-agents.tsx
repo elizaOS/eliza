@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * The My Agents surface: lists the user's cloud agent instances with sort/view
+ * controls and the create entry point.
+ */
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui/cloud-ui";
 import {
@@ -15,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";
@@ -140,7 +145,8 @@ function AgentConsoleOverview({
                     defaultValue: "Go to my agent",
                   })}
             </Link>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={onCreateNew}
               className="inline-flex h-10 items-center justify-center gap-2 border border-white/10 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white"
@@ -149,7 +155,7 @@ function AgentConsoleOverview({
               {t("cloud.myAgents.runtimeAdmin", {
                 defaultValue: "Runtime admin",
               })}
-            </button>
+            </Button>
           </div>
         </div>
 

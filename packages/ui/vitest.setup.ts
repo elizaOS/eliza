@@ -1,3 +1,7 @@
+/**
+ * Global vitest setup: web-stream and Buffer polyfills plus the shared jsdom
+ * environment fixups the suite relies on.
+ */
 import { Buffer } from "node:buffer";
 import {
   ReadableStream,

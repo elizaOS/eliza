@@ -1,0 +1,30 @@
+{
+  "trajectoryId": "tj-8ca695a80d366e",
+  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+  "roomId": "2b04c61d-c12e-0c41-9d20-f841d4a07bf7",
+  "runId": "3536979f-2535-4f33-828f-367fdbf311be",
+  "scenarioId": "cross.negative.greeting-calls-no-action",
+  "rootMessage": {
+    "id": "4c8aaf82-fab4-4590-870c-b471f1e9425d",
+    "text": "Hey, good morning!",
+    "sender": "d99b7a6d-2e57-0696-8ebf-c764d04612c9"
+  },
+  "startedAt": 1783108511381,
+  "status": "errored",
+  "stages": [],
+  "metrics": {
+    "totalLatencyMs": 0,
+    "totalPromptTokens": 0,
+    "totalCompletionTokens": 0,
+    "totalCacheReadTokens": 0,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 0,
+    "toolCallsExecuted": 0,
+    "toolCallFailures": 0,
+    "toolSearchCount": 0,
+    "evaluatorFailures": 0,
+    "finalDecision": "error"
+  },
+  "endedAt": 1783108511433
+}

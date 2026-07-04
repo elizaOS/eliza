@@ -1246,6 +1246,10 @@ function populatedInbox(url: URL) {
       x_dm: { total: 0, unread: 0 },
     },
     fetchedAt: SMOKE_GENERATED_AT,
+    sources: [
+      { source: "chat", state: "ok", degradations: [] },
+      { source: "gmail", state: "ok", degradations: [] },
+    ],
   };
 }
 

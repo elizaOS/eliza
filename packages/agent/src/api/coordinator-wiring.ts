@@ -1,4 +1,9 @@
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  getSwarmCoordinatorService,
+  type ISwarmCoordinatorService,
+  SWARM_COORDINATOR_SERVICE_TYPE,
+} from "@elizaos/core";
 
 /**
  * Minimal subset of ServerState needed for coordinator bridge wiring.
@@ -36,8 +41,10 @@ const POLL_TIMEOUT_MS = 90_000;
 const RETRY_DELAY_MS = 500;
 const MAX_RETRIES = 5;
 
-function discoverCoordinator(runtime: AgentRuntime): unknown | null {
-  return runtime.getService("SWARM_COORDINATOR") ?? null;
+function discoverCoordinator(
+  runtime: AgentRuntime,
+): ISwarmCoordinatorService | null {
+  return getSwarmCoordinatorService(runtime);
 }
 
 /**
@@ -49,10 +56,10 @@ function discoverCoordinator(runtime: AgentRuntime): unknown | null {
  * probe this to report WHY when they don't.
  */
 function readBindState(
-  coordinator: unknown,
+  coordinator: ISwarmCoordinatorService | null,
 ): { status: string; reason: string | null } | null {
   if (!coordinator || typeof coordinator !== "object") return null;
-  const bindState = (coordinator as { acpBindState?: unknown }).acpBindState;
+  const bindState = coordinator.acpBindState;
   if (!bindState || typeof bindState !== "object") return null;
   const { status, reason } = bindState as {
     status?: unknown;
@@ -143,7 +150,8 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       //   (b) The plugin IS installed but the coordinator never registered or
       //       never bound its ACP stream (the bind race) → warn, with the
       //       coordinator's own actionable reason if it exposes one.
-      const pluginPresent = runtime.hasService?.("SWARM_COORDINATOR") ?? false;
+      const pluginPresent =
+        runtime.hasService?.(SWARM_COORDINATOR_SERVICE_TYPE) ?? false;
       if (pluginPresent) {
         logger.warn(
           `[eliza-api] coordinator service registered but never became ` +

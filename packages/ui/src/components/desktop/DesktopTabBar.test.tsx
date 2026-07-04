@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for DesktopTabBar: real render in jsdom with the Electrobun
+ * runtime guard mocked on, driving tab switch/close and the view-manager trigger
+ * through the actual buttons.
+ */
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";

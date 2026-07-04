@@ -1,12 +1,12 @@
+/**
+ * Tests for the loopback-URL check (#8801 / #9943). isLoopbackUrl decides
+ * whether a URL points at the local machine — a trust/SSRF-relevant gate.
+ * Notably the AWS-metadata and private-but-not-loopback hosts must read as
+ * NON-loopback.
+ */
 import { describe, expect, it } from "vitest";
 import { isLoopbackUrl } from "./utils";
 
-/**
- * Tests for the loopback-URL check (#8801 / #9943). isLoopbackUrl decides
- * whether a URL points at the local machine — a trust/SSRF-relevant gate — and
- * was untested. Notably the AWS-metadata and private-but-not-loopback hosts must
- * read as NON-loopback.
- */
 describe("isLoopbackUrl", () => {
   it("recognizes loopback hosts (v4, localhost, v6, bracketed v6)", () => {
     for (const u of [

@@ -1,3 +1,12 @@
+/**
+ * Memories page: browses the agent's memory store in three modes — a recent
+ * feed, a filtered browse list, and a person-centric view scoped to a
+ * relationship's member entity ids. Pulls stats, people (via the relationships
+ * API), and memory rows from the typed client. On mobile the people/filter
+ * sidebar is opened from a compact control in the view header rather than an
+ * inline trigger.
+ */
+
 import {
   Brain,
   FileText,
@@ -27,6 +36,8 @@ import type { RelationshipsPersonSummary } from "../../api/client-types-relation
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { useWorkspaceMobileSidebarHeader } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls.hooks";
+import { WorkspaceMobileSidebarScope } from "../../layouts/workspace-layout/workspace-mobile-sidebar-scope";
 import { useAppSelector } from "../../state";
 import {
   type TranslationContextValue,
@@ -41,6 +52,8 @@ import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { ViewHeader } from "../shared/ViewHeader";
+import { ViewHeaderSidebarTrigger } from "../shared/ViewHeaderSidebarTrigger";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ListSkeleton } from "../ui/skeleton-layouts";
@@ -162,9 +175,9 @@ const MemoryCard = memo(function MemoryCard({
     memory.text || t("memoryviewer.empty.value", { defaultValue: "(empty)" });
 
   return (
-    <button
-      type="button"
-      className="w-full text-left rounded-sm px-3.5 py-3 transition-colors hover:bg-bg-hover"
+    <Button
+      variant="ghost"
+      className="h-auto w-full justify-start whitespace-normal rounded-sm px-3.5 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
       onClick={() => onToggle(memory.id)}
       data-testid={`memory-card-${memory.id}`}
     >
@@ -219,7 +232,7 @@ const MemoryCard = memo(function MemoryCard({
           </div>
         </div>
       ) : null}
-    </button>
+    </Button>
   );
 });
 
@@ -648,6 +661,9 @@ export function MemoryViewerView({
 } = {}) {
   const t = useAppSelector((s) => s.t);
   const setTab = useAppSelector((s) => s.setTab);
+  // Mobile: the people/filter sidebar opens from a compact "People" control in
+  // the view header (never an inline trigger between the header and content).
+  const mobileSidebarHeader = useWorkspaceMobileSidebarHeader();
   const [viewMode, setViewMode] = useState<ViewMode>("feed");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
@@ -727,6 +743,7 @@ export function MemoryViewerView({
       testId="memory-viewer-sidebar"
       collapsible
       contentIdentity="memory-viewer"
+      mobileTitle={t("memoryviewer.people", { defaultValue: "People" })}
     >
       <SidebarPanel>
         {/* Stats + type filter */}
@@ -861,51 +878,69 @@ export function MemoryViewerView({
 
   return (
     <ShellViewAgentSurface viewId="memories">
-      <PageLayout
-        sidebar={sidebar}
-        contentHeader={contentHeader}
-        data-testid="memory-viewer-view"
-      >
-        <div className="flex min-h-0 flex-1 flex-col gap-4">
-          {/* View mode toggle + person context */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div ref={viewModeControl.ref} {...viewModeControl.agentProps}>
-              <SegmentedControl
-                value={viewMode}
-                onValueChange={(v) => setViewMode(v as ViewMode)}
-                items={viewModeItems}
-                buttonClassName="min-h-8 px-4 py-2"
-              />
-            </div>
-            {selectedPerson ? (
-              <div className="flex items-center gap-2 text-sm text-muted">
-                {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}
-                <MetaPill compact>{selectedPerson.displayName}</MetaPill>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs-tight"
-                  onClick={handleClearPerson}
-                >
-                  {t("memoryviewer.clear", { defaultValue: "Clear" })}
-                </Button>
-              </div>
-            ) : null}
-          </div>
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <ViewHeader
+          title="Memories"
+          right={
+            <ViewHeaderSidebarTrigger control={mobileSidebarHeader.control} />
+          }
+        />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
+            <PageLayout
+              sidebar={sidebar}
+              contentHeader={contentHeader}
+              data-testid="memory-viewer-view"
+            >
+              <div className="flex min-h-0 flex-1 flex-col gap-4">
+                {/* View mode toggle + person context */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div
+                    ref={viewModeControl.ref}
+                    className="min-h-11"
+                    {...viewModeControl.agentProps}
+                  >
+                    <SegmentedControl
+                      value={viewMode}
+                      onValueChange={(v) => setViewMode(v as ViewMode)}
+                      items={viewModeItems}
+                      buttonClassName="min-h-11 px-4 py-2"
+                    />
+                  </div>
+                  {selectedPerson ? (
+                    <div className="flex items-center gap-2 text-sm text-muted">
+                      {t("memoryviewer.filteredTo", {
+                        defaultValue: "Filtered to",
+                      })}
+                      <MetaPill compact>{selectedPerson.displayName}</MetaPill>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-11 px-3 text-xs-tight"
+                        onClick={handleClearPerson}
+                      >
+                        {t("memoryviewer.clear", { defaultValue: "Clear" })}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
 
-          {/* Content */}
-          {viewMode === "feed" ? (
-            <MemoryFeedPanel typeFilter={typeFilter} />
-          ) : (
-            <MemoryBrowserPanel
-              typeFilter={typeFilter}
-              entityId={selectedPersonId}
-              entityIds={selectedEntityIds}
-            />
-          )}
+                {/* Content */}
+                {viewMode === "feed" ? (
+                  <MemoryFeedPanel typeFilter={typeFilter} />
+                ) : (
+                  <MemoryBrowserPanel
+                    typeFilter={typeFilter}
+                    entityId={selectedPersonId}
+                    entityIds={selectedEntityIds}
+                  />
+                )}
+              </div>
+            </PageLayout>
+          </WorkspaceMobileSidebarScope>
         </div>
-      </PageLayout>
+      </div>
     </ShellViewAgentSurface>
   );
 }

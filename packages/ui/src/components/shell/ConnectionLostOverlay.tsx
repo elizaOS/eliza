@@ -1,3 +1,9 @@
+/**
+ * Full-screen blocking overlay shown when the backend connection has failed and
+ * realtime reconnect attempts are exhausted (`backendConnection.state` ===
+ * "failed" with `showDisconnectedUI`). Offers a restart affordance: relaunch the
+ * Electrobun desktop app when running under it, else reload the page.
+ */
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import { useAppSelectorShallow } from "../../state";

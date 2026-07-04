@@ -1,3 +1,14 @@
+/**
+ * `DefaultGoogleCredentialResolver` — turns a stored Google connector account
+ * into an authenticated OAuth2 client for a given account + capability set. It
+ * reads OAuth token material from the account metadata, the connector account
+ * storage credential refs, and (via the runtime) the credential store / vault /
+ * SECRETS readers, merging whatever shape the tokens were persisted in into a
+ * single `Auth.Credentials`. Resolved clients are cached by a version derived
+ * from the account and credential records so token rotation invalidates the
+ * cache. The many accepted credential-type spellings exist to interoperate with
+ * however the OAuth store or cloud flow labeled the persisted tokens.
+ */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccount,
@@ -440,6 +451,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
             secretsService.get?.(key, {
               level: "global",
               agentId: this.runtime?.agentId,
+              requesterId: this.runtime?.agentId,
             }) ?? null,
         });
       }
@@ -580,6 +592,7 @@ async function readSecret(
     return candidate.get(vaultRef, {
       level: "global",
       agentId: runtime?.agentId,
+      requesterId: runtime?.agentId,
     });
   }
 

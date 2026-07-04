@@ -1,3 +1,11 @@
+import {
+  applySubscriptionCredentials,
+  deleteProviderCredentials,
+} from "@elizaos/auth/credentials";
+import {
+  SUBSCRIPTION_PROVIDER_IDS,
+  SUBSCRIPTION_PROVIDER_MAP,
+} from "@elizaos/auth/types";
 import type {
   DeploymentTargetConfig,
   LinkedAccountFlagsConfig,
@@ -27,14 +35,6 @@ import {
   normalizeSubscriptionProviderSelectionId,
   requiresAdditionalRuntimeProvider,
 } from "@elizaos/shared";
-import {
-  applySubscriptionCredentials,
-  deleteProviderCredentials,
-} from "../auth/credentials.ts";
-import {
-  SUBSCRIPTION_PROVIDER_IDS,
-  SUBSCRIPTION_PROVIDER_MAP,
-} from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type MutableElizaConfig = Partial<ElizaConfig> & {

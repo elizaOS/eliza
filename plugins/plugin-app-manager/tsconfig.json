@@ -21,6 +21,8 @@
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
+      "@elizaos/auth": ["../../packages/auth/src/index.ts"],
+      "@elizaos/auth/*": ["../../packages/auth/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/shared/types": ["../../packages/shared/src/types/index.ts"],

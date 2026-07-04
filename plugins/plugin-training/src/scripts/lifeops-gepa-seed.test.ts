@@ -20,12 +20,16 @@ function makeResult(
 }
 
 describe("lifeops-gepa-seed", () => {
-  it("exposes calendar, schedule, inbox, and health seed tasks", () => {
+  it("exposes all eight LifeOps per-capability seed tasks", () => {
     expect(Object.keys(SEED_TASKS).sort()).toEqual([
       "calendar_extract",
       "health_checkin",
       "inbox_triage",
+      "meeting_prep",
+      "morning_brief",
+      "reminder_dispatch",
       "schedule_plan",
+      "screentime_recap",
     ]);
   });
 
@@ -248,6 +252,141 @@ describe("lifeops-gepa-seed", () => {
 
     expect(
       validatePersistableResult(seed, makeResult(seed.baseline, 0.9, 0.1)),
+    ).toEqual([]);
+  });
+
+  // --- prose/NL judge-graded tasks (#11384) ---
+
+  const JUDGE_TASK_NAMES = [
+    "reminder_dispatch",
+    "meeting_prep",
+    "morning_brief",
+    "screentime_recap",
+  ] as const;
+
+  it("every NL task row carries a judge rubric expectation", () => {
+    for (const name of JUDGE_TASK_NAMES) {
+      const seed = SEED_TASKS[name];
+      expect(seed, name).toBeDefined();
+      expect(seed.dataset.length, name).toBeGreaterThanOrEqual(8);
+      for (const example of seed.dataset) {
+        const parsed = JSON.parse(example.expectedOutput) as {
+          reference: unknown;
+          rubric: unknown;
+        };
+        expect(typeof parsed.reference, name).toBe("string");
+        expect(Array.isArray(parsed.rubric), name).toBe(true);
+        expect((parsed.rubric as string[]).length, name).toBeGreaterThanOrEqual(
+          3,
+        );
+      }
+    }
+  });
+
+  it("reminder_dispatch mirrors the live dispatch prompt and covers lifecycle/urgency/language axes", () => {
+    const seed = SEED_TASKS.reminder_dispatch;
+    expect(seed.baseline).toContain("Write a short reminder nudge");
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("Current reminder:");
+      expect(example.input.user).toContain("Reminder text:");
+    }
+    const inputs = seed.dataset.map((example) => example.input.user).join("\n");
+    expect(inputs).toContain("lifecycle: escalation");
+    expect(inputs).toContain("urgency: critical");
+    // Multilingual coverage per the GEPA real-conversation requirement.
+    expect(inputs).toContain("la basura");
+    expect(inputs).toContain("appeler maman");
+  });
+
+  it("morning_brief mirrors the live narrative prompt with structured section payloads", () => {
+    const seed = SEED_TASKS.morning_brief;
+    expect(seed.baseline).toContain("narrative paragraph");
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("You are composing the owner's");
+      expect(example.input.user).toContain("Data:");
+      const payload = JSON.parse(
+        example.input.user.slice(example.input.user.indexOf("{")),
+      ) as { sections: Record<string, unknown> };
+      expect(payload.sections).toBeDefined();
+    }
+    // Empty-day and money-domain rows are represented.
+    expect(
+      seed.dataset.some((example) => example.input.user.includes('"money"')),
+    ).toBe(true);
+    expect(
+      seed.dataset.some((example) =>
+        example.input.user.includes('"calendar": []'),
+      ),
+    ).toBe(true);
+  });
+
+  it("meeting_prep rows exercise gap-surfacing (missing agenda, blockers, decision owners)", () => {
+    const seed = SEED_TASKS.meeting_prep;
+    expect(seed.baseline).toContain("agenda");
+    const rubrics = seed.dataset
+      .flatMap(
+        (example) =>
+          (JSON.parse(example.expectedOutput) as { rubric: string[] }).rubric,
+      )
+      .join("\n");
+    expect(rubrics).toContain("agenda");
+    expect(rubrics).toContain("blocker");
+    expect(rubrics).toContain("decision");
+  });
+
+  it("screentime_recap rows pin the JSON envelope and change-vs-prior emphasis", () => {
+    const seed = SEED_TASKS.screentime_recap;
+    expect(seed.baseline).toContain("topApps");
+    for (const example of seed.dataset) {
+      expect(example.input.user).toContain("Screen-time context:");
+      const rubric = (
+        JSON.parse(example.expectedOutput) as { rubric: string[] }
+      ).rubric.join("\n");
+      expect(rubric).toContain("recap");
+      expect(rubric).toContain("topApps");
+      expect(rubric).toContain("suggestion");
+    }
+    // The no-prior-baseline guard row is represented.
+    expect(
+      seed.dataset.some((example) =>
+        example.input.user.includes("no data recorded"),
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks degenerate NL prompts from persistence via required fragments", () => {
+    const reminder = SEED_TASKS.reminder_dispatch;
+    expect(
+      validatePersistableResult(
+        reminder,
+        makeResult("Write something short.", 0.9, 0.1),
+      ),
+    ).toEqual(expect.arrayContaining([expect.stringContaining('"reminder"')]));
+    expect(
+      validatePersistableResult(
+        reminder,
+        makeResult(reminder.baseline, 0.9, 0.1),
+      ),
+    ).toEqual([]);
+
+    const recap = SEED_TASKS.screentime_recap;
+    expect(
+      validatePersistableResult(
+        recap,
+        makeResult("Summarize usage as JSON.", 0.9, 0.1),
+      ),
+    ).toEqual(expect.arrayContaining([expect.stringContaining('"topApps"')]));
+    expect(
+      validatePersistableResult(recap, makeResult(recap.baseline, 0.9, 0.1)),
+    ).toEqual([]);
+
+    const brief = SEED_TASKS.morning_brief;
+    expect(
+      validatePersistableResult(brief, makeResult(brief.baseline, 0.9, 0.1)),
+    ).toEqual([]);
+    const prep = SEED_TASKS.meeting_prep;
+    expect(
+      validatePersistableResult(prep, makeResult(prep.baseline, 0.9, 0.1)),
     ).toEqual([]);
   });
 });

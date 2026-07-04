@@ -1,5 +1,6 @@
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn as spawnNodeProcess } from "node:child_process";
+import { timingSafeEqual } from "node:crypto";
 import {
   lstat,
   mkdir,
@@ -532,6 +533,16 @@ function ensureInsideRoot(root: string, candidate: string): void {
   throw new HttpError(403, "Path is outside the workspace");
 }
 
+// Constant-time compare so the bearer token can't be recovered byte-by-byte
+// from response timing. Length mismatch short-circuits (the token's length is
+// not itself secret); equal-length inputs go through `timingSafeEqual`.
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
 function authorize(request: Request, config: RunnerConfig): Response | null {
   if (!config.token) {
     return config.allowUnauthenticated
@@ -539,7 +550,8 @@ function authorize(request: Request, config: RunnerConfig): Response | null {
       : jsonResponse(503, { error: "Remote runner token is not configured" });
   }
   const expected = `Bearer ${config.token}`;
-  if (request.headers.get("authorization") === expected) return null;
+  const provided = request.headers.get("authorization") ?? "";
+  if (timingSafeStringEqual(provided, expected)) return null;
   return jsonResponse(401, { error: "Unauthorized" });
 }
 

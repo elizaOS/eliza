@@ -1,3 +1,10 @@
+/**
+ * Orchestrates the streaming text-to-speech path: it consumes accepted tokens,
+ * chunks them into phrases, drives the TTS backend, and writes synthesized PCM
+ * into the ring buffer while honoring barge-in and speculative-token rollback.
+ * The hub that ties together the phrase chunker, phrase cache, prefix-preserving
+ * queue, rollback queue, and barge-in controller, emitting per-phrase telemetry.
+ */
 import { inferenceTelemetry } from "../inference-telemetry";
 import { BargeInController } from "./barge-in";
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
@@ -213,9 +220,8 @@ export class VoiceScheduler {
 			1,
 			config.maxInFlightPhrases ?? DEFAULT_MAX_IN_FLIGHT_PHRASES,
 		);
-		// streamingTtsActive defaults true. The Metal ggml_conv_transpose_1d stall
-		// that previously required disabling this on macOS is fixed in the
-		// llama.cpp merge (native Metal kernels; CPU fallback no longer triggers).
+		// streamingTtsActive defaults true; the native Metal ggml_conv_transpose_1d
+		// kernel runs the streaming path on macOS without the CPU-fallback stall.
 		this.streamingTtsActive = config.streamingTtsActive ?? true;
 		// Legacy hard-stop hook (`bargeIn.onMicActive()` / `attach.onCancel`).
 		this.bargeIn.attach({

@@ -371,24 +371,33 @@ export async function resolveLocalInferenceLoadArgs(
   if (mtp) {
     // Same-file MTP (no `drafterFile`) embeds the NextN head in the text
     // GGUF and runs with no separate draft model; separate-drafter MTP
-    // declares a `drafterFile` and requires it present on disk.
+    // declares a `drafterFile` and needs the bundled drafter GGUF on disk.
     const sameFileMtp = !mtp.drafterFile;
     const drafterPath = sameFileMtp
       ? undefined
       : resolveMtpDrafterPath(installed, catalog);
-    if (!sameFileMtp && installed.bundleRoot && !drafterPath) {
-      throw new Error(
-        `[local-inference] ${installed.id} declares a separate-drafter MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+    if (!sameFileMtp && !drafterPath) {
+      // Back-compat with pre-MTP-cutover installs (#11517): bundles
+      // downloaded before the tier's gemma4-assistant drafter was hosted
+      // (and single-file installs with no bundleRoot) have no
+      // `mtp/drafter-<tier>.gguf` on disk. The drafter is a perf-only
+      // speculative-decoding artifact — never brick an installed model over
+      // it. Load without MTP; re-downloading the bundle picks the drafter up.
+      console.warn(
+        `[local-inference] ${installed.id} declares a separate-drafter MTP but no drafter GGUF was found${
+          installed.bundleRoot ? ` under ${installed.bundleRoot}` : ""
+        }; loading without speculative decoding. Re-download the model to enable the MTP drafter.`,
       );
+    } else {
+      args.useGpu = true;
+      args.draftModelPath = drafterPath;
+      args.draftContextSize = args.contextSize;
+      args.draftMin = mtp.draftMin;
+      args.draftMax = mtp.draftMax;
+      args.speculativeSamples = mtp.draftMax;
+      args.mobileSpeculative = true;
+      args.disableThinking = true;
     }
-    args.useGpu = true;
-    args.draftModelPath = drafterPath;
-    args.draftContextSize = args.contextSize;
-    args.draftMin = mtp.draftMin;
-    args.draftMax = mtp.draftMax;
-    args.speculativeSamples = mtp.draftMax;
-    args.mobileSpeculative = true;
-    args.disableThinking = true;
   }
 
   mergeOverrides(args, overrides);

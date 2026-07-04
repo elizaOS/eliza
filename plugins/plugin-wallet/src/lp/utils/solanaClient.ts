@@ -1,3 +1,9 @@
+/**
+ * Solana RPC/wallet helpers for the LP subsystem: builds a `Connection` from
+ * runtime settings, loads a signer or address-only wallet from
+ * `SOLANA_PRIVATE_KEY`/`SOLANA_PUBLIC_KEY` (base58 or base64), and sends a
+ * signed transaction with blockhash-based confirmation.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { Connection, clusterApiUrl, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";

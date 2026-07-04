@@ -1,3 +1,9 @@
+/**
+ * Shape tests for the temperature-lock and max-output-token cap resolution:
+ * asserts `ANTHROPIC_TEMPERATURE_LOCKED_MODELS`, per-model / bare-number
+ * `ANTHROPIC_MAX_OUTPUT_TOKENS`, and the built-in opus-4 substring rule against
+ * a mocked runtime, capturing the params passed to the AI SDK. No live API.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -79,24 +79,28 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
-	it("gives up quietly after ATTACH_MAX_RETRIES without binding twice", async () => {
+	it("keeps retrying past ATTACH_MAX_RETRIES and binds once when the coordinator appears late", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime, setService } = makeRuntime({});
 
 		const service = await VerificationRoomBridgeService.start(runtime);
 
-		// Drain the entire retry budget: 60 retries × 500ms = 30s.
+		// Drain past the entire fast-retry budget (60 retries × 500ms = 30s). The
+		// bridge does NOT give up here — a heavy boot can register the coordinator
+		// well past that window, so it keeps retrying with a coarser backoff.
 		vi.advanceTimersByTime(31_000);
-		await Promise.resolve();
-
-		// Service eventually shows up AFTER giving up. Bridge must NOT
-		// subscribe — the retry loop already terminated.
-		setService("SWARM_COORDINATOR", coordinator);
-		vi.advanceTimersByTime(5_000);
 		await Promise.resolve();
 		expect(coordinator.__listenerCount()).toBe(0);
 
+		// The coordinator finally shows up long after the fast window. The
+		// still-running retry loop must bind it — exactly once.
+		setService("SWARM_COORDINATOR", coordinator);
+		vi.advanceTimersByTime(5_000);
+		await Promise.resolve();
+		expect(coordinator.__listenerCount()).toBe(1);
+
 		await service.stop();
+		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
 	it("stop() cancels a pending retry timer", async () => {
@@ -210,6 +214,131 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(text).toContain("import threw: bad export");
 		expect(text).toContain("Reload the agent");
 		expect(text).not.toContain("reinject");
+
+		await service.stop();
+	});
+
+	// A scaffolded app lives at <repoRoot>/eliza/apps/app-<name>; the
+	// load-from-directory route scans a PARENT for app subdirs, so the bridge
+	// must register the workdir's parent, not the workdir itself.
+	function appPassEvent() {
+		return {
+			type: "task_complete",
+			sessionId: "app-pass",
+			data: {
+				originRoomId: "room-99",
+				label: "create-app:notes",
+				workdir: "/repo/eliza/apps/app-notes",
+				verification: {
+					source: "custom-validator",
+					verdict: "pass",
+					validator: { service: "app-verification", method: "verifyApp" },
+					params: {
+						appName: "notes",
+						workdir: "/repo/eliza/apps/app-notes",
+						profile: "full",
+					},
+				},
+			},
+		};
+	}
+
+	it("registers the built app on pass so 'launch <name>' resolves (#11954)", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				ok: true,
+				directory: "/repo/eliza/apps",
+				registered: 1,
+				items: [{ slug: "notes", canonicalName: "notes" }],
+				rejectedManifests: [],
+			}),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appPassEvent());
+		await flush();
+
+		// It POSTed the app's PARENT dir to the app-register route so a subsequent
+		// listInstalledApps() + launch resolves the freshly built app.
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("/api/apps/load-from-directory"),
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ directory: "/repo/eliza/apps" }),
+			}),
+		);
+
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+		const [memory, table] = (runtime.createMemory as ReturnType<typeof vi.fn>)
+			.mock.calls[0];
+		expect(table).toBe("messages");
+		expect(memory.roomId).toBe("room-99");
+		const text = memory.content.text as string;
+		expect(text).toContain("notes app built, verified, and installed");
+		expect(text).toContain("launch notes");
+		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("does not promise a launch when app registration fails", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: false,
+			status: 503,
+			json: async () => ({
+				ok: false,
+				error: "AppRegistryService is not registered on the runtime",
+			}),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appPassEvent());
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("built and verified");
+		expect(text).toContain("installing it failed");
+		expect(text).toContain("AppRegistryService is not registered");
+		// The false "reply 'launch notes' to open it" promise must be gone.
+		expect(text).not.toContain("launch notes");
+
+		await service.stop();
+	});
+
+	it("stays honest when the scan registers nothing matching the app name", async () => {
+		// Registry scan succeeded but the built app's manifest was rejected or
+		// registered under a different name — no launchable match for `notes`.
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				ok: true,
+				directory: "/repo/eliza/apps",
+				registered: 1,
+				items: [{ slug: "some-other-app", canonicalName: "some-other-app" }],
+				rejectedManifests: [],
+			}),
+		} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appPassEvent());
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		const text = memory.content.text as string;
+		expect(text).toContain("did not register under a launchable name");
+		expect(text).not.toContain("launch notes");
 
 		await service.stop();
 	});

@@ -3,121 +3,26 @@ import { logger } from "./logger";
 import type { Plugin } from "./types";
 import { detectEnvironment } from "./utils/environment";
 
-const attemptedInstalls = new Set<string>();
-
-type BunSpawnResult = {
-	exited: Promise<number>;
-};
-
-type BunLike = {
-	spawn(
-		command: string[],
-		options?: {
-			cwd?: string;
-			env?: Record<string, string>;
-			stdout?: unknown;
-			stderr?: unknown;
-		},
-	): BunSpawnResult;
-};
-
-function getBunRuntime(): BunLike | null {
-	const bunRuntime = (globalThis as { Bun?: BunLike }).Bun;
-	return bunRuntime && typeof bunRuntime.spawn === "function"
-		? bunRuntime
-		: null;
-}
-
-function isAutoInstallAllowed(): boolean {
-	if (process.env.ELIZA_NO_AUTO_INSTALL === "true") return false;
-	if (process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL === "true") return false;
-	if (process.env.CI === "true") return false;
-	if (process.env.ELIZA_TEST_MODE === "true") return false;
-	if (process.env.NODE_ENV === "test") return false;
-	return true;
-}
-
-export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
-	try {
-		if (!isAutoInstallAllowed()) {
-			logger.debug(
-				{ src: "core:plugin", pluginName },
-				"Auto-install disabled, skipping",
-			);
-			return false;
-		}
-
-		if (attemptedInstalls.has(pluginName)) {
-			logger.debug(
-				{ src: "core:plugin", pluginName },
-				"Auto-install already attempted, skipping",
-			);
-			return false;
-		}
-		attemptedInstalls.add(pluginName);
-
-		const bunRuntime = getBunRuntime();
-		if (!bunRuntime) {
-			logger.warn(
-				{ src: "core:plugin", pluginName },
-				"Bun runtime not available, cannot auto-install",
-			);
-			return false;
-		}
-
-		try {
-			const check = bunRuntime.spawn(["bun", "--version"], {
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			const code = await check.exited;
-			if (code !== 0) {
-				logger.warn(
-					{ src: "core:plugin", pluginName },
-					"Bun not available on PATH, cannot auto-install",
-				);
-				return false;
-			}
-		} catch {
-			logger.warn(
-				{ src: "core:plugin", pluginName },
-				"Bun not available on PATH, cannot auto-install",
-			);
-			return false;
-		}
-
-		logger.info(
-			{ src: "core:plugin", pluginName },
-			"Auto-installing missing plugin",
-		);
-		const install = bunRuntime.spawn(["bun", "add", pluginName], {
-			cwd: process.cwd(),
-			env: process.env as Record<string, string>,
-			stdout: "inherit",
-			stderr: "inherit",
-		});
-		const exit = await install.exited;
-
-		if (exit === 0) {
-			logger.info(
-				{ src: "core:plugin", pluginName },
-				"Plugin installed, retrying import",
-			);
-			return true;
-		}
-
-		logger.error(
-			{ src: "core:plugin", pluginName, exitCode: exit },
-			"Plugin installation failed",
-		);
-		return false;
-	} catch (error) {
-		logger.error(
-			{ src: "core:plugin", pluginName, error },
-			"Error during plugin installation",
-		);
-		return false;
-	}
+/**
+ * Resolves a plugin package name to a loaded {@link Plugin} object.
+ *
+ * Core never imports plugin modules by name and never installs packages — both
+ * are host concerns and a supply-chain surface that must not live in the
+ * kernel. Hosts (the `elizaos` CLI / `@elizaos/agent`, which already own plugin
+ * loaders) inject a `PluginResolver` so that string plugin references coming
+ * from character config can be turned into `Plugin` objects. Any package
+ * installation must happen behind explicit user approval in that host layer,
+ * never here.
+ *
+ * When no resolver is injected, string references are skipped (fail closed)
+ * rather than dynamically imported.
+ */
+export interface PluginResolver {
+	/**
+	 * Resolve a plugin package name (e.g. `@elizaos/plugin-sql`) to a Plugin
+	 * object, or `null` when the plugin cannot be resolved.
+	 */
+	resolve(pluginName: string): Promise<Plugin | null>;
 }
 
 export function isValidPluginShape(obj: unknown): obj is Plugin {
@@ -197,71 +102,6 @@ export function validatePlugin(plugin: unknown): {
 		isValid: errors.length === 0,
 		errors,
 	};
-}
-
-export async function loadAndPreparePlugin(
-	pluginName: string,
-): Promise<Plugin | null> {
-	let pluginModule: unknown;
-
-	try {
-		pluginModule = await import(/* @vite-ignore */ pluginName);
-	} catch (error: unknown) {
-		logger.warn(
-			{ src: "core:plugin", pluginName, error },
-			"Failed to load plugin",
-		);
-		const attempted = await tryInstallPlugin(pluginName);
-		if (!attempted) {
-			return null;
-		}
-		try {
-			pluginModule = await import(/* @vite-ignore */ pluginName);
-		} catch (secondError: unknown) {
-			logger.error(
-				{ src: "core:plugin", pluginName, error: secondError },
-				"Import failed after auto-install",
-			);
-			return null;
-		}
-	}
-
-	if (!pluginModule) {
-		logger.error(
-			{ src: "core:plugin", pluginName },
-			"Failed to load plugin module",
-		);
-		return null;
-	}
-	const expectedFunctionName = `${pluginName
-		.replace(/^@elizaos\/plugin-/, "")
-		.replace(/^@elizaos\//, "")
-		.replace(/-./g, (match) => match[1].toUpperCase())}Plugin`;
-
-	const moduleObj = pluginModule as Record<string, unknown>;
-	const exportsToCheck = [
-		moduleObj[expectedFunctionName],
-		moduleObj.default,
-		...Object.values(moduleObj),
-	];
-
-	for (const potentialPlugin of exportsToCheck) {
-		if (isValidPluginShape(potentialPlugin)) {
-			return potentialPlugin as Plugin;
-		}
-		if (typeof potentialPlugin === "function" && potentialPlugin.length === 0) {
-			const produced = potentialPlugin();
-			if (isValidPluginShape(produced)) {
-				return produced as Plugin;
-			}
-		}
-	}
-
-	logger.warn(
-		{ src: "core:plugin", pluginName },
-		"No valid plugin export found",
-	);
-	return null;
 }
 
 export function normalizePluginName(pluginName: string): string {
@@ -366,9 +206,37 @@ export function resolvePluginDependencies(
 
 export async function loadPlugin(
 	nameOrPlugin: string | Plugin,
+	resolver?: PluginResolver,
 ): Promise<Plugin | null> {
 	if (typeof nameOrPlugin === "string") {
-		return loadAndPreparePlugin(nameOrPlugin);
+		if (!resolver) {
+			logger.warn(
+				{ src: "core:plugin", pluginName: nameOrPlugin },
+				"No PluginResolver injected; core cannot resolve plugins by name (host must inject one)",
+			);
+			return null;
+		}
+		const resolved = await resolver.resolve(nameOrPlugin);
+		if (!resolved) {
+			logger.warn(
+				{ src: "core:plugin", pluginName: nameOrPlugin },
+				"PluginResolver returned no plugin for name",
+			);
+			return null;
+		}
+		const resolvedValidation = validatePlugin(resolved);
+		if (!resolvedValidation.isValid) {
+			logger.error(
+				{
+					src: "core:plugin",
+					pluginName: nameOrPlugin,
+					errors: resolvedValidation.errors,
+				},
+				"Resolved plugin failed validation",
+			);
+			return null;
+		}
+		return resolved;
 	}
 
 	const validation = validatePlugin(nameOrPlugin);
@@ -414,6 +282,7 @@ function queueDependency(
 async function resolvePluginsImpl(
 	plugins: (string | Plugin)[],
 	isTestMode: boolean = false,
+	resolver?: PluginResolver,
 ): Promise<Plugin[]> {
 	const pluginMap = new Map<string, Plugin>();
 	const seenDependencies = new Set<string>();
@@ -439,7 +308,7 @@ async function resolvePluginsImpl(
 		const next = queue[queueIndex];
 		queueIndex += 1;
 		if (!next) continue;
-		const loaded = await loadPlugin(next);
+		const loaded = await loadPlugin(next, resolver);
 		if (!loaded) continue;
 
 		const canonicalName = loaded.name;
@@ -465,11 +334,12 @@ async function resolvePluginsImpl(
 export async function resolvePlugins(
 	plugins: (string | Plugin)[],
 	isTestMode: boolean = false,
+	resolver?: PluginResolver,
 ): Promise<Plugin[]> {
 	const env = detectEnvironment();
 
 	if (env === "node") {
-		return resolvePluginsImpl(plugins, isTestMode);
+		return resolvePluginsImpl(plugins, isTestMode, resolver);
 	}
 
 	const pluginObjects = plugins.filter(

@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
-//
-// Native HTML5 drag-to-reorder coverage for the plugin catalog (#10722). The
-// PluginCard rows are `draggable` and the reorder is driven entirely by native
-// dragstart → dragover → drop events wired through PluginListView. Before this
-// there was zero coverage, so a regression in the splice/persist logic (dropped
-// order, a duplicated id, an `undefined` slot, or a lost localStorage write)
-// would ship silently.
-//
-// These tests dispatch real drag events and assert the SEMANTIC outcome: the
-// rendered card order actually changes, the new order persists to
-// localStorage, the persisted list has no duplicate/undefined ids, and a drop
-// onto the same card is a no-op (nothing reordered, nothing persisted).
+
+/**
+ * Native HTML5 drag-to-reorder coverage for the plugin catalog (#10722). The
+ * `PluginCard` rows are `draggable` and reorder is driven by native
+ * dragstart → dragover → drop events through `PluginListView`.
+ *
+ * The tests dispatch real drag events and assert the SEMANTIC outcome: the
+ * rendered card order changes, the new order persists to localStorage, the
+ * persisted list has no duplicate/undefined ids, and a drop onto the same card
+ * is a no-op — guarding the splice/persist logic against dropped order,
+ * duplicated/undefined slots, or a lost write.
+ */
 
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -43,6 +43,13 @@ import type {
 	VadEvent,
 	VadEventListener,
 } from "./types";
+import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	reserveOrRamPressure,
+	VAD_RESERVE_BYTES,
+	type VoiceBudget,
+} from "./voice-budget";
 
 /** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
  *  is missing or ABI-only, the model file is absent, or the model is corrupt.
@@ -122,13 +129,17 @@ export class GgmlSileroVad {
 	readonly sampleRate: number;
 	readonly windowSamples = SILERO_WINDOW_16K;
 	private closed = false;
+	/** Voice-budget reservation held while the native session is open. */
+	private readonly reservation: BudgetReservation | null;
 
 	private constructor(
 		private readonly ffi: ElizaInferenceFfi,
 		private readonly handle: NativeVadHandle,
 		sampleRate: number,
+		reservation: BudgetReservation | null,
 	) {
 		this.sampleRate = sampleRate;
+		this.reservation = reservation;
 	}
 
 	/** True when the libelizainference build exports the native VAD ABI and
@@ -143,6 +154,8 @@ export class GgmlSileroVad {
 		ffi: ElizaInferenceFfi;
 		ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
 		sampleRate?: number;
+		/** Voice-budget override; defaults to the process-wide shared budget. */
+		budget?: VoiceBudget;
 	}): Promise<GgmlSileroVad> {
 		const sampleRate = opts.sampleRate ?? 16_000;
 		validateSileroSampleRate(sampleRate);
@@ -163,9 +176,22 @@ export class GgmlSileroVad {
 				"[voice] Native GGML Silero VAD support probe succeeded, but the required VAD FFI methods are missing.",
 			);
 		}
-		const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
-		const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
-		return new GgmlSileroVad(opts.ffi, handle, sampleRate);
+		// Reserve before the native session opens; an over-budget arm throws
+		// `VoiceLifecycleError("ram-pressure")` and nothing is loaded.
+		const budget = opts.budget ?? (await ensureSharedVoiceBudget());
+		const reservation = await reserveOrRamPressure(budget, {
+			modelId: "silero-vad-v5",
+			role: "vad",
+			bytes: VAD_RESERVE_BYTES,
+		});
+		try {
+			const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
+			const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
+			return new GgmlSileroVad(opts.ffi, handle, sampleRate, reservation);
+		} catch (err) {
+			reservation.release();
+			throw err;
+		}
 	}
 
 	async process(window: Float32Array): Promise<number> {
@@ -201,6 +227,7 @@ export class GgmlSileroVad {
 			throw new Error("[voice] GgmlSileroVad.close missing FFI method");
 		}
 		vadClose(this.handle);
+		this.reservation?.release();
 	}
 }
 
@@ -336,8 +363,18 @@ export interface VadDetectorConfig {
 	 * Default false until the streaming-ASR fast path (V2) ships.
 	 */
 	fastEndpointEnabled?: boolean;
+	/**
+	 * True when a semantic end-of-turn scorer (the fused `FfiEotScorer`
+	 * composite) is live for this session. Decides the `endHangoverMs`
+	 * default: 300 ms with a semantic gate in front, 500 ms fixed-VAD floor
+	 * without one (research §1 — production fixed-VAD defaults cluster at
+	 * 500 ms; ~200 ms is safe only when a semantic model makes the real
+	 * call). Ignored when `endHangoverMs` is set explicitly.
+	 */
+	semanticEotActive?: boolean;
 	/** Consecutive ms paused before the segment *ends* (finalize the turn).
-	 *  Default 700 ms. Must be ≥ `pauseHangoverMs`. */
+	 *  Default `END_HANGOVER_SEMANTIC_EOT_MS` (300) when `semanticEotActive`,
+	 *  else `END_HANGOVER_FIXED_VAD_MS` (500). Must be ≥ `pauseHangoverMs`. */
 	endHangoverMs?: number;
 	/** A segment shorter than this (from onset to end) is reclassified as a
 	 *  `blip` rather than `speech-end`. Default 250 ms. */
@@ -370,6 +407,19 @@ export interface VadDetectorConfig {
 	energyGate?: RmsEnergyGateConfig;
 }
 
+/**
+ * Endpoint-wait defaults (issue #12254). The end-hangover is the silence the
+ * user sits through between their last word and turn finalization — the
+ * single largest tunable latency knob in the voice loop. With a semantic EOT
+ * scorer live the acoustic wait can drop to 300 ms (the scorer catches
+ * mid-thought pauses the timer cannot); without one, 500 ms is the
+ * fixed-VAD floor (OpenAI/LiveKit production defaults — see
+ * `research/VOICE_PIPELINE_RESEARCH_2026.md` §1). Never go below the floor
+ * without a semantic gate.
+ */
+export const END_HANGOVER_SEMANTIC_EOT_MS = 300;
+export const END_HANGOVER_FIXED_VAD_MS = 500;
+
 type SegmentPhase = "idle" | "speaking" | "paused";
 
 export type { VadLike } from "./types.js";
@@ -397,6 +447,8 @@ export interface CreateVadDetectorOptions {
 	externalVad?: ExternalVadAdapter | null;
 	config?: VadDetectorConfig;
 	prefer?: VadProviderPreference;
+	/** Voice-budget override; defaults to the process-wide shared budget. */
+	budget?: VoiceBudget;
 }
 
 export function vadProviderOrder(
@@ -468,6 +520,7 @@ export async function resolveVadProvider(
 						ffi: opts.ffi,
 						ctx: opts.ctx,
 						sampleRate,
+						...(opts.budget ? { budget: opts.budget } : {}),
 					}),
 				};
 			}
@@ -500,7 +553,8 @@ export class VadDetector {
 	private readonly pauseHangoverMs: number;
 	private readonly fastPauseHangoverMs: number;
 	private readonly fastEndpointEnabled: boolean;
-	private readonly endHangoverMs: number;
+	/** Effective endpoint hangover (ms) — public so session arm can log it. */
+	readonly endHangoverMs: number;
 	private readonly minSpeechMs: number;
 	private readonly activeHeartbeatMs: number;
 	// V4 — adaptive hangover state.
@@ -548,7 +602,10 @@ export class VadDetector {
 			this.fastEndpointEnabled
 				? this.fastPauseHangoverMs
 				: this.pauseHangoverMs,
-			config.endHangoverMs ?? 700,
+			config.endHangoverMs ??
+				(config.semanticEotActive
+					? END_HANGOVER_SEMANTIC_EOT_MS
+					: END_HANGOVER_FIXED_VAD_MS),
 		);
 		this.minSpeechMs = config.minSpeechMs ?? 250;
 		this.activeHeartbeatMs = config.activeHeartbeatMs ?? 200;

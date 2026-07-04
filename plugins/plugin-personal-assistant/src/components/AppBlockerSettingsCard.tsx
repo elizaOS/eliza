@@ -1,4 +1,4 @@
-import { Button, client } from "@elizaos/ui";
+import { Button, client, Input } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,
@@ -13,7 +13,13 @@ import {
   Square,
   Timer,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { AppBlockerSettingsCardProps } from "../types/app-blocker-settings-card";
 
 type AppBlockerPermission = Awaited<
@@ -85,6 +91,10 @@ function AppBlockerStatusIcon({ label }: { label: string }) {
       <span className="sr-only">{label}</span>
     </div>
   );
+}
+
+function inputIdForPackageName(packageName: string): string {
+  return `app-blocker-package-${packageName.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
 }
 
 export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
@@ -432,8 +442,11 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
         <div className="py-3">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <div className="space-y-3">
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted">
+              <label htmlFor="app-blocker-search" className="block">
+                <span
+                  id="app-blocker-search-label"
+                  className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted"
+                >
                   {translate(
                     t,
                     "permissionssection.appBlocking.search",
@@ -442,9 +455,13 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                 </span>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-                  <input
+                  <Input
+                    id="app-blocker-search"
+                    aria-labelledby="app-blocker-search-label"
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      setQuery(event.target.value)
+                    }
                     placeholder={translate(
                       t,
                       "permissionssection.appBlocking.searchPlaceholder",
@@ -459,16 +476,19 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   const checked = selectedPackageNames.includes(
                     app.packageName,
                   );
+                  const inputId = inputIdForPackageName(app.packageName);
                   return (
                     <label
+                      htmlFor={inputId}
                       key={app.packageName}
                       className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-sm transition hover:bg-bg/50"
                     >
-                      <input
+                      <Input
+                        id={inputId}
                         type="checkbox"
                         checked={checked}
                         onChange={() => togglePackageName(app.packageName)}
-                        className="mt-0.5 h-4 w-4 rounded border-border"
+                        className="mt-0.5 h-4 w-4 rounded border-border p-0"
                       />
                       <span className="min-w-0">
                         <span className="block font-medium text-txt">
@@ -507,12 +527,18 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   {selectedPackageNames.length === 1 ? "" : "s"} selected
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm text-txt">
-                <input
+              <label
+                htmlFor="app-blocker-indefinite"
+                className="flex items-center gap-2 text-sm text-txt"
+              >
+                <Input
+                  id="app-blocker-indefinite"
                   type="checkbox"
                   checked={indefinite}
-                  onChange={(event) => setIndefinite(event.target.checked)}
-                  className="h-4 w-4 rounded border-border"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setIndefinite(event.target.checked)
+                  }
+                  className="h-4 w-4 rounded border-border p-0"
                 />
                 {translate(
                   t,
@@ -520,20 +546,27 @@ export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
                   "Block until I stop it",
                 )}
               </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted">
+              <label htmlFor="app-blocker-duration" className="block">
+                <span
+                  id="app-blocker-duration-label"
+                  className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted"
+                >
                   {translate(
                     t,
                     "permissionssection.appBlocking.duration",
                     "Minutes",
                   )}
                 </span>
-                <input
+                <Input
+                  id="app-blocker-duration"
+                  aria-labelledby="app-blocker-duration-label"
                   type="number"
                   min={1}
                   step={1}
                   value={durationMinutes}
-                  onChange={(event) => setDurationMinutes(event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setDurationMinutes(event.target.value)
+                  }
                   disabled={indefinite}
                   className="w-full rounded-xl border border-border/60 bg-bg/60 px-3 py-2 text-sm text-txt outline-none transition focus:border-border disabled:opacity-60"
                 />

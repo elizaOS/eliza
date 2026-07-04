@@ -16,7 +16,7 @@ publish layer can upload them under the single ``elizaos/eliza-1`` bundle
 repo.
 
 The converter + binary come from the in-repo llama.cpp fork submodule at
-``packages/inference/llama.cpp`` — the single canonical llama.cpp checkout
+``plugins/plugin-local-inference/native/llama.cpp`` — the single canonical llama.cpp checkout
 for the whole repo. ``convert_hf_to_gguf.py`` is the fork's own script
 (the fork is itself a llama.cpp fork, so it carries all the standard
 tooling). ``llama-quantize`` is built from that submodule with a one-shot
@@ -61,23 +61,25 @@ QUANT_LEVEL = "Q6_K"
 # full vendor hint. From this file (packages/training/scripts/quantization/)
 # the repo root is four parents up.
 _REPO_ROOT = _HERE.parents[3]
-_FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
+_FORK_LLAMA_CPP = (
+    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+)
 
 _VENDOR_HINT = (
     "The llama.cpp fork submodule should already be checked out. If it's "
     "missing:\n"
-    "  git submodule update --init packages/inference/llama.cpp\n"
+    "  git submodule update --init plugins/plugin-local-inference/native/llama.cpp\n"
     "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
     "CPU-only is enough):\n"
-    "  cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build \\\n"
+    "  cmake -S plugins/plugin-local-inference/native/llama.cpp -B plugins/plugin-local-inference/native/llama.cpp/build \\\n"
     "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
     "-DBUILD_SHARED_LIBS=OFF\n"
-    "  cmake --build packages/inference/llama.cpp/build --target llama-quantize "
+    "  cmake --build plugins/plugin-local-inference/native/llama.cpp/build --target llama-quantize "
     "llama-cli -j\"$(nproc)\"\n"
     "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR / put the "
     "binaries on PATH.\n"
     "(convert_hf_to_gguf.py needs the `gguf` + `mistral_common` python deps; "
-    "`uv pip install -r packages/inference/llama.cpp/requirements/"
+    "`uv pip install -r plugins/plugin-local-inference/native/llama.cpp/requirements/"
     "requirements-convert_hf_to_gguf.txt`.)"
 )
 

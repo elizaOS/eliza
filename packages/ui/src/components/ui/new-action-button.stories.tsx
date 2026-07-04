@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the new-action button primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { NewActionButton } from "./new-action-button";
 

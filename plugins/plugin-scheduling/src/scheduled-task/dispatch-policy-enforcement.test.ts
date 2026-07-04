@@ -145,8 +145,9 @@ function reminderInput(
     respectsGlobalPause: false,
     ownerVisible: true,
     source: "user_chat",
+    createdBy: "agent-dispatch-policy",
     ...overrides,
-  } as Omit<ScheduledTask, "taskId" | "state">;
+  };
 }
 
 async function transitions(h: Harness, taskId: string): Promise<string[]> {

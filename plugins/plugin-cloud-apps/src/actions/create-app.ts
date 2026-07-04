@@ -5,6 +5,11 @@
  * (planner options win when present), calls the typed `client.createApp({...})`,
  * and replies with the created draft app and an offer to deploy it.
  *
+ * Monetization intent is passed through, but the server never enables
+ * monetization at create time — it creates the app with monetization off,
+ * persists any requested markup as a pricing default, and returns the review
+ * requirement in `warnings`, which this action relays to the user (#11863).
+ *
  * Security: the create response returns the app's plaintext API key ONCE. We do
  * NOT echo it into the chat reply (credentials must never transit a connector) —
  * the key lives in the user's dashboard.
@@ -193,12 +198,27 @@ function buildCreateBody(intent: CreateAppIntent): CreateAppInput {
     skipGitHubRepo: true,
   };
   if (intent.description) body.description = intent.description;
-  if (intent.monetization) body.monetization_enabled = true;
+  // NEVER request monetization at create time: the server hard-rejects
+  // `monetization_enabled: true` with `app_review_required` (a new app has not
+  // passed review, so no app would be created at all). Apps are created
+  // monetization-disabled; the user enables it after the app passes review.
+  // Pricing defaults are still persisted so they're ready once monetization is
+  // switched on post-approval.
   if (intent.markupPercentage !== undefined) {
     body.inference_markup_percentage = intent.markupPercentage;
   }
   return body;
 }
+
+/**
+ * Guidance appended to the success reply when the user asked for a monetized
+ * app. The app is created un-monetized (the server gates enabling monetization
+ * on passing review), so we tell the user the exact two-step path to turn it on.
+ */
+const MONETIZATION_REVIEW_GUIDANCE =
+  "I created it with monetization OFF — new apps have to pass review first. " +
+  "To monetize it, submit it for review (POST /api/v1/apps/:id/review) and, " +
+  "once it's approved, enable monetization from the app's monetization settings.";
 
 export const createAppAction: Action = {
   name: "CREATE_APP",
@@ -251,12 +271,8 @@ export const createAppAction: Action = {
 
       const lines = [`Created "${app.name}" on Eliza Cloud (status: draft).`];
       if (intent.description) lines.push(intent.description);
-      if (app.monetization_enabled) {
-        const markup =
-          typeof app.inference_markup_percentage === "number"
-            ? ` (${app.inference_markup_percentage}% inference markup)`
-            : "";
-        lines.push(`Monetization is on${markup}.`);
+      if (intent.monetization) {
+        lines.push(MONETIZATION_REVIEW_GUIDANCE);
       }
       if (warnings && warnings.length > 0) {
         lines.push(`Note: ${warnings.join(" ")}`);
@@ -273,6 +289,8 @@ export const createAppAction: Action = {
         data: {
           app: { id: app.id, name: app.name, slug: app.slug },
           monetization: app.monetization_enabled,
+          monetizationRequested: intent.monetization,
+          reviewStatus: app.review_status,
         },
       };
     } catch (err) {

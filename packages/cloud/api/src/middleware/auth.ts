@@ -138,7 +138,6 @@ const publicPathPrefixes = [
   "/api/eliza-app/user",
   "/api/eliza-app/cli-auth",
   "/api/eliza-app/onboarding",
-  "/api/eliza-app/gateway",
 ];
 
 // Out-of-band token pages (sensitive-request links, approval-signer links,

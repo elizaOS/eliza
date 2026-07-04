@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the grid layout primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Grid } from "./grid";
 

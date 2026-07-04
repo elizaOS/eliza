@@ -1,5 +1,5 @@
 /**
- * Logs state — extracted from AppContext.
+ * Logs state, one of the domain hooks AppContext composes.
  *
  * Manages log entries, sources, tags, and filter state.
  * The loadLogs callback reads all three filter values from state.

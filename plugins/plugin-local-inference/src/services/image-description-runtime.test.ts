@@ -1,3 +1,4 @@
+/** Covers `createImageDescriptionRuntime` resolving the bundle's vision file and dispatching a describe pass, with the engine mocked. Real fs temp bundles. */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

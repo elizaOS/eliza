@@ -14,6 +14,7 @@ import type {
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
 
@@ -173,7 +174,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
 
       <div className="min-w-0 flex-1">
         {isEditingThis ? (
-          <input
+          <Input
             ref={renameInputRef}
             type="text"
             value={renameValue}
@@ -197,9 +198,8 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 setRenameValue("");
               }
             }}
-            // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
             autoFocus
-            className="h-11 w-full rounded-md border border-border bg-surface px-3 text-sm transition-colors  "
+            className="h-11 rounded-md border-border bg-surface text-sm"
             data-testid={`voice-profile-rename-input-${profile.id}`}
             aria-label={t("voiceprofile.renameAria", {
               defaultValue: "Rename voice profile",
@@ -207,19 +207,20 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             {...renameInputAgentProps}
           />
         ) : (
-          <button
+          <Button
             ref={nameRef}
-            type="button"
             onClick={() => {
               setRenameId(profile.id);
               setRenameValue(profile.displayName);
             }}
-            className="text-left text-sm font-medium hover:underline"
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start px-0 py-0 text-left text-sm font-medium hover:bg-transparent hover:underline"
             data-testid={`voice-profile-name-${profile.id}`}
             {...nameAgentProps}
           >
             {profile.displayName}
-          </button>
+          </Button>
         )}
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
           <span data-testid={`voice-profile-samples-${profile.id}`}>

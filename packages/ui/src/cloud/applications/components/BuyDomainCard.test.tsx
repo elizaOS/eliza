@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * `BuyDomainCard` availability→purchase flow (#10246): the Check button gates on
+ * a domain-shaped input, a lookup shows the price + renewal quote (or a
+ * no-Buy "not available"), a buy only fires after explicit confirm and refreshes
+ * the domain list, and a 402 surfaces an insufficient-credits error with an
+ * Add-credits CTA to the system browser. The api-client, `openExternalUrl`, and
+ * `sonner` toast are doubled; the card renders for real.
+ */
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

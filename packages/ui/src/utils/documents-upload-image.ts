@@ -1,3 +1,7 @@
+/**
+ * Re-exports the shared document image upload helpers (type check, size cap,
+ * compression) for the documents surface.
+ */
 export {
   type DocumentImageCompressionPlatform,
   type DocumentImageUploadFile,

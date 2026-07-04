@@ -1,3 +1,9 @@
+/**
+ * Solana-specific wallet provider: formats the cached `WalletPortfolio` (from
+ * `SOLANA_WALLET_DATA_CACHE_KEY`) into planner context text and values —
+ * total balance, top non-zero token holdings, and SOL/BTC/ETH prices. Reads
+ * only from cache; it does not itself fetch RPC or Birdeye data.
+ */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import BigNumber from "../bn";

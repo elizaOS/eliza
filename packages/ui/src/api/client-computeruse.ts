@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension and wire types for computer-use: approval modes, pending
+ * approvals, and the verbs that resolve them.
+ */
 import { ElizaClient } from "./client-base";
 
 export type ComputerUseApprovalMode =

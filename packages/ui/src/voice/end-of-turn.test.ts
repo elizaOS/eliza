@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for end-of-turn scoring and the turn aggregator (when the user
+ * has finished speaking). Pure functions, no live ASR.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import { scoreEndOfTurn, TurnAggregator } from "./end-of-turn";

@@ -2,8 +2,8 @@ import {
   elizaLogger,
   getConnectorAccountManager,
   type Plugin,
+  tunnelSlotIsFree,
 } from "@elizaos/core";
-import { tunnelSlotIsFree } from "@elizaos/plugin-tunnel";
 import { TailscaleTestSuite } from "./__tests__/TailscaleTestSuite";
 import { createTailscaleConnectorAccountProvider } from "./connector-account-provider";
 import { tailscaleStatusProvider } from "./providers/tailscale-status";
@@ -12,12 +12,12 @@ import { selectTunnelBackend } from "./services/TunnelBackendSelector";
 /**
  * Plugin doesn't list any services upfront. The selector runs in `init()` and
  * registers exactly one Tailscale backend (local or cloud) under the canonical
- * `serviceType="tunnel"` slot from `@elizaos/plugin-tunnel`. Coordination with
+ * `serviceType="tunnel"` slot from `@elizaos/core`. Coordination with
  * other tunnel providers (ngrok, plugin-tunnel's local CLI, plugin-elizacloud's
  * cloud tunnel) is first-active-wins via `tunnelSlotIsFree(runtime)`.
  *
  * Consumers should stay backend-agnostic via `getTunnelService(runtime)` from
- * `@elizaos/plugin-tunnel`.
+ * `@elizaos/core`.
  *
  * The canonical TUNNEL action from `@elizaos/plugin-tunnel` handles start,
  * stop, and status. This plugin only contributes a provider/backend.

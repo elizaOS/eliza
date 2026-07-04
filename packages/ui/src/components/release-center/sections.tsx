@@ -1,3 +1,11 @@
+/**
+ * The individual sections composed by `ReleaseCenterView` (desktop Release
+ * Center): update status/check, release notes, build + runtime info, desktop
+ * session controls (renderer, restart), and the WebGPU surface probe. Each is a
+ * presentational section driven by props the view supplies; shared row/pill
+ * primitives come from `./shared` and text/URL helpers from `./shared.helpers`.
+ */
+
 import { createElement } from "react";
 import { useBranding } from "../../config/branding";
 import { useAppSelector } from "../../state";

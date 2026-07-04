@@ -22,7 +22,12 @@ import {
 } from "../pricing";
 import { logger } from "../utils/logger";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
-import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+  InsufficientCreditsError,
+} from "./credits";
 import { generationsService } from "./generations";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { usageService } from "./usage";
@@ -91,6 +96,51 @@ function getAffiliateEarningsSourceId(
     return `ai_billing:${operation}:${requestId}`;
   }
   return `legacy_${crypto.randomUUID()}`;
+}
+
+type AffiliateCodeRecord = NonNullable<
+  Awaited<ReturnType<typeof affiliatesRepository.getAffiliateCodeByCode>>
+>;
+
+interface BillableAffiliate {
+  affiliate: AffiliateCodeRecord;
+  markupPercent: number;
+}
+
+async function resolveBillableAffiliate(
+  context: BillingContext,
+): Promise<BillableAffiliate | null> {
+  if (!context.affiliateCode || context.organizationId === "anonymous") return null;
+  const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
+  if (!affiliate?.is_active) return null;
+  if (affiliate.user_id === context.userId) return null;
+  const markupPercent = Number(affiliate.markup_percent) / 100;
+  if (!Number.isFinite(markupPercent) || markupPercent <= 0) return null;
+  return { affiliate, markupPercent };
+}
+
+function collectedTotalCost(
+  totalCost: number,
+  reservation: CreditReservation | undefined,
+  reconciliation: CreditReconciliationResult | void | undefined,
+): number {
+  if (!reservation || !reconciliation) return totalCost;
+  if (reconciliation.adjustmentType === "uncollected_overage") {
+    return Math.min(totalCost, reconciliation.reservedAmount);
+  }
+  return totalCost;
+}
+
+function collectedAffiliateEarnings(params: {
+  nominalEarnings: number;
+  preAffiliateTotalCost: number;
+  totalCost: number;
+  reservation?: CreditReservation;
+  reconciliation?: CreditReconciliationResult | void;
+}): number {
+  const collected = collectedTotalCost(params.totalCost, params.reservation, params.reconciliation);
+  const collectedMarkup = Math.max(0, collected - params.preAffiliateTotalCost);
+  return Math.min(params.nominalEarnings, collectedMarkup);
 }
 
 // ============================================================================
@@ -167,6 +217,7 @@ export async function reserveCredits(
 ): Promise<CreditReservation> {
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
+  const affiliate = await resolveBillableAffiliate(context);
 
   return await creditsService.reserve({
     organizationId: context.organizationId,
@@ -175,6 +226,7 @@ export async function reserveCredits(
     billingSource: context.billingSource,
     estimatedInputTokens,
     estimatedOutputTokens,
+    ...(affiliate && { estimatedCostMultiplier: 1 + affiliate.markupPercent }),
     userId: context.userId,
     description: context.description ?? `AI request: ${context.model}`,
   });
@@ -241,60 +293,22 @@ export async function billUsage(
   let baseTotalCost = totalCost / PLATFORM_MARKUP_MULTIPLIER;
   let platformMarkup = totalCost - baseTotalCost;
 
-  // Apply affiliate markup if present — but NOT for anonymous (free-tier)
-  // requests. An "anonymous" org pays $0 (its reservation is a no-op), so there
-  // is no collected affiliate revenue to share; minting affiliate earnings here
-  // would create cashable redeemable_earnings out of nothing — an org owner
-  // could farm their own affiliate code via free anon requests (#10853). Only
-  // credit the affiliate when the request is billed to a real paying org.
-  let _appliedAffiliateMarkup = false;
-  if (context.affiliateCode && context.organizationId !== "anonymous") {
-    const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
-    if (affiliate && affiliate.is_active) {
-      const markupPercent = Number(affiliate.markup_percent) / 100;
+  const preAffiliateTotalCost = totalCost;
+  const affiliate = await resolveBillableAffiliate(context);
+  const affiliateMarkupPercent = affiliate?.markupPercent ?? 0;
+  const affiliateEarnings = preAffiliateTotalCost * affiliateMarkupPercent;
 
-      // Calculate affiliate markup based on total cost (after platform markup)
-      const affiliateMarkupBaseCost = totalCost;
-      const affiliateEarnings = affiliateMarkupBaseCost * markupPercent;
-
-      // Update total costs charged to the user
-      inputCost += inputCost * markupPercent;
-      outputCost += outputCost * markupPercent;
-      totalCost += affiliateEarnings;
-      _appliedAffiliateMarkup = true;
-
-      // Credit the affiliate owner
-      if (affiliateEarnings > 0) {
-        const sourceId = getAffiliateEarningsSourceId(context, "usage");
-
-        await redeemableEarningsService
-          .addEarnings({
-            userId: affiliate.user_id,
-            amount: affiliateEarnings,
-            source: "affiliate",
-            sourceId,
-            description: `Affiliate markup earnings from model: ${context.model}`,
-            metadata: {
-              appId: null, // this isn't from a specific miniapp, but from an affiliate SKU
-              model: context.model,
-              tokens: totalTokens,
-            },
-            dedupeBySourceId: true,
-          })
-          .catch((err) => {
-            logger.error("[AI Billing] Failed to add affiliate earnings", {
-              error: err instanceof Error ? err.message : String(err),
-              affiliateId: affiliate.id,
-              amount: affiliateEarnings,
-            });
-          });
-      }
-    }
+  if (affiliateEarnings > 0) {
+    inputCost += inputCost * affiliateMarkupPercent;
+    outputCost += outputCost * affiliateMarkupPercent;
+    totalCost += affiliateEarnings;
   }
 
-  // Reconcile reservation (refund excess or charge overage)
+  // Reconcile reservation (refund excess or charge overage) before crediting any
+  // cashable affiliate earnings, so uncollectable overage cannot mint payouts.
+  let reconciliation: CreditReconciliationResult | void | undefined;
   if (reservation) {
-    await reservation.reconcile(totalCost);
+    reconciliation = await reservation.reconcile(totalCost);
     logger.info("[AI Billing] Credits reconciled", {
       model: context.model,
       reserved: reservation.reservedAmount,
@@ -305,6 +319,42 @@ export async function billUsage(
       cacheWriteInputTokens,
       outputTokens,
     });
+  }
+
+  if (affiliate && affiliateEarnings > 0) {
+    const payableEarnings = collectedAffiliateEarnings({
+      nominalEarnings: affiliateEarnings,
+      preAffiliateTotalCost,
+      totalCost,
+      reservation,
+      reconciliation,
+    });
+
+    if (payableEarnings > 0) {
+      const sourceId = getAffiliateEarningsSourceId(context, "usage");
+
+      await redeemableEarningsService
+        .addEarnings({
+          userId: affiliate.affiliate.user_id,
+          amount: payableEarnings,
+          source: "affiliate",
+          sourceId,
+          description: `Affiliate markup earnings from model: ${context.model}`,
+          metadata: {
+            appId: null,
+            model: context.model,
+            tokens: totalTokens,
+          },
+          dedupeBySourceId: true,
+        })
+        .catch((err) => {
+          logger.error("[AI Billing] Failed to add affiliate earnings", {
+            error: err instanceof Error ? err.message : String(err),
+            affiliateId: affiliate.affiliate.id,
+            amount: payableEarnings,
+          });
+        });
+    }
   }
 
   return {
@@ -334,50 +384,60 @@ export async function billFlatUsage(
   const outputCost = 0;
   const provider = context.provider ?? getProviderFromModel(context.model);
 
-  if (context.affiliateCode) {
-    const affiliate = await affiliatesRepository.getAffiliateCodeByCode(context.affiliateCode);
-    if (affiliate && affiliate.is_active) {
-      const markupPercent = Number(affiliate.markup_percent) / 100;
-      const affiliateEarnings = totalCost * markupPercent;
-      totalCost += affiliateEarnings;
-      inputCost = totalCost;
+  const preAffiliateTotalCost = totalCost;
+  const affiliate = await resolveBillableAffiliate(context);
+  const affiliateEarnings = affiliate ? preAffiliateTotalCost * affiliate.markupPercent : 0;
 
-      if (affiliateEarnings > 0) {
-        const sourceId = getAffiliateEarningsSourceId(context, "flat");
-
-        await redeemableEarningsService
-          .addEarnings({
-            userId: affiliate.user_id,
-            amount: affiliateEarnings,
-            source: "affiliate",
-            sourceId,
-            description: `Affiliate markup earnings from model: ${context.model}`,
-            metadata: {
-              appId: null,
-              model: context.model,
-              provider,
-              flatOperation: true,
-            },
-            dedupeBySourceId: true,
-          })
-          .catch((err) => {
-            logger.error("[AI Billing] Failed to add flat-operation affiliate earnings", {
-              error: err instanceof Error ? err.message : String(err),
-              affiliateId: affiliate.id,
-              amount: affiliateEarnings,
-            });
-          });
-      }
-    }
+  if (affiliateEarnings > 0) {
+    totalCost += affiliateEarnings;
+    inputCost = totalCost;
   }
 
+  let reconciliation: CreditReconciliationResult | void | undefined;
   if (reservation) {
-    await reservation.reconcile(totalCost);
+    reconciliation = await reservation.reconcile(totalCost);
     logger.info("[AI Billing] Flat credits reconciled", {
       model: context.model,
       reserved: reservation.reservedAmount,
       actual: totalCost,
     });
+  }
+
+  if (affiliate && affiliateEarnings > 0) {
+    const payableEarnings = collectedAffiliateEarnings({
+      nominalEarnings: affiliateEarnings,
+      preAffiliateTotalCost,
+      totalCost,
+      reservation,
+      reconciliation,
+    });
+
+    if (payableEarnings > 0) {
+      const sourceId = getAffiliateEarningsSourceId(context, "flat");
+
+      await redeemableEarningsService
+        .addEarnings({
+          userId: affiliate.affiliate.user_id,
+          amount: payableEarnings,
+          source: "affiliate",
+          sourceId,
+          description: `Affiliate markup earnings from model: ${context.model}`,
+          metadata: {
+            appId: null,
+            model: context.model,
+            provider,
+            flatOperation: true,
+          },
+          dedupeBySourceId: true,
+        })
+        .catch((err) => {
+          logger.error("[AI Billing] Failed to add flat-operation affiliate earnings", {
+            error: err instanceof Error ? err.message : String(err),
+            affiliateId: affiliate.affiliate.id,
+            amount: payableEarnings,
+          });
+        });
+    }
   }
 
   return {

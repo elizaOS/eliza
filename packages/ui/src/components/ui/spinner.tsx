@@ -1,3 +1,7 @@
+/**
+ * Spinning `Loader2` icon at a configurable size — the kit's inline loading
+ * indicator for buttons and small in-flight regions.
+ */
 import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

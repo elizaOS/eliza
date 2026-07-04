@@ -1,10 +1,9 @@
 /**
  * Model-free acoustic speaker attribution for the Voice Workbench (#9147, #9427).
  *
- * The headless decision-logic lane used to copy the ground-truth speaker label
- * straight into `predictedSpeakerLabel`, so the DER gate compared ground truth
- * to itself and could never fail (#9427). This module is the real thing it
- * needed: it derives a speaker label from the AUDIO and nothing else.
+ * The DER gate must score a label derived from the AUDIO against ground truth,
+ * never ground truth against itself — a tautology that can never fail (#9427).
+ * This module derives that speaker label from the audio and nothing else.
  *
  *   extractTimbreEmbedding  — a deterministic mean-MFCC voice embedding (the
  *                             speaker's timbre), via a dependency-free FFT +

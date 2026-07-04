@@ -1,3 +1,12 @@
+/**
+ * `RaydiumService` — quote, swap, and analytics client for Raydium, plus a
+ * CLMM position surface (`getPositions`/`createPosition`/`closePosition`/
+ * `updatePosition`). Quote/swap/analytics methods call the public
+ * `api.raydium.io` REST API directly. The CLMM position methods route
+ * through a local `Position` stub (not the Raydium SDK's `Position` module)
+ * that always throws, since the installed Raydium SDK version does not
+ * expose position helpers — calling any of them fails until that's wired up.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type { JupiterQuoteResponse } from "../types.ts";
@@ -35,7 +44,6 @@ export class RaydiumService extends Service {
   static serviceType = "RAYDIUM_SERVICE";
   capabilityDescription = "Provides standardized access to DEX liquidity pools." as const;
 
-  // Configuration constants
   private readonly CONFIRMATION_CONFIG = {
     MAX_ATTEMPTS: 12,
     INITIAL_TIMEOUT: 2000,
@@ -49,9 +57,7 @@ export class RaydiumService extends Service {
     console.log("RAYDIUM_SERVICE cstr");
   }
 
-  // return Raydium Provider handle
   async registerProvider(provider: RaydiumRegisteredProvider) {
-    // add to registry
     const id = Object.values(this.registry).length + 1;
     console.log("registered", provider.name, `as Raydium provider #${id}`);
     this.registry[id] = provider;
@@ -152,7 +158,6 @@ export class RaydiumService extends Service {
     return false;
   }
 
-  // Get token price in USDC
   async getTokenPrice(
     tokenMint: string,
     quoteMint: string = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -163,17 +168,16 @@ export class RaydiumService extends Service {
       const quote = await this.getQuote({
         inputMint: tokenMint,
         outputMint: quoteMint,
-        amount: baseAmount, // Dynamic amount based on token decimals
+        amount: baseAmount,
         slippageBps: 50,
       });
-      return Number(quote.outAmount) / 10 ** inputDecimals; // Convert using same decimals
+      return Number(quote.outAmount) / 10 ** inputDecimals;
     } catch (error) {
       logger.error(`Failed to get token price: ${formatUnknownError(error)}`);
       return 0;
     }
   }
 
-  // Get best swap route
   async getBestRoute({
     inputMint,
     outputMint,
@@ -238,7 +242,6 @@ export class RaydiumService extends Service {
         amount,
         slippageBps,
       });
-      // Calculate minimum received based on slippage
       const minReceived = Number(quote.outAmount) * (1 - slippageBps / 10000);
       return minReceived;
     } catch (error) {
@@ -291,7 +294,6 @@ export class RaydiumService extends Service {
         slippageBps: 50,
       });
 
-      // Calculate optimal slippage based on liquidity and price impact
       const priceImpact = Number(quote.priceImpactPct);
       let recommendedSlippage: number;
 
@@ -323,7 +325,6 @@ export class RaydiumService extends Service {
     volume24h: number;
   }> {
     try {
-      // Fetch token pair information from Jupiter API
       const response = await fetch(
         `https://api.raydium.io/v2/main/pairs/${inputMint}/${outputMint}`
       );
@@ -349,7 +350,6 @@ export class RaydiumService extends Service {
     timeframe?: string;
   }): Promise<Array<{ timestamp: number; price: number }>> {
     try {
-      // Fetch historical price data from Jupiter API
       const response = await fetch(
         `https://api.raydium.io/v2/main/prices/${inputMint}/${outputMint}?timeframe=${timeframe}`
       );
@@ -394,7 +394,6 @@ export class RaydiumService extends Service {
         priceImpact: number;
       }> = [];
 
-      // Find potential arbitrage paths
       for (const token1 of commonTokens) {
         if (token1 === startingMint) continue;
 

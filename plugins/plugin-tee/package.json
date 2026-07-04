@@ -45,6 +45,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@phala/dstack-sdk": "^0.5.7",
     "@solana/web3.js": "1.98.4",
@@ -64,7 +65,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsgo --noEmit",
     "test": "bun run test:typescript",
-    "test:typescript": "vitest run src/__tests__/ --config vitest.config.ts",
+    "test:typescript": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",

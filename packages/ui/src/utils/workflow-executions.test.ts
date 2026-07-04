@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for workflow-execution diagnostics/formatting (engine metrics,
+ * duration, run rows). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import type { WorkflowExecution } from "../api/client-types-chat";
 import {

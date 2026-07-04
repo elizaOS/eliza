@@ -7,7 +7,9 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
   readStoredStewardToken,
   STEWARD_REFRESH_ENDPOINT,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import {
   type AgentReadinessProbe,
   type AuthedAgentFetch,
@@ -238,6 +240,11 @@ function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+function shouldUseNativeStewardRefreshHttp(endpoint: string): boolean {
+  if (!/^https?:\/\//i.test(endpoint)) return false;
+  return Capacitor.isNativePlatform() || isElectrobunRuntime();
+}
+
 function resolveBrowserCloudApiRequestUrl(url: string): string {
   if (shouldUseNativeCloudHttp() || typeof window === "undefined") return url;
   try {
@@ -291,7 +298,13 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   // agent-proxy fallback (/api/cloud/compat/*), a route only agent servers
   // mount — the cloud worker 404s it, so every web sign-in dead-ended on
   // "Couldn't connect to your agent".
-  if (typeof window !== "undefined") {
+  //
+  // Gate this on the empty-baseUrl state ONLY. Once the client is connected to
+  // a NON-cloud agent server (baseUrl = an agent URL that isn't a direct-cloud
+  // base — handled above), the direct-cloud call must go to that agent, not the
+  // page host. Firing this branch while connected would mis-route to the cloud
+  // host and 401. See PR #11448.
+  if (!baseUrl && typeof window !== "undefined") {
     const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );
@@ -308,19 +321,14 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
  * `steward-token` cookie; on native (`capacitor://localhost` / loopback) it is
  * sent as `Authorization: Bearer`.
  *
- * The legacy `__ELIZA_CLOUD_AUTH_TOKEN__` global and the client REST token are
- * kept only as fallbacks for the Remote (device-code/pairing) flow, which still
- * mints its own session token via `cloudLoginPollDirect`.
+ * The Remote (device-code/pairing) flow mints its own session token via
+ * `cloudLoginPollDirect` and persists it through the same steward-session store
+ * (`writeStoredStewardToken`), so it resolves here through the canonical Steward
+ * branch too. The client REST token is the last fallback.
  */
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
-
-  const globalToken = (globalThis as Record<string, unknown>)
-    .__ELIZA_CLOUD_AUTH_TOKEN__;
-  if (typeof globalToken === "string" && globalToken.trim()) {
-    return globalToken.trim();
-  }
 
   const clientToken = client?.getRestAuthToken()?.trim();
   return clientToken || null;
@@ -366,8 +374,33 @@ export function cloudTokenSecsRemaining(token: string): number | null {
 export async function refreshCloudStewardSession(opts?: {
   endpoint?: string;
 }): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
-  if (typeof fetch === "undefined") return null;
   const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
+  if (shouldUseNativeStewardRefreshHttp(endpoint)) {
+    const token = readStoredStewardToken()?.trim();
+    if (!token) return null;
+    const response = await withDirectCloudHttpTimeout(
+      CapacitorHttp.request({
+        url: endpoint,
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: "json",
+        connectTimeout: 10_000,
+        readTimeout: 10_000,
+      }),
+      { method: "POST", url: endpoint },
+    );
+    if (response.status < 200 || response.status >= 300) return null;
+    return parseDirectCloudJsonSafe(response.data) as {
+      token?: string;
+      expiresAt?: number;
+      expiresIn?: number;
+    } | null;
+  }
+
+  if (typeof fetch === "undefined") return null;
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: "include",
@@ -3056,11 +3089,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
-  // where the runtime global token may be empty (the caller always passes the
-  // session token).
-  if (authToken && typeof globalThis !== "undefined") {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      authToken;
+  // where the resolved token may be empty (the caller always passes the session
+  // token). Persist it through the canonical steward-session store so
+  // getCloudAuthToken() resolves it for those requests.
+  if (authToken) {
+    writeStoredStewardToken(authToken);
   }
 
   // Reuse an existing agent unless the caller explicitly forces a new one. This

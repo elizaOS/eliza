@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers VoiceProfileSection: OWNER pinned at top with the Crown badge, the
+ * empty state, inline rename + relationship-label edits, delete of a non-owner
+ * row, and refusal to delete OWNER. jsdom render against a real
+ * `VoiceProfilesClient` backed by a fake in-memory fetch.
+ */
+
 import {
   cleanup,
   fireEvent,

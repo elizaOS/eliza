@@ -1,3 +1,16 @@
+/**
+ * `AdvancedMemoryStorageService` implements the runtime's `MemoryStorageProvider`
+ * on top of ordinary agent memories, storing long-term memories and session
+ * summaries as regular `Memory` rows (tagged via an `advancedMemory` envelope
+ * in `metadata`) in dedicated synthetic rooms rather than separate tables.
+ *
+ * Long-term memories are anchored to an "identity group" resolved through the
+ * optional `entity_resolution` service: entities confirmed-linked to the same
+ * person share one long-term-memory room (keyed by the lexicographically
+ * smallest entity ID in the group), so memories written under any alias in the
+ * group are visible from all of them. Session summaries are stored per-room
+ * without identity resolution.
+ */
 import {
   ChannelType,
   type IAgentRuntime,

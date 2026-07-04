@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the ApiKeysTable.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { type ApiKeyDisplay, ApiKeysTable } from "./api-keys-table";
 

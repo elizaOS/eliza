@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the pure KV-cache type resolver: env-var parsing
+ * (`readEnvKvCacheType`) and the explicit > env > default precedence chain
+ * (`resolveKvCacheType`). Fully deterministic, no native binding.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import {
   type EnvLike,

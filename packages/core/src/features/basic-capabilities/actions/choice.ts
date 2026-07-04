@@ -1,6 +1,5 @@
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
-import { getUserServerRole } from "../../../roles.ts";
 import type {
 	Action,
 	ActionExample,
@@ -64,16 +63,12 @@ export const choiceAction: Action = {
 			return false;
 		}
 
-		const userRole = await getUserServerRole(
-			runtime,
-			message.entityId,
-			room.messageServerId,
-		);
-
-		if (userRole !== "OWNER" && userRole !== "ADMIN") {
-			return false;
-		}
-
+		// #12087 Item 17: authorization is the declared `roleGate: { minRole: "ADMIN" }`,
+		// enforced by canActionRun through resolveEntityRole (which correctly grants a
+		// canonical owner OWNER even with no stored world role). validate() must only
+		// check the action's precondition — a pending choice — not re-derive the role
+		// via getUserServerRole, which returned no role for a canonical owner and
+		// wrongly rejected them.
 		const pendingTasks = await runtime.getTasks({
 			roomId: message.roomId,
 			tags: ["AWAITING_CHOICE"],
@@ -162,12 +157,15 @@ export const choiceAction: Action = {
 		const { taskId, selectedOption } = _readChoiceParameters(message, _options);
 
 		if (taskId && selectedOption) {
-			const taskMap = new Map(
-				formattedTasks.map((task) => [task.taskId, task]),
-			);
-			const taskInfo = taskMap.get(taskId) as
-				| (typeof formattedTasks)[0]
-				| undefined;
+			// The taskId parameter accepts the "Short or full ID of the pending
+			// choice task" — key the lookup by both so a model passing the full
+			// UUID (as stored on the task) is not rejected with TASK_NOT_FOUND.
+			const taskMap = new Map<string, (typeof formattedTasks)[0]>();
+			for (const task of formattedTasks) {
+				taskMap.set(task.taskId, task);
+				taskMap.set(task.fullId, task);
+			}
+			const taskInfo = taskMap.get(taskId);
 
 			if (!taskInfo) {
 				if (callback) {

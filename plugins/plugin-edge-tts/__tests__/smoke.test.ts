@@ -1,3 +1,8 @@
+/**
+ * Smoke test for the Edge TTS handler with node-edge-tts mocked: asserts the
+ * synthesis request wiring and temp-file read/cleanup without hitting the live
+ * Edge voice service.
+ */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

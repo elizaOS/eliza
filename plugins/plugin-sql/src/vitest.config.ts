@@ -1,11 +1,12 @@
+/**
+ * Default vitest config for plugin-sql. The runner
+ * (`packages/scripts/run-all-tests.mjs`) drives lanes via env:
+ * `TEST_LANE=pr` sets `VITEST_EXCLUDE_REAL=1`; `TEST_LANE=post-merge` clears
+ * it so the real-PGlite suites (`runtime-migrator.real.test.ts`,
+ * `pglite-adapter.real.test.ts`, …) run instead of being excluded (#10104).
+ */
 import { defineConfig } from "vitest/config";
 
-// The runner (packages/scripts/run-all-tests.mjs) drives lanes via env:
-// TEST_LANE=pr sets VITEST_EXCLUDE_REAL=1, TEST_LANE=post-merge clears it so
-// "real keys flow through". This config used to hard-exclude *.real.test.ts
-// regardless, so the self-contained real-PGlite suites
-// (runtime-migrator.real.test.ts, pglite-adapter.real.test.ts, …) ran in NO
-// lane at all — the post-merge lane silently skipped them (#10104 audit).
 const excludeReal =
   process.env.VITEST_EXCLUDE_REAL === "1" || process.env.VITEST_LANE !== "post-merge";
 

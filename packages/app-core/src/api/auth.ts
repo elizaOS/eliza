@@ -35,7 +35,7 @@ export {
 } from "./auth/auth-context.js";
 export { tokenMatches } from "./auth/tokens.js";
 
-interface CompatStateLike {
+export interface CompatStateLike {
   current:
     | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
     | null;
@@ -239,74 +239,17 @@ export async function ensureCompatApiAuthorizedAsync(
     skipCsrf?: boolean;
   },
 ): Promise<boolean> {
-  const ip = req.socket.remoteAddress ?? null;
-  if (isAuthRateLimited(ip)) {
-    sendJsonError(res, 429, "Too many authentication attempts");
+  const resolved = await resolveAuthorizedRouteRole(req, {
+    store: options.store,
+    now: options.now,
+    readSetting: options.readSetting,
+    skipCsrf: options.skipCsrf,
+  });
+  if (!resolved.ok) {
+    sendJsonError(res, resolved.status, resolved.reason);
     return false;
   }
-
-  if (isTrustedLocalRequest(req)) return true;
-
-  const method = (req.method ?? "GET").toUpperCase();
-  const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
-
-  // Cookie path
-  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
-  if (sessionCookie) {
-    const session = await findActiveSession(
-      options.store,
-      sessionCookie,
-      options.now,
-    ).catch(() => null);
-    if (session) {
-      if (csrfRequired) {
-        const csrfHeader = extractHeaderValue(
-          (req.headers as http.IncomingHttpHeaders)[CSRF_HEADER_NAME],
-        );
-        if (!verifyCsrfToken(session, csrfHeader)) {
-          sendJsonError(res, 403, "csrf_required");
-          return false;
-        }
-      }
-      return true;
-    }
-  }
-
-  // Bearer path — session id only.
-  // Bearer-auth requests are exempt from CSRF (they're not cookie-bound).
-  const provided = getProvidedApiToken(req);
-  if (provided) {
-    const sessionFromBearer = await findActiveSession(
-      options.store,
-      provided,
-      options.now,
-    ).catch(() => null);
-    if (sessionFromBearer) return true;
-
-    // Android local-agent mode sets ELIZA_REQUIRE_LOCAL_AUTH=1 because
-    // loopback is shared across apps on-device. In that mode the native
-    // service injects a per-boot ELIZA_API_TOKEN bearer for WebView requests;
-    // accept that configured token even after the runtime DB is available.
-    const expectedToken = getCompatApiToken();
-    if (
-      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
-      expectedToken &&
-      tokenMatches(expectedToken, provided)
-    ) {
-      return true;
-    }
-
-    // Embed session token (cross-origin Mini App / Activity iframe): a valid,
-    // unexpired token minted by /api/embed/auth authenticates the verified
-    // OWNER/ADMIN principal. Bearer-only, so CSRF-exempt like the paths above.
-    if (resolveEmbedPrincipal(req, options.now, options.readSetting)) {
-      return true;
-    }
-  }
-
-  recordFailedAuth(ip);
-  sendJsonError(res, 401, "Unauthorized");
-  return false;
+  return true;
 }
 
 /** Returns true when NODE_ENV indicates a local development environment. */
@@ -426,7 +369,7 @@ export function ensureAuthSessionOrBootstrap(
  * Fails closed: any path that is not a recognised owner principal resolves to
  * `"NONE"` (rank 0).
  */
-export function resolveBoundaryRole(
+function resolveBoundaryRole(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   env: NodeJS.ProcessEnv = process.env,
 ): RoleGateRole {
@@ -434,11 +377,17 @@ export function resolveBoundaryRole(
     return "OWNER";
   }
 
-  const expectedToken = resolveApiToken(env);
-  if (expectedToken) {
-    const provided = getProvidedApiToken(req);
-    if (provided && tokenMatches(expectedToken, provided)) {
-      return "OWNER";
+  // #12087 Item 29: a presented API token only elevates a remote caller to OWNER
+  // when ELIZA_REQUIRE_LOCAL_AUTH=1, matching the async ensureRouteMinRole DB
+  // path. Without that flag the sync helper would grant OWNER for a bare token
+  // while the async path would not — the two boundary paths now agree.
+  if (env.ELIZA_REQUIRE_LOCAL_AUTH === "1") {
+    const expectedToken = resolveApiToken(env);
+    if (expectedToken) {
+      const provided = getProvidedApiToken(req);
+      if (provided && tokenMatches(expectedToken, provided)) {
+        return "OWNER";
+      }
     }
   }
 
@@ -451,8 +400,12 @@ export function resolveBoundaryRole(
  * This is a pure predicate (no response side effects) so it composes with any
  * gating strategy. It fails closed: an unrecognised caller resolves to `"NONE"`
  * (rank 0), which only satisfies a `"NONE"` minimum.
+ *
+ * @internal #12087 Item 29: module-internal. Routes must use the async,
+ * DB-aware {@link ensureRouteMinRole}; this coarse sync helper backs only the
+ * tokenless branch of {@link ensureCompatSensitiveRouteAuthorized}.
  */
-export function ensureMinRole(
+function ensureMinRole(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   minRole: RoleGateRole,
   env: NodeJS.ProcessEnv = process.env,
@@ -464,11 +417,33 @@ type RouteRoleResolution =
   | { ok: true; role: RoleGateRole }
   | { ok: false; status: 401 | 403 | 429; reason: string };
 
-function roleForAuthIdentity(
-  identity: Pick<AuthIdentityRow, "kind"> | null,
+type AuthorizedRouteRoleOptions =
+  | {
+      state: CompatStateLike;
+      store?: never;
+      skipCsrf?: boolean;
+      now?: number;
+      readSetting?: never;
+    }
+  | {
+      store: AuthStore;
+      state?: never;
+      skipCsrf?: boolean;
+      now?: number;
+      readSetting?: (key: string) => unknown;
+    };
+
+/**
+ * #12087 Item 15: the single identity-kind → canonical role mapper. Both the
+ * session-route response (auth-session-routes) and server-side route-role
+ * resolution derive the caller's role from this one function, so the two cannot
+ * drift. `owner` → OWNER, `machine` → USER, anything else (or no identity) → NONE.
+ */
+export function roleForIdentityKind(
+  kind: AuthIdentityRow["kind"] | null | undefined,
 ): RoleGateRole {
-  if (identity?.kind === "owner") return "OWNER";
-  if (identity?.kind === "machine") return "USER";
+  if (kind === "owner") return "OWNER";
+  if (kind === "machine") return "USER";
   return "NONE";
 }
 
@@ -477,13 +452,12 @@ async function resolveSessionRole(
   identityId: string,
 ): Promise<RoleGateRole> {
   const identity = await store.findIdentity(identityId).catch(() => null);
-  return roleForAuthIdentity(identity);
+  return roleForIdentityKind(identity?.kind);
 }
 
 async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
-  state: CompatStateLike,
-  options: { skipCsrf?: boolean; now?: number } = {},
+  options: AuthorizedRouteRoleOptions,
 ): Promise<RouteRoleResolution> {
   const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
@@ -496,9 +470,16 @@ async function resolveAuthorizedRouteRole(
 
   if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
 
-  const adapter = state.current?.adapter;
-  const db = adapter?.db;
-  if (!db) {
+  const state = "state" in options ? options.state : undefined;
+  const db = state?.current?.adapter?.db;
+  const store =
+    "store" in options && options.store
+      ? options.store
+      : db
+        ? new AuthStore(db as ConstructorParameters<typeof AuthStore>[0])
+        : null;
+
+  if (!store) {
     const expectedToken = getCompatApiToken();
     if (!expectedToken) {
       recordFailedAuth(ip);
@@ -514,7 +495,6 @@ async function resolveAuthorizedRouteRole(
     return { ok: false, status: 401, reason: "Unauthorized" };
   }
 
-  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
@@ -567,8 +547,12 @@ async function resolveAuthorizedRouteRole(
     // Embed session token → its verified boundary role (OWNER→OWNER,
     // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
     const embedRole = embedBoundaryRole(
-      resolveEmbedPrincipal(req, options.now, (key) =>
-        readEmbedSessionSecretSetting(state.current, key),
+      resolveEmbedPrincipal(
+        req,
+        options.now,
+        state
+          ? (key) => readEmbedSessionSecretSetting(state.current, key)
+          : options.readSetting,
       ),
     );
     if (embedRole) {
@@ -595,7 +579,7 @@ export async function ensureRouteMinRole(
   minRole: RoleGateRole,
   options: { skipCsrf?: boolean; now?: number } = {},
 ): Promise<boolean> {
-  const resolved = await resolveAuthorizedRouteRole(req, state, options);
+  const resolved = await resolveAuthorizedRouteRole(req, { ...options, state });
   if (!resolved.ok) {
     sendJsonError(res, resolved.status, resolved.reason);
     return false;
@@ -638,10 +622,10 @@ export function ensureCompatSensitiveRouteAuthorized(
 /**
  * Canonical async route guard.
  *
- * When the runtime DB is up, delegates to {@link ensureCompatApiAuthorizedAsync}
- * so cookie + CSRF + machine-session paths work. During early boot before the
- * DB is available, falls back to {@link ensureCompatApiAuthorized}
- * (bearer-only).
+ * Delegates to the same canonical role resolver used by
+ * {@link ensureRouteMinRole}, requiring at least an authenticated USER.
+ * During early boot before the DB is available, the resolver keeps the
+ * existing configured-token OWNER fallback.
  *
  * Pass `skipCsrf: true` for routes that mint cookies / handle their own CSRF
  * (login, setup, bootstrap exchange) where the SPA cannot present a CSRF
@@ -653,16 +637,5 @@ export async function ensureRouteAuthorized(
   state: CompatStateLike,
   options: { skipCsrf?: boolean; now?: number } = {},
 ): Promise<boolean> {
-  const adapter = state.current?.adapter;
-  const db = adapter?.db;
-  if (!db) {
-    return ensureCompatApiAuthorized(req, res);
-  }
-  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
-  return ensureCompatApiAuthorizedAsync(req, res, {
-    store,
-    now: options.now,
-    skipCsrf: options.skipCsrf,
-    readSetting: (key) => readEmbedSessionSecretSetting(state.current, key),
-  });
+  return ensureRouteMinRole(req, res, state, "USER", options);
 }

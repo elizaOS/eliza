@@ -1,3 +1,9 @@
+/**
+ * Renderer side of the native OCR bridge: interval-polls the Tesseract
+ * Capacitor plugin for queued OCR requests and returns recognized text. Mirrors
+ * the pull-based pattern of screen-capture-bridge for platforms with no push
+ * channel to the renderer.
+ */
 import { Capacitor } from "@capacitor/core";
 import { getTesseractPlugin } from "../bridge/native-plugins";
 

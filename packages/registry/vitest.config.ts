@@ -1,3 +1,6 @@
+/**
+ * Vitest config for @elizaos/registry: node environment, runs `src` unit tests.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

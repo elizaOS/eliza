@@ -75,6 +75,20 @@ const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES = [
   "todos",
   "wallet-ui",
 ] as const;
+// Extra optional plugin entry ids (comma-separated, e.g. "personal-assistant")
+// seeded as `{ enabled: true }` into the live-stack eliza.json alongside the
+// default view set. Opt-in via ELIZA_UI_SMOKE_PLUGIN_ENTRIES: specs that need a
+// plugin outside the default view set set it alongside ELIZA_UI_SMOKE_LIVE_STACK=1
+// (e.g. the scheduled-reminder live spec enables @elizaos/plugin-personal-assistant
+// so the LifeOps scheduler tick drives the ScheduledTask runner and its in_app
+// notification dispatch). The plugin must already be resolvable/built. Ignored by
+// the stub stack.
+const LIVE_STACK_EXTRA_PLUGIN_ENTRIES: readonly string[] = (
+  process.env.ELIZA_UI_SMOKE_PLUGIN_ENTRIES ?? ""
+)
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0);
 const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES: ReadonlyArray<{
   id: (typeof LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES)[number];
   dir: string;
@@ -337,6 +351,45 @@ async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/**
+ * Proxy the request to the API, retrying the transient undici keep-alive race
+ * (`UND_ERR_SOCKET: other side closed` → `TypeError: fetch failed`). The node
+ * HTTP API server closes idle keep-alive connections on its own timeout; under
+ * the app's concurrent boot fan-out undici reuses a socket the server just
+ * closed and the fetch throws before the request is ever sent — so retrying on
+ * a fresh connection is safe (the handler never ran) and is what keeps the app
+ * boot (plugins/config/WS) from degrading into a "Reconnecting" partial render.
+ */
+async function fetchApiWithRetry(
+  input: string,
+  init: RequestInit,
+  attempts = 5,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : "";
+      const transient =
+        message.includes("fetch failed") ||
+        cause.includes("other side closed") ||
+        cause.includes("UND_ERR_SOCKET") ||
+        cause.includes("ECONNRESET");
+      if (!transient || attempt === attempts - 1) {
+        throw error;
+      }
+      await sleep(50 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 async function proxyUiRequest(args: {
   apiBase: string;
   request: IncomingMessage;
@@ -357,7 +410,7 @@ async function proxyUiRequest(args: {
       headers.authorization = authorization;
     }
 
-    const upstream = await fetch(
+    const upstream = await fetchApiWithRetry(
       `${args.apiBase}${requestUrl.pathname}${requestUrl.search}`,
       {
         body: body.byteLength > 0 ? body : undefined,
@@ -877,10 +930,10 @@ async function seedLiveStackConfig(stateDir: string): Promise<void> {
         logging: { level: "error" },
         plugins: {
           entries: Object.fromEntries(
-            LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES.map((pluginId) => [
-              pluginId,
-              { enabled: true },
-            ]),
+            [
+              ...LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES,
+              ...LIVE_STACK_EXTRA_PLUGIN_ENTRIES,
+            ].map((pluginId) => [pluginId, { enabled: true }]),
           ),
         },
       },

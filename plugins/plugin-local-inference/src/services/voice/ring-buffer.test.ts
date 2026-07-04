@@ -1,3 +1,4 @@
+/** Covers `PcmRingBuffer` bulk-copy read/write and overflow signaling. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 

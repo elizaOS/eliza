@@ -1,3 +1,10 @@
+/**
+ * Alert callout shown when a permission is denied — offers Retry (`onRetry`) and
+ * an "Open Settings" affordance that deep-links to the OS permission screen.
+ * Routes to the native mobile deep-link on Capacitor (non-Electrobun) and the
+ * shared web/desktop deep-link elsewhere. Consumed by the permission-priming
+ * modal and permission settings rows.
+ */
 import { Capacitor } from "@capacitor/core";
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import { openPermissionSettings } from "@elizaos/shared/utils/permission-deep-links";

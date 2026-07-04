@@ -7,6 +7,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -250,6 +251,7 @@ export const ownerRemindersAction: Action = {
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
+  tags: [...OWNER_OPERATION_TAGS, FOLLOW_UP_CAPABLE_ACTION_TAG],
   similes: [
     "REMINDER",
     "REMINDERS",
@@ -284,6 +286,12 @@ export const ownerAlarmsAction: Action = {
     "owner alarms: action=create|update|delete|complete|skip|snooze|review",
 };
 
+// Primary OWNER_GOALS surface. @elizaos/plugin-goals also declares an action
+// named OWNER_GOALS (its `goals.ts`); when personal-assistant is loaded THIS one
+// registers first and first-registration-wins silently skips plugin-goals'.
+// That is intentional, not a collision to "fix": both delegate to the same
+// GoalsService back-end, and plugin-goals' action is the deliberate fallback for
+// the PA-free topology. Do not remove either. See plugin-goals CLAUDE.md.
 export const ownerGoalsAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_GOALS",
@@ -299,6 +307,8 @@ export const ownerGoalsAction: Action = {
   description: "Owner goals: create/update/delete/review goals/progress.",
   descriptionCompressed:
     "owner goals: action=create|update|delete|review; backing kind=goal",
+  routingHint:
+    "long-horizon outcomes/aspirations the owner is working toward ('my goal is X', 'life goal') -> OWNER_GOALS; do NOT use for time-triggered reminders ('remind me at 9pm') -> OWNER_REMINDERS, one-off checklist items -> OWNER_TODOS, or recurring daily habits -> OWNER_ROUTINES",
 };
 
 // Owner-store todos surface. Backed by the app-lifeops owner definitions store

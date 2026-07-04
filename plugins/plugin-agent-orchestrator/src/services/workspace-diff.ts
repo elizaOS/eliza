@@ -157,12 +157,53 @@ function parseNameStatus(out: string | undefined): string[] {
   return files;
 }
 
-/** Parse `git ls-files --others` output (one path per line) into a path list. */
-function parseLsFiles(out: string | undefined): string[] {
-  return (out ?? "")
+/**
+ * Parse `git ls-files --others` output (one path per line) into a path list.
+ * A complete listing always ends with a newline; when the output was cut at
+ * maxBuffer (ENOBUFS on a huge untracked tree) the tail is a truncated
+ * garbage path — drop the partial final line rather than surface junk.
+ */
+export function parseLsFiles(out: string | undefined): string[] {
+  if (!out) return [];
+  const complete = out.endsWith("\n")
+    ? out
+    : out.slice(0, out.lastIndexOf("\n") + 1);
+  return complete
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+// Dependency/build directories a fresh scaffold populates BEFORE any
+// .gitignore exists (`npm install` typically runs first). On an unborn HEAD
+// `--exclude-standard` has no .gitignore to honor, so thousands of vendor
+// paths would flood MAX_CHANGED_FILES and evict the agent's real files.
+// Fallback for the unborn-HEAD untracked scoop ONLY — the born-HEAD path
+// never scoops untracked files, and explicit tool-written paths are always
+// kept regardless (agentWritten is unioned separately).
+const UNBORN_SCOOP_VENDOR_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".yarn",
+  ".pnpm-store",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".turbo",
+  ".next",
+  ".nuxt",
+  "dist",
+  "build",
+  "coverage",
+  "vendor",
+  "target",
+]);
+
+function isVendorScoopPath(path: string): boolean {
+  return path
+    .split("/")
+    .some((segment) => UNBORN_SCOOP_VENDOR_DIRS.has(segment));
 }
 
 /**
@@ -279,11 +320,15 @@ export async function captureChangeSet(
   const untracked = unbornHead
     ? parseLsFiles(
         await git(workdir, ["ls-files", "--others", "--exclude-standard"]),
-      ).filter((file) => !dirtyAtSpawn.has(file))
+      ).filter((file) => !dirtyAtSpawn.has(file) && !isVendorScoopPath(file))
     : [];
 
+  // Agent-written paths FIRST: explicit edit/write tool calls are the
+  // highest-signal entries and must survive the MAX_CHANGED_FILES cap when a
+  // large scaffold floods `untracked`. Set dedupe keeps first-occurrence
+  // order, so spreading them last let the flood evict them entirely.
   const changedFiles = [
-    ...new Set([...tracked, ...untracked, ...agentWritten]),
+    ...new Set([...agentWritten, ...tracked, ...untracked]),
   ].slice(0, MAX_CHANGED_FILES);
   if (changedFiles.length === 0) return undefined;
 

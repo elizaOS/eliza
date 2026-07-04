@@ -3,8 +3,10 @@ import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/index.ts";
 import {
 	describeImageCached,
+	getCachedImageDescription,
 	imageDescriptionCacheKey,
 	normalizeImageDescription,
+	setCachedImageDescription,
 } from "./image-description-cache.ts";
 
 function fakeRuntime(overrides: {
@@ -118,5 +120,52 @@ describe("describeImageCached", () => {
 		const { runtime, useModel } = fakeRuntime({});
 		expect(await describeImageCached(runtime, "  ", "p")).toBeNull();
 		expect(useModel).not.toHaveBeenCalled();
+	});
+});
+
+// Real-error-path coverage for the #12264 fast-fail sweep: a broken cache must
+// surface via runtime.reportError, not vanish. The dependency is broken for
+// real (a rejecting getCache/setCache), and the assertion is that the failure
+// is reported — never that a fabricated default was returned silently.
+describe("image cache failures surface via reportError", () => {
+	it("reports a read failure and degrades to a cache miss (undefined)", async () => {
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			getCache: vi.fn(async () => {
+				throw new Error("cache read exploded");
+			}),
+			reportError,
+		});
+		const result = await getCachedImageDescription(runtime, "https://x/a.png");
+		expect(result).toBeUndefined();
+		expect(reportError).toHaveBeenCalledTimes(1);
+		expect(reportError).toHaveBeenCalledWith(
+			"ImageDescriptionCache.get",
+			expect.any(Error),
+			{ imageUrl: "https://x/a.png" },
+		);
+	});
+
+	it("reports a write failure without throwing", async () => {
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			setCache: vi.fn(async () => {
+				throw new Error("cache write exploded");
+			}),
+			reportError,
+		});
+		await expect(
+			setCachedImageDescription(runtime, "https://x/b.png", {
+				title: "B",
+				description: "d",
+				text: "d",
+			}),
+		).resolves.toBeUndefined();
+		expect(reportError).toHaveBeenCalledTimes(1);
+		expect(reportError).toHaveBeenCalledWith(
+			"ImageDescriptionCache.set",
+			expect.any(Error),
+			{ imageUrl: "https://x/b.png" },
+		);
 	});
 });

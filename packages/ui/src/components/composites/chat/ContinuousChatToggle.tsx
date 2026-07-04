@@ -153,16 +153,16 @@ export function ContinuousChatToggle({
           <TooltipProvider key={modeId} delayDuration={250}>
             <Tooltip>
               <TooltipTrigger asChild>
-                {/* biome-ignore lint/a11y/useSemanticElements: themed button retains all custom styles and tooltip integration; a native input[type=radio] would lose them. */}
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   role="radio"
                   aria-checked={active}
                   data-mode={modeId}
                   data-active={active ? "true" : "false"}
                   onClick={() => handleSelect(modeId)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
+                    "h-auto gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
                     "    ",
                     active
                       ? "bg-accent/15 text-accent"
@@ -171,7 +171,7 @@ export function ContinuousChatToggle({
                 >
                   <Icon className="h-3.5 w-3.5" />
                   <span>{meta.label}</span>
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <div className="text-xs max-w-[220px]">{meta.description}</div>

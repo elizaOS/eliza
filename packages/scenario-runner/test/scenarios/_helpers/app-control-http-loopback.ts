@@ -1,3 +1,9 @@
+/**
+ * In-process HTTP loopback for scenarios that assert app-control network calls.
+ * Monkeypatches global `fetch` to record requests and let handlers stub responses,
+ * so scenarios can inspect the exact payloads a plugin posts (e.g.
+ * `/api/views/events/broadcast`) without a real server. Reset per scenario.
+ */
 export type AppControlHttpRequest = {
   body: unknown;
   method: string;

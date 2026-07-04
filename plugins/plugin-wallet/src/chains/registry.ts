@@ -1,3 +1,15 @@
+/**
+ * `registerDefaultWalletChainHandlers` builds and registers the default
+ * `WalletChainHandler`s on the `WalletBackendService`: one EVM handler per
+ * configured chain (transfer/swap/bridge, delegating swap to `SwapAction`
+ * and bridge to `routeEvmBridge`), a Solana handler (native SOL transfer
+ * plus SPL transfer/swap via Jupiter, built by hand rather than through a
+ * shared SDK), and a pump.fun handler that requests a serialized buy
+ * transaction from PumpPortal's trade-local API, signs it through the
+ * resolved wallet backend or local keypair, and submits it directly to
+ * Solana RPC. All execute paths assume the caller has already passed the
+ * financial-confirmation gate upstream.
+ */
 import type { IAgentRuntime, ITokenDataService } from "@elizaos/core";
 import {
   createAssociatedTokenAccountInstruction,

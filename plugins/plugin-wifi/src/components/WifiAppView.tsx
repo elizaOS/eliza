@@ -16,7 +16,7 @@ import type {
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
-import { Button, type OverlayAppContext } from "@elizaos/ui";
+import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -26,7 +26,13 @@ import {
   Wifi as WifiIcon,
   WifiOff,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 interface SignalBarsProps {
   rssi: number;
@@ -158,7 +164,8 @@ interface NetworkRowProps {
 
 function NetworkRow({ network, onSelect }: NetworkRowProps) {
   return (
-    <button
+    <Button
+      unstyled
       type="button"
       onClick={() => onSelect(network)}
       className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left transition-colors hover:bg-bg-accent/50"
@@ -180,7 +187,7 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
         </div>
       </div>
       <SignalBars rssi={network.rssi} />
-    </button>
+    </Button>
   );
 }
 
@@ -388,10 +395,12 @@ export function WifiAppView(props: OverlayAppContext) {
               </span>
             </div>
             {selected.secured ? (
-              <input
+              <Input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setPassword(event.target.value)
+                }
                 placeholder="Password"
                 className="w-full rounded-md border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border/60"
               />

@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the plugin-github action and route surface against
+ * a mocked GitHub API. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

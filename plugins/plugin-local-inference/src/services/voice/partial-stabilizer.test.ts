@@ -1,3 +1,4 @@
+/** Covers the LocalAgreement-n partial-transcript stabilizer. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { PartialStabilizer } from "./partial-stabilizer";
 

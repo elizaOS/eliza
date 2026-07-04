@@ -30,15 +30,15 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/agent/auth/account-storage";
+import { saveAccount } from "@elizaos/auth/account-storage";
 import type { IAgentRuntime } from "@elizaos/core";
+import { generateText } from "ai";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // Relative source import (repo convention for cross-package test imports —
 // the plugin build does not emit dist/providers/, so the package subpath
 // export cannot resolve this module).
 import { createAnthropicClientWithTopPSupport } from "../../../../plugins/plugin-anthropic/providers/anthropic.ts";
 import { clearTokenCache } from "../../../../plugins/plugin-anthropic/utils/credential-store.ts";
-import { generateText } from "ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,
@@ -80,8 +80,16 @@ function messagesResponseBody(text: string): string {
   });
 }
 
+// Each upstream instance takes a FRESH port from the assigned range. Reusing
+// one port across sequential tests lets undici's global fetch pool hand the
+// next test a stale keep-alive connection to the previous (closed) server —
+// the first request of the next test then dies with `read ECONNRESET` before
+// it ever reaches the new upstream. A fresh origin per test gets a fresh pool.
+let nextPort = PORT_RANGE_START;
+
 async function listenInRange(server: http.Server): Promise<number> {
-  for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
+  if (nextPort > PORT_RANGE_END) nextPort = PORT_RANGE_START;
+  for (let port = nextPort; port <= PORT_RANGE_END; port++) {
     const bound = await new Promise<boolean>((resolve) => {
       const onError = () => resolve(false);
       server.once("error", onError);
@@ -90,7 +98,10 @@ async function listenInRange(server: http.Server): Promise<number> {
         resolve(true);
       });
     });
-    if (bound) return port;
+    if (bound) {
+      nextPort = port + 1;
+      return port;
+    }
   }
   throw new Error(
     `No free port in assigned range ${PORT_RANGE_START}-${PORT_RANGE_END}`,
@@ -160,7 +171,13 @@ async function startFakeAnthropicUpstream(): Promise<FakeUpstream> {
     seen,
     behavior,
     resetEpochSec,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) => {
+        // Tear down lingering keep-alive sockets so close() cannot hang and
+        // no half-dead connection outlives the test.
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
   };
 }
 

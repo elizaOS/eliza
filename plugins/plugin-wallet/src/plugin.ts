@@ -1,3 +1,10 @@
+/**
+ * Composes `walletPlugin`, the top-level plugin object the agent loads:
+ * merges the core wallet-backend plugin (signing service + `wallet` provider)
+ * with the EVM and Solana sub-plugins' services/providers/actions/routes, and
+ * registers the Birdeye/DexScreener/TokenInfo analytics services. `init` and
+ * `dispose` fan out to each composed piece in turn.
+ */
 import { resolveCloudRoute, toRuntimeSettings } from "@elizaos/cloud-routing";
 import {
   type IAgentRuntime,

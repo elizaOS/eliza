@@ -599,7 +599,16 @@ async function opSearchVectors(
 
   const matches: Memory[] = await runtime.searchMemories({
     embedding,
-    query,
+    // Intentionally NO `query` here. Passing `query` makes runtime.searchMemories
+    // pipe the vector hits through rerankMemories → BM25, which DROPS every
+    // candidate with zero stemmed-keyword overlap (search.ts: `if (score <= 0)
+    // continue`). That turns "rerank" into a keyword FILTER: a semantic search
+    // like "automobile purchase" returns nothing for a stored "I bought a new
+    // car", and attachment-only memories (no content.text) are always dropped —
+    // defeating the whole point of a vector search. This IS a vector search, so
+    // the adapter's cosine-similarity order is authoritative. Mirrors the same
+    // deliberate omission in core/features/documents/service.ts, which documents
+    // this exact trap.
     tableName: table,
     limit,
     ...(typeof params.threshold === "number"
@@ -717,6 +726,8 @@ export const databaseAction: Action = {
     "Inspect or query the agent's database. Ops: list_tables, get_table, query (read-only by default), search_vectors (semantic memory search).",
   descriptionCompressed:
     "database list_tables|get_table|query(read-only default)|search_vectors",
+  routingHint:
+    "inspect the agent's RAW database — list/read tables, run read-only SQL, or vector/similarity search over stored rows -> DATABASE; for the agent's own conversational memory records about the user -> MEMORY (action=search); for the user's stored files -> FILES; for open-web lookups -> WEB_SEARCH",
   validate: async (runtime) => {
     registerVectorSearchCategory(runtime);
     return true;

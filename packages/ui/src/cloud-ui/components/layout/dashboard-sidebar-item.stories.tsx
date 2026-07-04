@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for a dashboard sidebar navigation item.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { BarChart3, Bot, Home, Settings, Sparkles, Wallet } from "lucide-react";
 import { TooltipProvider } from "../../../components/ui/tooltip";

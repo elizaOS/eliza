@@ -1,3 +1,9 @@
+/**
+ * Controller for the block interstitial (blocked.html) shown when
+ * declarativeNetRequest redirects a blocked site. Reads the blocked URL/host
+ * and agent base from the query string, then polls the agent for the group's
+ * required tasks and links back to LifeOps so the user can clear the block.
+ */
 const POLL_INTERVAL_MS = 30_000;
 
 interface RequiredTask {

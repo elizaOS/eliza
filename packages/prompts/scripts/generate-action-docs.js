@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Codegen: reads the action/provider specs under `specs/` (hand-maintained
+ * core.json plus the generated plugins spec), compresses each description with
+ * `compressPromptDescription`, and emits
+ * `packages/core/src/generated/action-docs.ts` — the compact, model-facing
+ * action/provider catalog the runtime ships. Run after editing a spec.
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

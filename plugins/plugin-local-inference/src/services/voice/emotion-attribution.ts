@@ -1,3 +1,9 @@
+/**
+ * Fuses text-tag, ASR-metadata, and acoustic-feature signals into a single
+ * emotion label for a voice turn, recording which method produced it so
+ * downstream consumers know how confident the attribution is. Sits between the
+ * expressive-tag parser and the acoustic emotion classifier.
+ */
 import {
 	asrEmotionToTag,
 	EXPRESSIVE_EMOTION_TAGS,
@@ -40,12 +46,16 @@ export interface VoiceEmotionAsrFeatures {
 }
 
 /**
- * Acoustic-model emotion read fed in as a *fusion* source — the result of
- * running the Wav2Small student (`VoiceEmotionClassifier.classify()`) over
- * the utterance window. Pass the raw classifier output directly; the
- * fusion logic in `attributeVoiceEmotion` is the single place that combines
- * acoustic + text-side evidence (R3-emotion §3, "Two confidence scores,
- * no fusion rule" risk).
+ * Acoustic-model emotion read fed in as a *fusion* source — historically the
+ * result of running the Wav2Small student over the utterance window. NOTE: the
+ * acoustic runtime is DEAD today — the ONNX classifier was deleted and the
+ * native GGUF read is not wired (native/AGENTS.md §11 K1), and no production
+ * caller supplies this `model`, so the fusion runs text/prosody-only. Wiring a
+ * native acoustic read is a tracked follow-up (see
+ * .github/issue-evidence/12216-runtime-status.md). When it lands, pass the raw
+ * classifier output directly; the fusion logic in `attributeVoiceEmotion` is
+ * the single place that combines acoustic + text-side evidence (R3-emotion §3,
+ * "Two confidence scores, no fusion rule" risk).
  */
 export interface VoiceEmotionModelInput {
 	output: VoiceEmotionClassifierOutput;

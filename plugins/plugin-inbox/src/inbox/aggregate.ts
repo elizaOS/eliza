@@ -8,6 +8,12 @@
  * fallback, the missed-message filter, and the cached read-through spine
  * (`InboxDomain`).
  *
+ * Source health is part of the DTO: every response carries a required
+ * `sources` array (`LifeOpsInboxSourceStatus`) describing chat/gmail/x_dm
+ * health for that read, so a degraded connector can never present as a
+ * healthy empty inbox. Pull paths derive it from the fetch; cache paths probe
+ * connector status without pulling messages.
+ *
  * Host-owned concerns are injected behind typed seams instead of being
  * imported:
  *   - `InboxMessageCache` — the persisted inbox cache. The tables stay owned
@@ -29,11 +35,13 @@ import {
   type LifeOpsInboxChannel,
   type LifeOpsInboxChannelCount,
   type LifeOpsInboxMessage,
+  type LifeOpsInboxSourceStatus,
   type LifeOpsInboxThreadGroup,
 } from "@elizaos/shared";
 import {
   fetchAllMessages,
   type GmailInboxSource,
+  probeSourceStatuses,
   type XDmInboxSource,
 } from "./message-fetcher.ts";
 import {
@@ -230,6 +238,12 @@ export function toInboxMessages(
 interface InboxBuildOptions {
   limit: number;
   allowed: Set<LifeOpsInboxChannel>;
+  /**
+   * Per-source connector health for the fetch/read that produced the input
+   * messages. Required: every built inbox must state its source health so an
+   * empty message list can never pass for a healthy empty inbox.
+   */
+  sources: LifeOpsInboxSourceStatus[];
   groupByThread?: boolean;
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
   maxParticipants?: number;
@@ -582,6 +596,7 @@ export function buildInboxFromMessages(
     messages,
     channelCounts: counts,
     fetchedAt: new Date().toISOString(),
+    sources: options.sources,
   };
 
   if (threadGroups) {
@@ -782,6 +797,7 @@ async function buildInboxWithLlm(
   runtime: IAgentRuntime,
   inbound: InboundMessage[],
   resolved: ResolvedInboxRequest,
+  sources: LifeOpsInboxSourceStatus[],
   loadSettings?: PriorityScoringSettingsLoader,
 ): Promise<LifeOpsInbox> {
   const ownerName = resolveOwnerName(runtime);
@@ -791,6 +807,7 @@ async function buildInboxWithLlm(
   const initial = buildInbox(inbound, {
     limit: resolved.limit,
     allowed: resolved.allowed,
+    sources,
     chatTypeFilter: resolved.chatTypeFilter,
     maxParticipants: resolved.maxParticipants,
     gmailAccountId: resolved.gmailAccountId,
@@ -813,6 +830,7 @@ async function buildInboxWithLlm(
   return buildInbox(inbound, {
     limit: resolved.limit,
     allowed: resolved.allowed,
+    sources,
     chatTypeFilter: resolved.chatTypeFilter,
     maxParticipants: resolved.maxParticipants,
     gmailAccountId: resolved.gmailAccountId,
@@ -833,7 +851,7 @@ export async function fetchInbox(
   loadPriorityScoringSettings?: PriorityScoringSettingsLoader,
 ): Promise<LifeOpsInbox> {
   const resolved = resolveInboxRequest(request);
-  const inbound = await fetchAllMessages(runtime, {
+  const { messages: inbound, sources } = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
     limit:
       resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
@@ -846,6 +864,7 @@ export async function fetchInbox(
     runtime,
     inbound,
     resolved,
+    sources,
     loadPriorityScoringSettings,
   );
 }
@@ -910,12 +929,26 @@ export class InboxDomain {
     const { runtime, cache, sources, loadPriorityScoringSettings } = this.deps;
     const resolved = resolveInboxRequest(request);
     const ownerName = resolveOwnerName(runtime);
+    // Cache reads skip the message pull but never skip source health: an
+    // expired Gmail token must surface even when messages come from cache.
+    const probeStatuses = (): Promise<LifeOpsInboxSourceStatus[]> =>
+      probeSourceStatuses({
+        includeChat: [...resolved.allowed].some(
+          (channel) => channel !== "gmail" && channel !== "x_dm",
+        ),
+        includeGmail: resolved.allowed.has("gmail"),
+        gmailSource: sources,
+        includeXDm: resolved.allowed.has("x_dm"),
+        xDmSource: sources,
+      });
     const buildFromCache = (
       messages: readonly CachedInboxMessage[],
+      sourceStatuses: LifeOpsInboxSourceStatus[],
     ): LifeOpsInbox =>
       buildInboxFromMessages(messages, {
         limit: resolved.limit,
         allowed: resolved.allowed,
+        sources: sourceStatuses,
         chatTypeFilter: resolved.chatTypeFilter,
         maxParticipants: resolved.maxParticipants,
         gmailAccountId: resolved.gmailAccountId,
@@ -931,20 +964,21 @@ export class InboxDomain {
       gmailAccountId: resolved.gmailAccountId,
     });
     if (resolved.cacheMode === "cache-only") {
-      return buildFromCache(cached);
+      return buildFromCache(cached, await probeStatuses());
     }
     if (resolved.cacheMode !== "refresh" && isFreshCache(cached)) {
-      return buildFromCache(cached);
+      return buildFromCache(cached, await probeStatuses());
     }
 
-    const inbound = await fetchAllMessages(runtime, {
-      sources: Array.from(resolved.allowed),
-      limit: cacheWarmLimitFor(resolved),
-      includeGmail: resolved.allowed.has("gmail"),
-      gmailSource: sources,
-      xDmSource: sources,
-      gmailGrantId: resolved.gmailAccountId,
-    });
+    const { messages: inbound, sources: sourceStatuses } =
+      await fetchAllMessages(runtime, {
+        sources: Array.from(resolved.allowed),
+        limit: cacheWarmLimitFor(resolved),
+        includeGmail: resolved.allowed.has("gmail"),
+        gmailSource: sources,
+        xDmSource: sources,
+        gmailGrantId: resolved.gmailAccountId,
+      });
     await cache.upsertCachedInboxMessages(
       runtime.agentId,
       toInboxMessages(inbound),
@@ -953,6 +987,7 @@ export class InboxDomain {
       runtime,
       inbound,
       resolved,
+      sourceStatuses,
       loadPriorityScoringSettings,
     );
     await cache.upsertCachedInboxMessages(

@@ -1,3 +1,8 @@
+/**
+ * Discord text helpers — chunking outbound text to the platform's message
+ * length limit, escaping Discord markdown, and extracting user mentions from
+ * message content.
+ */
 import type { Guild, MessageReaction } from "discord.js";
 
 /**

@@ -287,7 +287,8 @@ export function PromoteAppDialog({
           {step === "channels" && (
             <div className="space-y-3">
               {/* Social */}
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => toggleChannel("social")}
                 className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left group ${
@@ -327,10 +328,11 @@ export function PromoteAppDialog({
                     <Check className="h-3 w-3 text-accent-foreground" />
                   )}
                 </div>
-              </button>
+              </Button>
 
               {/* SEO */}
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() => toggleChannel("seo")}
                 className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left group ${
@@ -370,10 +372,11 @@ export function PromoteAppDialog({
                     <Check className="h-3 w-3 text-[var(--brand-white)]" />
                   )}
                 </div>
-              </button>
+              </Button>
 
               {/* Advertising */}
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={() =>
                   adAccounts.length > 0 && toggleChannel("advertising")
@@ -435,7 +438,7 @@ export function PromoteAppDialog({
                     <Check className="h-3 w-3 text-accent-foreground" />
                   )}
                 </div>
-              </button>
+              </Button>
 
               <div className="flex items-center justify-between pt-4 border-t border-border">
                 <p className="text-sm text-muted">
@@ -470,7 +473,8 @@ export function PromoteAppDialog({
               {/* Tab buttons */}
               <div className="flex gap-2">
                 {config.channels.map((channel) => (
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     key={channel}
                     onClick={() => setActiveTab(channel)}
@@ -485,7 +489,7 @@ export function PromoteAppDialog({
                       : channel === "seo"
                         ? "SEO"
                         : "Advertising"}
-                  </button>
+                  </Button>
                 ))}
               </div>
 
@@ -498,7 +502,8 @@ export function PromoteAppDialog({
                     </Label>
                     <div className="grid grid-cols-3 gap-2">
                       {SOCIAL_PLATFORMS.map((platform) => (
-                        <button
+                        <Button
+                          variant="ghost"
                           type="button"
                           key={platform.id}
                           onClick={() => toggleSocialPlatform(platform.id)}
@@ -528,7 +533,7 @@ export function PromoteAppDialog({
                           <span className="text-sm text-txt">
                             {platform.name}
                           </span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -559,7 +564,8 @@ export function PromoteAppDialog({
               {/* SEO Config */}
               {activeTab === "seo" && config.channels.includes("seo") && (
                 <div className="space-y-3">
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() =>
                       setConfig((prev) => ({
@@ -599,9 +605,10 @@ export function PromoteAppDialog({
                         <Check className="h-3 w-3 text-[var(--brand-white)]" />
                       )}
                     </div>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() =>
                       setConfig((prev) => ({
@@ -641,9 +648,10 @@ export function PromoteAppDialog({
                         <Check className="h-3 w-3 text-[var(--brand-white)]" />
                       )}
                     </div>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     onClick={() =>
                       setConfig((prev) => ({
@@ -685,7 +693,7 @@ export function PromoteAppDialog({
                         <Check className="h-3 w-3 text-[var(--brand-white)]" />
                       )}
                     </div>
-                  </button>
+                  </Button>
                 </div>
               )}
 

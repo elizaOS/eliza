@@ -1,3 +1,9 @@
+/**
+ * Integration tests for the deferred Electric Sync startup path against a
+ * real `PGliteClientManager` + `PgliteDatabaseAdapter` (temp-dir PGlite, no
+ * mocks) and a bogus sync URL — verifies phase ordering, `ensureSync()`
+ * idempotency, and `forceResync()` behavior. See the phase-order note below.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

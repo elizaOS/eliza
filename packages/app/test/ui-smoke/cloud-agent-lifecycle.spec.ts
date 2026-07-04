@@ -236,8 +236,7 @@ async function seedCloudActiveAgent(
   await page.addInitScript(
     ({ token, voiceKey }) => {
       localStorage.setItem(voiceKey, "1");
-      (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-        token;
+      localStorage.setItem("steward_session_token", token);
     },
     { token: CLOUD_AUTH_TOKEN, voiceKey: VOICE_PREFIX_DONE_STORAGE_KEY },
   );

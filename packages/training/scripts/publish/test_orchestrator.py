@@ -27,6 +27,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish.orchestrator import (  # noqa: E402
+    DEFAULT_RAM_BUDGET_MB,
     ELIZA_1_HF_REPO,
     EXIT_BUNDLE_LAYOUT_FAIL,
     EXIT_EVAL_GATE_FAIL,
@@ -37,6 +38,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_USAGE,
     OrchestratorError,
     PublishContext,
+    TIER_TAGLINES,
     run,
     validate_bundle_layout,
 )
@@ -686,6 +688,17 @@ def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 # (a) Dry-run happy path
 # ---------------------------------------------------------------------------
+
+
+def test_orchestrator_tier_maps_cover_release_matrix() -> None:
+    expected = ("2b", "4b", "9b", "27b", "27b-256k")
+
+    assert tuple(TIER_TAGLINES) == expected
+    assert tuple(DEFAULT_RAM_BUDGET_MB) == expected
+    for tier in expected:
+        ram_min, ram_rec = DEFAULT_RAM_BUDGET_MB[tier]
+        assert TIER_TAGLINES[tier]
+        assert 0 < ram_min <= ram_rec
 
 
 def test_layout_rejects_empty_mtp_dir_on_mtp_enabled_tier(tmp_path: Path) -> None:

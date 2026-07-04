@@ -1,3 +1,8 @@
+/**
+ * Coverage for the plugin's model-handler factory and the
+ * `LocalInferenceUnavailableError` contract: which model types register and how
+ * handlers behave when no backend service is present. Uses a mock runtime.
+ */
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

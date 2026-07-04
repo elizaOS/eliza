@@ -1,14 +1,16 @@
+/**
+ * Drizzle schema for `participants` — join table linking an entity (and/or
+ * agent) to a room, with a per-room `roomState` (e.g. muted/followed). Both
+ * `entityId` and `roomId` cascade-delete via redundant FK declarations (index
+ * + explicit `foreignKey()`), so removing an entity or room prunes its
+ * participant rows automatically.
+ */
 import { sql } from "drizzle-orm";
 import { foreignKey, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
 
-/**
- * Defines the schema for the "participants" table in the database.
- *
- * @type {import('knex').TableBuilder}
- */
 export const participantTable = pgTable(
   "participants",
   {
@@ -26,7 +28,6 @@ export const participantTable = pgTable(
     roomState: text("room_state"),
   },
   (table) => [
-    // unique("participants_user_room_agent_unique").on(table.entityId, table.roomId, table.agentId),
     index("idx_participants_user").on(table.entityId),
     index("idx_participants_room").on(table.roomId),
     foreignKey({

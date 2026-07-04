@@ -1,3 +1,12 @@
+/**
+ * Real-PGlite tests proving `RuntimeMigrator`'s type normalization treats
+ * database-introspected type spellings and their Drizzle schema equivalents
+ * as the same type — so no spurious diff/migration is generated — across
+ * SERIAL/BIGSERIAL/SMALLSERIAL vs. identity columns, timestamp with/without
+ * time zone, numeric/decimal, varchar/character varying, safe numeric and
+ * varchar-to-text promotions with data preserved, and a production-shaped
+ * table combining all of the above at once.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -20,17 +29,6 @@ import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/da
 import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 
-/**
- * Type Normalization Tests
- *
- * These tests verify that our type normalization correctly handles
- * equivalent type variations that occur between:
- * 1. Database introspection results
- * 2. Drizzle schema definitions
- *
- * This is critical for production scenarios where existing databases
- * may have been created with different type representations.
- */
 describe("Type Normalization", () => {
   let pgClient: PGlite;
   let db: DrizzleDB;
@@ -51,7 +49,6 @@ describe("Type Normalization", () => {
 
   describe("Serial Type Equivalence", () => {
     it("should recognize SERIAL as equivalent to INTEGER with auto-increment", async () => {
-      // Create table with SERIAL (as database would)
       await db.execute(sql`
         CREATE TABLE test_serial (
           id SERIAL PRIMARY KEY,
@@ -59,7 +56,7 @@ describe("Type Normalization", () => {
         )
       `);
 
-      // Define schema with integer().primaryKey().generatedByDefaultAsIdentity()
+      // Drizzle's equivalent of a raw SERIAL column.
       const schema = {
         test_serial: pgTable("test_serial", {
           id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
@@ -67,10 +64,8 @@ describe("Type Normalization", () => {
         }),
       };
 
-      // Migration should detect no changes
       await migrator.migrate("@test/serial", schema, { verbose: false });
 
-      // Verify no destructive changes were detected
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_serial`);
       expect(result).toBeDefined();
     });
@@ -92,7 +87,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/bigserial", schema, { verbose: false });
 
-      // Should complete without errors
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_bigserial`);
       expect(result).toBeDefined();
     });
@@ -114,7 +108,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/smallserial", schema, { verbose: false });
 
-      // Should complete without errors
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_smallserial`);
       expect(result).toBeDefined();
     });
@@ -122,7 +115,7 @@ describe("Type Normalization", () => {
 
   describe("Timestamp Type Variations", () => {
     it("should treat timestamp without time zone as equivalent to timestamp", async () => {
-      // Database introspection often returns 'timestamp without time zone'
+      // Introspecting a real DB typically reports 'timestamp without time zone'.
       await db.execute(sql`
         CREATE TABLE test_timestamp (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -142,7 +135,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/timestamp", schema, { verbose: false });
 
-      // Should not detect any changes
       const columns = await db.execute(sql`
         SELECT column_name, data_type 
         FROM information_schema.columns 
@@ -171,7 +163,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/timestamptz", schema, { verbose: false });
 
-      // Should complete without errors
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_timestamptz`);
       expect(result).toBeDefined();
     });
@@ -197,7 +188,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/numeric", schema, { verbose: false });
 
-      // Should complete without errors
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_numeric`);
       expect(result).toBeDefined();
     });
@@ -221,7 +211,6 @@ describe("Type Normalization", () => {
 
       await migrator.migrate("@test/varchar", schema, { verbose: false });
 
-      // Should complete without errors
       const result = await db.execute(sql`SELECT COUNT(*) FROM test_varchar`);
       expect(result).toBeDefined();
     });
@@ -237,13 +226,12 @@ describe("Type Normalization", () => {
         )
       `);
 
-      // Insert test data
       await db.execute(sql`
         INSERT INTO test_promotion (small_num, medium_num) 
         VALUES (100, 1000)
       `);
 
-      // Promote types to larger sizes (safe operation)
+      // Widening to a larger numeric type is a safe, non-destructive change.
       const schema = {
         test_promotion: pgTable("test_promotion", {
           id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
@@ -252,10 +240,9 @@ describe("Type Normalization", () => {
         }),
       };
 
-      // This should be allowed without force flag
+      // No force flag needed — this is safe.
       await migrator.migrate("@test/promotion", schema, { verbose: false });
 
-      // Verify data is preserved
       const result = await db.execute(sql`
         SELECT * FROM test_promotion
       `);
@@ -289,7 +276,6 @@ describe("Type Normalization", () => {
         verbose: false,
       });
 
-      // Verify data is preserved
       const result = await db.execute(sql`
         SELECT * FROM test_text_promotion
       `);
@@ -300,7 +286,6 @@ describe("Type Normalization", () => {
 
   describe("Complex Real-World Scenario", () => {
     it("should handle mixed type variations in production-like table", async () => {
-      // Simulate a production table with various type representations
       await db.execute(sql`
         CREATE TABLE production_table (
           id BIGSERIAL PRIMARY KEY,
@@ -317,7 +302,6 @@ describe("Type Normalization", () => {
         )
       `);
 
-      // Insert test data
       await db.execute(sql`
         INSERT INTO production_table (user_id, username, email, age, balance, metadata) 
         VALUES (
@@ -330,7 +314,6 @@ describe("Type Normalization", () => {
         )
       `);
 
-      // Drizzle schema with normalized types
       const schema = {
         production_table: pgTable("production_table", {
           id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
@@ -349,10 +332,8 @@ describe("Type Normalization", () => {
         }),
       };
 
-      // Should handle all type variations without errors
       await migrator.migrate("@test/production", schema, { verbose: false });
 
-      // Verify data integrity
       const result = await db.execute(sql`
         SELECT * FROM production_table
       `);

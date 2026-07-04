@@ -1,17 +1,18 @@
-// EXTERNAL-API CONTRACT TEST — exercises the REAL native bridge web layer and the
-// REAL parser pipeline (buildThreads / smsRole) WITHOUT vi.mock. The vitest config
-// aliases @elizaos/capacitor-messages -> plugin-native-messages/src and
-// @elizaos/capacitor-system -> plugin-native-system/src, so the imports below resolve
-// to the actual provider sources, and registerPlugin() falls back to MessagesWeb /
-// SystemWeb in this (non-Android) environment.
-//
-// The provider's current API shape (verified against
-// plugins/plugin-native-messages/src/definitions.ts and
-// plugins/plugin-native-system/src/definitions.ts):
-//   SmsMessageSummary = { id, threadId, address, body, date, type, read }
-//   SystemStatus = { packageName, roles: AndroidRoleStatus[] }
-//   AndroidRoleStatus = { role, androidRole, held, holders, available }
-//   type 1 = inbound (received), type 2 = outbound (sent)
+/**
+ * External-API contract test: exercises the REAL native bridge web layer and the
+ * REAL parser pipeline (buildThreads / smsRole) WITHOUT vi.mock. The vitest
+ * config aliases @elizaos/capacitor-messages -> plugin-native-messages/src and
+ * @elizaos/capacitor-system -> plugin-native-system/src, so the imports below
+ * resolve to the actual provider sources, and registerPlugin() falls back to
+ * MessagesWeb / SystemWeb in this (non-Android) environment.
+ *
+ * Provider API shape (verified against plugin-native-messages/src/definitions.ts
+ * and plugin-native-system/src/definitions.ts):
+ *   SmsMessageSummary = { id, threadId, address, body, date, type, read }
+ *   SystemStatus = { packageName, roles: AndroidRoleStatus[] }
+ *   AndroidRoleStatus = { role, androidRole, held, holders, available }
+ *   type 1 = inbound (received), type 2 = outbound (sent)
+ */
 
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";

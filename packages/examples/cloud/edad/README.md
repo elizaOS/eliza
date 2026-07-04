@@ -118,7 +118,7 @@ branded domain and bills the app's monetized credit pool from the first message.
 
 ### Option B — standalone container on Eliza Cloud
 
-Self-hosting closes the loop: app earnings refill the org's credit balance via the earnings auto-fund service, container daily-billing keeps debiting that balance, and the app keeps itself alive as long as it earns enough.
+Self-hosting closes the loop: container daily-billing debits the owner's redeemable app earnings **before** org credits (the org's `payAsYouGoFromEarnings` toggle, on by default), so the app keeps itself alive as long as it earns enough.
 
 <!-- The plain ./Dockerfile cannot be built standalone: server.ts imports the
      `@elizaos/cloud-sdk` workspace dep, which only resolves inside the monorepo.
@@ -140,30 +140,36 @@ docker tag edad-chat:latest ghcr.io/<owner>/edad-chat:latest
 docker push ghcr.io/<owner>/edad-chat:latest
 
 # 2. POST /api/v1/containers (use any cloud API key with deploy scope)
+#    Body keys are camelCase — CreateContainerSchema
+#    (packages/cloud/api/v1/containers/schema.ts) strips unknown keys, so a
+#    snake_case body (project_name, environment_vars, …) deploys a container
+#    with NO env vars → dead sign-in + billing. Pass the cloud key as
+#    ELIZA_CLOUD_API_KEY: ELIZAOS_CLOUD_API_KEY is a platform-reserved env key
+#    this route rejects (#9853), and server.ts reads both names.
 curl -X POST https://www.elizacloud.ai/api/v1/containers \
   -H "Authorization: Bearer $ELIZA_API_KEY" \
   -H "content-type: application/json" \
   -d '{
     "name": "edad-chat",
-    "project_name": "edad",
+    "projectName": "edad",
     "port": 3000,
     "cpu": 256,
-    "memory": 512,
+    "memoryMb": 512,
     "image": "ghcr.io/<owner>/edad-chat:latest",
-    "health_check_path": "/health",
-    "environment_vars": {
+    "healthCheckPath": "/health",
+    "environmentVars": {
       "ELIZA_APP_ID": "<your-app-uuid>",
-      "ELIZAOS_CLOUD_API_KEY": "<your-cloud-key>",
+      "ELIZA_CLOUD_API_KEY": "<your-cloud-key>",
       "ELIZA_AFFILIATE_CODE": "<your-affiliate-code>",
       "ELIZA_CLOUD_URL": "https://www.elizacloud.ai"
     }
   }'
 
-# 3. (one-time, on the org dashboard) enable earnings auto-fund:
-#    PUT /api/v1/billing/earnings-auto-fund
-#    { "enabled": true, "amount": 5, "threshold": 2, "keepBalance": 10 }
-#    → when org credits dip below $2, auto-credit $5 from your redeemable
-#      earnings, keeping at least $10 cashable at all times.
+# 3. self-funding is ON by default: the container-billing cron pays each
+#    day's container charge from the owner's redeemable app earnings first,
+#    then org credits (org toggle `payAsYouGoFromEarnings`, default true).
+#    To keep earnings cashable instead and bill credits only:
+#    PUT /api/v1/billing/settings  { "payAsYouGoFromEarnings": false }
 ```
 
 The container listens on `:3000`, exposes `/health` for the ECS health check, and the same `/api/*` routes as the embedded variant. No code differs between Option A and B — just the host process.

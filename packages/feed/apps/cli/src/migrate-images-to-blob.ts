@@ -1,29 +1,8 @@
 /**
- * @fileoverview Migrate Actor Images to Vercel Blob Storage
- *
- * Uploads existing images from public/images to Vercel Blob storage.
- * Maintains the same path structure for compatibility with existing code.
- *
- * **What it does:**
- * - Reads all images from public/images/actors, actor-banners, organizations, org-banners
- * - Uploads each to Vercel Blob with the same path structure (e.g., images/actors/sam-worldman.jpg)
- * - Skips images that already exist in blob storage
- * - Uses concurrent uploads for speed
- *
- * **Requirements:**
- * - `BLOB_READ_WRITE_TOKEN` environment variable must be set
- *
- * @module cli/migrate-images-to-blob
- * @category CLI - Migration
- *
- * @example
- * ```bash
- * # Set Vercel Blob token
- * export BLOB_READ_WRITE_TOKEN=your_token_here
- *
- * # Run migration
- * bun run src/cli/migrate-images-to-blob.ts
- * ```
+ * One-shot migration that uploads local `public/images/{actors,actor-banners,
+ * organizations,org-banners}/` files to Vercel Blob, preserving the same path
+ * so existing image references keep resolving. Uploads concurrently and skips
+ * blobs that already exist. Requires `BLOB_READ_WRITE_TOKEN`.
  */
 
 import { readdir, readFile } from "node:fs/promises";

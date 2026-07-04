@@ -63,7 +63,17 @@ body {
   margin: 0;
   background: var(--launch-bg, #140c07);
   overflow: hidden;
-  overscroll-behavior: none;
+  /* Split the axes instead of a blanket `overscroll-behavior: none`.
+     `-y: none` keeps the vertical rubber-band / pull-to-refresh suppression
+     this rule was added for, while `-x: auto` re-enables the macOS trackpad
+     two-finger swipe-to-navigate (back/forward) gesture in the desktop
+     (Electrobun) webview. That native gesture drives the app's History API
+     navigation through the `popstate` listener in
+     state/startup-phase-hydrate.ts. Native mobile shells re-lock BOTH axes via
+     the higher-specificity `body.native { overscroll-behavior: none }` rule in
+     base.css, so this only relaxes the X axis on web + desktop. */
+  overscroll-behavior-x: auto;
+  overscroll-behavior-y: none;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -125,8 +135,12 @@ body.native textarea {
    its text below the status bar — otherwise the banner content hides under the
    status bar. Only the FIRST rendered banner gets the bleed (negative margin
    cancels the column padding); stacked banners keep their normal padding so
-   they don't overlap. No-op on web/desktop where --safe-area-top is 0. */
-.mobile-top-banner:first-child {
+   they don't overlap. The reconnecting pill overlay (ConnectionFailedBanner)
+   is an out-of-flow sibling WITHOUT this class that can render before the
+   first in-flow banner, so match the first `.mobile-top-banner` among the
+   siblings instead of requiring `:first-child`. No-op on web/desktop where
+   --safe-area-top is 0. */
+.mobile-top-banner:nth-child(1 of .mobile-top-banner) {
   margin-top: calc(-1 * var(--safe-area-top, 0px));
   padding-top: calc(var(--safe-area-top, 0px) + 0.5rem);
 }

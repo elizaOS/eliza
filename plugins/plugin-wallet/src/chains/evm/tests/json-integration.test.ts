@@ -1,3 +1,10 @@
+/**
+ * Live-LLM integration test for `parseJSONObjectFromText`: sends a real
+ * transfer-extraction prompt to a live Anthropic/OpenAI/Groq model (whichever
+ * API key is configured) and asserts the parsed JSON contains the expected
+ * chain/amount/address. Skipped unless `ELIZA_LIVE_JSON_TEST=1` (or
+ * `ELIZA_LIVE_TEST=1`) and a provider key is present.
+ */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";

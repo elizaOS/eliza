@@ -1,3 +1,6 @@
+/**
+ * Barrel for the backgrounds surface (@elizaos/ui backgrounds).
+ */
 export { AppBackground, type AppBackgroundProps } from "./AppBackground";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
@@ -31,5 +34,6 @@ export { SKY_BACKGROUND_COLOR, SOLID_BACKGROUND_CSS } from "./types";
 export {
   BACKGROUND_APPLY_EVENT,
   type BackgroundApplyOp,
+  type BackgroundApplyPayload,
   useBackgroundApplyChannel,
 } from "./useBackgroundApplyChannel";

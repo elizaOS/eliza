@@ -1,3 +1,11 @@
+/**
+ * Computes the largest usable context window a text model can run on a given
+ * host, trading model weights against KV-cache growth inside the RAM budget.
+ * Sizes the KV cache in the q8_0 quant the device-fit contract keys to, and
+ * optionally upgrades to the more accurate f16 KV when the host has headroom to
+ * do so without shrinking the window (#8809). Consumed by load-args and
+ * recommendation to pick the boot context.
+ */
 import { ELIZA_1_MIN_LOCAL_CONTEXT } from "@elizaos/shared/local-inference";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 

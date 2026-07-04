@@ -10,14 +10,13 @@
  * the router sits at MAX_SAFE_INTEGER and consults the user's policy
  * (manual / cheapest / fastest / prefer-local / round-robin) on every call.
  *
- * Until the cuttlefish smoke landed this was -1 to "let cloud win by default,"
- * but that conflated routing-policy (a user preference) with handler
- * priority (a registration ordinal). The runtime's getModel() returns
- * undefined when no priority-0 handler is registered, which manifested as
- * "No handler found for delegate type: TEXT_SMALL" on AOSP builds where
- * the AOSP local inference loader is the only provider. Both cloud-only and
- * local-only deployments now have a registered priority-0 handler; the
- * router decides which one fires per request.
+ * Priority must not be negative: the runtime's getModel() returns undefined
+ * when no priority-0 handler is registered, which on AOSP builds — where the
+ * AOSP local inference loader is the only provider — surfaces as "No handler
+ * found for delegate type: TEXT_SMALL". A negative priority would conflate
+ * routing-policy (a user preference) with handler priority (a registration
+ * ordinal). Both cloud-only and local-only deployments register a priority-0
+ * handler; the router decides which one fires per request.
  *
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
@@ -26,13 +25,17 @@ import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import {
 	type AgentRuntime,
+	applyBackgroundInferenceBudget,
 	type GenerateTextParams,
+	getInferencePriorityGate,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
+	inferenceRamClassFromEnv,
 	logger,
 	ModelType,
 	renderMessageHandlerStablePrefix,
+	resolveBackgroundInferenceBudget,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -426,11 +429,10 @@ function engineGenerateArgsFromParams(
 					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
-	// Surface per-token chunks to the caller. The runtime passes the agent
-	// reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
-	// previously dropped at this layer. Only wire it when the caller asked
-	// for streaming (`stream` or `streamStructured`) so non-streaming callers
-	// don't pay the chunk-callback overhead.
+	// Surface per-token chunks to the caller: the runtime passes the agent
+	// reply path's `onStreamChunk` here for the LLM→TTS handoff. Wire it only
+	// when the caller asked for streaming (`stream` or `streamStructured`) so
+	// non-streaming callers don't pay the chunk-callback overhead.
 	const onTextChunk =
 		(params.stream === true || streamStructured) &&
 		typeof params.onStreamChunk === "function"
@@ -488,10 +490,43 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
 
 		// Prefer a runtime-registered loader that implements `generate` — that's
-		// the mobile / device-bridge path. On desktop we fall back to the
-		// standalone engine.
+		// the mobile / device-bridge path (bionic host / AOSP adapter / device
+		// bridge). Those backends decode ONE request at a time on a shared
+		// resident model, so route through the process-wide interactive-over-
+		// background lane (#11914): interactive turns dispatch ahead of queued
+		// background jobs; background jobs wait a bounded time and are clamped
+		// to the device-class budget. Desktop falls through to the standalone
+		// engine, which owns its own session pool and is NOT gated.
 		if (loader?.generate) {
-			return loader.generate(engineArgs);
+			const generate = loader.generate.bind(loader);
+			const priority = params.priority ?? "interactive";
+			let lockWaitMs: number | undefined;
+			if (priority === "background") {
+				const budget = resolveBackgroundInferenceBudget(
+					inferenceRamClassFromEnv() ?? "standard",
+				);
+				const clamped = applyBackgroundInferenceBudget(
+					{ prompt: engineArgs.prompt, maxTokens: engineArgs.maxTokens },
+					budget,
+				);
+				if (clamped.clamped.length > 0) {
+					logger.info(
+						`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
+					);
+				}
+				engineArgs.prompt = clamped.prompt;
+				engineArgs.maxTokens = clamped.maxTokens;
+				lockWaitMs = budget.lockWaitMs;
+			}
+			return getInferencePriorityGate().runExclusive(
+				{
+					priority,
+					label: `${slot} local-loader (${engineArgs.prompt.length} chars)`,
+					...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
+					...(params.signal ? { signal: params.signal } : {}),
+				},
+				() => generate(engineArgs),
+			);
 		}
 		if (!(await localInferenceEngine.available())) {
 			// No native binding: signal UNAVAILABLE (typed) so the cross-provider
@@ -1426,10 +1461,10 @@ export async function ensureLocalInferenceHandler(
 		return;
 	}
 
-	// Install the side-registry interception as early as possible so it
-	// captures every subsequent `registerModel` call — including our own
-	// handlers below, plus anything else that registers during the rest of
-	// boot. Idempotent per-runtime.
+	// Mirror the runtime's model registry into the side-registry: it seeds
+	// from the current registrations and stays live via the `MODEL_REGISTERED`
+	// event — capturing our own handlers below plus anything else that
+	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
 
 	// Loader precedence:

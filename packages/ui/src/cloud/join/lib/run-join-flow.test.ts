@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the org/agent join flow (dedicated subdomain resolution,
+ * effects). Client + effects injected, no network.
+ */
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   dedicatedSubdomainBase,

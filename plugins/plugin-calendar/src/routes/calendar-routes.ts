@@ -14,6 +14,7 @@ import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEventUpdate,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
@@ -56,6 +57,8 @@ export interface CalendarRouteService {
     requestUrl: URL,
     request: { eventId: string } & Record<string, unknown>,
   ): Promise<void>;
+  getMeetingAutoJoin(): Promise<unknown>;
+  setMeetingAutoJoin(policy: unknown): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
@@ -94,6 +97,26 @@ export async function handleCalendarRoutes(
 ): Promise<boolean> {
   const { method, pathname, url } = deps;
   const q = url.searchParams;
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/calendar/meeting-auto-join"
+  ) {
+    return deps.runRoute(async (service) => {
+      deps.json(await service.getMeetingAutoJoin());
+    });
+  }
+
+  if (
+    method === "PUT" &&
+    pathname === "/api/lifeops/calendar/meeting-auto-join"
+  ) {
+    const body = await deps.readJsonBody<{ policy?: unknown }>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.setMeetingAutoJoin(body.policy));
+    });
+  }
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (deps.rateLimit("google_api_read")) return true;
@@ -210,6 +233,8 @@ export async function handleCalendarRoutes(
           timeZone: body.timeZone,
           location: body.location,
           attendees: body.attendees,
+          recurrence: body.recurrence,
+          recurrenceScope: body.recurrenceScope,
         });
         deps.json({ event });
       });
@@ -222,6 +247,11 @@ export async function handleCalendarRoutes(
           side: deps.parseConnectorSide(q.get("side")),
           grantId: q.get("grantId") ?? undefined,
           calendarId: q.get("calendarId") ?? undefined,
+          // Validated in the service; invalid values 400 instead of silently
+          // degrading a series delete to a single-occurrence delete.
+          recurrenceScope: (q.get("recurrenceScope") ?? undefined) as
+            | LifeOpsCalendarRecurrenceScope
+            | undefined,
         });
         deps.json({ deleted: true });
       });

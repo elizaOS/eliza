@@ -8,11 +8,13 @@
 
 export * from "./access-context";
 export * from "./access-control/filter";
+// Export all core modules
+export * from "./account-pool-bridge";
+export * from "./action-names";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-// Export all core modules
 export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
@@ -22,6 +24,7 @@ export * from "./capabilities";
 export * from "./character";
 // Export character utilities
 export * from "./character-utils";
+export * from "./cloud-auth-service";
 export * from "./cloud-routing";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
@@ -43,6 +46,7 @@ export {
 	isCanonicalSecretKey,
 	isSecretKeyAlias,
 	LOCAL_MODEL_PROVIDERS,
+	SECRET_KEY_ALIASES,
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 export {
@@ -64,13 +68,21 @@ export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./env-utils";
+export * from "./errors";
 export {
 	roleAction,
 	updateRoleAction,
 } from "./features/advanced-capabilities/actions/role";
 export * from "./features/advanced-memory";
+export {
+	AUTONOMY_SERVICE_TYPE,
+	AUTONOMY_TASK_NAME,
+	AUTONOMY_TASK_TAGS,
+	AutonomyService,
+} from "./features/autonomy";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
 	DraftRecord,
@@ -99,14 +111,11 @@ export {
 	__resetDefaultMessageRefStoreForTests,
 	__resetDefaultTriageServiceForTests,
 	BaseMessageAdapter,
-	DiscordMessageAdapter,
 	draftFollowupAction,
 	draftReplyAction,
-	GmailMessageAdapter,
 	getDefaultMessageRefStore,
 	getDefaultTriageService,
 	getSendPolicy,
-	IMessageMessageAdapter,
 	listInboxAction,
 	MessageRefStore,
 	manageMessageAction,
@@ -117,16 +126,12 @@ export {
 	resetMissingServiceWarning,
 	resolveContactWeight,
 	respondToMessageAction,
-	SignalMessageAdapter,
 	scheduleDraftSendAction,
 	scoreMessage,
 	scoreMessages,
 	searchMessagesAction,
 	sendDraftAction,
-	TelegramMessageAdapter,
-	TwitterMessageAdapter,
 	triageMessagesAction,
-	WhatsappMessageAdapter,
 } from "./features/messaging/triage";
 // OAuth provider contract (the canonical provider identifiers the atomic OAuth
 // actions accept). Exported so cloud-shared can enforce core ⊆ cloud-registry.
@@ -143,6 +148,7 @@ export {
 	secretsManagerPlugin,
 } from "./features/secrets/index.ts";
 export * from "./features/sub-agent-credentials/index";
+export * from "./features/subscription-auth/index.ts";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -155,20 +161,24 @@ export * from "./markdown";
 export * from "./media";
 export * from "./memory";
 export * from "./messaging/interactions";
-export * from "./mobile-device-bridge-hooks";
+export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
+export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";
+// Export recent-errors provider (#12263)
+export * from "./providers/recent-errors";
 // Export setup providers
 export * from "./providers/setup-progress";
 // Export skill eligibility provider
 export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
 export * from "./provisioning";
+export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
 export {
@@ -185,11 +195,27 @@ export {
 	normalizeActionName,
 	type RuntimeActionLike,
 } from "./runtime/action-catalog";
+export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/builtin-field-evaluators";
+export {
+	__resetCandidateActionBackstopRulesForTests,
+	type CandidateActionBackstopRule,
+	getCandidateActionBackstopRules,
+	registerCandidateActionBackstopRule,
+} from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectMessageHooksForTests,
+	type DirectMessageHook,
+	type DirectMessageHookInput,
+	getDirectMessageHooks,
+	registerDirectMessageHook,
+	runDirectMessageHooks,
+	unregisterDirectMessageHook,
+} from "./runtime/direct-message-hook";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,
@@ -265,12 +291,18 @@ export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
+export {
+	CODING_DELEGATION_ACTION_TAGS,
+	findCodingDelegationActionName,
+	hasActionTags,
+	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	normalizeActionIdentifier,
+} from "./services/message/direct-action-heuristics";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
-export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
 export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
@@ -297,6 +329,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export * from "./target-sources";
 export {
 	availableProviderNames,
 	isLiveTestEnabled,
@@ -307,6 +340,7 @@ export {
 } from "./testing/live-provider";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
+export * from "./tunnel-service";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
 // Export everything from types
 export * from "./types";
@@ -370,8 +404,9 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+/** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
+export * from "./utils/inference-priority-gate";
 // Export Node-specific utilities
-export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";

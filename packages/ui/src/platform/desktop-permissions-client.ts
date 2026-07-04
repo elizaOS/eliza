@@ -1,3 +1,7 @@
+/**
+ * Desktop permission client: queries/requests OS permissions through the
+ * Electrobun bridge, conforming to the shared permissions-client shape.
+ */
 import type { client as appClient } from "../api/client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import type {

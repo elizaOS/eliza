@@ -1,3 +1,10 @@
+/**
+ * Source-scanning guard (#8796) over every built-in `*View.tsx` in this folder:
+ * asserts no raw check/cross glyphs appear in the source so status and
+ * close/delete controls stay on Lucide icon components. Reads files from disk;
+ * asserts on string content, not rendered output.
+ */
+
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,8 +30,8 @@ describe("shared view glyph cleanup", () => {
     expect(source).not.toContain("✓");
   });
 
-  it("keeps Heartbeats status and delete controls on icon components instead of raw glyphs", () => {
-    const source = readPageSource("HeartbeatsView.tsx");
+  it("keeps Triggers status and delete controls on icon components instead of raw glyphs", () => {
+    const source = readPageSource("TriggersView.tsx");
 
     expect(source).not.toContain("✓");
     expect(source).not.toContain("✗");

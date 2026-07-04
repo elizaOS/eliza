@@ -30,13 +30,7 @@ declare global {
 let iosFullBunSmokeStarted = false;
 
 function hasIosLocalAgentNativeRequest(): boolean {
-  return (
-    typeof (
-      window as Window & {
-        __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: unknown;
-      }
-    ).__ELIZA_IOS_LOCAL_AGENT_REQUEST__ === "function"
-  );
+  return typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function";
 }
 
 async function writeIosFullBunSmokeResult(

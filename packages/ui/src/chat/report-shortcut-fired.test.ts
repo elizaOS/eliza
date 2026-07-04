@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers `reportShortcutFired` (#8792): a fired shortcut POSTs to
+ * `/api/interactions/shortcut` with the auth header and shortcut/source body.
+ * `fetch` and the eliza-globals base/token are stubbed under jsdom.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../utils/eliza-globals", () => ({

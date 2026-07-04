@@ -1,3 +1,8 @@
+/**
+ * Search-surface types: category filter definitions and options that describe how
+ * a searchable domain (by string/number/enum/date facets) presents its filters.
+ * Consumed by search providers and UI that render filterable result sets.
+ */
 import type { AgentContext } from "./components";
 import type { JsonValue } from "./primitives";
 import type { ServiceTypeName } from "./service";

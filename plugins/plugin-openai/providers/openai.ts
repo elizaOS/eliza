@@ -1,3 +1,8 @@
+/**
+ * `createOpenAIClient`: builds the `@ai-sdk/openai` provider bound to the
+ * runtime's resolved base URL and key. In proxy mode with no key it uses a
+ * placeholder key (auth is injected upstream); otherwise a missing key throws.
+ */
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import type { IAgentRuntime } from "@elizaos/core";
 import { getApiKey, getBaseURL, isProxyMode } from "../utils/config";

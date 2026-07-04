@@ -37,7 +37,10 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 				expectRespond: true,
 			},
 		],
-		assertions: { maxWer: 0.2, maxDer: 0.2 },
+		// DER budget: VoxConverse offline 11.3% + 10 pp streaming headroom (parent
+		// decision #10). TTFA 800 ms is the real-lane time-to-first-audio ceiling;
+		// the model-free lanes report a fixed sub-budget latency.
+		assertions: { maxWer: 0.2, maxDer: 0.213, maxFirstAudioMs: 800 },
 	},
 	{
 		id: "respond-vs-bystander",
@@ -67,7 +70,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 				expectRespond: true,
 			},
 		],
-		assertions: { minRespondAccuracy: 0.9 },
+		assertions: { minRespondAccuracy: 0.9, maxFirstAudioMs: 800 },
 	},
 	{
 		id: "pauses-midutterance",
@@ -151,7 +154,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 			},
 			{ speaker: "owner", text: "Eliza what time is it", expectRespond: true },
 		],
-		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.3 },
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.288 },
 	},
 	{
 		id: "music-background-commands",
@@ -173,7 +176,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 				expectRespond: true,
 			},
 		],
-		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.3 },
+		assertions: { minRespondAccuracy: 0.9, maxWer: 0.35, maxDer: 0.288 },
 	},
 	{
 		id: "far-field-reverb",
@@ -277,7 +280,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		assertions: {
 			minRespondAccuracy: 0.9,
-			maxDer: 0.2,
+			maxDer: 0.213,
 			minVoiceEntityMatchRate: 0.9,
 		},
 	},
@@ -323,7 +326,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		// ambiguity, not a transcription regression.
 		assertions: {
 			minRespondAccuracy: 0.9,
-			maxDer: 0.2,
+			maxDer: 0.213,
 			maxWer: 0.25,
 			minVoiceEntityMatchRate: 0.9,
 			minEntityF1: 1,
@@ -379,9 +382,11 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 				expectedEntity: "entity-maya",
 			},
 		],
+		// AMI meeting baseline 18.8% + 10 pp → 0.288 DER budget for the noisy
+		// multi-speaker case (parent decision #10).
 		assertions: {
 			minRespondAccuracy: 0.9,
-			maxDer: 0.3,
+			maxDer: 0.288,
 			maxWer: 0.4,
 			minVoiceEntityMatchRate: 0.9,
 			minEntityF1: 1,
@@ -427,7 +432,7 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		assertions: {
 			minRespondAccuracy: 0.9,
-			maxDer: 0.2,
+			maxDer: 0.213,
 			maxWer: 0.25,
 			minVoiceEntityMatchRate: 0.9,
 			minEntityF1: 1,
@@ -523,24 +528,251 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		assertions: { minOwnerAccuracy: 0.9, minRespondAccuracy: 0.9 },
 	},
+	{
+		id: "endpoint-latency",
+		description:
+			"A clean, sentence-final command commits at the endpoint; first audio must land within the real-lane TTFA budget (#12254).",
+		classes: ["endpoint-latency", "eot"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza what is the weather today",
+				expectRespond: true,
+				expectEndOfTurn: true,
+			},
+			{
+				speaker: "owner",
+				text: "hey Eliza set a timer for five minutes",
+				expectRespond: true,
+				expectEndOfTurn: true,
+			},
+		],
+		assertions: { maxEotFalseTriggerRate: 0, maxFirstAudioMs: 800 },
+	},
+	{
+		id: "tail-off-thinking",
+		description:
+			"The owner tails off mid-thought (trailing conjunction) then finishes after a pause; the endpoint detector must hold, not jump in on the pause (#12255).",
+		classes: ["tail-off", "eot", "pauses"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "Eliza remind me to call the bank and",
+				expectRespond: false,
+				expectEndOfTurn: false,
+				pausesMs: [1300],
+			},
+			{
+				speaker: "owner",
+				text: "the pharmacy before noon tomorrow",
+				expectRespond: true,
+			},
+		],
+		assertions: { maxEotFalseTriggerRate: 0 },
+	},
+	{
+		id: "streaming-partials-monotonic",
+		description:
+			"Streaming ASR emits growing partial hypotheses; the committed prefix must never retract as later audio arrives (#12254). Scored only where a streaming-ASR partial feed exists; batch lanes skip it honestly.",
+		classes: ["streaming-partials", "eot"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza what is the weather in san francisco today",
+				expectRespond: true,
+			},
+		],
+	},
+	{
+		id: "speaker-gated-barge-in",
+		description:
+			"While the agent is speaking: a wake-word interjection must hard-stop TTS within 250 ms; the agent's own echo and an unenrolled bystander must NOT (#12255).",
+		classes: ["speaker-gated-barge-in", "echo-rejection"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [
+			{ label: "owner", entityId: "entity-owner", isOwner: true },
+			{ label: "bystander", entityId: "entity-bystander" },
+		],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza tell me about the weather forecast for the week",
+				expectRespond: true,
+				agentReplyText:
+					"The week ahead is mostly sunny with a chance of rain on thursday",
+			},
+			{
+				// Wake-word interjection while the agent is mid-reply → MUST cancel.
+				speaker: "owner",
+				text: "hey Eliza stop the forecast",
+				expectRespond: true,
+				bargeIn: true,
+				expectBargeInCancel: true,
+			},
+			{
+				speaker: "owner",
+				text: "hey Eliza what about tomorrow instead",
+				expectRespond: true,
+				agentReplyText: "Tomorrow looks clear and mild all day long",
+			},
+			{
+				// The agent's own reply echoes back through the open mic → must NOT cancel.
+				speaker: "owner",
+				text: "Tomorrow looks clear and mild all day long",
+				isAgentEcho: true,
+				expectRespond: false,
+				bargeIn: true,
+				expectBargeInCancel: false,
+			},
+			{
+				// Unenrolled bystander cross-talk during the agent's reply → must NOT cancel.
+				speaker: "bystander",
+				text: "did you catch the game last night",
+				expectRespond: false,
+				bargeIn: true,
+				expectBargeInCancel: false,
+			},
+		],
+		assertions: { maxBargeInCancelMs: 250, minEchoRejectionRate: 1 },
+	},
+	{
+		id: "desktop-aec-echo",
+		description:
+			"Desktop speak-back loop: the agent's reply echoes into the mic. The AEC must keep ERLE ≥ 18 dB and the self-voice gate must reject the echo as a turn (#12256). ERLE is scored only where an AEC/ERLE feed exists; the decision-logic lane still scores echo rejection.",
+		classes: ["desktop-aec", "echo-rejection"],
+		knownSpeakerEntityIds: ["entity-owner"],
+		participants: [{ label: "owner", entityId: "entity-owner", isOwner: true }],
+		turns: [
+			{
+				speaker: "owner",
+				text: "hey Eliza what is the capital of france",
+				expectRespond: true,
+				agentReplyText: "The capital of France is Paris",
+			},
+			{
+				speaker: "owner",
+				text: "The capital of France is Paris",
+				isAgentEcho: true,
+				expectRespond: false,
+			},
+			{ speaker: "owner", text: "hey Eliza thank you", expectRespond: true },
+		],
+		assertions: { minErleDb: 18, minEchoRejectionRate: 1 },
+	},
+	{
+		id: "long-turn-diarization",
+		description:
+			"A long three-voice exchange (~30 s) windowed incrementally; every segment must attribute within the AMI meeting DER budget (#12257).",
+		classes: ["long-turn-diarization", "diarization", "multi-speaker"],
+		knownSpeakerEntityIds: ["entity-a", "entity-b", "entity-c"],
+		participants: [
+			{ label: "ada", entityId: "entity-a" },
+			{ label: "ben", entityId: "entity-b" },
+			{ label: "cal", entityId: "entity-c" },
+		],
+		turns: [
+			{
+				speaker: "ada",
+				text: "Eliza pull up the quarterly revenue chart for us",
+				expectRespond: true,
+			},
+			{
+				speaker: "ben",
+				text: "Eliza also show the cost breakdown next to it",
+				expectRespond: true,
+			},
+			{
+				speaker: "cal",
+				text: "Eliza highlight the regions that grew the most this quarter",
+				expectRespond: true,
+			},
+			{
+				speaker: "ada",
+				text: "Eliza compare that against last year for the same period",
+				expectRespond: true,
+			},
+			{
+				speaker: "ben",
+				text: "Eliza note which product line drove the increase",
+				expectRespond: true,
+			},
+			{
+				speaker: "cal",
+				text: "Eliza and flag anything that looks like an outlier",
+				expectRespond: true,
+			},
+			{
+				speaker: "ada",
+				text: "Eliza summarize all of that into three bullet points",
+				expectRespond: true,
+			},
+			{
+				speaker: "ben",
+				text: "Eliza then draft a short update for the team channel",
+				expectRespond: true,
+			},
+		],
+		// AMI meeting baseline 18.8% + 10 pp streaming headroom (parent decision #10).
+		assertions: { maxDer: 0.288, minRespondAccuracy: 0.9 },
+	},
 ];
+
+/** A growing sequence of committed prefixes over `text`'s words (monotonic). */
+function monotonicPartials(text: string): string[] {
+	const words = text.split(/\s+/).filter(Boolean);
+	const out: string[] = [];
+	for (let i = 1; i <= words.length; i++) out.push(words.slice(0, i).join(" "));
+	return out;
+}
 
 /**
  * A services adapter that echoes each turn's ground truth — perfect ASR /
- * diarization / EOT / respond / entity / match. Drives the CI plumbing lane
- * (runner → scorers → report) to a real PASS with no model. NOT a stand-in for
- * the real backend: it proves the wiring, not the models.
+ * diarization / EOT / respond / entity / match, plus a clean barge-in / ERLE /
+ * streaming-partial signal for the scenarios that assert them. Drives the CI
+ * plumbing lane (runner → scorers → report) to a real PASS with no model. NOT a
+ * stand-in for the real backend: it proves the wiring, not the models.
  */
 export function groundTruthMockServices(
-	opts: { firstAudioMs?: number; eotLatencyMs?: number } = {},
+	opts: {
+		firstAudioMs?: number;
+		eotLatencyMs?: number;
+		bargeInCancelMs?: number;
+		erleDb?: number;
+	} = {},
 ): VoiceWorkbenchServices {
 	return {
 		async observeTurn({
 			label,
+			groundTruth,
 		}: {
 			label: CorpusTurnLabel;
+			groundTruth: { classes: readonly string[] };
 		}): Promise<VoiceTurnObservation> {
 			const eotDecided = label.expectEndOfTurn ?? true;
+			// A barge-in that should cancel reports an in-budget latency; one that
+			// should hold reports `null` (no cancel) — the speaker-gating ground truth.
+			const bargeInCancelMs = label.bargeIn
+				? label.expectBargeInCancel
+					? (opts.bargeInCancelMs ?? 120)
+					: null
+				: undefined;
+			// AEC scenarios report a healthy ERLE on the echo turn; the decision-logic
+			// lane has no AEC and omits it (honest skip).
+			const erleDb =
+				groundTruth.classes.includes("desktop-aec") && label.isAgentEcho
+					? (opts.erleDb ?? 24)
+					: undefined;
+			const partialTranscripts =
+				groundTruth.classes.includes("streaming-partials") &&
+				label.expectRespond
+					? monotonicPartials(label.referenceTranscript)
+					: undefined;
 			return {
 				hypothesisTranscript: label.referenceTranscript,
 				predictedSpeakerLabel: label.speaker,
@@ -553,6 +785,9 @@ export function groundTruthMockServices(
 				...(label.expectRespond
 					? { firstAudioMs: opts.firstAudioMs ?? 250 }
 					: {}),
+				...(bargeInCancelMs !== undefined ? { bargeInCancelMs } : {}),
+				...(erleDb !== undefined ? { erleDb } : {}),
+				...(partialTranscripts ? { partialTranscripts } : {}),
 			};
 		},
 	};

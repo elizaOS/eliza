@@ -1,6 +1,11 @@
 "use client";
 
+/**
+ * Tab strip for the cloud agent-instance detail view (logs, wallet, policies,
+ * transactions, backups).
+ */
 import { type ReactNode, useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import { ElizaPoliciesSection } from "./eliza-policies-section";
 import { ElizaTransactionsSection } from "./eliza-transactions-section";
@@ -35,7 +40,8 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
       {/* Tab bar */}
       <div className="flex items-center gap-0 border-b border-white/10 overflow-x-auto">
         {TABS.map((tab) => (
-          <button
+          <Button
+            variant="ghost"
             key={tab}
             type="button"
             onClick={() => setActiveTab(tab)}
@@ -49,7 +55,7 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
             {activeTab === tab && (
               <span className="absolute bottom-0 left-0 right-0 h-px bg-[var(--accent)]" />
             )}
-          </button>
+          </Button>
         ))}
       </div>
 

@@ -32,6 +32,8 @@ export const CANONICAL_SECRET_KEYS = [
 	"DEEPSEEK_API_KEY",
 	"ZAI_API_KEY",
 	"MOONSHOT_API_KEY",
+	"NEARAI_API_KEY",
+	"CEREBRAS_API_KEY",
 
 	// Channel/Platform Tokens
 	"DISCORD_BOT_TOKEN",
@@ -122,6 +124,13 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
 	KIMI_API_KEY: "MOONSHOT_API_KEY",
 	MOONSHOT_KEY: "MOONSHOT_API_KEY",
 
+	// NEAR AI aliases
+	NEAR_AI_API_KEY: "NEARAI_API_KEY",
+	NEARAI_KEY: "NEARAI_API_KEY",
+
+	// Cerebras aliases
+	CEREBRAS_KEY: "CEREBRAS_API_KEY",
+
 	// Mistral aliases
 	MISTRAL_KEY: "MISTRAL_API_KEY",
 	MISTRAL_TOKEN: "MISTRAL_API_KEY",
@@ -169,6 +178,8 @@ export const MODEL_PROVIDER_SECRETS: Record<string, string> = {
 	deepseek: "DEEPSEEK_API_KEY",
 	zai: "ZAI_API_KEY",
 	moonshot: "MOONSHOT_API_KEY",
+	nearai: "NEARAI_API_KEY",
+	cerebras: "CEREBRAS_API_KEY",
 
 	// Local inference (checks for URL instead of API key)
 	ollama: "OLLAMA_BASE_URL",

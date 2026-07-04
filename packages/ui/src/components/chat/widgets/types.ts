@@ -1,3 +1,4 @@
+/** Props + registration shape for chat-sidebar / home-slot widgets. */
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../../../api";
 import type { ActivityEvent } from "../../../hooks/useActivityEvents";

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for attachment-URL safety checks (allowed schemes, SSRF-adjacent
+ * rejects). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { isSafeAttachmentUrl, safeAttachmentUrl } from "./attachment-url";
 
@@ -34,6 +38,45 @@ describe("isSafeAttachmentUrl", () => {
       expect(isSafeAttachmentUrl("data:text/plain,hello")).toBe(true);
       // empty media type defaults to text/plain per the data: URL spec
       expect(isSafeAttachmentUrl("data:,hello")).toBe(true);
+    });
+
+    it("accepts the on-device local-agent IPC media scheme", () => {
+      // How `/api/media/<hash>` resolves in mobile/desktop local mode (no HTTP
+      // port); a native scheme handler serves the bytes over IPC.
+      expect(
+        isSafeAttachmentUrl("eliza-local-agent://ipc/api/media/abc123.png"),
+      ).toBe(true);
+      expect(
+        isSafeAttachmentUrl(
+          "eliza-local-agent://ipc/api/media/abc.mp4?x=1#t=3",
+        ),
+      ).toBe(true);
+      // The bare base and a trailing-slash base are both valid app roots.
+      expect(isSafeAttachmentUrl("eliza-local-agent://ipc")).toBe(true);
+      expect(isSafeAttachmentUrl("eliza-local-agent://ipc/")).toBe(true);
+      // Case-insensitive on both scheme and the fixed authority.
+      expect(
+        isSafeAttachmentUrl("ELIZA-LOCAL-AGENT://IPC/api/media/a.png"),
+      ).toBe(true);
+    });
+
+    it("rejects a local-agent IPC URL with any other authority", () => {
+      // Only the fixed `ipc` authority is trusted; a look-alike host is a
+      // different, untrusted target.
+      expect(
+        isSafeAttachmentUrl("eliza-local-agent://evil/api/media/a.png"),
+      ).toBe(false);
+      expect(
+        isSafeAttachmentUrl("eliza-local-agent://ipcevil/api/media/a.png"),
+      ).toBe(false);
+      expect(isSafeAttachmentUrl("eliza-local-agent://ipc.evil.com/a")).toBe(
+        false,
+      );
+      // No authority at all (single slash) is not the IPC identity.
+      expect(isSafeAttachmentUrl("eliza-local-agent:/ipc/api/media/a")).toBe(
+        false,
+      );
+      expect(isSafeAttachmentUrl("eliza-local-agent:ipc")).toBe(false);
     });
 
     it("tolerates surrounding whitespace on safe URLs", () => {

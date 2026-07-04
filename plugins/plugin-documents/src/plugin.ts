@@ -119,6 +119,7 @@ export const documentsPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "DocumentsView",
       tags: ["documents", "files", "signatures"],
+      relatedActions: ["OWNER_DOCUMENTS"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

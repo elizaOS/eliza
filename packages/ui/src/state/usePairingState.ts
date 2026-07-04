@@ -1,5 +1,5 @@
 /**
- * Pairing / auth state — extracted from AppContext.
+ * Pairing / auth state, one of the domain hooks AppContext composes.
  *
  * Manages the pairing code UI (input, submit, error, busy). The startup
  * effect sets pairingEnabled/pairingExpiresAt from the backend — those

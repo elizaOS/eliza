@@ -11,6 +11,12 @@ export * from "./access-context";
 export * from "./agent";
 // Channel configuration types for plugins
 export * from "./channel-config";
+// Chat pre-handler contract (generic pre-action dispatch extension point);
+// the concrete registry lives in ../runtime/chat-pre-handler-registry.
+export * from "./chat-pre-handler";
+// Chat-command contract (CommandDefinition + CommandRegistryService); the
+// concrete registry lives in @elizaos/plugin-commands and re-exports these.
+export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)
 export * from "./connector-setup";
@@ -24,6 +30,7 @@ export * from "./hook";
 export * from "./interactions";
 export * from "./memory";
 export * from "./memory-storage";
+export * from "./message-source";
 export * from "./messaging";
 export * from "./model";
 export * from "./notification";
@@ -59,6 +66,7 @@ export * from "./setup";
 export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
+export * from "./swarm-coordinator";
 export * from "./task";
 export * from "./tee";
 export type { TestCase, TestSuite } from "./testing";

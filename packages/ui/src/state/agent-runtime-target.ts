@@ -1,3 +1,8 @@
+/**
+ * Resolves the active agent runtime target (local / cloud / remote) and its
+ * display label from the persisted active-server record, normalizing the API
+ * base URL. Bridges persistence.ts and the mobile-runtime-mode constants.
+ */
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,

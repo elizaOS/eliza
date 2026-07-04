@@ -1,3 +1,11 @@
+/**
+ * Password sign-in screen shown when a remote agent requires owner
+ * authentication. Posts credentials via `authLoginPassword` and calls
+ * `onLoginSuccess` so the shell can redirect to the dashboard. When the host
+ * reports `remote_password_not_configured`, it swaps the form for setup
+ * instructions (there is no owner password to authenticate against yet) instead
+ * of accepting a login. Styled with the shared first-run/setup tokens.
+ */
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
@@ -11,6 +19,7 @@ import {
 import { SetupStepDivider } from "../setup/setup-step-chrome";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
@@ -49,6 +58,7 @@ function PasswordTab({
   const { t } = useTranslation();
   const displayNameId = useId().replace(/:/g, "");
   const passwordId = useId().replace(/:/g, "");
+  const rememberDeviceId = useId().replace(/:/g, "");
 
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -152,18 +162,19 @@ function PasswordTab({
           />
         </div>
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground select-none">
-          <input
-            type="checkbox"
+        <div className="flex items-center gap-2 text-sm text-muted-foreground select-none">
+          <Checkbox
+            id={rememberDeviceId}
             checked={rememberDevice}
-            onChange={(e) => setRememberDevice(e.target.checked)}
+            onCheckedChange={(checked) => setRememberDevice(checked === true)}
             disabled={isSubmitting}
-            className="h-4 w-4 rounded-sm border-border accent-primary"
           />
-          {t("loginview.rememberDevice", {
-            defaultValue: "Remember this device for 30 days",
-          })}
-        </label>
+          <Label htmlFor={rememberDeviceId} className="cursor-pointer text-sm">
+            {t("loginview.rememberDevice", {
+              defaultValue: "Remember this device for 30 days",
+            })}
+          </Label>
+        </div>
       </div>
 
       {submitState.phase === "error" && (

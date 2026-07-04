@@ -1,3 +1,6 @@
+/**
+ * Unit coverage for the ConversationMessage type guard. Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type ConversationMessage,

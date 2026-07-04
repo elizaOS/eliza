@@ -1,3 +1,11 @@
+/**
+ * Real-PGlite tests simulating production migration scenarios: a database
+ * that already has tables from earlier deployments (including the
+ * camelCase-vs-snake_case rename case the runtime migrator must block as
+ * destructive rather than silently drop/re-add), multiple plugins with
+ * pre-existing schemas, recovery from a partially-completed migration,
+ * idempotent repeated migration runs, and introspection at 20-table scale.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -18,12 +26,6 @@ import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../runtime-migrator/types";
 import * as coreSchema from "../../schema";
 
-/**
- * These tests simulate real production scenarios where:
- * 1. The database already has tables from previous deployments
- * 2. The migration system is introduced later
- * 3. We need to handle existing data and schema gracefully
- */
 describe("Production Migration Scenarios", () => {
   let pgClient: PGlite;
   let db: DrizzleDB;
@@ -50,10 +52,10 @@ describe("Production Migration Scenarios", () => {
       // skipped branch (e.g. the migration unexpectedly renaming columns) fail loudly.
       expect.assertions(3);
 
-      // Simulate existing production database with OLD camelCase columns
-      // In production, migrations.ts handles RENAME operations BEFORE RuntimeMigrator runs.
-      // RuntimeMigrator alone cannot detect renames - it sees them as DROP + ADD (destructive).
-      // This test verifies that RuntimeMigrator correctly BLOCKS such destructive changes.
+      // Simulates a production DB with the old camelCase columns. In production,
+      // migrations.ts performs RENAME operations before RuntimeMigrator runs;
+      // RuntimeMigrator itself can't detect a rename — it sees old-name-gone +
+      // new-name-present as DROP + ADD, i.e. destructive — so it must block.
 
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS memories (
@@ -106,7 +108,6 @@ describe("Production Migration Scenarios", () => {
         )
       `);
 
-      // Insert some production data
       const agentId = "123e4567-e89b-12d3-a456-426614174000";
       const roomId = "223e4567-e89b-12d3-a456-426614174000";
 
@@ -126,17 +127,11 @@ describe("Production Migration Scenarios", () => {
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "System initialized"}'::jsonb, 'message')
       `);
 
-      // RuntimeMigrator should BLOCK this migration because:
-      // - It sees camelCase columns (agentId, roomId, etc.)
-      // - Schema expects snake_case (agent_id, room_id, etc.)
-      // - This is detected as DROP + ADD = destructive change
       try {
         await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
           verbose: false,
           force: false,
         });
-        // If we get here, the migration wasn't blocked - that's unexpected
-        // Check if there were actually destructive changes detected
         const memoryColumns = await db.execute(sql`
           SELECT column_name FROM information_schema.columns WHERE table_name = 'memories'
         `);
@@ -145,21 +140,17 @@ describe("Production Migration Scenarios", () => {
         // skipped, so the original camelCase "agentId" column must still be present.
         expect(columnNames).toContain("agentId");
       } catch (error) {
-        // Expected: Destructive migration should be blocked
         expect((error as Error).message).toContain("Destructive migration blocked");
       }
 
-      // Verify data is preserved (migration was blocked, not executed)
       const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
       expect(agents.rows[0]).toBeDefined();
       expect(agents.rows[0].name).toBe("Production Agent");
     });
 
     it("should work with tables that already have snake_case columns (post-migration)", async () => {
-      // This test simulates a database that has ALREADY been migrated
-      // (migrations.ts already ran and renamed columns to snake_case)
-      // RuntimeMigrator should handle this gracefully
-
+      // Simulates a DB where migrations.ts already ran and renamed columns to
+      // snake_case, so RuntimeMigrator should see the schema already matching.
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS memories (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -211,7 +202,6 @@ describe("Production Migration Scenarios", () => {
         )
       `);
 
-      // Insert some production data
       const agentId = "123e4567-e89b-12d3-a456-426614174000";
       const roomId = "223e4567-e89b-12d3-a456-426614174000";
 
@@ -233,21 +223,17 @@ describe("Production Migration Scenarios", () => {
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "Context established"}'::jsonb, 'message')
       `);
 
-      // RuntimeMigrator should work fine - schema already matches
       await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
         verbose: false,
       });
 
-      // Verify data is preserved
       const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
       expect(agents.rows[0]).toBeDefined();
       expect(agents.rows[0].name).toBe("Production Agent");
 
-      // Verify memories data is preserved
       const memories = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
       expect(Number(memories.rows[0].count)).toBe(3);
 
-      // Check that columns are snake_case
       const memoryColumns = await db.execute(sql`
         SELECT column_name
         FROM information_schema.columns
@@ -263,7 +249,6 @@ describe("Production Migration Scenarios", () => {
     });
 
     it("should handle version mismatch between DB and code schema", async () => {
-      // Create an older version of a table structure
       await db.execute(sql`
         CREATE TABLE participants (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -274,7 +259,6 @@ describe("Production Migration Scenarios", () => {
         )
       `);
 
-      // Add some data
       const agentId = "323e4567-e89b-12d3-a456-426614174000";
       const roomId = "423e4567-e89b-12d3-a456-426614174000";
 
@@ -285,7 +269,6 @@ describe("Production Migration Scenarios", () => {
         (${agentId}::uuid, ${roomId}::uuid, 'Bob')
       `);
 
-      // The new schema might have additional fields
       const participantTable = pgTable("participants", {
         id: uuid("id").primaryKey().defaultRandom(),
         agent_id: uuid("agent_id").notNull(),
@@ -300,16 +283,13 @@ describe("Production Migration Scenarios", () => {
 
       const schema = { participants: participantTable };
 
-      // Run migration
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
-      // Verify data is preserved
       const result = await db.execute(sql`SELECT * FROM participants ORDER BY user_name`);
       expect(result.rows).toHaveLength(2);
       expect(result.rows[0].user_name).toBe("Alice");
       expect(result.rows[1].user_name).toBe("Bob");
 
-      // Verify new columns exist
       const columns = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -326,9 +306,7 @@ describe("Production Migration Scenarios", () => {
 
   describe("Scenario 2: Multiple Plugin Tables in Production", () => {
     it("should handle multiple plugins with existing tables", async () => {
-      // Simulate a production environment with multiple plugins already deployed
-
-      // Plugin 1: Analytics plugin with its own schema
+      // Analytics plugin with its own schema, already deployed.
       await db.execute(sql`CREATE SCHEMA IF NOT EXISTS analytics`);
 
       await db.execute(sql`
@@ -351,7 +329,6 @@ describe("Production Migration Scenarios", () => {
         )
       `);
 
-      // Add some production data
       await db.execute(sql`
         INSERT INTO analytics.events (event_type, agent_id, payload) 
         VALUES 
@@ -366,17 +343,14 @@ describe("Production Migration Scenarios", () => {
         ('memory_usage_mb', 512.0, '{"process": "agent"}'::jsonb)
       `);
 
-      // Check if tables exist
       const hasExisting = await introspector.hasExistingTables("@elizaos/analytics");
       expect(hasExisting).toBe(true);
 
-      // Introspect to verify structure
       const snapshot = await introspector.introspectSchema("analytics");
       expect(Object.keys(snapshot.tables)).toHaveLength(2);
       expect(snapshot.tables["analytics.events"]).toBeDefined();
       expect(snapshot.tables["analytics.metrics"]).toBeDefined();
 
-      // Verify data is there
       const events = await db.execute(sql`
         SELECT COUNT(*) as count FROM analytics.events
       `);
@@ -389,7 +363,6 @@ describe("Production Migration Scenarios", () => {
     });
 
     it("should handle schema conflicts gracefully", async () => {
-      // Create a table that conflicts with what a plugin expects
       await db.execute(sql`
         CREATE TABLE tasks (
           id INTEGER PRIMARY KEY,
@@ -409,14 +382,12 @@ describe("Production Migration Scenarios", () => {
 
       const schema = { tasks: tasksTable };
 
-      // This should detect the type conflict
       try {
         await migrator.migrate("@elizaos/plugin-sql", schema, {
           verbose: false,
           force: false, // Don't allow destructive changes
         });
 
-        // If we get here without error, check what happened
         const columns = await db.execute(sql`
           SELECT column_name, data_type 
           FROM information_schema.columns 
@@ -424,10 +395,8 @@ describe("Production Migration Scenarios", () => {
           ORDER BY column_name
         `);
 
-        // The migration should have been blocked or handled gracefully
         expect(columns.rows).toBeDefined();
       } catch (error) {
-        // Expected: Destructive migration should be blocked
         expect((error as Error).message).toContain("Destructive migration blocked");
       }
     });
@@ -435,7 +404,8 @@ describe("Production Migration Scenarios", () => {
 
   describe("Scenario 3: Recovery from Failed Migrations", () => {
     it("should handle partial migration state gracefully", async () => {
-      // Simulate a partial migration where some tables were created but not all
+      // Only `users` exists here; `profiles` and `sessions` below simulate
+      // tables a prior, incomplete migration run never got to create.
       await db.execute(sql`
         CREATE TABLE users (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -444,8 +414,6 @@ describe("Production Migration Scenarios", () => {
         )
       `);
 
-      // But the related tables were not created (simulating a failed migration)
-      // Now define the complete schema
       const usersTable = pgTable("users", {
         id: uuid("id").primaryKey().defaultRandom(),
         name: text("name").notNull(),
@@ -477,10 +445,8 @@ describe("Production Migration Scenarios", () => {
         sessions: sessionsTable,
       };
 
-      // Run migration - should complete the partial migration
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
-      // Verify all tables exist
       const tables = await db.execute(sql`
         SELECT table_name 
         FROM information_schema.tables 
@@ -494,7 +460,6 @@ describe("Production Migration Scenarios", () => {
       expect(tableNames).toContain("profiles");
       expect(tableNames).toContain("sessions");
 
-      // Verify the users table was updated with new field
       const userColumns = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -507,7 +472,6 @@ describe("Production Migration Scenarios", () => {
     });
 
     it("should be idempotent when run multiple times", async () => {
-      // Create initial state
       await db.execute(sql`
         CREATE TABLE products (
           id SERIAL PRIMARY KEY,
@@ -522,7 +486,6 @@ describe("Production Migration Scenarios", () => {
         ('Product B', 149.99)
       `);
 
-      // Define schema
       const productsTable = pgTable("products", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
@@ -532,12 +495,10 @@ describe("Production Migration Scenarios", () => {
 
       const schema = { products: productsTable };
 
-      // Run migration multiple times
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
-      // Verify data is still intact
       const products = await db.execute(sql`
         SELECT * FROM products ORDER BY id
       `);
@@ -545,7 +506,6 @@ describe("Production Migration Scenarios", () => {
       expect(products.rows[0].name).toBe("Product A");
       expect(products.rows[1].name).toBe("Product B");
 
-      // Verify structure is correct (not duplicated)
       const columns = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -561,7 +521,6 @@ describe("Production Migration Scenarios", () => {
 
   describe("Scenario 4: Large Production Database", () => {
     it("should handle introspection of many tables efficiently", async () => {
-      // Create multiple tables to simulate a large production database
       const tableCount = 20;
 
       for (let i = 0; i < tableCount; i++) {
@@ -575,7 +534,6 @@ describe("Production Migration Scenarios", () => {
         `)
         );
 
-        // Add some data
         await db.execute(
           sql.raw(`
           INSERT INTO table_${i} (data) VALUES ('Data for table ${i}')
@@ -583,7 +541,6 @@ describe("Production Migration Scenarios", () => {
         );
       }
 
-      // Add some indexes
       for (let i = 0; i < 5; i++) {
         await db.execute(
           sql.raw(`
@@ -592,13 +549,10 @@ describe("Production Migration Scenarios", () => {
         );
       }
 
-      // Introspect the database
       const snapshot = await introspector.introspectSchema("public");
 
-      // Verify all tables were captured
       expect(Object.keys(snapshot.tables)).toHaveLength(tableCount);
 
-      // Verify data exists
       for (let i = 0; i < tableCount; i++) {
         const result = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM table_${i}`));
         expect(Number(result.rows[0].count)).toBe(1);

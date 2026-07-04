@@ -254,6 +254,91 @@ describe("scheduled-tasks REST handler", () => {
     expect(payload.status).toBe("scheduled");
   });
 
+  it("POST /:id/fire fires a task on demand and returns the typed outcome", async () => {
+    const runner = makeRunner();
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "fire me now",
+      trigger: { kind: "manual" },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: "x",
+      ownerVisible: true,
+    });
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: `/api/lifeops/scheduled-tasks/${task.taskId}/fire`,
+    });
+    const handled = await handler(ctx);
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    const payload = JSON.parse(res.body ?? "{}");
+    expect(payload.fire.kind).toBe("fired");
+    expect(payload.fire.task.taskId).toBe(task.taskId);
+    expect(payload.fire.task.state.status).toBe("fired");
+  });
+
+  it("POST /:id/fire on an unknown task id does not fire and reports it (never a false 'fired')", async () => {
+    const runner = makeRunner();
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/scheduled-tasks/does-not-exist/fire",
+    });
+    await handler(ctx);
+    // Either a 400 error or a typed non-"fired" outcome is acceptable; a false
+    // "fired" for a missing row is not.
+    if (res.statusCode === 200) {
+      const payload = JSON.parse(res.body ?? "{}");
+      expect(payload.fire.kind).not.toBe("fired");
+    } else {
+      expect(res.statusCode).toBe(400);
+    }
+  });
+
+  it("POST /test-probe seeds a due-now reminder and fires it in one call", async () => {
+    const runner = makeRunner();
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/scheduled-tasks/test-probe",
+    });
+    const handled = await handler(ctx);
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(201);
+    const payload = JSON.parse(res.body ?? "{}");
+    expect(payload.task.kind).toBe("reminder");
+    expect(payload.task.metadata.liveTest).toBe(true);
+    expect(payload.fire.kind).toBe("fired");
+    // The seeded probe row is discoverable in the task list.
+    const all = await runner.list();
+    expect(all.some((t) => t.metadata?.liveTest === true)).toBe(true);
+  });
+
+  it("POST /test-probe honors kind:checkin", async () => {
+    const runner = makeRunner();
+    const handler = makeScheduledTasksRouteHandler({
+      resolveRunner: async () => runner,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/scheduled-tasks/test-probe",
+      body: { kind: "checkin" },
+    });
+    await handler(ctx);
+    expect(res.statusCode).toBe(201);
+    const payload = JSON.parse(res.body ?? "{}");
+    expect(payload.task.kind).toBe("checkin");
+  });
+
   it("GET /api/lifeops/dev/scheduling/registries returns spine registry health (loopback only)", async () => {
     const runner = makeRunner();
     const handler = makeScheduledTasksRouteHandler({

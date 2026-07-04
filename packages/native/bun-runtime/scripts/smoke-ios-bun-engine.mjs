@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Checks that a built iOS app bundle contains the full Bun engine prerequisites.
+ *
+ * This smoke step validates the staged agent bundle and exported Eliza C ABI
+ * symbols before a device or simulator run attempts to exercise the Capacitor
+ * bridge.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";

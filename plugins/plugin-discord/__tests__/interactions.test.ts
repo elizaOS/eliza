@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `renderDiscordInteractions` — mapping neutral
+ * `InteractionBlock` output to Discord action-row/button components.
+ * Pure-function assertions.
+ */
 import type { Content } from "@elizaos/core";
 import { decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

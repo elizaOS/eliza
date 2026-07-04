@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Carousel primitive (slides + prev/next controls); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Carousel,

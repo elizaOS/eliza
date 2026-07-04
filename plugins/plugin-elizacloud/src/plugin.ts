@@ -30,6 +30,11 @@ import {
   handleCloudRoute,
 } from "./routes/cloud-routes";
 import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
+import { handleCloudTtsPreviewRoute } from "./lib/server-cloud-tts";
+import {
+  handleXRelayRoute,
+  type XRelayRouteState,
+} from "./routes/x-relay-routes";
 
 type AnyRuntime = Parameters<typeof handleCloudStatusRoutes>[0]["runtime"];
 
@@ -146,9 +151,40 @@ function makeBillingRouteHandler() {
   };
 }
 
+function makeXRelayRouteHandler() {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(httpReq.url ?? "/", "http://localhost");
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const hostContext = getHostContext(runtime);
+    const state: XRelayRouteState = {
+      config: (hostContext?.config ?? {}) as ElizaConfig,
+      runtime: runtime as XRelayRouteState["runtime"],
+    };
+
+    await handleXRelayRoute(httpReq, httpRes, url.pathname, method, state);
+  };
+}
+
 const cloudStatusHandler = makeStatusHandler();
 const cloudRouteHandler = makeCloudRouteHandler();
 const cloudBillingRouteHandler = makeBillingRouteHandler();
+const xRelayRouteHandler = makeXRelayRouteHandler();
+
+async function cloudTtsPreviewHandler(
+  req: unknown,
+  res: unknown,
+): Promise<void> {
+  await handleCloudTtsPreviewRoute(
+    req as http.IncomingMessage,
+    res as http.ServerResponse,
+  );
+}
 
 const cloudRoutes: Route[] = [
   // Status surface (read-only). Note: server.ts may exempt this from auth on
@@ -189,11 +225,28 @@ const cloudRoutes: Route[] = [
     rawPath: true,
     handler: cloudRouteHandler,
   },
+  {
+    type: "POST",
+    path: "/api/tts/cloud",
+    rawPath: true,
+    modes: ["local", "cloud", "remote"],
+    modeReason: "cloud TTS preview — hidden in local-only",
+    handler: cloudTtsPreviewHandler,
+  },
   ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
     type,
     path: "/api/cloud/billing/:path*",
     rawPath: true,
     handler: cloudBillingRouteHandler,
+  })),
+  // X relay proxy (LifeOps X → Cloud). All methods are registered so the
+  // handler owns the 405 for non-GET/POST, matching the billing surface and
+  // the former host-dispatch special-case behavior byte-for-byte.
+  ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
+    type,
+    path: "/api/cloud/x/:path*",
+    rawPath: true,
+    handler: xRelayRouteHandler,
   })),
   {
     type: "POST",

@@ -1,3 +1,7 @@
+/**
+ * Barrel for the state layer: contexts, stores, persistence, parsers, and the
+ * runtime-switch entry point consumed across the shell.
+ */
 export { AppProvider } from "./AppContext";
 export { RESYNC_EVENT, type ResyncEventDetail } from "./AppContext.hooks";
 export * from "./action-notice";

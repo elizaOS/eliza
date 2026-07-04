@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension (declaration-merged) for the automations feed: list
+ * workflows and fetch the node catalog.
+ */
 import { ElizaClient } from "./client-base";
 import type {
   AutomationListResponse,

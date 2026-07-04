@@ -490,3 +490,13 @@ describe("BROWSER action", () => {
     expect(result?.text).toMatch(/^Browser action failed:/);
   });
 });
+
+describe("BROWSER routing hint (#12209)", () => {
+  it("states its planner boundary versus WEB_FETCH, WEB_SEARCH, and COMPUTER_USE", () => {
+    const hint = browserAction.routingHint ?? "";
+    expect(hint).toContain("BROWSER");
+    expect(hint).toContain("WEB_FETCH");
+    expect(hint).toContain("WEB_SEARCH");
+    expect(hint).toContain("COMPUTER_USE");
+  });
+});

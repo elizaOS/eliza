@@ -1,8 +1,3 @@
-import * as React from "react";
-import { useVoiceChat } from "../../../hooks/useVoiceChat";
-import { useAppSelector } from "../../../state";
-import { useVoiceConfig } from "../../../voice/useVoiceConfig";
-
 /**
  * Speaks the current tour frame aloud through the app's REAL voice pipeline
  * (the same {@link useVoiceChat} engine that voices assistant replies — cloud /
@@ -10,6 +5,11 @@ import { useVoiceConfig } from "../../../voice/useVoiceConfig";
  * hack. Mounted only while the tour is active, so the engine isn't spun up when
  * idle. Renders nothing; `utteranceId` changing (re)speaks `text`.
  */
+import * as React from "react";
+import { useVoiceChat } from "../../../hooks/useVoiceChat";
+import { useAppSelector } from "../../../state";
+import { useVoiceConfig } from "../../../voice/useVoiceConfig";
+
 export function TutorialNarrator({
   utteranceId,
   text,

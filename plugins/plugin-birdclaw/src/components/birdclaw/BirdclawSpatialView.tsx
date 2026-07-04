@@ -148,7 +148,7 @@ function BirdclawTabs({
       {tabs.map((tab) => (
         <Button
           key={tab.id}
-          variant={tab.active ? "solid" : "outline"}
+          variant={tab.active ? "solid" : "ghost"}
           tone={tab.active ? "primary" : "default"}
           agent={`birdclaw-tab-${tab.id}`}
           onPress={dispatch(`tab:${tab.id}`)}

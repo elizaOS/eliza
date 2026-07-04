@@ -1,3 +1,9 @@
+/**
+ * `KAMINO_LENDING` provider: DM-only report of the user's Kamino lending/
+ * borrowing positions, resolved from their Solana metawallet(s), alongside
+ * available reserves and market data, narrated via an LLM pass. Gated to
+ * `OWNER` role and direct messages since it reads account wallet data.
+ */
 import type {
   Entity,
   IAgentRuntime,
@@ -8,7 +14,6 @@ import type {
 import { ModelType } from "@elizaos/core";
 import type { KaminoService } from "../services/kaminoService";
 
-// Kamino Lend Program constants
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
 const MAX_KAMINO_WALLETS = 5;
 const MAX_KAMINO_POSITIONS = 10;
@@ -139,10 +144,6 @@ function formatPromptValue(value: unknown): string {
   return String(value);
 }
 
-/**
- * Kamino Lending Protocol Provider
- * Provides information about Kamino lending positions and market data
- */
 export const kaminoProvider: Provider = {
   name: "KAMINO_LENDING",
   description:
@@ -159,7 +160,6 @@ export const kaminoProvider: Provider = {
     let kaminoInfo = "";
 
     try {
-      // Check if this is a DM (private message)
       const isDM = message.content.channelType?.toUpperCase() === "DM";
       if (isDM) {
         const account = await getAccountFromMessage(runtime, message);
@@ -171,7 +171,6 @@ export const kaminoProvider: Provider = {
           };
         }
 
-        // Get Kamino service with proper type casting
         const kaminoService = runtime.getService(
           "KAMINO_SERVICE",
         ) as KaminoService;
@@ -185,7 +184,6 @@ export const kaminoProvider: Provider = {
 
         kaminoInfo += `=== KAMINO LENDING PROTOCOL REPORT ===\n\n`;
 
-        // Get user's Kamino positions
         const userPositions = await getUserKaminoPositions(
           kaminoService,
           account,
@@ -196,7 +194,6 @@ export const kaminoProvider: Provider = {
         const discoveredMarkets =
           await getDiscoveredKaminoMarkets(kaminoService);
 
-        // Generate enhanced response using LLM
         const enhancedReport = await generateEnhancedKaminoLendingReport(
           runtime,
           {
@@ -233,9 +230,6 @@ export const kaminoProvider: Provider = {
   },
 };
 
-/**
- * Get user's Kamino positions
- */
 async function getUserKaminoPositions(
   kaminoService: KaminoService,
   account: unknown,
@@ -243,7 +237,6 @@ async function getUserKaminoPositions(
   let positionsInfo = "📊 YOUR KAMINO POSITIONS:\n\n";
 
   try {
-    // Extract wallet addresses from account
     const walletAddresses = getSolanaWalletAddresses(account);
 
     if (walletAddresses.length === 0) {
@@ -251,12 +244,10 @@ async function getUserKaminoPositions(
       return positionsInfo;
     }
 
-    // Get positions for each wallet
     for (const walletAddress of walletAddresses.slice(0, MAX_KAMINO_WALLETS)) {
       positionsInfo += `🔸 Wallet: ${walletAddress.slice(0, 8)}...${walletAddress.slice(-8)}\n`;
 
       try {
-        // Get real positions from Kamino service
         const positions = await kaminoService.getUserPositions(walletAddress);
 
         if ("error" in positions) {
@@ -267,13 +258,11 @@ async function getUserKaminoPositions(
         ) {
           positionsInfo += "   No Kamino positions found.\n\n";
 
-          // Show discovered markets info
           if (positions.markets && positions.markets.length > 0) {
             positionsInfo += `   🔍 Discovered ${positions.markets.length} Kamino markets\n`;
             positionsInfo += `   📊 User has ${positions.userAccounts || 0} token accounts\n\n`;
           }
         } else {
-          // Display lending positions
           if (positions.lending.length > 0) {
             positionsInfo += `   💰 LENDING POSITIONS (${positions.lending.length}):\n\n`;
 
@@ -289,7 +278,6 @@ async function getUserKaminoPositions(
             }
           }
 
-          // Display borrowing positions
           if (positions.borrowing.length > 0) {
             positionsInfo += `   💳 BORROWING POSITIONS (${positions.borrowing.length}):\n\n`;
 
@@ -305,7 +293,6 @@ async function getUserKaminoPositions(
             }
           }
 
-          // Display total portfolio value
           if (positions.totalValue !== undefined) {
             positionsInfo += `   💼 TOTAL PORTFOLIO VALUE: $${positions.totalValue.toFixed(2)}\n\n`;
           }
@@ -326,16 +313,12 @@ async function getUserKaminoPositions(
   return positionsInfo;
 }
 
-/**
- * Get available Kamino reserves for lending/borrowing
- */
 async function getAvailableKaminoReserves(
   kaminoService: KaminoService,
 ): Promise<string> {
   let reservesInfo = "🏦 AVAILABLE KAMINO RESERVES:\n\n";
 
   try {
-    // Get real reserves from Kamino service
     const reserves = await kaminoService.getAvailableReserves();
 
     if (reserves.length === 0) {
@@ -347,11 +330,10 @@ async function getAvailableKaminoReserves(
       return reservesInfo;
     }
 
-    // Show top reserves by supply APY
     const topLendingReserves = reserves
       .filter((r) => r.supplyApy > 0)
       .sort((a, b) => (b.supplyApy || 0) - (a.supplyApy || 0))
-      .slice(0, 5); // Show top 5 lending opportunities
+      .slice(0, 5);
 
     if (topLendingReserves.length > 0) {
       reservesInfo += "💰 TOP LENDING OPPORTUNITIES:\n\n";
@@ -376,16 +358,12 @@ async function getAvailableKaminoReserves(
   return reservesInfo;
 }
 
-/**
- * Get Kamino market overview
- */
 async function getKaminoMarketOverview(
   kaminoService: KaminoService,
 ): Promise<string> {
   let marketInfo = "📈 KAMINO MARKET OVERVIEW:\n\n";
 
   try {
-    // Get real market overview from Kamino service
     const overview = await kaminoService.getMarketOverview();
 
     if (!overview) {
@@ -401,7 +379,6 @@ async function getKaminoMarketOverview(
     marketInfo += `💰 Total TVL: $${overview.totalTvl.toLocaleString() || "N/A"}\n`;
     marketInfo += `💳 Total Borrowed: $${overview.totalBorrowed.toLocaleString() || "N/A"}\n\n`;
 
-    // Show top markets by TVL
     if (overview.markets && overview.markets.length > 0) {
       marketInfo += "🏆 TOP MARKETS BY TVL:\n\n";
 
@@ -425,16 +402,12 @@ async function getKaminoMarketOverview(
   return marketInfo;
 }
 
-/**
- * Get discovered Kamino markets
- */
 async function getDiscoveredKaminoMarkets(
   kaminoService: KaminoService,
 ): Promise<string> {
   let marketsInfo = "🔍 DISCOVERED KAMINO MARKETS:\n\n";
 
   try {
-    // Get discovered markets from Kamino service
     const markets = await kaminoService.discoverMarkets();
 
     if (markets.length === 0) {
@@ -444,7 +417,6 @@ async function getDiscoveredKaminoMarkets(
 
     marketsInfo += `📊 Total Markets Discovered: ${markets.length}\n\n`;
 
-    // Display discovered markets
     marketsInfo += "🏪 DISCOVERED MARKET ADDRESSES:\n\n";
 
     for (let i = 0; i < Math.min(markets.length, MAX_KAMINO_MARKETS); i++) {
@@ -454,7 +426,6 @@ async function getDiscoveredKaminoMarkets(
 
     marketsInfo += "\n";
 
-    // Show market discovery statistics
     marketsInfo += "📈 MARKET DISCOVERY STATS:\n";
     marketsInfo += `• Program ID: ${KAMINO_LEND_PROGRAM_ID}\n`;
     marketsInfo += `• Discovery Method: Program Account Query\n`;
@@ -468,9 +439,6 @@ async function getDiscoveredKaminoMarkets(
   return marketsInfo;
 }
 
-/**
- * Generate enhanced Kamino lending report using LLM
- */
 async function generateEnhancedKaminoLendingReport(
   runtime: IAgentRuntime,
   data: {
@@ -483,7 +451,6 @@ async function generateEnhancedKaminoLendingReport(
   },
 ): Promise<string> {
   try {
-    // Create a focused prompt for the LLM
     const lendingPrompt = `Generate a comprehensive lending analysis report for Kamino Finance lending.
 
 USER ACCOUNT DATA:
@@ -524,7 +491,6 @@ Make it comprehensive yet easy to read. Be specific about the user's data and pr
 
 Generate a professional Kamino lending analysis report:`;
 
-    // Use LLM to generate the enhanced report
     const enhancedReport = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: lendingPrompt,
     });
@@ -535,6 +501,6 @@ Generate a professional Kamino lending analysis report:`;
     );
   } catch (error) {
     console.error("Error generating enhanced Kamino lending report:", error);
-    return `${data.userPositions}\n\n${data.availableReserves}\n\n${data.marketOverview}\n\n${data.discoveredMarkets}`; // Fallback to original data
+    return `${data.userPositions}\n\n${data.availableReserves}\n\n${data.marketOverview}\n\n${data.discoveredMarkets}`;
   }
 }

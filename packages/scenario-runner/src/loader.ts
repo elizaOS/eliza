@@ -51,6 +51,8 @@ export interface ScenarioMetadata {
   id: string;
   status?: string;
   title?: string;
+  /** Persona-scenario complexity tier as declared in the file. */
+  tier?: string;
   /** CI lane as declared in the file; absent means the default lane. */
   lane?: string;
   edgeVariant?: string;
@@ -374,6 +376,7 @@ export async function loadScenarioMetadataFile(
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    tier: getStaticStringProperty(objectLiteral, "tier"),
     lane: getStaticStringProperty(objectLiteral, "lane"),
   };
 }

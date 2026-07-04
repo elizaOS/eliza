@@ -53,6 +53,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
 	};
 });
@@ -126,6 +127,11 @@ function createRuntime({
 	const runtime = {
 		agentId: "agent-1",
 		actions: [{ name: "START_CODING_TASK", handler: codingHandler }],
+		// Declare a configured coding backend so the create-flow dispatch
+		// preflight stays deterministic on hosts without a coding CLI on PATH.
+		getSetting: vi.fn((key: string) =>
+			key === "ELIZA_ACP_DEFAULT_AGENT" ? "claude" : undefined,
+		),
 		useModel: vi.fn(async () => modelText),
 		getTasks: vi.fn(async () => tasks),
 		createTask: vi.fn(async (task: unknown) => {

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the VoiceAudioPlayer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { VoiceAudioPlayer } from "./voice-audio-player";
 

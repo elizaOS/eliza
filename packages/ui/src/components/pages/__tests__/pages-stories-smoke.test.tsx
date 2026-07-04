@@ -11,18 +11,5 @@ const modules = import.meta.glob("../**/*.stories.tsx", { eager: true });
 
 smokeStoryModules("pages", modules, {
   minModules: 1,
-  skip: [
-    // AppDetailsView resolves a live app + reads live plugins/appRuns via
-    // useAppSelectorShallow; jsdom + the mock app context can't supply that
-    // graph (the Default/WithActiveRuns stories otherwise hang on a noop-mock
-    // field), so they're covered by the browser story gate + live audit:app —
-    // same reason PluginViewer is skip-listed.
-    "AppDetailsView/Default",
-    "AppDetailsView/WithActiveRuns",
-    "AppDetailsView/PluginViewer",
-    "AppsView/Default",
-    "AppsView/WalletEnabled",
-    "AppsView/WithFavoritesAndRecents",
-    "AppsView/GamesSubTab",
-  ],
+  skip: [],
 });

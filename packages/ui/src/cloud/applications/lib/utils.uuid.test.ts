@@ -1,3 +1,7 @@
+/**
+ * Unit coverage pinning the isValidUUID v1-v5 syntactic contract the app/deploy
+ * routes key on (#9145). Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { isValidUUID } from "./utils.js";
 

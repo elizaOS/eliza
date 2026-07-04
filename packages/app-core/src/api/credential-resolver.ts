@@ -13,126 +13,97 @@
  * exposed by this resolver as API keys.
  */
 import {
-  DIRECT_ACCOUNT_PROVIDER_ENV,
-  type DirectAccountProvider,
   getAccessToken,
   listProviderAccounts,
-} from "@elizaos/agent";
-import { logger } from "@elizaos/core";
+} from "@elizaos/auth/credentials";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  type DirectAccountProvider,
+  isDirectAccountProvider,
+  isSubscriptionProvider,
+} from "@elizaos/auth/types";
+import {
+  logger,
+  MODEL_PROVIDER_SECRETS,
+  SECRET_KEY_ALIASES,
+} from "@elizaos/core";
+import {
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
+  getStoredFirstRunProviderId,
+  normalizeFirstRunProviderId,
+} from "@elizaos/core/contracts/first-run-options";
 import { getDefaultAccountPool } from "../account-pool.js";
 
 // ── Credential source registry ───────────────────────────────────────
 
 interface CredentialSource {
   providerId: string;
-  envVar: string;
+  envVars: readonly string[];
   /** "subscription" means the value is an OAuth token for the subscription flow. */
   authType: "api-key" | "subscription";
-  resolve: () => string | null;
 }
 
-const CREDENTIAL_SOURCES: CredentialSource[] = [
-  // Direct API keys
-  {
-    providerId: "anthropic",
-    envVar: "ANTHROPIC_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.ANTHROPIC_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "openai",
-    envVar: "OPENAI_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.OPENAI_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "groq",
-    envVar: "GROQ_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.GROQ_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "gemini",
-    envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
-    authType: "api-key",
-    resolve: () =>
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ||
-      process.env.GOOGLE_API_KEY?.trim() ||
-      null,
-  },
-  {
-    providerId: "openrouter",
-    envVar: "OPENROUTER_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.OPENROUTER_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "grok",
-    envVar: "XAI_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.XAI_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "deepseek",
-    envVar: "DEEPSEEK_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.DEEPSEEK_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "mistral",
-    envVar: "MISTRAL_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.MISTRAL_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "together",
-    envVar: "TOGETHER_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.TOGETHER_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "zai",
-    envVar: "ZAI_API_KEY",
-    authType: "api-key",
-    resolve: () =>
-      process.env.ZAI_API_KEY?.trim() ||
-      process.env.Z_AI_API_KEY?.trim() ||
-      null,
-  },
-  {
-    providerId: "nearai",
-    envVar: "NEARAI_API_KEY",
-    authType: "api-key",
-    resolve: () => process.env.NEARAI_API_KEY?.trim() || null,
-  },
-  {
-    providerId: "moonshot",
-    envVar: "MOONSHOT_API_KEY",
-    authType: "api-key",
-    resolve: () =>
-      process.env.MOONSHOT_API_KEY?.trim() ||
-      process.env.KIMI_API_KEY?.trim() ||
-      null,
-  },
-];
+function envVarsForCanonicalKey(canonicalKey: string): string[] {
+  return [
+    canonicalKey,
+    ...Object.entries(SECRET_KEY_ALIASES)
+      .filter(([, target]) => target === canonicalKey)
+      .map(([alias]) => alias),
+  ];
+}
 
-const DIRECT_ACCOUNT_PROVIDER_BY_REQUEST: Readonly<
-  Record<string, DirectAccountProvider>
-> = {
-  anthropic: "anthropic-api",
-  "anthropic-api": "anthropic-api",
-  openai: "openai-api",
-  "openai-api": "openai-api",
-  deepseek: "deepseek-api",
-  "deepseek-api": "deepseek-api",
-  zai: "zai-api",
-  "z.ai": "zai-api",
-  "zai-api": "zai-api",
-  moonshot: "moonshot-api",
-  kimi: "moonshot-api",
-  moonshotai: "moonshot-api",
-  "moonshot-api": "moonshot-api",
-};
+function readFirstEnvValue(envVars: readonly string[]) {
+  for (const envVar of envVars) {
+    const value = process.env[envVar]?.trim();
+    if (value) return { envVar, value };
+  }
+  return null;
+}
+
+function normalizeCredentialProviderId(providerId: string): string {
+  const normalizedFirstRunProvider = normalizeFirstRunProviderId(providerId);
+  return normalizedFirstRunProvider ?? providerId.trim().toLowerCase();
+}
+
+function canonicalProviderEnvVar(providerId: string): string | null {
+  const firstRunProvider = getFirstRunProviderOption(providerId);
+  const firstRunEnvVar = firstRunProvider?.envKey;
+  if (firstRunEnvVar) {
+    return SECRET_KEY_ALIASES[firstRunEnvVar] ?? firstRunEnvVar;
+  }
+  return MODEL_PROVIDER_SECRETS[providerId] ?? null;
+}
+
+function sourceForProvider(providerId: string): CredentialSource | null {
+  const normalized = normalizeCredentialProviderId(providerId);
+  const canonicalEnvVar = canonicalProviderEnvVar(normalized);
+  if (!canonicalEnvVar?.endsWith("_API_KEY")) return null;
+  return {
+    providerId: normalized,
+    envVars: envVarsForCanonicalKey(canonicalEnvVar),
+    authType: "api-key",
+  };
+}
+
+function directAccountProviderForRequest(
+  providerId: string,
+): DirectAccountProvider | null {
+  const normalized = providerId.trim().toLowerCase();
+  if (isDirectAccountProvider(normalized)) return normalized;
+  const firstRunProvider = normalizeFirstRunProviderId(providerId);
+  if (!firstRunProvider) return null;
+  const directProvider =
+    getDirectAccountProviderForFirstRunProvider(firstRunProvider);
+  return isDirectAccountProvider(directProvider) ? directProvider : null;
+}
+
+function subscriptionProviderForRequest(providerId: string): string | null {
+  const normalized = providerId.trim().toLowerCase();
+  if (isSubscriptionProvider(normalized)) return normalized;
+  const storedProvider = getStoredFirstRunProviderId(providerId);
+  return isSubscriptionProvider(storedProvider) ? storedProvider : null;
+}
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -149,20 +120,19 @@ export interface ResolvedCredential {
 export function resolveProviderCredential(
   providerId: string,
 ): ResolvedCredential | null {
-  for (const source of CREDENTIAL_SOURCES) {
-    if (source.providerId !== providerId) continue;
-    const key = source.resolve();
-    if (key) {
-      logger.info(
-        `[credential-resolver] Resolved ${source.envVar} for ${providerId} (${key.length} chars, ${source.authType})`,
-      );
-      return {
-        providerId: source.providerId,
-        envVar: source.envVar,
-        apiKey: key,
-        authType: source.authType,
-      };
-    }
+  const source = sourceForProvider(providerId);
+  if (!source) return null;
+  const resolved = readFirstEnvValue(source.envVars);
+  if (resolved) {
+    logger.info(
+      `[credential-resolver] Resolved ${resolved.envVar} for ${providerId} (${resolved.value.length} chars, ${source.authType})`,
+    );
+    return {
+      providerId: source.providerId,
+      envVar: resolved.envVar,
+      apiKey: resolved.value,
+      authType: source.authType,
+    };
   }
   return null;
 }
@@ -182,20 +152,14 @@ export async function resolveProviderCredentialMulti(
   providerId: string,
   opts?: { sessionKey?: string; exclude?: string[] },
 ): Promise<ResolvedCredential | null> {
-  const subscriptionMatch =
-    providerId === "anthropic-subscription" ||
-    providerId === "openai-codex" ||
-    providerId === "gemini-cli" ||
-    providerId === "zai-coding" ||
-    providerId === "kimi-coding" ||
-    providerId === "deepseek-coding";
-  if (subscriptionMatch) {
+  const subscriptionProvider = subscriptionProviderForRequest(providerId);
+  if (subscriptionProvider) {
     logger.info(
       `[credential-resolver] Refusing to expose ${providerId} as a direct API credential; subscription coding plans must use their first-party coding surface.`,
     );
     return null;
   }
-  const directProvider = DIRECT_ACCOUNT_PROVIDER_BY_REQUEST[providerId];
+  const directProvider = directAccountProviderForRequest(providerId);
   if (directProvider) {
     const accounts = listProviderAccounts(directProvider);
     if (accounts.length > 0) {
@@ -232,15 +196,16 @@ export async function resolveProviderCredentialMulti(
 export function scanAllCredentials(): ResolvedCredential[] {
   const results: ResolvedCredential[] = [];
   const seen = new Set<string>();
-  for (const source of CREDENTIAL_SOURCES) {
-    if (seen.has(source.envVar)) continue;
-    const key = source.resolve();
-    if (key) {
-      seen.add(source.envVar);
+  for (const providerId of Object.keys(MODEL_PROVIDER_SECRETS)) {
+    const source = sourceForProvider(providerId);
+    if (!source) continue;
+    const resolved = readFirstEnvValue(source.envVars);
+    if (resolved && !seen.has(resolved.envVar)) {
+      seen.add(resolved.envVar);
       results.push({
         providerId: source.providerId,
-        envVar: source.envVar,
-        apiKey: key,
+        envVar: resolved.envVar,
+        apiKey: resolved.value,
         authType: source.authType,
       });
     }

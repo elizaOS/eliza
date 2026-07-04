@@ -73,22 +73,49 @@ const FIELD_LINE = new RegExp(
 );
 
 /**
+ * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
+ * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
+ * transcript the user pasted — never envelope structure.
+ */
+const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
+
+/**
  * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true
- * when `text` looks like a raw field transcript that must NOT be shipped to a
- * user channel. Intentionally cheap: regex only, no full parse.
+ * when `text` IS a raw field transcript that must NOT be shipped to a user
+ * channel — as opposed to a composed reply that merely QUOTES one.
+ * Intentionally cheap: line scan + regex, no full parse.
  *
- * Matches when the text either:
- *  - starts (after optional leading whitespace) with `shouldRespond:`, or
- *  - contains a line beginning with `replyText:`.
- *
- * Both are hallmarks of the leaked HANDLE_RESPONSE transcript. Normal replies
- * never contain a line that starts with `replyText:` or lead with
- * `shouldRespond:`.
+ * Structural rule: a genuine text-mode envelope echo IS the message — its
+ * first substantive line (outside code fences) is a known field line, and a
+ * hallmark field (`shouldRespond:` / `replyText:`) appears at the top level.
+ * A reply that opens with prose (e.g. a diagnosis of a transcript the user
+ * pasted, which legitimately quotes `replyText:` lines) or whose field lines
+ * sit inside a code fence is CONTENT, not a leak — flagging it would make the
+ * send boundary silently replace the whole answer with the quoted replyText
+ * value, destroying the diagnosis.
  */
 export function looksLikeRawFieldTranscript(text: unknown): boolean {
 	if (typeof text !== "string" || text.length === 0) return false;
-	if (/^\s*shouldRespond\s*:/.test(text)) return true;
-	if (/(^|\n)\s*replyText\s*:/.test(text)) return true;
+	let inFence = false;
+	let leadsWithFieldLine = false;
+	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+		if (FENCE_LINE.test(line)) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || line.trim().length === 0) continue;
+		const match = FIELD_LINE.exec(line);
+		if (!leadsWithFieldLine) {
+			// The first substantive unfenced line decides authorship: prose means
+			// the model composed a reply (which may quote a transcript); a known
+			// field line means the output is the envelope skeleton itself.
+			if (!match) return false;
+			leadsWithFieldLine = true;
+		}
+		if (match && (match[1] === "shouldRespond" || match[1] === "replyText")) {
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -107,6 +134,11 @@ export interface ParsedFieldTranscript {
  * to (but not including) the next `^<knownField>:` line. Blank lines inside a
  * value are preserved (then trimmed at the value edges). This is what lets a
  * multi-line `replyText` with an embedded blank line survive intact.
+ *
+ * Fence rule: field lines inside a fenced code block (``` / ~~~) are QUOTED
+ * content, never boundaries — a replyText value that quotes an envelope inside
+ * a fence (the agent diagnosing a leaked transcript) keeps the whole fenced
+ * block instead of being split at the quoted `contexts:`/`replyText:` lines.
  *
  * Returns null when no known field line is found (the text is not a transcript
  * — let the caller fall through to its plain-text handling).
@@ -138,8 +170,15 @@ export function parseFieldTranscript(
 		buffer = [];
 	};
 
+	let inFence = false;
 	for (const line of lines) {
-		const match = FIELD_LINE.exec(line);
+		if (FENCE_LINE.test(line)) {
+			// Fence delimiters toggle quoted mode and belong to the current value.
+			inFence = !inFence;
+			if (currentField !== null) buffer.push(line);
+			continue;
+		}
+		const match = inFence ? null : FIELD_LINE.exec(line);
 		if (match && FIELD_NAME_SET.has(match[1])) {
 			// New field boundary — close the previous field first.
 			flush();
@@ -148,7 +187,8 @@ export function parseFieldTranscript(
 			const inline = match[2];
 			buffer = inline && inline.length > 0 ? [inline] : [];
 		} else if (currentField !== null) {
-			// Continuation line of the current field value (including blank lines).
+			// Continuation line of the current field value (including blank lines
+			// and any fenced quoted content).
 			buffer.push(line);
 		}
 		// Lines before the first field marker are preamble; ignore them.

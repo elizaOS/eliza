@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the velocity-aware pager transition timing. Pure function,
+ * no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { getVelocityAwarePagerTransitionMs } from "./useHorizontalPager";
 

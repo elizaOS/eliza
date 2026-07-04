@@ -1,12 +1,8 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Admin user management commands
- *
- * Provides commands for checking, granting, and revoking admin privileges,
- * as well as listing all admin users in the system.
- *
- * @module cli/commands/admin
+ * `admin` CLI domain: check, grant, and revoke the admin flag on users and list
+ * current admins. Writes directly against the `users` table via `@feed/db`.
  */
 
 import { asc, closeDatabase, db, eq, or, sql, users } from "@feed/db";

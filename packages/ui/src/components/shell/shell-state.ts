@@ -26,6 +26,12 @@ export interface ShellMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  /**
+   * Message origin (e.g. "client_chat", "proactive-interaction"). Assistant
+   * turns with source "proactive-interaction" render as dismissible/acceptable
+   * suggestion bubbles (#8792).
+   */
+  source?: string;
   /** Set on assistant turns the server flagged as failed (e.g. no provider). */
   failureKind?: ChatFailureKind;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */

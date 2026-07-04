@@ -7,6 +7,7 @@
 import type http from 'node:http';
 import type { Plugin, Route } from '@elizaos/core';
 import { handleAutomationsRoutes } from './routes/automations';
+import { handleWorkbenchTodosRoutes } from './routes/workbench-todos';
 import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workflow-routes';
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
@@ -66,8 +67,27 @@ function makeAutomationsHandler() {
   };
 }
 
+function makeWorkbenchTodosHandler() {
+  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const url = new URL(httpReq.url ?? '/', 'http://localhost');
+    const method = (httpReq.method ?? 'GET').toUpperCase();
+    const state = buildState(runtime);
+
+    await handleWorkbenchTodosRoutes({
+      req: httpReq,
+      res: httpRes,
+      method,
+      pathname: url.pathname,
+      runtime: state.current,
+    });
+  };
+}
+
 const workflowHandler = makeWorkflowHandler();
 const automationsHandler = makeAutomationsHandler();
+const workbenchTodosHandler = makeWorkbenchTodosHandler();
 
 const workflowRouteList: Route[] = [
   // Status surface
@@ -158,6 +178,44 @@ const workflowRouteList: Route[] = [
     path: '/api/automations',
     rawPath: true,
     handler: automationsHandler,
+  },
+  // Workbench todos CRUD (runtime tasks tagged `workbench-todo`). Ordered
+  // most-specific-first so `/:id/complete` matches before `/:id`.
+  {
+    type: 'GET',
+    path: '/api/workbench/todos',
+    rawPath: true,
+    handler: workbenchTodosHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workbench/todos',
+    rawPath: true,
+    handler: workbenchTodosHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workbench/todos/:id/complete',
+    rawPath: true,
+    handler: workbenchTodosHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workbench/todos/:id',
+    rawPath: true,
+    handler: workbenchTodosHandler,
+  },
+  {
+    type: 'PUT',
+    path: '/api/workbench/todos/:id',
+    rawPath: true,
+    handler: workbenchTodosHandler,
+  },
+  {
+    type: 'DELETE',
+    path: '/api/workbench/todos/:id',
+    rawPath: true,
+    handler: workbenchTodosHandler,
   },
 ];
 

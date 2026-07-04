@@ -1,3 +1,7 @@
+/**
+ * Runtime-cast helpers for asserting invalid calls against typed vault APIs.
+ */
+
 import "vitest";
 import type { MasterKeyResolver } from "../src/master-key.js";
 import type { Vault } from "../src/vault-types.js";

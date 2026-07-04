@@ -1,3 +1,9 @@
+/**
+ * Shared Discord types: the `DiscordEventTypes` enum and its
+ * `DiscordEventPayloadMap`, `DiscordSettings`, connector error classes, and
+ * snowflake helpers. This is the contract every other file in the plugin and
+ * every downstream event subscriber depends on.
+ */
 import type {
 	ChannelType,
 	Character,
@@ -21,6 +27,14 @@ import type {
 	User,
 	VoiceState,
 } from "discord.js";
+import type {
+	DiscordAudioSinkPlayOptions,
+	IDiscordAudioSink,
+} from "./audio-sink";
+import type {
+	DiscordVoicePlaybackOptions,
+	DiscordVoiceTarget,
+} from "./voice-target-registry";
 
 /**
  * Discord-specific event types
@@ -218,7 +232,41 @@ export interface IDiscordService {
 		message: Message,
 		options?: BuildMemoryFromMessageOptions,
 	) => Promise<Memory | null>;
+	getVoiceTargets?: (query?: {
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}) => DiscordVoiceTarget[];
+	getVoiceTarget?: (query: {
+		targetId?: string | null;
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}) => DiscordVoiceTarget | null;
+	getAudioSink?: (query: {
+		targetId?: string | null;
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}) => IDiscordAudioSink | null;
+	setListeningActivity?: (
+		activity: string,
+		options?: { accountId?: string | null; url?: string },
+	) => Promise<boolean>;
+	clearActivity?: (options?: { accountId?: string | null }) => Promise<boolean>;
+	setVoiceChannelStatus?: (
+		channelId: string,
+		status: string,
+		options?: { accountId?: string | null },
+	) => Promise<boolean>;
 }
+
+export type {
+	DiscordAudioSinkPlayOptions,
+	DiscordVoicePlaybackOptions,
+	DiscordVoiceTarget,
+	IDiscordAudioSink,
+};
 
 export const DISCORD_SERVICE_NAME = "discord";
 

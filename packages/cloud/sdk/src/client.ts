@@ -1,3 +1,14 @@
+/**
+ * `ElizaCloudClient` — the SDK's primary class: a typed fetch wrapper over every
+ * endpoint of `api.elizacloud.ai` (auth, inference, credits, containers, Eliza
+ * agents, earnings, workflows, and more). Wraps the low-level `ElizaCloudHttpClient`
+ * and exposes the generated `.routes` public-route client. Consumed by
+ * `plugins/plugin-elizacloud` and `packages/ui`.
+ *
+ * Two auth surfaces coexist: `bearerToken` (session) wins over `apiKey` when both
+ * are set. Every method returns a concrete DTO — no `unknown` in public signatures.
+ */
+
 import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
@@ -59,6 +70,8 @@ import {
   type CreateCreditsCheckoutResponse,
   type CreateInfluencerProfileInput,
   type CreateInfluencerProfileResponse,
+  type CreatePressReleaseInput,
+  type CreatePressReleaseResponse,
   type CreateRedemptionRequest,
   type CreateRedemptionResponse,
   type CreateX402PaymentRequest,
@@ -85,6 +98,7 @@ import {
   type GenerateImageResponse,
   type GetAppChargeResponse,
   type GetCampaignPerformanceReportOptions,
+  type GetPressReleaseResponse,
   type GetX402PaymentRequestResponse,
   type HttpMethod,
   type JobStatus,
@@ -97,6 +111,8 @@ import {
   type ListAppFrontendDeploymentsResponse,
   type ListAppsResponse,
   type ListInfluencersResponse,
+  type ListPressCoverageResponse,
+  type ListPressReleasesResponse,
   type ListRedemptionsResponse,
   type ListX402PaymentRequestsResponse,
   type ModelListResponse,
@@ -115,10 +131,14 @@ import {
   type SettleX402PaymentRequestResponse,
   type SnapshotListResponse,
   type SnapshotType,
+  type SubmitPressReleaseInput,
+  type SubmitPressReleaseResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
   type UpdateContainerRequest,
+  type UpdatePressReleaseInput,
+  type UpdatePressReleaseResponse,
   type UpsertAffiliateCodeRequest,
   type UserProfileResponse,
   type VerifyAppCreditsCheckoutResponse,
@@ -784,10 +804,19 @@ export class ElizaCloudClient {
     return this.routes.getApiV1Apps<ListAppsResponse>();
   }
 
-  /** `GET /api/v1/apps/:id` — fetch a single app. */
-  getApp(appId: string): Promise<AppResponse> {
+  /**
+   * `GET /api/v1/apps/:id` — fetch a single app. Accepts a per-request
+   * `signal`/`timeoutMs` so long-running pollers (the DEPLOY_APP completion
+   * gate) can bound a stalled connection.
+   */
+  getApp(
+    appId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<AppResponse> {
     return this.routes.getApiV1AppsById<AppResponse>({
       pathParams: { id: appId },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
     });
   }
 
@@ -829,10 +858,19 @@ export class ElizaCloudClient {
     });
   }
 
-  /** `GET /api/v1/apps/:id/deploy/status` — latest deploy status (poll target). */
-  getAppDeployStatus(appId: string): Promise<AppDeployStatusResponse> {
+  /**
+   * `GET /api/v1/apps/:id/deploy/status` — latest deploy status (poll target).
+   * Accepts a per-request `signal`/`timeoutMs` so a stalled poll can be torn
+   * down instead of hanging the caller's poll loop.
+   */
+  getAppDeployStatus(
+    appId: string,
+    options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
+  ): Promise<AppDeployStatusResponse> {
     return this.routes.getApiV1AppsByIdDeployStatus<AppDeployStatusResponse>({
       pathParams: { id: appId },
+      signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
     });
   }
 
@@ -1090,6 +1128,73 @@ export class ElizaCloudClient {
       {
         json: input,
       },
+    );
+  }
+
+  /** `POST /api/v1/marketing/pr` — create a draft press release (#11819). */
+  createPressRelease(
+    input: CreatePressReleaseInput,
+  ): Promise<CreatePressReleaseResponse> {
+    return this.request<CreatePressReleaseResponse>(
+      "POST",
+      "/api/v1/marketing/pr",
+      { json: input },
+    );
+  }
+
+  /** `GET /api/v1/marketing/pr` — list the org's press release drafts and submissions. */
+  listPressReleases(): Promise<ListPressReleasesResponse> {
+    return this.request<ListPressReleasesResponse>(
+      "GET",
+      "/api/v1/marketing/pr",
+    );
+  }
+
+  /** `GET /api/v1/marketing/pr/:releaseId` — read one press release. */
+  getPressRelease(releaseId: string): Promise<GetPressReleaseResponse> {
+    return this.request<GetPressReleaseResponse>(
+      "GET",
+      `/api/v1/marketing/pr/${encodePathParam(releaseId)}`,
+    );
+  }
+
+  /** `PATCH /api/v1/marketing/pr/:releaseId` — update a draft press release. */
+  updatePressRelease(
+    releaseId: string,
+    input: UpdatePressReleaseInput,
+  ): Promise<UpdatePressReleaseResponse> {
+    return this.request<UpdatePressReleaseResponse>(
+      "PATCH",
+      `/api/v1/marketing/pr/${encodePathParam(releaseId)}`,
+      { json: input },
+    );
+  }
+
+  /** `POST /api/v1/marketing/pr/:releaseId/submit` — provider-backed submit; currently fails closed when no provider exists. */
+  submitPressRelease(
+    releaseId: string,
+    input: SubmitPressReleaseInput = {},
+  ): Promise<SubmitPressReleaseResponse> {
+    return this.request<SubmitPressReleaseResponse>(
+      "POST",
+      `/api/v1/marketing/pr/${encodePathParam(releaseId)}/submit`,
+      { json: input },
+    );
+  }
+
+  /** `POST /api/v1/marketing/pr/:releaseId/cancel` — cancel a draft or ready press release. */
+  cancelPressRelease(releaseId: string): Promise<UpdatePressReleaseResponse> {
+    return this.request<UpdatePressReleaseResponse>(
+      "POST",
+      `/api/v1/marketing/pr/${encodePathParam(releaseId)}/cancel`,
+    );
+  }
+
+  /** `GET /api/v1/marketing/pr/:releaseId/coverage` — list tracked coverage for a release. */
+  listPressCoverage(releaseId: string): Promise<ListPressCoverageResponse> {
+    return this.request<ListPressCoverageResponse>(
+      "GET",
+      `/api/v1/marketing/pr/${encodePathParam(releaseId)}/coverage`,
     );
   }
 

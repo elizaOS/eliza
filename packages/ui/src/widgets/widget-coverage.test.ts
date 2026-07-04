@@ -1,3 +1,8 @@
+/**
+ * Coverage gate asserting every declared widget slot keeps a bundled component +
+ * declaration, so a refactor cannot silently drop one. Reads the source tree, no
+ * runtime.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

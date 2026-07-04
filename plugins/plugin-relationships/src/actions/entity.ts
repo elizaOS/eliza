@@ -89,6 +89,13 @@ export interface EntityActionParameters {
   limit?: number;
 }
 
+interface TrustedIdentityVerification {
+  platform: string;
+  handle: string;
+  evidence: string;
+  verified: true;
+}
+
 function getParams(
   options: HandlerOptions | undefined,
 ): EntityActionParameters {
@@ -123,6 +130,37 @@ function entitySummary(entity: Entity): {
 }
 
 const ENTITY_KINDS_DEFAULT = "person";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function resolveTrustedIdentityVerification(
+  options: HandlerOptions | undefined,
+  platform: string,
+  handle: string,
+): TrustedIdentityVerification | null {
+  const candidate = options?.identityVerification;
+  if (!isRecord(candidate)) return null;
+  if (candidate.verified !== true) return null;
+  const verifiedPlatform = trimmed(
+    typeof candidate.platform === "string" ? candidate.platform : undefined,
+  );
+  const verifiedHandle = trimmed(
+    typeof candidate.handle === "string" ? candidate.handle : undefined,
+  );
+  const evidence = trimmed(
+    typeof candidate.evidence === "string" ? candidate.evidence : undefined,
+  );
+  if (!verifiedPlatform || !verifiedHandle || !evidence) return null;
+  if (verifiedPlatform !== platform || verifiedHandle !== handle) return null;
+  return {
+    platform: verifiedPlatform,
+    handle: verifiedHandle,
+    evidence,
+    verified: true,
+  };
+}
 
 export const entityAction: Action = {
   name: RELATIONSHIPS_ACTION_NAME,
@@ -334,11 +372,38 @@ export const entityAction: Action = {
           evidence: [evidence],
           confidence: 1,
         });
-        // User-asserted identities are verified — mark this (platform, handle).
+        const verification = resolveTrustedIdentityVerification(
+          options,
+          platform,
+          handle,
+        );
+        if (!verification) {
+          return reply({
+            success: false,
+            text: `Recorded identity ${platform}:${handle} as unverified. Verification requires trusted platform proof before it can be marked verified.`,
+            data: {
+              op,
+              error: "IDENTITY_VERIFICATION_REQUIRED",
+              entity: entitySummary(observation.entity),
+              mergedFrom: observation.mergedFrom ?? null,
+              conflict: observation.conflict ?? false,
+            },
+          });
+        }
         const verifiedIdentities: EntityIdentity[] =
           observation.entity.identities.map((identity) =>
             identity.platform === platform && identity.handle === handle
-              ? { ...identity, verified: true }
+              ? {
+                  ...identity,
+                  verified: true,
+                  evidence: Array.from(
+                    new Set([
+                      ...(identity.evidence ?? []),
+                      evidence,
+                      verification.evidence,
+                    ]),
+                  ),
+                }
               : identity,
           );
         const merged = await entityStore.upsert({

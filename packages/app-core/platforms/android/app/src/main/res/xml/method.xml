@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Input-method metadata for ElizaVoiceInputMethodService (android.view.im).
+
+    supportsSwitchingToNextInputMethod: renders the "switch back" affordance and
+    lets a user hop to their previous keyboard from Eliza's voice surface.
+
+    The single subtype declares imeSubtypeMode="voice" (FUTO Voice Input
+    pattern): a voice-mode subtype is what lets another keyboard's mic long-press
+    hand off to Eliza without the user abandoning their primary keyboard.
+    isAsciiCapable="false" — this IME emits transcripts via the InputConnection,
+    it is not a text (QWERTY) keyboard.
+-->
+<input-method xmlns:android="http://schemas.android.com/apk/res/android"
+    android:supportsSwitchingToNextInputMethod="true">
+    <subtype
+        android:label="@string/eliza_ime_subtype_voice"
+        android:imeSubtypeMode="voice"
+        android:imeSubtypeLocale="en_US"
+        android:isAsciiCapable="false" />
+</input-method>

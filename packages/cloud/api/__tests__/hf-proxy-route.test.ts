@@ -27,6 +27,9 @@ import * as loggerActual from "@/lib/utils/logger";
 
 const requireUserOrApiKeyWithOrg =
   mock<(c: unknown) => Promise<{ id: string; organization_id: string }>>();
+const loggerInfo = mock<(...args: unknown[]) => void>();
+const loggerWarn = mock<(...args: unknown[]) => void>();
+const loggerError = mock<(...args: unknown[]) => void>();
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   ...workersHonoAuthActual,
@@ -37,9 +40,9 @@ mock.module("@/lib/utils/logger", () => ({
   ...loggerActual,
   logger: {
     ...loggerActual.logger,
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
+    info: loggerInfo,
+    warn: loggerWarn,
+    error: loggerError,
     debug: () => undefined,
   },
 }));
@@ -61,6 +64,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  loggerInfo.mockClear();
+  loggerWarn.mockClear();
+  loggerError.mockClear();
   requireUserOrApiKeyWithOrg.mockResolvedValue({
     id: "user-1",
     organization_id: "org-1",
@@ -69,6 +75,9 @@ beforeEach(() => {
 
 afterEach(() => {
   requireUserOrApiKeyWithOrg.mockReset();
+  loggerInfo.mockReset();
+  loggerWarn.mockReset();
+  loggerError.mockReset();
   globalThis.fetch = realFetch;
 });
 
@@ -77,6 +86,23 @@ afterAll(() => {
 });
 
 const RESOLVE_PATH = "elizaos/eliza-1/resolve/main/model.gguf";
+
+function fakeKv() {
+  const map = new Map<string, string>();
+  return {
+    get: async (key: string) => map.get(key) ?? null,
+    put: async (key: string, value: string) => {
+      map.set(key, value);
+    },
+    delete: async (key: string) => {
+      map.delete(key);
+    },
+    list: async () => ({
+      keys: [...map.keys()].map((name) => ({ name })),
+      list_complete: true,
+    }),
+  };
+}
 
 function makeRequest(
   path: string,
@@ -113,6 +139,29 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("Only HuggingFace resolve paths are proxied.");
+  });
+
+  test("rejects a resolve path for a repo outside the curated catalog with 403", async () => {
+    // A well-formed resolve path, but for an arbitrary non-elizaos repo — the
+    // cloud HF_TOKEN must not be spent proxying it.
+    let fetchCalled = false;
+    globalThis.fetch = mock(async () => {
+      fetchCalled = true;
+      return new Response("SHOULD-NOT-REACH", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await app.fetch(
+      makeRequest("someuser/gated-model/resolve/main/weights.gguf"),
+      { HF_TOKEN: "hf-secret" },
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe(
+      "This HuggingFace repo is not available through the proxy.",
+    );
+    // Never reaches upstream HuggingFace for a disallowed repo.
+    expect(fetchCalled).toBe(false);
   });
 
   test("returns 503 when HF_TOKEN is not configured", async () => {
@@ -164,5 +213,113 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(await res.text()).toBe("GGUF-BYTES");
     expect(res.headers.get("content-length")).toBe("10");
     expect(res.headers.get("accept-ranges")).toBe("bytes");
+
+    // Cost observability: the proxied transfer is recorded with the repo, path,
+    // status, and byte count so an operator can attribute unmetered downloads.
+    const usageCall = loggerInfo.mock.calls.find(
+      (call) => call[0] === "[hf-proxy] proxied download",
+    );
+    expect(usageCall).toBeDefined();
+    const usagePayload = usageCall?.[1] as Record<string, unknown>;
+    expect(usagePayload).toMatchObject({
+      repo: "elizaos/eliza-1",
+      path: RESOLVE_PATH,
+      status: 200,
+      bytes: 10,
+    });
+    // Identity is attached (redacted) so usage is attributable.
+    expect(usagePayload.orgId).toBeDefined();
+    expect(usagePayload.userId).toBeDefined();
+
+    expect(loggerInfo).toHaveBeenCalledWith(
+      "[hf-proxy] egress metric",
+      expect.objectContaining({
+        organizationId: "org-1",
+        repo: "elizaos/eliza-1",
+        bytes: 10,
+        status: 200,
+      }),
+    );
+  });
+
+  test("returns structured HF_GATED for upstream 401/403", async () => {
+    globalThis.fetch = mock(
+      async () =>
+        new Response("private", {
+          status: 403,
+          headers: { "content-type": "text/plain" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+    });
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as {
+      error: string;
+      code: string;
+      repo: string;
+    };
+    expect(body).toEqual({
+      error: "HuggingFace repo is gated or unauthorized.",
+      code: "HF_GATED",
+      repo: "elizaos/eliza-1",
+    });
+  });
+
+  test("enforces per-org monthly egress budget before streaming the next response", async () => {
+    const kv = fakeKv();
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345678", {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": "8",
+          },
+        }),
+    ) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
+    };
+    const first = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(first.status).toBe(200);
+    expect(await first.text()).toBe("12345678");
+
+    const second = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(second.status).toBe(429);
+    const body = (await second.json()) as {
+      code?: string;
+      limit_bytes?: number;
+      used_bytes?: number;
+    };
+    expect(body.code).toBe("HF_PROXY_EGRESS_LIMIT");
+    expect(body.limit_bytes).toBe(12);
+    expect(body.used_bytes).toBe(8);
+  });
+});
+
+describe("ALLOWED_REPO_PREFIX single-source-of-truth", () => {
+  test("matches the org segment of ELIZA_1_HF_REPO from @elizaos/shared", async () => {
+    // The route's allowlist prefix is a local literal (kept out of the worker
+    // bundle's import graph on purpose), so it MUST be pinned to the shared
+    // catalog constant — otherwise a rename of ELIZA_1_HF_REPO could silently
+    // un-scope the proxy allowlist. This test is that pin.
+    const { ALLOWED_REPO_PREFIX } = (await import(
+      "../v1/hf-proxy/[...path]/route"
+    )) as { ALLOWED_REPO_PREFIX: string };
+    const { ELIZA_1_HF_REPO } = (await import(
+      "@elizaos/shared/local-inference"
+    )) as { ELIZA_1_HF_REPO: string };
+
+    // ELIZA_1_HF_REPO is `<org>/<repo>` (e.g. "elizaos/eliza-1"); the allowlist
+    // is the `<org>/` prefix. The curated repo must fall inside the allowlist.
+    const org = ELIZA_1_HF_REPO.split("/")[0];
+    expect(ALLOWED_REPO_PREFIX).toBe(`${org}/`);
+    expect(ELIZA_1_HF_REPO.startsWith(ALLOWED_REPO_PREFIX)).toBe(true);
   });
 });

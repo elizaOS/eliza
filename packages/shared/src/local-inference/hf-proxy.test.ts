@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetCloudSecretsForTesting } from "../elizacloud/cloud-secrets.js";
-import { resolveHfDownloadBase } from "./hf-proxy.js";
+import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 
 /**
  * `resolveHfDownloadBase` decides where local-inference bundle `resolve`
  * traffic goes. Precedence (highest first):
- *   1. `ELIZA_HF_BASE_URL` override — always wins, no auth.
+ *   1. `ELIZA_HF_BASE_URLS` / `ELIZA_HF_BASE_URL` mirrors.
  *   2. Eliza Cloud HF proxy — when `ELIZAOS_CLOUD_API_KEY` is present.
  *   3. Direct public huggingface.co — no auth.
  */
 describe("resolveHfDownloadBase", () => {
   const savedEnv = {
     ELIZA_HF_BASE_URL: process.env.ELIZA_HF_BASE_URL,
+    ELIZA_HF_BASE_URLS: process.env.ELIZA_HF_BASE_URLS,
     ELIZAOS_CLOUD_API_KEY: process.env.ELIZAOS_CLOUD_API_KEY,
     ELIZAOS_CLOUD_BASE_URL: process.env.ELIZAOS_CLOUD_BASE_URL,
   };
@@ -19,6 +20,7 @@ describe("resolveHfDownloadBase", () => {
   beforeEach(() => {
     _resetCloudSecretsForTesting();
     delete process.env.ELIZA_HF_BASE_URL;
+    delete process.env.ELIZA_HF_BASE_URLS;
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
   });
@@ -35,6 +37,7 @@ describe("resolveHfDownloadBase", () => {
     expect(resolveHfDownloadBase()).toEqual({
       base: "https://huggingface.co",
       viaCloud: false,
+      label: "direct",
     });
   });
 
@@ -46,26 +49,44 @@ describe("resolveHfDownloadBase", () => {
       base: "https://elizacloud.ai/api/v1/hf-proxy",
       authHeader: { authorization: "Bearer key-123" },
       viaCloud: true,
+      label: "cloud",
     });
   });
 
-  it("prefers the explicit ELIZA_HF_BASE_URL override over the cloud proxy", () => {
+  it("tries explicit mirrors before the cloud proxy and public host", () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "key-123";
-    process.env.ELIZA_HF_BASE_URL = "https://hf-mirror.example.com/";
+    process.env.ELIZA_HF_BASE_URLS =
+      "https://hf-mirror-a.example.com/, https://hf-mirror-b.example.com";
 
-    // Override wins, trailing slash trimmed, no auth header, not via cloud.
-    expect(resolveHfDownloadBase()).toEqual({
-      base: "https://hf-mirror.example.com",
-      viaCloud: false,
-    });
+    expect(resolveHfDownloadBases()).toEqual([
+      {
+        base: "https://hf-mirror-a.example.com",
+        viaCloud: false,
+        label: "mirror",
+      },
+      {
+        base: "https://hf-mirror-b.example.com",
+        viaCloud: false,
+        label: "mirror",
+      },
+      {
+        base: "https://elizacloud.ai/api/v1/hf-proxy",
+        authHeader: { authorization: "Bearer key-123" },
+        viaCloud: true,
+        label: "cloud",
+      },
+      { base: "https://huggingface.co", viaCloud: false, label: "direct" },
+    ]);
   });
 
-  it("trims a trailing slash from the override base", () => {
+  it("keeps the legacy single-base API on the first candidate", () => {
     process.env.ELIZA_HF_BASE_URL = "https://hf-mirror.example.com/sub/";
 
-    expect(resolveHfDownloadBase().base).toBe(
-      "https://hf-mirror.example.com/sub",
-    );
+    expect(resolveHfDownloadBase()).toEqual({
+      base: "https://hf-mirror.example.com/sub",
+      viaCloud: false,
+      label: "mirror",
+    });
   });
 
   it("ignores a whitespace-only override and falls through to the next tier", () => {
@@ -74,6 +95,7 @@ describe("resolveHfDownloadBase", () => {
     expect(resolveHfDownloadBase()).toEqual({
       base: "https://huggingface.co",
       viaCloud: false,
+      label: "direct",
     });
   });
 });

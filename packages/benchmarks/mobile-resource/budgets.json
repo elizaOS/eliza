@@ -80,16 +80,75 @@
           "pp32": 2.6,
           "tg32": 6.85
         },
+        "ttftMs": {
+          "capturedAt": "2026-07-03",
+          "runs": 12,
+          "p50": 54310,
+          "p90": 57703,
+          "min": 52924,
+          "max": 58785,
+          "warmOnlyP50": 54259,
+          "warmOnlyP90": 54497,
+          "note": "Client-observed time to first SSE content chunk over 12 identical 294-char prompts (issue #11734). The mobile fast path delivers the whole reply as ONE chunk (bionic stream_next decodes the full 256-token buffer in a single step), so TTFT == full-turn latency on this build. 3/12 turns were transparent reloads after memory-policy releases (57.3-58.8 s); warm-only stats exclude them. Evidence: .github/issue-evidence/11734-pixel6a-adb-rows/."
+        },
+        "prefillTokensPerSecond": {
+          "capturedAt": "2026-07-03",
+          "marginal": 5.1,
+          "note": "8-rung prompt-length ladder (92-219 exact Qwen3.5 tokens), regressing the device-logged in-lock work window: W = 32.4 s + 0.1945 s/tok * P (r^2 0.78). Batch-quantized, not linear: ELIZA_LLM_N_BATCH=128, so prompts <=127 tok sit flat (~53.7 s, decode-dominated) and each extra 128-token prefill batch adds ~23 s. Cross-check (same GGUF + Vulkan libs, app stopped): llama-bench pp128 3.88, pp512 8.86, tg128 6.78 tok/s. Effective in-app decode <= 7.9 tok/s (fit intercept). The historical decodeTokensPerSecond.warm=4.8 above is really 256 tok / (prefill + 256-token decode) - a combined window rate."
+        },
+        "thermal": {
+          "capturedAt": "2026-07-03",
+          "sessionMinutes": 91.4,
+          "samples": 363,
+          "cadenceSeconds": 15,
+          "thermalStatusMax": 0,
+          "peakC": {
+            "skinTherm1": 42.9,
+            "skinTherm2": 42.2,
+            "virtualSkin": 38.1,
+            "chargerSkin": 47.9,
+            "tpu": 68.0,
+            "battery": 29.2
+          },
+          "note": "dumpsys thermalservice HAL temps + battery every 15 s across the whole #11734 session (probe + TTFT leg + prefill sweeps + 4b attempt). Thermal Status stayed 0 for the full 91 min - the OS throttling ladder never engaged under sustained ~55 s/turn Vulkan inference from a cool start. Battery level fell 76%->70% WHILE USB-powered (inference outdraws the adb-cable supply), then recharged; true discharge remains power-meter gated."
+        },
         "notMeasured": {
-          "ttftMs": "single-run only; distribution not captured",
-          "prefillTokensPerSecond": "not isolated in this capture",
-          "batteryDrainPct": "power-meter gated (idle / chat / voice / background)",
-          "thermalTimeline": "physical thermal-log capture pending"
+          "batteryDrainPct": "power-meter gated (idle / chat / voice / background); tethered capture charges the device"
         },
         "findings": [
           "The eliza-1-2b E2B variant (4.9 GB) tripped lowmemorykiller on the 5.7 GB device; Q4 (1.2 GB) is the 6a-class tier.",
           "Memory is dominated by resident weights: GL mtrack holds ~2.25 GB constant idle\u2192active; per-turn delta is only ~100 MB PSS / ~70 MB RSS.",
-          "Measured idle total RSS (2390 MB) already exceeds the provisional `maxSteadyRssMb` cap (2300 MB) for this class \u2014 another reason not to naively promote provisional ceilings to a gate before multi-run baselines exist."
+          "Measured idle total RSS (2390 MB) already exceeds the provisional `maxSteadyRssMb` cap (2300 MB) for this class \u2014 another reason not to naively promote provisional ceilings to a gate before multi-run baselines exist.",
+          "2026-07-03 (#11734): the on-device eliza-1-2b-q4.gguf header reports general.architecture=qwen35 (base Qwen/Qwen3.5-2B-Base), and the published bundles/{2b,4b}/text *-256k/-64k GGUFs are likewise Qwen3.5 \u2014 only the 8 GB *-128k files carry the Gemma-4 cutover. The fast path's Gemma-format prompt tags are plain text to this model, so decode always fills the native 256-token buffer (~46 s of the ~54 s turn) for a ~9-token reply."
+        ]
+      },
+      "eliza-1-4b": {
+        "device": "Google Pixel 6a (Tensor GS101, Mali-G78 MP20, Android 16, ~5.7 GB usable RAM)",
+        "model": "eliza-1-4b Q4_K_M (2.95 GB GGUF, bundles/4b/text/eliza-1-4b-256k.gguf, arch qwen35) via the bionic Vulkan host",
+        "capturedAt": "2026-07-03",
+        "runs": 1,
+        "stableForGating": false,
+        "outcome": "lowmemorykiller kill during model load",
+        "exitInfo": {
+          "reason": "LOW_MEMORY (reason=3)",
+          "rssAtKill": "3.4GB",
+          "importance": 100
+        },
+        "memoryMbAtPeak": {
+          "totalPss": 3507,
+          "totalRss": 3343,
+          "glMtrack": 3220,
+          "deviceMemAvailable": 382
+        },
+        "notMeasured": {
+          "decodeTokensPerSecond": "no turn ever completed \u2014 the process was killed mid-load",
+          "ttftMs": "no turn ever completed",
+          "batteryDrainPct": "power-meter gated"
+        },
+        "findings": [
+          "The 4b tier does not fit the 5.59 GB (5589 MB) device class: 2.95 GB of weights uploading to GPU (GL mtrack 3.22 GB) + app baseline crossed the ~3.2-3.4 GB foreground kill line ~24 s after boot; ApplicationExitInfo reason=3 (LOW_MEMORY) at RSS 3.4 GB with importance=100 (foreground). Matches the E2B-4.9GB finding above and the #11506 forensics.",
+          "The #11760 pressure-release policy cannot save an over-sized tier: the kill lands DURING the load, which holds the resident lock, before any release lever can fire. Android then auto-restarts the app, which would retry the load \u2014 a kill loop \u2014 until the model is swapped back.",
+          "The catalog's minRamGb: 6 floor for eliza-1-4b is confirmed real for this 5.59 GB device. Evidence: .github/issue-evidence/11734-pixel6a-adb-rows/ (leg 4)."
         ]
       }
     }

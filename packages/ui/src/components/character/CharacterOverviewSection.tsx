@@ -1,3 +1,9 @@
+/**
+ * The overview grid of the character hub: a card per hub section (personality,
+ * documents, skills, experience, relationships) showing a preview body or an
+ * empty state, each opening its section. Pure presentation — the caller passes
+ * the widgets and the open handler.
+ */
 import {
   BookOpen,
   Brain,
@@ -7,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "../ui/button";
 import type { CharacterHubSection } from "./character-hub-helpers";
 
 type OverviewSection = Exclude<CharacterHubSection, "overview">;
@@ -46,10 +53,10 @@ function HubTile({
   const titleSize = size === "hero" ? "text-xl" : "text-lg";
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={() => onOpenSection(widget.section)}
-      className="group flex h-full w-full min-w-0 flex-col gap-2.5 rounded-lg bg-transparent p-2 text-left transition-colors hover:bg-accent/[0.04] sm:p-3"
+      className="group h-full w-full min-w-0 flex-col items-start justify-start gap-2.5 rounded-lg bg-transparent p-2 text-left transition-colors hover:bg-accent/[0.04] sm:p-3"
       aria-label={`Open ${widget.title}`}
     >
       <div className="flex items-center gap-2.5">
@@ -61,7 +68,7 @@ function HubTile({
       {widget.body ? (
         <div className="flex min-w-0 flex-col">{widget.body}</div>
       ) : null}
-    </button>
+    </Button>
   );
 }
 

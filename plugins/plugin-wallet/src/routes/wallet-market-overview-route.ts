@@ -1,3 +1,14 @@
+/**
+ * `handleWalletMarketOverviewRoute` serves `/api/wallet/market-overview`:
+ * price snapshots and top movers from CoinGecko plus highlighted Polymarket
+ * predictions, normalized into `WalletMarketOverviewResponse` and merged into
+ * per-source `WalletMarketOverviewSource` status (available/stale/error) so
+ * the client can render partial data gracefully. Falls back to a cloud
+ * preview endpoint (`resolveCloudApiBaseUrl`) when direct upstream calls are
+ * unavailable, caches successful responses for `MARKET_OVERVIEW_CACHE_TTL_MS`
+ * and serves stale-but-cached data on upstream failure, and rate-limits
+ * refreshes per client address via `consumeRefreshSlot`.
+ */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import { resolveCloudApiBaseUrl } from "@elizaos/shared";

@@ -1,3 +1,8 @@
+/**
+ * Document-ingestion types: a `DocumentItem` (content + metadata + optional
+ * embedding similarity) and the source descriptors (path / directory) used when
+ * loading documents into memory. Consumed by the documents feature bundle.
+ */
 import type { MemoryMetadata } from "./memory";
 import type { Content, UUID } from "./primitives";
 

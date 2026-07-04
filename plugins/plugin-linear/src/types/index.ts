@@ -1,3 +1,8 @@
+/**
+ * Shared types for the Linear plugin: the config/env shape, the activity-log
+ * item and its detail-value union, per-action parameter shapes, issue/comment/
+ * search inputs, and the Linear API error classes.
+ */
 export interface LinearConfig {
   LINEAR_API_KEY: string;
   LINEAR_WORKSPACE_ID?: string;

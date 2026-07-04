@@ -1,3 +1,4 @@
+/** Unit tests for `selectBackend` / `readBackendEnvOverride`: platform + FFI-support → backend id, and env-override parsing. Deterministic, no model. */
 import { describe, expect, it } from "vitest";
 
 import { readBackendEnvOverride, selectBackend } from "../backend-selector";

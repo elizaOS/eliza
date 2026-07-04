@@ -1,7 +1,19 @@
+/**
+ * Model-layer types: the `ModelType` registry, LLM-mode overrides, generation
+ * params/results, tool-definition and tool-call shapes, chat-message parts, and
+ * response-skeleton/sampler structures. Defines the model-agnostic interface the
+ * runtime calls through (`useModel`) and that model plugins implement.
+ */
 import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
 import type { JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
+
+/**
+ * Scheduling priority for a single-lane local inference request (#11914).
+ * The gate honoring it lives in `utils/inference-priority-gate.ts`.
+ */
+export type LocalInferencePriority = "interactive" | "background";
 
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
 
@@ -95,6 +107,32 @@ export type TextGenerationModelType =
 	| typeof ModelType.TEXT_REASONING_SMALL
 	| typeof ModelType.TEXT_REASONING_LARGE
 	| typeof ModelType.TEXT_COMPLETION;
+
+export const TEXT_GENERATION_MODEL_TYPES = [
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_REASONING_SMALL,
+	ModelType.TEXT_REASONING_LARGE,
+	ModelType.TEXT_COMPLETION,
+] as const satisfies readonly TextGenerationModelType[];
+
+const TEXT_GENERATION_MODEL_TYPE_SET: ReadonlySet<string> = new Set(
+	TEXT_GENERATION_MODEL_TYPES,
+);
+
+export function isTextGenerationModelType(
+	modelType: unknown,
+): modelType is TextGenerationModelType {
+	const normalized = String(modelType ?? "")
+		.trim()
+		.toUpperCase();
+	return TEXT_GENERATION_MODEL_TYPE_SET.has(normalized);
+}
 
 /**
  * Model configuration setting keys used in character settings.
@@ -510,6 +548,21 @@ export interface GenerateTextParams {
 	 * unset or set it to `"internal"`.
 	 */
 	voiceOutput?: "user-visible" | "internal";
+	/**
+	 * Scheduling priority on single-lane local inference backends (#11914).
+	 * On-device text runs one decode at a time; `"background"` marks deferred
+	 * autonomous work (scheduled prompt tasks, prompt-batcher drains) so the
+	 * local lane can (a) dispatch waiting interactive turns first, (b) bound
+	 * how long the job waits for the lane before failing back to its
+	 * scheduler, and (c) cap the job's `maxTokens`/prompt size by device RAM
+	 * class. Unset means `"interactive"` (user-facing turns are never
+	 * deprioritized or clamped). Cloud adapters ignore this field.
+	 *
+	 * Producers: `promptRunnerTaskWorker`, `PromptDispatcher` (prompt batcher).
+	 * Consumers: the mobile/AOSP local text handlers via
+	 * `InferencePriorityGate` (`utils/inference-priority-gate.ts`).
+	 */
+	priority?: LocalInferencePriority;
 	user?: string;
 	/**
 	 * Provider-neutral system instruction for text-generation calls. When omitted,
@@ -1322,18 +1375,9 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
 /**
  * Type guard to check if a model type supports streaming.
  */
-const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
-	ModelType.TEXT_NANO,
-	ModelType.TEXT_SMALL,
-	ModelType.TEXT_MEDIUM,
-	ModelType.TEXT_LARGE,
-	ModelType.TEXT_MEGA,
-	ModelType.RESPONSE_HANDLER,
-	ModelType.ACTION_PLANNER,
-	ModelType.TEXT_REASONING_SMALL,
-	ModelType.TEXT_REASONING_LARGE,
-	ModelType.TEXT_COMPLETION,
-]);
+const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set(
+	TEXT_GENERATION_MODEL_TYPES,
+);
 
 const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
 	[ModelType.TEXT_NANO]: [ModelType.TEXT_NANO, ModelType.TEXT_SMALL],
@@ -1402,4 +1446,46 @@ export interface ModelHandler<
 	priority?: number; // Optional priority for selection order
 
 	registrationOrder?: number;
+
+	/** Optional provider-declared metadata for display/routing observers. */
+	metadata?: ModelRegistrationMetadata;
+}
+
+/**
+ * Provider-declared metadata attached to a model registration.
+ *
+ * Keep this handler-free and serializable: it is surfaced through
+ * `AgentRuntime.getModelRegistrations()` and `MODEL_REGISTERED` events.
+ */
+export interface ModelRegistrationMetadata {
+	/**
+	 * Concrete model id to display for this registration when callers ask what
+	 * model is powering a slot.
+	 */
+	displayModel?: string;
+	/**
+	 * Runtime setting/env key that resolves to the concrete model id to display
+	 * for this registration.
+	 */
+	displayModelSetting?: string;
+}
+
+/**
+ * Handler-free view of a single model registration, returned by
+ * `AgentRuntime.getModelRegistrations()`. Exposes the runtime's model registry
+ * as metadata only — no handler function — so hosts and observers can render a
+ * routing table or subscribe to registration changes without capturing
+ * handlers or reaching into the private `models` map.
+ */
+export interface ModelRegistrationInfo {
+	/** The model type key the handler is registered for (e.g. `TEXT_LARGE`). */
+	modelType: string;
+	/** The provider (plugin) name that registered the handler. */
+	provider: string;
+	/** Selection priority (higher wins); 0 when unspecified. */
+	priority: number;
+	/** Monotonic registration ordinal used as the priority tie-breaker. */
+	registrationOrder: number;
+	/** Optional provider-declared metadata. Never includes handler functions. */
+	metadata?: ModelRegistrationMetadata;
 }

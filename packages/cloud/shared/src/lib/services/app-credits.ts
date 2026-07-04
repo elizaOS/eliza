@@ -17,6 +17,7 @@ import {
   computeInferenceCharge,
   computePurchaseSplit,
   computeReconciliation,
+  isAppMonetizationActive,
 } from "./app-credit-math";
 import {
   type CreditReconciliationResult,
@@ -42,6 +43,13 @@ interface AppCreditAccountingApp {
   name?: string | null;
   created_by_user_id?: string | null;
   monetization_enabled: boolean;
+  /**
+   * Compliance review disposition mirror. `rejected` revokes earnings even if
+   * `monetization_enabled` is still true (see `isAppMonetizationActive`).
+   * Optional because synthetic accounting apps (stale-sweep facts) don't carry
+   * it — absent means "not rejected".
+   */
+  review_status?: string | null;
   platform_offset_amount?: number | string | null;
   purchase_share_percentage?: number | string | null;
   inference_markup_percentage?: number | string | null;
@@ -336,10 +344,12 @@ export class AppCreditsService {
       }
     }
 
-    // Only apply platform offset and creator share if monetization is enabled;
-    // users always get full credits for their purchase. Math in app-credit-math.ts.
+    // Only apply platform offset and creator share if monetization is active
+    // (enabled AND not review-rejected — a ban revokes earnings); users always
+    // get full credits for their purchase. Math in app-credit-math.ts.
+    const monetizationActive = isAppMonetizationActive(app);
     const { platformOffset, creatorEarnings, creditsToAdd } = computePurchaseSplit(purchaseAmount, {
-      monetizationEnabled: app.monetization_enabled,
+      monetizationEnabled: monetizationActive,
       platformOffsetAmount: Number(app.platform_offset_amount),
       purchaseSharePercentage: Number(app.purchase_share_percentage),
       inferenceMarkupPercentage: Number(app.inference_markup_percentage),
@@ -384,7 +394,7 @@ export class AppCreditsService {
 
     // CRITICAL: Always create a transaction record for deduplication purposes
     // Even when monetization is disabled, we need to track the purchase
-    if (app.monetization_enabled && creatorEarnings > 0) {
+    if (monetizationActive && creatorEarnings > 0) {
       const { deduplicated } = await this.recordCreatorEarnings(
         appId,
         userId,
@@ -528,10 +538,13 @@ export class AppCreditsService {
       };
     }
 
-    // Only apply markup if monetization is enabled; otherwise users pay base
-    // cost only and the creator earns nothing. Math in app-credit-math.ts.
+    // Only apply markup if monetization is active (enabled AND not
+    // review-rejected — a ban revokes markup earnings immediately); otherwise
+    // users pay base cost only and the creator earns nothing. Math in
+    // app-credit-math.ts.
+    const monetizationActive = isAppMonetizationActive(app);
     const { markupPercentage, creatorMarkup, totalCost } = computeInferenceCharge(baseCost, {
-      monetizationEnabled: app.monetization_enabled,
+      monetizationEnabled: monetizationActive,
       platformOffsetAmount: Number(app.platform_offset_amount),
       purchaseSharePercentage: Number(app.purchase_share_percentage),
       inferenceMarkupPercentage: Number(app.inference_markup_percentage),
@@ -591,7 +604,7 @@ export class AppCreditsService {
       // Track app user activity (creates/updates app_users record)
       await this.trackAppUserActivity(app, userId, totalCost.toFixed(4), metadata);
 
-      if (app.monetization_enabled && creatorMarkup > 0) {
+      if (monetizationActive && creatorMarkup > 0) {
         const { deduplicated } = await this.recordCreatorEarnings(
           appId,
           userId,
@@ -854,10 +867,14 @@ export class AppCreditsService {
       };
     }
 
-    // Calculate the total cost difference including markup. Math in app-credit-math.ts.
+    // Calculate the total cost difference including markup. Math in
+    // app-credit-math.ts. Uses the same effective flag as deductCredits so a
+    // review-rejected app's reconcile never mints/reverses markup its deduct
+    // leg didn't charge.
+    const monetizationActive = isAppMonetizationActive(app);
     const { markupPercentage, totalCostDifference, creatorMarkupDifference } =
       computeReconciliation(baseCostDifference, {
-        monetizationEnabled: app.monetization_enabled,
+        monetizationEnabled: monetizationActive,
         platformOffsetAmount: Number(app.platform_offset_amount),
         purchaseSharePercentage: Number(app.purchase_share_percentage),
         inferenceMarkupPercentage: Number(app.inference_markup_percentage),
@@ -888,8 +905,8 @@ export class AppCreditsService {
         },
       });
 
-      // Reverse creator earnings if monetization is enabled and there was markup
-      if (app.monetization_enabled && creatorEarningsReduction > 0) {
+      // Reverse creator earnings if monetization is active and there was markup
+      if (monetizationActive && creatorEarningsReduction > 0) {
         let reversal: { deduplicated: boolean };
         try {
           reversal = await this.reverseCreatorEarnings(
@@ -1035,7 +1052,7 @@ export class AppCreditsService {
     });
 
     if (orgDeduct.success) {
-      if (app.monetization_enabled && creatorMarkupDifference > 0) {
+      if (monetizationActive && creatorMarkupDifference > 0) {
         const { deduplicated } = await this.recordCreatorEarnings(
           appId,
           userId,
@@ -1134,7 +1151,10 @@ export class AppCreditsService {
     }
 
     const config: CostMarkupConfig = {
-      monetizationEnabled: app.monetization_enabled,
+      // Effective flag (enabled AND not review-rejected) so quote/markup reads
+      // on the LLM hot path match what deductCredits will actually charge.
+      // runAppReview invalidates this key on every decision.
+      monetizationEnabled: isAppMonetizationActive(app),
       inferenceMarkupPercentage: Number(app.inference_markup_percentage),
     };
 

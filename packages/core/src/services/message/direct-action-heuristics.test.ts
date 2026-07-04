@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Action } from "../../types/components";
 import {
 	findAvailableActionName,
+	findCodingDelegationActionName,
+	hasActionTags,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 } from "./direct-action-heuristics.ts";
@@ -58,5 +60,39 @@ describe("findAvailableActionName", () => {
 		);
 		expect(findAvailableActionName(actions, ["reply"])).toBe("SEND_MESSAGE");
 		expect(findAvailableActionName(actions, ["nonexistent"])).toBeUndefined();
+	});
+});
+
+describe("findCodingDelegationActionName", () => {
+	it("prefers declared delegation tags over legacy action names", () => {
+		const actions = [
+			{ name: "START_CODING_TASK", similes: [], tags: [] },
+			{
+				name: "TASKS",
+				similes: ["CREATE_TASK"],
+				tags: ["domain:coding", "resource:agent-task", "capability:delegate"],
+			},
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+
+		expect(findCodingDelegationActionName(actions)).toBe("TASKS");
+	});
+
+	it("falls back to legacy similes while old plugins migrate", () => {
+		const actions = [
+			{ name: "TASKS", similes: ["START_CODING_TASK"], tags: [] },
+		] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+
+		expect(findCodingDelegationActionName(actions)).toBe("TASKS");
+	});
+});
+
+describe("hasActionTags", () => {
+	it("matches declared tags case-insensitively", () => {
+		expect(
+			hasActionTags(
+				{ tags: ["Domain:Coding", "Capability:Delegate"] },
+				["domain:coding", "capability:delegate"],
+			),
+		).toBe(true);
 	});
 });

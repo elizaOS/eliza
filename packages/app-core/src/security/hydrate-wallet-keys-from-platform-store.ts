@@ -30,7 +30,9 @@ function stewardOsPairs(): ReadonlyArray<
 > {
   return [
     ["STEWARD_API_URL", "steward.api_url"],
+    ["STEWARD_TENANT_ID", "steward.tenant_id"],
     ["STEWARD_AGENT_ID", "steward.agent_id"],
+    ["STEWARD_API_KEY", "steward.api_key"],
     ["STEWARD_AGENT_TOKEN", "steward.agent_token"],
   ];
 }

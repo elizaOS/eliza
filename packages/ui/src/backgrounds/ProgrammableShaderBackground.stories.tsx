@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the ProgrammableShaderBackground across presets.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ProgrammableShaderBackground } from "./ProgrammableShaderBackground";
 import { getShaderPreset } from "./shader-presets";

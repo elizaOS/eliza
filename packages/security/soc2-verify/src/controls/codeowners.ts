@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for ownership, branch-protection, and security-policy repository controls.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { fileExists, readUtf8 } from "../util/fs.js";

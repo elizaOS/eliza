@@ -61,6 +61,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from training.model_registry import get as registry_get  # noqa: E402
+from training.instrumentation import assert_finite_checkpoint  # noqa: E402
 from benchmarks.eliza1_gates import apply_gates, normalize_tier  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
@@ -86,7 +87,7 @@ def _read_json(path: Path) -> dict | None:
 def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / mtp GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
-    (packages/inference/llama.cpp) → ~/.cache/eliza-mtp/eliza-llama-cpp →
+    (plugins/plugin-local-inference/native/llama.cpp) → ~/.cache/eliza-mtp/eliza-llama-cpp →
     ~/src/eliza-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
@@ -94,7 +95,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
     if env:
         cands.append(Path(env))
     for p in Path(__file__).resolve().parents:
-        cand = p / "packages" / "inference" / "llama.cpp"
+        cand = p / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
         if cand.is_dir():
             cands.append(cand)
             break
@@ -597,6 +598,34 @@ def main() -> int:
             log.error("finetune failed; aborting")
             (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
             return 1
+
+    # Hard numerics gate: a trainer can exit zero even after producing NaN/Inf
+    # weights. Scan the saved HF checkpoint before any benchmark, quantize, or
+    # publish stage consumes it.
+    if finetuned_model.exists():
+        try:
+            summary["stages"]["checkpoint_finite_scan"] = assert_finite_checkpoint(
+                finetuned_model
+            )
+            log.info("checkpoint finite scan passed: %s", finetuned_model)
+        except RuntimeError as e:
+            log.error("checkpoint finite scan failed: %s", e)
+            summary["stages"]["checkpoint_finite_scan"] = {
+                "checkpoint": str(finetuned_model),
+                "passed": False,
+                "error": str(e),
+            }
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
+    elif not args.skip_finetune:
+        log.error("finetune reported success but checkpoint is missing: %s", finetuned_model)
+        summary["stages"]["checkpoint_finite_scan"] = {
+            "checkpoint": str(finetuned_model),
+            "passed": False,
+            "error": "checkpoint missing",
+        }
+        (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+        return 1
 
     # ───────────── stage 3: fine-tuned benchmark ──────────────────────
     if not args.skip_bench:

@@ -55,8 +55,8 @@ async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
-    (window as unknown as Record<string, unknown>).__ELIZA_API_BASE__ =
-      window.location.origin;
+    (window as unknown as Record<string, unknown>).__ELIZAOS_APP_BOOT_CONFIG__ =
+      { apiBase: window.location.origin };
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
   });
 }

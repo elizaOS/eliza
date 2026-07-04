@@ -1,3 +1,12 @@
+/**
+ * The exported `polymarketPlugin` Plugin object: wires the PREDICTION_MARKET
+ * action, PredictionMarketService, status provider, the seven
+ * `/api/polymarket/*` REST routes, and the single adaptive view declaration
+ * (GUI/XR/TUI from one spatial component) into the agent runtime. Route
+ * handlers here only adapt the framework's `RouteRequest`/`RouteResponse` to
+ * the real Node `http.IncomingMessage`/`ServerResponse` that `routes.ts`
+ * expects; all route logic itself lives in `handlePolymarketRoute`.
+ */
 import type http from "node:http";
 import type {
   IAgentRuntime,
@@ -114,10 +123,12 @@ export const polymarketPlugin: Plugin = {
         "Polymarket prediction markets — market discovery, orderbook, and positions",
       icon: "BarChart2",
       path: "/polymarket",
+      group: "wallet",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "PolymarketView",
       tags: ["prediction-markets", "polymarket", "trading"],
+      relatedActions: ["POLYMARKET_STATUS"],
       // Reached as a sub-view of Wallet (WalletSectionNav), not a launcher tile.
       visibleInManager: false,
       desktopTabEnabled: false,

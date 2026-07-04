@@ -1,3 +1,8 @@
+/**
+ * ElizaClient extension for the "actions requiring your response" surface. The
+ * agent route projects pending ApprovalService tasks into PendingUserActions;
+ * this client only fetches that read model — no transformation.
+ */
 import type { PendingUserAction } from "@elizaos/core";
 import { ElizaClient } from "./client-base";
 

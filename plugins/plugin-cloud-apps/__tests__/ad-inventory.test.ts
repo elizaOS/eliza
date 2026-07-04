@@ -1,3 +1,6 @@
+/**
+ * Ad-inventory action tests (CREATE_AD_SLOT and related slot management). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { CreateAdSlotInput } from "@elizaos/cloud-sdk";
 import {

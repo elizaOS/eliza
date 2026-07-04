@@ -54,6 +54,8 @@ vi.mock("./registry", () => ({
     (slot === "home" ? [homeDecl("a", 10), homeDecl("b", 20)] : []).map(
       (declaration) => ({ declaration, Component: null }),
     ),
+  subscribeWidgetRegistry: () => () => {},
+  getWidgetRegistryVersion: () => 0,
 }));
 
 afterEach(() => {

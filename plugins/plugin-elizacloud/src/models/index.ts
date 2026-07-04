@@ -14,4 +14,8 @@ export {
   handleTextSmall,
 } from "./text";
 export { handleTokenizerDecode, handleTokenizerEncode } from "./tokenization";
-export { handleTranscription } from "./transcription";
+export {
+  CloudSttUnavailableError,
+  type CloudTranscriptionInput,
+  handleTranscription,
+} from "./transcription";

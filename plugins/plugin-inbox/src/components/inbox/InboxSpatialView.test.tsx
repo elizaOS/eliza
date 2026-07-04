@@ -49,6 +49,7 @@ const populated: InboxSnapshot = {
   filters: filters(),
   activeFilterCount: 0,
   hasConnectedChannels: true,
+  degradedSources: [],
   nudge: "1 thread still needs a reply.",
   error: null,
 };
@@ -105,6 +106,7 @@ describe("InboxSpatialView one source, three modalities", () => {
       filters: filters(),
       activeFilterCount: 0,
       hasConnectedChannels: false,
+      degradedSources: [],
       nudge: null,
       error: "Inbox request failed (503)",
     };
@@ -123,6 +125,7 @@ describe("InboxSpatialView one source, three modalities", () => {
       filters: filters(),
       activeFilterCount: 0,
       hasConnectedChannels: false,
+      degradedSources: [],
       nudge: null,
       error: null,
     };
@@ -142,6 +145,7 @@ describe("InboxSpatialView one source, three modalities", () => {
       filters: filters(),
       activeFilterCount: 0,
       hasConnectedChannels: true,
+      degradedSources: [],
       nudge: null,
       error: null,
     };
@@ -164,6 +168,77 @@ describe("InboxSpatialView one source, three modalities", () => {
     );
     // The active chip is prefixed with the width-1 active marker.
     expect(html).toContain("* Email");
+  });
+
+  it("degraded source renders the banner with the reason and a Reconnect action across GUI + TUI", () => {
+    const degraded: InboxSnapshot = {
+      ...populated,
+      degradedSources: [
+        {
+          source: "gmail",
+          label: "Gmail",
+          message:
+            "Gmail authorization has expired — reconnect Google to resume inbox sync.",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <InboxSpatialView snapshot={degraded} />
+      </SpatialSurface>,
+    );
+    expect(html).toContain("Gmail unavailable");
+    expect(html).toContain("Gmail authorization has expired");
+    expect(html).toContain('data-agent-id="reconnect:gmail"');
+    // Messages from healthy channels still render alongside the banner.
+    expect(html).toContain("Invoice 42 overdue");
+
+    const lines = renderViewToLines(
+      <InboxSpatialView snapshot={degraded} />,
+      54,
+    );
+    for (const line of lines) expect(visibleWidth(line)).toBe(54);
+    const flat = lines.join("\n");
+    expect(flat).toContain("Gmail unavailable");
+    expect(flat).toContain("Reconnect");
+  });
+
+  it("empty + degraded never claims inbox zero and names the unreachable source", () => {
+    const emptyDegraded: InboxSnapshot = {
+      status: "empty",
+      items: [],
+      filters: filters(),
+      activeFilterCount: 0,
+      hasConnectedChannels: false,
+      degradedSources: [
+        {
+          source: "gmail",
+          label: "Gmail",
+          message:
+            "Gmail authorization has expired — reconnect Google to resume inbox sync.",
+        },
+        {
+          source: "x_dm",
+          label: "X DMs",
+          message: "X is connected but DM read access was not granted.",
+        },
+      ],
+      nudge: null,
+      error: null,
+    };
+    const html = renderToStaticMarkup(
+      <SpatialSurface modality="gui">
+        <InboxSpatialView snapshot={emptyDegraded} />
+      </SpatialSurface>,
+    );
+    expect(html).not.toContain("Inbox zero");
+    // The degraded empty state must not push the connect-a-channel CTA either.
+    expect(html).not.toContain('data-agent-id="connect"');
+    expect(html).toContain("Gmail unavailable");
+    expect(html).toContain("X DMs unavailable");
+    expect(html).toContain("No messages from reachable channels");
+    expect(html).toContain('data-agent-id="reconnect:gmail"');
+    expect(html).toContain('data-agent-id="reconnect:x_dm"');
   });
 
   it("registers as a terminal view the agent terminal can mount and render", () => {

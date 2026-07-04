@@ -1,3 +1,9 @@
+/**
+ * Default voice-preference values for VoiceSection: continuous-chat mode and the
+ * VAD auto-stop thresholds, sourced from the voice capture defaults so the
+ * settings UI and the capture pipeline agree.
+ */
+
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../../voice/local-asr-capture";
 import { DEFAULT_VOICE_CONTINUOUS_MODE } from "../../voice/voice-chat-types";
 import type { VadAutoStopPrefs, VoiceSectionPrefs } from "./VoiceSection";

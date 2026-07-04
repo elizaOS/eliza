@@ -181,7 +181,7 @@ function createMinimalRuntime(
           `[minimal-runtime] no handler registered for ${String(modelType)}`,
         );
       }
-      return handler(runtime as unknown as IAgentRuntime, params);
+      return handler(runtime, params);
     },
     registerModel: (
       modelType: string,
@@ -192,6 +192,6 @@ function createMinimalRuntime(
       list.push(handler);
       handlersByModel.set(key, list);
     },
-  };
-  return runtime as unknown as IAgentRuntime;
+  } as unknown as IAgentRuntime;
+  return runtime;
 }

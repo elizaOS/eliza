@@ -1,8 +1,12 @@
+/**
+ * Accessors for the `window`-scoped elizaOS globals (`__ELIZAOS_API_BASE__`, API
+ * token) that the injected renderer environment sets. Resolves the API base/token
+ * from the window or the boot-config store, returning null when off-browser.
+ */
+import { getBootConfig, setBootConfig } from "../config/boot-config-store.js";
+
 export type ElizaWindow = Window & {
-  __ELIZA_API_BASE__?: string;
-  __ELIZA_API_TOKEN__?: string;
   __ELIZAOS_API_BASE__?: string;
-  __ELIZAOS_API_TOKEN__?: string;
 };
 
 function getElizaWindow(): ElizaWindow | null {
@@ -17,50 +21,48 @@ function readTrimmedString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+// The boot config is the single source of truth for the API base (see
+// boot-config-store.ts). Reading it here — rather than a bespoke API-base window
+// global — gives every transport and web shim one accessor with one precedence
+// rule. The agent static-file server and the Electrobun renderer seed the
+// boot-config `apiBase` into the HTML before any app JS runs.
 export function getElizaApiBase(): string | undefined {
-  const elizaWindow = getElizaWindow();
-  return (
-    readTrimmedString(elizaWindow?.__ELIZA_API_BASE__) ??
-    readTrimmedString(elizaWindow?.__ELIZAOS_API_BASE__)
-  );
+  return readTrimmedString(getBootConfig().apiBase);
 }
 
 export function getElizaApiToken(): string | undefined {
-  const elizaWindow = getElizaWindow();
-  return (
-    readTrimmedString(elizaWindow?.__ELIZA_API_TOKEN__) ??
-    readTrimmedString(elizaWindow?.__ELIZAOS_API_TOKEN__)
-  );
+  return readTrimmedString(getBootConfig().apiToken);
 }
 
 export function setElizaApiBase(value: string): void {
+  const apiBase = readTrimmedString(value);
+  setBootConfig({ ...getBootConfig(), apiBase });
+
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
-    elizaWindow.__ELIZAOS_API_BASE__ = value;
-    elizaWindow.__ELIZA_API_BASE__ = value;
+    if (apiBase) {
+      elizaWindow.__ELIZAOS_API_BASE__ = apiBase;
+    } else {
+      Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");
+    }
   }
 }
 
 export function clearElizaApiBase(): void {
+  const { apiBase: _apiBase, ...config } = getBootConfig();
+  setBootConfig(config);
+
   const elizaWindow = getElizaWindow();
   if (elizaWindow) {
     Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");
-    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_BASE__");
   }
 }
 
 export function setElizaApiToken(value: string): void {
-  const elizaWindow = getElizaWindow();
-  if (elizaWindow) {
-    elizaWindow.__ELIZAOS_API_TOKEN__ = value;
-    elizaWindow.__ELIZA_API_TOKEN__ = value;
-  }
+  setBootConfig({ ...getBootConfig(), apiToken: readTrimmedString(value) });
 }
 
 export function clearElizaApiToken(): void {
-  const elizaWindow = getElizaWindow();
-  if (elizaWindow) {
-    Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_TOKEN__");
-    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_TOKEN__");
-  }
+  const { apiToken: _apiToken, ...config } = getBootConfig();
+  setBootConfig(config);
 }

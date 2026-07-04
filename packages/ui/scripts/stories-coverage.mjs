@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Story coverage: for every .tsx in packages/ui/src/components/ that defines
-// a React component, check if a sibling *.stories.tsx exists.
-//
-// Output: markdown report + JSON.
-// Usage: bun run scripts/stories-coverage.mjs [--all]
-//   --all   include non-/components/ files (chat, apps, etc.)
+/**
+ * Story-coverage report: for every .tsx in packages/ui/src/components/ that
+ * defines a React component, checks whether a sibling *.stories.tsx exists.
+ * Emits a markdown report + JSON.
+ *
+ * Usage: bun run scripts/stories-coverage.mjs [--all]
+ *   --all   include non-/components/ files (chat, apps, etc.)
+ */
 
 import fs from "node:fs";
 import path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Builds the `@ai-sdk/openai-compatible` provider aimed at NEAR AI Cloud,
+ * resolving the API key and base URL from runtime settings and preferring an
+ * injected fetch (the request-normalising wrapper from `models/text.ts`) over
+ * `runtime.fetch`. Usage accounting is requested via `includeUsage`.
+ */
 import {
   createOpenAICompatible,
   type OpenAICompatibleProvider,

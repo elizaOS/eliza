@@ -1,5 +1,7 @@
-// Serve the built catalog dist and load index.html headless to surface the
-// runtime errors that made the dev server redirect `/` away.
+/**
+ * Serves the built catalog dist and loads index.html headless to surface the
+ * runtime errors that made the dev server redirect `/` away.
+ */
 
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";

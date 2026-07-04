@@ -31,7 +31,10 @@ def test_q4_polar_refuses_missing_polar_sidecar_by_default(tmp_path: Path) -> No
     assert rc == 2
 
 
-def test_q4_polar_fallback_requires_explicit_escape_hatch(tmp_path: Path) -> None:
+def test_q4_polar_fallback_requires_explicit_escape_hatch(
+    tmp_path: Path,
+    capsys,
+) -> None:
     checkpoint = tmp_path / "checkpoint"
     checkpoint.mkdir()
 
@@ -49,6 +52,40 @@ def test_q4_polar_fallback_requires_explicit_escape_hatch(tmp_path: Path) -> Non
     )
 
     assert rc == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["outtype"] == "f16"
+    assert plan["ext_metadata"]["weight_quant"] == {
+        "requested": "q4_polar",
+        "actual": "f16",
+        "deferred": True,
+        "deferral_reason": (
+            f"polarquant codebook ({checkpoint / 'polarquant_config.json'}) missing"
+        ),
+        "releaseEligible": False,
+        "polarquant_artifacts": None,
+    }
+
+
+def test_q4_polar_fallback_is_rejected_for_release_state(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+
+    rc = main(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(tmp_path / "model.gguf"),
+            "--outtype",
+            "q4_polar",
+            "--allow-unoptimized-fallback",
+            "--release-state",
+            "base-v1",
+            "--dry-run",
+        ]
+    )
+
+    assert rc == 2
 
 
 def test_dry_run_merges_all_quantization_recipe_sidecars(

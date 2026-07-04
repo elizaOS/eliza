@@ -11,6 +11,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { VIEW_ROUTES } from "./view-routes";
 
 /**
  * Generic per-view interaction coverage (#8796).
@@ -27,42 +28,6 @@ import {
  * Clicks that navigate away are recovered by re-opening the route, so one
  * navigation doesn't end coverage of the rest of the page.
  */
-const VIEW_ROUTES: Array<{ id: string; path: string }> = [
-  { id: "chat", path: "/chat" },
-  { id: "phone", path: "/phone" },
-  { id: "messages", path: "/messages" },
-  { id: "contacts", path: "/contacts" },
-  { id: "camera", path: "/camera" },
-  { id: "tasks", path: "/apps/tasks" },
-  { id: "browser", path: "/browser" },
-  { id: "stream", path: "/stream" },
-  { id: "apps", path: "/apps" },
-  { id: "views", path: "/views" },
-  { id: "character", path: "/character" },
-  { id: "character-select", path: "/character/select" },
-  { id: "automations", path: "/automations" },
-  { id: "inventory", path: "/wallet" },
-  { id: "documents", path: "/character/documents" },
-  { id: "files", path: "/apps/files" },
-  { id: "plugins", path: "/apps/plugins" },
-  { id: "skills", path: "/apps/skills" },
-  { id: "fine-tuning", path: "/apps/fine-tuning" },
-  { id: "trajectories", path: "/apps/trajectories" },
-  { id: "transcripts", path: "/apps/transcripts" },
-  { id: "relationships", path: "/apps/relationships" },
-  { id: "memories", path: "/apps/memories" },
-  { id: "rolodex", path: "/rolodex" },
-  { id: "voice", path: "/settings/voice" },
-  { id: "runtime", path: "/apps/runtime" },
-  { id: "database", path: "/apps/database" },
-  { id: "desktop", path: "/desktop" },
-  { id: "settings", path: "/settings" },
-  { id: "tutorial", path: "/tutorial" },
-  { id: "help", path: "/help" },
-  { id: "logs", path: "/apps/logs" },
-  { id: "background", path: "/background" },
-];
-
 // Bound per-view work so the suite stays under the playwright timeout while
 // still exercising a representative breadth of controls.
 const MAX_CLICKS = 24;

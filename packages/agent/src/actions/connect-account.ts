@@ -14,6 +14,10 @@
  * Codex → "openai-codex". When the user doesn't name a provider, both are offered.
  */
 
+import {
+  SUBSCRIPTION_PROVIDER_METADATA,
+  type SubscriptionProvider,
+} from "@elizaos/auth/types";
 import type {
   Action,
   ActionExample,
@@ -25,10 +29,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  SUBSCRIPTION_PROVIDER_METADATA,
-  type SubscriptionProvider,
-} from "../auth/types.ts";
 
 const CONNECT_ACCOUNT = "CONNECT_ACCOUNT";
 

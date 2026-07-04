@@ -1,3 +1,6 @@
+// view-interact-registry: dispatchViewInteract routes to handlers keyed by view
+// type + logical view id and returns results over the WS transport. The `client`
+// transport is mocked; the registry itself is the real module under test.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sendWsMessage = vi.fn();

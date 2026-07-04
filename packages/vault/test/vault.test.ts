@@ -1,3 +1,7 @@
+/**
+ * Tests the public vault contract using real encryption and temporary storage.
+ */
+
 import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestVault, type TestVault } from "../src/testing.js";

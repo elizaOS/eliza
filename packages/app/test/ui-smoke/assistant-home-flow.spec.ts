@@ -8,6 +8,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { mousePointerDrag } from "./helpers/gesture-inputs";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = path.join(
@@ -430,13 +431,11 @@ async function settleHomeLauncherRail(page: Page): Promise<void> {
 async function openHomeLauncher(page: Page): Promise<void> {
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toBeVisible({ timeout: 15_000 });
-  await page.evaluate(() => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:home-launcher:navigate", {
-        detail: { page: "launcher" },
-      }),
-    );
-  });
+  // A real leftward drag across the home half drives the rail gesture handler
+  // into `goLauncher()` — the store action the UI itself calls. No event bridge.
+  const homeHalf = page.getByTestId("home-launcher-home-page");
+  await expect(homeHalf).toBeVisible({ timeout: 15_000 });
+  await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
   await expect(surface).toHaveAttribute("data-page", "launcher", {
     timeout: 10_000,
   });

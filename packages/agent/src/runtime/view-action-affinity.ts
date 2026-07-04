@@ -1,3 +1,7 @@
+import { getView, listViews } from "../api/views-registry.ts";
+
+const VIEW_TYPES = ["gui", "xr", "tui"] as const;
+
 /**
  * View-scoped action affinity.
  *
@@ -97,95 +101,52 @@ export function setActiveViewElements(
 }
 
 /**
- * Map viewId → runtime action names that get full param detail while that view
- * is active. Names must match registered Action.name strings; verify before
- * adding. Kept deliberately conservative — only high-confidence, stable action
- * names belong here (validated against the live runtime by
- * `validateViewActionMap`). Universal element control in any view is handled by
- * the agent-surface view-interact capabilities (list-elements / agent-click /
- * agent-fill), which are not runtime actions and so do not appear here.
- *
- * Verified action names (2026-05-31):
- *   TASKS      — plugin-agent-orchestrator tasks action (coding/orchestration)
- *   RUNTIME    — packages/agent/src/actions/runtime.ts (restart/config ops)
- *
- * Verified action names + view ids (2026-06-02) — view id from each plugin's
- * ViewDeclaration, action `name:` from that plugin's (or a thematically paired
- * plugin's) action source. Actions are plugin-conditional: when the owning
- * plugin is not loaded the name is simply not registered and the weighting is a
- * missing-plugin skip (no error). Sources:
- *   wallet      — view plugins/plugin-wallet-ui; actions plugins/plugin-wallet
- *                 (chains/evm/actions swap+transfer, chains generated specs)
- *   polymarket  — plugins/plugin-polymarket/src/actions.ts (POLYMARKET_STATUS)
- *   hyperliquid — plugins/plugin-hyperliquid/src/actions/perpetual-market.ts
- *   facewear    — plugins/plugin-facewear/src/index.ts (FACEWEAR_, SMARTGLASSES_, XR_ actions)
- *
- * Verified action names + view ids (2026-06-18) — each LifeOps/utility view's
- * own domain actions, so they are emphasised (not just universally
- * element-controllable) when that view is the foreground surface. Names
- * confirmed registered in each plugin's actions/ source; plugin-conditional like
- * the rest (a missing-plugin skip when not loaded). Sources:
- *   calendar  — PA-registered calendar actions backed by plugin-calendar
- *   health    — PA-registered actions built from plugin-health factories
- *   focus     — PA-registered BLOCK umbrella backed by plugin-blocker;
- *               list_active / release are subactions of it, not standalone actions)
- *   finances  — PA-registered OWNER_FINANCES backed by plugin-finances
- *   inbox     — plugins/plugin-inbox/src/actions/inbox (literal name: "INBOX")
- *   goals     — plugin-goals owns OWNER_GOALS; PA owns routines/reminders/alarms
- *   todos     — plugins/plugin-personal-assistant/src/actions/owner-surfaces (OWNER_TODOS)
- *   lifeops   — plugins/plugin-personal-assistant/src/actions (PERSONAL_ASSISTANT)
- *   relationships — plugins/plugin-relationships/src/actions/entity.ts
- *              (literal name: "ENTITY"; RelationshipsView reads the entity /
- *              relationship graph via GET /api/lifeops/{entities,relationships})
+ * Host-owned action affinity. Plugin-owned views declare their own
+ * `ViewDeclaration.relatedActions`; the live view registry is the source of
+ * truth for those relationships. This small fallback remains only for built-in
+ * shell views without plugin declarations.
  */
-export const VIEW_ACTION_MAP: Record<string, readonly string[]> = {
-  "task-coordinator": ["TASKS"],
-  orchestrator: ["TASKS"],
-  "trajectory-logger": ["TASKS"],
-  training: ["RUNTIME"],
+const HOST_VIEW_ACTION_AFFINITY: Readonly<Record<string, readonly string[]>> = {
   "plugins-page": ["RUNTIME"],
   settings: ["RUNTIME"],
-  wallet: [
-    "WALLET",
-    "EVM_SWAP",
-    "EVM_TRANSFER",
-    "SOLANA_SWAP",
-    "SOLANA_TRANSFER",
-    "CROSS_CHAIN_TRANSFER",
-    "BIRDEYE_WALLET_PORTFOLIO",
-  ],
-  steward: ["WALLET"],
-  polymarket: ["POLYMARKET_STATUS"],
-  hyperliquid: ["PERPETUAL_MARKET"],
-  facewear: [
-    "FACEWEAR_CONNECT",
-    "FACEWEAR_DEBUG",
-    "SMARTGLASSES_CONTROL",
-    "SMARTGLASSES_STATUS",
-    "SMARTGLASSES_DISPLAY_TEXT",
-    "SMARTGLASSES_MICROPHONE",
-    "XR_OPEN_VIEW",
-    "XR_CLOSE_VIEW",
-    "XR_SWITCH_VIEW",
-    "XR_LIST_VIEWS",
-    "XR_RESIZE_VIEW",
-    "XR_QUERY_VISION",
-  ],
-  calendar: ["CALENDAR", "CONFLICT_DETECT"],
-  health: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
-  focus: ["BLOCK"],
-  finances: ["OWNER_FINANCES"],
-  inbox: ["INBOX"],
-  goals: ["OWNER_GOALS", "OWNER_ALARMS", "OWNER_REMINDERS", "OWNER_ROUTINES"],
-  todos: ["OWNER_TODOS"],
-  lifeops: ["PERSONAL_ASSISTANT"],
-  relationships: ["ENTITY"],
-  // documents — PA-registered OWNER_DOCUMENTS backed by plugin-documents routes
-  //   (umbrella action "OWNER_DOCUMENTS"; DocumentsView reads/uploads via the
-  //   docs-and-portals domain). Added so a contextual "pull up my documents"
-  //   switch upweights the domain action while the view is foreground (#8798).
-  documents: ["OWNER_DOCUMENTS"],
 };
+
+function normalizeRelatedActions(actions: readonly string[] | undefined) {
+  return [...new Set((actions ?? []).map((a) => a.trim()).filter(Boolean))];
+}
+
+/**
+ * Current view-id -> related action map derived from registered view
+ * declarations plus host-owned built-in affinities.
+ */
+export function viewActionAffinityMap(): Record<string, readonly string[]> {
+  const map = new Map<string, string[]>();
+  for (const [viewId, actions] of Object.entries(HOST_VIEW_ACTION_AFFINITY)) {
+    map.set(viewId, [...actions]);
+  }
+  for (const viewType of VIEW_TYPES) {
+    for (const view of listViews({
+      developerMode: true,
+      includeAllKinds: true,
+      viewType,
+    })) {
+      const actions = normalizeRelatedActions(view.relatedActions);
+      if (actions.length === 0) continue;
+      map.set(view.id, [...new Set([...(map.get(view.id) ?? []), ...actions])]);
+    }
+  }
+  return Object.fromEntries(map);
+}
+
+function getViewRelatedActions(viewId: string): string[] {
+  for (const viewType of VIEW_TYPES) {
+    const declared = normalizeRelatedActions(
+      getView(viewId, { viewType })?.relatedActions,
+    );
+    if (declared.length > 0) return declared;
+  }
+  return [];
+}
 
 /**
  * Resolve the set of action names to keep at full param detail for the active
@@ -196,14 +157,16 @@ export function viewScopedActionNames(
   viewId: string | null | undefined,
 ): Set<string> {
   if (!viewId) return new Set();
-  return new Set(VIEW_ACTION_MAP[viewId] ?? []);
+  const declared = getViewRelatedActions(viewId);
+  if (declared.length > 0) return new Set(declared);
+  return new Set(HOST_VIEW_ACTION_AFFINITY[viewId] ?? []);
 }
 
 /**
- * Validate VIEW_ACTION_MAP against the runtime's registered actions, mirroring
+ * Validate view action affinity against the runtime's registered actions, mirroring
  * validateIntentActionMap. Missing names are reported as ONE aggregated warn
  * line per boot (grouped by view) so drift is caught at startup without a
- * per-action warn flood: most VIEW_ACTION_MAP actions belong to optional
+ * per-action warn flood: most view-related actions belong to optional
  * plugins (wallet, polymarket, hyperliquid, …) and a deployment that doesn't
  * load them would otherwise emit dozens of boot warnings that bury real ones.
  * Per-action detail is still available at debug level.
@@ -214,11 +177,11 @@ export function validateViewActionMap(
 ): void {
   const registered = new Set(registeredActions.map((a) => a.toUpperCase()));
   const missingByView = new Map<string, string[]>();
-  for (const [viewId, actions] of Object.entries(VIEW_ACTION_MAP)) {
+  for (const [viewId, actions] of Object.entries(viewActionAffinityMap())) {
     for (const action of actions) {
       if (!registered.has(action.toUpperCase())) {
         logger?.debug?.(
-          `[eliza] VIEW_ACTION_MAP["${viewId}"] references "${action}" which is not a registered action`,
+          `[eliza] view action affinity for "${viewId}" references "${action}" which is not a registered action`,
         );
         const list = missingByView.get(viewId);
         if (list) list.push(action);
@@ -234,14 +197,14 @@ export function validateViewActionMap(
     detail.push(`${viewId}: ${actions.join(", ")}`);
   }
   logger?.warn(
-    `[eliza] VIEW_ACTION_MAP: ${total} referenced action${total === 1 ? "" : "s"} not registered (${detail.join("; ")}) — renamed/removed upstream, or provided by plugins not loaded in this config`,
+    `[eliza] view action affinity: ${total} referenced action${total === 1 ? "" : "s"} not registered (${detail.join("; ")}) — renamed/removed upstream, or provided by plugins not loaded in this config`,
   );
 }
 
 /**
  * Completeness sibling of {@link validateViewActionMap}: where that flags a
  * mapped action name that no longer exists, this flags a *registered view* that
- * has neither a VIEW_ACTION_MAP entry nor any declared `ViewCapability`. It only
+ * has neither related actions nor any declared `ViewCapability`. It only
  * warns (the universal agent-surface still reaches every control), but surfaces
  * the affinity gap so domain actions for new views are not silently unweighted.
  * (#8798)
@@ -254,14 +217,14 @@ export function validateViewCoverage(
   viewsWithCapabilities: Iterable<string>,
   logger?: { warn: (msg: string) => void },
 ): string[] {
-  const mapped = new Set(Object.keys(VIEW_ACTION_MAP));
+  const mapped = new Set(Object.keys(viewActionAffinityMap()));
   const withCaps = new Set(viewsWithCapabilities);
   const uncovered: string[] = [];
   for (const viewId of registeredViewIds) {
     if (mapped.has(viewId) || withCaps.has(viewId)) continue;
     uncovered.push(viewId);
     logger?.warn(
-      `[eliza] view "${viewId}" has no VIEW_ACTION_MAP entry and declares no ViewCapability — its domain actions are not weighted while it is foreground (agent-surface element control still works)`,
+      `[eliza] view "${viewId}" declares no relatedActions and no ViewCapability — its domain actions are not weighted while it is foreground (agent-surface element control still works)`,
     );
   }
   return uncovered;

@@ -7,6 +7,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   type AgentRuntime,
+  assertPublicRouteIntent,
   isJsonObjectBody,
   type PaymentEnabledRoute,
   type Route,
@@ -87,6 +88,7 @@ export function isPublicRuntimePluginRoute(options: {
   if (!runtime?.routes?.length) return false;
 
   return (runtime.routes as Route[]).some((route) => {
+    assertPublicRouteIntent(route, "runtime.routes");
     if (
       route.type === "STATIC" ||
       route.type !== method ||
@@ -269,6 +271,7 @@ export async function tryHandleRuntimePluginRoute(options: {
   if (!runtime?.routes?.length) return false;
 
   for (const route of runtime.routes as Route[]) {
+    assertPublicRouteIntent(route, "runtime.routes");
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;
     const handler = route.handler;

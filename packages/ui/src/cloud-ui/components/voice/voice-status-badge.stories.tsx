@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the VoiceStatusBadge.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { VoiceStatusBadge } from "./voice-status-badge";
 

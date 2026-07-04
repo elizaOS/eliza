@@ -1,6 +1,4 @@
 /**
- * reconcile-mobile-runtime-mode.ts
- *
  * Boot-time reconciliation between the persisted `eliza:mobile-runtime-mode`
  * and the runtime truth stamped into this build (issue #11030).
  *

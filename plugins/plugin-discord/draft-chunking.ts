@@ -1,3 +1,7 @@
+/**
+ * Splits streaming draft text into Discord-sized chunks at natural break points
+ * (paragraph, newline, sentence).
+ */
 export type BreakPreference = "paragraph" | "newline" | "sentence";
 
 export interface DraftChunkConfig {

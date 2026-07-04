@@ -1,3 +1,9 @@
+/**
+ * Setup panel for pairing XR / smart-glasses devices: polls pair state via the
+ * API client while the document is visible and renders the connected-device
+ * count plus the pairing action.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { client, type XRPairState } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";

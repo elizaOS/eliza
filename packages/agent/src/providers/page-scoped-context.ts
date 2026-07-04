@@ -19,7 +19,6 @@ import {
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
 import type { ConversationScope } from "../api/server-types.ts";
-import { hasOwnerAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -212,12 +211,38 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
   }));
 }
 
-async function renderBrowserLiveState(): Promise<string | null> {
+/**
+ * Minimal structural view of the browser workspace service. Typed locally so
+ * the provider never takes an import edge into the browser plugin; the
+ * service is resolved by its runtime service type and the section is omitted
+ * for agents that do not have the plugin enabled.
+ */
+interface BrowserWorkspaceSnapshotView {
+  mode: string;
+  tabs: Array<{ title?: string | null; url: string; visible?: boolean }>;
+}
+interface BrowserWorkspaceServiceLike {
+  getWorkspaceSnapshot(): Promise<BrowserWorkspaceSnapshotView>;
+}
+
+const BROWSER_SERVICE_TYPE = "browser";
+
+function isBrowserWorkspaceService(
+  service: unknown,
+): service is BrowserWorkspaceServiceLike {
+  return (
+    typeof (service as { getWorkspaceSnapshot?: unknown } | null)
+      ?.getWorkspaceSnapshot === "function"
+  );
+}
+
+async function renderBrowserLiveState(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  const service = runtime.getService(BROWSER_SERVICE_TYPE);
+  if (!isBrowserWorkspaceService(service)) return null;
   try {
-    const { getBrowserWorkspaceSnapshot } = await import(
-      "@elizaos/plugin-browser"
-    );
-    const snapshot = await getBrowserWorkspaceSnapshot();
+    const snapshot = await service.getWorkspaceSnapshot();
     const lines: string[] = [
       `Live browser state: bridge=${snapshot.mode}, ${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"}.`,
     ];
@@ -516,7 +541,7 @@ async function renderLiveStateForScope(
     case "page-character":
       return renderCharacterLiveState(runtime);
     case "page-browser":
-      return renderBrowserLiveState();
+      return renderBrowserLiveState(runtime);
     case "page-automations":
     case "automation-draft":
       return renderAutomationsLiveState(runtime);
@@ -577,14 +602,12 @@ export const pageScopedContextProvider: Provider = {
   },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // #12087 Item 14: was USER but the body enforced OWNER (hasOwnerAccess).
+  // Declared roleGate is now enforced by applyPluginRoleGating.
+  roleGate: { minRole: "OWNER" },
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     try {
-      if (!(await hasOwnerAccess(runtime, message))) {
-        return EMPTY_RESULT;
-      }
-
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
       const scope = metadata?.scope as ConversationScope | undefined;

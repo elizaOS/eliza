@@ -154,12 +154,14 @@ export interface PermissionCheckResult {
 
 /**
  * Prober contract: each `PermissionId` is wired to one of these. The registry
- * delegates `check()` (probe-without-prompt) and `request()` (prompt the OS).
+ * delegates `check()` (probe-without-prompt), `request()` (prompt the OS),
+ * and optionally `openSettings()` (navigate to the relevant consent surface).
  */
 export interface Prober {
   id: PermissionId;
   check(): Promise<PermissionState>;
   request(opts: { reason: string }): Promise<PermissionState>;
+  openSettings?(): Promise<boolean>;
 }
 
 /**
@@ -174,6 +176,7 @@ export interface IPermissionsRegistry {
     id: PermissionId,
     opts: { reason: string; feature: PermissionFeatureRef },
   ): Promise<PermissionState>;
+  openSettings(id: PermissionId): Promise<boolean>;
   recordBlock(id: PermissionId, feature: PermissionFeatureRef): void;
   list(): PermissionState[];
   pending(): PermissionState[];

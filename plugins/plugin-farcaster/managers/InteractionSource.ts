@@ -1,3 +1,11 @@
+/**
+ * Abstracts where inbound interactions come from, selected by `FARCASTER_MODE`.
+ * `FarcasterPollingSource` fetches mentions/replies on `FARCASTER_POLL_INTERVAL`
+ * and dedupes against existing memories before dispatching; `FarcasterWebhookSource`
+ * stays passive and only forwards payloads delivered to the `/webhook` route. Both
+ * feed the shared `IInteractionProcessor`; `createFarcasterInteractionSource` picks
+ * one (polling is the default).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import type { FarcasterConfig, NeynarWebhookData } from "../types";

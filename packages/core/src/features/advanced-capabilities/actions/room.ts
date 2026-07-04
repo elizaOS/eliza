@@ -496,6 +496,8 @@ export const roomOpAction: Action = {
 		"Room mute/unmute/follow/unfollow. Default current room. Use roomId or platform+chatName for connector chat. mute+durationMinutes returns auto-unmute hint.",
 	descriptionCompressed:
 		"room mute|unmute|follow|unfollow; roomId or platform+chatName; durationMinutes",
+	routingHint:
+		"mute/unmute/follow/unfollow or join/leave a chat, channel, group, or thread -> ROOM; do NOT use to send/read messages in it -> MESSAGE, to reply in the current chat -> REPLY, or to publish to a public feed/timeline -> POST",
 	parameters: [
 		{
 			name: "action",

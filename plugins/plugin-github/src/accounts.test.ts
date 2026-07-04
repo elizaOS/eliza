@@ -1,3 +1,8 @@
+/**
+ * Tests account resolution precedence (env vars, character settings, connector
+ * credentials) against a deterministic in-memory runtime — no live GitHub.
+ */
+
 import type {
   ConnectorAccount,
   ConnectorAccountPatch,

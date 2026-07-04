@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Renders the real BackgroundView to cover swatch selection (shader config),
+// undo/redo visibility + revert against the persisted history, and gating the
+// cloud "Generate" control on cloud availability. jsdom; only background-image
+// (canvas downscale) is stubbed.
 import {
   cleanup,
   fireEvent,

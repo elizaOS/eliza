@@ -36,11 +36,16 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { builtinModules, createRequire } from "node:module";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+  stubPromptSuggestions,
+} from "../../../testing/e2e-runner/esbuild-stubs.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..", "..", "..");
@@ -101,64 +106,11 @@ function assert(cond, msg) {
   return cond;
 }
 
-// ── 1) Bundle the fixture (identical stubs to run-chat-sheet-e2e.mjs) ─────────
-const stubPromptSuggestions = {
-  name: "stub-prompt-suggestions",
-  setup(b) {
-    b.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-      path: join(here, "usePromptSuggestions.stub.ts"),
-    }));
-  },
-};
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy(
-          {
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
+// Bundle the fixture with the shared shell stubs (same as run-chat-sheet-e2e):
+// the API-touching prompt-suggestions hook → a local stub, and @elizaos/core +
+// node builtins (dead at render in the browser) → no-op proxies. The stubs are
+// type-only esbuild consumers, so this node-run harness (which resolves esbuild
+// itself, below) can import them without pulling runtime esbuild.
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 await mkdir(evidenceDir, { recursive: true });
@@ -172,7 +124,11 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
+  plugins: [
+    stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
+    stubElizaCore(),
+    stubNodeBuiltins(),
+  ],
   write: false,
 });
 const js = result.outputFiles[0].text;

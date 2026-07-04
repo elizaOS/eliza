@@ -1,3 +1,8 @@
+/**
+ * Shared account-id plumbing for Linear actions: flattens handler options
+ * (merging the nested `parameters`), resolves the target account id, and exposes
+ * the reusable `accountId` action parameter definition every Linear action lists.
+ */
 import type { HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { resolveLinearAccountId } from "../accounts";
 

@@ -1,3 +1,4 @@
+/** Unit tests that `TwitterInteractionClient` attaches IMAGE_DESCRIPTION-derived photo context to the message it hands the message service; mocked runtime. */
 import {
   type IAgentRuntime,
   logger,

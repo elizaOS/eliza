@@ -1,3 +1,13 @@
+/**
+ * Live-lane counterpart of deterministic-background-actions (#10694): a real
+ * model routes natural background requests to the plugin-app-control BACKGROUND
+ * handler (solid color, programmable GLSL shader preset, undo) and the handler
+ * emits the `background:apply` broadcasts the renderer consumes. The
+ * deterministic scenario pins the payload contract on the keyless PR lane; this
+ * proves a live model drives the same model → action → broadcast path. Needs
+ * live model credentials (live-only lane).
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   jsonResponse,
@@ -5,15 +15,6 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-
-// Real-LLM (live lane) counterpart of deterministic-background-actions
-// (#10694). A REAL model must route natural background requests to the real
-// plugin-app-control BACKGROUND handler — solid color, programmable GLSL
-// shader preset, and undo — and the handler must emit the real
-// `background:apply` broadcasts the renderer consumes. The deterministic
-// catalog pins the exact payload contract on the keyless PR lane; this proves
-// a live model actually drives the same path (model → action → broadcast),
-// turnkey as soon as model keys are present.
 
 function backgroundApplyPayloads(): Record<string, unknown>[] {
   return readAppControlHttpRequests(

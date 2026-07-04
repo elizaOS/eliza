@@ -1,3 +1,8 @@
+/**
+ * `usePolymarketState()` — the live-state React hook backing `PolymarketView`.
+ * Fetches status + markets on mount/refresh, then conditionally fetches the
+ * agent's own positions when an account address is resolvable.
+ */
 import { client } from "@elizaos/app-core";
 import { useCallback, useEffect, useState } from "react";
 import "./client";

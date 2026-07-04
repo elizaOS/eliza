@@ -1,5 +1,3 @@
-import * as React from "react";
-
 /**
  * Global tutorial controller. The interactive tour is a persistent OVERLAY (not
  * a tab view) because it navigates the user around the real app — to Settings,
@@ -10,6 +8,7 @@ import * as React from "react";
  * Module-level store (shared via globalThis so a single instance survives HMR
  * and is reachable from the tile handler outside React) + useSyncExternalStore.
  */
+import * as React from "react";
 
 const COMPLETED_KEY = "eliza:tutorial-completed";
 

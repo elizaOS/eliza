@@ -1,3 +1,9 @@
+/**
+ * Plans and measures resident-memory footprints for candidate models against a
+ * hardware probe, so the recommender and diagnostics can compare estimated vs.
+ * actual RAM cost per tier. Writes benchmark reports and reacts to arbiter
+ * events for the currently loaded model.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";

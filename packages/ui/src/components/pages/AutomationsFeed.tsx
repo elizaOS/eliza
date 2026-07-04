@@ -1,7 +1,8 @@
 /**
  * AutomationsFeed — focused, single-screen list of every automation
- * (tasks AND workflows) with the same row format. Click a row to open
- * the matching editor (TaskEditor or WorkflowEditor).
+ * (workflows, prompt automations, and scheduled items) with the same row
+ * format. Click a row to open the matching editor (WorkflowEditor,
+ * TaskEditor for a prompt automation, or ScheduledTaskEditor).
  *
  * This component is intentionally separate from the existing
  * `AutomationsView` — that surface is the full dashboard with sidebar
@@ -9,9 +10,9 @@
  * just want to see what's running.
  *
  * Backend: the list is fetched from `GET /api/automations` (served by
- * `@elizaos/plugin-workflow`), which already aggregates workbench tasks,
- * triggers, and workflows into one `AutomationListResponse`. Editing routes
- * through the workflow CRUD endpoints under `/api/workflow/*`.
+ * `@elizaos/plugin-workflow`), which already aggregates workbench prompt
+ * automations, triggers, and workflows into one `AutomationListResponse`.
+ * Editing routes through the workflow CRUD endpoints under `/api/workflow/*`.
  */
 
 import {
@@ -54,7 +55,6 @@ import {
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
-import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ListSkeleton } from "../ui/skeleton-layouts";
@@ -90,7 +90,7 @@ export interface AutomationsFeedProps {
 const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   {
     all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
-    tasks: { key: "automationsfeed.filterTasks", defaultLabel: "Tasks" },
+    prompts: { key: "automationsfeed.filterPrompts", defaultLabel: "Prompts" },
     workflows: {
       key: "automationsfeed.filterWorkflows",
       defaultLabel: "Workflows",
@@ -103,7 +103,7 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   };
 const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   all: <Layers className="h-3.5 w-3.5" aria-hidden />,
-  tasks: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
+  prompts: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
   workflows: <Workflow className="h-3.5 w-3.5" aria-hidden />,
   active: <Play className="h-3.5 w-3.5" aria-hidden />,
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
@@ -142,13 +142,27 @@ interface FeedRow {
   source: AutomationItem;
 }
 
-/** Derive a schedule label from a scheduled-task item's synthesized summary. */
-function scheduledRowSchedule(item: AutomationItem): string | null {
+/**
+ * Derive a schedule label from an automation item's `schedules`
+ * (`TriggerSummary[]` populated by the `/api/automations` builder from
+ * `metadata.trigger`). Cron shows the humanized cadence; an on-event trigger
+ * shows "On <event>"; otherwise the trigger's display name.
+ */
+function schedulesLabel(
+  item: AutomationItem,
+  t: ReturnType<typeof useTranslation>["t"],
+): string | null {
   return (
     item.schedules
       .map((trigger) => {
         if (trigger.cronExpression)
           return formatSchedule(trigger.cronExpression);
+        if (trigger.triggerType === "event" && trigger.eventKind) {
+          return t("automationsfeed.onEvent", {
+            event: trigger.eventKind,
+            defaultValue: "On {{event}}",
+          });
+        }
         if (trigger.displayName) return trigger.displayName;
         return null;
       })
@@ -162,32 +176,7 @@ function automationToRow(
   t: ReturnType<typeof useTranslation>["t"],
 ): FeedRow {
   const isWorkflow = item.type === "workflow";
-  const isScheduledTask = item.source === "scheduled_task";
-  const schedule = isWorkflow
-    ? item.schedules
-        .map((trigger) => {
-          if (trigger.cronExpression)
-            return formatSchedule(trigger.cronExpression);
-          if (trigger.displayName) return trigger.displayName;
-          return null;
-        })
-        .filter((s): s is string => Boolean(s))
-        .join(", ") || null
-    : isScheduledTask
-      ? scheduledRowSchedule(item)
-      : (() => {
-          const decoded = decodeScheduleTags(item.task?.tags);
-          if (decoded.kind === "recurring" && decoded.cronExpression) {
-            return formatSchedule(decoded.cronExpression);
-          }
-          if (decoded.kind === "event" && decoded.eventName) {
-            return t("automationsfeed.onEvent", {
-              event: decoded.eventName,
-              defaultValue: "On {{event}}",
-            });
-          }
-          return null;
-        })();
+  const schedule = schedulesLabel(item, t);
 
   return {
     key: item.id,
@@ -237,7 +226,8 @@ export function AutomationsFeed({
     role: "button",
     label: t("automationsfeed.new", { defaultValue: "New" }),
     group: "automations-actions",
-    description: "Focus Automations chat to create a task or workflow",
+    description:
+      "Focus Automations chat to create a workflow or prompt automation",
     onActivate: focusAutomationChat,
   });
 
@@ -369,7 +359,7 @@ export function AutomationsFeed({
   const filterCounts = useMemo<Record<FeedFilter, number>>(
     () => ({
       all: allRows.length,
-      tasks: allRows.filter((r) => r.kind === "task").length,
+      prompts: allRows.filter((r) => r.kind === "task").length,
       workflows: allRows.filter((r) => r.kind === "workflow").length,
       active: allRows.filter((r) => r.active).length,
       inactive: allRows.filter((r) => !r.active).length,
@@ -421,21 +411,35 @@ export function AutomationsFeed({
     // Item vanished (e.g. refreshed away) — fall through to the list.
   }
   if (editor.kind === "task") {
+    // `editor.taskId` is a workbench-task id for a plain task, or a trigger id
+    // for a prompt-kind (recurring/event) automation.
     const existing =
       editor.taskId && data
-        ? data.automations.find((a) => a.task?.id === editor.taskId)
+        ? (data.automations.find((a) => a.task?.id === editor.taskId) ??
+          data.automations.find((a) => a.triggerId === editor.taskId))
         : null;
-    const decoded = decodeScheduleTags(existing?.task?.tags);
+    const trigger = existing?.trigger;
+    const initial =
+      trigger && trigger.kind === "prompt"
+        ? {
+            triggerId: trigger.id,
+            name: trigger.displayName,
+            prompt: trigger.instructions,
+            scheduleKind: (trigger.triggerType === "event"
+              ? "event"
+              : "recurring") as "event" | "recurring",
+            cronExpression: trigger.cronExpression ?? "",
+            eventName: trigger.eventKind ?? "",
+          }
+        : {
+            id: existing?.task?.id,
+            name: existing?.task?.name,
+            prompt: existing?.task?.description,
+            scheduleKind: "once" as const,
+          };
     return (
       <TaskEditor
-        initial={{
-          id: existing?.task?.id,
-          name: existing?.task?.name,
-          prompt: existing?.task?.description,
-          scheduleKind: decoded.kind,
-          cronExpression: decoded.cronExpression,
-          eventName: decoded.eventName,
-        }}
+        initial={initial}
         onSaved={() => {
           setEditor({ kind: "none" });
           void refresh();
@@ -475,6 +479,7 @@ export function AutomationsFeed({
             ref={newAgent.ref}
             variant="default"
             size="sm"
+            className="min-h-11"
             onClick={focusAutomationChat}
             {...newAgent.agentProps}
           >
@@ -532,11 +537,17 @@ export function AutomationsFeed({
                 </p>
                 <p className="text-xs text-muted-strong">
                   {t("automationsfeed.emptySub", {
-                    defaultValue: "Tasks and workflows you create run here.",
+                    defaultValue:
+                      "Workflows and prompt automations you create run here.",
                   })}
                 </p>
               </div>
-              <Button variant="default" size="sm" onClick={focusAutomationChat}>
+              <Button
+                variant="default"
+                size="sm"
+                className="min-h-11"
+                onClick={focusAutomationChat}
+              >
                 <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
                 {t("automationsfeed.createFirst", {
                   defaultValue: "Create your first automation",
@@ -562,9 +573,14 @@ export function AutomationsFeed({
                         itemId: row.source.id,
                       });
                     } else if (row.kind === "task") {
+                      // A prompt-kind trigger has no backing workbench task —
+                      // key the editor by its trigger id instead.
                       setEditor({
                         kind: "task",
-                        taskId: row.source.task?.id ?? null,
+                        taskId:
+                          row.source.task?.id ??
+                          row.source.triggerId ??
+                          null,
                       });
                     } else {
                       setEditor({
@@ -650,14 +666,15 @@ function FilterChipButton({
     onActivate: () => onSelect(filter),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
       onClick={() => onSelect(filter)}
       aria-current={isActive ? "true" : undefined}
+      variant="ghost"
+      size="sm"
       // Borderless text tab (#10710): active reads as accent text on a faint
       // wash; the count renders as plain text and hides at zero.
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+      className={`h-auto gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
         isActive
           ? "bg-accent/10 text-accent"
           : "text-muted-strong hover:bg-bg-accent/40"
@@ -671,7 +688,7 @@ function FilterChipButton({
           {count}
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -701,7 +718,7 @@ function FeedRowItem({
     description:
       row.kind === "workflow"
         ? "Open workflow graph, runs, logs, and JSON"
-        : "Open task schedule and prompt",
+        : "Open prompt automation schedule and prompt",
     status: row.active ? "active" : "inactive",
     onActivate: onOpen,
   });
@@ -732,11 +749,11 @@ function FeedRowItem({
       ref={registerRef}
       className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-accent/40"
     >
-      <button
+      <Button
         ref={openAction.ref}
-        type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        variant="ghost"
+        className="flex h-auto min-w-0 flex-1 items-center justify-start gap-3 whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
         {...openAction.agentProps}
       >
         <Icon className={`h-4 w-4 shrink-0 ${iconToneClass}`} aria-hidden />
@@ -790,21 +807,22 @@ function FeedRowItem({
             )}
           </div>
         </div>
-      </button>
+      </Button>
       {row.kind === "workflow" && (
-        <button
+        <Button
           ref={runAction.ref}
-          type="button"
           aria-label={t("automationsfeed.runWorkflowNow", {
             name: row.title,
             defaultValue: "Run {{name}} now",
           })}
           onClick={onRunNow}
-          className="rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
+          variant="ghost"
+          size="icon-sm"
+          className="h-7 w-7 rounded-sm p-1.5 text-muted-strong transition-colors hover:bg-bg-accent"
           {...runAction.agentProps}
         >
           <PlayCircle className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        </Button>
       )}
     </li>
   );

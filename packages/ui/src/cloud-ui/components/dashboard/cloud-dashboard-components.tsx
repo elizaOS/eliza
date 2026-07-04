@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Composed cloud dashboard pieces (empty states, quick cards) shared across dashboard routes.
+ */
 import {
   ArrowRight,
   BookOpen,
@@ -17,6 +20,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty-state";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { ListSkeleton } from "../../../components/ui/skeleton-layouts";
@@ -268,7 +272,8 @@ export function ContainersEmptyState() {
             <code className="flex-1 font-mono text-sm text-txt">
               {cmd}
             </code>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => handleCopy(cmd, index)}
               className="rounded-sm text-muted transition-colors hover:text-txt"
@@ -279,7 +284,7 @@ export function ContainersEmptyState() {
               ) : (
                 <Copy className="h-4 w-4" />
               )}
-            </button>
+            </Button>
           </div>
         ))}
       </div>

@@ -70,7 +70,8 @@ describe("api-base-owner", () => {
     expect(injected).toContain(
       'window.__ELIZA_STARTUP_TRACE_ID__="desktop-session-123";',
     );
-    expect(injected).not.toContain("window.__ELIZA_API_BASE__=");
+    // No API base set → no boot-config apiBase seeded.
+    expect(injected).not.toContain("apiBase:");
     expect(injected.indexOf("<script>")).toBeLessThan(
       injected.indexOf("</head>"),
     );
@@ -85,10 +86,11 @@ describe("api-base-owner", () => {
     expect(injected).toContain(
       'window.__ELIZA_STARTUP_TRACE_ID__="desktop-session-456";',
     );
-    expect(injected).toContain(
-      'window.__ELIZA_API_BASE__="http://127.0.0.1:31337";',
-    );
-    expect(injected).toContain('"__ELIZA_API_TOKEN__"');
+    // Both the API base and token are seeded into the boot config (the single
+    // source of truth), not bespoke window globals.
+    expect(injected).toContain('apiBase:"http://127.0.0.1:31337"');
+    expect(injected).not.toContain("__ELIZA_API_TOKEN__");
+    expect(injected).toContain("apiToken");
     expect(injected).toContain("elizaos.app.boot-config");
   });
 
@@ -97,9 +99,7 @@ describe("api-base-owner", () => {
 
     const injected = injectIntoHtml("<html><head></head><body></body></html>");
 
-    expect(injected).toContain(
-      'window.__ELIZA_API_BASE__="https://agent.example.com";',
-    );
+    expect(injected).toContain('apiBase:"https://agent.example.com"');
     expect(injected).toContain(
       'window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__="https://agent.example.com";',
     );

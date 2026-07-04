@@ -1,3 +1,7 @@
+/**
+ * Tests the dynamic SOC2 checks against real in-memory security adapters.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   auditDispatcherEmits,

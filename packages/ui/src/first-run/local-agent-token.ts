@@ -1,16 +1,12 @@
+/**
+ * Manages the local-agent auth token for mobile: reads/writes it via the native
+ * agent plugin and boot config, and detects local-agent URLs.
+ */
 import { Capacitor } from "@capacitor/core";
+import { getAgentPlugin } from "../bridge/native-plugins";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { getElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
 import { isMobileLocalAgentUrl } from "./mobile-runtime-mode";
-
-type AgentWithLocalToken = {
-  getLocalAgentToken?: () => Promise<{
-    available?: boolean;
-    token?: string | null;
-  }>;
-};
-
-const agentPluginName = "Agent";
 
 export function isAndroidLocalAgentUrl(value: string): boolean {
   return isMobileLocalAgentUrl(value);
@@ -25,14 +21,9 @@ function isNativeAndroid(): boolean {
 }
 
 async function readNativeLocalAgentToken(): Promise<string | null> {
-  let agent: AgentWithLocalToken | null = null;
+  let agent: ReturnType<typeof getAgentPlugin> | null = null;
   try {
-    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
-      Plugins?: Record<string, AgentWithLocalToken | undefined>;
-    };
-    agent =
-      capacitorWithPlugins.Plugins?.[agentPluginName] ??
-      Capacitor.registerPlugin<AgentWithLocalToken>(agentPluginName);
+    agent = getAgentPlugin();
   } catch {
     agent = null;
   }

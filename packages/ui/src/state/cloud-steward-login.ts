@@ -81,6 +81,18 @@ export function hasStewardLoginLauncher(): boolean {
 }
 
 /**
+ * Whether a stored Steward token exists AND can short-circuit sign-in (see
+ * {@link launchStewardLogin}). Callers use this to decide if the Steward
+ * branch can complete without a mounted launcher: a stored-but-stale JWT
+ * cannot (launching would just clear it and throw when nothing is mounted),
+ * so they should fall back to the legacy device-code flow instead.
+ */
+export function hasUsableStoredStewardToken(): boolean {
+  const existing = readStoredStewardToken()?.trim();
+  return Boolean(existing && isStoredStewardTokenUsable(existing));
+}
+
+/**
  * Drive the Cloud=Steward sign-in. If a *still-valid* session token is already
  * stored we resolve immediately; otherwise we invoke the registered launcher.
  * A stored-but-expired Steward JWT must NOT short-circuit — doing so produces a

@@ -1,3 +1,5 @@
+/** Storybook stories for LoginView — default sign-in, remote-auth-required, password-not-configured, invalid-credentials, and slow-network states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { TranslationCtx } from "../../state/TranslationContext.hooks";
 import { LoginView } from "./LoginView";

@@ -1,3 +1,10 @@
+/**
+ * Shared route-discovery helpers for the two public-route scripts: locates the
+ * Cloud API root, walks its route modules, and extracts the HTTP methods each
+ * exposes. Consumed by generate-public-routes.mjs and audit-api-routes.mjs so
+ * both agree on what counts as a public route.
+ */
+
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";

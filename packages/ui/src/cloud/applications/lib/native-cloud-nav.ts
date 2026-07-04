@@ -54,7 +54,7 @@ export function resolveCloudConsoleUrl(path: string): string {
  * On native, open a cross-domain cloud dashboard route (one the studio's
  * MemoryRouter does not mount) in the system browser and report that we handled
  * the navigation. On web, returns `false` so the caller's in-router
- * `<Link>` / `navigate()` runs exactly as before.
+ * `<Link>` / `navigate()` handles it.
  */
 export function openCloudConsoleRouteExternally(path: string): boolean {
   if (!isNativeAppsStudioRuntime()) return false;
@@ -67,7 +67,7 @@ export function openCloudConsoleRouteExternally(path: string): boolean {
  * website, or support link) in the system browser — a WebView `target="_blank"`
  * is dropped or hijacks the studio's WebView. Returns `true` when handled.
  * `mailto:` / `tel:` are left to the anchor on both platforms (the OS handles
- * them), and web always returns `false` (the anchor opens a new tab as before).
+ * them), and web always returns `false` (the anchor opens a new tab normally).
  */
 export function openExternalUrlOnNative(href: string): boolean {
   if (!isNativeAppsStudioRuntime()) return false;

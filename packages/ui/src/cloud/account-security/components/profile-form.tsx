@@ -36,6 +36,7 @@ import {
   Image,
   Input,
 } from "../../../cloud-ui";
+import { Button } from "../../../components/ui/button";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import type { UserProfile } from "../data/user";
 
@@ -466,7 +467,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 </p>
               </div>
 
-              <input
+              <Input
                 ref={fileInputRef}
                 id="avatar-upload"
                 type="file"
@@ -522,7 +523,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   </div>
                 </div>
               ) : (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={handleDragOver}
@@ -549,7 +551,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                       </span>
                     </>
                   )}
-                </button>
+                </Button>
               )}
             </div>
           </div>

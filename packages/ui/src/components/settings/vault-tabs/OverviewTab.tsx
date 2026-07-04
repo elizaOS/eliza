@@ -383,14 +383,14 @@ export function BackendRow(props: BackendRowProps) {
       }`}
     >
       <div className="flex items-center gap-3">
-        <input
+        <Input
           ref={enableRef}
           {...enableAgentProps}
           type="checkbox"
           checked={enabled}
           disabled={lockedInHouse}
           onChange={(e) => onToggle(e.target.checked)}
-          className="h-4 w-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
+          className="h-4 w-4 cursor-pointer border-border p-0 accent-accent disabled:cursor-not-allowed"
           aria-label={t("vault.backend.enableLabel", {
             label: backend.label,
             defaultValue: "Enable {{label}}",

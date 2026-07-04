@@ -1,3 +1,16 @@
+/**
+ * The shell header's right-hand control cluster: theme + language toggles, a
+ * desktop/mobile shell-view segmented control, voice mute, new-chat, and save.
+ * Purely presentational — the parent passes every value and handler in and this
+ * only renders the buttons and lays them out (centered vs split) per surface.
+ *
+ * Exports the shared header-button class + inline style
+ * (`HEADER_ICON_BUTTON_CLASSNAME`, `HEADER_BUTTON_STYLE`) so header extras
+ * injected by the host match these controls exactly. All hover is neutral →
+ * neutral-with-opacity; selection is a single accent-tinted fill (no borders,
+ * no gradients, no orange→black).
+ */
+
 import {
   Check,
   Loader2,

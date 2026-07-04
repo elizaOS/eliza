@@ -1,3 +1,9 @@
+/**
+ * Edge TTS plugin: registers a TEXT_TO_SPEECH ModelType handler backed by
+ * Microsoft Edge's online voices via the node-edge-tts library (no API key).
+ * Synthesizes to a temp file, reads the bytes back, and cleans up; voice, lang,
+ * output format, and SSML-style rate/pitch/volume are resolved from settings.
+ */
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

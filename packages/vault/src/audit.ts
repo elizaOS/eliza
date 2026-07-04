@@ -1,3 +1,10 @@
+/**
+ * Append-only audit logging for vault operations.
+ *
+ * Records operation metadata and key names to JSONL while never persisting
+ * secret values in the audit trail.
+ */
+
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 import type { AuditRecord, VaultLogger } from "./types.js";

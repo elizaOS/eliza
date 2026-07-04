@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Background-config persistence (`persistence`): load/save round-trip and
+ * `normalizeBackgroundConfig` clamping of malformed stored values. jsdom + real
+ * `localStorage`.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   loadBackgroundConfig,

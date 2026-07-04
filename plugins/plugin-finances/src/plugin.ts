@@ -35,6 +35,7 @@ export const financesPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "FinancesView",
       tags: ["finances", "owner", "money"],
+      relatedActions: ["OWNER_FINANCES"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

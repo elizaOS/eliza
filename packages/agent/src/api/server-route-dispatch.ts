@@ -9,20 +9,13 @@ import { handleNotificationRoute } from "./notification-routes.ts";
 import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
-import { handleXRelayRoute } from "./x-relay-routes.ts";
 
-// Lazy memoized loaders — previously these were module-scope `await import`,
-// which forced @elizaos/plugin-computeruse and @elizaos/plugin-elizacloud to
-// load whenever this module was reached in the static graph (i.e. on every
-// agent boot). Now each plugin only loads when its route group is first hit.
+// Lazy memoized loaders: each plugin loads only when its route group is first
+// hit. A module-scope `await import` would pull @elizaos/plugin-computeruse and
+// @elizaos/plugin-elizacloud into the static graph, loading them on every agent
+// boot even when their routes are never touched.
 type ComputeUsePluginModule = {
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
-};
-type CloudPluginRoutesModule = {
-  handleCloudBillingRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudCompatRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudRelayRoute: (...args: unknown[]) => Promise<boolean>;
-  handleCloudRoute: (...args: unknown[]) => Promise<boolean>;
 };
 
 let computeUsePromise: Promise<ComputeUsePluginModule> | null = null;
@@ -33,11 +26,16 @@ function getComputeUsePlugin(): Promise<ComputeUsePluginModule> {
   return computeUsePromise;
 }
 
-let cloudRoutesPromise: Promise<CloudPluginRoutesModule> | null = null;
-function getCloudRoutesPlugin(): Promise<CloudPluginRoutesModule> {
-  cloudRoutesPromise ??= import(
-    "@elizaos/plugin-elizacloud"
-  ) as Promise<unknown> as Promise<CloudPluginRoutesModule>;
+// plugin-elizacloud owns these host-side cloud routes and exports them as a
+// typed contract (`@elizaos/plugin-elizacloud/host-routes`). Typing the lazy
+// import against the real exports means a handler signature change here is a
+// compile error, not a silent runtime break.
+type CloudHostRoutesModule =
+  typeof import("@elizaos/plugin-elizacloud/host-routes");
+
+let cloudRoutesPromise: Promise<CloudHostRoutesModule> | null = null;
+function getCloudRoutesPlugin(): Promise<CloudHostRoutesModule> {
+  cloudRoutesPromise ??= import("@elizaos/plugin-elizacloud/host-routes");
   return cloudRoutesPromise;
 }
 
@@ -65,15 +63,6 @@ interface CloudAndCoreRouteContext extends DispatchRouteContext {
   restartRuntime: (reason: string) => Promise<boolean>;
   saveConfig: (config: ServerState["config"]) => void;
   isAuthorizedRequest: (req: http.IncomingMessage) => boolean;
-}
-
-interface CloudRouteState {
-  config: ServerState["config"];
-  cloudManager: ServerState["cloudManager"];
-  runtime: ServerState["runtime"];
-  saveConfig: (config: ServerState["config"]) => void;
-  createTelemetrySpan: typeof createIntegrationTelemetrySpan;
-  restartRuntime: (reason: string) => Promise<boolean>;
 }
 
 export async function handleInboxAndCloudRelayRouteGroup({
@@ -192,11 +181,10 @@ export async function handleCloudAndCoreRouteGroup({
     return false;
   }
 
-  const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
-    config: state.config,
-    runtime: state.runtime,
-  });
-  if (xRelayHandled) return true;
+  // Note: `/api/cloud/x/*` (X relay) is served by @elizaos/plugin-elizacloud's
+  // route surface (elizaCloudRoutePlugin) via the runtime plugin route system,
+  // not here. None of the handlers below match `/api/cloud/x/*`, so it falls
+  // through to `tryHandleRuntimePluginRoute`.
 
   const cloudRoutes = await getCloudRoutesPlugin();
   const billingHandled = await cloudRoutes.handleCloudBillingRoute(
@@ -217,7 +205,7 @@ export async function handleCloudAndCoreRouteGroup({
   );
   if (compatHandled) return true;
 
-  const cloudState: CloudRouteState = {
+  const cloudState = {
     config: state.config,
     cloudManager: state.cloudManager,
     runtime: state.runtime,
@@ -225,13 +213,7 @@ export async function handleCloudAndCoreRouteGroup({
     createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
   };
-  return cloudRoutes.handleCloudRoute(
-    req,
-    res,
-    pathname,
-    method,
-    cloudState as never,
-  );
+  return cloudRoutes.handleCloudRoute(req, res, pathname, method, cloudState);
 }
 
 export async function handleSandboxRouteGroup({

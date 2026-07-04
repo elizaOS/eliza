@@ -1,3 +1,9 @@
+/**
+ * `VoiceManager` — the voice helper `DiscordService` delegates to for audio
+ * receive/transmit over a joined voice channel: capturing member audio,
+ * running it through STT, and playing generated audio back. Requires the
+ * native opus/sodium deps and a system `ffmpeg`.
+ */
 import { EventEmitter } from "node:events";
 import { pipeline, Readable, type Transform } from "node:stream";
 import type {
@@ -28,18 +34,51 @@ import {
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
+import {
+	DEFAULT_DISCORD_AUDIO_LANES,
+	type DiscordAudioLane,
+	type DiscordAudioLaneConfig,
+	getDiscordAudioLaneConfig,
+	normalizeDiscordAudioLane,
+} from "./audio-lanes";
+import type {
+	DiscordAudioPlaybackHandle,
+	DiscordAudioSinkStatus,
+} from "./audio-sink";
 // See service.ts for detailed documentation on Discord ID handling.
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
 import type { IDiscordService } from "./types";
 import { getMessageService, normalizeDiscordMessageText } from "./utils";
+import {
+	DiscordVoiceMeetingSession,
+	isVoiceTranscriptsSettingEnabled,
+	loadDefaultVoiceMeetingDeps,
+	type VoiceMeetingDeps,
+} from "./voice-meetings";
 
 // These values are chosen for compatibility with picovoice components
 const DECODE_FRAME_SIZE = 1024;
 const DECODE_SAMPLE_RATE = 16000;
 
 type DiscordVoiceModule = typeof import("@discordjs/voice");
+
+interface LanePlayerState {
+	player: AudioPlayer;
+	lane: DiscordAudioLane;
+	guildId: string;
+	channelId: string;
+	finished: () => void;
+	cancelled: () => void;
+	abortController: AbortController;
+	volume?: {
+		setVolume(volume: number): void;
+		volume?: number;
+	};
+	originalVolume?: number;
+	duckedBy?: DiscordAudioLane;
+}
 
 let discordVoiceModulePromise: Promise<DiscordVoiceModule> | null = null;
 
@@ -297,13 +336,49 @@ export class VoiceManager extends EventEmitter {
 	private runtime: ICompatRuntime;
 	private accountId: string;
 	private resolveDiscordEntityId?: (userId: string) => UUID;
+	private registerVoiceTarget?: (target: {
+		accountId: string;
+		botId: string;
+		botAlias?: string;
+		channel: BaseGuildVoiceChannel;
+		play: (
+			stream: Readable,
+			options?: {
+				lane?: DiscordAudioLane;
+				interrupt?: boolean;
+				mix?: boolean;
+				signal?: AbortSignal;
+			},
+		) => Promise<DiscordAudioPlaybackHandle>;
+		stop: (lane?: DiscordAudioLane) => Promise<void>;
+		getStatus: () => DiscordAudioSinkStatus;
+		getLaneConfig: (lane?: DiscordAudioLane) => DiscordAudioLaneConfig;
+	}) => void;
+	private unregisterVoiceTarget?: (
+		accountId: string,
+		guildId: string,
+		channelId: string,
+	) => void;
+	private isVoiceChannelClaimed?: (
+		guildId: string,
+		channelId: string,
+	) => boolean;
 	private streams: Map<string, Readable> = new Map();
 	private connections: Map<string, VoiceConnection> = new Map();
+	private audioLanes = new Map<string, DiscordAudioLaneConfig>();
+	private lanePlayers = new Map<string, LanePlayerState>();
 	private activeMonitors: Map<
 		string,
 		{ channel: BaseGuildVoiceChannel; monitor: AudioMonitor }
 	> = new Map();
 	private ready: boolean;
+	/** channelId → live voice-channel transcription session. */
+	private meetingSessions: Map<string, DiscordVoiceMeetingSession> = new Map();
+	/** channelId → per-channel transcription override (slash command). */
+	private transcriptionOverrides: Map<string, boolean> = new Map();
+	/** Injectable for tests; defaults to the real plugin-meetings wiring. */
+	meetingDepsLoader: (runtime: ICompatRuntime) => Promise<VoiceMeetingDeps> =
+		loadDefaultVoiceMeetingDeps;
 
 	/**
 	 * Constructor for initializing a new instance of the class.
@@ -314,6 +389,30 @@ export class VoiceManager extends EventEmitter {
 	constructor(
 		service: Pick<IDiscordService, "accountId" | "client"> & {
 			resolveDiscordEntityId?: (userId: string) => UUID;
+			registerVoiceTarget?: (target: {
+				accountId: string;
+				botId: string;
+				botAlias?: string;
+				channel: BaseGuildVoiceChannel;
+				play: (
+					stream: Readable,
+					options?: {
+						lane?: DiscordAudioLane;
+						interrupt?: boolean;
+						mix?: boolean;
+						signal?: AbortSignal;
+					},
+				) => Promise<DiscordAudioPlaybackHandle>;
+				stop: (lane?: DiscordAudioLane) => Promise<void>;
+				getStatus: () => DiscordAudioSinkStatus;
+				getLaneConfig: (lane?: DiscordAudioLane) => DiscordAudioLaneConfig;
+			}) => void;
+			unregisterVoiceTarget?: (
+				accountId: string,
+				guildId: string,
+				channelId: string,
+			) => void;
+			isVoiceChannelClaimed?: (guildId: string, channelId: string) => boolean;
 		},
 		runtime: ICompatRuntime,
 	) {
@@ -322,7 +421,13 @@ export class VoiceManager extends EventEmitter {
 		this.runtime = runtime;
 		this.accountId = service.accountId ?? "default";
 		this.resolveDiscordEntityId = service.resolveDiscordEntityId;
+		this.registerVoiceTarget = service.registerVoiceTarget;
+		this.unregisterVoiceTarget = service.unregisterVoiceTarget;
+		this.isVoiceChannelClaimed = service.isVoiceChannelClaimed;
 		this.ready = false;
+		for (const lane of Object.values(DEFAULT_DISCORD_AUDIO_LANES)) {
+			this.audioLanes.set(lane.lane, lane);
+		}
 
 		if (this.client) {
 			this.client.on("voiceManagerReady", () => {
@@ -396,6 +501,10 @@ export class VoiceManager extends EventEmitter {
 			this.transcriptionTimeout = null;
 		}
 
+		for (const channelId of [...this.meetingSessions.keys()]) {
+			void this.stopVoiceTranscription(channelId, "requested_stop");
+		}
+
 		for (const memberId of [...this.activeMonitors.keys()]) {
 			this.stopMonitoringMember(memberId);
 		}
@@ -417,6 +526,11 @@ export class VoiceManager extends EventEmitter {
 
 		this.connections.clear();
 		this.streams.clear();
+		for (const state of this.lanePlayers.values()) {
+			this.cleanupAudioPlayer(state.player);
+			state.abortController.abort();
+		}
+		this.lanePlayers.clear();
 		this.userStates.clear();
 		this.processingVoice = false;
 		this.cleanupAudioPlayer(this.activeAudioPlayer);
@@ -459,6 +573,7 @@ export class VoiceManager extends EventEmitter {
 		// User leaving a channel where the bot is present
 		if (oldChannelId && this.connections.has(oldChannelId)) {
 			this.stopMonitoringMember(member.id);
+			this.meetingSessions.get(oldChannelId)?.participantLeft(member.id);
 		}
 
 		// User joining a channel where the bot is present
@@ -467,6 +582,11 @@ export class VoiceManager extends EventEmitter {
 				member,
 				newState.channel as BaseGuildVoiceChannel,
 			);
+			if (!member.user.bot) {
+				this.meetingSessions
+					.get(newChannelId)
+					?.participantJoined(member.id, member.displayName);
+			}
 		}
 	}
 
@@ -478,7 +598,15 @@ export class VoiceManager extends EventEmitter {
 		const oldConnection = this.getVoiceConnection(channel.guildId as string);
 		if (oldConnection) {
 			try {
+				const oldChannelId = oldConnection.joinConfig.channelId;
 				oldConnection.destroy();
+				if (oldChannelId) {
+					this.unregisterVoiceTarget?.(
+						this.accountId,
+						channel.guild.id,
+						oldChannelId,
+					);
+				}
 				// Remove all associated streams and monitors
 				this.streams.clear();
 				this.activeMonitors.clear();
@@ -569,9 +697,20 @@ export class VoiceManager extends EventEmitter {
 						);
 						connection.destroy();
 						this.connections.delete(channel.id);
+						this.unregisterVoiceTarget?.(
+							this.accountId,
+							channel.guild.id,
+							channel.id,
+						);
 					}
 				} else if (newState.status === VoiceConnectionStatus.Destroyed) {
 					this.connections.delete(channel.id);
+					this.unregisterVoiceTarget?.(
+						this.accountId,
+						channel.guild.id,
+						channel.id,
+					);
+					void this.stopVoiceTranscription(channel.id, "normal_completion");
 				} else if (
 					!this.connections.has(channel.id) &&
 					(newState.status === VoiceConnectionStatus.Ready ||
@@ -602,6 +741,42 @@ export class VoiceManager extends EventEmitter {
 
 			// Store the connection
 			this.connections.set(channel.id, connection);
+			const botId = this.client?.user?.id;
+			if (botId) {
+				this.registerVoiceTarget?.({
+					accountId: this.accountId,
+					botId,
+					botAlias: this.accountId,
+					channel,
+					play: (stream, options) =>
+						this.playAudio(stream, {
+							...options,
+							guildId: channel.guild.id,
+							channelId: channel.id,
+						}),
+					stop: (lane) => this.stopAudio(channel.guild.id, lane),
+					getStatus: () =>
+						this.getVoiceConnection(channel.guild.id)
+							? "connected"
+							: "disconnected",
+					getLaneConfig: (lane) => this.getAudioLaneConfig(lane),
+				});
+			}
+
+			// Voice-channel transcription (DISCORD_VOICE_TRANSCRIPTS / /transcribe)
+			if (this.isVoiceTranscriptionEnabled(channel.id)) {
+				void this.startVoiceTranscription(channel).catch((error) => {
+					this.runtime.logger.error(
+						{
+							src: "plugin:discord:voice:meetings",
+							agentId: this.runtime.agentId,
+							channelId: channel.id,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"[DiscordVoiceMeetings] failed to start voice transcription session",
+					);
+				});
+			}
 
 			// Continue with voice state modifications
 			const me = channel.guild.members.me;
@@ -659,6 +834,8 @@ export class VoiceManager extends EventEmitter {
 					if (entityStream) {
 						entityStream.emit("speakingStopped");
 					}
+					// Speaking end = utterance boundary for the meeting pipeline.
+					this.meetingSessions.get(channel.id)?.flushSpeaker(entityId);
 				}
 			});
 		} catch (error) {
@@ -686,6 +863,96 @@ export class VoiceManager extends EventEmitter {
 		return [...new Set(this.connections.values())].find(
 			(connection) => connection.joinConfig.guildId === guildId,
 		);
+	}
+
+	/**
+	 * Whether voice-channel transcription should run for a channel: a per-join
+	 * override (set by the /transcribe slash command) wins, else the global
+	 * DISCORD_VOICE_TRANSCRIPTS setting (off by default).
+	 */
+	isVoiceTranscriptionEnabled(channelId: string): boolean {
+		const override = this.transcriptionOverrides.get(channelId);
+		if (override !== undefined) {
+			return override;
+		}
+		return isVoiceTranscriptsSettingEnabled(this.runtime);
+	}
+
+	/** Per-channel opt in/out of voice transcription (slash command surface). */
+	setVoiceTranscriptionOverride(channelId: string, enabled: boolean): void {
+		this.transcriptionOverrides.set(channelId, enabled);
+	}
+
+	getMeetingSession(channelId: string): DiscordVoiceMeetingSession | undefined {
+		return this.meetingSessions.get(channelId);
+	}
+
+	/**
+	 * Start a meeting transcription session for a voice channel the bot is
+	 * connected to. Idempotent per channel — returns the live session if one
+	 * already exists.
+	 */
+	async startVoiceTranscription(
+		channel: BaseGuildVoiceChannel,
+	): Promise<DiscordVoiceMeetingSession> {
+		const existing = this.meetingSessions.get(channel.id);
+		if (existing?.active) {
+			return existing;
+		}
+		const deps = await this.meetingDepsLoader(this.runtime);
+		const clientUserId = this.client?.user?.id;
+		const members = [...channel.members.values()]
+			.filter((member) => !member.user.bot && member.id !== clientUserId)
+			.map((member) => ({ id: member.id, displayName: member.displayName }));
+		const session = new DiscordVoiceMeetingSession({
+			runtime: this.runtime,
+			channel: {
+				channelId: channel.id,
+				channelName: channel.name,
+				guildId: channel.guild.id,
+				guildName: channel.guild.name,
+				members,
+			},
+			deps,
+		});
+		this.meetingSessions.set(channel.id, session);
+		try {
+			await session.start();
+		} catch (error) {
+			this.meetingSessions.delete(channel.id);
+			throw error;
+		}
+		return session;
+	}
+
+	/**
+	 * Finalize and remove the meeting session for a channel (no-op when none
+	 * is running). Finalization errors are logged, never thrown — this runs on
+	 * teardown paths (leave, disconnect, shutdown) that must not fail.
+	 */
+	async stopVoiceTranscription(
+		channelId: string,
+		endReason: Parameters<DiscordVoiceMeetingSession["stop"]>[0],
+	): Promise<void> {
+		const session = this.meetingSessions.get(channelId);
+		if (!session) {
+			return;
+		}
+		this.meetingSessions.delete(channelId);
+		try {
+			await session.stop(endReason);
+		} catch (error) {
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord:voice:meetings",
+					agentId: this.runtime.agentId,
+					channelId,
+					sessionId: session.sessionId,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"[DiscordVoiceMeetings] failed to finalize voice transcription session",
+			);
+		}
 	}
 
 	/**
@@ -741,10 +1008,20 @@ export class VoiceManager extends EventEmitter {
 				},
 				"Failed to create opus decoder",
 			);
-			// For now, log the error and return early.
-			// In production, you might want to implement a PCM fallback or other audio processing
 			return;
 		}
+
+		// Tee the single decoded PCM stream into the meeting transcription
+		// session (when one is live for this channel). The decoder emits s16le
+		// mono 16 kHz; the AudioMonitor (utterance→agent-reply path) attaches
+		// its own "data" listener in handleUserStream — one decode, two
+		// consumers, neither path re-decodes.
+		const memberDisplayName = member?.displayName ?? userName;
+		opusDecoder.on("data", (pcmData: Buffer) => {
+			this.meetingSessions
+				.get(channel.id)
+				?.pushPcm(entityId, pcmData, memberDisplayName, DECODE_SAMPLE_RATE);
+		});
 
 		const volumeBuffer: number[] = [];
 		const VOLUME_WINDOW_SIZE = 30;
@@ -887,11 +1164,14 @@ export class VoiceManager extends EventEmitter {
 	 * @param {BaseGuildVoiceChannel} channel - The voice channel to leave.
 	 */
 	leaveChannel(channel: BaseGuildVoiceChannel) {
+		void this.stopVoiceTranscription(channel.id, "requested_stop");
 		const connection = this.connections.get(channel.id);
 		if (connection) {
 			connection.destroy();
 			this.connections.delete(channel.id);
 		}
+		this.unregisterVoiceTarget?.(this.accountId, channel.guild.id, channel.id);
+		void this.stopAudio(channel.guild.id);
 
 		// Stop monitoring all members in this channel
 		for (const [memberId, monitorInfo] of this.activeMonitors) {
@@ -1372,13 +1652,22 @@ export class VoiceManager extends EventEmitter {
 		let chosenChannel: BaseGuildVoiceChannel | null = null;
 
 		try {
-			const channelId = this.runtime.getSetting(
-				"DISCORD_VOICE_CHANNEL_ID",
-			) as string;
-			if (channelId) {
-				const channel = await guild.channels.fetch(channelId);
-				if (channel?.isVoiceBased?.()) {
+			const channelIds = String(
+				this.runtime.getSetting("DISCORD_VOICE_CHANNEL_ID") ?? "",
+			)
+				.split(",")
+				.map((channelId) => channelId.trim())
+				.filter(Boolean);
+			for (const channelId of channelIds) {
+				const channel = await guild.channels.fetch(channelId).catch(() => null);
+				if (
+					channel?.isVoiceBased?.() &&
+					channel.guild.id === guild.id &&
+					!this.getVoiceConnection(guild.id) &&
+					!this.isVoiceChannelClaimed?.(guild.id, channel.id)
+				) {
 					chosenChannel = channel as BaseGuildVoiceChannel;
+					break;
 				}
 			}
 
@@ -1427,6 +1716,274 @@ export class VoiceManager extends EventEmitter {
 				},
 				"Error selecting or joining a voice channel",
 			);
+		}
+	}
+
+	registerAudioLane(config: DiscordAudioLaneConfig): void {
+		this.audioLanes.set(normalizeDiscordAudioLane(config.lane), {
+			...config,
+			lane: normalizeDiscordAudioLane(config.lane),
+		});
+	}
+
+	getAudioLaneConfig(lane?: DiscordAudioLane | null): DiscordAudioLaneConfig {
+		return getDiscordAudioLaneConfig(this.audioLanes, lane);
+	}
+
+	private getLanePlayerKey(
+		guildId: string,
+		lane?: DiscordAudioLane | null,
+	): string {
+		return `${guildId}:${normalizeDiscordAudioLane(lane)}`;
+	}
+
+	private stopLanePlayer(
+		guildId: string,
+		lane?: DiscordAudioLane | null,
+		options?: { cancel?: boolean },
+	): void {
+		const normalizedLane = normalizeDiscordAudioLane(lane);
+		const key = this.getLanePlayerKey(guildId, normalizedLane);
+		const state = this.lanePlayers.get(key);
+		if (!state) {
+			return;
+		}
+		this.lanePlayers.delete(key);
+		this.cleanupAudioPlayer(state.player);
+		if (options?.cancel !== false && !state.abortController.signal.aborted) {
+			state.abortController.abort();
+			state.cancelled();
+		}
+		this.restoreDuckedLanes(guildId, normalizedLane);
+	}
+
+	private applyLanePriority(
+		guildId: string,
+		nextLane: DiscordAudioLane,
+		mix: boolean,
+	): void {
+		const nextConfig = this.getAudioLaneConfig(nextLane);
+		for (const state of this.lanePlayers.values()) {
+			if (state.guildId !== guildId || state.lane === nextLane) {
+				continue;
+			}
+			const activeConfig = this.getAudioLaneConfig(state.lane);
+			if (
+				nextConfig.priority <= activeConfig.priority ||
+				!activeConfig.interruptible
+			) {
+				continue;
+			}
+
+			if (mix && activeConfig.duckVolume !== undefined && state.volume) {
+				state.originalVolume = state.volume.volume ?? activeConfig.volume;
+				state.duckedBy = nextLane;
+				state.volume.setVolume(activeConfig.duckVolume);
+				this.emit("audio:ducked", {
+					guildId,
+					lane: state.lane,
+					by: nextLane,
+				});
+				continue;
+			}
+
+			this.stopLanePlayer(guildId, state.lane);
+			this.emit("audio:interrupted", {
+				guildId,
+				lane: state.lane,
+				by: nextLane,
+			});
+		}
+	}
+
+	private restoreDuckedLanes(
+		guildId: string,
+		finishedLane: DiscordAudioLane,
+	): void {
+		for (const state of this.lanePlayers.values()) {
+			if (
+				state.guildId !== guildId ||
+				state.duckedBy !== finishedLane ||
+				!state.volume ||
+				state.originalVolume === undefined
+			) {
+				continue;
+			}
+			state.volume.setVolume(state.originalVolume);
+			state.originalVolume = undefined;
+			state.duckedBy = undefined;
+			this.emit("audio:restored", { guildId, lane: state.lane });
+		}
+	}
+
+	async playAudio(
+		audioStream: Readable,
+		options?: {
+			guildId?: string;
+			channelId?: string;
+			lane?: DiscordAudioLane;
+			interrupt?: boolean;
+			mix?: boolean;
+			signal?: AbortSignal;
+		},
+	): Promise<DiscordAudioPlaybackHandle> {
+		const guildId = options?.guildId;
+		if (!guildId) {
+			throw new Error("Discord voice playback requires a guildId");
+		}
+		const connection = this.getVoiceConnection(guildId);
+		if (!connection) {
+			throw new Error(`No Discord voice connection for guild ${guildId}`);
+		}
+
+		const lane = normalizeDiscordAudioLane(options?.lane);
+		const laneConfig = this.getAudioLaneConfig(lane);
+		const key = this.getLanePlayerKey(guildId, lane);
+		if (options?.interrupt !== false) {
+			this.stopLanePlayer(guildId, lane);
+		}
+		this.applyLanePriority(guildId, lane, options?.mix ?? false);
+
+		const {
+			createAudioPlayer,
+			createAudioResource,
+			demuxProbe,
+			NoSubscriberBehavior,
+			StreamType,
+		} = await loadDiscordVoiceModule();
+
+		const abortController = new AbortController();
+		const abortFromParent = () => abortController.abort();
+		if (options?.signal) {
+			if (options.signal.aborted) {
+				abortController.abort();
+			} else {
+				options.signal.addEventListener("abort", abortFromParent, {
+					once: true,
+				});
+			}
+		}
+
+		const audioPlayer = createAudioPlayer({
+			behaviors: {
+				noSubscriber: NoSubscriberBehavior.Pause,
+			},
+		});
+		let resourceStream = audioStream;
+		let inputType = StreamType.Arbitrary;
+		try {
+			const probe = await demuxProbe(audioStream);
+			resourceStream = probe.stream;
+			inputType = probe.type;
+		} catch (error) {
+			this.runtime.logger.debug(
+				{
+					src: "plugin:discord:service:voice",
+					agentId: this.runtime.agentId,
+					guildId,
+					lane,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord audio stream probe failed; using arbitrary stream type",
+			);
+		}
+
+		const resource = createAudioResource(resourceStream, {
+			inputType,
+			inlineVolume: true,
+		});
+		resource.volume?.setVolume(laneConfig.volume);
+
+		const subscription = connection.subscribe(audioPlayer);
+		if (!subscription) {
+			throw new Error("Failed to subscribe Discord audio player");
+		}
+
+		let finishedResolver!: () => void;
+		let cancelledResolver!: () => void;
+		const finished = new Promise<void>((resolve) => {
+			finishedResolver = resolve;
+		});
+		const cancelled = new Promise<void>((resolve) => {
+			cancelledResolver = resolve;
+		});
+
+		const state: LanePlayerState = {
+			player: audioPlayer,
+			lane,
+			guildId,
+			channelId: options?.channelId ?? connection.joinConfig.channelId ?? "",
+			finished: finishedResolver,
+			cancelled: cancelledResolver,
+			abortController,
+			volume: resource.volume,
+		};
+		this.lanePlayers.set(key, state);
+
+		const cleanupParentAbort = () => {
+			options?.signal?.removeEventListener("abort", abortFromParent);
+		};
+		abortController.signal.addEventListener(
+			"abort",
+			() => {
+				this.stopLanePlayer(guildId, lane, { cancel: false });
+				cleanupParentAbort();
+				cancelledResolver();
+			},
+			{ once: true },
+		);
+
+		audioPlayer.on("error", (error: Error) => {
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord:service:voice",
+					agentId: this.runtime.agentId,
+					guildId,
+					lane,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Discord audio lane playback error",
+			);
+			this.stopLanePlayer(guildId, lane, { cancel: false });
+			cleanupParentAbort();
+			cancelledResolver();
+			this.emit("audio:error", { guildId, lane, error });
+		});
+		audioPlayer.on(
+			"stateChange",
+			(_oldState: unknown, newState: { status: string }) => {
+				if (newState.status !== "idle") {
+					return;
+				}
+				this.stopLanePlayer(guildId, lane, { cancel: false });
+				cleanupParentAbort();
+				finishedResolver();
+				this.emit("audio:finished", { guildId, lane });
+			},
+		);
+
+		audioPlayer.play(resource);
+		this.emit("audio:started", { guildId, lane });
+
+		return {
+			finished,
+			cancelled,
+			abort: () => abortController.abort(),
+		};
+	}
+
+	async stopAudio(guildId: string, lane?: DiscordAudioLane): Promise<void> {
+		if (lane) {
+			this.stopLanePlayer(guildId, lane);
+			this.emit("audio:stopped", { guildId, lane });
+			return;
+		}
+
+		for (const state of [...this.lanePlayers.values()]) {
+			if (state.guildId === guildId) {
+				this.stopLanePlayer(guildId, state.lane);
+				this.emit("audio:stopped", { guildId, lane: state.lane });
+			}
 		}
 	}
 
@@ -1610,6 +2167,10 @@ export class VoiceManager extends EventEmitter {
 		}
 
 		try {
+			const channelId = connection.joinConfig.channelId;
+			if (channelId) {
+				await this.stopVoiceTranscription(channelId, "requested_stop");
+			}
 			connection.destroy();
 			await interaction.reply("Left the voice channel.");
 		} catch (error) {

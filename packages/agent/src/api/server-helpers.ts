@@ -16,6 +16,7 @@ import {
   ContentType,
   createMessageMemory,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
   sendJsonError,
   type UUID,
@@ -615,7 +616,7 @@ export async function buildChatAttachments(
         id: `img-${i}`,
         url,
         title: img.name,
-        source: "client_chat",
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
         contentType: contentTypeForUploadMime(img.mimeType),
         mimeType: img.mimeType,
         filename: img.name,
@@ -659,7 +660,7 @@ export async function buildUserMessages(params: {
     messageSource,
     metadata,
   } = params;
-  const source = messageSource?.trim() || "client_chat";
+  const source = messageSource?.trim() || MESSAGE_SOURCE_CLIENT_CHAT;
   const { attachments, compactAttachments } =
     await buildChatAttachments(images);
   const id = crypto.randomUUID() as UUID;

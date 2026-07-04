@@ -38,7 +38,11 @@ import {
   WeakPasswordError,
 } from "./auth/index";
 import { findActiveSession } from "./auth/sessions";
-import { extractHeaderValue, getProvidedApiToken } from "./auth.ts";
+import {
+  extractHeaderValue,
+  getProvidedApiToken,
+  roleForIdentityKind,
+} from "./auth.ts";
 import {
   type CompatRuntimeState,
   isTrustedLocalRequest,
@@ -62,14 +66,9 @@ function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
 }
 
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 _.\-@]{1,64}$/;
-type BoundaryRoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
 function isValidDisplayName(value: unknown): value is string {
   return typeof value === "string" && DISPLAY_NAME_RE.test(value.trim());
-}
-
-function roleForIdentityKind(kind: "owner" | "machine"): BoundaryRoleName {
-  return kind === "owner" ? "OWNER" : "USER";
 }
 
 // ── In-process rate limiting (auth bucket — same 20/min as auth.ts) ─────────

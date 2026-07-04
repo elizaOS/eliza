@@ -146,11 +146,29 @@ function gmailSummary(
   };
 }
 
-/** Connector-source seam: a connected Gmail feed + a disconnected X side. */
+interface FakeConnectorOptions {
+  /** Override the Google connector status (merged over the connected base). */
+  google?: Partial<LifeOpsGoogleConnectorStatus>;
+  /** When set, getGmailTriage rejects with this error after counting. */
+  gmailTriageError?: Error;
+  /** Override the X connector status (merged over the disconnected base). */
+  x?: Partial<LifeOpsXConnectorStatus>;
+  /** Inbound X DMs to serve when the X side is connected with dmRead. */
+  xDms?: LifeOpsXDm[];
+}
+
+/**
+ * Connector-source seam. Defaults to a connected Gmail feed + a disconnected
+ * X side; tests override statuses/errors to exercise degradation paths.
+ */
 class FakeConnectorSources {
   gmailTriageCalls = 0;
+  xDmSyncCalls = 0;
 
-  constructor(private readonly feedMessages: LifeOpsGmailMessageSummary[]) {}
+  constructor(
+    private readonly feedMessages: LifeOpsGmailMessageSummary[],
+    private readonly options: FakeConnectorOptions = {},
+  ) {}
 
   async getGoogleConnectorStatus(
     _requestUrl: URL,
@@ -174,6 +192,7 @@ class FakeConnectorSources {
       expiresAt: null,
       hasRefreshToken: true,
       grant: null,
+      ...this.options.google,
     };
   }
 
@@ -182,6 +201,9 @@ class FakeConnectorSources {
     _request?: GetLifeOpsGmailTriageRequest,
   ): Promise<LifeOpsGmailTriageFeed> {
     this.gmailTriageCalls += 1;
+    if (this.options.gmailTriageError) {
+      throw this.options.gmailTriageError;
+    }
     return {
       messages: this.feedMessages,
       source: "synced",
@@ -207,16 +229,41 @@ class FakeConnectorSources {
       feedWrite: false,
       dmRead: false,
       dmWrite: false,
+      dmInbound: false,
+      grant: null,
+      ...this.options.x,
     };
   }
 
   async syncXDms(): Promise<{ synced: number }> {
-    return { synced: 0 };
+    this.xDmSyncCalls += 1;
+    return { synced: this.options.xDms?.length ?? 0 };
   }
 
   async getXDms(): Promise<LifeOpsXDm[]> {
-    return [];
+    return this.options.xDms ?? [];
   }
+}
+
+function xDm(
+  overrides: Partial<LifeOpsXDm> & { id: string; text: string },
+): LifeOpsXDm {
+  const now = new Date().toISOString();
+  return {
+    agentId: "agent-aggregate-tests",
+    externalDmId: `ext-${overrides.id}`,
+    conversationId: `conv-${overrides.id}`,
+    senderHandle: "adalovelace",
+    senderId: `x-user-${overrides.id}`,
+    isInbound: true,
+    receivedAt: now,
+    readAt: null,
+    repliedAt: null,
+    metadata: {},
+    syncedAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
 }
 
 function inboundChat(
@@ -296,10 +343,15 @@ describe("aggregate builders", () => {
       {
         limit: 10,
         allowed: new Set<LifeOpsInboxChannel>(["discord", "telegram"]),
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
         groupByThread: true,
         ownerName: null,
       },
     );
+    // The source-health surface is carried through verbatim.
+    expect(inbox.sources).toEqual([
+      { source: "chat", state: "ok", degradations: [] },
+    ]);
     // Signal was filtered by the allow-list.
     expect(inbox.channelCounts.signal.total).toBe(0);
     expect(inbox.channelCounts.discord.total).toBe(2);
@@ -412,10 +464,13 @@ describe("InboxDomain on a real runtime", () => {
     if (!warm) throw new Error("unreachable");
     cache.seed(warm, new Date().toISOString());
 
-    // Fresh cache -> no connector fetch.
+    // Fresh cache -> no connector fetch; chat health still reported.
     const cachedRead = await domain.getInbox({ channels: ["discord"] });
     expect(cachedRead.messages.map((message) => message.id)).toEqual([warm.id]);
     expect(sources.gmailTriageCalls).toBe(0);
+    expect(cachedRead.sources).toEqual([
+      { source: "chat", state: "ok", degradations: [] },
+    ]);
 
     // refresh -> hits the Gmail source, upserts pre- and post-LLM, and the
     // returned inbox carries the LLM priority score.
@@ -425,6 +480,10 @@ describe("InboxDomain on a real runtime", () => {
     });
     expect(sources.gmailTriageCalls).toBe(1);
     expect(cache.upsertCalls).toBe(2);
+    // Happy path: the pulled source reports healthy.
+    expect(refreshed.sources).toEqual([
+      { source: "gmail", state: "ok", degradations: [] },
+    ]);
     expect(refreshed.messages).toHaveLength(1);
     const scored = refreshed.messages[0];
     expect(scored?.channel).toBe("gmail");
@@ -460,6 +519,150 @@ describe("InboxDomain on a real runtime", () => {
     expect(scoringCalls.length).toBe(before);
     expect(inbox.messages).toHaveLength(1);
     expect(inbox.messages[0]?.priorityScore ?? null).toBeNull();
+  });
+
+  it("a degraded source with zero messages returns an explicit degraded status, not a healthy empty inbox", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      google: { connected: false, reason: "needs_reauth" },
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail"],
+      cacheMode: "refresh",
+    });
+    expect(inbox.messages).toEqual([]);
+    expect(inbox.sources).toHaveLength(1);
+    const gmail = inbox.sources[0];
+    expect(gmail?.source).toBe("gmail");
+    expect(gmail?.state).toBe("degraded");
+    expect(gmail?.degradations.map((entry) => entry.code)).toContain(
+      "gmail_needs_reauth",
+    );
+    expect(gmail?.degradations[0]?.axis).toBe("auth-expired");
+    // Degraded means no pull was attempted against the dead grant.
+    expect(sources.gmailTriageCalls).toBe(0);
+  });
+
+  it("a partial failure returns the healthy channels' messages plus a per-source warning", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      gmailTriageError: new Error("gmail 401: invalid_grant"),
+      x: {
+        connected: true,
+        hasCredentials: true,
+        dmRead: true,
+        dmInbound: true,
+        grantedCapabilities: ["x.dm.read"],
+      },
+      xDms: [xDm({ id: "dm-1", text: "hey — got a minute?" })],
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail", "x_dm"],
+      cacheMode: "refresh",
+    });
+    // X DMs still flow even though the Gmail pull blew up.
+    expect(inbox.messages).toHaveLength(1);
+    expect(inbox.messages[0]?.channel).toBe("x_dm");
+
+    const bySource = new Map(
+      inbox.sources.map((status) => [status.source, status]),
+    );
+    expect(bySource.get("x_dm")?.state).toBe("ok");
+    const gmail = bySource.get("gmail");
+    expect(gmail?.state).toBe("degraded");
+    expect(gmail?.degradations[0]?.axis).toBe("transport-offline");
+    // The real error is preserved, not swallowed.
+    expect(gmail?.degradations[0]?.message).toContain("invalid_grant");
+    expect(sources.gmailTriageCalls).toBe(1);
+  });
+
+  it("all sources degraded returns empty messages with every source explicitly degraded", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      google: { connected: false, reason: "needs_reauth" },
+      x: { connected: false, reason: "needs_reauth" },
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail", "x_dm"],
+      cacheMode: "refresh",
+    });
+    expect(inbox.messages).toEqual([]);
+    expect(inbox.sources).toHaveLength(2);
+    for (const status of inbox.sources) {
+      expect(status.state).toBe("degraded");
+      expect(status.degradations.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("gmail connected without the triage capability reports a missing-scope degradation", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      google: { grantedCapabilities: [] },
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail"],
+      cacheMode: "refresh",
+    });
+    expect(inbox.messages).toEqual([]);
+    expect(inbox.sources[0]?.state).toBe("degraded");
+    expect(inbox.sources[0]?.degradations[0]?.axis).toBe("missing-scope");
+    expect(sources.gmailTriageCalls).toBe(0);
+  });
+
+  it("a fresh-cache read still reports connector degradation via the status probe", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      google: { connected: false, reason: "needs_reauth" },
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const seeded = toInboxMessages([
+      inboundChat({ id: "cached-degraded-1", text: "warm row" }),
+    ]);
+    const warm = seeded[0];
+    expect(warm).toBeDefined();
+    if (!warm) throw new Error("unreachable");
+    cache.seed(warm, new Date().toISOString());
+
+    // read-through with a fresh cache: no message pull, but the response
+    // still says Gmail is degraded — the whole point of the health surface.
+    const inbox = await domain.getInbox({ channels: ["discord", "gmail"] });
+    expect(inbox.messages.map((message) => message.id)).toEqual([warm.id]);
+    expect(sources.gmailTriageCalls).toBe(0);
+    const bySource = new Map(
+      inbox.sources.map((status) => [status.source, status]),
+    );
+    expect(bySource.get("chat")?.state).toBe("ok");
+    expect(bySource.get("gmail")?.state).toBe("degraded");
+    expect(
+      bySource.get("gmail")?.degradations.map((entry) => entry.code),
+    ).toContain("gmail_needs_reauth");
+  });
+
+  it("cache-only mode probes connector health without pulling messages", async () => {
+    const cache = new MemoryInboxCache();
+    const sources = new FakeConnectorSources([], {
+      google: { connected: false, reason: "token_missing" },
+    });
+    const domain = makeDomain({ cache, sources });
+
+    const inbox = await domain.getInbox({
+      channels: ["gmail"],
+      cacheMode: "cache-only",
+    });
+    expect(inbox.messages).toEqual([]);
+    expect(sources.gmailTriageCalls).toBe(0);
+    expect(inbox.sources[0]?.source).toBe("gmail");
+    expect(inbox.sources[0]?.state).toBe("degraded");
+    expect(inbox.sources[0]?.degradations[0]?.axis).toBe("auth-expired");
   });
 
   it("markInboxEntryRead round-trips through the cache seam and returns null on miss", async () => {

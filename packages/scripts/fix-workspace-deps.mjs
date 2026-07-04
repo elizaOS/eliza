@@ -32,14 +32,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -59,76 +54,17 @@ function getRestoreRef() {
 
 const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 
-// ── Glob expansion ──────────────────────────────────────────────────────────
-
-/**
- * Expand a single workspace pattern (e.g. "plugins/plugin-*")
- * into a list of directories that actually exist and contain a package.json.
- */
-function expandPattern(pattern) {
-  const dirs = [];
-  const parts = pattern.split("/");
-
-  function walk(base, partIndex) {
-    if (partIndex >= parts.length) {
-      if (existsSync(join(base, "package.json"))) {
-        dirs.push(base);
-      }
-      return;
-    }
-
-    const segment = parts[partIndex];
-
-    if (segment.includes("*")) {
-      // Glob segment — list the directory and match
-      if (!existsSync(base) || !statSync(base).isDirectory()) return;
-      const regex = new RegExp(
-        "^" + segment.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
-      );
-      for (const entry of readdirSync(base)) {
-        // Never walk into node_modules, dist, or hidden directories
-        if (
-          entry === "node_modules" ||
-          entry === "dist" ||
-          entry.startsWith(".")
-        )
-          continue;
-        if (regex.test(entry)) {
-          const full = join(base, entry);
-          if (statSync(full).isDirectory()) {
-            walk(full, partIndex + 1);
-          }
-        }
-      }
-    } else {
-      // Literal segment — but still skip node_modules
-      if (segment === "node_modules") return;
-      walk(join(base, segment), partIndex + 1);
-    }
-  }
-
-  walk(ROOT, 0);
-  return dirs;
-}
-
 // ── Main ────────────────────────────────────────────────────────────────────
 
-const rootPkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-const patterns = rootPkg.workspaces || [];
-
-// 1. Discover all workspace directories and package names (dedup overlapping globs)
-function collectWorkspaceDirs(patterns) {
-  const dirs = new Set();
-  for (const pattern of patterns) {
-    for (const dir of expandPattern(pattern)) {
-      dirs.add(dir);
-    }
-  }
-  dirs.add(ROOT); // Always include the root itself
-  return Array.from(dirs);
-}
-
-const workspaceDirs = collectWorkspaceDirs(patterns);
+// Every workspace member's directory, plus the repo root itself — the root
+// manifest carries workspace-dep references too. Discovery honors the root
+// `workspaces` negations (e.g. `!packages/feed`), so the excluded feed monorepo
+// is no longer scanned; the previous local walker ignored negation and leaked
+// `packages/feed` in via `packages/*`.
+const workspaceDirs = [
+  ROOT,
+  ...listWorkspaceDirs({ repoRoot: ROOT }).map((dir) => join(ROOT, dir)),
+];
 
 const nameToDir = new Map(); // package name -> directory
 for (const dir of workspaceDirs) {

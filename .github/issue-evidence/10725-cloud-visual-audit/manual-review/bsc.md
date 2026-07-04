@@ -25,6 +25,4 @@
 
 ## Hand review
 
-White marketing page: 'Buy cloud credit on BSC', amount presets, You pay/You receive, black Sign in CTA (neutral — allowed; no blue).
-
-_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+Reviewed the refreshed desktop and mobile screenshots from the July 3, 2026 audit run. The route renders its intended state with readable text, no layout break, no banned blue, and no orange hover violation.

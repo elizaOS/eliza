@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers AdvancedSection's reset-confirmation modal (no reset until confirmed;
+ * runs exactly once) and the encrypted local-backup flow (list/create/restore).
+ * jsdom render with the app store and API client mocked.
+ */
+
 import {
   cleanup,
   fireEvent,

@@ -1,3 +1,11 @@
+/**
+ * Renders the one presentational MessagesSpatialView across all three
+ * modalities — DOM (SpatialSurface, GUI + XR-scaled) and real terminal lines
+ * (renderViewToLines / the terminal registry) — asserting the thread list,
+ * unread aggregation, and width contract survive the shared spatial vocabulary.
+ * Deterministic: a static snapshot in, no native bridge.
+ */
+
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
@@ -109,7 +117,7 @@ describe("MessagesSpatialView one source, three modalities", () => {
       expect(html).toContain("+15550100");
       expect(html).toContain("sms-default");
       expect(html).toContain('data-agent-id="send"');
-      // Header stats: thread count + the ported total-unread aggregation
+      // Header stats: thread count + total-unread aggregation
       // (t1 has 2 unread inbound, t2 has 0 -> "2 unread").
       expect(html).toContain("2 threads");
       expect(html).toContain("2 unread");

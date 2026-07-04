@@ -1,3 +1,8 @@
+/**
+ * Orca Whirlpool LP sub-plugin: registers the Orca position provider and
+ * `OrcaService`, and plugs Orca into the shared `LpManagementService`
+ * protocol registry so it appears alongside the other DEX adapters.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,

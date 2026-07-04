@@ -48,8 +48,8 @@ fi
 SERVER_LOG=/tmp/eliza-bench-server.log
 ELIZA_BENCH_PORT=$ELIZA_BENCH_PORT \
 ELIZA_BENCH_TOKEN=$ELIZA_BENCH_TOKEN \
-    bun run --cwd "$ELIZA_DIR/packages/app-core" \
-        src/benchmark/server.ts \
+    bun run --cwd "$ELIZA_DIR/packages/lifeops-bench" \
+        src/server.ts \
     > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 echo "  server PID=$SERVER_PID; log=$SERVER_LOG"

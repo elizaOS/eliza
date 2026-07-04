@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for CostAlerts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CostAlerts } from "./cost-alerts";
 

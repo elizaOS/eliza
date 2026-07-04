@@ -1,3 +1,5 @@
+/** Rollup config that wraps the tsc ESM output into IIFE + CJS `dist/plugin` bundles with dynamic imports inlined; `@capacitor/core` and `llama-cpp-capacitor` stay external. */
+
 export default {
   input: "dist/esm/index.js",
   output: [

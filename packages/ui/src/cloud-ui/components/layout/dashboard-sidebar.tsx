@@ -1,8 +1,13 @@
 "use client";
 
+/**
+ * The cloud dashboard sidebar: nav sections plus the mobile drawer dismiss.
+ */
 import { X } from "lucide-react";
 import { memo, type ReactNode, useCallback } from "react";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
+import type { AdminRole } from "../../types/cloud-api";
 import { DashboardSidebarNavigationSection } from "./dashboard-sidebar-section";
 import type {
   DashboardSidebarItem,
@@ -17,7 +22,7 @@ export interface DashboardSidebarProps {
   className?: string;
   isOpen?: boolean;
   isAdmin?: boolean;
-  adminRole?: string | null;
+  adminRole?: AdminRole | null;
   onToggle?: () => void;
   isFeatureEnabled?: (featureFlag: string) => boolean;
   renderLink?: DashboardSidebarLinkRenderer;
@@ -54,7 +59,8 @@ function DashboardSidebarComponent({
   return (
     <>
       {isOpen && (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           aria-label="Close navigation backdrop"
           className="fixed inset-0 z-40 bg-black/50 md:hidden"
@@ -72,14 +78,15 @@ function DashboardSidebarComponent({
         <div className="relative mb-2 flex h-14 shrink-0 grow-0 items-center justify-between px-3">
           {logo ? <div className="relative z-10">{logo}</div> : null}
           {onToggle && (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleCloseClick}
               className="relative z-10 border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10   md:hidden"
               aria-label="Close navigation"
             >
               <X className="h-4 w-4 text-white" />
-            </button>
+            </Button>
           )}
         </div>
 

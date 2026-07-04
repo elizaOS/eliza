@@ -1,3 +1,10 @@
+/**
+ * `ConnectorCredentialStore` factory over a pluggable `ConnectorCredentialVault`
+ * (secret manager or password-manager reference), keyed by a deterministic
+ * `connector.<agentId>.<provider>.<accountId>.<credentialType>` vault-ref
+ * string built from `buildConnectorCredentialVaultRef`, so connector account
+ * credentials never need to be stored inline in the SQL tables themselves.
+ */
 import type { UUID } from "@elizaos/core";
 
 export interface ConnectorPasswordManagerReference {

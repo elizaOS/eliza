@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage that browser and computer-use progress events stream through
+ * to the scenario surface. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import type { Action, AgentRuntime } from "@elizaos/core";
 import type {
   ScenarioContext,

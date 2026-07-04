@@ -134,17 +134,25 @@ function normalizeApiBaseUrl(value: string | null): string {
   return `${raw}/api/v1`;
 }
 
+function parseJsonFile(file: string, label: string): unknown {
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid ${label} JSON at ${file}: ${detail}`);
+  }
+}
+
 function readProjectMetadata(cwd: string): ProjectMetadataLike | null {
   const file = path.join(cwd, ".elizaos", "template.json");
   if (!existsSync(file)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(file, "utf8"));
-    return parsed && typeof parsed === "object"
-      ? (parsed as ProjectMetadataLike)
-      : null;
-  } catch {
-    return null;
+  const parsed = parseJsonFile(file, "project metadata");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      `Invalid project metadata JSON at ${file}: expected an object.`,
+    );
   }
+  return parsed as ProjectMetadataLike;
 }
 
 function credentialCandidates(value: unknown): string[] {
@@ -171,12 +179,8 @@ function credentialCandidates(value: unknown): string[] {
 function readCredentialsApiKey(): string | null {
   const file = path.join(os.homedir(), ".elizaos", "credentials.json");
   if (!existsSync(file)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(file, "utf8"));
-    return credentialCandidates(parsed).find((candidate) => candidate) ?? null;
-  } catch {
-    return null;
-  }
+  const parsed = parseJsonFile(file, "Eliza Cloud credentials");
+  return credentialCandidates(parsed).find((candidate) => candidate) ?? null;
 }
 
 function resolveApiKey(): string | null {

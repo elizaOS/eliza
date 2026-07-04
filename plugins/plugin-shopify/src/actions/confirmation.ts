@@ -1,3 +1,10 @@
+/**
+ * Confirmation gate for Shopify write operations. `requireShopifyConfirmation`
+ * wraps the core `gateDestructiveConfirmation`: it returns `null` once the user
+ * has confirmed (the caller then proceeds with the mutation), or an
+ * `ActionResult` prompting/cancelling otherwise. Every mutating handler
+ * (product create/update, inventory adjust, order fulfill) routes through it.
+ */
 import type {
   ActionResult,
   HandlerCallback,

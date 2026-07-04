@@ -11,6 +11,8 @@
  * (env var → keychain → ~/.claude/.credentials.json).
  */
 
+import type { AnthropicAccountPoolBridge } from "@elizaos/core";
+
 interface OAuthToken {
   accessToken: string;
   expiresAt: number;
@@ -32,26 +34,10 @@ interface ClaudeCredentials {
   };
 }
 
-interface AccountPoolBridge {
-  /** Pick an Anthropic subscription account; null when none are eligible. */
-  selectAnthropicSubscription(opts?: {
-    sessionKey?: string;
-    exclude?: string[];
-  }): Promise<{ id: string; expiresAt: number } | null>;
-  /** Get an access token for a previously-selected account. */
-  getAccessToken(providerId: "anthropic-subscription", accountId: string): Promise<string | null>;
-  /** Mark health = invalid (e.g. persistent 401 after refresh). */
-  markInvalid(accountId: string, detail?: string): void | Promise<void>;
-  /** Mark health = rate-limited until `untilMs`. */
-  markRateLimited(accountId: string, untilMs: number, detail?: string): void | Promise<void>;
-}
-
-const AccountPoolBridgeSymbol: unique symbol = Symbol.for("eliza.account-pool.anthropic.v1");
-
-function getAccountPoolBridge(): AccountPoolBridge | undefined {
-  if (typeof globalThis === "undefined") return undefined;
-  const slot = (globalThis as Record<symbol, unknown>)[AccountPoolBridgeSymbol];
-  return slot as AccountPoolBridge | undefined;
+function getAccountPoolBridge(): AnthropicAccountPoolBridge | undefined {
+  const { getAnthropicAccountPoolBridge } =
+    require("@elizaos/core") as typeof import("@elizaos/core");
+  return getAnthropicAccountPoolBridge() ?? undefined;
 }
 
 const tokenCache = new Map<string, OAuthToken>();

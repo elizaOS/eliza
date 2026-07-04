@@ -14,6 +14,7 @@ DisruptionKind = Literal[
 ]
 
 ExpectedWorldMutation = Literal["auto", "changed", "unchanged", "optional"]
+ScenarioTier = Literal["T1", "T2", "T3", "T4"]
 
 
 class Domain(Enum):
@@ -143,6 +144,9 @@ class Scenario:
     world_assertions: list[str] = field(default_factory=list)
     disruptions: list[Disruption] = field(default_factory=list)
     expected_world_mutation: ExpectedWorldMutation = "auto"
+    # T1 extraction/normalization; T2 multi-turn friction; T3 longitudinal
+    # journey; T4 adversarial/boundary behavior.
+    tier: ScenarioTier | None = None
 
 
 def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:

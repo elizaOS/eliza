@@ -12,6 +12,7 @@
 import { Check, ChevronRight } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
 
 export type ChoiceOption = {
   value: string;
@@ -162,13 +163,13 @@ export function ChoiceWidget({
       {allowCustom && !selected ? (
         customMode ? (
           <span className="inline-flex items-center gap-1">
-            <input
+            <Input
               type="text"
               aria-label="Your own answer"
               data-testid="choice-custom-input"
               value={customText}
               placeholder="Type your answer…"
-              className="h-7 min-w-40 rounded-md border border-border bg-transparent px-2 text-xs outline-none "
+              className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
               onChange={(e) => setCustomText(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {

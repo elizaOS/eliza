@@ -568,21 +568,21 @@ export class ApprovalService extends Service {
 					return true; // No role restriction
 				}
 
-				// Import getUserServerRole dynamically to avoid circular dependency
-				const { getUserServerRole } = await import("../roles.ts");
+				// #12087 Item 8: resolve the sender's role from the message via
+				// checkSenderRole, which hashes the room's serverId once through the
+				// world lookup. The prior getUserServerRole(runtime, entityId,
+				// room.worldId) passed an ALREADY-hashed worldId as serverId, so it
+				// double-hashed, found no world, returned NONE, and made every
+				// role-restricted approval unapprovable in server rooms.
+				const { checkSenderRole } = await import("../roles.ts");
 				const room = await runtime.getRoom(message.roomId);
 
 				if (!room?.worldId) {
-					return true; // Allow in DMs
+					return true; // Allow in DMs (no server role to enforce)
 				}
 
-				const userRole = await getUserServerRole(
-					runtime,
-					message.entityId,
-					room.worldId,
-				);
-
-				return allowedRoles.includes(userRole);
+				const senderRole = await checkSenderRole(runtime, message);
+				return senderRole ? allowedRoles.includes(senderRole.role) : false;
 			},
 
 			execute: async (

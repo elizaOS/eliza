@@ -1,3 +1,9 @@
+/**
+ * Single-line status bar for the paired on-device inference bridge (a desktop
+ * fronting a phone/tablet runtime): connection dot, capability summary, and the
+ * loaded model filename. Renders nothing until a bridge status arrives.
+ */
+
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state/TranslationContext.hooks";

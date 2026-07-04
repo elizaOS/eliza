@@ -1,0 +1,228 @@
+{
+  "runId": "400134a9-7a91-409d-80e6-158e1d3f1dc8",
+  "startedAtIso": "2026-07-02T23:01:12.208Z",
+  "completedAtIso": "2026-07-02T23:01:21.173Z",
+  "providerName": "deterministic-llm-proxy",
+  "scenarios": [
+    {
+      "id": "background-live",
+      "title": "Real LLM drives BACKGROUND set/undo/redo/reset from chat",
+      "domain": "scenario-runner",
+      "tags": [
+        "live",
+        "real-llm",
+        "app-control",
+        "background"
+      ],
+      "status": "failed",
+      "durationMs": 2500,
+      "turns": [
+        {
+          "name": "set a dark blue background from natural phrasing",
+          "kind": "message",
+          "text": "Please make my background dark blue.",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 711,
+          "failedAssertions": [
+            "assertTurn: expected the model to route to BACKGROUND, saw REPLY",
+            "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+          ]
+        },
+        {
+          "name": "undo the background change",
+          "kind": "message",
+          "text": "Undo the background change.",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 595,
+          "failedAssertions": [
+            "assertTurn: expected the model to route to BACKGROUND, saw REPLY",
+            "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+          ]
+        },
+        {
+          "name": "redo the background change",
+          "kind": "message",
+          "text": "Actually, redo the background change.",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 577,
+          "failedAssertions": [
+            "assertTurn: expected the model to route to BACKGROUND, saw REPLY",
+            "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+          ]
+        },
+        {
+          "name": "reset the background to default",
+          "kind": "message",
+          "text": "Reset the background to the default.",
+          "responseText": "I'm not sure how to answer that.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "I'm not sure how to answer that.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 585,
+          "failedAssertions": [
+            "assertTurn: expected the model to route to BACKGROUND, saw REPLY",
+            "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+          ]
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "failed",
+          "detail": "actionCalled: expected 4 successful BACKGROUND call(s) with result.success=true, saw 0. Calls: (none)"
+        },
+        {
+          "label": "background:apply broadcast ops are exact and ordered",
+          "type": "custom",
+          "status": "failed",
+          "detail": "expected exactly one background:apply per turn in order set,undo,redo,reset — saw ops [] (payloads [])"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        },
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        },
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        },
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "I'm not sure how to answer that.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        }
+      ],
+      "failedAssertions": [
+        {
+          "label": "set a dark blue background from natural phrasing",
+          "detail": "assertTurn: expected the model to route to BACKGROUND, saw REPLY"
+        },
+        {
+          "label": "set a dark blue background from natural phrasing",
+          "detail": "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+        },
+        {
+          "label": "undo the background change",
+          "detail": "assertTurn: expected the model to route to BACKGROUND, saw REPLY"
+        },
+        {
+          "label": "undo the background change",
+          "detail": "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+        },
+        {
+          "label": "redo the background change",
+          "detail": "assertTurn: expected the model to route to BACKGROUND, saw REPLY"
+        },
+        {
+          "label": "redo the background change",
+          "detail": "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+        },
+        {
+          "label": "reset the background to default",
+          "detail": "assertTurn: expected the model to route to BACKGROUND, saw REPLY"
+        },
+        {
+          "label": "reset the background to default",
+          "detail": "expectedActions: expected action in [BACKGROUND], saw actions [(none)]; captured actions: [REPLY]"
+        },
+        {
+          "label": "actionCalled",
+          "detail": "actionCalled: expected 4 successful BACKGROUND call(s) with result.success=true, saw 0. Calls: (none)"
+        },
+        {
+          "label": "background:apply broadcast ops are exact and ordered",
+          "detail": "expected exactly one background:apply per turn in order set,undo,redo,reset — saw ops [] (payloads [])"
+        }
+      ],
+      "providerName": "deterministic-llm-proxy"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 0,
+  "failedCount": 1,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/run/viewer/data.js",
+    "nativeJsonl": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/native.jsonl",
+    "nativeManifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/background-live/native.manifest.json"
+  }
+}

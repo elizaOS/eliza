@@ -1,3 +1,10 @@
+/**
+ * Shared types for signing scopes, pending human-approval flows, and
+ * canonical handler results used across `WalletBackend` and the audit/policy
+ * modules. `SignScope` names each signing operation as `<domain>.<operation>`
+ * for audit-log and policy attribution; `SignResult` is either a completed
+ * `SignaturePayload` or a `PendingApproval` awaiting user confirmation.
+ */
 import type {
   ActionFailureCode,
   ValidateFailureCode,

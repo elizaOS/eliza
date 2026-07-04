@@ -1,9 +1,14 @@
 "use client";
 
-// Only the RenderTelemetryProfiler component lives here so Vite React Fast
-// Refresh can hot-patch it. The telemetry primitives (constants, types,
-// setRenderTelemetrySink, useRenderGuard) live in hooks/useRenderGuard.
-
+/**
+ * RenderTelemetryProfiler: wraps children in a React `<Profiler>` and emits
+ * render-frequency telemetry (info/error severities over a sliding window) so
+ * runaway re-renders in the cloud dashboard surface become observable.
+ *
+ * Only the component lives here so Vite React Fast Refresh can hot-patch it; the
+ * telemetry primitives (constants, types, setRenderTelemetrySink, useRenderGuard)
+ * live in hooks/useRenderGuard.
+ */
 import {
   Profiler,
   type ProfilerOnRenderCallback,

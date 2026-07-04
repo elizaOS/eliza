@@ -1,3 +1,8 @@
+/**
+ * Types and shared timing constants for transient shell toasts (the
+ * `setActionNotice` surface). ShellOverlays renders the notices; settings hooks
+ * thread the `ActionNoticeFn` callback.
+ */
 import type { NotificationPriority } from "@elizaos/core";
 
 /** The three visual tones a transient shell toast can render in. */
@@ -22,10 +27,9 @@ export type ActionNoticeFn = (
 /**
  * Canonical auto-dismiss windows for transient surfaces, in milliseconds.
  *
- * Previously these were scattered magic numbers — `setActionNotice`'s 2800ms
- * default, the notification store's 4000/7000ms deliveries, and the system
- * warning banner's 20000ms — with no shared definition. Collapsing them here is
- * the single source of truth so the timings stay coherent across the shell.
+ * Single source of truth for the shell's toast timings — `setActionNotice`'s
+ * 2800ms default, the notification store's 4000/7000ms deliveries, and the
+ * system warning banner's 20000ms — so they stay coherent across surfaces.
  */
 export const TOAST_TTL_MS = {
   /** Default dwell for a plain `setActionNotice` (quick confirmations). */

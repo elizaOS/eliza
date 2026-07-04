@@ -2,6 +2,7 @@ import Handlebars from "handlebars";
 import z from "zod";
 
 import logger from "./logger";
+import { replaceIndexedNameTokens } from "./name-tokens";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
@@ -356,19 +357,13 @@ const composeRandomUser = (
 	seed = "prompt-users",
 ) => {
 	// {{nameX}}/{{userX}} placeholders only appear in example-conversation
-	// templates; production system/response templates have none. Skip the name
-	// generation + 20 full-string replaceAll passes when no placeholder exists.
+	// templates; production system/response templates have none. Skip the
+	// deterministic-name generation entirely when no placeholder is present.
 	if (!template.includes("{{name") && !template.includes("{{user")) {
 		return template;
 	}
 	const exampleNames = getDeterministicNames(length, seed);
-	let result = template;
-	for (let i = 0; i < exampleNames.length; i++) {
-		result = result.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
-		result = result.replaceAll(`{{user${i + 1}}}`, exampleNames[i]);
-	}
-
-	return result;
+	return replaceIndexedNameTokens(template, exampleNames);
 };
 
 export const formatPosts = ({
@@ -504,7 +499,21 @@ export const formatMessages = ({
 		const messageThought = (message.content as Content).thought;
 		const foundEntity = entityById.get(message.entityId);
 		const foundEntityNames = foundEntity?.names;
-		const formattedName = foundEntityNames?.[0] || "Unknown User";
+		const baseName = foundEntityNames?.[0] || "Unknown User";
+		// Surface bot/agent-ness as plain context the model reads: a sender whose
+		// message was stamped `fromBot` at ingestion renders as "Name (bot)". This
+		// is the agent simply KNOWING a participant is a bot — part of what it knows
+		// about that user — NOT a behavioral branch. Every message is still handled
+		// through the one uniform path; the tag just lets the model read multi-bot
+		// crosstalk for what it is instead of mistaking an overheard automated line
+		// for a directive to itself. Degrades gracefully: a connector that omits
+		// `fromBot` simply renders the bare name (untagged = treated as human).
+		const senderIsBot =
+			(message.metadata as { fromBot?: boolean } | undefined)?.fromBot ===
+				true ||
+			(message.content as { metadata?: { fromBot?: boolean } })?.metadata
+				?.fromBot === true;
+		const formattedName = senderIsBot ? `${baseName} (bot)` : baseName;
 
 		const attachments = (message.content as Content).attachments;
 		const visibleAttachments =

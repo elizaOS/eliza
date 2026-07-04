@@ -1,3 +1,11 @@
+/**
+ * Request/response interfaces and `ElizaCloudClientOptions` for every SDK method,
+ * plus the base-URL constants and re-exports of the Cloud API DTOs from
+ * `types.cloud-api.ts`. Field names on request bodies must match the server zod
+ * schemas verbatim (see `CreateContainerRequest`) — the server strips unknown
+ * keys, so a mismatched casing is silently dropped.
+ */
+
 export type {
   AgentDatabaseStatus,
   AgentDetailDto,
@@ -646,10 +654,10 @@ export interface CloudContainer {
  * `packages/cloud/api/v1/containers/route.ts`) verbatim — the server is
  * camelCase. The server validates with `z.object`, which strips unknown keys,
  * so a snake_case body (`project_name`, `environment_vars`, …) is silently
- * dropped before the handler ever runs. That previously discarded
- * `environmentVars.ELIZA_APP_ID` (per-app monetization attribution) and
- * `projectName` (the sticky deploy key) on every container create, even on the
- * happy path. Keep this in exact camelCase agreement with the server.
+ * dropped before the handler ever runs — losing `environmentVars.ELIZA_APP_ID`
+ * (per-app monetization attribution) and `projectName` (the sticky deploy key)
+ * on every container create, even on the happy path. Keep this in exact
+ * camelCase agreement with the server.
  */
 export interface CreateContainerRequest {
   /** Human-readable container name (1–100 chars). */
@@ -736,6 +744,14 @@ export type AppDeploymentStatus =
   | "deploying"
   | "deployed"
   | "failed";
+
+/** Monetization review lifecycle of an app (server enum `app_review_status`). */
+export type AppReviewStatus =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "approved"
+  | "rejected";
 
 /** Discord social-automation config stored on an app (jsonb column). */
 export interface AppDiscordAutomation {
@@ -839,6 +855,9 @@ export interface AppDto {
   response_notifications: boolean | null;
   is_active: boolean;
   is_approved: boolean;
+  review_status: AppReviewStatus;
+  review_content_hash: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
@@ -867,7 +886,14 @@ export interface CreateAppInput {
   logo_url?: string;
   /** Skip provisioning a GitHub repo for the app. */
   skipGitHubRepo?: boolean;
-  /** Apply monetization at creation, saving a follow-up call. */
+  /**
+   * Persist create-time monetization defaults.
+   *
+   * `true` is never honored at create time: the app is created with
+   * monetization disabled and the review requirement is returned in
+   * `warnings` (fail-closed until the app passes review). Submit the app for
+   * review, then enable monetization after approval.
+   */
   monetization_enabled?: boolean;
   /** Inference markup percentage, 0–1000. */
   inference_markup_percentage?: number;
@@ -1572,6 +1598,151 @@ export interface CreateBookingResponse {
   success: boolean;
   booking?: InfluencerBookingDto;
   error?: string;
+}
+
+// ---- Press releases / PR distribution (#11819) ----
+
+export type PressReleaseStatus =
+  | "draft"
+  | "ready"
+  | "submitted"
+  | "distributed"
+  | "failed"
+  | "cancelled";
+
+export type PressDistributionStatus =
+  | "pending"
+  | "submitted"
+  | "distributed"
+  | "failed"
+  | "cancelled";
+
+export interface PressReleaseAssetDto {
+  url: string;
+  mimeType?: string;
+  label?: string;
+}
+
+export interface PressReleaseTargetAudienceDto {
+  niches?: string[];
+  regions?: string[];
+  languages?: string[];
+  outletTypes?: string[];
+}
+
+export interface PressReleaseDto {
+  id: string;
+  organization_id: string;
+  created_by_user_id: string | null;
+  title: string;
+  summary: string | null;
+  body: string;
+  boilerplate: string | null;
+  status: PressReleaseStatus;
+  target_audience: PressReleaseTargetAudienceDto;
+  target_regions: string[];
+  assets: PressReleaseAssetDto[];
+  embargo_at: string | null;
+  submitted_at: string | null;
+  distributed_at: string | null;
+  failed_reason: string | null;
+  idempotency_key: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PressReleaseDistributionDto {
+  id: string;
+  organization_id: string;
+  press_release_id: string;
+  provider: string;
+  external_distribution_id: string | null;
+  status: PressDistributionStatus;
+  idempotency_key: string | null;
+  request_payload: Record<string, unknown>;
+  provider_response: Record<string, unknown>;
+  error_message: string | null;
+  submitted_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PressCoverageDto {
+  id: string;
+  organization_id: string;
+  press_release_id: string;
+  distribution_id: string | null;
+  url: string;
+  title: string | null;
+  outlet: string | null;
+  published_at: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CreatePressReleaseInput {
+  title: string;
+  body: string;
+  summary?: string;
+  boilerplate?: string;
+  targetAudience?: PressReleaseTargetAudienceDto;
+  targetRegions?: string[];
+  assets?: PressReleaseAssetDto[];
+  embargoAt?: string | null;
+  idempotencyKey?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UpdatePressReleaseInput {
+  title?: string;
+  body?: string;
+  summary?: string | null;
+  boilerplate?: string | null;
+  targetAudience?: PressReleaseTargetAudienceDto;
+  targetRegions?: string[];
+  assets?: PressReleaseAssetDto[];
+  embargoAt?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface SubmitPressReleaseInput {
+  idempotencyKey?: string;
+}
+
+export interface CreatePressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface ListPressReleasesResponse {
+  success: boolean;
+  releases: PressReleaseDto[];
+}
+
+export interface GetPressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface UpdatePressReleaseResponse {
+  success: boolean;
+  release: PressReleaseDto;
+}
+
+export interface SubmitPressReleaseResponse {
+  success: boolean;
+  release?: PressReleaseDto;
+  distribution?: PressReleaseDistributionDto;
+  error?: string;
+  code?: string;
+}
+
+export interface ListPressCoverageResponse {
+  success: boolean;
+  releaseId: string;
+  coverage: PressCoverageDto[];
 }
 
 // ---- App config backup / restore (#10204) ----

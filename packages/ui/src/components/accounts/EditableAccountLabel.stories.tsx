@@ -1,3 +1,5 @@
+/** Storybook stories for EditableAccountLabel: display, edit, and disabled states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { EditableAccountLabel } from "./EditableAccountLabel";
 

@@ -24,6 +24,7 @@ import {
   ModelType,
   readRequestBodyBuffer,
 } from "@elizaos/core";
+import { isPageScope } from "@elizaos/shared/contracts";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const SUGGESTION_COUNT = 3;
@@ -31,9 +32,6 @@ const MAX_SUGGESTION_CHARS = 48;
 const MIN_SUGGESTION_CHARS = 2;
 const MAX_CONTEXT_MESSAGES = 6;
 const MAX_CONTEXT_CHARS = 240;
-
-/** Page scopes mirror `PageScope` in @elizaos/ui (page-scoped-conversations). */
-const PAGE_SCOPE_PATTERN = /^page-[a-z][a-z0-9-]{1,30}$/;
 
 export interface SuggestionsRouteContext {
   req: http.IncomingMessage;
@@ -97,10 +95,7 @@ export function parseRequestBody(raw: string): SuggestionsRequest {
       ? Math.floor(hourValue)
       : undefined;
 
-  const scope =
-    typeof body.scope === "string" && PAGE_SCOPE_PATTERN.test(body.scope)
-      ? body.scope
-      : undefined;
+  const scope = isPageScope(body.scope) ? body.scope : undefined;
 
   return { messages: messages.slice(-MAX_CONTEXT_MESSAGES), hour, scope };
 }

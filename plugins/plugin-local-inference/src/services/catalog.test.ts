@@ -1,3 +1,4 @@
+/** Asserts MODEL_CATALOG invariants (tier ids, default-eligible/MTP sets) and HuggingFace resolve-URL construction. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,

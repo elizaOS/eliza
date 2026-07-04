@@ -1,3 +1,11 @@
+/**
+ * Bridges GitHub OAuth credentials to the connector account store's vault +
+ * credential-ref model: persists token records as credential refs, reads back
+ * a usable OAuth access token for an account, and lists stored connector
+ * accounts. Consumed by `accounts.ts` when overlaying OAuth accounts onto the
+ * env/character account set.
+ */
+
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccount,
@@ -391,7 +399,11 @@ function resolveVaultWriters(
         await secrets.set?.(
           vaultRef,
           credential.value,
-          { level: "global", agentId: runtime.agentId },
+          {
+            level: "global",
+            agentId: runtime.agentId,
+            requesterId: runtime.agentId,
+          },
           { sensitive: true },
         );
         return vaultRef;
@@ -439,6 +451,7 @@ async function readSecret(
     return candidate.get(vaultRef, {
       level: "global",
       agentId: runtime.agentId,
+      requesterId: runtime.agentId,
     });
   }
   return candidate.get(vaultRef, { reveal: true, caller });

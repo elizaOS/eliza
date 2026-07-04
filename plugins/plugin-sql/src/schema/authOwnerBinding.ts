@@ -1,6 +1,3 @@
-import { bigint, foreignKey, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
-import { authIdentityTable } from "./authIdentity";
-
 /**
  * Connector-owner binding. Lets an external connector account (Discord,
  * Telegram, WeChat, Matrix) prove ownership of a local Eliza identity.
@@ -9,6 +6,9 @@ import { authIdentityTable } from "./authIdentity";
  * Discord account can own multiple Eliza instances (one binding per
  * (connector, external) pair *per instance*) without cross-talk.
  */
+import { bigint, foreignKey, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { authIdentityTable } from "./authIdentity";
+
 export const authOwnerBindingTable = pgTable(
   "auth_owner_bindings",
   {

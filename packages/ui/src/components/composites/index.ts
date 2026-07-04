@@ -1,3 +1,8 @@
+/**
+ * Barrel for the composites layer — higher-level pieces (chat, sidebar,
+ * page-panel, search, skills, trajectories, form-field) plus the handful of
+ * base `ui/` primitives re-exported here for convenience.
+ */
 export * from "../ui/admin-dialog";
 export * from "../ui/banner";
 export * from "../ui/code-block";

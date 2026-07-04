@@ -1,3 +1,6 @@
+/**
+ * Per-row overflow action menu (dropdown) for dashboard list items.
+ */
 import { MoreHorizontal } from "lucide-react";
 import type { ComponentType, MouseEvent, ReactNode } from "react";
 import {

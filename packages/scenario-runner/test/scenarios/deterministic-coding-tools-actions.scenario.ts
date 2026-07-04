@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage exercising the coding-tools action execution surface end to
+ * end. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import { execFile } from "node:child_process";
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";

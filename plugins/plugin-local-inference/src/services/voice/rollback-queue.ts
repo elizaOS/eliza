@@ -1,3 +1,8 @@
+/**
+ * Tracks in-flight phrases through their synthesis lifecycle so that when the
+ * speculative token stream rejects a range, the scheduler can roll back any
+ * phrase not yet played. Emits a `RollbackEvent` per affected phrase.
+ */
 import type { Phrase, RejectedTokenRange } from "./types";
 
 type PhraseState = "queued" | "synthesizing" | "ringbuffered" | "played";

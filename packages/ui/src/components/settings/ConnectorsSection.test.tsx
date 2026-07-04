@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders ConnectorsSection with a mocked App context and connector-mode
+ * registry to assert icon fallbacks (no raw emoji glyphs) and the setup-panel
+ * routing. jsdom, no backend.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +78,6 @@ vi.mock("../connectors/ConnectorSetupPanel", () => ({
 }));
 vi.mock("../pages/PluginConfigForm", () => ({
   PluginConfigForm: () => <div data-testid="plugin-config-form" />,
-  TelegramPluginConfig: () => <div data-testid="telegram-config-form" />,
 }));
 
 import { ConnectorsSection } from "./ConnectorsSection";
@@ -160,7 +164,7 @@ describe("ConnectorsSection", () => {
 
     render(<ConnectorsSection />);
 
-    expect(screen.getByTestId("telegram-config-form")).toBeTruthy();
+    expect(screen.getByTestId("plugin-config-form")).toBeTruthy();
     const panel = screen.getByTestId("connector-setup-panel");
     expect(panel).toBeTruthy();
     expect(panel.textContent ?? "").toContain("telegram");

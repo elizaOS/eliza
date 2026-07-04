@@ -65,6 +65,11 @@ export interface Bindings {
    * Deploy as a `wrangler secret`; never returned to clients.
    */
   HF_TOKEN?: string;
+  /**
+   * Optional monthly per-organization egress cap for the HuggingFace proxy, in
+   * bytes. Unset uses the route default.
+   */
+  HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES?: string;
   AI_GATEWAY_API_KEY?: string;
   AIGATEWAY_API_KEY?: string;
   AI_GATEWAY_BASE_URL?: string;

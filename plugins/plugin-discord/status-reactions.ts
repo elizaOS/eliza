@@ -1,3 +1,8 @@
+/**
+ * Status-reaction scope logic — decides whether an inbound message is
+ * acknowledged with a processing emoji (queued / thinking / done / error)
+ * based on the configured scope and whether the bot was addressed.
+ */
 import type { Message as DiscordMessage } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
 

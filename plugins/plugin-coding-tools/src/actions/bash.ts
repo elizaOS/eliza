@@ -1,3 +1,12 @@
+/**
+ * SHELL action: runs a command via the host shell (`action=run`) and reads/clears
+ * per-conversation command history. Resolves the shell binary and tool
+ * availability through terminal-capabilities, enforces the per-call timeout clamp,
+ * and — for interactive CHAT use only — rewrites a handful of weak probe commands
+ * (disk/memory/source-search/crypto) into bounded equivalents. The eliza-code
+ * coding sub-agent is exempted from those rewrites so its explicit commands run
+ * verbatim. Gated to coding contexts with OWNER role.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -29,6 +38,7 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
+import { summarizeShellCommand } from "./summaries.js";
 
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
@@ -1115,6 +1125,8 @@ export const shellAction: Action = {
     },
   ],
   validate: async () => true,
+  summarize: (result, params) =>
+    result?.success === true ? summarizeShellCommand(params) : undefined,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -1307,12 +1319,12 @@ export const shellAction: Action = {
     // CHAT conveniences keyed on the *message text*: when a user asks "check
     // disk space", a weak probe is rewritten into a good bounded one. The
     // eliza-code coding sub-agent (ELIZA_PLANNER_FULL_ACTION_SURFACE) instead
-    // issues precise explicit commands (ls / mkdir / git / …) and must NEVER
-    // have them rewritten — when the build task incidentally mentioned a trigger
-    // word, EVERY `ls`/`mkdir` was replaced by an ~19s `df` cleanup scan, so the
-    // shell produced no real output, the model gave up on SHELL, and a 30s build
-    // took 90s+. Skip all message-text-keyed rewrites for the coding sub-agent;
-    // its commands run verbatim.
+    // issues precise explicit commands (ls / mkdir / git / …) that must NEVER be
+    // rewritten: a task that incidentally mentions a trigger word would otherwise
+    // turn every `ls`/`mkdir` into an ~19s `df` cleanup scan, starving the model
+    // of real output and inflating a 30s build past 90s. Skip all
+    // message-text-keyed rewrites for the coding sub-agent; its commands run
+    // verbatim.
     const codingSubAgentShell = ((): boolean => {
       const v =
         process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `validateX402Startup` covering config resolution and
+ * rejection cases. Pure in-process assertions against fabricated route
+ * objects — no real HTTP dispatch, DB, or network involved.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateX402Startup } from "./startup-validator.js";
 

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the post-server-wipe local-state reset: verifies persisted
+ * state is cleared and the shell returns to first-run. Deps injected, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentStatus, FirstRunOptions } from "../api/client";
 import {

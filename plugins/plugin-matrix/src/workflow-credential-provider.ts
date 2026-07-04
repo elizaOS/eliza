@@ -1,3 +1,9 @@
+/**
+ * Bridges Matrix credentials to `@elizaos/plugin-workflow` so workflow nodes can
+ * call a Matrix homeserver authenticated. Registered under the duck-typed
+ * `workflow_credential_provider` serviceType; on request for `matrixApi` it
+ * returns the access token and homeserver URL, and only when both are set.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

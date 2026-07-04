@@ -1,3 +1,4 @@
+/** Covers acoustic speaker attribution: timbre-embedding extraction, online clustering, and self-voice similarity, driven by synthetic speech. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	AGENT_VOICE_TIMBRE,

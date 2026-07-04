@@ -698,10 +698,17 @@ backend nightly.
 ## 11. ONNX deprecation status (updated Kokoro GGUF, 2026-06-25)
 
 **Single on-device runtime: ONE managed library (`libelizainference`), ONE
-pipe, no sidecar/subprocess/TCP. No ONNX in resolved code path as of K7 for:
-VAD, wake-word, turn-detector (preferred), Kokoro (fused GGUF), OmniVoice,
-ASR. Three voice classifier models remain ONNX-active, blocked on K1/K2/K3
-native ports.**
+pipe, no sidecar/subprocess/TCP. No ONNX anywhere in the resolved code path:
+`onnxruntime-node`/`onnxruntime-web` is not a dependency and there are zero live
+imports in `plugin-local-inference/src` (enforced by
+`src/services/voice/onnx-import-ban.test.ts`). VAD, wake-word, turn-detector
+(preferred), Kokoro (fused GGUF), OmniVoice, and ASR all resolve through the
+fork FFI. The three voice classifier heads (Wav2Small emotion, WeSpeaker,
+pyannote-3) have already dropped ONNX too — but see the emotion-classifier gap
+called out below: the ONNX runtime was removed before the native GGUF read was
+wired, so the acoustic emotion read is DEAD at runtime (nothing loads a
+`files.emotion` GGUF; the fusion runs text/prosody-only) — a tracked K1
+follow-up, not a silent fallback hidden behind a stub.**
 
 **Single runtime policy:** every local-inference model path must flow through
 ONE managed library (`libelizainference`) over ONE FFI pipe — no sidecar,
@@ -728,23 +735,35 @@ deprecated and will be removed from the runtime path once all native ports land.
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
 | LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |
 | Kokoro TTS | fused FFI `eliza_inference_kokoro_*` + `tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf` | DONE (#9588) — GGUF-only runtime discovery |
+| Wav2Small emotion | ONNX removed; scalar C forward in `voice-classifier-cpp/src/voice_emotion.c` | ONNX-FREE — but native read NOT wired: acoustic emotion path is DEAD at runtime (K1, see gap below) |
+| WeSpeaker R34-LM | ONNX removed; scalar C forward in `voice-classifier-cpp/src/voice_speaker.c` | ONNX-FREE (native FFI/GGUF path) |
+| pyannote-3 diarizer | ONNX removed; scalar C forward in `voice-classifier-cpp/src/voice_diarizer.c` | ONNX-FREE (native FFI/GGUF path) |
 
-### Compute-gated (ONNX still active in resolved runtime)
+### Compute-gated (native read not yet wired)
 
 | Model | Gate | Owner | Est. |
 |---|---|---|---|
-| Wav2Small emotion | scalar C forward exists in `voice-classifier-cpp/src/voice_emotion.c`; production TS still routes ONNX until GGUF binding/parity promotion | K1 | parity + pipeline promotion |
-| WeSpeaker R34-LM | scalar C forward exists in `voice-classifier-cpp/src/voice_speaker.c`; production TS still routes ONNX until GGUF binding/parity promotion | K2 | parity + pipeline promotion |
-| pyannote-3 diarizer | scalar C forward exists in `voice-classifier-cpp/src/voice_diarizer.c`; production TS still routes ONNX until GGUF binding/parity promotion | K3 | parity + pipeline promotion |
-| LiveKit EOT (ONNX last-resort) | ONNX is last-resort in engine.ts chain (Eliza1Eot → GgmlTD → OnnxTD → Heuristic); ONNX reachable when GGUF not on disk | K7/J1.d | Remove OnnxTD from chain or guarantee GGUF on all tiers |
+| Wav2Small emotion (acoustic read) | ONNX gone; the native GGUF forward is NOT bound into `libelizainference`, and no runtime code loads a `files.emotion` GGUF, so the acoustic read is dead — the fusion in `emotion-attribution.ts` runs text/prosody-only. Tracked, not silently swallowed. | K1 | bind `voice_emotion.c` GGUF forward + parity + pipeline promotion |
+| LiveKit EOT (ONNX last-resort) | Historically ONNX was the last-resort in the engine.ts chain (Eliza1Eot → GgmlTD → OnnxTD → Heuristic). With `onnxruntime-*` no longer a dependency, the OnnxTD leg is unreachable; the chain is Eliza1Eot → GgmlTD → Heuristic. | K7/J1.d | confirm OnnxTD leg is removed from the chain |
 
-**Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
-until every compute-gated head above is replaced. Premature removal crashes the
-voice pipeline. For each per-model migration, update the manifest runtime from
-`onnx` to the native/GGUF runtime, rename the promoted artifact to the canonical
-manifest path, remove the ONNX entry from the shipped bundle, run the relevant
-gate from `native/verify/PLATFORM_MATRIX.md`, and keep the HF ONNX artifact for
-one release cycle as described below.
+**Rule:** `onnxruntime-node`/`onnxruntime-web` are no longer dependencies of
+`plugin-local-inference` and there must be no live import of either
+(`src/services/voice/onnx-import-ban.test.ts` enforces this). Do NOT reintroduce
+an ONNX runtime import — the compliant path for any remaining head is the native
+FFI/GGUF forward. For a per-model native promotion, update the manifest runtime
+to the GGUF runtime, rename the promoted artifact to the canonical manifest
+path, and run the relevant gate from `native/verify/PLATFORM_MATRIX.md`.
+
+**GAP (emotion acoustic read — flagged 2026-07-03, C15):** the ONNX Wav2Small
+runtime was deleted before the native GGUF read was wired. In production nothing
+loads a `files.emotion` GGUF and nothing constructs a
+`VoiceEmotionClassifierOutput`, so `attributeVoiceEmotion()` runs
+text/prosody-only and the acoustic-fusion branch is dead code. This is flagged
+as a tracked follow-up (not silently swallowed): wiring the `voice_emotion.c`
+GGUF forward through the memory arbiter — plus a runtime activation gate for a
+shipped-but-unrunnable `files.emotion` artifact — is the K1 work (out of
+headless scope: needs the native binding + a parity gate). Until then, no
+production bundle ships a `files.emotion` artifact.
 
 **HF deprecation runway:** ONNX model files remain on HF alongside GGUFs for one
 release after each native port lands. Do not delete ONNX from HF until the GGUF

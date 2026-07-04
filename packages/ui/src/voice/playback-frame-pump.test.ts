@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the playback frame pump and mono downmix. Pure functions over
+ * audio buffers, no live playback.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   downmixAudioBufferToMono,

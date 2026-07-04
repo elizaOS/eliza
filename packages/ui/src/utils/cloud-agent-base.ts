@@ -1,3 +1,7 @@
+/**
+ * Predicates and normalization for cloud agent base URLs (dedicated vs shared
+ * direct-cloud bases), used to route the client and gate app-shell capabilities.
+ */
 function stripTrailingSlash(value: string): string {
   let end = value.length;
   while (end > 0 && value.charCodeAt(end - 1) === 47) end--;

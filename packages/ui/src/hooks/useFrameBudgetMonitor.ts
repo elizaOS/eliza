@@ -1,14 +1,16 @@
-// Dev-only frame-budget HUD wiring (issue #9141, task 1).
-//
-// Samples requestAnimationFrame deltas + PerformanceObserver('longtask') over a
-// rolling window and emits a FrameBudgetTelemetryEvent on the SAME
-// RENDER_TELEMETRY_EVENT channel the render-guard already uses (no second
-// channel — the issue is explicit about this). Off by default: only runs when
-// `globalThis.__ELIZA_PERF_HUD__` is truthy AND render telemetry is enabled, so
-// it never costs production a single rAF tick.
-//
-// The math lives in ./frame-budget (pure, unit-tested); this file is just the
-// browser glue and is intentionally thin.
+/**
+ * Dev-only frame-budget HUD wiring (issue #9141, task 1).
+ *
+ * Samples requestAnimationFrame deltas + PerformanceObserver('longtask') over a
+ * rolling window and emits a FrameBudgetTelemetryEvent on the SAME
+ * RENDER_TELEMETRY_EVENT channel the render-guard already uses (no second
+ * channel — the issue is explicit about this). Off by default: only runs when
+ * `globalThis.__ELIZA_PERF_HUD__` is truthy AND render telemetry is enabled, so
+ * it never costs production a single rAF tick.
+ *
+ * The math lives in ./frame-budget (pure, unit-tested); this file is just the
+ * browser glue and is intentionally thin.
+ */
 
 import { useEffect } from "react";
 import { PERF_TOGGLE_EVENT } from "../perf/perf-hud-control";

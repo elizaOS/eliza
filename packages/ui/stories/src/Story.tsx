@@ -1,3 +1,6 @@
+/**
+ * Story primitives for the standalone gallery: the StoryDefinition/StoryGroup shapes and the Story renderer.
+ */
 import type { ReactNode } from "react";
 
 export interface StoryDefinition {

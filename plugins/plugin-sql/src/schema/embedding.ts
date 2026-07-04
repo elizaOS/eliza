@@ -1,3 +1,11 @@
+/**
+ * Vector storage for memory embeddings. Each row belongs to exactly one
+ * memory (enforced by the `embedding_source_check` CHECK constraint and a
+ * cascading FK) and carries one populated `dimNNN` column matching the
+ * embedding model's output width — the others stay null. Supporting multiple
+ * fixed-width columns instead of a single variable-length vector lets
+ * PostgreSQL index each dimension separately.
+ */
 import { relations, sql } from "drizzle-orm";
 import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from "drizzle-orm/pg-core";
 import { memoryTable } from "./memory";
@@ -25,10 +33,6 @@ export const DIMENSION_MAP = {
   [VECTOR_DIMS.XXXL]: "dim3072",
 } as const;
 
-/**
- * Definition of the embeddings table in the database.
- * Contains columns for ID, Memory ID, Creation Timestamp, and multiple vector dimensions.
- */
 export const embeddingTable = pgTable(
   "embeddings",
   {
@@ -56,10 +60,7 @@ export const embeddingTable = pgTable(
   ]
 );
 
-/**
- * Defines the possible values for the Embedding Dimension Column.
- * It can be "dim384", "dim512", "dim768", "dim1024", "dim1536", or "dim3072".
- */
+/** Column names for each supported embedding width. */
 export type EmbeddingDimensionColumn =
   | "dim384"
   | "dim512"
@@ -69,12 +70,10 @@ export type EmbeddingDimensionColumn =
   | "dim2048"
   | "dim3072";
 
-/**
- * Retrieve the type of a specific column in the EmbeddingTable based on the EmbeddingDimensionColumn key.
- */
+/** Drizzle column type for a given `EmbeddingDimensionColumn` key. */
 export type EmbeddingTableColumn = (typeof embeddingTable._.columns)[EmbeddingDimensionColumn];
 
-// Relations - defined here to avoid circular dependency with memory.ts
+/** Defined here, not in memory.ts, to avoid a circular import between the two schema files. */
 export const memoryRelations = relations(memoryTable, ({ one }) => ({
   embedding: one(embeddingTable),
 }));

@@ -421,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
             "path": text_rel,
             "sha256": text_sha,
             "ctx": M.text_context_for_manifest(text_dest) or TEXT_CTX_BY_TIER[tier],
+            "architecture": M.text_architecture_for_manifest(text_dest),
         }
     ]
 
@@ -545,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
         "sourceModels": {
             "text": {
                 "repo": base_repo,
-                "convertedVia": "packages/inference/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
+                "convertedVia": "plugins/plugin-local-inference/native/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
                 "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized; NOT strictly base-v1 semantics — this is a finetuned candidate.",
             },
             "voice": {

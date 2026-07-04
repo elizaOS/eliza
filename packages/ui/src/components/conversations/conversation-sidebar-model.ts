@@ -1,3 +1,14 @@
+/**
+ * Pure view-model builder for the conversations sidebar. Given raw dashboard
+ * conversations, connector inbox chats, and the active source/world scope,
+ * `buildConversationsSidebarModel` produces the flat row list, its time-bucketed
+ * sections, and the source/world filter options with counts. Kept separate from
+ * `ConversationsSidebar.tsx` so the shaping logic is unit-testable without
+ * rendering. The `*_SCOPE` string constants are the sentinel scope values shared
+ * with the component; bucket-rank ceilings keep day/week/month/year groups
+ * ordered under a single numeric `sortKey`.
+ */
+
 import { normalizeConnectorSource } from "@elizaos/shared";
 import type * as React from "react";
 import type { Conversation } from "../../api/client-types-chat";

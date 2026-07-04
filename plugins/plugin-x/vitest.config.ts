@@ -1,3 +1,4 @@
+/** Vitest config for plugin-x, wiring the shared provider-SDK aliases/shim so tests run without real provider SDKs installed. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

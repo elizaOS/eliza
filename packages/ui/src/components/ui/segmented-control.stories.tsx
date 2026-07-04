@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the segmented-control primitive (single-select button group).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { SegmentedControl } from "./segmented-control";

@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for the security package's unit tests.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

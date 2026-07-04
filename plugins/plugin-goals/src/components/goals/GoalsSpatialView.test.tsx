@@ -1,3 +1,7 @@
+/**
+ * Renders `GoalsSpatialView` through the TUI spatial registry to static markup
+ * and asserts the terminal layout — deterministic, no live model or DB.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

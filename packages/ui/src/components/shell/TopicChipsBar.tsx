@@ -1,5 +1,6 @@
 import type * as React from "react";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 /**
  * Horizontal topic chips above the transcript (#8928). Shows the channel's
@@ -23,7 +24,7 @@ export function TopicChipsBar({
     <div
       data-testid="topic-chips-bar"
       className={cn(
-        "flex shrink-0 items-center gap-1.5 overflow-x-auto pb-2 pt-1",
+        "flex shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-2 pt-1",
         "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
         className,
       )}
@@ -31,13 +32,14 @@ export function TopicChipsBar({
       {topics.map((topic) => {
         const active = activeTopic != null && activeTopic === topic;
         return (
-          <button
+          <Button
             key={topic}
-            type="button"
+            variant="ghost"
+            size="sm"
             data-testid={`topic-chip-${topic}`}
             onClick={() => onSelectTopic?.(topic)}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+              "h-auto shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
               "  ",
               active
                 ? "border-white/40 bg-white/85 text-black"
@@ -45,7 +47,7 @@ export function TopicChipsBar({
             )}
           >
             {topic}
-          </button>
+          </Button>
         );
       })}
     </div>

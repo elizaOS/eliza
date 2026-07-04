@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConversationMessageSearchResult } from "../../../api/client-types-chat";
+import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 
 const MIN_QUERY_LENGTH = 2;
@@ -156,11 +157,11 @@ export function MessageSearchPanel({
         >
           {results.map((result) => (
             <li key={result.messageId}>
-              <button
-                type="button"
+              <Button
                 data-testid="message-search-result"
                 onClick={() => handleJump(result)}
-                className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
+                variant="ghost"
+                className="flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
               >
                 <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                   {result.role === "assistant" ? "Agent" : "You"} ·{" "}
@@ -169,7 +170,7 @@ export function MessageSearchPanel({
                 <span className="line-clamp-2 text-sm text-foreground">
                   {result.snippet}
                 </span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

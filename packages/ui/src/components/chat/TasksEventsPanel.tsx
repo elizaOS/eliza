@@ -14,19 +14,24 @@
 
 import { PanelRightClose, PanelRightOpen, Pencil } from "lucide-react";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { useAppSelector } from "../../state";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.
-import { resolveWidgetsForSlot } from "../../widgets";
+import {
+  getWidgetRegistryVersion,
+  resolveWidgetsForSlot,
+  subscribeWidgetRegistry,
+} from "../../widgets";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
   isWidgetVisible,
   type VisibilityCandidate,
 } from "../../widgets/visibility";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { Button } from "../ui/button";
 import { AppsSection } from "./AppsSection";
 import {
   type WidgetVisibilityCandidate,
@@ -57,6 +62,13 @@ export function TasksEventsPanel({
 }: TasksEventsPanelProps) {
   const plugins = useAppSelector((s) => s.plugins);
   const visibility = useChatSidebarVisibility();
+  // Re-resolve the chat-sidebar widget set when a widget registers late (plugin
+  // widget modules load on the idle path after this panel may have mounted).
+  const registryVersion = useSyncExternalStore(
+    subscribeWidgetRegistry,
+    getWidgetRegistryVersion,
+    getWidgetRegistryVersion,
+  );
   const [editOpen, setEditOpen] = useState(false);
 
   const WIDGETS_WIDTH_KEY = "eliza:chat:widgets-bar:width";
@@ -154,7 +166,7 @@ export function TasksEventsPanel({
       }),
     );
     return [appsCandidate, ...widgetCandidates];
-  }, [appsCandidate, plugins]);
+  }, [appsCandidate, plugins, registryVersion]);
 
   const widgetFilter = useCallback(
     (declaration: VisibilityCandidate) =>
@@ -173,15 +185,16 @@ export function TasksEventsPanel({
         data-testid="chat-widgets-bar"
         data-collapsed
       >
-        <button
-          type="button"
+        <Button
           data-testid="chat-widgets-expand-floating"
-          className="fixed bottom-3 right-3 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
+          variant="ghost"
+          size="icon-sm"
+          className="fixed bottom-3 right-3 z-40 h-6 w-6 shrink-0 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
           aria-label="Expand widgets"
           onClick={() => onToggleCollapsed?.(false)}
         >
           <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        </Button>
       </aside>
     );
   }
@@ -236,26 +249,28 @@ export function TasksEventsPanel({
           </div>
           {showFooter ? (
             <div className="flex items-center justify-between border-t border-border/30 pl-2 pr-2 pt-1.5 pb-2">
-              <button
-                type="button"
+              <Button
                 data-testid="chat-widgets-edit-inline"
-                className="inline-flex h-5 shrink-0 items-center gap-1 rounded-sm bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:text-txt"
+                variant="ghost"
+                size="sm"
+                className="h-5 shrink-0 gap-1 bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:bg-transparent hover:text-txt"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >
                 <Pencil className="h-3 w-3" aria-hidden />
                 <span>Widgets</span>
-              </button>
+              </Button>
               {showCollapseButton ? (
-                <button
-                  type="button"
+                <Button
                   data-testid="chat-widgets-collapse-inline"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-6 w-6 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
                   aria-label="Collapse widgets"
                   onClick={() => onToggleCollapsed?.(true)}
                 >
                   <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
-                </button>
+                </Button>
               ) : (
                 <span className="h-6 w-6" />
               )}

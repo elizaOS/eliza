@@ -2,14 +2,13 @@
  * Shared device-memory sizing + LRU helpers for every bounded view cache in the
  * shell.
  *
- * Both `retained-lazy.tsx` (route-chunk module cache) and
- * `components/views/DynamicViewLoader.tsx` (remote-bundle module cache)
- * previously each carried their OWN copy of the `navigator.deviceMemory` tier
- * resolution and the default/low-memory cap+TTL constants. The new
- * keep-alive view-instance cache (`KeepAliveViewHost` via `ViewLifecycleController`)
- * needs the same tiering, so this module is the single home for it. The two
- * module caches import the sizing from here so all three bounded caches scale
- * off one device-memory read and one place to tune the thresholds.
+ * Single home for the `navigator.deviceMemory` tier resolution and the
+ * default/low-memory cap+TTL constants shared by all three bounded caches:
+ * `retained-lazy.tsx` (route-chunk module cache),
+ * `components/views/DynamicViewLoader.tsx` (remote-bundle module cache), and
+ * the keep-alive view-instance cache (`KeepAliveViewHost` via
+ * `ViewLifecycleController`). They import the sizing from here so all three
+ * scale off one device-memory read and one place to tune the thresholds.
  *
  * Pure + dependency-free (no React, no DOM beyond a defensive `navigator`
  * read), so it unit-tests trivially and stays importable from Node test envs.

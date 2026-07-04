@@ -1,3 +1,9 @@
+/**
+ * Deterministic checks over the barge-in and thirty-turn endurance report
+ * builders: feeds canned e2e-loop runs and asserts cancel-latency, RSS-growth,
+ * and required-optimization gates pass and fail as designed. No model or audio
+ * backend.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 

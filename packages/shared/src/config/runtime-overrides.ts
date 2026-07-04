@@ -1,3 +1,8 @@
+/**
+ * In-memory override layer merged over the base `ElizaConfig` at read time.
+ * Holds a process-scoped override tree that callers set/unset by dot-path (via
+ * config-paths.js) to adjust config without mutating the persisted file.
+ */
 import { isPlainObject } from "../type-guards.js";
 import {
   parseConfigPath,

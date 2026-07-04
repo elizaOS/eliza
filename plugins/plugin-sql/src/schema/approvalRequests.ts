@@ -1,7 +1,3 @@
-import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { agentTable } from "./agent";
-
 /**
  * Persistent backing store for the LifeOps human-in-the-loop approval queue.
  *
@@ -17,6 +13,10 @@ import { agentTable } from "./agent";
  * layer is the single source of truth for the state machine and the closed
  * action/channel enums (Commandment 7).
  */
+import { sql } from "drizzle-orm";
+import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { agentTable } from "./agent";
+
 export const approvalRequestTable = pgTable(
   "approval_requests",
   {

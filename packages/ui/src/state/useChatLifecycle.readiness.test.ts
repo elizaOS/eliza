@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the readiness decision driving useChatLifecycle's status
+ * re-poll loop (clearing the "waking up" banner). Pure functions, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentStatus } from "../api";
 import { shouldAwaitAgentReadiness } from "./types";

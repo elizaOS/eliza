@@ -1,17 +1,15 @@
+/**
+ * PostgreSQL RLS integration tests for `message_server_agents`: verifies
+ * Server A cannot see, join across, modify, or delete Server B's associations
+ * — isolating Discord/Telegram server associations by `server_id`. All
+ * connections use the `eliza_test` role (not superuser); `application_name`
+ * supplies each server's RLS context, and each server's data is set up via
+ * its own connection.
+ */
 import { Client } from "pg";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bootstrapPostgresRlsSchema } from "./rls-test-helpers";
-
-/**
- * PostgreSQL RLS Integration Tests for message_server_agents
- *
- * Tests verify that Server A cannot see message_server_agents entries from Server B
- * This ensures proper isolation of Discord/Telegram server associations
- *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS. Each server's data is set up via its own connection.
- */
 
 describe.skipIf(!process.env.POSTGRES_URL)(
   "PostgreSQL RLS - message_server_agents Isolation",

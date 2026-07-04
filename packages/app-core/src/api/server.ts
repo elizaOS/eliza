@@ -39,7 +39,6 @@ import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-  ensureRouteMinRole,
 } from "./auth.ts";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
@@ -48,6 +47,7 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
+import { enforceCompatRouteAuthPolicy } from "./route-auth-policy";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
@@ -156,7 +156,6 @@ import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
-import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
@@ -675,7 +674,7 @@ async function handleCompatRouteInner(
   // AGENTS.md §1: cloud mode hides /api/local-inference/*, local-only mode
   // hides /api/cloud/*. Hidden = 404 (not 403) so callers cannot probe
   // mode state.
-  const gate = applyRouteModeGuard(req, res);
+  const gate = applyRouteModeGuard(req, res, state.current);
   if (gate.handled) return true;
 
   // ── Remote-mode forward ───────────────────────────────────────────────
@@ -684,6 +683,16 @@ async function handleCompatRouteInner(
   if (gate.mode === "remote") {
     if (await forwardRemoteCloudMutation(req, res)) return true;
   }
+
+  const authPolicyDecision = await enforceCompatRouteAuthPolicy(
+    req,
+    res,
+    state,
+    method,
+    url.pathname,
+  );
+  if (authPolicyDecision === "denied") return true;
+  if (authPolicyDecision === "unmanaged") return false;
 
   // Runtime mode introspection — UI shells hit this on boot for the
   // useRuntimeMode() hook.
@@ -768,30 +777,20 @@ async function handleCompatRouteInner(
   }
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 
-  if (method === "POST" && url.pathname === "/api/tts/cloud") {
-    if (!(await ensureRouteAuthorized(req, res, state))) return true;
-    const { handleCloudTtsPreviewRoute } = await import(
-      "@elizaos/plugin-elizacloud"
-    );
-    return handleCloudTtsPreviewRoute(req, res);
-  }
-
-  if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
-    // Intentional passthrough: ElevenLabs TTS is handled by the upstream
-    // Eliza server handler, not by the app API layer. Returning false
-    // lets the request fall through to the next handler in the chain.
-    return false;
-  }
-
-  // Workbench / todos routes.
-  if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
+  // Workbench todos CRUD is owned by @elizaos/plugin-workflow and served on the
+  // runtime plugin route system (`/api/workbench/todos*`).
 
   if (url.pathname.startsWith("/api/secrets/")) {
-    if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
-    if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
+    // #12087 Item 4: each secrets handler self-gates at OWNER (ensureRouteMinRole
+    // in the handler), so the auth no longer lives only in this dispatch prefix.
+    if (
+      await handleSecretsInventoryRoute(req, res, url.pathname, method, state)
+    ) {
       return true;
     }
-    if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
+    if (
+      await handleSecretsManagerRoute(req, res, url.pathname, method, state)
+    ) {
       return true;
     }
   }

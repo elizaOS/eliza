@@ -1,3 +1,12 @@
+/**
+ * Per-field-type control renderers for the plugin-config form (text, password,
+ * number, boolean, url, select, textarea, email, color, radio, multiselect,
+ * date, json, code, array, key-value, datetime, file, markdown, custom) plus the
+ * `defaultRenderers` map keyed by field type. `ConfigField` picks a renderer from
+ * this map; each renderer reads `FieldRenderProps` and can fire hint-bound actions
+ * via `fireAction`. Controls share the config-input styling from
+ * config-control-primitives.helpers.
+ */
 import { ChevronDown, X } from "lucide-react";
 import React, {
   useCallback,
@@ -22,6 +31,7 @@ import { useAppSelector } from "../../state";
 import type { DynamicValue } from "../../types";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
 import {
   Select,
   SelectContent,
@@ -30,6 +40,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import {
   getConfigInputClassName,
   getConfigTextareaClassName,
@@ -80,7 +91,7 @@ export function renderTextField(props: FieldRenderProps) {
       : "Enter value...");
 
   return (
-    <input
+    <Input
       className={inputCls(!!props.errors?.length)}
       type="text"
       defaultValue={value}
@@ -142,7 +153,7 @@ function PasswordFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 
   return (
     <div className="flex">
-      <input
+      <Input
         ref={inputRef}
         className="flex-1 px-3 py-2 border border-border border-r-0 bg-card text-sm font-[var(--mono)] transition-all     box-border h-9 rounded-l-sm placeholder:text-muted placeholder:opacity-60"
         type={visible ? "text" : "password"}
@@ -223,7 +234,7 @@ function NumberFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             −
           </Button>
         )}
-        <input
+        <Input
           className={`${inputCls(!!props.errors?.length)} ${unit ? "flex-1" : "w-full"} text-center`}
           type="number"
           value={val}
@@ -330,7 +341,7 @@ export function renderUrlField(props: FieldRenderProps) {
       : "https://...");
 
   return (
-    <input
+    <Input
       className={inputCls(!!props.errors?.length)}
       type="url"
       defaultValue={value}
@@ -577,9 +588,9 @@ function SearchableSelectInner({
           >
             {/* Search input */}
             <div className="p-1.5">
-              <input
+              <Input
                 ref={searchInputRef}
-                className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)]   rounded-sm"
+                className="h-8 w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)]   rounded-sm"
                 type="text"
                 value={filter}
                 placeholder={`Search ${options.length} options...`}
@@ -673,7 +684,7 @@ function TextareaFieldInner({ fp: props }: { fp: FieldRenderProps }) {
   }, []);
 
   return (
-    <textarea
+    <Textarea
       ref={textareaRef}
       className={textareaCls(!!props.errors?.length)}
       style={{ fieldSizing: "content" } as React.CSSProperties}
@@ -702,7 +713,7 @@ export function renderEmailField(props: FieldRenderProps) {
   const placeholder = props.hint.placeholder ?? "user@example.com";
 
   return (
-    <input
+    <Input
       className={inputCls(!!props.errors?.length)}
       type="email"
       defaultValue={value}
@@ -739,7 +750,7 @@ function ColorFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         className="w-[36px] h-9 border border-border p-0.5 cursor-pointer bg-transparent rounded-sm [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-sm"
         type="color"
         value={color}
@@ -750,7 +761,7 @@ function ColorFieldInner({ fp: props }: { fp: FieldRenderProps }) {
         onBlur={() => fireAction(props, "blur")}
         onClick={() => fireAction(props, "click")}
       />
-      <input
+      <Input
         className={`${inputCls(!!props.errors?.length)} flex-1`}
         type="text"
         value={color}
@@ -774,6 +785,7 @@ export function renderRadioField(props: FieldRenderProps) {
 }
 
 function RadioFieldInner({ fp: props }: { fp: FieldRenderProps }) {
+  const radioGroupId = useId().replace(/:/g, "");
   const options: Array<{
     value: string;
     label: string;
@@ -805,32 +817,37 @@ function RadioFieldInner({ fp: props }: { fp: FieldRenderProps }) {
       data-config-key={props.key}
       data-field-type="radio"
     >
-      {options.map((opt) => (
-        <label
-          key={opt.value}
-          className="flex items-start gap-2 cursor-pointer text-sm"
-        >
-          <input
-            type="radio"
-            name={props.key}
-            value={opt.value}
-            checked={opt.value === selected}
-            disabled={props.readonly || opt.disabled}
-            onChange={() => handleChange(opt.value)}
-            onClick={() => fireAction(props, "click")}
-            onBlur={() => fireAction(props, "blur")}
-            className="mt-0.5 shrink-0"
-          />
-          <span>
-            {opt.label}
-            {opt.description && (
-              <div className="text-xs-tight text-muted mt-px">
-                {opt.description}
-              </div>
-            )}
-          </span>
-        </label>
-      ))}
+      {options.map((opt, index) => {
+        const optionId = `${radioGroupId}-${index}`;
+        return (
+          <label
+            key={opt.value}
+            htmlFor={optionId}
+            className="flex items-start gap-2 cursor-pointer text-sm"
+          >
+            <Input
+              id={optionId}
+              type="radio"
+              name={props.key}
+              value={opt.value}
+              checked={opt.value === selected}
+              disabled={props.readonly || opt.disabled}
+              onChange={() => handleChange(opt.value)}
+              onClick={() => fireAction(props, "click")}
+              onBlur={() => fireAction(props, "blur")}
+              className="mt-0.5 h-4 w-4 shrink-0 p-0"
+            />
+            <span>
+              {opt.label}
+              {opt.description && (
+                <div className="text-xs-tight text-muted mt-px">
+                  {opt.description}
+                </div>
+              )}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -947,7 +964,7 @@ export function renderDateField(props: FieldRenderProps) {
     props.schema.format === "date-time" ? "datetime-local" : "date";
 
   return (
-    <input
+    <Input
       className={inputCls(!!props.errors?.length)}
       type={inputType}
       defaultValue={value}
@@ -998,7 +1015,7 @@ function JsonFieldInner({ fp: props }: { fp: FieldRenderProps }) {
 
   return (
     <div>
-      <textarea
+      <Textarea
         className={textareaCls(
           Boolean(jsonError || props.errors?.length),
           "min-h-[100px]",
@@ -1036,7 +1053,7 @@ export function renderCodeField(props: FieldRenderProps) {
   const placeholder = props.hint.placeholder ?? "Enter code...";
 
   return (
-    <textarea
+    <Textarea
       className={textareaCls(!!props.errors?.length, "min-h-[100px]")}
       defaultValue={value}
       placeholder={placeholder}
@@ -1117,7 +1134,7 @@ function ArrayItem({
           </Button>
         </div>
       )}
-      <input
+      <Input
         className={`${inputCls(hasError)} flex-1`}
         type="text"
         value={value}
@@ -1277,7 +1294,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
           key={`${pair.key}:${pair.value}`}
           className="flex items-center gap-1"
         >
-          <input
+          <Input
             className={`${inputCls(!!props.errors?.length)} flex-1`}
             type="text"
             value={pair.key}
@@ -1286,7 +1303,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             onChange={(e) => updateRow(index, "key", e.target.value)}
             onBlur={() => fireAction(props, "blur")}
           />
-          <input
+          <Input
             className={`${inputCls(!!props.errors?.length)} flex-1`}
             type="text"
             value={pair.value}
@@ -1336,7 +1353,7 @@ export function renderDatetimeField(props: FieldRenderProps) {
   const value = props.isSet ? String(props.value ?? "") : "";
 
   return (
-    <input
+    <Input
       className={inputCls(!!props.errors?.length)}
       type="datetime-local"
       defaultValue={value}
@@ -1363,7 +1380,7 @@ export function RenderFileField(props: FieldRenderProps) {
 
   return (
     <div>
-      <input
+      <Input
         className={inputCls(!!props.errors?.length)}
         type="text"
         defaultValue={value}
@@ -1628,7 +1645,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
           )}
         </div>
       ) : (
-        <textarea
+        <Textarea
           className={textareaCls(
             !!props.errors?.length,
             "min-h-[100px] h-auto",
@@ -1748,7 +1765,7 @@ export const renderGroupField: FieldRenderer = (props) => {
       <legend className="text-xs font-semibold text-muted px-1.5">
         {props.hint.label ?? props.key}
       </legend>
-      <textarea
+      <Textarea
         className={textareaCls(!!props.errors?.length, "min-h-[60px] h-auto")}
         defaultValue={value}
         placeholder={props.hint.placeholder ?? "Group configuration..."}
@@ -1833,8 +1850,8 @@ function TableFieldInner(props: FieldRenderProps) {
               <tr key={JSON.stringify(row)} className="">
                 {columns.map((col) => (
                   <td key={col.key} className="px-1 py-0.5">
-                    <input
-                      className="w-full px-2 py-1 bg-transparent text-sm border-none outline-none "
+                    <Input
+                      className="h-8 w-full px-2 py-1 bg-transparent text-sm border-none outline-none "
                       value={row[col.key] ?? ""}
                       placeholder={col.label}
                       disabled={props.readonly}

@@ -1,3 +1,8 @@
+/**
+ * CacheRedisClient adapter over the node `redis` package, used by Node/Bun
+ * services (Railway) that can open a native TCP connection.
+ */
+
 import type { createClient } from "redis";
 import type { CacheRedisClient } from "./types";
 

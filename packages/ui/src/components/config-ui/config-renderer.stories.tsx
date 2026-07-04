@@ -1,3 +1,8 @@
+/**
+ * Storybook states for ConfigRenderer driven by a sample JSON Schema: default,
+ * missing-required, partially configured, fully configured, and the no-schema
+ * empty case. Uses the default registry so real field renderers mount.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { mockApp } from "../../storybook/mock-providers.helpers";

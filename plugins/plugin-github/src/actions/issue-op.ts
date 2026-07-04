@@ -1,11 +1,8 @@
 /**
- * @module issue-op
- * @description Single router action covering GitHub issue lifecycle ops:
- * create, assign, close, reopen, comment, label. Replaces the old
- * CREATE_ISSUE / ASSIGN_ISSUE actions and absorbs the issue-management ops
- * previously implemented in plugin-agent-orchestrator's MANAGE_ISSUES.
- *
- * All ops are write ops gated on `confirmed: true`.
+ * Single router action covering the GitHub issue lifecycle ops: create,
+ * assign, close, reopen, comment, label. Dispatched to by the umbrella
+ * GITHUB action. Every op is a write op and passes through the runtime's
+ * `requireConfirmation` gate before it touches the GitHub API.
  */
 
 import type {

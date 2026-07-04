@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the frame-budget sampler: percentile math and the report
+ * threshold. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FRAME_BUDGET,

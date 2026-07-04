@@ -1,3 +1,8 @@
+/**
+ * AVAILABLE_CODING_TOOLS provider: injects the list of tool names the plugin
+ * exposes (FILE, SHELL, WORKTREE) into agent state at position -10 so the model
+ * knows which coding actions it can call.
+ */
 import type {
   IAgentRuntime,
   Memory,

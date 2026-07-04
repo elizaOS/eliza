@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	createSecretsRedactor,
 	getDefaultRedactPatterns,
+	isSensitiveKeyName,
+	redactLogArgs,
 	redactObjectSecrets,
 	redactSecrets,
 	redactSensitiveText,
@@ -124,5 +126,107 @@ describe("replacement-pattern safety ($-expansion)", () => {
 		});
 		expect(out).toBe("value is [REDACTED:WEIRD$&NAME]");
 		expect(out).not.toContain("supersecretvalue123");
+	});
+});
+
+/**
+ * Name-based key detection (isSensitiveKeyName) is the single source of truth
+ * shared by the cloud logger's redact.context and the log-sink redactor, so
+ * "which field names are secret" is defined once (#12229 M6).
+ */
+describe("isSensitiveKeyName", () => {
+	it("flags credential-named keys regardless of case/separator", () => {
+		for (const key of [
+			"apiKey",
+			"api_key",
+			"password",
+			"secret",
+			"privateKey",
+			"private_key",
+			"accessToken",
+			"refreshToken",
+			"authorization",
+			"mnemonic",
+			"seedPhrase",
+			"sshKey",
+			"signingKey",
+			"credential",
+		]) {
+			expect(isSensitiveKeyName(key)).toBe(true);
+		}
+	});
+
+	it("does not flag benign keys, including tokenId", () => {
+		for (const key of ["userId", "count", "tokenId", "name", "url", "status"]) {
+			expect(isSensitiveKeyName(key)).toBe(false);
+		}
+	});
+});
+
+/**
+ * redactLogArgs is the sink-level redactor: it masks secrets structurally so a
+ * logger that pipes its args through it protects `{ apiKey }` with no
+ * redact.context() at the call site (#12229 M6).
+ */
+describe("redactLogArgs (log-sink redaction, not opt-in)", () => {
+	it("masks a value under a credential-named key without any wrapping", () => {
+		const [msg, ctx] = redactLogArgs([
+			"boot",
+			{ apiKey: "eliza_supersecretvalue123456", userId: "u-1" },
+		]) as [string, Record<string, unknown>];
+		expect(msg).toBe("boot");
+		expect(ctx.apiKey).toBe("[REDACTED]");
+		expect(ctx.userId).toBe("u-1");
+		expect(JSON.stringify(ctx)).not.toContain("eliza_supersecretvalue123456");
+	});
+
+	it("masks a value-shaped secret in a plain string argument", () => {
+		const [msg] = redactLogArgs(["key is sk-abcdefghijklmnop1234"]) as [string];
+		expect(msg).not.toContain("sk-abcdefghijklmnop1234");
+	});
+
+	it("masks a nested credential-named key", () => {
+		const [ctx] = redactLogArgs([
+			{ config: { db: { password: "hunter2-supersecret" } } },
+		]) as [Record<string, unknown>];
+		expect(JSON.stringify(ctx)).not.toContain("hunter2-supersecret");
+		expect(JSON.stringify(ctx)).toContain("[REDACTED]");
+	});
+
+	it("masks the whole value under a credential-named key, even when it is not a string", () => {
+		const [ctx] = redactLogArgs([
+			{
+				authorization: {
+					scheme: "Bearer",
+					value: "nested-supersecret-value",
+				},
+			},
+		]) as [Record<string, unknown>];
+		expect(ctx.authorization).toBe("[REDACTED]");
+		expect(JSON.stringify(ctx)).not.toContain("nested-supersecret-value");
+	});
+
+	it("scrubs a secret interpolated into an Error message", () => {
+		const [err] = redactLogArgs([
+			new Error("failed with token=sk-abcdefghijklmnop1234"),
+		]) as [Error];
+		expect(err).toBeInstanceOf(Error);
+		expect(err.message).not.toContain("sk-abcdefghijklmnop1234");
+	});
+
+	it("does not hang or throw on a cyclic object", () => {
+		const cyclic: Record<string, unknown> = { name: "x" };
+		cyclic.self = cyclic;
+		const [out] = redactLogArgs([cyclic]) as [Record<string, unknown>];
+		expect(out.name).toBe("x");
+	});
+
+	it("leaves non-string, non-object arguments untouched", () => {
+		expect(redactLogArgs([1, true, null, undefined])).toEqual([
+			1,
+			true,
+			null,
+			undefined,
+		]);
 	});
 });

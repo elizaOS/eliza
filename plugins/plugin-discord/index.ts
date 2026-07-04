@@ -1,3 +1,11 @@
+/**
+ * Plugin definition and public barrel for `@elizaos/plugin-discord`. `init`
+ * registers the connector account provider, reads the Discord env vars, and
+ * prints the startup banner; the exported `Plugin` wires the `services` and
+ * `routes` arrays that make up this connector's surface. No actions or
+ * providers are registered — all behavior flows through services and
+ * `DiscordEventTypes` events.
+ */
 import {
 	getConnectorAccountManager,
 	type IAgentRuntime,
@@ -8,9 +16,11 @@ import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { discordDataRoutes } from "./data-routes";
+import { registerDiscordTargetSource } from "./discord-target-source";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
+import { registerDiscordTriageAdapter } from "./triage-adapter";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
@@ -20,6 +30,14 @@ const discordPlugin: Plugin = {
 	name: "discord",
 	description:
 		"Discord service plugin for integration with Discord servers and channels",
+	connectorSources: [
+		{
+			source: "discord",
+			aliases: ["discord", "discord-local"],
+			sourceKind: "passive",
+			isPassive: true,
+		},
+	],
 	services: [
 		DiscordService,
 		DiscordOwnerPairingServiceImpl,
@@ -47,6 +65,13 @@ const discordPlugin: Plugin = {
 		}
 
 		registerDiscordDmSensitiveRequestAdapter(runtime);
+
+		// Register the cross-connector triage adapter for the "discord" source.
+		registerDiscordTriageAdapter();
+
+		// Register the Discord target-source enumerator so the host's
+		// connector-target-catalog can surface guild/channel quick-picks.
+		registerDiscordTargetSource(runtime);
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;
@@ -182,6 +207,23 @@ export {
 	shouldEmitDiscordReactionNotification,
 	validateMessageAllowed,
 } from "./allowlist";
+export {
+	DEFAULT_DISCORD_AUDIO_LANES,
+	DISCORD_AUDIO_LANE_AMBIENT,
+	DISCORD_AUDIO_LANE_MUSIC,
+	DISCORD_AUDIO_LANE_SFX,
+	DISCORD_AUDIO_LANE_TTS,
+	type DiscordAudioLane,
+	type DiscordAudioLaneConfig,
+	getDiscordAudioLaneConfig,
+	normalizeDiscordAudioLane,
+} from "./audio-lanes";
+export type {
+	DiscordAudioPlaybackHandle,
+	DiscordAudioSinkPlayOptions,
+	DiscordAudioSinkStatus,
+	IDiscordAudioSink,
+} from "./audio-sink";
 // Channel configuration types (comprehensive config schema)
 // Re-export config types that were in accounts.ts for backward compatibility
 export type {
@@ -334,3 +376,8 @@ export {
 	searchDiscordMessages,
 	sendDiscordViaDesktopCdp,
 } from "./user-account-scraper";
+export type {
+	DiscordVoicePlaybackOptions,
+	DiscordVoiceTarget,
+	DiscordVoiceTargetRegistration,
+} from "./voice-target-registry";

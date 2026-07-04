@@ -35,6 +35,12 @@ describe("parseAecLoopHash (#11373)", () => {
     });
   });
 
+  it("parses the near-end (double-talk) audio URL", () => {
+    expect(
+      parseAecLoopHash("#aec-loop?nearUrl=https%3A%2F%2Fexample.test%2Fn.wav"),
+    ).toEqual({ nearEndAudioUrl: "https://example.test/n.wav" });
+  });
+
   it("ignores malformed numeric params", () => {
     expect(
       parseAecLoopHash("#aec-loop?maxSeconds=abc&tailMs=-5&warmupMs=nope"),

@@ -25,6 +25,4 @@
 
 ## Hand review
 
-System status, queue stats, filters, and the redemptions zero state are all legible. Note: the 'Processing' stat renders purple (non-blue; palette note for the theme pass).
-
-_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+Reviewed the refreshed desktop and mobile screenshots from the July 3, 2026 audit run. The route renders its intended state with readable text, no layout break, no banned blue, and no orange hover violation.

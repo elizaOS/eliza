@@ -1,5 +1,8 @@
 /**
- * Voice-related constants and helpers extracted from CharacterEditor.
+ * Voice-picker constants and defaults for the character editor: the grouped
+ * ElevenLabs / Edge voice catalogs shown in the dropdown, the default fast
+ * ElevenLabs model, and the helper that derives a `VoiceConfig` from a selected
+ * character roster entry (honoring whether an API key is configured).
  */
 
 import type { VoiceConfig } from "../../api/client";

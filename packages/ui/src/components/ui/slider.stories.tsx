@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the slider primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Slider } from "./slider";
 

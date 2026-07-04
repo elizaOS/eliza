@@ -1,3 +1,4 @@
+/** `TeeVendorInterface` contract each TEE vendor implements, plus the `TeeVendorNames` registry of known vendor keys. */
 import type { Action, Provider } from "@elizaos/core";
 
 export const TeeVendorNames = {

@@ -1,19 +1,21 @@
-// Browser fixture for the proactive-suggestions e2e (#8792) — phase 2 of
-// run-suggestions-e2e.mjs.
-//
-// Renders the REAL transcript pipeline a governed proactive comment flows
-// through on the client: the real `parseProactiveMessageEvent` WS-frame parser
-// (state/parsers — the exact function the shell's `proactive-message` WS
-// subscriber calls) feeding the real `ChatTranscript` → `ChatMessage`
-// composites, which render the #8792 suggestion affordance (Suggestion chip +
-// "Do it" + dismiss) for `source: "proactive-interaction"` messages.
-//
-// The dismiss/accept handlers mirror ChatView's wiring exactly: dismiss removes
-// the bubble locally; accept sends "Yes, let's do it." as a normal turn and
-// then clears the bubble. The runner feeds this fixture REAL frames captured
-// from the real server pipeline (views/interactions routes → decider → gate →
-// routeAutonomyTextToUser → broadcast) in phase 1 — no hand-written frames for
-// the happy path.
+/**
+ * Browser fixture for the proactive-suggestions e2e (#8792) — phase 2 of
+ * run-suggestions-e2e.mjs.
+ *
+ * Renders the REAL transcript pipeline a governed proactive comment flows
+ * through on the client: the real `parseProactiveMessageEvent` WS-frame parser
+ * (state/parsers — the exact function the shell's `proactive-message` WS
+ * subscriber calls) feeding the real `ChatTranscript` → `ChatMessage`
+ * composites, which render the #8792 suggestion affordance (Suggestion chip +
+ * "Do it" + dismiss) for `source: "proactive-interaction"` messages.
+ *
+ * The dismiss/accept handlers mirror ChatView's wiring exactly: dismiss removes
+ * the bubble locally; accept sends "Yes, let's do it." as a normal turn and then
+ * clears the bubble. The runner feeds this fixture REAL frames captured from the
+ * real server pipeline (views/interactions routes → decider → gate →
+ * routeAutonomyTextToUser → broadcast) in phase 1 — no hand-written frames for
+ * the happy path.
+ */
 
 import * as React from "react";
 import { useCallback, useLayoutEffect, useState } from "react";

@@ -10,8 +10,21 @@ import type {
 } from "./definitions";
 
 interface ElizaWindow extends Window {
-  __ELIZA_API_BASE__?: string;
+  /**
+   * The renderer's boot-config mirror — the single source of truth for the API
+   * base (see packages/ui/src/config/boot-config-store.ts). The host UI, the
+   * agent static-file server, and the Electrobun renderer all write the API base
+   * here; this web shim reads it rather than a bespoke API-base window global so
+   * there is one base value across the app and its native plugins.
+   */
+  __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
   __ELIZA_API_TOKEN__?: string;
+}
+
+function readConfiguredApiBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const base = (window as ElizaWindow).__ELIZAOS_APP_BOOT_CONFIG__?.apiBase;
+  return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
 function assertNonEmptyText(text: unknown): string {
@@ -76,7 +89,7 @@ function assertRequestMethod(method: unknown): string {
  *
  * Local-agent-on-Android (Phase E): when the host UI selects the
  * "Local Agent" tile, it sets `apiBase` to `http://127.0.0.1:31337`,
- * which the runtime mirrors into `window.__ELIZA_API_BASE__`. From this
+ * which the runtime records in the boot config. From this
  * plugin's perspective there is no special case — it simply HTTP-POSTs
  * to `${apiBase}/api/agent/start|stop|status`, which is exactly the same
  * surface Phase B's `ElizaAgentService` exposes. The web fallback path
@@ -165,13 +178,8 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   }
 
   private apiBase(): string {
-    const global =
-      typeof window !== "undefined"
-        ? (window as ElizaWindow).__ELIZA_API_BASE__
-        : undefined;
-    if (typeof global === "string" && global.trim().length > 0) return global;
     // No explicit base — use relative URLs (works on http/https origins).
-    return "";
+    return readConfiguredApiBase() ?? "";
   }
 
   private isLocalAgentIpcBase(): boolean {
@@ -217,11 +225,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   /** True when we can reach the API via HTTP. */
   private canReachApi(): boolean {
     if (this.isLocalAgentIpcBase()) return false;
-    const global =
-      typeof window !== "undefined"
-        ? (window as ElizaWindow).__ELIZA_API_BASE__
-        : undefined;
-    if (typeof global === "string" && global.trim().length > 0) return true;
+    if (readConfiguredApiBase()) return true;
     // No explicit base — relative fetches only work on http(s) origins.
     if (typeof window === "undefined") return false;
     const proto = window.location.protocol;

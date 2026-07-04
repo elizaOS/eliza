@@ -1,3 +1,13 @@
+/**
+ * Shared-secret authentication for the inbound BlueBubbles webhook.
+ *
+ * Resolves the expected `X-BlueBubbles-Webhook-Secret` from runtime settings or
+ * env, extracts the header off a `RouteRequest` (case-insensitive, array-safe),
+ * and compares them with a constant-time `timingSafeEqual`. The POST
+ * `/webhooks/bluebubbles` handler in `data-routes.ts` gates every inbound event
+ * through `isBlueBubblesWebhookAuthorized`; a missing configured secret fails
+ * closed (unauthorized), so the webhook is never open by default.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
 

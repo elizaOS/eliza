@@ -17,7 +17,7 @@
  */
 
 import { createHash } from "crypto";
-import { type JWTPayload, jwtVerify } from "jose";
+import { type JWTPayload, jwtVerify, SignJWT } from "jose";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../cache/keys";
@@ -89,6 +89,8 @@ export interface StewardVerifyEnv {
   STEWARD_TENANT_ID?: string;
 }
 
+export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
+
 // Cache the encoded secret keyed by raw value, so repeated requests with the
 // same secret skip the TextEncoder allocation. Bounded at one entry — secrets
 // don't rotate on every request, and a stale entry just costs one re-encode.
@@ -114,6 +116,42 @@ function resolveJwtSecret(env: StewardVerifyEnv): Uint8Array | null {
   const key = new TextEncoder().encode(raw);
   _jwtSecretCache = { raw, key };
   return key;
+}
+
+export async function mintStewardTokenFromClaims(
+  env: StewardVerifyEnv,
+  claims: StewardTokenClaims,
+  ttlSeconds = STEWARD_ACCESS_TOKEN_TTL_SECONDS,
+): Promise<{ token: string; expiresAt: number; expiresIn: number } | null> {
+  const secret = resolveJwtSecret(env);
+  if (!secret) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const expiresIn = Math.max(1, Math.floor(ttlSeconds));
+  const expiresAt = now + expiresIn;
+  const payload: Record<string, unknown> = {
+    userId: claims.userId,
+  };
+  if (claims.email) payload.email = claims.email;
+  const walletAddress = claims.walletAddress ?? claims.address;
+  if (walletAddress) {
+    payload.address = walletAddress;
+    payload.walletAddress = walletAddress;
+  }
+  if (claims.walletChain) payload.walletChain = claims.walletChain;
+  if (claims.tenantId) {
+    payload.tenantId = claims.tenantId;
+    payload.tenant_id = claims.tenantId;
+  }
+
+  const token = await new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setSubject(claims.userId)
+    .setIssuedAt(now)
+    .setExpirationTime(expiresAt)
+    .sign(secret);
+
+  return { token, expiresAt, expiresIn };
 }
 
 /**

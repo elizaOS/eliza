@@ -1,3 +1,14 @@
+/**
+ * Full-screen overlay that opens a voice-transcript chat attachment: shows the
+ * per-speaker segments (or plain text), plays the recorded audio, and supports
+ * copy / download / share / inline edit / delete of the stored transcript record.
+ *
+ * The stored `transcriptId` is not always carried on the re-served attachment,
+ * so it is also embedded as a leading HTML comment in the transcript markdown
+ * (`TRANSCRIPT_MARKER`) that round-trips through the server's extracted `text`;
+ * the viewer strips it for display and uses it to persist edits. Mounted from a
+ * transcript attachment via `createPortal` at the shell-overlay z-layer.
+ */
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
@@ -427,11 +438,11 @@ export function TranscriptViewerOverlay({
         paddingTop: "calc(var(--safe-area-top, 0px) + 1rem)",
       }}
     >
-      <button
-        type="button"
+      <Button
         aria-label="Close transcript"
         onClick={onClose}
-        className="absolute inset-0 cursor-default bg-scrim"
+        variant="ghost"
+        className="absolute inset-0 h-auto w-auto cursor-default rounded-none bg-scrim hover:bg-scrim"
       />
       <div
         className={cn(
@@ -444,14 +455,15 @@ export function TranscriptViewerOverlay({
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt-strong">
             {title}
           </h2>
-          <button
-            type="button"
+          <Button
             aria-label="Close"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 rounded-full bg-bg-hover text-muted transition-colors hover:bg-surface hover:text-txt active:scale-[0.96] motion-reduce:active:scale-100"
           >
             <X className="h-4 w-4" strokeWidth={1.5} />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
@@ -474,22 +486,24 @@ export function TranscriptViewerOverlay({
               <div className="flex items-center gap-1 text-xs text-muted">
                 <FileAudio className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} aria-hidden />
                 <span className="mr-1">Recording</span>
-                <button
-                  type="button"
+                <Button
                   onClick={handleDownloadAudio}
                   data-testid="transcript-save-audio"
-                  className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto rounded-sm px-1.5 py-0.5 text-xs font-normal text-muted transition-colors hover:bg-bg-hover hover:text-txt"
                 >
                   Download
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   onClick={() => void handleShareAudio()}
                   data-testid="transcript-share-audio"
-                  className="rounded-sm px-1.5 py-0.5 text-muted transition-colors hover:bg-bg-hover hover:text-txt"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto rounded-sm px-1.5 py-0.5 text-xs font-normal text-muted transition-colors hover:bg-bg-hover hover:text-txt"
                 >
                   Share
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}

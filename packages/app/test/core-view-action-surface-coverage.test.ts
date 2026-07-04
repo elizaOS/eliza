@@ -73,6 +73,13 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
     ],
     minAgentElements: 3,
   },
+  automations: {
+    viewId: "automations",
+    provider: "shell",
+    files: ["packages/ui/src/components/pages/AutomationsFeed.tsx"],
+    minAgentElements: 4,
+    requiredSnippets: ["action-new", "run-workflow-"],
+  },
   orchestrator: {
     viewId: "orchestrator",
     provider: "dynamic",
@@ -182,6 +189,10 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
   appearance: [
     "packages/ui/src/components/settings/AppearanceSettingsSection.tsx",
   ],
+  background: [
+    "packages/ui/src/components/settings/BackgroundSettingsSection.tsx",
+    "packages/ui/src/components/settings/BackgroundSettingsControls.tsx",
+  ],
   "remote-plugins": [
     "packages/ui/src/components/settings/RemotePluginHostSection.tsx",
   ],
@@ -220,7 +231,13 @@ function readRepoFiles(files: readonly string[]): string {
 function countAgentElements(source: string): number {
   return (
     (source.match(/useAgentElement(?:<[^>]*>)?\(/g)?.length ?? 0) +
-    (source.match(/\sagent=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0)
+    (source.match(/\sagent=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0) +
+    // Design-system agent-surface rows (`settings-agent-rows`,
+    // `useAgentElement`-backed controls) declare their agent-addressable control
+    // via an `agentId=` prop instead of a direct `useAgentElement(` call — a
+    // section built entirely from those rows (e.g. CapabilitiesSection after the
+    // design-system consolidation) is still fully agent-wired.
+    (source.match(/\sagentId=\{?["'`][^"'`]+["'`]\}?/g)?.length ?? 0)
   );
 }
 

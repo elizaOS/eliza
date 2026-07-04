@@ -109,47 +109,71 @@ function buildRouteContext(
   };
 }
 
-const STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
+const COMPANION_ROUTE_REASON =
+  "Browser companion callbacks use companion session identifiers as capability tokens.";
+
+const STATIC_ROUTES: Array<{
+  type: string;
+  path: string;
+  public?: boolean;
+  publicReason?: string;
+}> = [
   { type: "GET", path: "/api/browser-bridge/sessions" },
   { type: "GET", path: "/api/browser-bridge/settings" },
   { type: "POST", path: "/api/browser-bridge/settings" },
   { type: "POST", path: "/api/browser-bridge/companions/pair" },
   { type: "POST", path: "/api/browser-bridge/companions/auto-pair" },
   { type: "GET", path: "/api/browser-bridge/companions" },
-  { type: "POST", path: "/api/browser-bridge/companions/revoke", public: true },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/revoke",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+  },
   { type: "GET", path: "/api/browser-bridge/packages" },
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
-  { type: "POST", path: "/api/browser-bridge/companions/sync", public: true },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sync",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+  },
   { type: "GET", path: "/api/browser-bridge/tabs" },
   { type: "GET", path: "/api/browser-bridge/current-page" },
   { type: "POST", path: "/api/browser-bridge/sync" },
   { type: "POST", path: "/api/browser-bridge/sessions" },
 ];
 
-const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> =
-  [
-    { type: "GET", path: "/api/browser-bridge/sessions/:id" },
-    { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
-    { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
-    { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
-    { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
-    {
-      type: "POST",
-      path: "/api/browser-bridge/companions/sessions/:id/progress",
-      public: true,
-    },
-    {
-      type: "POST",
-      path: "/api/browser-bridge/companions/sessions/:id/complete",
-      public: true,
-    },
-    { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
-    {
-      type: "POST",
-      path: "/api/browser-bridge/packages/:browser/open-manager",
-    },
-    { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
-  ];
+const DYNAMIC_ROUTES: Array<{
+  type: string;
+  path: string;
+  public?: boolean;
+  publicReason?: string;
+}> = [
+  { type: "GET", path: "/api/browser-bridge/sessions/:id" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
+  { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/progress",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+  },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/complete",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+  },
+  { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/packages/:browser/open-manager",
+  },
+  { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
+];
 
 function routeHandler(): LegacyRouteHandler {
   return async (
@@ -175,7 +199,9 @@ const browserBridgePluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
-        ...(r.public ? ({ public: true } as const) : {}),
+        ...(r.public
+          ? ({ public: true, publicReason: r.publicReason ?? "" } as const)
+          : {}),
         handler: routeHandler(),
       }) as Route,
   ),
@@ -185,7 +211,9 @@ const browserBridgePluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
-        ...(r.public ? ({ public: true } as const) : {}),
+        ...(r.public
+          ? ({ public: true, publicReason: r.publicReason ?? "" } as const)
+          : {}),
         handler: routeHandler(),
       }) as Route,
   ),

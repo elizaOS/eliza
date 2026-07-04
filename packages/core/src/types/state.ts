@@ -1,3 +1,9 @@
+/**
+ * Per-turn `State`: the composed working context passed through the message loop —
+ * provider values, working memory, action plans, and the structured-output schema
+ * rows. Built fresh each turn from providers and consumed by prompt assembly and
+ * action handlers.
+ */
 import type { ActionResult, ProviderValue } from "./components";
 import type { Entity, Room, World } from "./environment";
 

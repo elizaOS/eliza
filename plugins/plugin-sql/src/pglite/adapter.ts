@@ -1,3 +1,11 @@
+/**
+ * `PgliteDatabaseAdapter` wraps `BaseDrizzleAdapter` for PGlite: routes
+ * database access through a `PGliteClientManager` (lazily initializing it
+ * and deferring Electric Sync startup to the first real operation, once
+ * migrated tables are guaranteed to exist), and overrides every mutating
+ * write method to additionally call `manager.notifyWrite()` so
+ * `WriteBackService` can forward local writes to the cloud API.
+ */
 import type { PGlite } from "@electric-sql/pglite";
 import {
   type Agent,

@@ -1,3 +1,4 @@
+/** Request/response types for Birdeye's `defi/*` endpoints (networks, price, multi-price, history, OHLCV, trades, base-quote). */
 import type { TimeInterval } from "./common";
 
 // Network Types

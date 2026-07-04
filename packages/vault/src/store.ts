@@ -1,3 +1,10 @@
+/**
+ * Legacy JSON vault store helpers used by one-shot migration.
+ *
+ * Reads and writes the pre-PGlite `vault.json` shape with atomic 0600 writes
+ * so old installs can be imported into the current storage engine.
+ */
+
 import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";

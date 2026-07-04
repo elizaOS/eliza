@@ -1,3 +1,8 @@
+/**
+ * PKCE primitives for the OAuth 2.0 flow: base64url encoding plus code-verifier,
+ * code-challenge (S256), and state generation. Consumed by `oauth2-pkce.ts` when
+ * building the authorization request and exchanging the code.
+ */
 import { createHash, randomBytes } from "node:crypto";
 
 export function base64UrlEncode(input: Buffer): string {

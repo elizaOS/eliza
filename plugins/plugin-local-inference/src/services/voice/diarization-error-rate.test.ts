@@ -1,3 +1,4 @@
+/** Unit tests for diarization-error-rate computation and the within-budget gate. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	computeDiarizationErrorRate,

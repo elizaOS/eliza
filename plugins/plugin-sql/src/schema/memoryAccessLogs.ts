@@ -1,3 +1,9 @@
+/**
+ * Append-only log of reads/writes against `long_term_memories`, recording
+ * which agent accessed which memory, of what type, and how (`accessType`).
+ * Used for recall analytics and decay/prioritization heuristics, not for
+ * enforcing access control.
+ */
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

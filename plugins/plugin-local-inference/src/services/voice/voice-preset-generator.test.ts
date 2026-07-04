@@ -1,3 +1,4 @@
+/** Covers the default voice-preset build script's preset format output. Deterministic. */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

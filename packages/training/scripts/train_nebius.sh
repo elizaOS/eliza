@@ -307,7 +307,7 @@ sync_tree() {
     # don't exist on a fresh VM — rsync won't create 2-deep targets. mkdir first.
     ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b"
     rsync_rc=0
-    rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
+    rsync -avhz --partial "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
     if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
       echo "[train_nebius][sync] data/final rsync failed rc=$rsync_rc"; return "$rsync_rc"
     fi
@@ -323,7 +323,11 @@ sync_tree() {
       ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
       echo "[train_nebius][sync] sending $f"
       rsync_rc=0
-      rsync -avhz --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f" || rsync_rc=$?
+      # NOTE: no — macOS ships openrsync (protocol 29) which
+      # rejects that flag (rc=1, prints usage) and aborts the launch. This
+      # script is launched from macOS dev machines, so keep to flags the system
+      # rsync supports; progress output is noise in a non-interactive run anyway.
+      rsync -avhz --partial "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f" || rsync_rc=$?
       if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
         echo "[train_nebius][sync] $f rsync failed rc=$rsync_rc"; return "$rsync_rc"
       fi
@@ -467,11 +471,24 @@ EOF
 
 fetch() {
   local target; target="$(ssh_target)"
-  echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports"
-  mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports"
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
+  echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports + run log"
+  mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports" "$ROOT/reports/logs"
+  # Exclude training-resume-only state from the checkpoint fetch: optimizer.pt
+  # (APOLLO state — for a 2b this is ~21 GB, larger than the model itself),
+  # scheduler/rng/trainer_state. Pulling them keeps the (expensive) GPU box
+  # alive for an extra hour of rsync for bytes only a resume would use — the
+  # deployable model is model.safetensors + config. Set FETCH_OPTIMIZER=1 to
+  # keep them when you actually intend to resume this run.
+  local opt_excludes=""
+  [ "${FETCH_OPTIMIZER:-0}" = "1" ] || opt_excludes="--exclude optimizer.pt --exclude scheduler.pt --exclude rng_state*.pth --exclude trainer_state.json"
+  rsync -avhz $opt_excludes "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
+  # Always pull the remote run log — it holds the finetune traceback, which is
+  # the only way to diagnose an early failure once the box is torn down (the
+  # poll loop only surfaces grep'd tails). Without this a failed run is a
+  # black box.
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/run_${RUN_NAME}.log" "$ROOT/reports/logs/run_${RUN_NAME}.log" || true
 }
 
 # --- MTP drafter distillation (REMOVED) -------------------------------
@@ -502,7 +519,7 @@ fetch_distill() {
   local out_dir="${MTP_OUT_DIR:-out/mtp-drafter-${tier}}"
   echo "[train_nebius][fetch-distill] pulling $out_dir + the run log"
   mkdir -p "$ROOT/$out_dir"
-  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
   rsync -avhz "$target:$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log" "$ROOT/$out_dir/distill.log" 2>/dev/null || true
 }
 

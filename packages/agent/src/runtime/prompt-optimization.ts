@@ -13,6 +13,7 @@ import {
   EventType,
   getTrajectoryContext,
   isLlmGenerationModelType,
+  isTextGenerationModelType,
   normalizeTrajectoryLlmPurpose,
 } from "@elizaos/core";
 import { detectRuntimeModel } from "../api/agent-model.ts";
@@ -773,7 +774,7 @@ function resolveConversationCompactionKey(
 }
 
 function isModelUsedEvent(event: unknown): boolean {
-  if (event === EventType.MODEL_USED || event === "MODEL_USED") {
+  if (event === EventType.MODEL_USED) {
     return true;
   }
   if (Array.isArray(event)) {
@@ -1024,13 +1025,7 @@ function resolvePromptBudget(
 }
 
 function shouldApplyPromptBudget(modelType: string): boolean {
-  if (modelType.includes("EMBEDDING")) return false;
-  return (
-    modelType.includes("TEXT_") ||
-    modelType.includes("REASONING_") ||
-    modelType === "RESPONSE_HANDLER" ||
-    modelType === "ACTION_PLANNER"
-  );
+  return isTextGenerationModelType(modelType);
 }
 
 function truncatePromptToTokenBudget(

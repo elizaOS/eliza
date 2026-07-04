@@ -1,3 +1,9 @@
+/**
+ * Database-adapter contract and its row/log types: `IDatabaseAdapter`, run/log
+ * body shapes, patch ops, and the participant/entity query result types. Defines
+ * the persistence boundary the runtime reads and writes through; implemented by
+ * `plugin-sql` and the in-memory fallback adapter.
+ */
 import type { AccessContext } from "./access-context";
 import type { Agent } from "./agent";
 import type {

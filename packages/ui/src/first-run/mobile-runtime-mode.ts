@@ -1,3 +1,8 @@
+/**
+ * Persisted mobile runtime mode (remote-mac / cloud / local) and the IPC/API
+ * base constants + URL predicates the transports and runtime-target resolver
+ * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
+ */
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import type { FirstRunRuntimeTarget } from "./runtime-target";

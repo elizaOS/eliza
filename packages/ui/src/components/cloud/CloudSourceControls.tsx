@@ -1,3 +1,10 @@
+/**
+ * Cloud-source controls: a segmented toggle between using Eliza Cloud and a
+ * user-supplied API key (`CloudSourceModeToggle`), and a live Eliza Cloud
+ * connection indicator (`CloudConnectionStatus`). Rendered in the config/setup
+ * surfaces where a feature can be backed by either the managed cloud or the
+ * user's own provider key.
+ */
 import { CheckCircle2, WifiOff } from "lucide-react";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";

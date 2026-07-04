@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
+import { Button } from "../ui/button";
 import type { ShellPhase } from "./shell-state";
 
 export interface AssistantOverlayProps {
@@ -140,14 +141,15 @@ export function AssistantOverlay({
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
       ].join(" ")}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label="Close assistant"
         onClick={onClose}
-        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:text-txt     "
+        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:bg-card/60 hover:text-txt     "
       >
         <X aria-hidden="true" className="h-4 w-4" />
-      </button>
+      </Button>
       {children}
     </div>
   );

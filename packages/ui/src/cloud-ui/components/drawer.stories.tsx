@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the cloud-ui drawer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Drawer,

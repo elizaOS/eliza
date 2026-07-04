@@ -1,3 +1,9 @@
+/**
+ * Startup validation for the z.ai plugin: confirms an API key is present (except
+ * in browser builds, which route through a proxy base URL) and silences the
+ * Vercel AI SDK warning channel once per process. `PluginConfig` mirrors the
+ * recognized `ZAI_*` env vars.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { getApiKeyOptional, isBrowser } from "./utils/config";
 

@@ -1,3 +1,10 @@
+/**
+ * `TwitterTimelineClient` — the home/following feed action loop. On its interval it
+ * pulls the timeline, interprets each tweet's media (image/gif/video) via
+ * IMAGE_DESCRIPTION, and decides per tweet whether to like/retweet/quote/reply.
+ * Constructed with `ClientBase` + runtime + `TwitterClientState`, gated by
+ * `TWITTER_ENABLE_ACTIONS`, driven by `TwitterClientInstance` in `services/x.service.ts`.
+ */
 import {
   ChannelType,
   composePromptFromState,

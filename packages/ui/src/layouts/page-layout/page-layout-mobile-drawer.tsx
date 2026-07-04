@@ -1,3 +1,7 @@
+/**
+ * Mobile drawer toggle for PageLayout, wired to the workspace mobile-sidebar
+ * controls so the sidebar opens as a drawer on narrow viewports.
+ */
 import { PanelLeftOpen } from "lucide-react";
 import * as React from "react";
 

@@ -1,3 +1,13 @@
+/**
+ * Multi-account configuration model for the iMessage connector: config shapes,
+ * the merge order (env defaults < base config < per-account overrides), and the
+ * DM/group policy + allowlist checks (`isIMessageUserAllowed`,
+ * `isIMessageMentionRequired`) that decide whether an inbound message is handled.
+ * Config is read from `character.settings.imessage`. In practice one macOS host
+ * runs a single Messages account (`DEFAULT_ACCOUNT_ID`); these helpers still model
+ * the general inventory so the connector-account provider and service share one
+ * resolution path.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

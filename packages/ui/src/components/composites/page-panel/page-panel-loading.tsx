@@ -1,3 +1,7 @@
+/**
+ * Loading placeholder for a page panel: a centered spinner with optional
+ * heading/description, wrapped in a PagePanelRoot for consistent panel spacing.
+ */
 import { cn } from "../../../lib/utils";
 import { Spinner } from "../../ui/spinner";
 import { PagePanelRoot } from "./page-panel-root";

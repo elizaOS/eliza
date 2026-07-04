@@ -1,11 +1,19 @@
+/**
+ * `KAMINO_LIQUIDITY_SERVICE`: client for Kamino's liquidity-adjacent REST API.
+ * The API exposes no direct strategies/pools endpoint, so `getAllStrategies`
+ * and `getStrategyByAddress` synthesize `KaminoStrategy` records from staking
+ * yields and Limo (limit order) trade data; APY/fee/rebalancing/range
+ * heuristics on Limo-derived strategies (`calculateLimoApy` and friends) are
+ * estimates, not exact on-chain values. Token metadata comes from the
+ * `birdeye` service (`resolveTokenWithBirdeye`), looked up by service name
+ * rather than an import to avoid a hard dependency.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 
-// Kamino API constants
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
 const KAMINO_LIQUIDITY_PROGRAM_ID = "kamino-rest-api";
 
-// Known token addresses for reference
 const KNOWN_TOKENS: Record<string, string> = {
   HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC: "AI16Z Token",
   ai16z: "AI16Z Token (Symbol)",
@@ -218,9 +226,6 @@ export class KaminoLiquidityService extends Service {
     );
   }
 
-  /**
-   * Make a rate-limited API request to Kamino
-   */
   private async makeApiRequest<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -251,9 +256,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Resolve token information using Birdeye API
-   */
   async resolveTokenWithBirdeye(
     tokenIdentifier: string,
   ): Promise<TokenInfo | null> {
@@ -331,9 +333,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get staking yields for tokens
-   */
   async getStakingYields(): Promise<StakingYield[]> {
     try {
       logger.log("Fetching staking yields from Kamino API...");
@@ -347,9 +346,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get median staking yields
-   */
   async getMedianStakingYields(): Promise<StakingYield[]> {
     try {
       logger.log("Fetching median staking yields from Kamino API...");
@@ -367,9 +363,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get Limo trades for a specific token pair
-   */
   async getLimoTrades(
     inTokenMint?: string,
     outTokenMint?: string,
@@ -395,9 +388,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get real-time market statistics from Kamino API
-   */
   async getMarketStatistics(): Promise<KaminoMarketStatistics | null> {
     try {
       logger.log("Fetching real-time market statistics from Kamino API...");
@@ -463,15 +453,10 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get all available Kamino strategies (not filtered by token)
-   */
   async getAllStrategies(): Promise<KaminoStrategy[]> {
     try {
       logger.log("Getting all available Kamino strategies...");
 
-      // Since the API doesn't have a direct strategies endpoint, we'll use staking yields
-      // and Limo trades to get a sense of available strategies
       const [stakingYields, limoTrades] = await Promise.all([
         this.getStakingYields(),
         this.getLimoTrades(),
@@ -479,7 +464,6 @@ export class KaminoLiquidityService extends Service {
 
       const strategies: KaminoStrategy[] = [];
 
-      // Convert staking yields to strategy-like objects
       for (const stakingYield of stakingYields) {
         strategies.push({
           address: stakingYield.tokenMint,
@@ -503,7 +487,6 @@ export class KaminoLiquidityService extends Service {
         });
       }
 
-      // Convert Limo trades to strategy-like objects
       const uniquePairs = new Set<string>();
       for (const trade of limoTrades) {
         const pairKey = `${trade.inMint}-${trade.outMint}`;
@@ -541,16 +524,12 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get a specific strategy by its address
-   */
   async getStrategyByAddress(
     strategyAddress: string,
   ): Promise<KaminoStrategy | null> {
     try {
       logger.log(`Getting strategy by address: ${strategyAddress}`);
 
-      // First, try to get all strategies and filter by address
       const allStrategies = await this.getAllStrategies();
       const strategy = allStrategies.find((s) => s.address === strategyAddress);
 
@@ -559,8 +538,8 @@ export class KaminoLiquidityService extends Service {
         return strategy;
       }
 
-      // If not found in general strategies, try to construct from specific data
-      // Check if it's a staking strategy
+      // Not in the synthesized strategy list; try constructing one directly
+      // from a matching staking yield, then from a matching Limo trade.
       const stakingYields = await this.getStakingYields();
       const stakingStrategy = stakingYields.find(
         (s) => s.tokenMint === strategyAddress,
@@ -591,7 +570,6 @@ export class KaminoLiquidityService extends Service {
         return strategy;
       }
 
-      // Check if it's a Limo trading strategy
       const limoTrades = await this.getLimoTrades();
       const limoTrade = limoTrades.find(
         (t) => t.inMint === strategyAddress || t.outMint === strategyAddress,
@@ -631,20 +609,15 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get detailed pool information by pool address
-   */
   async getPoolByAddress(
     poolAddress: string,
   ): Promise<KaminoPoolByAddressResult> {
     try {
       logger.log(`Getting pool information for address: ${poolAddress}`);
 
-      // Try to get strategy information first
       const strategy = await this.getStrategyByAddress(poolAddress);
 
       if (strategy) {
-        // Get additional token information if available
         let tokenInfo: TokenInfo | null = null;
         try {
           tokenInfo = await this.resolveTokenWithBirdeye(strategy.tokenA);
@@ -660,7 +633,6 @@ export class KaminoLiquidityService extends Service {
           strategy: strategy,
           tokenInfo: tokenInfo,
           timestamp: new Date().toISOString(),
-          // Add additional pool-specific metrics
           metrics: {
             totalValueLocked: strategy.estimatedTvl,
             volume24h: strategy.volume24h,
@@ -676,7 +648,6 @@ export class KaminoLiquidityService extends Service {
         return poolInfo;
       }
 
-      // If no strategy found, try to get basic token information
       try {
         const tokenInfo = await this.resolveTokenWithBirdeye(poolAddress);
         if (tokenInfo) {
@@ -704,19 +675,13 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get token liquidity information from Kamino
-   */
   async getTokenLiquidityStats(
     tokenIdentifier: string,
   ): Promise<TokenLiquidityStats> {
     try {
       logger.log(`Getting liquidity info for token: ${tokenIdentifier}`);
 
-      // First, try to resolve token information with Birdeye
       const tokenInfo = await this.resolveTokenWithBirdeye(tokenIdentifier);
-
-      // Normalize token identifier
       const normalizedToken = this.normalizeTokenIdentifier(tokenIdentifier);
 
       const stats: TokenLiquidityStats = {
@@ -737,18 +702,15 @@ export class KaminoLiquidityService extends Service {
           `Searching for strategies involving token: ${normalizedToken} via API`,
         );
 
-        // Get staking yields for this token
         const stakingYields = await this.getStakingYields();
         const tokenStakingYields = stakingYields.filter(
           (stakingYield) => stakingYield.tokenMint === normalizedToken,
         );
 
-        // Get Limo trades involving this token
         const limoTrades = await this.getLimoTrades(normalizedToken);
         const outTrades = await this.getLimoTrades(undefined, normalizedToken);
         const allTrades = [...limoTrades, ...outTrades];
 
-        // Convert to strategies
         if (tokenStakingYields.length > 0) {
           for (const stakingYield of tokenStakingYields) {
             stats.strategies.push({
@@ -774,7 +736,6 @@ export class KaminoLiquidityService extends Service {
           }
         }
 
-        // Convert Limo trades to strategies
         const uniquePairs = new Set<string>();
         for (const trade of allTrades) {
           const pairKey = `${trade.inMint}-${trade.outMint}`;
@@ -804,7 +765,6 @@ export class KaminoLiquidityService extends Service {
           }
         }
 
-        // Calculate aggregate stats
         if (stats.strategies.length > 0) {
           stats.poolCount = stats.strategies.length;
           stats.totalTvl = stats.strategies.reduce(
@@ -848,28 +808,19 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Calculate APY for Limo trading strategy using real API data
-   */
   private async calculateLimoApy(trade: LimoTrade): Promise<number> {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
       const tipAmount = parseFloat(trade.tipAmountUsd) || 0;
       const surplus = parseFloat(trade.surplusUsd) || 0;
 
-      // Get real staking yields from Kamino API
       const stakingYields = await this.getStakingYields();
-
-      // Find matching staking yield for the input token
       const matchingYield = stakingYields.find(
         (stakingYield) => stakingYield.tokenMint === trade.inMint,
       );
 
       if (matchingYield) {
-        // Use real APY data from the API
         const baseApy = parseFloat(matchingYield.apy) * 100; // Convert to percentage
-
-        // Adjust based on trade characteristics
         let adjustedApy = baseApy;
 
         // Higher trade volume might indicate better rates
@@ -885,7 +836,7 @@ export class KaminoLiquidityService extends Service {
         return Math.max(1, Math.min(50, adjustedApy));
       }
 
-      // Fallback calculation if no staking yield found
+      // No matching staking yield: use a heuristic baseline instead.
       let baseApy = 8;
       if (sizeUsd > 1000) baseApy += 2;
       if (sizeUsd > 10000) baseApy += 3;
@@ -899,28 +850,23 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Calculate fee tier for Limo trading strategy based on real market data
-   */
   private calculateLimoFeeTier(trade: LimoTrade): string {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
       const tipAmount = parseFloat(trade.tipAmountUsd) || 0;
 
-      // Get median staking yields to understand market conditions
-      // Higher APY markets typically have higher fees
+      // Higher-APY markets typically support higher fees; this fetch is
+      // currently unawaited so its result never affects the return below.
       const medianYields = this.getMedianStakingYields();
 
       medianYields.then((yields) => {
         if (yields.length > 0) {
-          // Calculate average median APY
           const avgMedianApy =
             yields.reduce(
               (sum, stakingYield) => sum + parseFloat(stakingYield.apy),
               0,
             ) / yields.length;
 
-          // Use median APY to adjust fee tiers
           if (avgMedianApy > 0.3) {
             // High yield market
             if (sizeUsd > 10000) return "0.08%";
@@ -937,7 +883,6 @@ export class KaminoLiquidityService extends Service {
         }
       });
 
-      // Default dynamic fee calculation based on trade characteristics
       if (sizeUsd > 10000) return "0.05%"; // Large trades get lower fees
       if (sizeUsd > 1000) return "0.1%"; // Medium trades
       if (tipAmount > 0.1) return "0.15%"; // High tip trades
@@ -947,9 +892,6 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Determine rebalancing strategy based on real market data and trade patterns
-   */
   private determineRebalancingStrategy(trade: LimoTrade): string {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
@@ -958,12 +900,12 @@ export class KaminoLiquidityService extends Service {
       const hoursSinceUpdate =
         (now.getTime() - updatedOn.getTime()) / (1000 * 60 * 60);
 
-      // Get recent Limo trades to understand market activity patterns
+      // Same unawaited-promise caveat as calculateLimoFeeTier: this recent-trade
+      // frequency analysis never actually influences the return value below.
       const recentTrades = this.getLimoTrades();
 
       recentTrades.then((trades) => {
         if (trades.length > 0) {
-          // Calculate average time between trades
           const recentTradeTimes = trades
             .slice(0, 10) // Look at last 10 trades
             .map((t) => new Date(t.updatedOn).getTime())
@@ -982,7 +924,6 @@ export class KaminoLiquidityService extends Service {
             const avgHoursBetweenTrades =
               avgTimeBetweenTrades / (1000 * 60 * 60);
 
-            // Use market activity to determine strategy
             if (avgHoursBetweenTrades < 0.5) return "Ultra High Frequency";
             if (avgHoursBetweenTrades < 2) return "High Frequency";
             if (avgHoursBetweenTrades < 12) return "Dynamic";
@@ -992,7 +933,6 @@ export class KaminoLiquidityService extends Service {
         }
       });
 
-      // Fallback strategy based on trade characteristics
       if (sizeUsd > 10000) return "Dynamic";
       if (sizeUsd > 5000) return "High Frequency";
       if (hoursSinceUpdate < 1) return "High Frequency";
@@ -1003,15 +943,11 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Determine trading range based on trade data
-   */
   private determineTradingRange(trade: LimoTrade): string {
     try {
       const sizeUsd = parseFloat(trade.sizeUsd) || 0;
       const tipAmount = parseFloat(trade.tipAmountUsd) || 0;
 
-      // Determine range based on trade characteristics
       if (sizeUsd > 10000) return "Wide Range (0.5x - 2.0x)";
       if (sizeUsd > 1000) return "Medium Range (0.7x - 1.4x)";
       if (tipAmount > 0.05) return "Narrow Range (0.9x - 1.1x)";
@@ -1021,22 +957,16 @@ export class KaminoLiquidityService extends Service {
     }
   }
 
-  /**
-   * Normalize token identifier (handle symbols, addresses, etc.)
-   */
+  // Both branches currently return the identifier unchanged; this is a no-op
+  // pending real symbol/alias normalization.
   normalizeTokenIdentifier(identifier: string): string {
-    // If it looks like a valid Solana address, return as is
     if (identifier.length >= 32 && identifier.length <= 44) {
       return identifier;
     }
 
-    // For other cases, return the original identifier
     return identifier;
   }
 
-  /**
-   * Test connection and basic functionality
-   */
   async testConnection(): Promise<KaminoLiquidityConnectionTest> {
     try {
       logger.log("Testing Kamino liquidity service connection...");
@@ -1052,7 +982,6 @@ export class KaminoLiquidityService extends Service {
         timestamp: new Date().toISOString(),
       };
 
-      // Test basic API connection
       try {
         const stakingYields = await this.getStakingYields();
         results.connectionTest = true;
@@ -1064,7 +993,6 @@ export class KaminoLiquidityService extends Service {
         logger.error("API connection test failed:", formatLogError(error));
       }
 
-      // Test Limo trades endpoint
       try {
         const limoTrades = await this.getLimoTrades();
         results.limoTradesTest = true;
@@ -1075,7 +1003,6 @@ export class KaminoLiquidityService extends Service {
         logger.error("Limo trades test failed:", formatLogError(error));
       }
 
-      // Test strategy discovery
       try {
         const strategies = await this.getAllStrategies();
         results.strategyCount = strategies.length;
@@ -1124,7 +1051,6 @@ export class KaminoLiquidityService extends Service {
     try {
       logger.log("Starting KaminoLiquidityService...");
 
-      // Test connection on startup
       const testResults = await this.testConnection();
       logger.log({ testResults }, "Startup connection test results");
 

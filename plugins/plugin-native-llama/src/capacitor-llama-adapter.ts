@@ -1,3 +1,21 @@
+/**
+ * Core native bridge for mobile llama.cpp: the `CapacitorLlamaAdapter` class,
+ * the `capacitorLlama` back-compat singleton, and `registerCapacitorLlamaLoader`.
+ *
+ * Maps `llama-cpp-capacitor`'s contextId-based native API onto Eliza's
+ * `LlamaAdapter` contract (load/unload/generate/generateStream/embed/formatChat
+ * and the hardware probe). Each instance owns one native context allocated from
+ * a module-level counter, so chat and embedding must run on separate instances;
+ * `registerCapacitorLlamaLoader` creates both and wires them in as the runtime's
+ * `localInferenceLoader` service (fix for eliza#7681).
+ *
+ * The native plugin is dynamically imported and feature-detected — fork-only
+ * methods (`setCacheType`, `setSpecType`, `getNativeKernels`) warn and skip on
+ * stock builds. `generateStream` is the canonical generation path and
+ * `generate` drains it into a single result; mobile `maxTokens` is clamped to
+ * `MOBILE_MAX_TOKENS_CAP` to avoid OOM.
+ */
+
 import type { PluginListenerHandle } from "@capacitor/core";
 import type {
   NativeCompletionParams,
@@ -752,10 +770,10 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     try {
       await this.plugin.releaseContext({ contextId: this.contextId });
     } catch {
-      // Fall back to a targeted release-all only when the per-context
-      // release fails; this used to be the always-path but it now risks
-      // tearing down sibling adapter instances and is reserved for the
-      // pathological case where the native side has lost track of our id.
+      // Fall back to a release-all only when the per-context release fails:
+      // it risks tearing down sibling adapter instances, so it is reserved
+      // for the pathological case where the native side has lost track of
+      // our contextId.
       await this.plugin.releaseAllContexts();
     }
     this.loadedPath = null;

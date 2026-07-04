@@ -1,3 +1,4 @@
+/** Storybook fixture composing the admin-dialog chrome pieces; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AdminDialogBodyScroll,

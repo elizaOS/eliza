@@ -1,16 +1,18 @@
-// Persistence marker for an in-flight shared→dedicated cloud-agent handoff.
-//
-// The handoff supervisor is in-memory: a reload (or app relaunch) while the
-// dedicated container boots would otherwise strand the user on the shared
-// adapter forever — the persisted active server still points at the shared
-// bridge, the provisioning widget shows "Setting up…" with no live phase, and
-// the retry event has no listener. This marker records the deterministic
-// handoff target (the dedicated agent already created for this shared bridge)
-// so boot can RESUME the same migration instead of guessing or re-creating.
-//
-// Lifecycle: saved when the handoff starts (the dedicated target id is known),
-// cleared by `silentlyRepointToDedicated` (repointed ⇒ nothing pending) and by
-// the TTL (a marker that never resolves must not outlive the handoff story).
+/**
+ * Persistence marker for an in-flight shared→dedicated cloud-agent handoff.
+ *
+ * The handoff supervisor is in-memory: a reload (or app relaunch) while the
+ * dedicated container boots would otherwise strand the user on the shared
+ * adapter forever — the persisted active server still points at the shared
+ * bridge, the provisioning widget shows "Setting up…" with no live phase, and
+ * the retry event has no listener. This marker records the deterministic
+ * handoff target (the dedicated agent already created for this shared bridge)
+ * so boot can RESUME the same migration instead of guessing or re-creating.
+ *
+ * Lifecycle: saved when the handoff starts (the dedicated target id is known),
+ * cleared by `silentlyRepointToDedicated` (repointed ⇒ nothing pending) and by
+ * the TTL (a marker that never resolves must not outlive the handoff story).
+ */
 
 export interface PendingCloudHandoff {
   sharedAgentId: string;

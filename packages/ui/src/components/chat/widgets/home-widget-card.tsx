@@ -16,8 +16,10 @@
 
 import { type ReactNode, useMemo } from "react";
 import { reportUserViewSwitch } from "../../../chat/useSlashCommandController";
+import { dispatchNavigateViewEvent } from "../../../events";
 import { cn } from "../../../lib/utils";
 import { useAppSelectorShallow } from "../../../state";
+import { Button } from "../../ui/button";
 
 /**
  * Navigation for home widgets: tapping a card opens the relevant full surface.
@@ -33,13 +35,7 @@ export function useWidgetNavigation(): {
   return useMemo(
     () => ({
       openView(path, viewId) {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("eliza:navigate:view", {
-              detail: { viewPath: path },
-            }),
-          );
-        }
+        dispatchNavigateViewEvent({ viewPath: path });
         reportUserViewSwitch(viewId ?? path, path);
       },
       openTab(tab) {
@@ -110,8 +106,8 @@ export function HomeWidgetCard({
   onActivate,
 }: HomeWidgetCardProps): React.JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       data-testid={testId}
       aria-label={ariaLabel}
       title={label}
@@ -123,7 +119,7 @@ export function HomeWidgetCard({
         // the tone. Tactile: a hair lift + warmer edge on hover, scale-press on
         // tap. Surface/border/hover all resolve through tokens so the tile is
         // theme-aware, never a baked-in white/black opacity ladder.
-        "group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card px-3.5 py-3 text-left",
+        "group relative flex h-auto w-full items-center gap-3 overflow-hidden whitespace-normal rounded-2xl border border-border bg-card px-3.5 py-3 text-left",
         "transition-[transform,border-color,background-color] duration-150",
         "hover:border-border-hover hover:bg-bg-hover",
         "active:scale-[0.985] motion-reduce:active:scale-100",
@@ -170,7 +166,11 @@ export function HomeWidgetCard({
         {value != null ? (
           <span
             className={cn(
-              "truncate text-sm font-semibold leading-tight",
+              // Wrap to two lines before ellipsizing: half-width mobile cards
+              // (col-span-2 at 390px) hard-clipped one-line values to a few
+              // characters ("Confirm…", "Paymen…"), which read broken. Two
+              // lines keeps the datum glanceable without unbounded growth.
+              "line-clamp-2 break-words text-sm font-semibold leading-tight",
               TONE_VALUE_CLASS[tone],
             )}
           >
@@ -198,6 +198,6 @@ export function HomeWidgetCard({
           {badge}
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }

@@ -1,3 +1,10 @@
+/**
+ * Plugin-component contracts — the things a plugin registers into the runtime:
+ * `Action` (validate + handler), `Provider` (context injected into the prompt),
+ * and their supporting shapes (parameter schemas, handler/validator signatures,
+ * action modes, message-handler plan/extract results). The heart of the
+ * action/provider surface that the message loop dispatches against.
+ */
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -278,6 +285,8 @@ export const HOOK_MODES: readonly ActionMode[] = [
 /**
  * Represents an action the agent can perform
  */
+export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
+
 export interface Action {
 	/** Action name */
 	name: string;
@@ -336,6 +345,21 @@ export interface Action {
 	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
 	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
 	 * action carries its own routing rule alongside its description.
+	 *
+	 * CANONICAL "when to use / when NOT to use" carrier. Prefer this field over
+	 * burying disambiguation in `description`: `routingHint` is prepended
+	 * VERBATIM to the planner tool description (see `actions/to-tool.ts`) — it is
+	 * NOT run through `compressPromptDescription`, so it is never abbreviated and
+	 * is captured in recorded trajectories via the planner stage's `model.tools`.
+	 * Any action that shares
+	 * a noun or simile with a sibling (e.g. TASKS vs SCHEDULED_TASKS, WEB_SEARCH
+	 * vs MEMORY search) should state its boundary here, and name the sibling to
+	 * route to, e.g.:
+	 *   "coding/software delegation -> TASKS; reminders/check-ins/recurring
+	 *    personal items -> SCHEDULED_TASKS/OWNER_REMINDERS (NOT this action)".
+	 * Reference an UPPER_SNAKE_CASE sibling action name explicitly — those tokens
+	 * also survive description compression, so the cross-reference stays intact
+	 * even in the compressed form.
 	 */
 	routingHint?: string;
 
@@ -367,6 +391,20 @@ export interface Action {
 	 * action's visible result text in task clipboard state.
 	 */
 	suppressActionResultClipboard?: boolean;
+
+	/**
+	 * Optional owner-declared short summary for planner fallback messages.
+	 *
+	 * The planner uses this only as a last-resort "what I did" projection when a
+	 * successful tool turn has no clean model/evaluator final text. Keep the
+	 * returned text terse and user-facing, e.g. "edited app.ts" or
+	 * "ran `bun test`". Return undefined when the action result should not
+	 * contribute to a synthesized fallback.
+	 */
+	summarize?: (
+		result: ActionResult | undefined,
+		params: Record<string, unknown>,
+	) => string | undefined;
 
 	/**
 	 * Optional input parameters for the action.
@@ -604,6 +642,15 @@ export interface Provider {
 
 	/** Cache partition hint for stable provider content. */
 	cacheScope?: CacheScope;
+
+	/**
+	 * Whether plugin registration should install this provider into the runtime.
+	 *
+	 * Defaults to true. Set to false for plugin-owned providers that are
+	 * available for direct composition or alternative host wiring, but should
+	 * not be part of the default provider surface every time the plugin loads.
+	 */
+	registerByDefault?: boolean;
 
 	/**
 	 * When true, this provider is always composed into the Stage-1 response

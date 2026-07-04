@@ -14,8 +14,7 @@
  *      state.
  *   2. `installFirstRunDeepLinkListener` — the Capacitor wrapper that wires
  *      `App.addListener("appUrlOpen", ...)` and `App.getLaunchUrl()`. Tested
- *      with a mocked `@capacitor/app` (the package is not a declared
- *      dependency of `@elizaos/ui`; the host app supplies it). The "Capacitor
+ *      with a mocked optional-peer `@capacitor/app`. The "Capacitor
  *      bridge unavailable" scenario is exercised at the listener layer —
  *      Capacitor's web shim throws `Native Bridge unavailable` on
  *      `addListener` when no native runtime is attached, so that is the

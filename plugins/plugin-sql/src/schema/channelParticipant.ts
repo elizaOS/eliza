@@ -1,3 +1,8 @@
+/**
+ * Join table linking entities (agents or central users) to the channels they
+ * participate in. Composite primary key `(channelId, entityId)` prevents
+ * duplicate membership rows; cascade-deletes when the channel is removed.
+ */
 import { pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { channelTable } from "./channel";
 

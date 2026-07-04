@@ -1,0 +1,14 @@
+# run2 build verification — 2026-07-03 05:10:36 PDT
+# worktree: /home/shaw/eliza-worktrees/device-11760 @ 35f61d1fcb592b070c827908c3389bd16101d975
+
+## contamination found before run2:
+on-device base.apk at 04:50:25 was a FOREIGN build: 413072193 bytes md5=8d4a34ff501e9ff5a6503e819b407254
+worktree policy build: 491398780 bytes md5=b260d86065624228abc5ddc6f16bbe53 (built 2026-07-03 03:46)
+-> reinstalled worktree APK via adb install -r -d at 05:06:21
+
+## post-reinstall verification:
+    versionName=1.0.0
+    lastUpdateTime=2026-07-03 05:06:21
+device apk: /data/app/~~O0t4UvixLR7D8Vl9rMx9MA==/ai.elizaos.app-OTzH7xz1SfP-L7Zz7kH8gA==/base.apk
+device apk md5: b260d86065624228abc5ddc6f16bbe53
+worktree apk md5: b260d86065624228abc5ddc6f16bbe53

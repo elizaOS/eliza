@@ -1,3 +1,8 @@
+/**
+ * Storybook + story-gate visual states for OrchestratorAccountsView (the
+ * coding-accounts + per-room roster sidebar widget): empty, accounts,
+ * assignments, and room-roster. Mirrors the __e2e__ render fixture.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type {

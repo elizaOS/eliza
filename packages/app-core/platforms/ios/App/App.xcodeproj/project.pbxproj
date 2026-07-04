@@ -26,10 +26,20 @@
 		DAMON000100000000000002 /* DeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DAMON000100000000000101 /* DeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DAREP000100000000000001 /* DeviceActivityReportExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000102 /* DeviceActivityReportExtension.swift */; };
 		DAREP000100000000000002 /* DeviceActivityReportExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000101 /* DeviceActivityReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000102 /* ElizaWidgets.swift */; };
+		EWDG00010000000000000002 /* ElizaWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000101 /* ElizaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000105 /* ElizaWidgetControls.swift */; };
+		EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000106 /* ElizaDictationAttributes.swift */; };
+		EWDG00010000000000000005 /* ElizaDictationAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000106 /* ElizaDictationAttributes.swift */; };
+		EWDG00010000000000000006 /* ElizaDictationLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */; };
+		ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */; };
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
 		AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000004 /* GestureSemanticsUITests.swift */; };
+		AUIT00010000000000000005 /* ViewWalkthroughUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */; };
+		AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */; };
+		AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +56,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = DAREP000100000000000401;
 			remoteInfo = DeviceActivityReportExtension;
+		};
+		EWDG00010000000000000701 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EWDG00010000000000000401;
+			remoteInfo = ElizaWidgets;
 		};
 		WBCB00010000000000000701 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -73,6 +90,7 @@
 				WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */,
 				DAMON000100000000000002 /* DeviceActivityMonitorExtension.appex in Embed App Extensions */,
 				DAREP000100000000000002 /* DeviceActivityReportExtension.appex in Embed App Extensions */,
+				EWDG00010000000000000002 /* ElizaWidgets.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -108,12 +126,23 @@
 		DAREP000100000000000102 /* DeviceActivityReportExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceActivityReportExtension.swift; sourceTree = "<group>"; };
 		DAREP000100000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DAREP000100000000000104 /* DeviceActivityReportExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityReportExtension.entitlements; sourceTree = "<group>"; };
+		EWDG00010000000000000101 /* ElizaWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ElizaWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EWDG00010000000000000102 /* ElizaWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaWidgets.swift; sourceTree = "<group>"; };
+		EWDG00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		EWDG00010000000000000104 /* ElizaWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ElizaWidgets.entitlements; sourceTree = "<group>"; };
+		EWDG00010000000000000105 /* ElizaWidgetControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaWidgetControls.swift; sourceTree = "<group>"; };
+		EWDG00010000000000000106 /* ElizaDictationAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaDictationAttributes.swift; sourceTree = "<group>"; };
+		EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaDictationLiveActivity.swift; sourceTree = "<group>"; };
+		ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaLiveActivityBridge.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WebsiteBlockerContentExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		WBCB00010000000000000102 /* ActionRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionRequestHandler.swift; sourceTree = "<group>"; };
 		WBCB00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		WBCB00010000000000000104 /* WebsiteBlockerContentExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WebsiteBlockerContentExtension.entitlements; sourceTree = "<group>"; };
 		AUIT00010000000000000002 /* BootCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootCaptureUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000004 /* GestureSemanticsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureSemanticsUITests.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewWalkthroughUITests.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetGalleryCaptureUITests.swift; sourceTree = "<group>"; };
+		AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherGestureLoopUITests.swift; sourceTree = "<group>"; };
 		AUIT00010000000000000101 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -154,6 +183,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		EWDG00010000000000000202 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -183,6 +219,7 @@
 				WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */,
 				DAMON000100000000000101 /* DeviceActivityMonitorExtension.appex */,
 				DAREP000100000000000101 /* DeviceActivityReportExtension.appex */,
+				EWDG00010000000000000101 /* ElizaWidgets.appex */,
 				AUIT00010000000000000101 /* AppUITests.xctest */,
 			);
 			name = Products;
@@ -198,6 +235,7 @@
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
+				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
 				AWDG00010000000000000002 /* AgentWatchdog.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -209,6 +247,7 @@
 				WBCB00010000000000000301 /* WebsiteBlockerContentExtension */,
 				DAMON000100000000000301 /* DeviceActivityMonitorExtension */,
 				DAREP000100000000000301 /* DeviceActivityReportExtension */,
+				EWDG00010000000000000301 /* ElizaWidgets */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -253,11 +292,27 @@
 			path = DeviceActivityReportExtension;
 			sourceTree = "<group>";
 		};
+		EWDG00010000000000000301 /* ElizaWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				EWDG00010000000000000102 /* ElizaWidgets.swift */,
+				EWDG00010000000000000105 /* ElizaWidgetControls.swift */,
+				EWDG00010000000000000106 /* ElizaDictationAttributes.swift */,
+				EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */,
+				EWDG00010000000000000103 /* Info.plist */,
+				EWDG00010000000000000104 /* ElizaWidgets.entitlements */,
+			);
+			path = ElizaWidgets;
+			sourceTree = "<group>";
+		};
 		AUIT00010000000000000301 /* AppUITests */ = {
 			isa = PBXGroup;
 			children = (
 				AUIT00010000000000000002 /* BootCaptureUITests.swift */,
 				AUIT00010000000000000004 /* GestureSemanticsUITests.swift */,
+				AUIT00010000000000000006 /* ViewWalkthroughUITests.swift */,
+				AUIT00010000000000000008 /* WidgetGalleryCaptureUITests.swift */,
+				AUIT0001000000000000000A /* LauncherGestureLoopUITests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -283,6 +338,7 @@
 				WBCB00010000000000000702 /* PBXTargetDependency */,
 				DAMON000100000000000702 /* PBXTargetDependency */,
 				DAREP000100000000000702 /* PBXTargetDependency */,
+				EWDG00010000000000000702 /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
@@ -340,6 +396,23 @@
 			productReference = DAREP000100000000000101 /* DeviceActivityReportExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		EWDG00010000000000000401 /* ElizaWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EWDG00010000000000000601 /* Build configuration list for PBXNativeTarget "ElizaWidgets" */;
+			buildPhases = (
+				EWDG00010000000000000203 /* Sources */,
+				EWDG00010000000000000202 /* Frameworks */,
+				EWDG00010000000000000204 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ElizaWidgets;
+			productName = ElizaWidgets;
+			productReference = EWDG00010000000000000101 /* ElizaWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		AUIT00010000000000000401 /* AppUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AUIT00010000000000000601 /* Build configuration list for PBXNativeTarget "AppUITests" */;
@@ -384,6 +457,10 @@
 						CreatedOnToolsVersion = 16.1;
 						ProvisioningStyle = Automatic;
 					};
+					EWDG00010000000000000401 = {
+						CreatedOnToolsVersion = 16.1;
+						ProvisioningStyle = Automatic;
+					};
 					AUIT00010000000000000401 = {
 						CreatedOnToolsVersion = 16.1;
 						ProvisioningStyle = Automatic;
@@ -408,6 +485,7 @@
 				WBCB00010000000000000401 /* WebsiteBlockerContentExtension */,
 				DAMON000100000000000401 /* DeviceActivityMonitorExtension */,
 				DAREP000100000000000401 /* DeviceActivityReportExtension */,
+				EWDG00010000000000000401 /* ElizaWidgets */,
 				AUIT00010000000000000401 /* AppUITests */,
 			);
 		};
@@ -450,6 +528,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AUIT00010000000000000204 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EWDG00010000000000000204 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -522,6 +607,8 @@
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
+				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
+				EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */,
 				AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -556,6 +643,20 @@
 			files = (
 				AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */,
 				AUIT00010000000000000003 /* GestureSemanticsUITests.swift in Sources */,
+				AUIT00010000000000000005 /* ViewWalkthroughUITests.swift in Sources */,
+				AUIT00010000000000000007 /* WidgetGalleryCaptureUITests.swift in Sources */,
+				AUIT00010000000000000009 /* LauncherGestureLoopUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EWDG00010000000000000203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */,
+				EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */,
+				EWDG00010000000000000005 /* ElizaDictationAttributes.swift in Sources */,
+				EWDG00010000000000000006 /* ElizaDictationLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -581,6 +682,11 @@
 			isa = PBXTargetDependency;
 			target = 504EC3031FED79650016851F /* App */;
 			targetProxy = AUIT00010000000000000701 /* PBXContainerItemProxy */;
+		};
+		EWDG00010000000000000702 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EWDG00010000000000000401 /* ElizaWidgets */;
+			targetProxy = EWDG00010000000000000701 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -885,6 +991,47 @@
 			};
 			name = Release;
 		};
+		EWDG00010000000000000501 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ElizaWidgets/ElizaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				INFOPLIST_FILE = App/ElizaWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		EWDG00010000000000000502 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ElizaWidgets/ElizaWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 25877RY2EH;
+				INFOPLIST_FILE = App/ElizaWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		AUIT00010000000000000501 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -968,6 +1115,15 @@
 			buildConfigurations = (
 				DAREP000100000000000501 /* Debug */,
 				DAREP000100000000000502 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EWDG00010000000000000601 /* Build configuration list for PBXNativeTarget "ElizaWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EWDG00010000000000000501 /* Debug */,
+				EWDG00010000000000000502 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

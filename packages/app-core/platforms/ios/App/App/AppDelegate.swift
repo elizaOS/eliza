@@ -3,6 +3,9 @@ import Capacitor
 import CapacitorBackgroundRunner
 import ObjectiveC
 import UserNotifications
+#if canImport(ElizaosCapacitorBunRuntime)
+import ElizaosCapacitorBunRuntime
+#endif
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -38,6 +41,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+    }
+
+    /// Background `URLSession` relaunch hook. iOS wakes the app in the
+    /// background when the on-device model download (#11841) finishes while the
+    /// app is suspended; it hands us a completion handler that must be invoked
+    /// once every queued session delegate event has been delivered. Forward it
+    /// to the runtime's background-download bridge, which owns that session and
+    /// calls the handler from `urlSessionDidFinishEvents`.
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        #if canImport(ElizaosCapacitorBunRuntime)
+        BackgroundDownloadBridge.shared.handleEventsForBackgroundURLSession(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
+        #else
+        completionHandler()
+        #endif
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {

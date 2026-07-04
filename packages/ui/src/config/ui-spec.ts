@@ -1,3 +1,7 @@
+/**
+ * Re-exports the UI-spec type surface (actions, visibility, auth state, …) the
+ * plugin-config engine and renderer share.
+ */
 export type {
   ActionConfirm,
   ActionOnError,

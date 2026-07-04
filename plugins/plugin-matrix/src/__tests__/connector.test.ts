@@ -1,3 +1,8 @@
+/**
+ * Verifies the Matrix message connector's read/target-resolution path against a
+ * mocked runtime — no live homeserver. Locks that `read_channel` reaches the
+ * live read via a Matrix target carrying only `channelId`.
+ */
 import type { Content, IAgentRuntime, Memory, TargetInfo } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

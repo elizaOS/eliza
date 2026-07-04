@@ -1,8 +1,22 @@
+/**
+ * Setup panel for the locally-hosted Discord connector: reads bridge status and
+ * the bot's guilds/channels via the API client and lets the owner pick the
+ * guild + channel the agent listens on.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 type DiscordLocalStatus = Awaited<
   ReturnType<typeof client.getDiscordLocalStatus>
@@ -341,25 +355,34 @@ export function DiscordLocalConnectorPanel() {
               })}
             </div>
             {guilds.length > 0 ? (
-              <label className="block space-y-1">
+              <div className="block space-y-1">
                 <span className="font-medium text-txt">
                   {t("common.server", {
                     defaultValue: "Server",
                   })}
                 </span>
-                <select
-                  className="h-9 w-full rounded-sm border border-border/40 bg-bg px-3 text-sm text-txt"
+                <Select
                   value={selectedGuildId}
-                  onChange={(event) => setSelectedGuildId(event.target.value)}
                   disabled={loadingGuilds}
+                  onValueChange={setSelectedGuildId}
                 >
-                  {guilds.map((guild) => (
-                    <option key={guild.id} value={guild.id}>
-                      {guild.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <SelectTrigger
+                    aria-label={t("common.server", {
+                      defaultValue: "Server",
+                    })}
+                    className="h-9 border-border/40 bg-bg text-sm text-txt"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {guilds.map((guild) => (
+                      <SelectItem key={guild.id} value={guild.id}>
+                        {guild.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : loadingGuilds ? (
               <div className="text-muted">
                 {t("pluginsview.DiscordLocalLoadingGuilds", {
@@ -393,19 +416,18 @@ export function DiscordLocalConnectorPanel() {
                     {channels.map((channel) => {
                       const checked = selectedChannelIds.includes(channel.id);
                       return (
-                        <label
+                        <div
                           key={channel.id}
                           className="flex items-center gap-3 rounded-sm px-2 py-1 hover:bg-bg-hover"
                         >
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={checked}
-                            onChange={() => toggleChannel(channel.id)}
+                            onCheckedChange={() => toggleChannel(channel.id)}
                           />
                           <span className="min-w-0 flex-1 truncate text-sm text-txt">
                             {channelLabel(channel)}
                           </span>
-                        </label>
+                        </div>
                       );
                     })}
                   </div>

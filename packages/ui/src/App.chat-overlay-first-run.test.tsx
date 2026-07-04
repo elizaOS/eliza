@@ -5,10 +5,10 @@
  *
  * The desktop bottom bar boots the renderer with `?shellMode=chat-overlay`,
  * which takes App's early chat-overlay return — it never reaches the full-shell
- * return where `FirstRunConductorMount` (the ONLY thing that seeds the in-chat
- * onboarding greeting/runtime/provider/tutorial turns) used to be mounted. A
- * fresh desktop install therefore booted into the bottom bar with no runtime
- * configured and no onboarding ever seeded.
+ * return. `FirstRunConductorMount` (the ONLY thing that seeds the in-chat
+ * onboarding greeting/runtime/provider/tutorial turns) must therefore mount on
+ * the chat-overlay branch too, or a fresh desktop install boots into the bottom
+ * bar with no runtime configured and no onboarding ever seeded.
  *
  * These tests mount the REAL App with `?shellMode=chat-overlay` and pin the
  * composition contract:

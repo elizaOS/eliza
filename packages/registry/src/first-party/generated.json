@@ -1619,6 +1619,14 @@
           "help": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
           "advanced": false
         },
+        "DISCORD_VOICE_TRANSCRIPTS": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Voice Transcripts",
+          "help": "Set to \"on\" to record live diarized meeting transcripts whenever the bot sits in a voice channel. Off by default; the /transcribe slash command can start/stop per channel.",
+          "advanced": false
+        },
         "DISCORD_VOICE_CHANNEL_ID": {
           "type": "string",
           "required": false,
@@ -7231,6 +7239,10 @@
         "routePlugin": {
           "specifier": "@elizaos/plugin-training/setup-routes",
           "exportName": "trainingPlugin"
+        },
+        "runtimeHook": {
+          "specifier": "@elizaos/plugin-training",
+          "exportName": "registerTrainingRuntimeHooks"
         }
       }
     },
@@ -7961,6 +7973,63 @@
       "channels": [],
       "kind": "plugin",
       "subtype": "devtools"
+    },
+    {
+      "id": "wechat",
+      "name": "WeChat",
+      "description": "WeChat connector for DM and group messaging through a trusted proxy service.",
+      "npmName": "@elizaos/plugin-wechat",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["connector", "messaging", "wechat", "social", "social-chat"],
+      "config": {
+        "WECHAT_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "API Key",
+          "help": "WeChat proxy service API key",
+          "advanced": false
+        },
+        "WECHAT_PROXY_URL": {
+          "type": "url",
+          "required": true,
+          "sensitive": false,
+          "label": "Proxy URL",
+          "help": "HTTPS base URL of the trusted WeChat proxy service",
+          "advanced": false
+        },
+        "ELIZA_WECHAT_WEBHOOK_PORT": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "label": "Webhook Port",
+          "help": "Local webhook listener port",
+          "advanced": true,
+          "min": 1,
+          "max": 65535
+        }
+      },
+      "render": {
+        "visible": false,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "MessageCircle",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#wechat"
+      },
+      "dependsOn": [],
+      "channels": ["wechat"],
+      "kind": "connector",
+      "subtype": "messaging",
+      "auth": {
+        "kind": "token",
+        "credentialKeys": ["WECHAT_API_KEY"]
+      }
     },
     {
       "id": "whatsapp",

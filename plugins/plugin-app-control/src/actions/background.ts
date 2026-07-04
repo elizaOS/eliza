@@ -9,13 +9,14 @@
  * SAME `BackgroundConfig` the Background view and the always-mounted
  * `AppBackground` layer share — there is no second "homescreen scene" surface.
  * The action stays thin (rule 4): it resolves the intent, optionally generates
- * an image via the existing media route, and broadcasts ONE `background:apply`
+ * an image via the existing media route, and broadcasts ONE background apply
  * view event. The renderer's single subscriber (`useBackgroundApplyChannel` in
  * `@elizaos/ui`) applies it to the persisted store and maintains undo history.
  *
- * Delivery: `POST /api/views/events/broadcast { type: "background:apply" }` →
- * WS `view:event` → `emitViewEvent` → `useViewEvent("background:apply")`. Unlike
- * a per-view edit, the background applies globally, so this works from any view.
+ * Delivery: `POST /api/views/events/broadcast { type: BACKGROUND_APPLY_EVENT }` →
+ * WS `view:event` → `emitViewEvent` →
+ * `useViewEvent(BACKGROUND_APPLY_EVENT)`. Unlike a per-view edit, the background
+ * applies globally, so this works from any view.
  */
 
 import {
@@ -28,39 +29,23 @@ import {
 	type Memory,
 	type State,
 } from "@elizaos/core";
+import type {
+	BackgroundApplyPayload,
+	BackgroundShaderUniformPatch,
+} from "@elizaos/shared/events";
+import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 
-/** Operation carried by the `background:apply` event. */
-export type BackgroundApplyOp = "set" | "undo" | "redo" | "reset";
+export type {
+	BackgroundApplyOp,
+	BackgroundApplyPayload,
+} from "@elizaos/shared/events";
+export { BACKGROUND_APPLY_EVENT };
 
 /** Tunable GLSL uniform patch the agent can drive (#10694). The GLSL source
  * itself lives in `@elizaos/ui` — the action only names a preset id + uniforms;
  * the renderer resolves id → source and validates it. */
-export interface ShaderUniformPatch {
-	u_speed?: number;
-	u_scale?: number;
-	u_intensity?: number;
-	u_seed?: number;
-}
-
-/**
- * Payload broadcast to the renderer. Mirrors the contract consumed by
- * `useBackgroundApplyChannel` in `@elizaos/ui` — keep the two in sync.
- */
-export interface BackgroundApplyPayload {
-	op: BackgroundApplyOp;
-	/** "shader" (color field), "image" (cover image), or "glsl" (programmable
-	 * shader). Omitted for undo/redo/reset. */
-	mode?: "shader" | "image" | "glsl";
-	/** 6-digit hex for shader/glsl mode. */
-	color?: string;
-	/** Same-origin image URL (`/api/media/…`) for image mode. */
-	imageUrl?: string;
-	/** Named GLSL preset id (renderer resolves → source) for glsl mode. */
-	presetId?: string;
-	/** Uniform patch for glsl mode (named preset set or a live-shader tweak). */
-	uniforms?: ShaderUniformPatch;
-}
+export type ShaderUniformPatch = BackgroundShaderUniformPatch;
 
 /** The resolved plan for one BACKGROUND invocation. */
 type BackgroundPlan =
@@ -440,7 +425,7 @@ async function defaultEmit(payload: BackgroundApplyPayload): Promise<void> {
 		{
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ type: "background:apply", payload }),
+			body: JSON.stringify({ type: BACKGROUND_APPLY_EVENT, payload }),
 			signal: AbortSignal.timeout(5_000),
 		},
 	);

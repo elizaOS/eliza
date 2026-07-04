@@ -1,0 +1,65 @@
+[
+  {
+    "uuid": "claude-conv-1",
+    "name": "Project planning",
+    "created_at": "2026-01-01T10:00:00.000Z",
+    "updated_at": "2026-01-01T10:05:00.000Z",
+    "model": "claude-sonnet-4",
+    "project_name": "Agent continuity",
+    "chat_messages": [
+      {
+        "uuid": "msg-1",
+        "sender": "human",
+        "created_at": "2026-01-01T10:00:10.000Z",
+        "text": "Summarize the importer plan",
+        "attachments": [
+          {
+            "file_name": "scope.md",
+            "extracted_content": "Track C should parse Claude chat_messages and inline attachments."
+          }
+        ]
+      },
+      {
+        "uuid": "msg-2",
+        "sender": "assistant",
+        "created_at": "2026-01-01T10:01:00.000Z",
+        "content": [
+          {
+            "type": "text",
+            "text": "Use DocumentService through the shared sink."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "uuid": "claude-conv-2",
+    "name": "Code block export",
+    "created_at": "2026-01-02T09:00:00.000Z",
+    "updated_at": "2026-01-02T09:02:00.000Z",
+    "chat_messages": [
+      {
+        "uuid": "msg-3",
+        "sender": "human",
+        "created_at": "2026-01-02T09:00:01.000Z",
+        "content": [
+          {
+            "type": "text",
+            "text": "Here is a snippet"
+          },
+          {
+            "type": "code",
+            "language": "ts",
+            "text": "const ok = true;"
+          }
+        ]
+      },
+      {
+        "uuid": "msg-4",
+        "sender": "assistant",
+        "created_at": "2026-01-02T09:00:30.000Z",
+        "text": "Looks good."
+      }
+    ]
+  }
+]

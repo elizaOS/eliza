@@ -37,6 +37,10 @@ import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import {
+  PROACTIVE_TASK_NAME,
+  PROACTIVE_TASK_TAGS,
+} from "./profile-metadata.js";
+import {
   buildActivityProfile,
   profileNeedsRebuild,
   readProfileFromMetadata,
@@ -44,9 +48,11 @@ import {
   resolveOwnerEntityId,
 } from "./service.js";
 import type { ActivityProfile } from "./types.js";
+import { learnRhythmWindows } from "./window-learning-writer.js";
 
-export const PROACTIVE_TASK_NAME = "PROACTIVE_AGENT" as const;
-export const PROACTIVE_TASK_TAGS = ["queue", "repeat", "proactive"] as const;
+// Re-exported for API stability; canonical definitions live in
+// `profile-metadata.ts` so lightweight consumers can import them directly.
+export { PROACTIVE_TASK_NAME, PROACTIVE_TASK_TAGS };
 export const PROACTIVE_TASK_INTERVAL_MS = 60_000;
 
 const TASK_DESCRIPTION =
@@ -183,6 +189,35 @@ export async function executeProactiveTask(
       activityProfile: profile,
     },
   });
+
+  // Close the observe→learn→schedule loop: fold the freshly-computed
+  // wake/sleep rhythm into OwnerFacts.morningWindow / eveningWindow so
+  // during_window triggers and wake/bedtime anchors track the user's real
+  // rhythm. User-set windows are never clobbered; the write is idempotent.
+  //
+  // Guarded: rhythm learning is a best-effort side-effect of the tick. A
+  // transient store/cache write failure here must NOT abort the proactive tick
+  // (which would feed the core failure ladder even though the profile already
+  // persisted). Log-and-continue is the intended behavior for this one call.
+  try {
+    await learnRhythmWindows(
+      runtime,
+      {
+        typicalWakeHour: profile.typicalWakeHour,
+        typicalSleepHour: profile.typicalSleepHour,
+      },
+      now,
+    );
+  } catch (error) {
+    logger.warn(
+      {
+        src: "lifeops:activity-profile:proactive-worker",
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[proactive] rhythm-window learning failed; continuing tick (best-effort learning)",
+    );
+  }
 
   return { nextInterval: PROACTIVE_TASK_INTERVAL_MS };
 }

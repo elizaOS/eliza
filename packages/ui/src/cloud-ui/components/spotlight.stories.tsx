@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the Spotlight background element.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Spotlight } from "./spotlight";
 

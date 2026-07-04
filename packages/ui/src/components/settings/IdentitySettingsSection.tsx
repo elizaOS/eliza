@@ -1,3 +1,12 @@
+/**
+ * Settings → "Basics" section (the `identity` section id). Edits the agent's
+ * character identity (name/bio draft, saved via App state) and its voice
+ * configuration — TTS provider, model, and voice pick, with an in-panel test
+ * playback. When Eliza Cloud is connected (or the voice proxy is available) the
+ * ElevenLabs voice groups are offered; otherwise it falls back to the edge/
+ * premade voices.
+ */
+
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

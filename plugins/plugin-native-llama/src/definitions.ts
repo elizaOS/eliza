@@ -233,8 +233,8 @@ export interface LlamaAdapter {
   generate(options: GenerateOptions): Promise<GenerateResult>;
   /**
    * Streaming generation surface. Emits typed events (token, tool_call,
-   * decision, telemetry, error, done) instead of bare strings. The legacy
-   * `generate(...)` is now a wrapper that drains the stream into a single
+   * decision, telemetry, error, done) instead of bare strings.
+   * `generate(...)` is a wrapper that drains the stream into a single
    * `GenerateResult` for callers that don't care about per-event detail.
    *
    * The stream is single-use and must terminate with exactly one `done`

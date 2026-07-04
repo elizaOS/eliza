@@ -1,3 +1,4 @@
+/** Storybook stories for the character hub's overview grid (full + empty states). */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   CharacterOverviewSection,

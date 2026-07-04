@@ -1,3 +1,8 @@
+/**
+ * React hook backing the Hyperliquid view: fetches status, markets,
+ * positions, and orders from the four read routes, polls every 15s, and
+ * exposes loading/error/unavailable state plus a manual `refresh()`.
+ */
 import { client } from "@elizaos/app-core";
 import { ApiError } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";

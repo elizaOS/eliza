@@ -15,17 +15,12 @@ import {
   FIRST_RUN_PROVIDER_CATALOG,
 } from "@elizaos/shared/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
+import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 
 // ---------------------------------------------------------------------------
 // Config redaction
 // ---------------------------------------------------------------------------
-
-/**
- * Key patterns that indicate a value is sensitive and must be redacted.
- */
-export const SENSITIVE_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
 
 export function isBlockedObjectKey(key: string): boolean {
   return (
@@ -57,7 +52,7 @@ export function redactDeep(val: unknown): unknown {
   if (typeof val === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(val as Record<string, unknown>)) {
-      if (SENSITIVE_KEY_RE.test(key)) {
+      if (isSensitiveConfigKey(key)) {
         out[key] = redactValue(child);
       } else {
         out[key] = redactDeep(child);

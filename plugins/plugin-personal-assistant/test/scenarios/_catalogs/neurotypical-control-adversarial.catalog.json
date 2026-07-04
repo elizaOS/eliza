@@ -1,0 +1,16 @@
+{
+  "catalogId": "neurotypical-control-adversarial",
+  "title": "Pack F1 - Neurotypical control and adversarial scenario catalog",
+  "source": {
+    "parentIssue": "#12186",
+    "foundationIssue": "#12277",
+    "packId": "F1",
+    "persona": "P7 neurotypical_control",
+    "targetCount": 32,
+    "notes": [
+      "This file is the progress ledger for pack F1 only. Add one entry per authored scenario, across both surfaces (lifeops-bench Python ids and scenario-runner .scenario.ts ids).",
+      "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
+    ]
+  },
+  "scenarios": []
+}

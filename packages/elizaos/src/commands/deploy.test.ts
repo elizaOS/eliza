@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEPLOY_COMMAND_DESCRIPTION,
@@ -7,10 +10,12 @@ import {
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
+const originalCwd = process.cwd();
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   process.env = { ...originalEnv };
+  process.chdir(originalCwd);
   vi.restoreAllMocks();
 });
 
@@ -148,6 +153,69 @@ describe("runDeploy", () => {
 
     expect(code).toBe(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails corrupt project metadata before app lookup", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    const projectDir = mkdtempSync(
+      path.join(os.tmpdir(), "elizaos-deploy-project-"),
+    );
+    mkdirSync(path.join(projectDir, ".elizaos"));
+    writeFileSync(
+      path.join(projectDir, ".elizaos", "template.json"),
+      "{not-json",
+    );
+    process.chdir(projectDir);
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const code = await runDeploy({});
+
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid project metadata JSON"),
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(".elizaos/template.json"),
+      );
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails corrupt credentials before deploy request", async () => {
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    delete process.env.ELIZA_CLOUD_API_KEY;
+    delete process.env.ELIZACLOUD_API_KEY;
+    const homeDir = mkdtempSync(path.join(os.tmpdir(), "elizaos-deploy-home-"));
+    mkdirSync(path.join(homeDir, ".elizaos"));
+    writeFileSync(
+      path.join(homeDir, ".elizaos", "credentials.json"),
+      "{not-json",
+    );
+    vi.spyOn(os, "homedir").mockReturnValue(homeDir);
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const code = await runDeploy({ appId: "app-1" });
+
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid Eliza Cloud credentials JSON"),
+      );
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(".elizaos/credentials.json"),
+      );
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 
   // `runDeploy` validates `--domain` against DOMAIN_REGEX as its very first step,

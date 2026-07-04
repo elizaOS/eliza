@@ -1,3 +1,8 @@
+/**
+ * Aerodrome (Base) DEX liquidity-pool management sub-plugin: registers
+ * `AerodromeLpService` and its LP protocol provider with the shared
+ * `LpManagementService` registry.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   createEvmLpProtocolProvider,

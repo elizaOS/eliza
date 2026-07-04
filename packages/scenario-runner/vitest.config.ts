@@ -1,3 +1,9 @@
+/**
+ * Vitest config for the scenario-runner package. Aliases every workspace
+ * `@elizaos/*` package to its TypeScript source so the scenario runtime resolves
+ * optional plugins independent of build order (test:server only builds core); see
+ * the inline note on the dynamic-import failure this avoids.
+ */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

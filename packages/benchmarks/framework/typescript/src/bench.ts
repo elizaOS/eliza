@@ -19,6 +19,7 @@ import {
   type Content,
   InMemoryDatabaseAdapter,
   type Memory,
+  ModelType,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
@@ -50,28 +51,132 @@ async function loadOpenAIPlugin(): Promise<Plugin> {
   return mod.openaiPlugin;
 }
 
+/**
+ * Dynamically load @elizaos/plugin-cli-inference for the CLI-subscription
+ * (Claude Max / ChatGPT-Codex) real-LLM route. Isolated so the import only
+ * happens when a CLI backend is selected.
+ */
+async function loadCliInferencePlugin(): Promise<Plugin> {
+  const mod = (await import("@elizaos/plugin-cli-inference")) as {
+    cliInferencePlugin?: Plugin;
+    default: Plugin;
+  };
+  return mod.default ?? (mod.cliInferencePlugin as Plugin);
+}
+
+/** CLI-subscription backends @elizaos/plugin-cli-inference can serve. */
+const CLI_BACKENDS = ["claude", "claude-sdk", "codex", "codex-sdk"] as const;
+
+/**
+ * The CLI-subscription backend explicitly requested via ELIZA_CHAT_VIA_CLI, or
+ * null when unset / not a supported backend. Setting this env var is an explicit
+ * opt-in to the subscription route (no API key), so it is honored ahead of any
+ * OpenAI/Cerebras key — exactly what the gpt-5.5-via-Codex trajectory harvest
+ * needs.
+ */
+function resolveCliBackend(): (typeof CLI_BACKENDS)[number] | null {
+  const raw = process.env.ELIZA_CHAT_VIA_CLI?.trim().toLowerCase();
+  return (CLI_BACKENDS as readonly string[]).includes(raw ?? "")
+    ? (raw as (typeof CLI_BACKENDS)[number])
+    : null;
+}
+
+/**
+ * @elizaos/plugin-cli-inference registers large-tier handlers only (TEXT_LARGE
+ * / TEXT_MEGA / RESPONSE_HANDLER, plus ACTION_PLANNER in text-planner mode). A
+ * real message turn also needs a TEXT_EMBEDDING handler (memory writes) and a
+ * TEXT_SMALL handler (should-respond / extraction). These two zero-cost shims
+ * supply them so the CLI route drives the message loop end to end — mirroring
+ * the proven scenario-runner cli path (runtime-factory.ts).
+ */
+function createEmbeddingFallbackPlugin(): Plugin {
+  // Match the benchmark mock's 384-dim zero vector so the InMemory adapter's
+  // vector shape stays consistent across mock and cli runs.
+  const EMBEDDING_DIMENSIONS = 384;
+  return {
+    name: "benchmark-cli-embedding-fallback",
+    description:
+      "Zero-vector TEXT_EMBEDDING handler for the CLI-subscription route " +
+      "(plugin-cli-inference registers no embedding handler).",
+    priority: 100,
+    models: {
+      [ModelType.TEXT_EMBEDDING]: async () =>
+        new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
+    },
+  };
+}
+
+function createCliSmallTierBridgePlugin(): Plugin {
+  return {
+    name: "benchmark-cli-small-tier-bridge",
+    description:
+      "Routes TEXT_SMALL to TEXT_LARGE when the large-tier-only " +
+      "CLI-subscription provider serves the benchmark runtime.",
+    models: {
+      [ModelType.TEXT_SMALL]: async (bridgeRuntime, params) =>
+        bridgeRuntime.useModel(ModelType.TEXT_LARGE, params),
+    },
+  };
+}
+
 interface ResolvedLlm {
-  llmPlugin: Plugin;
+  llmPlugins: Plugin[];
   isRealLlm: boolean;
   providerLabel: string;
 }
 
 /**
- * Resolve which LLM plugin to use based on the --real-llm flag.
+ * Resolve which LLM plugin(s) to use based on the --real-llm flag.
  *
- * Real-LLM mode accepts either OPENAI_API_KEY or CEREBRAS_API_KEY. When the
- * Cerebras key is present (and OPENAI_API_KEY is not), the OpenAI plugin is
- * auto-configured to point at Cerebras's OpenAI-compatible endpoint with a
- * default Cerebras model. Cerebras serves several OpenAI-compatible model
- * families at very high tokens/sec, so it's well-suited to live-agent
- * benchmarking.
+ * Real-LLM mode has two routes:
+ *
+ *   1. CLI-subscription (ELIZA_CHAT_VIA_CLI = claude | claude-sdk | codex |
+ *      codex-sdk): loads @elizaos/plugin-cli-inference, which serves inference
+ *      by spawning the sanctioned local CLI (`codex exec -m gpt-5.5`,
+ *      `claude --print`). The CLI reads its own on-disk subscription creds — no
+ *      API key ever passes through eliza. Requires ELIZA_PLANNER_NATIVE_TOOLS=0
+ *      (text-planner mode) for the free-text CLI to serve the planner; the
+ *      large-tier-only plugin is paired with a zero-vector embedding shim + a
+ *      TEXT_SMALL->TEXT_LARGE bridge so a real message turn runs end to end.
+ *      This is the gpt-5.5-via-Codex trajectory-harvest route.
+ *
+ *   2. API key (OPENAI_API_KEY or CEREBRAS_API_KEY): loads @elizaos/plugin-openai.
+ *      With the Cerebras key (and no OpenAI key) the OpenAI plugin is pointed at
+ *      Cerebras's OpenAI-compatible endpoint.
+ *
+ * The CLI route is checked first: ELIZA_CHAT_VIA_CLI is an explicit opt-in, so it
+ * wins over an ambient API key.
  */
 async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   if (!useRealLlm) {
     return {
-      llmPlugin: mockLlmPlugin,
+      llmPlugins: [mockLlmPlugin],
       isRealLlm: false,
       providerLabel: "mock (deterministic)",
+    };
+  }
+
+  const cliBackend = resolveCliBackend();
+  if (cliBackend) {
+    const isCodex = cliBackend.startsWith("codex");
+    const model = isCodex
+      ? process.env.ELIZA_CLI_CODEX_MODEL?.trim() || "gpt-5.5"
+      : process.env.ELIZA_CLI_CLAUDE_MODEL?.trim() || "claude-opus-4-7";
+    if (process.env.ELIZA_PLANNER_NATIVE_TOOLS?.trim() !== "0") {
+      console.log(
+        "NOTE: CLI-subscription route works best with ELIZA_PLANNER_NATIVE_TOOLS=0 " +
+          "(text-planner mode); the free-text CLI cannot honor native-tool grammar.",
+      );
+    }
+    const plugin = await loadCliInferencePlugin();
+    return {
+      llmPlugins: [
+        plugin,
+        createEmbeddingFallbackPlugin(),
+        createCliSmallTierBridgePlugin(),
+      ],
+      isRealLlm: true,
+      providerLabel: `real (cli:${cliBackend} ${model})`,
     };
   }
 
@@ -80,7 +185,8 @@ async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
 
   if (!hasOpenAi && !hasCerebras) {
     console.error(
-      "ERROR: --real-llm requires OPENAI_API_KEY or CEREBRAS_API_KEY to be set.",
+      "ERROR: --real-llm requires ELIZA_CHAT_VIA_CLI (claude|claude-sdk|codex|codex-sdk), " +
+        "OPENAI_API_KEY, or CEREBRAS_API_KEY to be set.",
     );
     process.exit(1);
   }
@@ -100,7 +206,7 @@ async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   const plugin = await loadOpenAIPlugin();
   const providerLabel =
     hasCerebras && !hasOpenAi ? "real (Cerebras)" : "real (OpenAI)";
-  return { llmPlugin: plugin, isRealLlm: true, providerLabel };
+  return { llmPlugins: [plugin], isRealLlm: true, providerLabel };
 }
 
 // ─── Path resolution ────────────────────────────────────────────────────────
@@ -346,11 +452,11 @@ async function createBenchmarkRuntime(
   character: Character,
   extraPlugins: Plugin[] = [],
   config: ScenarioConfig = { warmup: 0, iterations: 1 },
-  llmPlugin: Plugin = mockLlmPlugin,
+  llmPlugins: Plugin[] = [mockLlmPlugin],
 ): Promise<AgentRuntime> {
   const adapter = new InMemoryDatabaseAdapter();
 
-  const plugins: Plugin[] = [llmPlugin, ...extraPlugins];
+  const plugins: Plugin[] = [...llmPlugins, ...extraPlugins];
 
   // Add dummy providers if requested
   if (config.dummyProviders && config.dummyProviders > 0) {
@@ -576,7 +682,7 @@ async function processMessage(
 async function runStartupBenchmark(
   character: Character,
   config: ScenarioConfig,
-  llmPlugin: Plugin = mockLlmPlugin,
+  llmPlugins: Plugin[] = [mockLlmPlugin],
 ): Promise<ScenarioResult> {
   const timings: number[] = [];
   const memMonitor = new MemoryMonitor();
@@ -585,7 +691,7 @@ async function runStartupBenchmark(
   for (let i = 0; i < config.iterations; i++) {
     const timer = new Timer();
     timer.start();
-    const rt = await createBenchmarkRuntime(character, [], config, llmPlugin);
+    const rt = await createBenchmarkRuntime(character, [], config, llmPlugins);
     const elapsed = timer.stop();
     timings.push(elapsed);
 
@@ -623,7 +729,7 @@ async function runStartupBenchmark(
 async function runDbBenchmark(
   character: Character,
   config: ScenarioConfig,
-  llmPlugin: Plugin = mockLlmPlugin,
+  llmPlugins: Plugin[] = [mockLlmPlugin],
 ): Promise<ScenarioResult> {
   const timings: number[] = [];
   const memMonitor = new MemoryMonitor();
@@ -634,7 +740,7 @@ async function runDbBenchmark(
       character,
       [],
       config,
-      llmPlugin,
+      llmPlugins,
     );
     const adapter = runtime.adapter;
 
@@ -718,7 +824,7 @@ async function runMessageBenchmark(
   character: Character,
   messages: ScenarioMessage[],
   config: ScenarioConfig,
-  llmPlugin: Plugin = mockLlmPlugin,
+  llmPlugins: Plugin[] = [mockLlmPlugin],
 ): Promise<ScenarioResult> {
   const allTimings: number[] = [];
   const pipelineTimer = new PipelineTimer();
@@ -730,7 +836,7 @@ async function runMessageBenchmark(
       character,
       [],
       config,
-      llmPlugin,
+      llmPlugins,
     );
     instrumentRuntime(runtime, new PipelineTimer()); // warmup instrumentation discarded
     if (config.prePopulateHistory) {
@@ -757,7 +863,7 @@ async function runMessageBenchmark(
       character,
       [],
       config,
-      llmPlugin,
+      llmPlugins,
     );
     instrumentRuntime(runtime, pipelineTimer); // real instrumentation recorded
     if (config.prePopulateHistory) {
@@ -808,6 +914,42 @@ async function runMessageBenchmark(
   };
 }
 
+// ─── Run-count overrides ────────────────────────────────────────────────────
+
+/** Parse `--flag=N` as a positive integer, or null when absent/invalid. */
+function parsePositiveIntFlag(args: string[], flag: string): number | null {
+  const raw = args.find((a) => a.startsWith(flag))?.slice(flag.length);
+  if (raw === undefined) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Parse `--flag=N` as a non-negative integer, or null when absent/invalid. */
+function parseNonNegativeIntFlag(args: string[], flag: string): number | null {
+  const raw = args.find((a) => a.startsWith(flag))?.slice(flag.length);
+  if (raw === undefined) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Clamp a scenario's iteration + warmup counts to the CLI overrides. Used to run
+ * exactly one real model turn (`--iterations=1 --warmup=0`) during live-LLM
+ * trajectory harvesting instead of the 50×5 perf default.
+ */
+function applyRunCountOverrides(
+  config: ScenarioConfig,
+  iterationsOverride: number | null,
+  warmupOverride: number | null,
+): ScenarioConfig {
+  if (iterationsOverride === null && warmupOverride === null) return config;
+  return {
+    ...config,
+    iterations: iterationsOverride ?? config.iterations,
+    warmup: warmupOverride ?? config.warmup,
+  };
+}
+
 // ─── Main orchestrator ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -828,8 +970,16 @@ async function main(): Promise<void> {
   const useRealLlm = args.includes("--real-llm");
   const outputPath = args.find((a) => a.startsWith("--output="))?.split("=")[1];
 
-  // Resolve which LLM plugin to use
-  const { llmPlugin, isRealLlm, providerLabel } =
+  // --iterations=N / --warmup=N clamp each scenario's iteration + warmup count.
+  // The default perf configs run 50 iterations × 5 warmups — sensible for mock
+  // overhead measurement, but far too many real model calls for a live-LLM
+  // trajectory harvest. Clamping to `--iterations=1 --warmup=0` captures exactly
+  // one real turn (one trajectory) per scenario at minimal subscription cost.
+  const iterationsOverride = parsePositiveIntFlag(args, "--iterations=");
+  const warmupOverride = parseNonNegativeIntFlag(args, "--warmup=");
+
+  // Resolve which LLM plugin(s) to use
+  const { llmPlugins, isRealLlm, providerLabel } =
     await resolveLlmPlugin(useRealLlm);
 
   const allScenarios = loadScenarios();
@@ -894,27 +1044,25 @@ async function main(): Promise<void> {
     process.stdout.write(`Running: ${scenario.name}...`);
     const startTime = performance.now();
 
+    const config = applyRunCountOverrides(
+      scenario.config,
+      iterationsOverride,
+      warmupOverride,
+    );
+
     let scenarioResult: ScenarioResult;
 
-    if (scenario.config.startupOnly) {
-      scenarioResult = await runStartupBenchmark(
-        character,
-        scenario.config,
-        llmPlugin,
-      );
-    } else if (scenario.config.dbOnly) {
-      scenarioResult = await runDbBenchmark(
-        character,
-        scenario.config,
-        llmPlugin,
-      );
+    if (config.startupOnly) {
+      scenarioResult = await runStartupBenchmark(character, config, llmPlugins);
+    } else if (config.dbOnly) {
+      scenarioResult = await runDbBenchmark(character, config, llmPlugins);
     } else {
       const messages = resolveMessages(scenario.messages);
       scenarioResult = await runMessageBenchmark(
         character,
         messages,
-        scenario.config,
-        llmPlugin,
+        config,
+        llmPlugins,
       );
     }
 

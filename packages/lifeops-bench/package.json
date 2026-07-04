@@ -1,0 +1,28 @@
+{
+  "name": "@elizaos/lifeops-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LifeOpsBench server-side harness: HTTP bench server, LifeOps fake backend, Cerebras autowirer, and bench plugin driven by the Python runners in packages/benchmarks/. Never published.",
+  "main": "./src/server.ts",
+  "scripts": {
+    "benchmark:server": "node --import tsx src/server.ts",
+    "normalize-capture": "node --import tsx scripts/normalize-eliza-capture.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "dotenv": "^17.2.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  }
+}

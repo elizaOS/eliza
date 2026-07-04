@@ -1,3 +1,8 @@
+/**
+ * The narrow icon-only strip shown when a sidebar is collapsed: a primary
+ * action slot above a scrollable column of icon buttons. Used by the sidebar
+ * root when it renders the rail built by sidebar-auto-rail.
+ */
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";

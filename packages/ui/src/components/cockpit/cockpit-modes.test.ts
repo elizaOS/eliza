@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the cockpit mode → providerPolicy lowering (cockpit-modes):
+ * that each of the four modes resolves to the right provider source, model, and
+ * create-task input. Pure functions, no DOM or network.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

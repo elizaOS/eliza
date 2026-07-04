@@ -1,3 +1,6 @@
+/**
+ * Storybook stories demonstrating the page-header context set/read.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect } from "react";
 import { PageHeaderProvider } from "./page-header-context";

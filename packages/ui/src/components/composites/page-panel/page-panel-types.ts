@@ -1,3 +1,8 @@
+/**
+ * Shared prop and variant types for the page-panel composite (root, header,
+ * toolbar, empty/loading states, meta pill). The single source the page-panel
+ * pieces import their contracts from.
+ */
 import type * as React from "react";
 
 import type { EmptyStateProps } from "../../ui/empty-state";

@@ -1,3 +1,9 @@
+/**
+ * Tests the Twilio helpers over a mocked fetch: credential reads from env, SMS
+ * and voice dispatch (including retry and the segment-based billing breakdown),
+ * with fast-check fuzzing the billing math. No live Twilio calls.
+ */
+
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

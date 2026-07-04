@@ -1,3 +1,4 @@
+/** Unit tests for speaker-imprint cosine matching and centroid updates. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	attributeVoiceImprintObservations,

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ai.elizaos.app.BionicDecodeLoopTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-07-03T15:05:06.954Z" hostname="BEAST" time="0.019">
+  <properties/>
+  <testcase name="emptyStepTextIsNotEmittedAsAFrame" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.003"/>
+  <testcase name="stepTokensAreClampedToTheJniBuffer" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="streamStepResolutionOrder" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.003"/>
+  <testcase name="capDefaultsWhenRequestCarriesNone" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="streamingStepBudgetsEveryNativeCallWithinTheCap" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="zeroNoutStepsStillTerminate" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.001"/>
+  <testcase name="sinkReceivesEachStepChunkInOrder" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="doneOnTheExactCapBoundaryDoesNotRequestAnotherStep" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.001"/>
+  <testcase name="stepFailurePropagatesToTheCaller" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="eosStopsTheTurnEarly" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.001"/>
+  <testcase name="stepValueObjectNormalizesNullText" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="sinkFailurePropagatesToTheCaller" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.001"/>
+  <testcase name="nullStepEndsTheTurnWithPartialOutput" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.0"/>
+  <testcase name="maxTokens20PerformsAtMost20TokensOfEvalWork" classname="ai.elizaos.app.BionicDecodeLoopTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -14,7 +14,10 @@
  */
 
 import { lazy } from "react";
-import { registerCloudRoute } from "../shell/cloud-route-registry";
+import {
+  CLOUD_PUBLIC_ROUTE_ACCESS,
+  registerCloudRoute,
+} from "../shell/cloud-route-registry";
 
 const PaymentRequestPage = lazy(
   () => import("./pages/payment/payment-request-page"),
@@ -53,6 +56,10 @@ const PrivacyPolicyPage = lazy(
 const BscPromoPage = lazy(() => import("./pages/bsc-page"));
 
 let registered = false;
+const PUBLIC_ROUTE_ACCESS = {
+  public: true,
+  publicAccess: CLOUD_PUBLIC_ROUTE_ACCESS,
+} as const;
 
 /**
  * Register all public-pages routes. Idempotent — safe to call more than once
@@ -66,19 +73,19 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "payment/:paymentRequestId",
     element: PaymentRequestPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "payment",
   });
   registerCloudRoute({
     path: "payment/success",
     element: PaymentSuccessPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "payment",
   });
   registerCloudRoute({
     path: "payment/app-charge/:appId/:chargeId",
     element: AppChargePaymentPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "payment",
   });
 
@@ -86,19 +93,19 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "approve/:approvalId",
     element: ApprovalPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "token",
   });
   registerCloudRoute({
     path: "ballot/:ballotId",
     element: BallotPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "token",
   });
   registerCloudRoute({
     path: "sensitive-requests/:requestId",
     element: SensitiveRequestPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "token",
   });
 
@@ -106,7 +113,7 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "chat/:characterRef",
     element: PublicChatPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "public",
   });
 
@@ -114,14 +121,14 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "invite/accept",
     element: InviteAcceptPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   // Legacy alias kept by the backend deep-link contract.
   registerCloudRoute({
     path: "accept-invitation",
     element: InviteAcceptPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
 
@@ -129,37 +136,37 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "login",
     element: LoginPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   registerCloudRoute({
     path: "auth/success",
     element: AuthSuccessPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   registerCloudRoute({
     path: "auth/error",
     element: AuthErrorPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   registerCloudRoute({
     path: "auth/cli-login",
     element: CliLoginPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   registerCloudRoute({
     path: "auth/callback/email",
     element: EmailCallbackPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
   registerCloudRoute({
     path: "app-auth/authorize",
     element: AppAuthAuthorizePage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "auth",
   });
 
@@ -167,19 +174,19 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "terms-of-service",
     element: TermsOfServicePage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "legal",
   });
   registerCloudRoute({
     path: "privacy-policy",
     element: PrivacyPolicyPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "legal",
   });
   registerCloudRoute({
     path: "bsc",
     element: BscPromoPage,
-    public: true,
+    ...PUBLIC_ROUTE_ACCESS,
     group: "public",
   });
 }

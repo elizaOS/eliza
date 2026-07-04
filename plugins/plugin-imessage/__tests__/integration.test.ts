@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the plugin's public export surface and the pure
+ * target/handle/parsing helpers (`isPhoneNumber`, `isEmail`,
+ * `normalizeIMessageTarget`, AppleScript/chat.db parsers, chunking). No macOS,
+ * chat.db, or live service — deterministic string/shape assertions only.
+ */
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";

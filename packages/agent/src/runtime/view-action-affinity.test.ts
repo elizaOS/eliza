@@ -1,7 +1,11 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  registerPluginViews,
+  unregisterPluginViews,
+} from "../api/views-registry.ts";
 import {
   buildFullParamActionSet,
   compactActionsForIntent,
@@ -14,9 +18,9 @@ import {
   renderActiveViewContextBlock,
   setActiveViewContext,
   setActiveViewElements,
-  VIEW_ACTION_MAP,
   validateViewActionMap,
   validateViewCoverage,
+  viewActionAffinityMap,
   viewScopedActionNames,
 } from "./view-action-affinity.ts";
 
@@ -27,7 +31,98 @@ const AWARE_VIEW = {
   viewPath: "/wallet",
 };
 
-afterEach(() => clearActiveViewContext());
+const AFFINITY_TEST_PLUGIN = "@test/view-action-affinity";
+
+beforeEach(async () => {
+  await registerPluginViews({
+    name: AFFINITY_TEST_PLUGIN,
+    description: "Synthetic view action affinity fixtures.",
+    views: [
+      {
+        id: "wallet",
+        label: "Wallet",
+        relatedActions: [
+          "WALLET",
+          "EVM_SWAP",
+          "EVM_TRANSFER",
+          "SOLANA_SWAP",
+          "SOLANA_TRANSFER",
+          "CROSS_CHAIN_TRANSFER",
+          "BIRDEYE_WALLET_PORTFOLIO",
+        ],
+      },
+      { id: "orchestrator", label: "Orchestrator", relatedActions: ["TASKS"] },
+      { id: "training", label: "Training", relatedActions: ["RUNTIME"] },
+      {
+        id: "polymarket",
+        label: "Polymarket",
+        relatedActions: ["POLYMARKET_STATUS"],
+      },
+      {
+        id: "hyperliquid",
+        label: "Hyperliquid",
+        relatedActions: ["PERPETUAL_MARKET"],
+      },
+      {
+        id: "facewear",
+        label: "Facewear",
+        relatedActions: [
+          "FACEWEAR_CONNECT",
+          "FACEWEAR_DEBUG",
+          "SMARTGLASSES_CONTROL",
+          "SMARTGLASSES_STATUS",
+          "SMARTGLASSES_DISPLAY_TEXT",
+          "SMARTGLASSES_MICROPHONE",
+          "XR_OPEN_VIEW",
+          "XR_CLOSE_VIEW",
+          "XR_SWITCH_VIEW",
+          "XR_LIST_VIEWS",
+          "XR_RESIZE_VIEW",
+          "XR_QUERY_VISION",
+        ],
+      },
+      { id: "steward", label: "Steward", relatedActions: ["WALLET"] },
+      {
+        id: "calendar",
+        label: "Calendar",
+        relatedActions: ["CALENDAR", "CONFLICT_DETECT"],
+      },
+      {
+        id: "health",
+        label: "Health",
+        relatedActions: ["OWNER_HEALTH", "OWNER_SCREENTIME"],
+      },
+      { id: "todos", label: "Todos", relatedActions: ["OWNER_TODOS"] },
+      {
+        id: "goals",
+        label: "Goals",
+        relatedActions: [
+          "OWNER_GOALS",
+          "OWNER_ALARMS",
+          "OWNER_REMINDERS",
+          "OWNER_ROUTINES",
+        ],
+      },
+      { id: "inbox", label: "Inbox", relatedActions: ["INBOX"] },
+      { id: "finances", label: "Finances", relatedActions: ["OWNER_FINANCES"] },
+      {
+        id: "lifeops",
+        label: "LifeOps",
+        relatedActions: ["PERSONAL_ASSISTANT"],
+      },
+      {
+        id: "documents",
+        label: "Documents",
+        relatedActions: ["OWNER_DOCUMENTS"],
+      },
+    ],
+  });
+});
+
+afterEach(() => {
+  clearActiveViewContext();
+  unregisterPluginViews(AFFINITY_TEST_PLUGIN);
+});
 
 describe("view-action-affinity", () => {
   it("stores and clears the active view", () => {
@@ -109,19 +204,17 @@ describe("view-action-affinity", () => {
     });
     expect(warnings).toHaveLength(1);
     // Summary carries the count, per-view grouping, and the not-loaded hint.
-    expect(warnings[0]).toContain("VIEW_ACTION_MAP:");
+    expect(warnings[0]).toContain("view action affinity:");
     expect(warnings[0]).toContain("not registered");
     expect(warnings[0]).toContain("wallet: WALLET, EVM_SWAP");
     expect(warnings[0]).toContain("plugins not loaded in this config");
     // Per-action detail is preserved at debug level.
-    const totalMapped = Object.values(VIEW_ACTION_MAP).reduce(
+    const totalMapped = Object.values(viewActionAffinityMap()).reduce(
       (n, a) => n + a.length,
       0,
     );
     expect(debugs).toHaveLength(totalMapped);
-    expect(debugs.some((d) => d.includes('VIEW_ACTION_MAP["wallet"]'))).toBe(
-      true,
-    );
+    expect(debugs.some((d) => d.includes('affinity for "wallet"'))).toBe(true);
   });
 
   it("aggregated warn works when the logger has no debug method", () => {
@@ -132,7 +225,7 @@ describe("view-action-affinity", () => {
 
   it("does not warn when every mapped action is registered", () => {
     const allMapped = new Set<string>();
-    for (const actions of Object.values(VIEW_ACTION_MAP)) {
+    for (const actions of Object.values(viewActionAffinityMap())) {
       for (const a of actions) allMapped.add(a);
     }
     const warnings: string[] = [];
@@ -145,7 +238,7 @@ describe("view-action-affinity", () => {
   it("documents view has a domain-action affinity entry", () => {
     // documents was the one CONTEXT_VIEWS surface previously missing from the
     // map; #8798 added OWNER_DOCUMENTS.
-    expect(VIEW_ACTION_MAP.documents).toContain("OWNER_DOCUMENTS");
+    expect(viewActionAffinityMap().documents).toContain("OWNER_DOCUMENTS");
   });
 
   it("validateViewCoverage warns for a registered view with no affinity and no capabilities", () => {
@@ -284,20 +377,18 @@ describe("active-view element snapshot", () => {
   });
 });
 
-// Drift guard: every action name in VIEW_ACTION_MAP must still exist as a
+// Drift guard: every related action name must still exist as a
 // declared `name: "X"` in source. Catches an upstream rename/removal turning a
 // mapped action into a silent no-op (the runtime validator is advisory-only and
 // not wired at boot). Source-static so it needs no running runtime.
-describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
+describe("view related action names resolve to declared actions in source", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(here, "../../../..");
-  const names = [
-    ...new Set(Object.values(VIEW_ACTION_MAP).flatMap((a) => [...a])),
-  ];
 
-  // One `git grep` pass for every name (tracked files only, so node_modules /
-  // dist are never crawled — a per-name recursive grep took minutes per run).
-  const declaredNames = (() => {
+  it("all related actions are declared somewhere in source", () => {
+    const names = [
+      ...new Set(Object.values(viewActionAffinityMap()).flatMap((a) => [...a])),
+    ];
     const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     let out = "";
     try {
@@ -309,7 +400,7 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
           // Accept both an inline `name: "X"` and an action name pulled from a
           // hoisted const (`const ACTION_NAME = "X"` then `name: ACTION_NAME`,
           // as plugin-documents does). The leading `name:`/`=` keeps this from
-          // matching the VIEW_ACTION_MAP arrays themselves (`["X"]`).
+          // matching the relatedActions arrays themselves (`["X"]`).
           `(name:|=) "(${escaped.join("|")})"`,
           "--",
           "plugins",
@@ -325,16 +416,16 @@ describe("VIEW_ACTION_MAP names resolve to declared actions in source", () => {
       // git grep exits 1 (no match) → declaredNames stays empty → each
       // assertion below fails with its per-name message.
     }
-    return new Set(
+    const declaredNames = new Set(
       [...out.matchAll(/(?:name:|=) "([^"]+)"/g)].map((m) => m[1]),
     );
-  })();
 
-  it.each(names)("action %s is declared somewhere in source", (name) => {
-    expect(
-      declaredNames.has(name),
-      `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
-    ).toBe(true);
+    for (const name of names) {
+      expect(
+        declaredNames.has(name),
+        `no \`name: "${name}"\` found under plugins/ or packages/agent/src`,
+      ).toBe(true);
+    }
   });
 });
 

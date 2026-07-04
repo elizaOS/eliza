@@ -1,3 +1,7 @@
+/**
+ * Coverage gate asserting every story ships a play function (interaction
+ * coverage). Reads the stories tree, no runtime.
+ */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

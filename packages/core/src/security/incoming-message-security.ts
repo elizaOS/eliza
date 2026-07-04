@@ -39,6 +39,37 @@ export type IncomingMessageSecurityMetadata = {
 	externalContentWrapped?: boolean;
 };
 
+/**
+ * The message `source` the autonomy service stamps on its own self-prompts
+ * (packages/core/src/features/autonomy/service.ts). It is the only legitimate
+ * producer of the `isAutonomous` marker; keep the two in sync.
+ */
+const AUTONOMY_INTERNAL_SOURCE = "autonomy-service";
+
+/**
+ * #12087 Item 7: `content.metadata.isAutonomous` is a runtime-internal marker
+ * that unlocks private (autonomy-only) actions via the private-action gate. Only
+ * the autonomy service should set it, on messages sourced `AUTONOMY_INTERNAL_SOURCE`.
+ * A connector that forwards client-supplied `content.metadata` would otherwise let
+ * an external user set it and run private actions. Strip it from every inbound
+ * message that is not a genuine autonomy dispatch. `source` is connector-set (not
+ * carried in client-forwarded metadata), so it is the reliable discriminator.
+ */
+function stripUntrustedAutonomyMarker(message: Memory): void {
+	const metadata = message.content.metadata;
+	if (typeof metadata !== "object" || metadata === null) {
+		return;
+	}
+	const source =
+		typeof message.content.source === "string" ? message.content.source : "";
+	if (source === AUTONOMY_INTERNAL_SOURCE) {
+		return;
+	}
+	if ("isAutonomous" in metadata) {
+		delete (metadata as Record<string, unknown>).isAutonomous;
+	}
+}
+
 function resolveExternalSource(
 	source: string | undefined,
 ): ExternalContentSource {
@@ -82,6 +113,10 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
  * Mutates `message.content` in place (pipeline hook + optional direct callers).
  */
 export function hardenIncomingUserMessage(message: Memory): void {
+	// Runs before the empty-text guard: an external message must never keep a
+	// forged autonomy marker regardless of its text (#12087 Item 7).
+	stripUntrustedAutonomyMarker(message);
+
 	const text =
 		typeof message.content.text === "string" ? message.content.text : "";
 	if (!text.trim()) {

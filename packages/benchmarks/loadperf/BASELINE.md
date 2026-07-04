@@ -59,11 +59,24 @@ than) the realized saving: `eagerGraphBrotliBytes` 3,400,000 → **3,330,000**,
 `initialEntryBrotliBytes` 3,350,000 → **3,260,000**. Against the CI-measured
 base (3,320,289 B eager), the expected CI after ≈ 3,252,900 B keeps ~2.3%
 headroom under the new gate. (Local absolute values sit ~110 KB under CI's —
-machine variance; the delta is the trustworthy number.) Note for local runs:
-`maxDuplicateLibBytes` can FAIL on a dev machine whose worktree carries extra
-postinstall plugin dirs (each adds an app-window HTML entry → more per-entry
-`index-*` copies, 364.3 KB waste measured locally vs CI's 219.8 KB); that
-failure pre-exists this change and does not occur on a clean CI checkout.
+machine variance; the delta is the trustworthy number.)
+
+### `maxDuplicateLibBytes` remeasured (2026-07-03) — content-based, ratcheted 350 KB → 25 KB
+
+The duplicate detector originally grouped chunks by hash-stripped **basename**,
+which conflated unrelated modules that legitimately share generic names —
+every npm package entry emits an `index-*.js` chunk, every view emits a
+`register-terminal-view-*.js` chunk, and so on. That noise floor (~340 KB, and
+higher on dev machines with extra postinstall plugin HTML entries) sat just
+under the 350 KB budget and finally crossed it as ordinary `index.ts`-named
+lazy chunks accumulated (380.6 KB at `a747ced409`), failing the gate with zero
+actual duplication: content-hashing the same dist (rollup hash references
+stripped, so per-entry copies that differ only in hashed sibling-chunk names
+still match) found **67 bytes** of true duplicate waste — two identical tiny
+chunks. The detector now groups by normalized content, and the budget is
+ratcheted 350,000 → **25,000** bytes, so a single duplicated vendor library
+(the regression this gate exists to catch) trips it immediately instead of
+hiding inside a ±30 KB name-collision noise band.
 
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
 

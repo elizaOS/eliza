@@ -1,3 +1,9 @@
+/**
+ * Verifies entity `names` is always persisted and read back as a string array,
+ * regardless of input shape (single string, empty array, Set, or non-standard
+ * values), across create, update, and batch-create. Runs against a real
+ * Postgres or PGlite backend via `createTestDatabase`.
+ */
 import type { Entity, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

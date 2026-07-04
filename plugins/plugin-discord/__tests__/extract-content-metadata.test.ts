@@ -1,3 +1,7 @@
+/**
+ * Unit tests pinning the `extractContentMetadata` contract used by the service
+ * (metadata coercion from `Content`). Pure-function assertions.
+ */
 import type { Content } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 

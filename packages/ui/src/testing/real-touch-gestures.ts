@@ -1,3 +1,7 @@
+/**
+ * Shared REAL-touch gesture helpers for e2e: drive genuine touch input via CDP
+ * Input.dispatchTouchEvent (the same path page.touchscreen uses).
+ */
 import type { Page } from "playwright";
 
 /**

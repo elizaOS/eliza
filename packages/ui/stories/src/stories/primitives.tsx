@@ -1,3 +1,6 @@
+/**
+ * Story group exercising the base UI primitives (accordion, inputs, tabs, …).
+ */
 import {
   Accordion,
   AccordionContent,

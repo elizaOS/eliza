@@ -154,6 +154,91 @@ describe("registerBuiltInGates: personal_baseline_sufficient (#8795)", () => {
 });
 
 /**
+ * Built-in (PA-absent) `no_recent_user_message_in` fallback (#12186). When the
+ * activity bus reports a recent `message_activity_event`, the poke must be
+ * DEFERRED (delayed), never DENIED — denying silently drops the proactive poke.
+ */
+describe("registerBuiltInGates: no_recent_user_message_in fallback defers", () => {
+  function pokeTask(minutes: number): ScheduledTask {
+    return {
+      taskId: "t-poke",
+      kind: "checkin",
+      promptInstructions: "poke",
+      trigger: { kind: "interval", everyMinutes: 60 },
+      priority: "low",
+      shouldFire: {
+        compose: "all",
+        gates: [{ kind: "no_recent_user_message_in", params: { minutes } }],
+      },
+      respectsGlobalPause: true,
+      state: { status: "scheduled", followupCount: 0 },
+      source: "default_pack",
+      createdBy: "test",
+      ownerVisible: true,
+    } as ScheduledTask;
+  }
+
+  function contextWithActivity(
+    task: ScheduledTask,
+    recentlyActive: boolean,
+  ): GateEvaluationContext {
+    return {
+      task,
+      nowIso: "2026-05-10T12:00:00.000Z",
+      ownerFacts: { timezone: "UTC" },
+      activity: { hasSignalSince: () => recentlyActive },
+      subjectStore: { wasUpdatedSince: () => false },
+    };
+  }
+
+  it("defers (does not deny) when the user was recently active", async () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    const task = pokeTask(30);
+    const decision = await reg
+      .get("no_recent_user_message_in")
+      ?.evaluate(task, contextWithActivity(task, true));
+    expect(decision?.kind).toBe("defer");
+    if (decision?.kind === "defer" && "offsetMinutes" in decision.until) {
+      expect(decision.until.offsetMinutes).toBe(30);
+    }
+  });
+
+  it("allows when the user has been quiet", async () => {
+    const reg = createTaskGateRegistry();
+    registerBuiltInGates(reg);
+    const task = pokeTask(30);
+    const decision = await reg
+      .get("no_recent_user_message_in")
+      ?.evaluate(task, contextWithActivity(task, false));
+    expect(decision).toEqual({ kind: "allow" });
+  });
+});
+
+/**
+ * First-wins semantics (#12186): a caller may register a richer production
+ * reader for a kind BEFORE registerBuiltInGates; the built-in must then be
+ * skipped so the caller's reader stays authoritative.
+ */
+describe("registerBuiltInGates first-wins", () => {
+  it("keeps a pre-registered contribution for a built-in kind", () => {
+    const reg = createTaskGateRegistry();
+    const sentinel: import("./types.js").TaskGateContribution = {
+      kind: "circadian_state_in",
+      evaluate: () => ({ kind: "deny", reason: "sentinel-reader" }),
+    };
+    // Register the custom reader FIRST, then the built-ins.
+    reg.register(sentinel);
+    registerBuiltInGates(reg);
+    // The custom reader wins; the built-in fallback did not overwrite it.
+    expect(reg.get("circadian_state_in")).toBe(sentinel);
+    // Other built-ins are still registered.
+    expect(reg.get("quiet_hours")).not.toBeNull();
+    expect(reg.get("no_recent_user_message_in")).not.toBeNull();
+  });
+});
+
+/**
  * Regression: `weekday_only` must honor `params.weekdays` (#10721 audit).
  * habit-starters passes `{ weekdays: [1, 3, 5] }` (Mon/Wed/Fri) — before the
  * fix the gate ignored the list and allowed every non-weekend day, so a

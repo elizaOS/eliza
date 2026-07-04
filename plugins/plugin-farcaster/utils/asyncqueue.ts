@@ -1,3 +1,9 @@
+/**
+ * Bounded serial work queue (default concurrency 1) that the interaction
+ * processor uses to serialize connection/memory creation so concurrent inbound
+ * casts don't race. `submit` resolves/rejects with the wrapped work;
+ * `waitUntilFinished` awaits drain.
+ */
 export class AsyncQueue {
   private queue: (() => Promise<void>)[] = [];
   private running = 0;

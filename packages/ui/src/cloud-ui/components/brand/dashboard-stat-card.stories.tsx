@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for DashboardStatCard.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { DashboardStatCard } from "./dashboard-stat-card";
 

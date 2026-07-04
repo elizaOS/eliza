@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * Phase-event and terminal-status contract of the cloud-agent handoff runner.
+ * The supervisor is stubbed so the test can assert the emitted phase sequence
+ * (migrating → terminal), retry arming on failure, and that `onSwitchSucceeded`
+ * fires only on the success statuses (`switched` / `switched-empty`) — never on
+ * `failed` or `timed-out`, where the user stays on the shared bridge.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,

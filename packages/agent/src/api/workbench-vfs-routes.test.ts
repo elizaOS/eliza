@@ -3,6 +3,7 @@ import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { _resetBuildVariantForTests } from "@elizaos/core";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   handleWorkbenchRoutes,
@@ -246,12 +247,93 @@ describe("workbench VFS routes", () => {
     expect(response.status).toBe(405);
     expect(response.body.error).toBe("Unsupported VFS files method");
   });
+
+  it("promotes VFS bundles through the canonical cloud container service slot", async () => {
+    await callRoute("POST", "/api/workbench/vfs/projects/cloud-vfs", {
+      projectId: "cloud-vfs",
+    });
+    await callRoute("PUT", "/api/workbench/vfs/projects/cloud-vfs/file", {
+      path: "src/index.ts",
+      content: "export const answer = 42;\n",
+    });
+
+    const requestedServiceTypes: string[] = [];
+    let capturedSourceKind: string | undefined;
+    const runtime = {
+      getService: (serviceType: string) => {
+        requestedServiceTypes.push(serviceType);
+        if (serviceType !== CLOUD_CONTAINER_SERVICE_TYPE) return null;
+        return {
+          promoteVfsToCloudContainer: async (request: {
+            source: { sourceKind: string };
+          }) => {
+            capturedSourceKind = request.source.sourceKind;
+            return {
+              success: true,
+              data: {
+                promotionId: "promo-vfs-1",
+                status: "accepted",
+                source: request.source,
+                workspacePath: "/workspace",
+                createdAt: "2026-07-03T00:00:00.000Z",
+              },
+            };
+          },
+        };
+      },
+    } as unknown as WorkbenchRouteContext["state"]["runtime"];
+
+    const response = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/cloud-vfs/promote-to-cloud",
+      { preferredAgent: "codex", workspacePath: "/workspace" },
+      runtime,
+    );
+
+    expect(response.status).toBe(202);
+    expect(requestedServiceTypes).toEqual([CLOUD_CONTAINER_SERVICE_TYPE]);
+    expect(capturedSourceKind).toBe("project");
+    expect(response.body).toMatchObject({
+      success: true,
+      data: { promotionId: "promo-vfs-1", workspacePath: "/workspace" },
+    });
+  });
+
+  it("does not promote through legacy cloud container service spelling guesses", async () => {
+    await callRoute("POST", "/api/workbench/vfs/projects/legacy-cloud-vfs", {
+      projectId: "legacy-cloud-vfs",
+    });
+
+    const runtime = {
+      getService: (serviceType: string) =>
+        serviceType === "cloud-container"
+          ? {
+              promoteVfsToCloudContainer: async () => {
+                throw new Error("should not be called");
+              },
+            }
+          : null,
+    } as unknown as WorkbenchRouteContext["state"]["runtime"];
+
+    const response = await callRoute<ErrorResponse>(
+      "POST",
+      "/api/workbench/vfs/projects/legacy-cloud-vfs/promote-to-cloud",
+      { preferredAgent: "codex" },
+      runtime,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe(
+      "Cloud coding-container service is not available",
+    );
+  });
 });
 
 async function callRoute<TBody extends object = Record<string, unknown>>(
   method: string,
   route: string,
   body?: Record<string, unknown>,
+  runtime: WorkbenchRouteContext["state"]["runtime"] = null,
 ) {
   const result: { body?: unknown; status?: number } = {};
   const url = new URL(route, "http://localhost");
@@ -261,7 +343,7 @@ async function callRoute<TBody extends object = Record<string, unknown>>(
     method,
     pathname: url.pathname,
     url,
-    state: { runtime: null, adminEntityId: null },
+    state: { runtime, adminEntityId: null },
     json: (_res, data, status = 200) => {
       result.body = data;
       result.status = status;

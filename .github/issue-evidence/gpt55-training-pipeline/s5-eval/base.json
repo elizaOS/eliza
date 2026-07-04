@@ -1,0 +1,139 @@
+{
+  "model": "google/gemma-4-E2B",
+  "test_file": "data/final-gpt55-combined/test.jsonl",
+  "prompt_tps": 237.59,
+  "gen_tps": 13.79,
+  "gen_seconds": 194.19,
+  "buckets": {
+    "response": {
+      "bucket": "response",
+      "n": 2,
+      "structure_ok": 2,
+      "structure_pct": 100.0,
+      "content_ok": 2,
+      "content_pct": 100.0,
+      "parse_errors": 0,
+      "prompt_tps": 3.83,
+      "gen_tps": 25.28,
+      "gen_seconds": 40.51,
+      "field_match_pct": {
+        "nonempty": 100.0
+      },
+      "failures": []
+    },
+    "tool_call": {
+      "bucket": "tool_call",
+      "n": 2,
+      "structure_ok": 0,
+      "structure_pct": 0.0,
+      "content_ok": 0,
+      "content_pct": 0.0,
+      "parse_errors": 2,
+      "prompt_tps": 287.73,
+      "gen_tps": 7.15,
+      "gen_seconds": 72.04,
+      "field_match_pct": {
+        "tool_count": 0.0,
+        "tool_names": 0.0,
+        "argument_keys": 0.0
+      },
+      "failures": [
+        {
+          "trajectoryId": "tj-73953c68fc88ef",
+          "callId": "tj-73953c68fc88ef:stage-planner-iter-9-1783039769481",
+          "expected": {
+            "text": "",
+            "toolCalls": [
+              {
+                "toolName": "CHARACTER",
+                "input": {
+                  "action": "update_identity",
+                  "system": "You are a formal, professional assistant. Use no slang or emojis in any responses.",
+                  "scope": "global"
+                }
+              }
+            ],
+            "finishReason": "tool-calls",
+            "usage": {
+              "promptTokens": 4986,
+              "completionTokens": 251,
+              "totalTokens": 5237,
+              "cacheReadInputTokens": 4736
+            }
+          },
+          "predicted": "\n<unused56><eos>"
+        },
+        {
+          "trajectoryId": "tj-6a4e55d4983d69",
+          "callId": "tj-6a4e55d4983d69:stage-planner-iter-1-1783039152059",
+          "expected": {
+            "text": "",
+            "toolCalls": [
+              {
+                "toolName": "IGNORE",
+                "input": {}
+              }
+            ],
+            "finishReason": "tool-calls",
+            "usage": {
+              "promptTokens": 11598,
+              "completionTokens": 45,
+              "totalTokens": 11643,
+              "cacheReadInputTokens": 10752
+            }
+          },
+          "predicted": "model:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:\nmodel:"
+        }
+      ]
+    },
+    "planner_json": {
+      "bucket": "planner_json",
+      "n": 2,
+      "structure_ok": 2,
+      "structure_pct": 100.0,
+      "content_ok": 2,
+      "content_pct": 100.0,
+      "parse_errors": 0,
+      "prompt_tps": 684.41,
+      "gen_tps": 5.87,
+      "gen_seconds": 19.44,
+      "field_match_pct": {
+        "nonempty": 100.0
+      },
+      "failures": []
+    },
+    "routing_json": {
+      "bucket": "routing_json",
+      "n": 2,
+      "structure_ok": 0,
+      "structure_pct": 0.0,
+      "content_ok": 0,
+      "content_pct": 0.0,
+      "parse_errors": 2,
+      "prompt_tps": 192.15,
+      "gen_tps": 16.46,
+      "gen_seconds": 62.2,
+      "field_match_pct": {
+        "json_parse": 0.0
+      },
+      "failures": [
+        {
+          "trajectoryId": "tj-817c44feb8d555",
+          "callId": "tj-817c44feb8d555:stage-msghandler-1783040670788",
+          "expected": {
+            "text": "{\"shouldRespond\":\"RESPOND\",\"contexts\":[\"simple\"],\"intents\":[\"acknowledge benchmark message\"],\"replyText\":\"Benchmark message 27 received.\",\"candidateActionNames\":[],\"facts\":[],\"relationships\":[],\"topics\":[\"benchmark\"],\"addressedTo\":[\"BenchmarkAgent\"],\"emotion\":\"none\",\"requiresTool\":false}"
+          },
+          "predicted": "You are a benchmark model. Respond concisely.\n\n# About BenchmarkModel\nA benchmark model used for framework performance testing.\n\nuser_role: GUEST\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.\n\nmessage_handler_stage:\ntask: Decide shouldRespond + plan.\n\navailable_contexts:\n- simple [label=Simple; aliases=direct,shortcut; sensitivity=public; cache=global]: Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from general context.\n- general [label=General; aliases=chat,conversation; sensitivity=public; cache=global]: Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.\n\nshouldRespond:\n- RESPOND: agent should answer or do work\n- IGNORE: skip this message\n- STOP: user asked agent to disengage\nreplyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief ack (\"On it.\", \"Spawning the sub-agent now.\", \"Looking into it.\"); planner gives final. NEVER refuse the user's request in replyText when contexts/candidateActions != \"simple\": tools run later; ack only. Ban planning-path refusal openings: \"I cannot...\", \"I am unable...\", \"I don't have the ability...\", \"Sorry, I can't...\". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=[\"simple\"] and explain.\n\nFor simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan. Write a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form. The simple-path (simple=true) replyText must be non-empty, must directly answer the question, and must not be a bare acknowledgement that promises work without doin"
+        },
+        {
+          "trajectoryId": "tj-71d95a94688170",
+          "callId": "tj-71d95a94688170:stage-msghandler-1783039646042",
+          "expected": {
+            "text": "{\"shouldRespond\":\"RESPOND\",\"contexts\":[\"simple\"],\"intents\":[\"acknowledge benchmark message\"],\"replyText\":\"Benchmark message number 8 received.\",\"requiresTool\":false,\"candidateActionNames\":[],\"facts\":[],\"relationships\":[],\"topics\":[\"benchmark\"],\"addressedTo\":[\"BenchmarkAgent\"],\"emotion\":\"none\"}"
+          },
+          "predicted": "You are a benchmark model. Respond concisely.\n\n# About BenchmarkModel\nA benchmark model used for framework performance testing.\n\nuser_role: GUEST\n\nprior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.\n\nmessage_handler_stage:\ntask: Decide shouldRespond + plan.\n\navailable_contexts:\n- simple [label=Simple; aliases=direct,shortcut; sensitivity=public; cache=global]: Direct reply with no tools, no external data, and no other contexts. Pick this as the only context when the agent can answer from general context.\n- general [label=General; aliases=chat,conversation; sensitivity=public; cache=global]: Normal conversation and public agent behavior. Use when the reply needs general agent state but no tool work.\n\nshouldRespond:\n- RESPOND: agent should answer or do work\n- IGNORE: skip this message\n- STOP: user asked agent to disengage\nreplyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief ack (\"On it.\", \"Spawning the sub-agent now.\", \"Looking into it.\"); planner gives final. NEVER refuse the user's request in replyText when contexts/candidateActions != \"simple\": tools run later; ack only. Ban planning-path refusal openings: \"I cannot...\", \"I am unable...\", \"I don't have the ability...\", \"Sorry, I can't...\". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=[\"simple\"] and explain.\n\nFor simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan. Write a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form. The simple-path (simple=true) replyText must be non-empty, must directly answer the question, and must not be a bare acknowledgement that promises work without doin"
+        }
+      ]
+    }
+  }
+}

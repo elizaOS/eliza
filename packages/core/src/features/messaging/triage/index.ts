@@ -8,13 +8,6 @@ export { searchMessagesAction } from "./actions/searchMessages.ts";
 export { sendDraftAction } from "./actions/sendDraft.ts";
 export { triageMessagesAction } from "./actions/triageMessages.ts";
 export { BaseMessageAdapter, filterInMemory } from "./adapters/base.ts";
-export { DiscordMessageAdapter } from "./adapters/discord-adapter.ts";
-export { GmailMessageAdapter } from "./adapters/gmail-adapter.ts";
-export { IMessageMessageAdapter } from "./adapters/imessage-adapter.ts";
-export { SignalMessageAdapter } from "./adapters/signal-adapter.ts";
-export { TelegramMessageAdapter } from "./adapters/telegram-adapter.ts";
-export { TwitterMessageAdapter } from "./adapters/twitter-adapter.ts";
-export { WhatsappMessageAdapter } from "./adapters/whatsapp-adapter.ts";
 export {
 	__resetDefaultMessageRefStoreForTests,
 	getDefaultMessageRefStore,
@@ -38,7 +31,6 @@ export {
 export type { TriageOptions } from "./triage-service.ts";
 export {
 	__resetDefaultTriageServiceForTests,
-	createDefaultTriageService,
 	getDefaultTriageService,
 	TriageService,
 } from "./triage-service.ts";

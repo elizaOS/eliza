@@ -1,3 +1,9 @@
+/**
+ * Chat-sidebar (and home-grid) TODO widget: lists the agent workbench's todos,
+ * seeded from the app store's `workbench.todos` and refreshed by a poll that
+ * runs only while authenticated and the document is visible. Exports
+ * `TODO_PLUGIN_WIDGETS`, the widget-registry entry consumed by the sidebar.
+ */
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";

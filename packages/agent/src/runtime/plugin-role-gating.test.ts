@@ -3,9 +3,10 @@ import type {
   Memory,
   Plugin,
   Provider,
+  ProviderResult,
   State,
 } from "@elizaos/core";
-import { roleRank } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const rolesMock = vi.hoisted(() => ({
@@ -14,11 +15,7 @@ const rolesMock = vi.hoisted(() => ({
 
 vi.mock("./roles.ts", () => rolesMock);
 
-import {
-  applyPluginRoleGating,
-  PROVIDER_ROLE_OVERRIDES,
-  TIER_TO_CANONICAL_ROLE,
-} from "./plugin-role-gating.ts";
+import { applyPluginRoleGating } from "./plugin-role-gating.ts";
 
 const runtime = {
   agentId: "11111111-1111-1111-1111-111111111111",
@@ -34,7 +31,17 @@ function message(metadata: Record<string, unknown> = {}): Memory {
   } as Memory;
 }
 
-function provider(name: string): Provider {
+/** A sensitive provider that declares its own gate — the only thing that gates. */
+function gatedProvider(name: string, minRole: string): Provider {
+  return {
+    name,
+    roleGate: { minRole },
+    get: vi.fn(async () => ({ text: `${name}: visible` })),
+  } as unknown as Provider;
+}
+
+/** A provider with NO declared gate — must stay public. */
+function plainProvider(name: string): Provider {
   return {
     name,
     get: vi.fn(async () => ({ text: `${name}: visible` })),
@@ -48,7 +55,7 @@ function pluginWithProviders(providers: Provider[]): Plugin {
   } as Plugin;
 }
 
-describe("applyPluginRoleGating", () => {
+describe("applyPluginRoleGating — in-flight role-check dedup", () => {
   beforeEach(() => {
     rolesMock.checkSenderRole.mockReset();
   });
@@ -62,7 +69,10 @@ describe("applyPluginRoleGating", () => {
           }, 10);
         }),
     );
-    const providers = [provider("SECRETS_STATUS"), provider("MISSING_SECRETS")];
+    const providers = [
+      gatedProvider("SECRETS_STATUS", "ADMIN"),
+      gatedProvider("MISSING_SECRETS", "ADMIN"),
+    ];
     applyPluginRoleGating([pluginWithProviders(providers)]);
 
     const results = await Promise.all(
@@ -82,18 +92,18 @@ describe("applyPluginRoleGating", () => {
     rolesMock.checkSenderRole
       .mockResolvedValueOnce({ role: "ADMIN", isOwner: false, isAdmin: true })
       .mockResolvedValueOnce({ role: "GUEST", isOwner: false, isAdmin: false });
-    const gatedProvider = provider("SECRETS_STATUS");
-    applyPluginRoleGating([pluginWithProviders([gatedProvider])]);
+    const provider = gatedProvider("SECRETS_STATUS", "ADMIN");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
 
     await expect(
-      gatedProvider.get?.(
+      provider.get?.(
         runtime,
         message({ fromId: "discord-user-1" }),
         {} as State,
       ),
     ).resolves.toMatchObject({ text: "SECRETS_STATUS: visible" });
     await expect(
-      gatedProvider.get?.(
+      provider.get?.(
         runtime,
         message({ fromId: "discord-user-1" }),
         {} as State,
@@ -109,16 +119,16 @@ describe("applyPluginRoleGating", () => {
       isOwner: false,
       isAdmin: true,
     });
-    const gatedProvider = provider("SECRETS_STATUS");
-    applyPluginRoleGating([pluginWithProviders([gatedProvider])]);
+    const provider = gatedProvider("SECRETS_STATUS", "ADMIN");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
 
     await Promise.all([
-      gatedProvider.get?.(
+      provider.get?.(
         runtime,
         message({ fromId: "discord-user-1" }),
         {} as State,
       ),
-      gatedProvider.get?.(
+      provider.get?.(
         runtime,
         message({ fromId: "discord-user-2" }),
         {} as State,
@@ -129,30 +139,13 @@ describe("applyPluginRoleGating", () => {
   });
 });
 
-describe("override tiers map onto canonical role ranks", () => {
-  it("normalizes each lowercase tier to a canonical role rank", () => {
-    expect(roleRank(TIER_TO_CANONICAL_ROLE.user)).toBe(roleRank("USER"));
-    expect(roleRank(TIER_TO_CANONICAL_ROLE.admin)).toBe(roleRank("ADMIN"));
-    expect(roleRank(TIER_TO_CANONICAL_ROLE.owner)).toBe(roleRank("OWNER"));
-    // The tiers form a strict hierarchy: user < admin < owner.
-    expect(roleRank("USER")).toBeLessThan(roleRank("ADMIN"));
-    expect(roleRank("ADMIN")).toBeLessThan(roleRank("OWNER"));
-  });
-
-  it("only references known tiers in the provider override map", () => {
-    for (const tier of Object.values(PROVIDER_ROLE_OVERRIDES)) {
-      expect(TIER_TO_CANONICAL_ROLE[tier]).toBeDefined();
-    }
-  });
-});
-
-describe("provider gating outcomes follow the canonical gate", () => {
+describe("gating is driven ONLY by the provider's declared roleGate", () => {
   beforeEach(() => {
     rolesMock.checkSenderRole.mockReset();
   });
 
   async function visibleText(
-    providerName: string,
+    provider: Provider,
     callerRole: string,
   ): Promise<string | undefined> {
     rolesMock.checkSenderRole.mockResolvedValue({
@@ -160,9 +153,7 @@ describe("provider gating outcomes follow the canonical gate", () => {
       isOwner: callerRole === "OWNER",
       isAdmin: callerRole === "OWNER" || callerRole === "ADMIN",
     });
-    const gatedProvider = provider(providerName);
-    applyPluginRoleGating([pluginWithProviders([gatedProvider])]);
-    const result = await gatedProvider.get?.(
+    const result = await provider.get?.(
       runtime,
       message({ fromId: "discord-user-1" }),
       {} as State,
@@ -170,35 +161,101 @@ describe("provider gating outcomes follow the canonical gate", () => {
     return result?.text;
   }
 
-  it("redacts an owner-gated provider for GUEST and NONE callers but passes OWNER", async () => {
-    // app_browser_workspace is an "owner" override.
-    expect(PROVIDER_ROLE_OVERRIDES.app_browser_workspace).toBe("owner");
-    expect(await visibleText("app_browser_workspace", "GUEST")).toBe("");
-    expect(await visibleText("app_browser_workspace", "NONE")).toBe("");
-    expect(await visibleText("app_browser_workspace", "USER")).toBe("");
-    expect(await visibleText("app_browser_workspace", "ADMIN")).toBe("");
-    expect(await visibleText("app_browser_workspace", "OWNER")).toBe(
-      "app_browser_workspace: visible",
-    );
-  });
-
-  it("passes an admin-gated provider for ADMIN and OWNER, redacts below", async () => {
-    expect(PROVIDER_ROLE_OVERRIDES.SECRETS_STATUS).toBe("admin");
-    expect(await visibleText("SECRETS_STATUS", "GUEST")).toBe("");
-    expect(await visibleText("SECRETS_STATUS", "USER")).toBe("");
-    expect(await visibleText("SECRETS_STATUS", "ADMIN")).toBe(
+  it("denies an ADMIN-gated provider to a lower role, passes at/above ADMIN", async () => {
+    const provider = gatedProvider("SECRETS_STATUS", "ADMIN");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
+    expect(await visibleText(provider, "GUEST")).toBe("");
+    expect(await visibleText(provider, "USER")).toBe("");
+    expect(await visibleText(provider, "ADMIN")).toBe(
       "SECRETS_STATUS: visible",
     );
-    expect(await visibleText("SECRETS_STATUS", "OWNER")).toBe(
+    expect(await visibleText(provider, "OWNER")).toBe(
       "SECRETS_STATUS: visible",
     );
   });
 
-  it("passes a user-gated provider for everyone above GUEST", async () => {
-    expect(PROVIDER_ROLE_OVERRIDES.todos).toBe("user");
-    expect(await visibleText("todos", "GUEST")).toBe("");
-    expect(await visibleText("todos", "USER")).toBe("todos: visible");
-    expect(await visibleText("todos", "ADMIN")).toBe("todos: visible");
-    expect(await visibleText("todos", "OWNER")).toBe("todos: visible");
+  it("denies an OWNER-gated provider to everyone below OWNER, passes OWNER", async () => {
+    const provider = gatedProvider("browser_workspace", "OWNER");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
+    expect(await visibleText(provider, "GUEST")).toBe("");
+    expect(await visibleText(provider, "USER")).toBe("");
+    expect(await visibleText(provider, "ADMIN")).toBe("");
+    expect(await visibleText(provider, "OWNER")).toBe(
+      "browser_workspace: visible",
+    );
+  });
+
+  it("passes a USER-gated provider for everyone above GUEST, denies GUEST/NONE", async () => {
+    const provider = gatedProvider("CURRENT_TODOS", "USER");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
+    expect(await visibleText(provider, "NONE")).toBe("");
+    expect(await visibleText(provider, "GUEST")).toBe("");
+    expect(await visibleText(provider, "USER")).toBe("CURRENT_TODOS: visible");
+    expect(await visibleText(provider, "ADMIN")).toBe("CURRENT_TODOS: visible");
+    expect(await visibleText(provider, "OWNER")).toBe("CURRENT_TODOS: visible");
+  });
+
+  it("fails OPEN is impossible: removing the declaration leaves it PUBLIC (so the gate must live on the provider)", async () => {
+    // A provider with NO declared roleGate is NOT gated — visible to everyone,
+    // including NONE. This is the fail-open surface the old name-keyed override
+    // map created on every rename; the fix moves the gate onto the provider so a
+    // sensitive provider is only ungated if its OWN declaration is removed —
+    // a visible, reviewable edit in the owning plugin, never silent name drift.
+    const provider = plainProvider("SHELL_HISTORY");
+    applyPluginRoleGating([pluginWithProviders([provider])]);
+    expect((provider as { __roleGate?: string }).__roleGate).toBeUndefined();
+    expect(await visibleText(provider, "NONE")).toBe("SHELL_HISTORY: visible");
+  });
+
+  it("treats a GUEST/NONE minRole as non-restricting (public)", async () => {
+    const guestGated = gatedProvider("public-ish", "GUEST");
+    applyPluginRoleGating([pluginWithProviders([guestGated])]);
+    expect((guestGated as { __roleGate?: string }).__roleGate).toBeUndefined();
+    expect(await visibleText(guestGated, "NONE")).toBe("public-ish: visible");
+  });
+});
+
+describe("fail-CLOSED: a sensitive provider that cannot be wrapped is withheld", () => {
+  beforeEach(() => {
+    rolesMock.checkSenderRole.mockReset();
+  });
+
+  it("withholds a declared-sensitive provider from EVERYONE when wrapping throws", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+    rolesMock.checkSenderRole.mockResolvedValue({
+      role: "OWNER",
+      isOwner: true,
+      isAdmin: true,
+    });
+
+    // A sensitive provider whose `get` is a read-only data property: the wrap
+    // path's `provider.get = …` reassignment throws (strict-mode module), so the
+    // fail-closed branch must force-replace `get` with a redactor via
+    // defineProperty and withhold the content rather than register it exposed.
+    const original = vi.fn(
+      async (): Promise<ProviderResult> => ({ text: "SHELL_HISTORY: leak" }),
+    );
+    const locked = {
+      name: "SHELL_HISTORY",
+      roleGate: { minRole: "ADMIN" },
+    } as unknown as Provider;
+    Object.defineProperty(locked, "get", {
+      value: original,
+      writable: false,
+      configurable: true,
+      enumerable: true,
+    });
+
+    applyPluginRoleGating([pluginWithProviders([locked])]);
+
+    // Even OWNER must NOT see the leaked content — it was withheld, not gated.
+    const result = await locked.get?.(
+      runtime,
+      message({ fromId: "discord-user-1" }),
+      {} as State,
+    );
+    expect(result?.text).toBe("");
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

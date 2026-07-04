@@ -1,0 +1,183 @@
+{
+  "runStartedAt": "2026-07-03T19:46:08.816Z",
+  "apiBase": "https://api.elizacloud.ai/api/v1",
+  "auth": "X-API-Key from local env; value not recorded",
+  "steps": [
+    {
+      "name": "01-generate-image-response.json",
+      "route": "/generate-image",
+      "status": 200,
+      "ok": true,
+      "durationMs": 14366
+    },
+    {
+      "name": "download:generated-image.jpg",
+      "url": "https://blob.elizacloud.ai/generations/images/4392b9f7-e526-40f7-99ce-fc98746fca05/79248b41-7532-4f6b-a0d1-687fa39650df/072834c6-735d-4f67-9762-1c4f85214da7.jpg",
+      "status": 200,
+      "ok": true,
+      "sizeBytes": 313550,
+      "contentType": "image/jpeg"
+    },
+    {
+      "name": "02-generate-video-response.json",
+      "route": "/generate-video",
+      "status": 400,
+      "ok": false,
+      "durationMs": 2002
+    },
+    {
+      "name": "03-generate-sfx-response.json",
+      "route": "/generate-sfx",
+      "status": 200,
+      "ok": true,
+      "durationMs": 15170
+    },
+    {
+      "name": "download:generated-sfx.wav",
+      "url": "https://v3b.fal.media/files/b/0aa0ce8f/PhoSDDGEsK7e4hbGAt5mS_SGElmsFL.wav",
+      "status": 200,
+      "ok": true,
+      "sizeBytes": 529244,
+      "contentType": "audio/wav"
+    },
+    {
+      "name": "04-generate-music-response.json",
+      "route": "/generate-music",
+      "status": 200,
+      "ok": true,
+      "durationMs": 112879
+    },
+    {
+      "name": "download:generated-music.mp3",
+      "url": "https://v3b.fal.media/files/b/0aa0ce9a/dRWVNlGmT4zhAdHyWZ2Iy_output.mp3",
+      "status": 200,
+      "ok": true,
+      "sizeBytes": 3547351,
+      "contentType": "audio/mpeg"
+    },
+    {
+      "name": "05-gallery-image-list.json",
+      "route": "/gallery?type=image&limit=10",
+      "status": 200,
+      "ok": true,
+      "durationMs": 1974
+    },
+    {
+      "name": "06-gallery-video-list.json",
+      "route": "/gallery?type=video&limit=10",
+      "status": 200,
+      "ok": true,
+      "durationMs": 1404
+    },
+    {
+      "name": "07-files-upload-response.json",
+      "route": "/files",
+      "status": 201,
+      "ok": true,
+      "durationMs": 3329
+    },
+    {
+      "name": "08-files-list-response.json",
+      "route": "/files?limit=10&q=11745-1783107968816",
+      "status": 200,
+      "ok": true,
+      "durationMs": 2305
+    },
+    {
+      "name": "09-files-get-response.json",
+      "route": "/files/5f2989fe-9d52-47d2-8ed7-25f22d4db26a",
+      "status": 200,
+      "ok": true,
+      "durationMs": 2267
+    },
+    {
+      "name": "download:uploaded-file.txt",
+      "url": "https://blob.elizacloud.ai/cloud-files/4392b9f7-e526-40f7-99ce-fc98746fca05/2026-07-03/5f2989fe-9d52-47d2-8ed7-25f22d4db26a-12d671a9b2fa7543.txt",
+      "status": 200,
+      "ok": true,
+      "sizeBytes": 79,
+      "contentType": "text/plain"
+    },
+    {
+      "name": "10-files-delete-response.json",
+      "route": "/files/5f2989fe-9d52-47d2-8ed7-25f22d4db26a",
+      "status": 200,
+      "ok": true,
+      "durationMs": 3272
+    },
+    {
+      "name": "11-files-get-after-delete-response.json",
+      "route": "/files/5f2989fe-9d52-47d2-8ed7-25f22d4db26a",
+      "status": 404,
+      "ok": false,
+      "durationMs": 2263
+    }
+  ],
+  "runFinishedAt": "2026-07-03T19:48:52.316Z",
+  "artifacts": {
+    "imageUrl": "https://blob.elizacloud.ai/generations/images/4392b9f7-e526-40f7-99ce-fc98746fca05/79248b41-7532-4f6b-a0d1-687fa39650df/072834c6-735d-4f67-9762-1c4f85214da7.jpg",
+    "sfxUrl": "https://v3b.fal.media/files/b/0aa0ce8f/PhoSDDGEsK7e4hbGAt5mS_SGElmsFL.wav",
+    "musicUrl": "https://v3b.fal.media/files/b/0aa0ce9a/dRWVNlGmT4zhAdHyWZ2Iy_output.mp3"
+  },
+  "productionSecretPresence": {
+    "checkedBy": "bunx wrangler@latest secret list --env production (names only; values are write-only and not printed)",
+    "ATLASCLOUD_API_KEY": true,
+    "FAL_KEY": true,
+    "FAL_API_KEY": true,
+    "ELEVENLABS_API_KEY": true
+  },
+  "manualReview": {
+    "image": "Opened generated-image.jpg with view_image: valid nonblank image matching prompt, red square + green triangle + blue circle on white background.",
+    "sfx": "ffprobe shows 3.0s stereo PCM WAV bytes from generated-sfx.wav; generated-sfx-waveform.png is non-silent with a strong onset and decay, matching short bell/pop-style verification audio shape.",
+    "music": "ffprobe shows 110.631s stereo MP3; generated-music-waveform.png is non-silent with distinct musical sections. Note: request asked for 10s but provider returned 110.6s, so this evidence exposes a duration/billing contract bug.",
+    "files": "Upload/list/get/download/delete/get-after-delete round trip passed; downloaded uploaded-file.txt sha256 matches the local upload source and post-delete GET returned 404.",
+    "video": "Live video remains failing: unsupported stale Atlas Vidu model on prod returned 400, then supported FAL models pixverse, veo3/fast, hailuo, and wan returned 500 internal_error. Production secrets include FAL_KEY/FAL_API_KEY, so this is provider/route/runtime behavior, not absent secret configuration."
+  },
+  "videoAttempts": [
+    {
+      "model": "vidu/q3-turbo/text-to-video",
+      "status": 400,
+      "ok": false,
+      "xRequestId": "5791fb56-1460-4da3-b69f-56f89e971f0c",
+      "error": "Unsupported video model: vidu/q3-turbo/text-to-video",
+      "code": "validation_error",
+      "durationMs": 2002
+    },
+    {
+      "model": "fal-ai/pixverse/v5/text-to-video",
+      "status": 500,
+      "ok": false,
+      "xRequestId": "e9e1209d-0974-4c13-85a2-3d49e766e273",
+      "error": "An unexpected error occurred",
+      "code": "internal_error",
+      "durationMs": 7042
+    },
+    {
+      "model": "fal-ai/veo3/fast",
+      "status": 500,
+      "ok": false,
+      "xRequestId": "7a444493-0b58-4fcb-9c08-e1e997770793",
+      "error": "An unexpected error occurred",
+      "code": "internal_error",
+      "durationMs": 76891
+    },
+    {
+      "model": "fal-ai/minimax/hailuo-2.3/standard/text-to-video",
+      "status": 500,
+      "ok": false,
+      "xRequestId": "0cfb31aa-a9f5-4e73-8665-fb123499b081",
+      "error": "An unexpected error occurred",
+      "code": "internal_error",
+      "durationMs": 139745
+    },
+    {
+      "model": "wan/v2.6/text-to-video",
+      "status": 500,
+      "ok": false,
+      "xRequestId": "74b7ede0-a177-45c5-bd7e-106ab8f2a04e",
+      "error": "An unexpected error occurred",
+      "code": "internal_error",
+      "durationMs": 4497
+    }
+  ]
+}

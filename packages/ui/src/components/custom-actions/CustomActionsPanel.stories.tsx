@@ -1,3 +1,5 @@
+/** Storybook stories for CustomActionsPanel (the slide-out list) under a MockAppProvider supplying `t` and a stubbed client. */
+
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { type ReactElement, useEffect, useRef } from "react";
 import {

@@ -1,6 +1,8 @@
-// ── Z-index scale ──────────────────────────────────────────────
-// Every z-index in the app must come from this file.
-// Values are intentionally sparse so new layers can be inserted.
+/**
+ * Canonical z-index scale for floating layers. Every z-index in the app must
+ * come from this file; values are intentionally sparse so new layers can be
+ * inserted between existing ones without renumbering.
+ */
 
 export const Z_BASE = 0;
 export const Z_DROPDOWN = 10;

@@ -76,7 +76,9 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "heroImage": "assets/hero.png",
+      "catalogSection": "finance",
+      "defaultHidden": true
     },
     "appRegister": "register"
   },

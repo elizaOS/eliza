@@ -26,30 +26,30 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAccount } from "@elizaos/agent/auth/account-storage";
-import {
-  getAccessToken,
-  saveCredentials,
-} from "@elizaos/agent/auth/credentials";
-import { probeDirectApiKey } from "@elizaos/agent/auth/direct-api-probe";
-import { accountRefreshMutex } from "@elizaos/agent/auth/refresh-mutex";
-import type { DirectAccountProvider } from "@elizaos/agent/auth/types";
+import { loadAccount } from "@elizaos/auth/account-storage";
+import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
+import { getAccessToken, saveCredentials } from "@elizaos/auth/credentials";
+import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
+import { accountRefreshMutex } from "@elizaos/auth/refresh-mutex";
+import type { DirectAccountProvider } from "@elizaos/auth/types";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   isDirectAccountProvider,
   isSubscriptionProvider,
-} from "@elizaos/agent/auth/types";
-import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
-import { logger, resolveStateDir } from "@elizaos/core";
-import type {
-  LinkedAccountProviderId,
-  LinkedAccountUsage,
-} from "@elizaos/shared/contracts/service-routing";
-import type { AccountPool, Strategy } from "./account-pool.js";
-
-const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+} from "@elizaos/auth/types";
+import {
+  type CodingAgentSelectorBridge,
+  type CodingProviderAvailability,
+  logger,
+  resolveStateDir,
+  setCodingAgentSelectorBridge,
+} from "@elizaos/core";
+import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
+import {
+  type AccountPool,
+  type Strategy,
+  selectionForProvider,
+} from "./account-pool.js";
 
 const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "priority",
@@ -58,7 +58,7 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "quota-aware",
 ]);
 
-/** Default selection strategy — overridable via ELIZA_CODING_ACCOUNT_STRATEGY env var. */
+/** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */
 function getDefaultCodingStrategy(): Strategy {
   const env =
     typeof process !== "undefined"
@@ -94,58 +94,6 @@ const AGENT_PROVIDER_CANDIDATES: Readonly<
   codex: ["openai-codex", "openai-api"],
   opencode: ["cerebras-api"],
 };
-
-export interface CodingAgentAccountDescriptor {
-  providerId: LinkedAccountProviderId;
-  accountId: string;
-  label: string;
-  source: "oauth" | "api-key";
-  strategy: Strategy;
-  usage?: LinkedAccountUsage;
-}
-
-export interface CodingAgentSelection extends CodingAgentAccountDescriptor {
-  /** Env vars to inject into the spawned coding-agent subprocess. */
-  envPatch: Record<string, string>;
-}
-
-export interface CodingProviderAvailability {
-  providerId: LinkedAccountProviderId;
-  total: number;
-  enabled: number;
-  healthy: number;
-}
-
-export interface CodingAgentSelectorBridge {
-  /** Which providers can serve each coding-agent type, with account counts. */
-  describe(): Record<string, CodingProviderAvailability[]>;
-  /** Pick an account for a new (or continuing) coding sub-agent. */
-  select(
-    agentType: string,
-    opts?: { sessionKey?: string; strategy?: Strategy; exclude?: string[] },
-  ): Promise<CodingAgentSelection | null>;
-  markRateLimited(
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-    untilMs: number,
-    detail?: string,
-  ): Promise<void>;
-  markNeedsReauth(
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-    detail?: string,
-  ): Promise<void>;
-  recordUsage(
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-    result: {
-      tokens?: number;
-      ok: boolean;
-      model?: string;
-      latencyMs?: number;
-    },
-  ): Promise<void>;
-}
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
   return AGENT_PROVIDER_CANDIDATES[agentType.toLowerCase()] ?? [];
@@ -394,8 +342,17 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
     async select(agentType, opts) {
       const candidates = candidatesFor(agentType);
       if (candidates.length === 0) return null;
-      const strategy = opts?.strategy ?? getDefaultCodingStrategy();
       for (const providerId of candidates) {
+        // Explicit caller override > the app's per-provider
+        // config.accountStrategies (same live selectionForProvider read the
+        // anthropic/subscription bridges use, so the rotation-strategy picker
+        // steers coding spawns too) > ELIZA_CODING_ACCOUNT_STRATEGY env >
+        // least-used. Strategy only — the llmText route's accountIds pin the
+        // chat brain's account, not coding sub-agents.
+        const strategy =
+          opts?.strategy ??
+          selectionForProvider(providerId).strategy ??
+          getDefaultCodingStrategy();
         const account = await pool.select({
           providerId,
           strategy,
@@ -456,10 +413,19 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       return null;
     },
 
-    markRateLimited(providerId, accountId, untilMs, detail) {
+    markRateLimited(
+      providerId: LinkedAccountProviderId,
+      accountId,
+      untilMs,
+      detail,
+    ) {
       return pool.markRateLimited(accountId, untilMs, detail, { providerId });
     },
-    async markNeedsReauth(providerId, accountId, detail) {
+    async markNeedsReauth(
+      providerId: LinkedAccountProviderId,
+      accountId,
+      detail,
+    ) {
       // A session-level 401 usually means the token INJECTED at spawn aged out
       // mid-run (Claude gets a bare access token it cannot refresh), not that
       // the account's credential is dead. Verify before evicting: adopt any
@@ -519,7 +485,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       }
       return pool.markNeedsReauth(accountId, detail, { providerId });
     },
-    async recordUsage(providerId, accountId, result) {
+    async recordUsage(providerId: LinkedAccountProviderId, accountId, result) {
       // Session end is the natural sync point for tokens a Codex CLI rotated
       // mid-run — heal the canonical record before the next sweep refreshes
       // against the consumed one.
@@ -532,20 +498,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
 }
 
 /**
- * Install the coding-agent selector bridge on `globalThis`. Idempotent — called
- * from `getDefaultAccountPool()` so it is present before the first spawn.
+ * Install the coding-agent selector bridge. Idempotent — called from
+ * `getDefaultAccountPool()` so it is present before the first spawn. The
+ * symbol + accessors live in `@elizaos/core` so producer and plugin consumers
+ * share one contract.
  */
 export function installCodingAgentSelectorBridge(pool: AccountPool): void {
-  if (typeof globalThis === "undefined") return;
-  (globalThis as Record<symbol, unknown>)[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL] =
-    makeBridge(pool);
+  setCodingAgentSelectorBridge(makeBridge(pool));
 }
 
-/** Read the installed bridge (null when no pool has been constructed yet). */
-export function getCodingAgentSelectorBridge(): CodingAgentSelectorBridge | null {
-  if (typeof globalThis === "undefined") return null;
-  const bridge = (globalThis as Record<symbol, unknown>)[
-    CODING_AGENT_SELECTOR_BRIDGE_SYMBOL
-  ];
-  return (bridge as CodingAgentSelectorBridge | undefined) ?? null;
-}
+export { getCodingAgentSelectorBridge } from "@elizaos/core";

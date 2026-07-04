@@ -33,9 +33,11 @@ import {
   type BrowserBridgeRouteService,
 } from "./service.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
+import { getBrowserWorkspaceSnapshot } from "./workspace/browser-workspace.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
+  BrowserWorkspaceSnapshot,
 } from "./workspace/browser-workspace-types.js";
 
 export const BROWSER_SERVICE_TYPE = "browser";
@@ -155,6 +157,15 @@ export class BrowserService extends Service {
     return this.targetOrder
       .map((id) => this.targets.get(id))
       .filter((target): target is BrowserTarget => target !== undefined);
+  }
+
+  /**
+   * Read-only live workspace snapshot (bridge mode + open tabs). Hosts query
+   * this through the runtime service registry so no caller needs a static
+   * import edge into this plugin.
+   */
+  getWorkspaceSnapshot(): Promise<BrowserWorkspaceSnapshot> {
+    return getBrowserWorkspaceSnapshot();
   }
 
   /**

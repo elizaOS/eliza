@@ -1,3 +1,9 @@
+/**
+ * Pure derivation of the popup's status model from BackgroundState — badge,
+ * title, checklist, and which primary action (auto-pair vs sync) to offer for
+ * each connection state. Keeps popup.ts free of branching and makes the
+ * connected / needs-pairing / error states unit-testable in isolation.
+ */
 import type { BackgroundState } from "./protocol";
 
 export type PopupStatusKind =

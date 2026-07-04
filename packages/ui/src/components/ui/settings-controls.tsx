@@ -1,3 +1,8 @@
+/**
+ * Settings-form control skins that wrap the Field/Input/Select/Textarea
+ * primitives with the compact variants used across settings and config panels,
+ * so each panel doesn't re-derive the same trigger/label styling.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

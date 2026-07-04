@@ -1,18 +1,26 @@
+/**
+ * User-configurable global hotkey that toggles the floating chat surface.
+ * Registers the accelerator with the OS via the desktop bridge; the shell
+ * handles the press. See the block below for why it is separate from the palette.
+ */
 import { useSyncExternalStore } from "react";
 
 /**
- * User-configurable global hotkey that summons the floating chat surface
- * (#10716). On desktop the main window *is* the chat-overlay bottom bar, so
- * "summon chat" means show + focus the main window. The chosen accelerator is
- * registered with the OS via `Desktop.registerShortcut({ id: "chat-overlay" })`
- * in the desktop shell; pressing it fires `desktopShortcutPressed`, which the
- * shell handles by bringing the window to the foreground.
+ * User-configurable global hotkey that toggles the floating chat surface
+ * (#10716 / #12184). On desktop the main window *is* the chat-overlay bottom
+ * bar, so the hotkey toggles it: when the window is already focused + visible
+ * the press dismisses it (focus returns to the previously active app);
+ * otherwise it shows + focuses it. The chosen accelerator is registered with
+ * the OS via `Desktop.registerShortcut({ id: "chat-overlay" })`; pressing it
+ * fires `desktopShortcutPressed`, which the shell handles with the pure
+ * `decideChatOverlayToggle()` decision (packages/app/src/desktop-hotkey.ts).
  *
  * This is intentionally separate from the `command-palette` binding
  * (`CommandOrControl+K`): summoning chat and opening the palette are distinct
  * actions, so both shortcuts are registered and the default chat accelerator is
- * chosen to not collide with the palette. Persisted to localStorage so it
- * survives reloads and is readable synchronously at desktop boot.
+ * chosen to not collide with the palette (nor with Option+Space, which Claude
+ * and ChatGPT desktop both squat). Persisted to localStorage so it survives
+ * reloads and is readable synchronously at desktop boot.
  */
 
 const STORAGE_KEY = "eliza:chatOverlayHotkey";

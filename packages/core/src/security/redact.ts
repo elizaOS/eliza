@@ -56,6 +56,61 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 ];
 
 /**
+ * Substrings that mark an object key as holding a credential. Case-insensitive.
+ * This is the single source of truth for *name-based* redaction — the cloud
+ * logger's `redact.context()` and the log-sink redactor below both consult
+ * {@link isSensitiveKeyName}, so "which field names are secret" is defined once.
+ * Value-shape detection (sk-, ghp_, Bearer, PEM, …) lives in
+ * {@link DEFAULT_REDACT_PATTERNS}; the two are complementary, not duplicated.
+ */
+const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
+	"privatekey",
+	"private_key",
+	"secret",
+	"password",
+	"passwd",
+	"passphrase",
+	"mnemonic",
+	"seedphrase",
+	"seed_phrase",
+	"apikey",
+	"api_key",
+	"accesstoken",
+	"access_token",
+	"refreshtoken",
+	"refresh_token",
+	"authkey",
+	"auth_key",
+	"credential",
+	"authorization",
+];
+
+/**
+ * Whether an object key names a credential and its value must be fully masked.
+ * Matches the substrings in {@link SENSITIVE_KEY_SUBSTRINGS} plus `token`
+ * (excluding `tokenId`) and the `*key` forms the cloud logger recognized
+ * (ssh/api/signing key). Callers redact the *value* under a matching key.
+ */
+export function isSensitiveKeyName(key: string): boolean {
+	const lower = key.toLowerCase();
+	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
+		return true;
+	}
+	if (lower.includes("token") && !lower.includes("tokenid")) {
+		return true;
+	}
+	if (
+		lower.includes("key") &&
+		(lower.includes("ssh") ||
+			lower.includes("api") ||
+			lower.includes("signing"))
+	) {
+		return true;
+	}
+	return false;
+}
+
+/**
  * Options for redacting sensitive text.
  */
 export type RedactOptions = {
@@ -372,4 +427,72 @@ export function redactObjectSecrets<T>(
 	}
 
 	return obj;
+}
+
+// ============================================================================
+// Log-Sink Redaction (applied to every log line, not opt-in per call)
+// ============================================================================
+
+const REDACTED_MASK = "[REDACTED]";
+const MAX_LOG_REDACT_DEPTH = 8;
+
+/**
+ * Redact one log argument for output at the sink. A string is scrubbed with the
+ * value-shape patterns ({@link redactSensitiveText}); an object/array is walked
+ * so any value under a credential-named key ({@link isSensitiveKeyName}) is
+ * fully masked and every remaining string is pattern-scrubbed. This is the
+ * mechanism that makes redaction structural rather than opt-in: a logger that
+ * pipes its arguments through {@link redactLogArgs} masks `{ apiKey }` whether
+ * or not the caller wrapped the context first.
+ *
+ * Depth is bounded and cycles are broken (returning the mask) so a pathological
+ * log payload cannot hang or blow the stack — a redactor must never be the thing
+ * that takes the process down.
+ */
+function redactLogArg(
+	value: unknown,
+	seen: WeakSet<object>,
+	depth: number,
+): unknown {
+	if (typeof value === "string") {
+		return redactSensitiveText(value);
+	}
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (depth >= MAX_LOG_REDACT_DEPTH || seen.has(value)) {
+		return REDACTED_MASK;
+	}
+	seen.add(value);
+	if (Array.isArray(value)) {
+		return value.map((item) => redactLogArg(item, seen, depth + 1));
+	}
+	if (value instanceof Error) {
+		// Preserve the Error shape (name/stack) callers rely on, but scrub the
+		// message — thrown errors routinely interpolate the offending secret.
+		const redacted = new Error(redactSensitiveText(value.message));
+		redacted.name = value.name;
+		redacted.stack = value.stack ? redactSensitiveText(value.stack) : undefined;
+		return redacted;
+	}
+	const result: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (isSensitiveKeyName(key)) {
+			result[key] = REDACTED_MASK;
+			continue;
+		}
+		result[key] = redactLogArg(entry, seen, depth + 1);
+	}
+	return result;
+}
+
+/**
+ * Redact every argument in a `logger.error(...args)` call before it reaches the
+ * transport. Consumed by log sinks so secret masking is structural, not opt-in:
+ * `logger.error("msg", { apiKey })` masks the key with no `redact.context()` at
+ * the call site. Value-shape and credential-named-key redaction converge here on
+ * the one core module ({@link redactSensitiveText} + {@link isSensitiveKeyName}).
+ */
+export function redactLogArgs(args: readonly unknown[]): unknown[] {
+	return args.map((arg) => redactLogArg(arg, new WeakSet<object>(), 0));
 }

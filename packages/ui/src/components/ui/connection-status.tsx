@@ -1,3 +1,10 @@
+/**
+ * Status dot + label for a live connection (connected/disconnected/error),
+ * with per-state label overrides. This is the composite component named
+ * `ConnectionStatus`; the identically named cloud-ui string union is
+ * deliberately not re-exported from the root barrel to avoid the collision
+ * (see the note in src/index.ts).
+ */
 import * as React from "react";
 import { cn } from "../../lib/utils";
 

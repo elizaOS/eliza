@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+/**
+ * Exports the LifeOps planner action manifest as JSON for the LifeOps bench.
+ *
+ * Loads the personal-assistant plus its connector plugins (bluebubbles,
+ * contacts, imessage, phone, todos), builds the planner tool definitions from
+ * their actions, and emits each as a function-tool entry annotated with the
+ * source plugin and planner metadata (tags, contexts, priority, surfaces,
+ * risk/cost). The bench consumes the manifest to drive and score action selection.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

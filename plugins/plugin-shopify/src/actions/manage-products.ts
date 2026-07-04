@@ -1,3 +1,9 @@
+/**
+ * Handler for the `products` op of the SHOPIFY action: list, create, or update
+ * products via {@link ShopifyService}. When structured parameters are absent it
+ * classifies free-text intent with `ModelType.TEXT_SMALL`. Create and update
+ * are mutations, so they route through {@link requireShopifyConfirmation} first.
+ */
 import type {
   ActionResult,
   HandlerCallback,

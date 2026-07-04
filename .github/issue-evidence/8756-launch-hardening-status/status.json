@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-07-03T20:46:11.104Z",
+  "repo": "elizaOS/eliza",
+  "branch": "develop",
+  "environment": "production",
+  "developHead": {
+    "ok": true,
+    "sha": "d45052676121525e6777870b4cc5e64f5152a869",
+    "error": null
+  },
+  "environmentSecrets": {
+    "ok": true,
+    "expected": [
+      {
+        "name": "SANDBOX_REGISTRY_REDIS_URL",
+        "present": true,
+        "updatedAt": "2026-06-23T17:01:28Z",
+        "visibility": ""
+      },
+      {
+        "name": "ELIZA_PROVISIONING_HOST",
+        "present": true,
+        "updatedAt": "2026-06-11T20:58:52Z",
+        "visibility": ""
+      },
+      {
+        "name": "ELIZA_PROVISIONING_SSH_KEY",
+        "present": true,
+        "updatedAt": "2026-06-11T22:45:29Z",
+        "visibility": ""
+      }
+    ],
+    "count": 13
+  },
+  "cloudAuthSecret": {
+    "ok": true,
+    "name": "ELIZACLOUD_API_KEY",
+    "present": true,
+    "updatedAt": "2026-04-05T07:46:17Z",
+    "visibility": "",
+    "source": "github-repo-secret-list"
+  },
+  "workflows": {
+    "buildAgentImage": {
+      "ok": true,
+      "run": {
+        "conclusion": "",
+        "createdAt": "2026-07-03T20:42:23Z",
+        "databaseId": 28682554806,
+        "displayTitle": "feat(lifeops): live HITL test surface — connect model/accounts + run …",
+        "event": "push",
+        "headSha": "ec42f3ea2776b5ff0283cf03babda7e0bde3212b",
+        "status": "pending",
+        "updatedAt": "2026-07-03T20:42:24Z",
+        "url": "https://github.com/elizaOS/eliza/actions/runs/28682554806"
+      }
+    },
+    "deployProvisioningWorker": {
+      "ok": true,
+      "run": {
+        "conclusion": "",
+        "createdAt": "2026-07-03T20:30:42Z",
+        "databaseId": 28682121776,
+        "displayTitle": "fix(cloud): reject unsupported MiniMax music duration billing drift (…",
+        "event": "push",
+        "headSha": "fec6b59c675f4e36312cd2321a969950ecd62903",
+        "status": "pending",
+        "updatedAt": "2026-07-03T20:30:43Z",
+        "url": "https://github.com/elizaOS/eliza/actions/runs/28682121776"
+      }
+    }
+  },
+  "image": {
+    "ok": true,
+    "image": "ghcr.io/elizaos/eliza:develop",
+    "digest": "sha256:54ce3645bcd3d5e23a2b06466691888a5bd656985e699984dbe3eb860b2c1a06",
+    "outputExcerpt": "Name:      ghcr.io/elizaos/eliza:develop\nMediaType: application/vnd.docker.distribution.manifest.v2+json\nDigest:    sha256:54ce3645bcd3d5e23a2b06466691888a5bd656985e699984dbe3eb860b2c1a06"
+  },
+  "selfChecks": {
+    "provisioningWorkerEnvReconcile": {
+      "ok": true,
+      "status": 0,
+      "stdout": "bun test v1.4.0-canary.1 (64ae83c2f)",
+      "stderr": "packages/scripts/cloud/admin/daemons/provisioning-worker-env-reconcile.test.ts:\n(pass) deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring > sources the key from the GitHub secret into the deploy job env [0.12ms]\n(pass) deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring > forwards the key to the remote deploy script via the ssh-action envs allowlist [0.36ms]\n(pass) deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring > includes the key in the .env.local reconcile loop targeting /opt/eliza/cloud/.env.local [0.05ms]\n(pass) provisioning-worker .env.local reconcile loop (executed) > writes SANDBOX_REGISTRY_REDIS_URL into .env.local when the secret is set [41.39ms]\n(pass) provisioning-worker .env.local reconcile loop (executed) > replaces a stale hand-set value rather than appending a duplicate [402.61ms]\n(pass) provisioning-worker .env.local reconcile loop (executed) > skips the key (preserving any hand-set value) when the secret is unset [10.70ms]\n(pass) provisioning-worker .env.local reconcile loop (executed) > skips the key when the secret is the empty string [10.43ms]\n\n 7 pass\n 0 fail\n 30 expect() calls\nRan 7 tests across 1 file. [1247.00ms]"
+    }
+  },
+  "cloudProvisioning": null,
+  "verdict": {
+    "requiredSecretsPresent": true,
+    "imageReady": false,
+    "deployReady": false,
+    "cloudVerified": false,
+    "closeable": false
+  }
+}

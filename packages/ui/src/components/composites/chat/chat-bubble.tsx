@@ -1,3 +1,8 @@
+/**
+ * Message bubble surface for a single chat line, toned for assistant vs user.
+ * When a connector `source` is set it draws a source-colored outline so
+ * cross-channel messages stay visually distinct without a repeated text badge.
+ */
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";

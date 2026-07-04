@@ -1,3 +1,9 @@
+/**
+ * Synthetic order-book microstructure for perp markets: derives a bid/ask/spread/depth
+ * quote state around the canonical market price and computes size-aware execution prices
+ * and post-trade mid drift. There is no real order book — liquidity regime and price
+ * impact are modelled from the market record so single trades move price realistically.
+ */
 import { clamp } from "@feed/shared";
 import type { PerpMarketRecord } from "./types";
 

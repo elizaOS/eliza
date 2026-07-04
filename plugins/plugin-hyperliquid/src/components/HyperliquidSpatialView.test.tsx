@@ -1,3 +1,10 @@
+/**
+ * Tests for `HyperliquidSpatialView`, the single component source rendered
+ * across TUI, GUI, and XR modalities: width-contract terminal rendering,
+ * DOM output with agent hooks, terminal-view registration, the account-health
+ * summary strip, per-position detail, and closed-position filtering. Pure
+ * component rendering against static snapshots — no live model or network.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {
@@ -120,10 +127,9 @@ describe("HyperliquidSpatialView one source, three modalities", () => {
   });
 });
 
-// Ported from the retired rich-DOM HyperliquidAppView + HyperliquidPositionsPanel:
-// the account-health summary strip and the per-position detail (side, leverage,
-// notional, entry, distance-to-liquidation, pnl) now live in the one spatial
-// source, plus the #8796 missing-DTO-field crash guard.
+// The account-health summary strip and per-position detail (side, leverage,
+// notional, entry, distance-to-liquidation, pnl) live in this one spatial
+// source, including the #8796 missing-DTO-field crash guard.
 describe("HyperliquidSpatialView account-health + position detail", () => {
   const withSummary: HyperliquidSnapshot = {
     ...snapshot,

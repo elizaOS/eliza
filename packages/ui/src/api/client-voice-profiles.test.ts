@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the VoiceProfilesClient, including its unavailable-error
+ * path. Transport stubbed, no live agent.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

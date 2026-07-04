@@ -41,6 +41,7 @@ import {
 	ChannelType,
 	ModelType,
 } from "../../../types/index.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
@@ -1397,7 +1398,7 @@ async function resolveAdminTarget(
 ): Promise<SendCandidate | null> {
 	if (!params.target || !ADMIN_TARGETS.has(params.target.toLowerCase()))
 		return null;
-	const source = params.source ?? "client_chat";
+	const source = params.source ?? MESSAGE_SOURCE_CLIENT_CHAT;
 	const connector = findConnectorBySource(connectors, source);
 	if (!connector) return null;
 	const ownerId =
@@ -3673,7 +3674,6 @@ export const messageAction: Action = {
 		"DIRECT_MESSAGE",
 		"CHAT",
 		"CHANNEL",
-		"ROOM",
 		// PRD action-catalog aliases. These resolve to MESSAGE subactions via
 		// handler argument routing; see packages/docs/action-prd-map.md.
 		"INBOX_LIST_UNREAD",
@@ -3700,6 +3700,8 @@ export const messageAction: Action = {
 	],
 	description: MESSAGE_DESCRIPTION,
 	descriptionCompressed: MESSAGE_COMPRESSED,
+	routingHint:
+		"send/read/search/triage messages on a connector or channel, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
 	contexts: MESSAGE_CONTEXTS,
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,

@@ -1,5 +1,5 @@
 /**
- * Plugins / Skills / Store / Catalog state — extracted from AppContext.
+ * Plugins / Skills / Store / Catalog state, one of the domain hooks AppContext composes.
  *
  * Manages plugin list and config, skill list and create/delete/review/marketplace
  * flows, the store (registry plugins), and the catalog (marketplace skills).

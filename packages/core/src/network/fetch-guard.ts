@@ -68,6 +68,20 @@ const CROSS_ORIGIN_STRIPPED_HEADERS = [
 	"cookie",
 ] as const;
 
+/**
+ * Entity/body headers that describe a request body and must be dropped when a
+ * redirect rewrites the request to a bodyless GET (301/302 POST, any 303).
+ * Matches the WHATWG fetch "HTTP-redirect fetch" step that strips request-body
+ * headers alongside nulling the body.
+ */
+const REDIRECT_BODY_STRIPPED_HEADERS = [
+	"content-encoding",
+	"content-language",
+	"content-location",
+	"content-type",
+	"content-length",
+] as const;
+
 function stripCredentialHeaders(
 	headers: HeadersInit | undefined,
 ): HeadersInit | undefined {
@@ -79,6 +93,40 @@ function stripCredentialHeaders(
 		cleaned.delete(name);
 	}
 	return cleaned;
+}
+
+function stripBodyHeaders(
+	headers: HeadersInit | undefined,
+): HeadersInit | undefined {
+	if (!headers) {
+		return headers;
+	}
+	const cleaned = new Headers(headers);
+	for (const name of REDIRECT_BODY_STRIPPED_HEADERS) {
+		cleaned.delete(name);
+	}
+	return cleaned;
+}
+
+/**
+ * Whether a redirect at `status` from a request using `method` must be rewritten
+ * to a bodyless GET, per the WHATWG fetch redirect rules that standard fetch
+ * (browsers, undici) applies: 301/302 rewrite a POST to GET, and 303 rewrites
+ * any method except GET/HEAD to GET; the request body is dropped in all three.
+ * 307/308 preserve the method and body. Because this guard follows redirects
+ * manually, it must reproduce the same rewrite — otherwise a secret-bearing body
+ * is re-sent on every hop (including a cross-origin hop to an attacker) and the
+ * guard functionally deviates from the spec it claims to follow.
+ */
+function shouldRewriteToGet(status: number, method: string): boolean {
+	const upper = method.toUpperCase();
+	if ((status === 301 || status === 302) && upper === "POST") {
+		return true;
+	}
+	if (status === 303 && upper !== "GET" && upper !== "HEAD") {
+		return true;
+	}
+	return false;
 }
 
 type NodePinnedFetchDefaults = {
@@ -202,6 +250,22 @@ export async function fetchWithSsrfGuard(
 	const pinnedFetchImpl =
 		params.pinnedFetchImpl ?? nodeDefaults?.pinnedFetchImpl;
 
+	// Fail CLOSED on the footgun that re-creates #11147: a `lookupFn` computes a
+	// DNS pin, but without a `pinnedFetchImpl` to connect to that pinned IP the
+	// request falls through to the unpinned `fetcher` — the pin is computed and
+	// then silently discarded, re-opening the DNS-rebinding race the lookup was
+	// meant to close. No current caller hits this (Node supplies both via
+	// nodeDefaults; edge supplies neither), but the combination must throw rather
+	// than downgrade to unpinned fetch.
+	if (lookupFn && !pinnedFetchImpl) {
+		throw new Error(
+			"SSRF guard: a DNS lookupFn was provided without a pinnedFetchImpl. " +
+				"Refusing to fall back to the unpinned fetcher — the computed DNS pin " +
+				"would be discarded, re-introducing a DNS-rebinding race. Provide a " +
+				"pinnedFetchImpl (e.g. node-pinned-fetch) alongside the lookupFn.",
+		);
+	}
+
 	const maxRedirects =
 		typeof params.maxRedirects === "number" &&
 		Number.isFinite(params.maxRedirects)
@@ -226,6 +290,11 @@ export async function fetchWithSsrfGuard(
 	let currentUrl = params.url;
 	let redirectCount = 0;
 	let hopHeaders = params.init?.headers;
+	// Method/body for the current hop. A redirect that the spec rewrites to a
+	// bodyless GET (301/302 POST, any 303) flips these; once dropped the body is
+	// never restored on later hops, matching standard fetch.
+	let hopMethod = params.init?.method;
+	let hopBodyDropped = false;
 
 	while (true) {
 		let parsedUrl: URL;
@@ -255,14 +324,21 @@ export async function fetchWithSsrfGuard(
 						})
 					: await resolvePinnedHostname(parsedUrl.hostname, lookupFn);
 			} else {
-				// No lookupFn (e.g. environment-agnostic core, which has no node:dns
-				// to pin with): fall back to synchronous literal-host checks — block
+				// EDGE-SSRF: no socket pinning on workerd — egress network policy
+				// required. This branch runs where there is no node:dns to pin with
+				// (Cloudflare Workers / environment-agnostic core). It blocks literal
+				// internal targets but CANNOT defend against DNS rebinding (a public
+				// name that flips to a private address between check and connect,
+				// #12229 M5); on the edge that residual must be closed by a Cloudflare
+				// egress policy denying RFC1918/link-local, or by routing outbound
+				// through a resolve-and-connect-by-IP proxy. Operator follow-up.
+				//
+				// No lookupFn: fall back to synchronous literal-host checks — block
 				// literal private/loopback/link-local IPs (including the
 				// octal/hex/decimal forms the OS resolver honors) and blocked
 				// internal hostnames. The redirect loop below re-runs this check for
-				// every hop, so redirect-to-internal is caught too. This does NOT
-				// defend against DNS rebinding (a public name that resolves to a
-				// private address) — pass a lookupFn where that matters.
+				// every hop, so redirect-to-internal is caught too. Pass a lookupFn
+				// where rebinding protection matters.
 				const allowPrivate = Boolean(params.policy?.allowPrivateNetwork);
 				const host = parsedUrl.hostname.trim().toLowerCase().replace(/\.$/, "");
 				const allowed = new Set(
@@ -287,6 +363,8 @@ export async function fetchWithSsrfGuard(
 			const init: RequestInit = {
 				...(params.init ? { ...params.init } : {}),
 				...(hopHeaders ? { headers: hopHeaders } : {}),
+				...(hopMethod !== undefined ? { method: hopMethod } : {}),
+				...(hopBodyDropped ? { body: undefined } : {}),
 				redirect: "manual",
 				...(signal ? { signal } : {}),
 			};
@@ -321,6 +399,17 @@ export async function fetchWithSsrfGuard(
 					throw new Error("Redirect loop detected");
 				}
 				visited.add(nextUrl);
+				// 301/302 on a POST, and any 303, are rewritten to a bodyless GET
+				// (matches standard fetch redirect semantics). This both prevents a
+				// secret-bearing request body from being re-sent on the next hop —
+				// including a cross-origin hop to an attacker — and keeps GET-after-303
+				// callers working. Drop the body-describing headers with it. Once
+				// dropped the method/body stay rewritten for every later hop.
+				if (shouldRewriteToGet(response.status, hopMethod ?? "GET")) {
+					hopMethod = "GET";
+					hopBodyDropped = true;
+					hopHeaders = stripBodyHeaders(hopHeaders);
+				}
 				// A redirect hop that crosses origins must not carry the caller's
 				// credentials on the next request (matches standard fetch redirect
 				// semantics). Keep the stripped header state for later hops too;

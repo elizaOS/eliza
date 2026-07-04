@@ -73,7 +73,7 @@ Runtime mode keys (selects local ITTP mode on iOS):
 
 ### Web fallback (AgentWeb)
 
-- `window.__ELIZA_API_BASE__` — API server base URL (falls back to relative)
+- boot-config `apiBase` (`window.__ELIZAOS_APP_BOOT_CONFIG__`) — API server base URL (falls back to relative)
 - `window.__ELIZA_API_TOKEN__` — bearer token (falls back to `sessionStorage.eliza_api_token`)
 
 ### Android
@@ -95,7 +95,7 @@ Android uses reflection to call `ElizaAgentService` (resolved by scanning regist
 
 - **Not an elizaOS action plugin.** This is a Capacitor plugin. There is no `Plugin` object from `@elizaos/core`; do not add one. The root AGENTS.md architecture rules apply to surrounding elizaOS code, not to this package.
 - **Android uses reflection.** `AgentPlugin.kt` locates `ElizaAgentService` via reflection to avoid a Gradle cycle. If the service class is renamed or not registered in `AndroidManifest.xml`, all Android calls will fail at runtime.
-- **iOS local mode uses WebView ITTP, not a TCP listener.** When `mode=local` (or equivalent), the iOS plugin dispatches `Agent.request` and `Agent.chat` through `window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__` — a JS handler installed by the app's WebView bridge. If that handler is not present, all local-mode requests return HTTP 503.
+- **iOS local mode uses WebView ITTP, not a TCP listener.** When `mode=local` (or equivalent), the iOS plugin dispatches `Agent.request` and `Agent.chat` through `window.__ELIZA_BRIDGE__?.iosLocalAgentRequest` — a JS handler installed by the app's WebView bridge. If that handler is not present, all local-mode requests return HTTP 503.
 - **`Agent.request` is path-only.** All implementations reject absolute URLs and paths starting with `//`. Only paths starting with `/` are accepted.
 - **Body size limits.** Request and response bodies are capped at 10 MB on iOS; requests are capped at 10 MB on Android.
 - **Chat uses a per-session conversation.** `AgentWeb` and the iOS native bridge lazily create a conversation via `POST /api/conversations` and cache the ID in `sessionStorage` (web) or a static class dictionary (iOS). A 404 on message send clears the cache and retries once.

@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
+ * pr-deterministic lane under the LLM proxy.
+ */
 import type {
   CapturedAction,
   ScenarioContext,

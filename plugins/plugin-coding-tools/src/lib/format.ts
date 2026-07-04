@@ -1,3 +1,10 @@
+/**
+ * Result and parameter helpers shared by the action handlers: the
+ * `failureToActionResult`/`successActionResult` builders that produce the
+ * `ActionResult` envelope, and the `readStringParam`/`readNumberParam` readers that
+ * coerce loosely-typed handler options into validated values. Keeps every action's
+ * success/failure shape identical.
+ */
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
 import {
   type ActionResultData,

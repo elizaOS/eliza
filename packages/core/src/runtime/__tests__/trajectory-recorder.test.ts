@@ -8,6 +8,7 @@ import {
 	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	encodeTrajectoryFieldValue,
+	finalizeTrajectoryRecording,
 	type RecordedStage,
 	type RecordedTrajectory,
 	resolveTrajectoryFieldCapBytes,
@@ -1116,5 +1117,171 @@ describe("integration: action stage records input/output/error (M12)", () => {
 		expect(tool?.success).toBe(false);
 		expect(tool?.errorText).toContain("Connection refused");
 		expect(tool?.input).toBe('{"q":"missing-config"}');
+	});
+
+	it("captures the executed action's model-facing description (incl. routing hint) on the tool stage and renders it in the markdown review", async () => {
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-docs",
+			rootMessage: { id: "m-docs", text: "remind me at 9pm" },
+		});
+
+		// The exposed ToolDefinition description = routingHint + "\n" + compressed
+		// description (what the planner actually saw for this action).
+		const modelFacingDescription =
+			"manage EXISTING scheduled items -> SCHEDULED_TASKS; coding work -> TASKS\nmanage owner scheduled items";
+		const toolStage: RecordedStage = {
+			stageId: "stage-tool-SCHEDULED_TASKS",
+			kind: "tool",
+			startedAt: 100,
+			endedAt: 210,
+			latencyMs: 110,
+			tool: {
+				name: "SCHEDULED_TASKS",
+				args: { action: "create" },
+				result: { ok: true },
+				success: true,
+				durationMs: 110,
+				description: modelFacingDescription,
+			},
+		};
+		await recorder.recordStage(id, toolStage);
+		await recorder.endTrajectory(id, "finished");
+
+		// JSON round-trip: the execution record is self-contained.
+		const loaded = await recorder.load(id);
+		const tool = loaded?.stages[0]?.tool;
+		expect(tool?.description).toBe(modelFacingDescription);
+
+		// Markdown review surfaces the when-to-use guidance on the executed action
+		// without cross-referencing the planner stage's model.tools.
+		const markdownPath = path.join(tmpDir, "agent-docs", `${id}.md`);
+		const markdown = await fs.readFile(markdownPath, "utf8");
+		expect(markdown).toContain(
+			"- description: manage EXISTING scheduled items -> SCHEDULED_TASKS",
+		);
+	});
+});
+
+describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
+	const rootMessage = { id: "msg-1", text: "hello", sender: "user-1" };
+
+	async function readPersisted(id: string): Promise<RecordedTrajectory> {
+		const raw = await fs.readFile(
+			path.join(tmpDir, "agent-test", `${id}.json`),
+			"utf8",
+		);
+		return JSON.parse(raw) as RecordedTrajectory;
+	}
+
+	it("writes a terminal status even when the pre-end work never settles", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+			// Simulates a hung background facts-stage model call.
+			beforeEnd: () => new Promise<void>(() => {}),
+			beforeEndTimeoutMs: 25,
+			logger: { warn },
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("finished");
+		expect(persisted.endedAt).toBeGreaterThan(0);
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ trajectoryId: id, timeoutMs: 25 }),
+			expect.stringContaining("timed out"),
+		);
+	});
+
+	it("writes a terminal errored status even when the pre-end work throws", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "errored",
+			beforeEnd: () => Promise.reject(new Error("facts stage exploded")),
+			logger: { warn },
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("errored");
+		expect(persisted.metrics.finalDecision).toBe("error");
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ err: "facts stage exploded" }),
+			expect.stringContaining("pre-end work failed"),
+		);
+	});
+
+	it("records the pre-end stage before ending when it completes in time", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+			beforeEnd: async () => {
+				await recorder.recordStage(id, {
+					stageId: "stage-facts-1",
+					kind: "factsAndRelationships",
+					startedAt: 1,
+					endedAt: 2,
+					latencyMs: 1,
+				});
+			},
+		});
+
+		const persisted = await readPersisted(id);
+		expect(persisted.status).toBe("finished");
+		expect(persisted.stages).toHaveLength(1);
+		expect(persisted.stages[0]?.stageId).toBe("stage-facts-1");
+	});
+
+	it("never throws, even when endTrajectory itself rejects", async () => {
+		const warn = vi.fn();
+		const failing = {
+			startTrajectory: () => "tj-x",
+			recordStage: async () => undefined,
+			endTrajectory: async () => {
+				throw new Error("disk gone");
+			},
+			load: async () => null,
+			list: async () => [],
+		};
+
+		await expect(
+			finalizeTrajectoryRecording({
+				recorder: failing,
+				trajectoryId: "tj-x",
+				status: "finished",
+				logger: { warn },
+			}),
+		).resolves.toBeUndefined();
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ err: "disk gone", trajectoryId: "tj-x" }),
+			expect.stringContaining("endTrajectory failed"),
+		);
+	});
+
+	it("ends immediately when there is no pre-end work", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+
+		await finalizeTrajectoryRecording({
+			recorder,
+			trajectoryId: id,
+			status: "finished",
+		});
+
+		expect((await readPersisted(id)).status).toBe("finished");
 	});
 });

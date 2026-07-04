@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for plugin integrity, subagent environment boundaries, and firmware signing.
+ */
+
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { dirExists, readUtf8Safe, walk } from "../util/fs.js";

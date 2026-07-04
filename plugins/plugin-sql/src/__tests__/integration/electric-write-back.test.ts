@@ -1,3 +1,11 @@
+/**
+ * End-to-end Electric Write-Back test against Electric Cloud (the managed
+ * sync service, not a local Docker Compose stack) — verifies PGlite connects
+ * and syncs existing tables via `syncShapesToTables`. Skips gracefully when
+ * the Cloud env vars are unset or the proxy is unreachable. Write-back
+ * enabled/disabled/enqueue behavior itself is covered by the unit tests in
+ * `__tests__/unit/write-back.test.ts`.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,20 +15,6 @@ import { DatabaseMigrationService } from "../../migration-service";
 import { PGliteClientManager } from "../../pglite/manager";
 import * as schema from "../../schema";
 import type { DrizzleDatabase } from "../../types";
-
-/**
- * End-to-end Electric Write-Back integration test.
- *
- * Uses Electric Cloud (managed sync service) instead of a local
- * Docker Compose stack. The Cloud manages Postgres + Electric.
- *
- * Tests the sync round-trip:
- *   1. PGlite connects to Electric Cloud and syncs existing tables
- *   2. Agent writes to local PGlite
- *   3. Electric Cloud syncs changes back to PGlite via syncShapesToTables
- *
- * All tests skip gracefully when the Cloud is not reachable.
- */
 
 // Caddy injects Electric Cloud auth from these env vars — the test just
 // checks they're set so Caddy can do its job.

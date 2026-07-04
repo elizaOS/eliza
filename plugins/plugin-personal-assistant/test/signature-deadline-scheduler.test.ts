@@ -82,7 +82,10 @@ describe("signature deadline scheduler", () => {
             trigger: { kind: "manual" },
             priority: "high",
             respectsGlobalPause: false,
-            source: "system",
+            // The escalation follow-up is authored by the same user request as
+            // the parent; "system" was never a member of ScheduledTaskSource
+            // and is rejected by the #11791 input validation.
+            source: "user_chat",
             createdBy: runtime.agentId,
             ownerVisible: true,
             subject: { kind: "document", id: "doc_nda_123" },

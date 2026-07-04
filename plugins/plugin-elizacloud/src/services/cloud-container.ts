@@ -7,7 +7,9 @@
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import type {
+  CloudCodingContainerService,
   CloudContainer,
   ContainerDeleteResponse,
   ContainerGetResponse,
@@ -33,8 +35,11 @@ interface TrackedContainer {
   healthTimer: ReturnType<typeof setInterval> | null;
 }
 
-export class CloudContainerService extends Service {
-  static serviceType = "CLOUD_CONTAINER";
+export class CloudContainerService
+  extends Service
+  implements CloudCodingContainerService
+{
+  static serviceType = CLOUD_CONTAINER_SERVICE_TYPE;
   capabilityDescription = "ElizaCloud container provisioning and lifecycle management";
 
   private authService!: CloudAuthService;

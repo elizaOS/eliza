@@ -1,5 +1,8 @@
 /**
- * Environment and configuration validation for BlueBubbles plugin
+ * Config parsing and handle policy for the connector: a Zod schema plus
+ * `getConfigFromRuntime`, which reads `BLUEBUBBLES_*` runtime settings into a
+ * `BlueBubblesConfig`. Also normalizes phone/email handles and evaluates the
+ * DM/group allowlist policy (`isHandleAllowed`) used to gate inbound messages.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

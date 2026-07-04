@@ -1,0 +1,75 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "https://api.elizacloud.ai/api/v1/generate-image",
+    "body": {
+      "prompt": "Issue 11745 verification image: a red square, a green triangle, and a blue circle on a plain white background, clean icon style.",
+      "model": "google/nano-banana-2/text-to-image",
+      "numImages": 1
+    }
+  },
+  "response": {
+    "status": 200,
+    "ok": true,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "alt-svc": "h3=\":443\"; ma=86400",
+      "cache-control": "no-store",
+      "cf-ray": "a1586505cb529630-EWR",
+      "connection": "keep-alive",
+      "content-encoding": "br",
+      "content-type": "application/json",
+      "cross-origin-resource-policy": "cross-origin",
+      "date": "Fri, 03 Jul 2026 19:46:22 GMT",
+      "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=hf5ziBPMOQ5jbulTZH3JhZS6JWPsvdyhf49tkMtI0O8IIQqglLtBBNbpkdv%2BYBF5PnAVKDg3p3UI0obfz%2BxDG1hVNfg9MrEVl8PxzNXiiCkb4EuC5v2Tv7GbJMaeq0d%2Bo96q4g%3D%3D\"}]}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-ratelimit-limit": "600",
+      "x-ratelimit-policy": "redis",
+      "x-ratelimit-remaining": "599",
+      "x-ratelimit-reset": "2026-07-03T19:47:09.835Z",
+      "x-request-id": "9b7bc221-9785-42e6-aa9b-d0a1cd53c995",
+      "x-xss-protection": "0"
+    },
+    "body": {
+      "success": true,
+      "model": "google/nano-banana-2/text-to-image",
+      "images": [
+        {
+          "image": "[omitted data-url length=418091]",
+          "url": "https://blob.elizacloud.ai/generations/images/4392b9f7-e526-40f7-99ce-fc98746fca05/79248b41-7532-4f6b-a0d1-687fa39650df/072834c6-735d-4f67-9762-1c4f85214da7.jpg",
+          "text": ""
+        }
+      ],
+      "cost": {
+        "totalCost": 0.036,
+        "baseTotalCost": 0.03,
+        "platformMarkup": 0.006,
+        "matchedEntry": {
+          "billingSource": "atlascloud",
+          "provider": "google",
+          "model": "google/nano-banana-2/text-to-image",
+          "productFamily": "image",
+          "chargeType": "generation",
+          "unit": "image",
+          "unitPrice": 0.03,
+          "dimensions": {
+            "size": "default"
+          },
+          "sourceKind": "atlascloud_catalog",
+          "sourceUrl": "https://www.atlascloud.ai/models/list"
+        }
+      }
+    }
+  },
+  "durationMs": 14366
+}

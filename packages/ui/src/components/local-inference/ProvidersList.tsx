@@ -1,3 +1,10 @@
+/**
+ * Grid of inference providers (cloud API, subscription, local, device bridge)
+ * showing enable state, supported vs currently-registered model slots, and a
+ * configure link. Polls the local-inference providers endpoint every 10s while
+ * the document is visible so provider state follows env/config changes.
+ */
+
 import { Cloud, Cpu, KeyRound, Settings, Smartphone } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";

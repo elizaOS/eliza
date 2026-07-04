@@ -110,6 +110,8 @@ export interface ReserveCreditsParams {
   billingSource?: PricingBillingSource;
   estimatedInputTokens?: number;
   estimatedOutputTokens?: number;
+  /** Multiplies model-estimated reservations for caller-known markups. */
+  estimatedCostMultiplier?: number;
 }
 
 export interface ReservationSweepStats {
@@ -2009,7 +2011,14 @@ export class CreditsService {
     if (params.amount !== undefined && params.amount < 0) {
       throw new Error("reserve() amount must be non-negative");
     }
+    if (
+      params.estimatedCostMultiplier !== undefined &&
+      (!Number.isFinite(params.estimatedCostMultiplier) || params.estimatedCostMultiplier < 0)
+    ) {
+      throw new Error("reserve() estimatedCostMultiplier must be non-negative");
+    }
 
+    const estimatedCostMultiplier = params.estimatedCostMultiplier ?? 1;
     let reservedAmount: number;
     let estimatedCost: number;
     let model: string | undefined;
@@ -2031,7 +2040,7 @@ export class CreditsService {
         params.billingSource,
       );
 
-      estimatedCost = totalCost;
+      estimatedCost = totalCost * estimatedCostMultiplier;
       reservedAmount = Math.max(estimatedCost * COST_BUFFER, MIN_RESERVATION);
     } else {
       throw new Error("reserve() requires either `amount` or `model`");
@@ -2047,6 +2056,9 @@ export class CreditsService {
         settlement_marker: RESERVATION_SETTLEMENT_MARKER,
         estimated_cost: estimatedCost,
         reserved_amount: reservedAmount,
+        ...(estimatedCostMultiplier !== 1 && {
+          estimated_cost_multiplier: estimatedCostMultiplier,
+        }),
         ...(model && { model }),
       },
     });

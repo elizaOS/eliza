@@ -250,3 +250,133 @@ describe("credential headers across redirects", () => {
 		await release();
 	});
 });
+
+/**
+ * Redirects are followed manually (`redirect: "manual"`), so the guard must
+ * also reproduce standard fetch method/body rewriting: on 303 (any non-GET/HEAD
+ * method) and on 301/302 for POST, the follow-up request is rewritten to a
+ * bodyless GET. Otherwise the request body — which may carry secrets — is
+ * re-sent on every hop, including cross-origin hops to an attacker, and the
+ * guard functionally deviates from the spec it claims to reproduce.
+ */
+describe("method + body across redirects", () => {
+	it("rewrites a POST to a bodyless GET and does not re-send the body cross-origin (302)", async () => {
+		const calls: Array<{
+			url: string;
+			method?: string;
+			body?: BodyInit | null;
+			contentType: string | null;
+		}> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({
+					url: String(input),
+					method: init?.method,
+					body: init?.body,
+					contentType: new Headers(init?.headers).get("content-type"),
+				});
+				if (String(input).startsWith("https://api.example.com")) {
+					return new Response(null, {
+						status: 302,
+						headers: { location: "https://evil.example.net/collect" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/v1",
+			fetchImpl,
+			init: {
+				method: "POST",
+				body: '{"apiKey":"sk-secret"}',
+				headers: {
+					authorization: "Bearer t",
+					"content-type": "application/json",
+				},
+			},
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(2);
+		// First hop carries the original POST + body.
+		expect(calls[0].method).toBe("POST");
+		expect(calls[0].body).toBe('{"apiKey":"sk-secret"}');
+		// Cross-origin hop must be a bodyless GET — no secret body leaked, and the
+		// content-type body header is dropped too.
+		expect(calls[1].url).toBe("https://evil.example.net/collect");
+		expect((calls[1].method ?? "GET").toUpperCase()).toBe("GET");
+		expect(calls[1].body ?? null).toBeNull();
+		expect(calls[1].contentType).toBeNull();
+		await release();
+	});
+
+	it("rewrites a same-origin 303 POST to a bodyless GET (spec 303 semantics)", async () => {
+		const calls: Array<{
+			url: string;
+			method?: string;
+			body?: BodyInit | null;
+		}> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({
+					url: String(input),
+					method: init?.method,
+					body: init?.body,
+				});
+				if (String(input) === "https://api.example.com/submit") {
+					return new Response(null, {
+						status: 303,
+						headers: { location: "/result" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/submit",
+			fetchImpl,
+			init: { method: "POST", body: "payload=1" },
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(2);
+		expect(calls[1].url).toBe("https://api.example.com/result");
+		expect((calls[1].method ?? "GET").toUpperCase()).toBe("GET");
+		expect(calls[1].body ?? null).toBeNull();
+		await release();
+	});
+
+	it("preserves method and body across a 307 redirect (method-preserving status)", async () => {
+		const calls: Array<{
+			url: string;
+			method?: string;
+			body?: BodyInit | null;
+		}> = [];
+		const fetchImpl = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({
+					url: String(input),
+					method: init?.method,
+					body: init?.body,
+				});
+				if (String(input) === "https://api.example.com/old") {
+					return new Response(null, {
+						status: 307,
+						headers: { location: "/new" },
+					});
+				}
+				return new Response("ok", { status: 200 });
+			},
+		);
+		const { response, release } = await fetchWithSsrfGuard({
+			url: "https://api.example.com/old",
+			fetchImpl,
+			init: { method: "POST", body: "keep-me" },
+		});
+		expect(response.status).toBe(200);
+		expect(calls).toHaveLength(2);
+		expect(calls[1].url).toBe("https://api.example.com/new");
+		expect(calls[1].method).toBe("POST");
+		expect(calls[1].body).toBe("keep-me");
+		await release();
+	});
+});

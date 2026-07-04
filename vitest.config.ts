@@ -1,3 +1,10 @@
+/**
+ * Root Vitest configuration for workspace tests that run directly against source.
+ *
+ * The aliases point package imports at their TypeScript entry points so targeted
+ * package tests can execute without first building every workspace.
+ */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

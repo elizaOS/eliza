@@ -1,3 +1,10 @@
+/**
+ * Account-scoping wrapper for connector setup flows: renders a selector of the
+ * connector's usable (connected, enabled) accounts and calls its render-prop
+ * child with the chosen account id, so a setup panel can scope its actions to a
+ * single account. Backed by the `useConnectorAccounts` hook.
+ */
+
 import type { ReactNode } from "react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";

@@ -14,8 +14,8 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;
   // The full per-connector field check (token/phoneNumberId) lives in the
-  // central engine's isConnectorConfigured. We delegate to a simple "block
-  // present + not explicitly disabled" check here; the central engine's
-  // stricter check remains as a fallback during migration.
+  // central engine's isConnectorConfigured. This module only checks that the
+  // block is present and not explicitly disabled; the engine applies the
+  // stricter field-level gate.
   return true;
 }

@@ -1,3 +1,4 @@
+/** Covers reading the GGUF `general.architecture` bytes and the Gemma-4 strict-release architecture blockers. Deterministic, synthetic GGUF headers. */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

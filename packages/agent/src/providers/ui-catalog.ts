@@ -6,7 +6,6 @@ import {
   type State,
 } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.ts";
 import { COMPONENT_CATALOG } from "../shared/ui-catalog-prompt.ts";
 
 // Core components to describe in detail — subset to keep context short.
@@ -38,19 +37,17 @@ export const uiCatalogProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: true,
   cacheScope: "agent",
-  roleGate: { minRole: "USER" },
+  // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
+  // Declared roleGate is now enforced by applyPluginRoleGating.
+  roleGate: { minRole: "ADMIN" },
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+  get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
     const channelType = message.content.channelType;
     const isAllowedChannel =
       channelType === ChannelType.DM ||
       channelType === ChannelType.API ||
       !channelType;
     if (!isAllowedChannel) {
-      return { text: "" };
-    }
-
-    if (!(await hasAdminAccess(runtime, message))) {
       return { text: "" };
     }
 

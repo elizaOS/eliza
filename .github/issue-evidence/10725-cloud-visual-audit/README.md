@@ -43,15 +43,29 @@ Harness notes:
 
 ## Verdict summary
 
-34 registered routes x 2 viewports, rebased final walk 69/69 green:
+34 registered routes x 2 viewports, July 3, 2026 final walk 69/69 green:
 
 - **machine scan:** 68 findings; `broken=0`, `needs-work=0`, blue-color
   violations `0`, orange-hover violations `0`.
 - **hand review:** 34/34 current route screenshots are marked `good` in
-  `manual-review/` after opening the refreshed contact sheet generated from
-  the July 2, 2026 rebased audit output.
+  `manual-review/` after opening the refreshed desktop/mobile screenshots and
+  spot-checking the previously failing/low-contrast routes.
 
-Fixed in this PR (verified by the run-3 machine scan + screenshots):
+Fixed in this pass (verified by the final machine scan + screenshots):
+
+- Authenticated CloudRouterShell routes now mount inside the `theme-cloud`
+  token scope, so dashboard route bodies no longer inherit the app shell's
+  light theme aliases.
+- App-hosted cloud Settings sections now receive the same dark token scope
+  around their section header and body.
+- `.theme-cloud` and sibling brand variants now set the `--txt`,
+  `--foreground`, `--background`, and `--muted-foreground` aliases used by
+  Tailwind/shadcn utilities; this fixed the analytics stat cards' black-on-dark
+  labels while keeping the route matrix free of banned blue and orange-hover
+  violations.
+
+Previously fixed by the audit harness / cloud-route cleanup (still covered by
+this final run):
 
 - `dashboard/settings/connections` carried the original audit's only blue
   (Discord `#5865F2`, Telegram `#0088cc`) on icons/chips/links/buttons; it now

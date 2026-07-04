@@ -1029,3 +1029,138 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe(reply);
 	});
 });
+
+describe("model-committed plan — promissory ack never reinterpreted as a finished reply (2026-07-01)", () => {
+	// Live ack-then-nothing regressions (trajectories tj-df82b48e763b7b /
+	// tj-823d6382b54c66): the model routed a non-simple context of its OWN
+	// choosing AND named candidate actions of its OWN, i.e. by the Stage-1 field
+	// contract its replyText is an ACK for a plan it committed to — but the
+	// complete-direct-reply override fired on the sentence shape, pulled the turn
+	// to the simple path, and shipped the ack ("Let me take another pass…",
+	// "On it — attaching now") as the FINAL reply with no planner turn behind it.
+	// Both slipped past the earlier delegation-commitment guard because the
+	// CURRENT message text carries no coding keywords (the work context lives in
+	// the conversation history). The fix is structural, keyed on the
+	// model-authored plan shape against the action registry, never on the reply
+	// text: with a model-routed planning context, a registered delegation-class
+	// candidate commits unless the ask is delegation-excluded (creative writing /
+	// explanation / no-spawn), and candidates that resolve to NOTHING in the
+	// registry commit too (a capability gap — the planner turn is where that gets
+	// an honest "can't" instead of a shipped promise).
+
+	it("plans a rebuild follow-up when the model routes general + TASKS_SPAWN_AGENT, even though the critique text has no coding keywords", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText:
+					"Fair hit. Let me take another pass and give it real personality instead of the barebones version.",
+				intents: ["improve app", "rebuild landing page"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"its a little barebones and generic. This isn't your best work",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
+	it("plans an attachment ask when the model routes general + names (unregistered) candidates instead of shipping the ack as the answer", () => {
+		// Candidates are retrieval hints — none resolve against the registry, but
+		// the model still committed to a plan; the planner turn must run so it can
+		// resolve a real action or answer honestly that it can't. What must NOT
+		// happen is the ack ("On it — attaching…now") going out as the whole turn.
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: [
+					"SEND_ATTACHMENT",
+					"UPLOAD_FILE",
+					"SEND_MESSAGE",
+				],
+				replyText: "On it — attaching the cat image here now.",
+				intents: ["attach image to discord"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"can you figure out how to attach that here so i can see it",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual([
+			"SEND_ATTACHMENT",
+			"UPLOAD_FILE",
+			"SEND_MESSAGE",
+		]);
+	});
+
+	it("still answers directly when the model routes general with NO candidates and a finished answer", () => {
+		// The override's protected case: planning pressure without model-named
+		// candidates (the shape the inference backstop injects) must still yield
+		// the complete direct answer.
+		const reply =
+			"The deploy pipeline builds the site, uploads it to the CDN, and flips the DNS alias once health checks pass.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: [],
+				replyText: reply,
+				intents: ["explain deploy pipeline"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText: "how does the deploy pipeline work?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.reply).toBe(reply);
+	});
+
+	it("control-only candidates (REPLY) are not a plan commitment — finished answer stays direct", () => {
+		const reply =
+			"Nothing is scheduled for tonight — the last watcher run finished clean and no follow-ups are queued.";
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["REPLY"],
+				replyText: reply,
+				intents: ["status update"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText: "anything scheduled for tonight?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.reply).toBe(reply);
+	});
+});

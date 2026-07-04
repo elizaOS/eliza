@@ -39,6 +39,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
@@ -209,7 +210,8 @@ export function McpDetailDrawer({
                     <code className="flex-1 rounded-sm border border-border bg-bg-elevated p-3 font-mono text-sm text-txt overflow-x-auto">
                       {endpointUrl}
                     </code>
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => void copyEndpoint()}
                       className="inline-flex min-h-touch items-center justify-center p-3 rounded-sm bg-bg-elevated hover:bg-bg-hover transition-colors"
@@ -220,7 +222,7 @@ export function McpDetailDrawer({
                       ) : (
                         <Copy className="h-4 w-4 text-muted" />
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </Field>
               )}

@@ -1,3 +1,8 @@
+/**
+ * Tool and media-understanding configuration types: per-agent tool policies and
+ * profiles, plus scoped rules governing when media is understood. A slice of the
+ * `ElizaConfig` tree (see types.eliza.ts).
+ */
 import type {
   AgentElevatedAllowFromConfig,
   NormalizedChatType,

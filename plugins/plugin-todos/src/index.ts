@@ -1,3 +1,9 @@
+/**
+ * Public entry for `@elizaos/plugin-todos`: assembles the plugin (the `TODO`
+ * umbrella action, the `CURRENT_TODOS` provider, `TodosService`, the todos
+ * schema, and the `TodosView` dashboard view) and re-exports its types, service,
+ * schema, and views. Hard-depends on `@elizaos/plugin-sql`.
+ */
 import type { Plugin } from "@elizaos/core";
 
 import { todoAction } from "./actions/todo.js";
@@ -25,6 +31,7 @@ export const todosPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "TodosView",
       tags: ["todos", "tasks", "productivity"],
+      relatedActions: ["OWNER_TODOS"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

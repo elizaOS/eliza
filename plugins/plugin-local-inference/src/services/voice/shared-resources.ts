@@ -43,6 +43,8 @@ export type ResidentModelRole =
 	| "speaker-id"
 	| "vision"
 	| "embedding"
+	| "turn-detector"
+	| "wake-word"
 	| "vad"
 	| "asr"
 	| "tts"
@@ -53,7 +55,10 @@ export type ResidentModelRole =
  * `emotion < speaker-id < vision/mmproj < embedding < vad < ASR <
  * TTS < text-target`. The cold-3 set (`emotion`, `speaker-id`) is cheap to
  * load on demand, so evicting them is the first reclamation step under
- * sustained pressure. See `.swarm/research/R9-memory.md` §4.1.
+ * sustained pressure. The MB-scale session-arm auxiliaries (`turn-detector`,
+ * `wake-word`) slot into the warm band below the VAD: cheap to drop, but
+ * losing them degrades turn-taking mid-session. See
+ * `.swarm/research/R9-memory.md` §4.1.
  */
 export const RESIDENT_ROLE_PRIORITY: Readonly<
 	Record<ResidentModelRole, number>
@@ -63,6 +68,8 @@ export const RESIDENT_ROLE_PRIORITY: Readonly<
 	"speaker-id": 18,
 	vision: 20,
 	embedding: 25,
+	"turn-detector": 28,
+	"wake-word": 30,
 	vad: 35,
 	asr: 40,
 	tts: 50,

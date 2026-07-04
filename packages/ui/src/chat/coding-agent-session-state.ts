@@ -1,3 +1,7 @@
+/**
+ * Derives display state for a coding-agent session (status/phase) from the cloud
+ * session record, for the coding-agent chat surface.
+ */
 import type { CodingAgentSession } from "../api/client-types-cloud";
 
 export const STATUS_DOT: Record<string, string> = {

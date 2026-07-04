@@ -1,3 +1,17 @@
+/**
+ * `ClientBase` — the per-account X/Twitter transport core shared by the plugin's
+ * autonomous loops (post, interaction, timeline, discovery) and by the connector
+ * handlers on `XService`. Authenticates a twitter-api-v2 `Client` through the
+ * resolved auth provider (OAuth 1.0a env-mode or OAuth 2.0 PKCE), caches the
+ * agent's own `TwitterProfile`, and fetches home/following timelines, tweets, and
+ * search results.
+ *
+ * On `init` it also seeds the runtime with `FEED` rooms and message memories for
+ * recent timeline + mention tweets, and tracks the last-checked tweet id (via the
+ * runtime cache) so loops don't re-process the same tweet. `RequestQueue` serializes
+ * API calls with retry + exponential backoff; `extractAnswer` and `TwitterProfile`
+ * are shared primitives the loops build on.
+ */
 import {
   ChannelType,
   type Content,
@@ -293,18 +307,6 @@ export class ClientBase {
     throw new Error("ClientBase.onReady must be implemented by a subclass");
   }
 
-  /**
-   * Parse the raw tweet data into a standardized Tweet object.
-   */
-  /**
-   * Parses a raw tweet object into a structured Tweet object.
-   *
-   * @param {any} raw - The raw tweet object to parse.
-   * @param {number} [depth=0] - The current depth of parsing nested quotes/retweets.
-   * @param {number} [maxDepth=3] - The maximum depth allowed for parsing nested quotes/retweets.
-   * @returns {Tweet} The parsed Tweet object.
-   */
-
   state: TwitterClientState;
 
   constructor(runtime: IAgentRuntime, state: TwitterClientState) {
@@ -338,9 +340,6 @@ export class ClientBase {
   }
 
   async init() {
-    // First ensure the agent exists in the database
-    // await this.runtime.ensureAgentExists(this.runtime.character);
-
     this.state = await resolveTwitterAccountConfig(this.runtime, {
       accountId: this.accountId,
       state: this.state,

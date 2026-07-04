@@ -1,3 +1,12 @@
+/**
+ * `TokenInfoService` (`serviceType: "token-info"`): a provider registry that
+ * routes a `TokenInfoParams` query to the named/aliased provider, or, when
+ * none is named, to the subaction's default provider
+ * (`DEFAULT_PROVIDER_BY_SUBACTION`) and falls back to the single provider
+ * that supports it if there's exactly one candidate. Bundled providers are
+ * DexScreener, Birdeye, and CoinGecko (`./providers`); more can be added via
+ * `registerProvider`.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
   createBirdeyeTokenInfoProvider,

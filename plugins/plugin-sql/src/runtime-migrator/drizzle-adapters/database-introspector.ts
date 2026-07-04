@@ -1,3 +1,11 @@
+/**
+ * Reads back the live PostgreSQL catalog (tables, columns, indexes, foreign
+ * keys, primary/unique/check constraints, enums) via raw `pg_catalog` /
+ * `information_schema` queries and assembles it into a `SchemaSnapshot` in
+ * the same shape the schema-transformer produces from Drizzle schema
+ * definitions. Used by the runtime migrator to establish a baseline snapshot
+ * when a plugin has existing tables but no recorded prior snapshot.
+ */
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { deriveSchemaName } from "../schema-transformer";

@@ -30,9 +30,16 @@ import {
   type RouteRequestMeta,
   type ViewType,
 } from "@elizaos/core";
-import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
-import { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/ui/agent-surface/types";
-import { STANDARD_CAPABILITIES } from "@elizaos/ui/views/view-interact-protocol";
+import {
+  createShellNavigateViewWsFrame,
+  type RouteHelpers,
+  readJsonBody,
+  type ShellNavigateViewPayload,
+} from "@elizaos/shared";
+import {
+  AGENT_SURFACE_CAPABILITY_IDS,
+  STANDARD_CAPABILITIES,
+} from "@elizaos/shared/views/view-interact-protocol";
 import {
   type ActiveViewElement,
   clearActiveViewContext,
@@ -40,6 +47,10 @@ import {
   setActiveViewContext,
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
+import {
+  parseHostExternalSpecifiers,
+  rewriteHostExternalImports,
+} from "./dynamic-view-host-external.mjs";
 import {
   PendingRequestMap,
   type ViewInteractResult,
@@ -128,101 +139,14 @@ function contentTypeForViewAsset(assetPath: string): string {
   }
 }
 
-function convertNamedImportsToDestructuring(namedImports: string): string {
-  return namedImports
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => part.replace(/\s+as\s+/u, ": "))
-    .join(", ");
-}
-
-function buildHostExternalImportReplacement(
-  importClause: string,
-  specifier: string,
-  index: number,
-): string {
-  const moduleVar = `__eliza_dynamic_view_host_external_${index}`;
-  const lines = [
-    `const ${moduleVar} = await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(specifier)});`,
-  ];
-  const trimmed = importClause.trim();
-  if (trimmed.startsWith("* as ")) {
-    lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
-    return lines.join("\n");
-  }
-
-  const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
-  if (namedMatch) {
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(namedMatch[1])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-
-  const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
-  if (defaultAndNamedMatch) {
-    lines.push(
-      `const ${defaultAndNamedMatch[1].trim()} = ${moduleVar}.default ?? ${moduleVar};`,
-    );
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(defaultAndNamedMatch[2])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-
-  lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
-  return lines.join("\n");
-}
-
-function rewriteHostExternalImports(
-  source: string,
-  specifiers: readonly string[],
-): string {
-  if (specifiers.length === 0) return source;
-  const specifierPattern = specifiers
-    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join("|");
-  const fromImportPattern = new RegExp(
-    `import\\s+([^;]*?)\\s+from\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  const sideEffectPattern = new RegExp(
-    `import\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  let replacementIndex = 0;
-
-  return source
-    .replace(fromImportPattern, (_match, importClause, specifier) =>
-      buildHostExternalImportReplacement(
-        String(importClause),
-        String(specifier),
-        replacementIndex++,
-      ),
-    )
-    .replace(
-      sideEffectPattern,
-      (_match, specifier) =>
-        `await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(String(specifier))});`,
-    );
-}
-
-function parseHostExternalSpecifiers(url: URL): string[] {
-  if (url.searchParams.get("hostExternalRuntime") !== "1") return [];
-  return (url.searchParams.get("hostExternalSpecifiers") ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 /**
  * Capabilities accepted on any view without a matching declaration in
  * `entry.capabilities` — the protocol's standard caps (get-state / refresh /
  * focus-element / get-text / click-element / fill-input) plus the agent-surface
  * caps the shell registry handles generically (list-elements / agent-click /
- * agent-fill / …). Derived from the single canonical ui-side sources so the
- * route never drifts from what the frontend actually dispatches. (#8798)
+ * agent-fill / …). Derived from the single canonical `@elizaos/shared`
+ * view-interact protocol source so the route never drifts from what the frontend
+ * actually dispatches. (#8798, #12408)
  */
 const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...Object.values(STANDARD_CAPABILITIES),
@@ -823,7 +747,7 @@ export async function handleViewsRoutes(
     // `source` distinguishes an agent-initiated switch (the default) from a user
     // manually clicking a tab/tile/slash-command, which the client *reports* with
     // `source: "user"`. A user-reported switch must NOT re-broadcast
-    // `shell:navigate:view` (the client already navigated locally) — that would
+    // the shell navigation WS event (the client already navigated locally) — that would
     // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
     const reportedSource = body?.source === "user" ? "user" : "agent";
     const subview =
@@ -927,8 +851,7 @@ export async function handleViewsRoutes(
 
     // Skip the echo for user-reported switches (the client already navigated).
     if (reportedSource !== "user") {
-      ctx.broadcastWs?.({
-        type: "shell:navigate:view",
+      const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
         viewLabel,
@@ -937,7 +860,8 @@ export async function handleViewsRoutes(
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
-      });
+      };
+      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
     }
 
     json(res, {

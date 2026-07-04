@@ -1,5 +1,5 @@
 /**
- * Miscellaneous UI state — extracted from AppContext.
+ * Miscellaneous UI state, one of the domain hooks AppContext composes.
  *
  * Covers three loosely-coupled UI domains that don't warrant their
  * own dedicated hook files:

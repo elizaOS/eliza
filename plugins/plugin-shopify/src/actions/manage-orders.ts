@@ -1,3 +1,10 @@
+/**
+ * Handler for the `orders` op of the SHOPIFY action: list orders, get a single
+ * order by number, or fulfill an open order via {@link ShopifyService}. Falls
+ * back to `ModelType.TEXT_SMALL` intent classification when parameters are
+ * absent; fulfillment is a mutation and gates through
+ * {@link requireShopifyConfirmation}.
+ */
 import type {
   ActionResult,
   HandlerCallback,

@@ -49,6 +49,15 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         // Construct lazily on first start to avoid holding the JSVirtualMachine
         // when the app launches without the runtime.
         runtime = nil
+        // Route the engine's chat-stream `stream_emit` host-calls to the WebView
+        // as `agentStream*` Capacitor events (#12354). The bridge's
+        // `http_request_stream` handler fires these per token; the TS adapter
+        // rebuilds a live ReadableStream from them.
+        FullBunEngineHost.shared.streamEventSink = { [weak self] eventName, data in
+            DispatchQueue.main.async {
+                self?.notifyListeners(eventName, data: data)
+            }
+        }
         runNativeFullBunSmokeIfRequested()
         prewarmFullBunRuntimeIfRequested()
     }

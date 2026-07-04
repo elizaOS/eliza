@@ -1,3 +1,8 @@
+/**
+ * One selectable row in the trajectory list sidebar: source label, status and
+ * source color dots, call count, and duration. Selecting it drives which run
+ * the trajectory viewer shows.
+ */
 import type * as React from "react";
 
 import { SidebarContent } from "../sidebar";

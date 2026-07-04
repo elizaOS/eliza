@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the `*.live.test.ts` lane: aliases `@elizaos/core` and
+ * `@elizaos/plugin-sql` to workspace source and includes only the live suites,
+ * which hit a real OpenAI-compatible endpoint.
+ */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

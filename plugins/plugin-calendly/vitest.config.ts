@@ -1,3 +1,5 @@
+/** Vitest config for plugin-calendly: node env plus the provider-SDK aliases/shim so tests resolve provider packages. */
+
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

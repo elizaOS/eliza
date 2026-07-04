@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `ConnectorAccountPrivacySelector` across the privacy
+ * levels, including the typed/public confirmation flows.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { ConnectorAccountPrivacy } from "../../api/client-agent";

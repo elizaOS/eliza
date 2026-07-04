@@ -1,3 +1,4 @@
+/** Public barrel: re-exports the plugin, action, client, provider, view, and route surfaces. */
 export * from "./actions";
 export * from "./client";
 export {

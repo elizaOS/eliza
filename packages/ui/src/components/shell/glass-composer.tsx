@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 /**
  * Shared chat-composer chrome: a well-defined refractive-glass bar plus
@@ -82,8 +83,9 @@ export function GlassIconButton({
   );
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon-sm"
       aria-label={label}
       aria-pressed={icon === "mic" ? active : undefined}
       disabled={disabled}
@@ -93,7 +95,7 @@ export function GlassIconButton({
       onPointerCancel={onPointerCancel}
       onMouseDown={handleMouseDown}
       className={cn(
-        "grid h-9 w-9 shrink-0 place-items-center transition-transform",
+        "grid h-9 w-9 shrink-0 place-items-center p-0 transition-transform hover:bg-transparent",
         "   ",
         disabled ? "opacity-40" : "hover:scale-105",
         active && "animate-pulse",
@@ -110,6 +112,6 @@ export function GlassIconButton({
           d={`${BTN_RECT}${glyphForIcon(icon)}`}
         />
       </svg>
-    </button>
+    </Button>
   );
 }

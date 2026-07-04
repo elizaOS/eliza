@@ -1,3 +1,10 @@
+/**
+ * Meteora (Solana DLMM) liquidity-pool management sub-plugin. `init`
+ * dynamically imports `MeteoraLpService` because its DLMM dependency is
+ * optional; if that import fails, Meteora LP support is silently disabled
+ * rather than blocking agent boot. Registers the service's LP protocol
+ * provider with the shared `LpManagementService` registry.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   createSolanaLpProtocolProvider,

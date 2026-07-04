@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDeepLinkHandler,
@@ -109,11 +110,11 @@ describe("createDeepLinkHandler — top-level-surface navigation intents", () =>
     const onNavigate = (event: Event) => {
       seen.push((event as CustomEvent).detail);
     };
-    window.addEventListener("eliza:navigate:view", onNavigate);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
     try {
       handle("elizaos://apps/deploy");
     } finally {
-      window.removeEventListener("eliza:navigate:view", onNavigate);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
     }
     expect(seen).toEqual([{ viewId: "cloud-apps", viewPath: "/cloud-apps" }]);
     expect(window.location.hash).toBe("");

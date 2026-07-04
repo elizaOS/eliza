@@ -6,6 +6,7 @@ import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
 import { Service } from "../../../types/service.ts";
+import { formatError } from "../../../utils/format-error.ts";
 import { resolveStateDir } from "../utils/paths.ts";
 import { getRegistryEntry } from "./pluginRegistryService.ts";
 
@@ -584,7 +585,12 @@ export class CoreManagerService extends Service {
 				if ((await fs.readdir(this.coreBaseDir())).length === 0) {
 					await fs.rmdir(this.coreBaseDir());
 				}
-			} catch {}
+			} catch (err) {
+				// error-policy:J6 best-effort teardown of an empty core dir
+				logger.debug(
+					`[CoreManager] best-effort empty coreBaseDir cleanup failed: ${formatError(err)}`,
+				);
+			}
 
 			await this.writeTsconfigCorePaths(null);
 

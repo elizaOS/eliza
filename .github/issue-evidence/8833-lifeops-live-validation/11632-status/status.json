@@ -1,0 +1,356 @@
+{
+  "issue": 11632,
+  "generatedAt": "2026-07-03T20:43:37.390Z",
+  "verdict": {
+    "closeable": false,
+    "reason": "This collector is read-only status evidence. #11632 still requires live OAuth/account/device artifacts unless a future run attaches those rows.",
+    "operatorReadyGroups": [],
+    "blockedGroups": [
+      "model",
+      "google",
+      "discord",
+      "telegram",
+      "slack",
+      "signal",
+      "whatsapp",
+      "x",
+      "twilio",
+      "health",
+      "finance",
+      "native_ios_macos",
+      "native_android"
+    ],
+    "liveRowsProven": false
+  },
+  "envGroups": [
+    {
+      "id": "model",
+      "label": "Live model provider",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "CEREBRAS_API_KEY",
+        "ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "CEREBRAS_API_KEY",
+        "ELIZA_LIVE_TEST_LOCAL_LLAMA_CPP_BASE_URL"
+      ]
+    },
+    {
+      "id": "google",
+      "label": "Google Calendar / Gmail",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI"
+      ],
+      "requiredAny": [],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "GOOGLE_REDIRECT_URI"
+      ],
+      "missingRequiredAny": []
+    },
+    {
+      "id": "discord",
+      "label": "Discord",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "DISCORD_API_TOKEN",
+        "DISCORD_BOT_TOKEN"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "DISCORD_API_TOKEN",
+        "DISCORD_BOT_TOKEN"
+      ]
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "TELEGRAM_BOT_TOKEN"
+      ],
+      "requiredAny": [],
+      "optional": [
+        "TELEGRAM_TEST_CHAT_ID",
+        "TELEGRAM_ALLOWED_CHATS"
+      ],
+      "present": [],
+      "missingRequiredAll": [
+        "TELEGRAM_BOT_TOKEN"
+      ],
+      "missingRequiredAny": []
+    },
+    {
+      "id": "slack",
+      "label": "Slack",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "SLACK_BOT_TOKEN",
+        "SLACK_APP_TOKEN"
+      ],
+      "requiredAny": [],
+      "optional": [
+        "SLACK_USER_TOKEN",
+        "SLACK_CHANNEL_IDS",
+        "SLACK_SIGNING_SECRET"
+      ],
+      "present": [],
+      "missingRequiredAll": [
+        "SLACK_BOT_TOKEN",
+        "SLACK_APP_TOKEN"
+      ],
+      "missingRequiredAny": []
+    },
+    {
+      "id": "signal",
+      "label": "Signal",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "SIGNAL_ACCOUNT_NUMBER"
+      ],
+      "requiredAny": [
+        "SIGNAL_HTTP_URL",
+        "SIGNAL_CLI_PATH"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [
+        "SIGNAL_ACCOUNT_NUMBER"
+      ],
+      "missingRequiredAny": [
+        "SIGNAL_HTTP_URL",
+        "SIGNAL_CLI_PATH"
+      ]
+    },
+    {
+      "id": "whatsapp",
+      "label": "WhatsApp",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "ELIZA_WHATSAPP_ACCESS_TOKEN",
+        "ELIZA_WHATSAPP_PHONE_NUMBER_ID"
+      ],
+      "requiredAny": [],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [
+        "ELIZA_WHATSAPP_ACCESS_TOKEN",
+        "ELIZA_WHATSAPP_PHONE_NUMBER_ID"
+      ],
+      "missingRequiredAny": []
+    },
+    {
+      "id": "x",
+      "label": "X",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "X_API_KEY",
+        "TWITTER_API_KEY",
+        "TWITTER_BEARER_TOKEN"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "X_API_KEY",
+        "TWITTER_API_KEY",
+        "TWITTER_BEARER_TOKEN"
+      ]
+    },
+    {
+      "id": "twilio",
+      "label": "Phone / SMS / Voice",
+      "readyForOperatorRun": false,
+      "requiredAll": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN"
+      ],
+      "requiredAny": [],
+      "optional": [
+        "TWILIO_PHONE_NUMBER",
+        "TWILIO_WEBHOOK_URL"
+      ],
+      "present": [],
+      "missingRequiredAll": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN"
+      ],
+      "missingRequiredAny": []
+    },
+    {
+      "id": "health",
+      "label": "Health",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "ELIZA_HEALTHKIT_CLI_PATH",
+        "ELIZA_GOOGLE_FIT_ACCESS_TOKEN",
+        "FITBIT_ACCESS_TOKEN",
+        "OURA_ACCESS_TOKEN",
+        "STRAVA_ACCESS_TOKEN",
+        "WITHINGS_ACCESS_TOKEN"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "ELIZA_HEALTHKIT_CLI_PATH",
+        "ELIZA_GOOGLE_FIT_ACCESS_TOKEN",
+        "FITBIT_ACCESS_TOKEN",
+        "OURA_ACCESS_TOKEN",
+        "STRAVA_ACCESS_TOKEN",
+        "WITHINGS_ACCESS_TOKEN"
+      ]
+    },
+    {
+      "id": "finance",
+      "label": "Finances",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "LIFEOPS_FINANCE_CSV_FIXTURE",
+        "PLAID_CLIENT_ID",
+        "PLAID_SECRET",
+        "PAYPAL_CLIENT_ID",
+        "PAYPAL_CLIENT_SECRET"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "LIFEOPS_FINANCE_CSV_FIXTURE",
+        "PLAID_CLIENT_ID",
+        "PLAID_SECRET",
+        "PAYPAL_CLIENT_ID",
+        "PAYPAL_CLIENT_SECRET"
+      ]
+    },
+    {
+      "id": "native_ios_macos",
+      "label": "iOS / macOS native permissions",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "ELIZA_IMESSAGE_BACKEND",
+        "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+        "ELIZA_HEALTHKIT_CLI_PATH"
+      ],
+      "optional": [],
+      "present": [],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "ELIZA_IMESSAGE_BACKEND",
+        "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+        "ELIZA_HEALTHKIT_CLI_PATH"
+      ]
+    },
+    {
+      "id": "native_android",
+      "label": "Android native permissions",
+      "readyForOperatorRun": false,
+      "requiredAll": [],
+      "requiredAny": [
+        "ANDROID_SERIAL"
+      ],
+      "optional": [
+        "ANDROID_HOME"
+      ],
+      "present": [
+        "ANDROID_HOME"
+      ],
+      "missingRequiredAll": [],
+      "missingRequiredAny": [
+        "ANDROID_SERIAL"
+      ]
+    }
+  ],
+  "devices": {
+    "adb": {
+      "command": "adb",
+      "available": true,
+      "status": 0,
+      "signal": null,
+      "summary": "List of devices attached\n27051JEGR10034         device usb:5-2 product:bluejay model:Pixel_6a device:bluejay transport_id:2"
+    },
+    "xcrun": {
+      "command": "xcrun",
+      "available": false,
+      "status": null,
+      "signal": null,
+      "summary": ""
+    },
+    "devicectl": {
+      "command": "devicectl",
+      "available": false,
+      "status": null,
+      "signal": null,
+      "summary": ""
+    }
+  },
+  "existingEvidence": [
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/README.md",
+      "exists": true
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/2026-07-02-keyless-run/README.md",
+      "exists": true
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/2026-07-02-keyless-run/owner-agent-permission-matrix.txt",
+      "exists": true,
+      "matched": [
+        "/20 passed/i"
+      ]
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/2026-07-02-keyless-run/connector-keyless-suites.txt",
+      "exists": true,
+      "matched": [
+        "/pass/i"
+      ]
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/11632-status/owner-agent-permission-matrix.txt",
+      "exists": false,
+      "matched": []
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/11632-status/plugin-google-live.txt",
+      "exists": false,
+      "matched": []
+    },
+    {
+      "path": ".github/issue-evidence/8833-lifeops-live-validation/11632-status/plugin-x-live.txt",
+      "exists": false,
+      "matched": []
+    }
+  ],
+  "nextCommands": [
+    "LIFEOPS_PERMISSION_MATRIX=1 bunx vitest run --config packages/test/vitest/integration.config.ts plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts",
+    "TEST_LANE=post-merge ELIZA_LIVE_TEST=1 bun run --cwd plugins/plugin-google test",
+    "TEST_LANE=post-merge ELIZA_LIVE_TEST=1 bun run --cwd plugins/plugin-x test",
+    "bun run dev && node .github/issue-evidence/8833-lifeops-live-validation/capture-views.mjs",
+    "bun run --cwd packages/app capture:android-emu",
+    "bun run --cwd packages/app capture:ios-sim"
+  ]
+}

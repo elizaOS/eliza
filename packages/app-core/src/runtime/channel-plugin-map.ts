@@ -8,13 +8,5 @@ import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.j
   type: "json",
 };
 
-// App-local channel not in the first-party registry (built from an internal
-// connector, not an npm package).
-const INTERNAL_CHANNEL_PLUGIN_OVERRIDES = {
-  wechat: "elizaoswechat",
-} as const;
-
-export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
-  ...channelPluginMap,
-  ...INTERNAL_CHANNEL_PLUGIN_OVERRIDES,
-};
+export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> =
+  channelPluginMap;

@@ -1,3 +1,8 @@
+/**
+ * Read-only detail panel for a single memory record: renders its metadata and
+ * pretty-printed content as a `CodeBlock`. Sits beside the memory list in the
+ * Memory Viewer view; shows an empty state when no record is selected.
+ */
 import { useMemo } from "react";
 import { useTranslation } from "../../state";
 import { PagePanel } from "../composites/page-panel";

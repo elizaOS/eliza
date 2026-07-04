@@ -1,3 +1,7 @@
+/**
+ * The single react-query QueryClient for the cloud surfaces, with the dashboard's
+ * default retry/stale settings.
+ */
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
 

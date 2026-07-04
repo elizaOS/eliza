@@ -1,3 +1,17 @@
+/**
+ * The primary chat surface: the transcript, composer, voice/avatar bridge, and
+ * the coding-agent terminal channel. It wires the real send pipeline (message
+ * edit/resend, attachments via clipboard/drag-drop, continuous chat mode) and
+ * the per-conversation voice controller, and hosts the PTY console for coding
+ * sessions (`TerminalChannelPanel`).
+ *
+ * Terminal auto-focus is deliberately once-per-transition: a blocked/errored
+ * coding session is auto-focused at most once (tracked via a ref-held Set of
+ * handled ids) so closing the terminal or switching conversations — both of
+ * which clear `activeTerminalSessionId` — never bounces the user back into the
+ * terminal, and a user-initiated dismissal sticks.
+ */
+
 import { logger } from "@elizaos/logger";
 import { RotateCcw } from "lucide-react";
 import {
@@ -69,6 +83,8 @@ import { ChatTranscript } from "../composites/chat/chat-transcript";
 import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import { useConversationReset } from "../shell/use-conversation-reset";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { pickProblemSessionToAutoFocus } from "./ChatView.terminal-focus";
 import {
   useChatVoiceController,
@@ -724,7 +740,7 @@ export function ChatView({
 
   const auxiliaryNode = (
     <>
-      {voiceStatusBarVisible ? (
+      {voiceStatusBarVisible || continuous.ttsError ? (
         <ChatVoiceStatusBar
           status={continuous.status}
           interimTranscript={continuous.interimTranscript}
@@ -733,7 +749,8 @@ export function ChatView({
           needsAudioUnlock={continuous.needsAudioUnlock}
           onUnlockAudio={continuous.unlockAudio}
           micReconnected={continuous.micReconnected}
-          visible
+          ttsError={continuous.ttsError}
+          visible={voiceStatusBarVisible}
           className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
           data-testid="chat-view-voice-status-bar"
         />
@@ -790,7 +807,7 @@ export function ChatView({
               : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
-      <input
+      <Input
         ref={fileInputRef}
         type="file"
         accept={CHAT_UPLOAD_ACCEPT}
@@ -815,8 +832,9 @@ export function ChatView({
   // blue), matching nearby controls.
   const resetConversationButton =
     visibleMsgs.length > 0 ? (
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         data-testid="chat-view-reset-button"
         aria-label="Reset conversation"
         title="Reset conversation"
@@ -824,7 +842,7 @@ export function ChatView({
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/40 text-muted transition-colors hover:bg-bg-hover hover:text-txt   "
       >
         <RotateCcw className="h-[18px] w-[18px]" aria-hidden />
-      </button>
+      </Button>
     ) : null;
 
   const composerNode = hideComposer ? null : isGameModal ? (
@@ -871,7 +889,6 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          toggleListening: voice.toggleListening,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
         }}
@@ -932,7 +949,6 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          toggleListening: voice.toggleListening,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
         }}
@@ -1550,5 +1566,4 @@ const inertVoiceState = {
   startListening: () => {},
   stopListening: () => {},
   supported: false,
-  toggleListening: () => {},
 };

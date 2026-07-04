@@ -22,6 +22,7 @@ import {
   type SigninRequest,
 } from "../services/secrets-manager-installer";
 import { sharedVault } from "../services/vault-mirror";
+import { type CompatStateLike, ensureRouteMinRole } from "./auth.ts";
 import { sendJson, sendJsonError } from "./response";
 
 type LoginListResult = Awaited<
@@ -123,6 +124,7 @@ export async function handleSecretsManagerRoute(
   res: http.ServerResponse,
   pathname: string,
   method: string,
+  state: CompatStateLike,
 ): Promise<boolean> {
   if (
     !pathname.startsWith("/api/secrets/manager") &&
@@ -130,6 +132,11 @@ export async function handleSecretsManagerRoute(
   ) {
     return false;
   }
+
+  // #12087 Item 4: enforce the OWNER gate in the handler itself, not only in the
+  // server.ts dispatch prefix. Mounting this handler elsewhere (or changing the
+  // dispatch prefix) previously dropped all /api/secrets/* auth silently.
+  if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
 
   const manager = getManager();
 

@@ -9,6 +9,7 @@
 
 export {
 	buildHuggingFaceResolveUrl,
+	buildHuggingFaceResolveUrlCandidatesForPath,
 	buildHuggingFaceResolveUrlForPath,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	ELIZA_1_HF_REPO,
@@ -24,6 +25,7 @@ export {
 	eliza1TierPublishStatus,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
+	type HfResolveUrlCandidate,
 	hasHuggingFaceToken,
 	isDefaultEligibleId,
 	isHuggingFaceHost,

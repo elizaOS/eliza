@@ -1,3 +1,4 @@
+/** Config and Ollama wire-protocol shapes (tags, text/object generation params, embeddings) used by the plugin. */
 export interface OllamaConfig {
   baseUrl: string;
   smallModel: string;

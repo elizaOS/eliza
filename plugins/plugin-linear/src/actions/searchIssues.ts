@@ -1,3 +1,10 @@
+/**
+ * Handles the search_issues Linear op. Builds LinearSearchFilters from caller
+ * parameters or by extracting query/state/assignee/priority/team/label fields
+ * from the message via the searchIssues prompt (resolving "me" to the current
+ * user), scopes to the default team unless allTeams is set, and formats the
+ * matched issues into the reply.
+ */
 import {
   type Action,
   type ActionResult,
@@ -224,16 +231,13 @@ export const searchIssuesAction: Action = {
             });
           } catch (parseError) {
             logger.error("Failed to parse search filters:", formatUnknownError(parseError));
-            // Fallback to simple search
             filters = { query: content };
           }
         }
       }
 
       // Scope to the default team unless the caller explicitly asked for all
-      // teams. `allTeams` is a structured filter the model sets (#10470) — the
-      // previous English-keyword guess (text includes "all" + "issue"/"bug"/
-      // "task") never worked for other languages or phrasings.
+      // teams via the structured `allTeams` filter the model sets (#10470).
       if (!filters.team && filters.allTeams !== true) {
         const defaultTeamKey =
           linearService.getDefaultTeamKey(accountId) ??

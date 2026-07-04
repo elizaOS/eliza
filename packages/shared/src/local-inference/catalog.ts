@@ -9,14 +9,15 @@
  * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
  * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
  * (PLE) + MQA architecture; KV is already minimal so the legacy
- * QJL/PolarQuant KV kernels are not used (stock KV), while TurboQuant
- * weight-quant remains active. External Hub search remains custom/opt-in and
+ * QJL/TurboQuant KV kernels are not used (stock KV), and the shipping
+ * GGUF weight quant is stock Q4_K_M unless a manifest proves a tier-specific
+ * PolarQuant recipe was actually applied. External Hub search remains custom/opt-in and
  * never enters first-run or default eligibility.
  * Separate-drafter MTP is still the required release shape, but runtime
  * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
-import { resolveHfDownloadBase } from "./hf-proxy.js";
+import { type HfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 import type {
   CatalogModel,
   CatalogQuantizationId,
@@ -642,6 +643,18 @@ export function buildHuggingFaceResolveUrlForPath(
   model: CatalogModel,
   filePath: string,
 ): string {
+  return buildHuggingFaceResolveUrlCandidatesForPath(model, filePath)[0].url;
+}
+
+export interface HfResolveUrlCandidate extends HfDownloadBase {
+  /** Fully-qualified URL for this candidate base. */
+  url: string;
+}
+
+export function buildHuggingFaceResolveUrlCandidatesForPath(
+  model: CatalogModel,
+  filePath: string,
+): HfResolveUrlCandidate[] {
   const cleanFilePath = filePath.replace(/^\/+/, "");
   const cleanPrefix = model.hfPathPrefix?.replace(/^\/+|\/+$/g, "");
   const pathWithPrefix =
@@ -658,14 +671,23 @@ export function buildHuggingFaceResolveUrlForPath(
       .split("/")
       .map((segment) => encodeURIComponent(segment))
       .join("/");
-    return `${base}/models/${model.hfRepo}/resolve/master/${encodedPath}`;
+    return [
+      {
+        base,
+        url: `${base}/models/${model.hfRepo}/resolve/master/${encodedPath}`,
+        viaCloud: false,
+        label: "direct",
+      },
+    ];
   }
-  const { base } = resolveHfDownloadBase();
   const encodedPath = pathWithPrefix
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
-  return `${base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+  return resolveHfDownloadBases().map((candidate) => ({
+    ...candidate,
+    url: `${candidate.base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`,
+  }));
 }
 
 export function buildHuggingFaceResolveUrl(model: CatalogModel): string {

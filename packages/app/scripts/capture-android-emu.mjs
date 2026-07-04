@@ -8,9 +8,12 @@
 // Flags:
 //   --issue <n> --slug <s>   name artifacts `<n>-<s>-android-emu.{png,mp4,log}`
 //   --serial <serial>        target a specific device (default: ANDROID_SERIAL → emulator → first)
-//   --duration <seconds>     recording length (default 6, max 180 per screenrecord)
+//   --duration <seconds>     recording length (default 6); over 180s it records
+//                            back-to-back capped segments and concats them with
+//                            ffmpeg, so a long gesture walkthrough is one file
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
+import { startChunkedAndroidScreenRecord } from "./lib/android-capture.mjs";
 import { resolveAdb, resolveSerial } from "./lib/android-device.mjs";
 import {
   captureBackendLog,
@@ -26,26 +29,60 @@ const PLATFORM = "android-emu";
 const log = logFor(PLATFORM);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function captureScreenshot(adb, serial, outPath) {
-  const remote = "/sdcard/eliza-evidence-capture.png";
+const REMOTE_DIRS = ["/sdcard", "/data/local/tmp"];
+
+function isNonEmptyFile(path) {
+  return existsSync(path) && statSync(path).size > 0;
+}
+
+function removeRemote(adb, serial, remote) {
   spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remote], {
     stdio: "ignore",
   });
+}
+
+function pullRemote(adb, serial, remote, outPath) {
+  spawnSync(adb, ["-s", serial, "pull", remote, outPath], { stdio: "ignore" });
+  return isNonEmptyFile(outPath);
+}
+
+function captureScreenshotViaRemote(adb, serial, outPath, remote) {
+  removeRemote(adb, serial, remote);
   spawnSync(adb, ["-s", serial, "shell", "screencap", "-p", remote], {
     stdio: "ignore",
   });
-  spawnSync(adb, ["-s", serial, "pull", remote, outPath], { stdio: "ignore" });
-  spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remote], {
-    stdio: "ignore",
-  });
-  return existsSync(outPath) ? outPath : null;
+  const pulled = pullRemote(adb, serial, remote, outPath);
+  removeRemote(adb, serial, remote);
+  return pulled;
 }
 
-async function recordVideo(adb, serial, outPath, durationSec) {
-  const remote = "/sdcard/eliza-evidence-capture.mp4";
-  spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remote], {
-    stdio: "ignore",
+function captureScreenshotViaExecOut(adb, serial, outPath) {
+  const res = spawnSync(adb, ["-s", serial, "exec-out", "screencap", "-p"], {
+    maxBuffer: 32 * 1024 * 1024,
   });
+  if (res.status !== 0 || !res.stdout?.length) return false;
+  writeFileSync(outPath, res.stdout);
+  return isNonEmptyFile(outPath);
+}
+
+function captureScreenshot(adb, serial, outPath) {
+  for (const dir of REMOTE_DIRS) {
+    if (
+      captureScreenshotViaRemote(
+        adb,
+        serial,
+        outPath,
+        `${dir}/eliza-evidence-capture.png`,
+      )
+    ) {
+      return outPath;
+    }
+  }
+  return captureScreenshotViaExecOut(adb, serial, outPath) ? outPath : null;
+}
+
+async function recordVideoToRemote(adb, serial, outPath, durationSec, remote) {
+  removeRemote(adb, serial, remote);
   const recorder = spawn(
     adb,
     [
@@ -72,11 +109,42 @@ async function recordVideo(adb, serial, outPath, durationSec) {
     new Promise((resolve) => recorder.once("close", resolve)),
     delay(5_000),
   ]);
-  spawnSync(adb, ["-s", serial, "pull", remote, outPath], { stdio: "ignore" });
-  spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remote], {
-    stdio: "ignore",
+  const pulled = pullRemote(adb, serial, remote, outPath);
+  removeRemote(adb, serial, remote);
+  return pulled;
+}
+
+async function recordVideoChunked(adb, serial, outPath, durationSec) {
+  const path = await import("node:path");
+  const recording = await startChunkedAndroidScreenRecord({
+    adb,
+    serial,
+    artifactDir: path.dirname(outPath),
+    filename: path.basename(outPath),
+    log,
   });
-  return existsSync(outPath) ? outPath : null;
+  await delay(durationSec * 1000);
+  return recording.stop();
+}
+
+async function recordVideo(adb, serial, outPath, durationSec) {
+  if (durationSec > 180) {
+    return recordVideoChunked(adb, serial, outPath, durationSec);
+  }
+  for (const dir of REMOTE_DIRS) {
+    if (
+      await recordVideoToRemote(
+        adb,
+        serial,
+        outPath,
+        durationSec,
+        `${dir}/eliza-evidence-capture.mp4`,
+      )
+    ) {
+      return outPath;
+    }
+  }
+  return null;
 }
 
 function captureLogcat(adb, serial, outPath) {

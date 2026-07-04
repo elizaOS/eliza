@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the grouped Linear router actions: verifies route selection and
+ * dispatch to the child sub-actions. Deterministic, mocked runtime/service, no
+ * live API.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createCommentAction } from "./createComment";

@@ -1,9 +1,7 @@
 /**
- * @fileoverview CLI logging utilities
- *
- * Provides structured logging functions for CLI output with consistent formatting.
- *
- * @module cli/lib/logger
+ * Structured console logger for CLI output, with level prefixes and emoji
+ * indicators. Debug output is gated on the `DEBUG` env var. Shared by every
+ * `commands/` handler in place of raw `console.log`.
  */
 
 /**

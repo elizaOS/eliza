@@ -1,3 +1,7 @@
+/**
+ * Integration tests for room participant add/remove/state against a real
+ * isolated PGlite/Postgres adapter.
+ */
 import { type AgentRuntime, ChannelType, type Entity, type Room, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -22,11 +26,9 @@ describe("Participant Integration Tests", () => {
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
-    // Generate random UUIDs for test data
     testRoomId = uuidv4() as UUID;
     testEntityId = uuidv4() as UUID;
 
-    // Create test room and entity
     await adapter.createRooms([
       {
         id: testRoomId,
@@ -86,16 +88,13 @@ describe("Participant Integration Tests", () => {
     });
 
     it("should check if entity is room participant", async () => {
-      // Initially not a participant
       let isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
       expect(isParticipant).toBe(false);
 
-      // Add as participant
       await adapter.addParticipant(testEntityId, testRoomId);
       isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
       expect(isParticipant).toBe(true);
 
-      // Remove participant
       await adapter.removeParticipant(testEntityId, testRoomId);
       isParticipant = await adapter.isRoomParticipant(testRoomId, testEntityId);
       expect(isParticipant).toBe(false);

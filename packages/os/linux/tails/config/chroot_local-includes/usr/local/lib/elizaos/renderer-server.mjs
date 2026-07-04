@@ -78,10 +78,8 @@ function bootScript() {
 
   return `<script>
 (() => {
-  const apiBase = ${JSON.stringify(apiBase)};
   const nativeInfo = ${JSON.stringify(nativeInfo)};
   const bootConfig = ${JSON.stringify(bootConfig)};
-  window.__ELIZA_API_BASE__ = apiBase;
   window.__ELIZAOS_APP_BOOT_CONFIG__ = Object.assign(
     {},
     window.__ELIZAOS_APP_BOOT_CONFIG__ || {},

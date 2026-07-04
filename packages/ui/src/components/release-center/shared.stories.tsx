@@ -1,3 +1,5 @@
+/** Storybook stories for the Release Center shared primitives (StatusPill tones, DefinitionRow), under a stub AppContext supplying `t`. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AppContextValue } from "../../state/types";
 import { AppContext } from "../../state/useApp";

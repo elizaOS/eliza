@@ -1,11 +1,13 @@
-// Geodesic strut frame — a glowing architectural wireframe cage.
-//
-// Takes an IcosahedronGeometry(1,2), renders its edges as cool-white/cyan
-// LineSegments (the "struts"), and places a small emissive node sphere at
-// every unique vertex via a single InstancedMesh. A brightness wave phases
-// each node by its dot with a sweep axis so a pulse visibly rolls across the
-// lattice. Reacts to voice: nodes brighten on energy, pulse speeds up and
-// the whole frame scales/breathes on respond, accent tint on respond.
+/**
+ * Geodesic strut frame — a glowing architectural wireframe cage.
+ *
+ * Takes an IcosahedronGeometry(1,2), renders its edges as cool-white/cyan
+ * LineSegments (the "struts"), and places a small emissive node sphere at
+ * every unique vertex via a single InstancedMesh. A brightness wave phases
+ * each node by its dot with a sweep axis so a pulse visibly rolls across the
+ * lattice. Reacts to voice: nodes brighten on energy, pulse speeds up and
+ * the whole frame scales/breathes on respond, accent tint on respond.
+ */
 
 import type {
   ConceptDescriptor,

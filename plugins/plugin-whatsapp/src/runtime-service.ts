@@ -1,3 +1,21 @@
+/**
+ * WhatsAppConnectorService — the core send/receive engine for the WhatsApp
+ * connector. On start it resolves per-account transport config, constructs the
+ * Cloud API or Baileys client for each enabled account via ClientFactory, and
+ * registers itself with the runtime's message connector registry (capabilities
+ * send/read/search messages, reactions, contact resolution, chat/user context).
+ *
+ * Inbound: webhook events and Baileys socket messages are normalized, deduped
+ * into stable memory ids (createUniqueUuid keyed on chat + message id), and
+ * routed through `runtime.messageService`. Replies are only generated when
+ * auto-reply is enabled or the message connector protocol invokes the send
+ * handler; otherwise inbound messages are stored to memory only.
+ *
+ * Outbound: send handlers map connector target kinds (phone/contact/user/group/
+ * room) to a resolved JID or E.164 number and dispatch text or native media
+ * messages, chunking long text per the configured limit. Access is gated by the
+ * DM/group policies resolved in accounts.ts.
+ */
 import {
   ChannelType,
   type Content,

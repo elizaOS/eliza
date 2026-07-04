@@ -1,3 +1,8 @@
+/**
+ * A message server: the top-level grouping for channels, mirroring a
+ * connector-side server/guild/workspace (`sourceType`/`sourceId` identify the
+ * originating connector) or a purely local server. Owns `channelTable` rows.
+ */
 import { sql } from "drizzle-orm";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

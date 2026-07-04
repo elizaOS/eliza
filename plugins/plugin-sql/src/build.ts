@@ -1,5 +1,12 @@
 #!/usr/bin/env bun
-
+/**
+ * Build script for plugin-sql: bundles Node ESM, browser ESM, and CJS
+ * entrypoints via Bun, emits `tsc`-generated `.d.ts` declarations, rewrites
+ * relative declaration import specifiers to point at the bundled `.js`
+ * files, and hand-writes small re-export shims (root index, `/schema`,
+ * `/drizzle` subpaths) so consumers get a stable public surface over the
+ * dual-runtime bundle layout.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { appendFile, readFile, writeFile } from "node:fs/promises";

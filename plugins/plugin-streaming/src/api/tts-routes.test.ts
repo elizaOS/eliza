@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `handleTtsRoutes` covering config, ElevenLabs, and
+ * local-inference branches. The runtime and its TTS model handler are stubbed
+ * with `vi.fn()`; no live TTS provider or network call is made.
+ */
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleTtsRoutes, type TtsRouteContext } from "./tts-routes.ts";

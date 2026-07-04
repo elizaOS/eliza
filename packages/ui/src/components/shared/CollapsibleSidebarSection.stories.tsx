@@ -1,3 +1,5 @@
+/** Storybook stories for CollapsibleSidebarSection: expanded/collapsed, add-action, icon+indicator, and empty state. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { Folder } from "lucide-react";
 import { CollapsibleSidebarSection } from "./CollapsibleSidebarSection";

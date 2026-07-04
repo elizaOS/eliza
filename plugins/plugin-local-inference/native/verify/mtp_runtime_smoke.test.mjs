@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for parseBenchOutput: asserts tokens-per-second is read from both
+ * the llama-cli bracket summary and the llama.cpp eval performance counters. Pure
+ * string parsing, no model.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 

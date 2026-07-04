@@ -10,6 +10,7 @@
  */
 
 import { logger } from "../../../logger.ts";
+import { resolveCanonicalOwnerId } from "../../../roles.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
 import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
@@ -17,9 +18,11 @@ import type {
 	SecretConfig,
 	SecretContext,
 	SecretMetadata,
+	SecretPermissionType,
 	StorageBackend,
 	StoredSecret,
 } from "../types.ts";
+import { PermissionDeniedError } from "../types.ts";
 import { BaseSecretStorage } from "./interface.ts";
 
 const SECRETS_KEY = "secrets";
@@ -70,13 +73,15 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		}
 	}
 
-	async exists(key: string, _context: SecretContext): Promise<boolean> {
+	async exists(key: string, context: SecretContext): Promise<boolean> {
+		this.assertGlobalAccess(key, "read", context);
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
 		return key in secrets;
 	}
 
 	async get(key: string, context: SecretContext): Promise<string | null> {
+		this.assertGlobalAccess(key, "read", context);
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
 		const stored = secrets[key];
@@ -121,6 +126,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		context: SecretContext,
 		config?: Partial<SecretConfig>,
 	): Promise<boolean> {
+		this.assertGlobalAccess(key, "write", context);
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
 		const existingStored = secrets[key];
@@ -150,7 +156,8 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		return true;
 	}
 
-	async delete(key: string, _context: SecretContext): Promise<boolean> {
+	async delete(key: string, context: SecretContext): Promise<boolean> {
+		this.assertGlobalAccess(key, "delete", context);
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
 
@@ -164,7 +171,8 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		return true;
 	}
 
-	async list(_context: SecretContext): Promise<SecretMetadata> {
+	async list(context: SecretContext): Promise<SecretMetadata> {
+		this.assertGlobalAccess("*", "read", context);
 		const secrets = this.getSecretsObject();
 		const metadata: SecretMetadata = {};
 
@@ -203,6 +211,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		key: string,
 		context: SecretContext,
 	): Promise<SecretConfig | null> {
+		this.assertGlobalAccess(key, "read", context);
 		const secrets = this.getSecretsObject();
 		const stored = secrets[key];
 
@@ -219,9 +228,10 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 
 	async updateConfig(
 		key: string,
-		_context: SecretContext,
+		context: SecretContext,
 		config: Partial<SecretConfig>,
 	): Promise<boolean> {
+		this.assertGlobalAccess(key, "write", context);
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
 		const stored = secrets[key];
@@ -235,10 +245,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 				? (stored as StoredSecret)
 				: ({
 						value: stored as string,
-						config: this.createDefaultConfig(key, {
-							level: "global",
-							agentId: this.runtime.agentId,
-						}),
+						config: this.createDefaultConfig(key, context),
 					} satisfies StoredSecret);
 		storedSecret.config = {
 			...storedSecret.config,
@@ -265,5 +272,27 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 		}
 
 		return secrets as Record<string, StoredSecret>;
+	}
+
+	private assertGlobalAccess(
+		key: string,
+		action: SecretPermissionType,
+		context: SecretContext,
+	): void {
+		const requesterId = context.requesterId;
+		if (!requesterId) {
+			throw new PermissionDeniedError(key, action, context);
+		}
+
+		if (requesterId === this.runtime.agentId) {
+			return;
+		}
+
+		const ownerId = resolveCanonicalOwnerId(this.runtime);
+		if (ownerId && requesterId === ownerId) {
+			return;
+		}
+
+		throw new PermissionDeniedError(key, action, context);
 	}
 }

@@ -1,13 +1,12 @@
 import { getBrandConfig } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 
-// Mirror of the renderer-side INTERNAL_TOOL_APPS in
-// `packages/app-core/src/components/apps/internal-tool-apps.ts`. The renderer
-// list is the source of truth (it owns hero images, capabilities, ordering);
-// the menu only needs slug + display + windowPath, so we duplicate that
-// minimal slice here to avoid pulling renderer modules into the bun bundle.
-// Keep this duplicated until the bun bundler exposes safe access to the
-// renderer module graph.
+// Minimal slug + display + windowPath slice mirroring the renderer-side
+// internal-tool ViewDeclarations in `packages/ui/src/components/apps/
+// internal-tool-apps.ts` (the source of truth — it owns hero images,
+// capabilities, ordering). Duplicated here to avoid pulling renderer modules
+// into the bun bundle; keep in sync until the bun bundler exposes safe access
+// to the renderer module graph.
 export interface AppMenuEntry {
   readonly slug: string;
   readonly name: string;
@@ -16,7 +15,7 @@ export interface AppMenuEntry {
   /**
    * When true, the renderer routes the menu/tray click to the App Details
    * page (`/apps/<slug>/details`) instead of opening the app window
-   * directly. Mirror of `InternalToolAppDefinition.hasDetailsPage`.
+   * directly. Mirror of the declaration's `hasDetailsPage`.
    */
   readonly hasDetailsPage: boolean;
 }
@@ -111,7 +110,7 @@ export interface ViewMenuEntry {
 const VIEW_MENU_ENTRIES: readonly ViewMenuEntry[] = [
   { id: "tutorial", label: "Tutorial", path: "/tutorial" },
   { id: "help", label: "Help", path: "/help" },
-  { id: "chat", label: "Chat", path: "/chat" },
+  { id: "chat", label: "Messages", path: "/chat" },
   { id: "character", label: "Character", path: "/character" },
   { id: "documents", label: "Knowledge", path: "/character/documents" },
   { id: "settings", label: "Settings", path: "/settings" },

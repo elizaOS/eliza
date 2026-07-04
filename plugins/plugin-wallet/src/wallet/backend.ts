@@ -1,3 +1,10 @@
+/**
+ * Defines `WalletBackend`, the single signing abstraction the rest of the
+ * plugin depends on — chain handlers, providers, and canonical actions reach
+ * signing only through this interface, never by reading raw private key env
+ * vars directly. `LocalEoaBackend` and `StewardBackend` are its two
+ * implementations, selected by `select-backend.ts`.
+ */
 import type {
   PublicKey,
   Transaction,

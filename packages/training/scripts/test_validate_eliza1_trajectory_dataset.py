@@ -51,6 +51,23 @@ def _write_manifest(path: Path, names: list[str]) -> None:
     )
 
 
+def _privacy_attestation() -> dict:
+    return {
+        "schema": "eliza.privacy_filter_attestation.v1",
+        "version": 1,
+        "source": "unit",
+        "redacted": True,
+        "reviewed": True,
+        "passed": True,
+    }
+
+
+def _attest_native(row: dict) -> dict:
+    metadata = row.setdefault("metadata", {})
+    metadata["privacy_attestation"] = _privacy_attestation()
+    return row
+
+
 def _prepared_output(tmp_path: Path) -> tuple[Path, Path]:
     source = tmp_path / "native.jsonl"
     _write_jsonl(
@@ -206,7 +223,7 @@ def test_validate_rejects_native_tool_call_not_declared(tmp_path: Path) -> None:
 
 
 def test_validate_rejects_native_history_tool_call_not_declared(tmp_path: Path) -> None:
-    row = {
+    row = _attest_native({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {
@@ -229,7 +246,7 @@ def test_validate_rejects_native_history_tool_call_not_declared(tmp_path: Path) 
         },
         "response": {"text": "Done."},
         "metadata": {"split": "train"},
-    }
+    })
     bad = tmp_path / "history-undeclared.jsonl"
     _write_jsonl(bad, [row])
     report = tmp_path / "history-undeclared-report.json"
@@ -242,13 +259,13 @@ def test_validate_rejects_native_history_tool_call_not_declared(tmp_path: Path) 
 
 
 def test_validate_requires_native_metadata_split_in_split_file(tmp_path: Path) -> None:
-    row = {
+    row = _attest_native({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {"prompt": "hello"},
         "response": {"text": "hi"},
         "metadata": {},
-    }
+    })
     bad = tmp_path / "train.jsonl"
     _write_jsonl(bad, [row])
     report = tmp_path / "missing-split-report.json"
@@ -261,13 +278,13 @@ def test_validate_requires_native_metadata_split_in_split_file(tmp_path: Path) -
 
 
 def test_validate_rejects_residual_privacy_secret(tmp_path: Path) -> None:
-    row = {
+    row = _attest_native({
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
         "request": {"prompt": "Use sk-abcdefghijklmnopqrstuvwxyz for this."},
         "response": {"text": "No."},
         "metadata": {"split": "train"},
-    }
+    })
     bad = tmp_path / "privacy.jsonl"
     _write_jsonl(bad, [row])
     report = tmp_path / "privacy-report.json"

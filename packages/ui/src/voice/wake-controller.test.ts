@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the wake-controller state machine: wake-path selection and
+ * the confirm window. Pure functions, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONFIRM_WINDOW_MS,

@@ -1,14 +1,15 @@
 /**
  * ScheduledTaskEditor — owner-facing detail + verb panel for a LifeOps
- * scheduled task surfaced in the unified Tasks feed.
+ * scheduled item (glossary term) surfaced in the unified Automations feed.
  *
- * Scheduled tasks are owned by the LifeOps runner (the single scheduling
+ * Scheduled items are owned by the LifeOps runner (the single scheduling
  * spine), NOT the workflow CRUD. So this panel routes its actions to the
- * scheduled-task verb endpoints via `client.applyScheduledTask` — run
+ * scheduled-item verb endpoints via `client.applyScheduledTask` — run
  * (acknowledge), complete, dismiss, snooze — rather than the workflow
  * create/update path. It is a thin verb surface, not a full schedule editor:
  * the schedule itself is defined by the seeded definition / chat, consistent
- * with the one-scheduler rule.
+ * with the one-scheduler rule. The code type stays `ScheduledTask` (frozen
+ * contract); only the prose/UI say "scheduled item".
  */
 
 import { Bell, CalendarClock, Check, Clock, X } from "lucide-react";
@@ -54,7 +55,7 @@ export function ScheduledTaskEditor({
           e instanceof Error
             ? e.message
             : t("scheduledtask.applyError", {
-                defaultValue: "Failed to update task.",
+                defaultValue: "Failed to update scheduled item.",
               }),
         );
       } finally {
@@ -69,7 +70,7 @@ export function ScheduledTaskEditor({
       <div className="p-6">
         <div className="text-sm text-danger">
           {t("scheduledtask.missing", {
-            defaultValue: "This task is no longer available.",
+            defaultValue: "This scheduled item is no longer available.",
           })}
         </div>
         <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>

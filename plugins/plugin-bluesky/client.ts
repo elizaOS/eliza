@@ -1,3 +1,16 @@
+/**
+ * AT Protocol transport for one BlueSky handle: wraps `@atproto/api`'s
+ * `BskyAgent` and adapts its raw `app.bsky.*` / `chat.bsky.*` responses into the
+ * plugin's domain shapes (`BlueSkyPost`, `BlueSkyMessage`, `BlueSkyConversation`,
+ * `BlueSkyNotification`). One instance per authenticated account; the services
+ * and the agent manager call through here for every network operation — posting,
+ * timeline/search reads, DM convo listing/sending, notifications, likes, reposts.
+ *
+ * DM operations go through the dedicated chat service DID via the
+ * `atproto-proxy` header. When `dryRun` is set, writes (post/delete/like/repost/
+ * sendMessage) are logged and return synthetic objects instead of hitting the
+ * network. Profiles are cached in a bounded LRU.
+ */
 import { type AppBskyFeedDefs, BskyAgent, RichText } from "@atproto/api";
 import { logger } from "@elizaos/core";
 import { LRUCache } from "lru-cache";

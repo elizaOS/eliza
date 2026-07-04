@@ -96,10 +96,19 @@ jobs:
       - name: Run pure-python test suite
         # All pytest files in scripts/ that don't need GPU. test_reward_fn
         # may be a no-op in some branches; we still surface its result.
+        #
+        # We ALSO mount the local-inference plugin's kernel-reference tree at
+        # /workspace/kernel-refs and point ELIZA_KERNEL_REF_DIR at it, so
+        # test_recipes_smoke.py's C-reference byte-exact parity tests actually
+        # COMPILE-AND-RUN in CI instead of silently skipping (they used to skip
+        # against a nonexistent path — a false green). The CPU image ships a C
+        # compiler (cc) for exactly this.
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/packages/training:/workspace/live" \
+            -v "${{ github.workspace }}/plugins/plugin-local-inference/native:/workspace/kernel-refs:ro" \
             -e PYTHONPATH=/workspace/live/scripts \
+            -e ELIZA_KERNEL_REF_DIR=/workspace/kernel-refs \
             eliza-training-cpu:ci \
             -c "set -e; \
                 cd /workspace/live; \
@@ -108,7 +117,14 @@ jobs:
                   scripts/test_eliza_record.py \
                   scripts/test_cap_distribution.py \
                   scripts/test_reward_fn.py \
-                  scripts/test_tier_caps.py"
+                  scripts/test_tier_caps.py \
+                  scripts/quantization/test_recipes_smoke.py \
+                  scripts/training/test_finite_guard.py \
+                  scripts/training/test_instrumentation.py \
+                  scripts/training/test_model_registry.py \
+                  scripts/manifest/test_eliza1_manifest.py \
+                  scripts/manifest/test_eliza1_manifest_schema.py \
+                  scripts/test_prepare_eliza1_trajectory_dataset.py"
 
       - name: Corpus-quality chain end-to-end smoke
         # Synthesizer dry-runs → classifier → audit --strict-phases →

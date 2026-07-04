@@ -191,7 +191,76 @@ def normalize_tool_calls(value: Any) -> list[dict[str, Any]]:
     return calls
 
 
+# Gemma-4 native tool-call surface syntax emitted by a model trained on this
+# chat template: `<|tool_call>call:NAME{key:<|"|>value<|"|>,...}<tool_call|>`.
+# String values are wrapped in `<|"|>` markers; numbers/booleans/nested
+# objects/arrays are bare. This is what the fine-tuned checkpoint produces —
+# NOT JSON — so scoring native tool-calling requires parsing it directly.
+_NATIVE_STR_MARK = '<|"|>'
+_NATIVE_TC_RE = re.compile(
+    r"<\|tool_call>\s*call:\s*([A-Za-z0-9_.\-]+)\s*\{(.*?)\}\s*<tool_call\|>", re.S
+)
+_NATIVE_TC_OPEN_RE = re.compile(
+    r"<\|tool_call>\s*call:\s*([A-Za-z0-9_.\-]+)\s*\{(.*)$", re.S
+)
+_NATIVE_KEY_RE = re.compile(r"[A-Za-z0-9_.\-]+")
+
+
+def _native_arg_keys(body: str) -> list[str]:
+    """Extract the top-level argument keys from a native tool-call body.
+    Skips `<|"|>`-quoted strings and descends past nested `{}` / `[]` so only
+    depth-0 `key:` names are collected (values are not scored)."""
+    keys: list[str] = []
+    i, n, depth, buf, expect_key = 0, len(body), 0, "", True
+    while i < n:
+        if body.startswith(_NATIVE_STR_MARK, i):
+            close = body.find(_NATIVE_STR_MARK, i + len(_NATIVE_STR_MARK))
+            if close < 0:
+                break
+            i = close + len(_NATIVE_STR_MARK)
+            expect_key = False
+            buf = ""
+            continue
+        ch = body[i]
+        if ch in "{[":
+            depth += 1
+            expect_key = False
+            buf = ""
+        elif ch in "}]":
+            depth -= 1
+        elif depth == 0 and ch == ":" and expect_key:
+            key = buf.strip()
+            if _NATIVE_KEY_RE.fullmatch(key):
+                keys.append(key)
+            expect_key = False
+            buf = ""
+        elif depth == 0 and ch == ",":
+            expect_key = True
+            buf = ""
+        elif depth == 0:
+            buf += ch
+        i += 1
+    return keys
+
+
+def extract_native_tool_calls(text: str) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    for match in _NATIVE_TC_RE.finditer(text):
+        keys = _native_arg_keys(match.group(2))
+        calls.append({"name": match.group(1), "arguments": {k: "" for k in keys}})
+    if not calls:
+        # Tolerate a truncated final block with no closing `<tool_call|>`.
+        match = _NATIVE_TC_OPEN_RE.search(text)
+        if match:
+            keys = _native_arg_keys(match.group(2))
+            calls.append({"name": match.group(1), "arguments": {k: "" for k in keys}})
+    return calls
+
+
 def extract_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
+    native = extract_native_tool_calls(text)
+    if native:
+        return native
     parsed = _parse_json_object(text)
     if not parsed:
         return []
@@ -293,36 +362,205 @@ def load_records(path: Path, max_per_bucket: int) -> dict[str, list[dict[str, An
     return buckets
 
 
+def _coerce_args_to_dict(args: Any) -> dict[str, Any]:
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return args if isinstance(args, dict) else {}
+
+
+def _to_openai_tool_call(raw: dict[str, Any], index: int) -> dict[str, Any] | None:
+    """Normalize any tool-call shape into the OpenAI-nested shape the Gemma-4
+    chat template consumes: `{"id", "type": "function", "function": {"name",
+    "arguments"}}` with `arguments` as a dict. Accepts OpenAI-nested calls,
+    flat `{name, arguments}` / `{toolName, args}`, and Vercel AI SDK
+    `{type: "tool-call", toolName, input, toolCallId}` parts."""
+    function = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+    name = raw.get("toolName") or raw.get("name") or function.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    args: Any = None
+    for key in ("input", "args", "arguments"):
+        if key in raw:
+            args = raw[key]
+            break
+    if args is None:
+        args = function.get("arguments")
+    call_id = raw.get("toolCallId") or raw.get("id") or function.get("id") or f"call_{index}"
+    return {
+        "id": str(call_id),
+        "type": "function",
+        "function": {"name": name, "arguments": _coerce_args_to_dict(args)},
+    }
+
+
+def _tool_result_text(parts: list[Any]) -> str:
+    """Flatten a Vercel `tool-result` content-parts array to a text string the
+    chat template renders as the tool response body."""
+    bits: list[str] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        output = part.get("output")
+        if isinstance(output, dict):
+            value = output.get("value")
+            bits.append(value if isinstance(value, str)
+                       else json.dumps(output, ensure_ascii=False))
+        elif isinstance(output, str):
+            bits.append(output)
+        elif part.get("type") == "text" and isinstance(part.get("text"), str):
+            bits.append(part["text"])
+        elif "result" in part:
+            result = part["result"]
+            bits.append(result if isinstance(result, str)
+                        else json.dumps(result, ensure_ascii=False))
+    return "\n".join(b for b in bits if b)
+
+
+def _normalize_message_for_template(msg: Any) -> dict[str, Any] | None:
+    """Coerce one request message into the OpenAI/ChatML shape the Gemma-4
+    chat template expects. Converts Vercel AI SDK content-parts (assistant
+    `tool-call` parts → `tool_calls`, tool `tool-result` parts → string
+    content + `tool_call_id`) and normalizes any pre-existing tool_calls."""
+    if not isinstance(msg, dict):
+        return None
+    role = msg.get("role")
+    if role == "model":
+        role = "assistant"
+    if role not in ("system", "user", "assistant", "tool"):
+        return None
+    content = msg.get("content")
+
+    raw_tool_calls = msg.get("tool_calls")
+    if raw_tool_calls is None:
+        raw_tool_calls = msg.get("toolCalls")
+    tool_calls: list[dict[str, Any]] = []
+    if isinstance(raw_tool_calls, list):
+        tool_calls = [
+            call for i, raw in enumerate(raw_tool_calls)
+            if (call := _to_openai_tool_call(raw, i)) is not None
+        ]
+
+    if role == "assistant" and isinstance(content, list):
+        text_bits: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type")
+            if ptype in ("tool-call", "tool_call"):
+                call = _to_openai_tool_call(part, len(tool_calls))
+                if call is not None:
+                    tool_calls.append(call)
+            elif ptype == "text" and isinstance(part.get("text"), str):
+                text_bits.append(part["text"])
+        out: dict[str, Any] = {"role": "assistant", "content": "".join(text_bits)}
+        if tool_calls:
+            out["tool_calls"] = tool_calls
+        return out
+
+    if role == "tool" and isinstance(content, list):
+        out = {"role": "tool", "content": _tool_result_text(content)}
+        call_id: Any = None
+        for part in content:
+            if isinstance(part, dict) and part.get("toolCallId"):
+                call_id = part["toolCallId"]
+                break
+        if call_id is None:
+            call_id = msg.get("tool_call_id")
+        if call_id is not None:
+            out["tool_call_id"] = str(call_id)
+        if isinstance(msg.get("name"), str):
+            out["name"] = msg["name"]
+        return out
+
+    out = {"role": role}
+    if isinstance(content, str):
+        out["content"] = content
+    elif content is None:
+        out["content"] = ""
+    else:
+        out["content"] = json.dumps(content, ensure_ascii=False)
+    if tool_calls:
+        out["tool_calls"] = tool_calls
+    if isinstance(msg.get("tool_call_id"), str):
+        out["tool_call_id"] = msg["tool_call_id"]
+    if isinstance(msg.get("name"), str):
+        out["name"] = msg["name"]
+    return out
+
+
+def _normalize_tools_for_template(tools: Any) -> list[dict[str, Any]] | None:
+    """Wrap flat native tool specs (`{name, description, parameters}`) into the
+    OpenAI-nested `{type: "function", function: {...}}` shape the Gemma-4
+    template's `format_function_declaration` macro requires."""
+    if not isinstance(tools, list):
+        return None
+    out: list[dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        if isinstance(tool.get("function"), dict):
+            out.append(tool)
+            continue
+        name = tool.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        out.append({
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": tool.get("description")
+                if isinstance(tool.get("description"), str) else "",
+                "parameters": tool.get("parameters")
+                if isinstance(tool.get("parameters"), dict)
+                else {"type": "object", "properties": {}},
+            },
+        })
+    return out or None
+
+
 def render_prompt(record: dict[str, Any], tokenizer: Any) -> tuple[str, dict[str, Any]]:
-    formatted = format_record(record)
-    if not formatted:
+    """Render the request side of a native record for generation.
+
+    Builds the conversation directly from `record["request"]` (every record in
+    a bucket is already `eliza_native_v1` after `_to_native`, so this handles
+    base-ChatML-derived and true-native rows uniformly and avoids the
+    double-`format_record` path that dropped the `boundary`-less base rows).
+    The supervised response lives in `record["response"]`, never in
+    `request.messages`, so nothing is trimmed here."""
+    request = record.get("request") if isinstance(record.get("request"), dict) else {}
+    src: list[Any] = []
+    system = request.get("system")
+    if isinstance(system, str) and system.strip():
+        src.append({"role": "system", "content": system})
+    raw_messages = request.get("messages")
+    if isinstance(raw_messages, list):
+        src.extend(raw_messages)
+
+    messages = [
+        norm for msg in src
+        if (norm := _normalize_message_for_template(msg)) is not None
+    ]
+    if not messages:
         return "", {}
-    messages = list(formatted["messages"])
-    if messages and messages[-1].get("role") == "assistant":
-        messages = messages[:-1]
-    for _msg in messages:
-        for _tc in _msg.get("tool_calls") or []:
-            _fn = _tc.get("function")
-            if isinstance(_fn, dict):
-                _args = _fn.get("arguments")
-                if isinstance(_args, str):
-                    try:
-                        _fn["arguments"] = json.loads(_args)
-                    except json.JSONDecodeError:
-                        _fn["arguments"] = {}
-    kwargs = {
+
+    tools = _normalize_tools_for_template(request.get("tools"))
+    kwargs: dict[str, Any] = {
         "conversation": messages,
         "tokenize": False,
         "add_generation_prompt": True,
     }
-    if formatted.get("tools") is not None:
-        kwargs["tools"] = formatted["tools"]
+    if tools is not None:
+        kwargs["tools"] = tools
     try:
         prompt = tokenizer.apply_chat_template(**kwargs)
     except TypeError:
         kwargs.pop("tools", None)
         prompt = tokenizer.apply_chat_template(**kwargs)
-    return prompt, formatted
+    return prompt, {"messages": messages, "tools": tools}
 
 
 def score_tool_calls(
@@ -415,6 +653,16 @@ def main() -> int:
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--max-per-bucket", type=int, default=200)
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument(
+        "--device", default="auto", choices=("auto", "cuda", "mps", "cpu"),
+        help="Inference device. 'auto' prefers cuda, then Apple-silicon mps, "
+             "then cpu. mps runs the bf16 checkpoint on the M-series GPU.",
+    )
+    parser.add_argument(
+        "--dtype", default="auto", choices=("auto", "bfloat16", "float16", "float32"),
+        help="Model weight dtype. 'auto' = bfloat16 on cuda/mps (Gemma's native "
+             "dtype), float32 on cpu.",
+    )
     args = parser.parse_args()
 
     buckets = load_records(Path(args.test_file), args.max_per_bucket)
@@ -424,12 +672,36 @@ def main() -> int:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if args.device != "auto":
+        device = args.device
+    elif torch.cuda.is_available():
+        device = "cuda"
+    elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    if args.dtype != "auto":
+        dtype = getattr(torch, args.dtype)
+    else:
+        dtype = torch.float32 if device == "cpu" else torch.bfloat16
+    log.info("device=%s dtype=%s", device, dtype)
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+    # Base Gemma-4 tokenizers ship no chat_template; this bench renders prompts
+    # via apply_chat_template, so borrow the template from the -it instruct
+    # variant when the base has none (mirrors train_local.py).
+    if not getattr(tokenizer, "chat_template", None):
+        try:
+            _src = AutoTokenizer.from_pretrained(
+                f"{args.model}-it", trust_remote_code=True
+            )
+            if getattr(_src, "chat_template", None):
+                tokenizer.chat_template = _src.chat_template
+        except Exception:  # noqa: BLE001
+            pass
     model_kwargs: dict[str, Any] = {
-        "torch_dtype": torch.bfloat16 if device == "cuda" else torch.float32,
+        "torch_dtype": dtype,
         "trust_remote_code": True,
         "low_cpu_mem_usage": True,
         "attn_implementation": select_attn_impl(device),
@@ -437,7 +709,7 @@ def main() -> int:
     if device == "cuda":
         model_kwargs["device_map"] = "auto"
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
-    if device == "cpu":
+    if device != "cuda":
         model.to(device)
     model.eval()
 

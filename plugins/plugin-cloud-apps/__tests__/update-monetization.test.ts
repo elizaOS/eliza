@@ -1,3 +1,6 @@
+/**
+ * UPDATE_MONETIZATION tests covering the pure parseMonetizationIntent parser and the range-guarded action. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { UpdateAppMonetizationInput } from "@elizaos/cloud-sdk";
 import {
@@ -22,6 +25,7 @@ const { updateMonetizationAction } = await import(
 const { parseMonetizationIntent } = await import(
   "../src/actions/update-monetization.ts"
 );
+const { cloudAppsProvider } = await import("../src/providers/cloud-apps.ts");
 
 const APP = makeApp({
   id: "id-acme",
@@ -185,5 +189,33 @@ describe("UPDATE_MONETIZATION", () => {
     );
     expect(result?.success).toBe(false);
     expect((result?.data as { reason: string }).reason).toBe("error");
+  });
+
+  it("invalidates the CLOUD_APPS provider cache after a successful change", async () => {
+    const runtime = keyedRuntime();
+    let listCalls = 0;
+    setListApps(() => {
+      listCalls += 1;
+      return Promise.resolve({ success: true, apps: [APP] });
+    });
+    trackMonetization();
+
+    await cloudAppsProvider.get(runtime, makeMessage("my apps"), {} as never);
+    const primedCalls = listCalls;
+    await cloudAppsProvider.get(runtime, makeMessage("my apps"), {} as never);
+    expect(listCalls).toBe(primedCalls);
+
+    const result = await updateMonetizationAction.handler(
+      runtime,
+      makeMessage("set Acme Bot's markup to 20%"),
+      undefined,
+      undefined,
+      captureCallback().fn,
+    );
+    expect(result?.success).toBe(true);
+
+    const afterAction = listCalls;
+    await cloudAppsProvider.get(runtime, makeMessage("my apps"), {} as never);
+    expect(listCalls).toBe(afterAction + 1);
   });
 });

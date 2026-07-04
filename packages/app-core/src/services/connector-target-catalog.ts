@@ -4,38 +4,22 @@
  * quick-pick servers, channels, recipients, and chats without making the
  * end-user paste raw IDs.
  *
- * Discord is the wired source in this catalog. Slack, Telegram, and Gmail keep
- * typed config slots so host integrations can add enumerators without a route
- * or UI rewrite.
- *
- * The Discord enumeration shares its 5-minute REST cache with the workflow
- * runtime-context provider when the host wires both with the same
- * `discordCache` instance — a "generate" call that already primed the
- * runtime-context cache pays no extra REST cost when the user picks.
+ * The catalog holds no per-connector logic: it drains the runtime's registered
+ * `TargetSource`s (each contributed by its owning connector plugin, e.g.
+ * plugin-discord) and forwards the host config accessor + injectable
+ * `fetch` / clock. A new connector adds a source in its own plugin — no route,
+ * UI, or app-core edit. When no source is registered for a platform, the route
+ * falls back to a free-text input.
  */
 
-import {
-  createDiscordSourceCache,
-  type DiscordSourceCache,
-  type DiscordSourceLogger,
-  fetchDiscordEnumeration,
-} from "./discord-target-source";
+import type {
+  TargetEnumerationContext,
+  TargetGroup,
+  TargetSource,
+  TargetSourceLogger,
+} from "@elizaos/core";
 
-export interface TargetGroup {
-  /** Connector platform: 'discord', 'slack', 'telegram', 'gmail', etc. */
-  platform: string;
-  /** Server / workspace / chat-collection id (e.g. Discord guild id). */
-  groupId: string;
-  /** Human-readable group name (e.g. "Cozy Devs"). */
-  groupName: string;
-  targets: TargetEntry[];
-}
-
-export interface TargetEntry {
-  id: string;
-  name: string;
-  kind: "channel" | "recipient" | "chat";
-}
+export type { TargetEntry, TargetGroup } from "@elizaos/core";
 
 export interface ListGroupsOptions {
   /** Restrict to a single platform (e.g. only Discord). */
@@ -49,95 +33,47 @@ export interface ConnectorTargetCatalog {
   /**
    * No-op lifecycle hook so the runtime service-stop loop (core/runtime.ts)
    * does not warn "Service instance is missing stop(); skipping" on every
-   * restart. The catalog holds no own resources — its Discord REST cache is
-   * owned by the shared `discordCache` passed in by the host.
+   * restart. The catalog holds no own resources — each registered source owns
+   * its own REST cache.
    */
   stop(): Promise<void>;
 }
 
-/**
- * Subset of the host config the catalog reads. Mirrors the runtime-context
- * provider's `ConnectorConfigLike` so a host can pass the same accessor
- * to both.
- */
-export interface ConnectorConfigLike {
-  connectors?: {
-    discord?: { enabled?: boolean; token?: string };
-    telegram?: { enabled?: boolean; botToken?: string };
-    gmail?: { enabled?: boolean; email?: string };
-    slack?: { enabled?: boolean; accessToken?: string };
-  };
-}
-
 export interface ElizaConnectorTargetCatalogOptions {
-  /** Re-read on every call so connector edits do not require a restart. */
-  getConfig: () => ConnectorConfigLike;
-  /** Test injection seam — defaults to fetch. */
+  /** Drains the runtime's registered target sources on every call. */
+  listSources: () => TargetSource[];
+  /** Host connector config accessor, forwarded to each source. */
+  getConfig: () => unknown;
+  /** Test injection seam — sources default to global fetch. */
   fetchImpl?: typeof fetch;
-  /** Test injection seam — defaults to Date.now. */
+  /** Test injection seam — sources default to Date.now. */
   now?: () => number;
-  /** Optional shared Discord cache (see runtime-context-provider). */
-  discordCache?: DiscordSourceCache;
   /** Optional logger; warnings only. */
-  logger?: DiscordSourceLogger;
+  logger?: TargetSourceLogger;
 }
 
 export function createElizaConnectorTargetCatalog(
   options: ElizaConnectorTargetCatalogOptions,
 ): ConnectorTargetCatalog {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const now = options.now ?? Date.now;
-  const discordCache = options.discordCache ?? createDiscordSourceCache();
-  const logger = options.logger;
-
-  const listDiscordGroups = async (
-    groupId: string | undefined,
-  ): Promise<TargetGroup[]> => {
-    const config = options.getConfig();
-    const token = config.connectors?.discord?.token?.trim();
-    if (!token) return [];
-
-    const enumeration = await fetchDiscordEnumeration(token, {
-      fetchImpl,
-      now,
-      cache: discordCache,
-      logger,
-    });
-
-    const groups: TargetGroup[] = [];
-    for (const guild of enumeration) {
-      if (groupId && guild.guildId !== groupId) continue;
-      groups.push({
-        platform: "discord",
-        groupId: guild.guildId,
-        groupName: guild.guildName,
-        targets: (guild.channels ?? []).map((c) => ({
-          id: c.id,
-          name: c.name,
-          kind: "channel",
-        })),
-      });
-    }
-    return groups;
-  };
-
   return {
     async listGroups(opts: ListGroupsOptions = {}): Promise<TargetGroup[]> {
-      const platform = opts.platform;
+      const ctx: TargetEnumerationContext = {
+        groupId: opts.groupId,
+        getConfig: options.getConfig,
+        fetchImpl: options.fetchImpl,
+        now: options.now,
+        logger: options.logger,
+      };
+
       const all: TargetGroup[] = [];
-
-      if (!platform || platform === "discord") {
-        for (const g of await listDiscordGroups(opts.groupId)) all.push(g);
+      for (const source of options.listSources()) {
+        if (opts.platform && source.platform !== opts.platform) continue;
+        for (const group of await source.enumerate(ctx)) all.push(group);
       }
-
-      // slack / telegram / gmail land in slice 2.1+. Returning an empty list
-      // for those platforms today is the desired behavior — the route falls
-      // back to a free-text input when no catalog entries are available.
-
       return all;
     },
     async stop(): Promise<void> {
-      // No own resources; the shared discordCache is host-owned.
+      // No own resources; each registered source owns its cache.
     },
   };
 }

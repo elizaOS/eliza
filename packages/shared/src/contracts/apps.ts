@@ -201,6 +201,32 @@ export interface RegistryAppInfo {
    * to compute the shell's landing tab at boot.
    */
   mainTab?: boolean;
+  /**
+   * Declared home section for the app catalog, sourced from `package.json` →
+   * `elizaos.app.catalogSection`. One of the concrete catalog sections
+   * (`games` | `developerUtilities` | `finance` | `other`). When absent, the
+   * section is derived from `category` and keyword heuristics. The dynamic
+   * `featured` / `favorites` sections are never declared here (they are
+   * computed from `featured` and the user's starred apps).
+   */
+  catalogSection?: string;
+  /**
+   * If true, the app is promoted into the Featured catalog section. Sourced
+   * from `elizaos.app.featured`. Featured is presentational only — it does not
+   * make an otherwise-hidden app appear.
+   */
+  featured?: boolean;
+  /**
+   * If true, the app is hidden from the catalog by default and only surfaces
+   * when explicitly configured as a default app, or — for `scope: "wallet"`
+   * apps — when the wallet is enabled. Sourced from `elizaos.app.defaultHidden`.
+   */
+  defaultHidden?: boolean;
+  /**
+   * Capability scope that gates default visibility. `"wallet"` apps are
+   * revealed when the wallet is enabled. Sourced from `elizaos.app.scope`.
+   */
+  scope?: string;
 }
 
 export interface AppSessionState {
@@ -297,6 +323,24 @@ export interface AppRunActionResult {
   success: boolean;
   message: string;
   run?: AppRunSummary | null;
+}
+
+/**
+ * Runtime service type under which `@elizaos/plugin-app-manager` registers its
+ * app-run reader. Consumers (e.g. the agent's hosted-app session gate) query
+ * `runtime.getService(APP_SESSION_SERVICE_TYPE)` instead of statically importing
+ * the plugin, keeping the host→plugin dependency direction correct.
+ */
+export const APP_SESSION_SERVICE_TYPE = "app-session";
+
+/**
+ * Contract for the app-session runtime service. Exposes the current AppManager
+ * run snapshot so gate logic can decide whether a hosted app is active without
+ * reaching into the plugin's on-disk store directly.
+ */
+export interface AppSessionServiceLike {
+  /** Current AppManager run snapshot (unfiltered; callers apply status logic). */
+  getRuns(): AppRunSummary[];
 }
 
 export type AppLaunchDiagnosticSeverity = "info" | "warning" | "error";

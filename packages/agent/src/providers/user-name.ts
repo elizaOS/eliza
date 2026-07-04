@@ -14,7 +14,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "../security/access.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { fetchConfiguredOwnerName } from "../services/owner-name.ts";
 
 export function createUserNameProvider(): Provider {
@@ -29,19 +29,17 @@ export function createUserNameProvider(): Provider {
     contextGate: { anyOf: ["general"] },
     cacheStable: false,
     cacheScope: "turn",
-    roleGate: { minRole: "USER" },
+    // #12087 Item 14: was USER but the body enforced OWNER (hasOwnerAccess).
+    // Declared roleGate is now enforced by applyPluginRoleGating.
+    roleGate: { minRole: "OWNER" },
 
     async get(
-      runtime: IAgentRuntime,
+      _runtime: IAgentRuntime,
       message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
       const content = message.content as Record<string, unknown> | undefined;
-      if (content?.source !== "client_chat") {
-        return { text: "" };
-      }
-
-      if (!(await hasOwnerAccess(runtime, message))) {
+      if (content?.source !== MESSAGE_SOURCE_CLIENT_CHAT) {
         return { text: "" };
       }
 

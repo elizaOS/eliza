@@ -19,6 +19,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -79,7 +80,8 @@ export function ViewManagerView() {
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex justify-end">
-				<button
+				<Button
+					unstyled
 					type="button"
 					ref={refreshControl.ref}
 					{...refreshControl.agentProps}
@@ -89,7 +91,7 @@ export function ViewManagerView() {
 					className={CONTROL_BTN}
 				>
 					{loading ? "Refreshing…" : "Refresh"}
-				</button>
+				</Button>
 			</div>
 			<ViewManagerSpatialView snapshot={snapshot} onOpenView={openView} />
 		</div>

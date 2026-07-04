@@ -1,5 +1,10 @@
+/**
+ * Pure mapping between shell views and navigation tabs — derives the UI shell
+ * mode for a tab and resolves the tab to restore for a given shell view,
+ * guarding against invalid tabs leaking into native/desktop mode.
+ */
 import type { Tab } from "../navigation";
-import type { FirstRunMode, ShellView } from "./types";
+import type { ShellView } from "./types";
 import type { UiShellMode } from "./ui-preferences";
 
 export function deriveUiShellModeForTab(_tab: Tab): UiShellMode {
@@ -23,7 +28,6 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
 
 export function shouldStartAtCharacterSelectOnLaunch(_params: {
   firstRunNeedsOptions: boolean;
-  firstRunMode: FirstRunMode;
   navPath: string;
   urlTab: Tab | null;
 }): boolean {

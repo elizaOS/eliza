@@ -12,6 +12,7 @@
 import type { PluginInfo } from "../api/client-types-config";
 import {
   getWidgetComponent,
+  markWidgetRegistryChanged,
   registerBuiltinWidgets,
   registerWidgetComponent,
 } from "./registry-store";
@@ -23,8 +24,10 @@ type DefaultHomeWidgetSink = NonNullable<
 
 export {
   getWidgetComponent,
+  getWidgetRegistryVersion,
   registerBuiltinWidgets,
   registerWidgetComponent,
+  subscribeWidgetRegistry,
 } from "./registry-store";
 
 // -- Bundled widget component imports ----------------------------------------
@@ -33,6 +36,7 @@ import { MusicLibraryCharacterWidget } from "../components/character/MusicLibrar
 import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent-provisioning";
+import { AutomationsWidget } from "../components/chat/widgets/automations";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
@@ -47,7 +51,6 @@ import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
-import { WorkflowsWidget } from "../components/chat/widgets/workflows";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
@@ -78,10 +81,11 @@ registerWidgetComponent(
 // affordance that crowded the naked home grid with setup noise.
 registerWidgetComponent("feed", "feed.agent-activity", AgentActivityWidget);
 registerWidgetComponent("wallet", "wallet.balance", WalletBalanceWidget);
-// Running workflows tile (ITEM 5): backed by the core GET /api/automations
+// Running-automations tile (ITEM 5): backed by the core GET /api/automations
 // surface (system automations + active user workflows), so it is always-visible
-// and self-hides when nothing is running.
-registerWidgetComponent("workflow", "workflow.running", WorkflowsWidget);
+// and self-hides when nothing is running. The widget kind stays "workflow" —
+// it is the backend widget-registration key, not a user-facing label.
+registerWidgetComponent("workflow", "workflow.running", AutomationsWidget);
 // Setup-progress home tiles: the local model download (LOCAL mode, backed by the
 // local-inference hub) and the cloud-agent provisioning handoff (CLOUD mode,
 // backed by the cloud handoff phase event). Neither is a loadable plugin, so
@@ -313,6 +317,10 @@ export function registerBuiltinWidgetDeclarations(
       BUILTIN_WIDGET_FALLBACK_PLUGIN_IDS.add(id);
     }
   }
+  // Wake any mounted home/sidebar host so a declaration registered after the
+  // slot was first resolved (plugin modules load on the idle path) re-resolves
+  // instead of being dropped until the next plugin-snapshot change.
+  markWidgetRegistryChanged();
 }
 
 // -- Built-in widget declarations --------------------------------------------

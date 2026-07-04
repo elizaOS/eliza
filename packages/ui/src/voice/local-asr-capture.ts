@@ -1,3 +1,7 @@
+/**
+ * Mic-capture recorder for local ASR: records mono PCM16, exposes a live analyser
+ * for amplitude visualization, and stops/cancels the audio context cleanly.
+ */
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
   cancel(): void;

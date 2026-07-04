@@ -1,7 +1,7 @@
 // Unit coverage for the pure chat-input/streaming parsers in state/parsers.ts.
 // These drive slash commands, custom-action argument binding, streamed-text
 // reconciliation, and startup-error formatting — all chat-surface behavior with
-// real branching and no co-located test until now.
+// real branching. Pure functions, no harness.
 
 import { describe, expect, it } from "vitest";
 import type { CustomActionDef } from "../api/client";

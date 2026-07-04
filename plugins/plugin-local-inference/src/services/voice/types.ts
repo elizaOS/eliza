@@ -1,3 +1,4 @@
+/** Shared type vocabulary for the voice pipeline: tokens, phrases, audio chunks/sinks, speakers, and scheduler/TTS-backend contracts. */
 export interface TextToken {
 	index: number;
 	text: string;
@@ -566,12 +567,10 @@ export interface SchedulerConfig {
 	 * before the full phrase finishes synthesizing and enabling per-chunk
 	 * prefix-preserving barge-in rollback.
 	 *
-	 * Previously this was implicitly gated by `ttsStreamSupported()` from the
-	 * native FFI layer. On macOS, a `ggml_conv_transpose_1d` stall in the
-	 * DAC codec region caused the Metal path to hang — that stall is now
-	 * fixed in the llama.cpp merge (native Metal kernels for
-	 * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
-	 * The flag is therefore `true` by default. Set to `false` only when
+	 * The flag is `true` by default: native Metal kernels for
+	 * `ggml_conv_transpose_1d` in the DAC codec region keep the macOS Metal path
+	 * from stalling, so the streaming ABI is safe to use whenever the backend
+	 * supports it. Set to `false` only when
 	 * testing against a non-streaming build or reproducing the pre-fix
 	 * behaviour.
 	 */

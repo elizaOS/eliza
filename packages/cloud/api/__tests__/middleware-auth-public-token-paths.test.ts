@@ -76,3 +76,21 @@ describe("isPublicPath — out-of-band token pages", () => {
     ).toBe(false);
   });
 });
+
+describe("isPublicPath — removed dead eliza-app gateway (#12043)", () => {
+  test("the unauthenticated canned-echo gateway is no longer public", () => {
+    // The demo `/api/eliza-app/gateway/:agentId` echo route and its allowlist
+    // entry were removed; the path must not resolve as public any more.
+    expect(isPublicPath("/api/eliza-app/gateway/agent-1")).toBe(false);
+    expect(isPublicPath("/api/eliza-app/gateway")).toBe(false);
+  });
+
+  test("the real eliza-app public paths are untouched", () => {
+    expect(isPublicPath("/api/eliza-app/auth/discord")).toBe(true);
+    expect(isPublicPath("/api/eliza-app/connections/discord/initiate")).toBe(
+      true,
+    );
+    expect(isPublicPath("/api/eliza-app/cli-auth/init")).toBe(true);
+    expect(isPublicPath("/api/eliza-app/onboarding")).toBe(true);
+  });
+});

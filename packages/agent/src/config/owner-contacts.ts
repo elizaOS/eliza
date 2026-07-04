@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import { loadElizaConfig } from "./config.ts";
 import type {
   OwnerContactEntry,
@@ -100,7 +100,7 @@ function canonicalOwnerContactSource(source: string): string {
 }
 
 function sourceSupportsOwnerEntityFallback(source: string): boolean {
-  return source === "client_chat" || source === "discord";
+  return source === MESSAGE_SOURCE_CLIENT_CHAT || source === "discord";
 }
 
 export function resolveOwnerContactSource(

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * jsdom tests for `WorkflowEditor` over a mocked `client` API: renders the graph,
+ * runs a saved workflow and shows node output, keeps the editor open after a new
+ * save, and restores a selected version from history.
+ */
+
 import {
   cleanup,
   fireEvent,

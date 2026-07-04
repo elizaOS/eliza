@@ -12,8 +12,9 @@
 
 import { Phone } from "@elizaos/capacitor-phone";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { consumePendingPhoneNumber } from "@elizaos/ui/app-navigate-view";
+import { consumeNavigateViewPayload } from "@elizaos/ui/app-navigate-view";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -23,6 +24,15 @@ import {
   toPhoneCallRow,
 } from "./PhoneSpatialView.tsx";
 import { normalizeNumber } from "./phone-view-helpers.ts";
+
+type PhoneNavigatePayload = {
+  number?: unknown;
+};
+
+function consumePhoneNavigateNumber(): string | null {
+  const payload = consumeNavigateViewPayload<PhoneNavigatePayload>("phone");
+  return typeof payload?.number === "string" ? payload.number : null;
+}
 
 /** Short relative/absolute timestamp for a recent-call row. */
 function formatWhen(epochMs: number): string {
@@ -50,11 +60,7 @@ function formatWhen(epochMs: number): string {
 /** Open the separate Contacts view via the navigation bus. */
 function openContacts(): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "contacts", viewPath: "/contacts" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "contacts", viewPath: "/contacts" });
 }
 
 export function PhoneView() {
@@ -103,10 +109,10 @@ export function PhoneView() {
   // Single-shot: the number is consumed so a later plain navigation does not
   // re-seed a stale value.
   useEffect(() => {
-    const pending = consumePendingPhoneNumber();
+    const pending = consumePhoneNavigateNumber();
     if (pending) {
       setError(null);
-      setDialed(pending);
+      setDialed(normalizeNumber(pending));
     }
   }, []);
 

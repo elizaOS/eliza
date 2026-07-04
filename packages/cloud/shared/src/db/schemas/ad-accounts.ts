@@ -14,7 +14,8 @@ export type AdPlatform =
   | "snap"
   | "x-twitter"
   | "reddit"
-  | "linkedin";
+  | "linkedin"
+  | "programmatic-dsp";
 
 /**
  * Ad account status.

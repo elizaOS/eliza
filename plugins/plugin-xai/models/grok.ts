@@ -1,3 +1,10 @@
+/**
+ * xAI Grok model handlers for text generation (small/large) and embeddings,
+ * calling the xAI OpenAI-compatible chat/embeddings endpoints (api.x.ai/v1).
+ * Normalizes base URL and model-name settings, emits MODEL_USED events, and
+ * records LLM calls for usage accounting. Consumed by the plugin in
+ * ../index.ts.
+ */
 import {
   type EventPayload,
   EventType,

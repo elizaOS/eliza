@@ -1,3 +1,6 @@
+/**
+ * cva variants for LockOnButton (size/tone).
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 

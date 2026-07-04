@@ -1,3 +1,4 @@
+/** Unit tests for `TwitterTimelineClient.describeTweetMedia`: photo/video interpretation via IMAGE_DESCRIPTION, empty-media and missing-model paths, and per-media failure tolerance; mocked runtime. */
 import {
   type IAgentRuntime,
   ModelType,

@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for direct-Cloud auth on hosted web (non-native path). Capacitor
+ * forced to web + CapacitorHttp mocked, fetch stubbed, no live cloud.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
@@ -34,7 +39,6 @@ describe("ElizaClient direct Cloud auth on hosted web", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   it("creates CLI sessions through the same-origin proxy and opens staging auth", async () => {

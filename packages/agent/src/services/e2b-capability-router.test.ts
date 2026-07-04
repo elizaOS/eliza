@@ -1,5 +1,10 @@
 import nodePath from "node:path";
-import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
+import {
+  CapabilityError,
+  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
+  type IAgentRuntime,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   E2BRemoteCapabilityRouterService,
@@ -115,12 +120,15 @@ function replaceGlobalFetch(fetchImpl: typeof fetch): void {
   });
 }
 
-function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
+function makeRuntime(
+  settings: Record<string, string> = {},
+  services: Record<string, unknown> = {},
+): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     character: { name: "E2B Test" },
     getSetting: (key: string) => settings[key],
-    getService: () => null,
+    getService: ((type: string) => services[type] ?? null) as never,
   };
   return runtime as IAgentRuntime;
 }
@@ -733,5 +741,37 @@ describe("E2BRemoteCapabilityRouterService", () => {
     await expect(
       service.fs.readText({ path: "/outside/file.ts" }),
     ).rejects.toBeInstanceOf(CapabilityError);
+  });
+
+  it("routes the e2b provider to the sandbox factory service registered by the plugin", async () => {
+    const factory = new FakeFactory();
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime({}, { [E2B_SANDBOX_FACTORY_SERVICE_TYPE]: factory }),
+      makeConfig({ provider: "e2b" }),
+    );
+
+    const result = await service.pty.runCommand({
+      command: "echo",
+      args: ["hi"],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(factory.configs).toHaveLength(1);
+    expect(factory.configs[0]?.provider).toBe("e2b");
+  });
+
+  it("reports e2b unavailable when the sandbox factory plugin is not registered", async () => {
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig({ provider: "e2b" }),
+    );
+
+    await expect(
+      service.pty.runCommand({ command: "echo", args: ["hi"] }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "fs",
+      method: "sandbox.create",
+    });
   });
 });

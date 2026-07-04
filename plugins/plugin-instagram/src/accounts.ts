@@ -1,3 +1,9 @@
+/**
+ * Resolves per-account Instagram connector config from three sources — top-level
+ * env/character values (the implicit `default` account), an `INSTAGRAM_ACCOUNTS`
+ * JSON map, and `character.settings.instagram` — merging per field. Supplies
+ * `InstagramService` the account id list and credentials for each configured account.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { InstagramConfig } from "./types";
 

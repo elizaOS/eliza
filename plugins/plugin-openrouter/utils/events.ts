@@ -1,3 +1,10 @@
+/**
+ * Emits `EventType.MODEL_USED` after every model call, normalizing the AI SDK's
+ * varied usage field names (`inputTokens`/`promptTokens`, …) into a single
+ * prompt/completion/total token shape and returning it to the caller. Every
+ * `models/*` handler routes its usage through here so billing/telemetry sees one
+ * consistent event.
+ */
 import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 

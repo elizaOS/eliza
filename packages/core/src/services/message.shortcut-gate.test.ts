@@ -241,4 +241,64 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		);
 		expect(shortcutEvents).toHaveLength(1);
 	});
+
+	// #12087 Item 3: the shortcut path must enforce the target action's declared
+	// roleGate before running its handler. Previously it called validate()/handler()
+	// directly, so a shortcut targeting an OWNER-gated action was reachable by any
+	// USER whose shortcut lacked `requiresElevated`.
+	function ownerGatedEcho(handler: Action["handler"]): Action {
+		return {
+			name: "ECHO_COMMAND",
+			description: "owner-only echo",
+			roleGate: { minRole: "OWNER" },
+			validate: async () => true,
+			handler,
+		};
+	}
+
+	it("rejects a USER triggering an OWNER-gated shortcut action (never runs the handler)", async () => {
+		const handler = vi.fn(async () => ({ success: true, text: "secret" }));
+		const { runtime, useModel } = makeRuntime({
+			actions: [ownerGatedEcho(handler)],
+		});
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "USER",
+		});
+		expect(result).toBeNull();
+		expect(handler).not.toHaveBeenCalled();
+		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {
+		const handler = vi.fn(
+			async (
+				_rt: unknown,
+				_m: unknown,
+				_s: unknown,
+				_o: unknown,
+				cb?: (c: { text: string }) => Promise<unknown>,
+			) => {
+				if (cb) await cb({ text: "secret ok" });
+				return { success: true, text: "secret ok" };
+			},
+		);
+		const { runtime } = makeRuntime({
+			actions: [ownerGatedEcho(handler as unknown as Action["handler"])],
+		});
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+		expect(result?.kind).toBe("direct_reply");
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
 });

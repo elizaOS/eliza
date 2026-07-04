@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Covers the markets dashboard — prediction markets and perpetuals, including trade modals.
+ */
 import { expect, test } from "./fixtures";
 import {
   clickTab,

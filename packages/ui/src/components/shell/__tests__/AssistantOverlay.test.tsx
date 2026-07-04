@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// AssistantOverlay's phase gating: renders nothing while idle/booting and shows
+// its children once the shell phase reaches summoned/listening/responding. Real
+// component in jsdom.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

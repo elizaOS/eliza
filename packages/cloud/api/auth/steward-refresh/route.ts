@@ -32,6 +32,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
+  mintStewardTokenFromClaims,
   STEWARD_AUTH_UPSTREAM_TIMEOUT_MS,
   type StewardVerifyEnv,
   verifyStewardTokenCached,
@@ -43,6 +44,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 const STEWARD_TOKEN_COOKIE = "steward-token";
 const STEWARD_REFRESH_TOKEN_COOKIE = "steward-refresh-token";
+const BEARER_REFRESH_TTL_SECONDS = 60 * 60;
 
 // ─── CSRF origin allowlist (must stay in lockstep with steward-session) ───
 const PERMITTED_ORIGIN_HOSTS = new Set<string>([
@@ -119,6 +121,15 @@ function shouldReturnClientToken(
   // CSRF check already accepts, otherwise valid HttpOnly-cookie sessions can
   // bounce back to /login on previews/custom same-origin hosts.
   return isPermittedOrigin(origin, host, isProduction);
+}
+
+function readBearerToken(c: {
+  req: { header: (name: string) => string | undefined };
+}): string | null {
+  const auth = c.req.header("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice("Bearer ".length).trim();
+  return token || null;
 }
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -260,6 +271,50 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   const isProduction = c.env.NODE_ENV === "production";
+  const bearerToken = readBearerToken(c);
+  if (bearerToken) {
+    if (!stewardSecretConfigured(c.env)) {
+      logRefresh("bearer-server-secret-missing");
+      return c.json(
+        errorBody(
+          "Steward verification not configured on server",
+          "server_secret_missing",
+        ),
+        503,
+      );
+    }
+
+    const claims = await verifyStewardTokenCached(c.env, bearerToken);
+    if (!claims) {
+      logRefresh("bearer-invalid-token");
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+
+    const refreshed = await mintStewardTokenFromClaims(
+      c.env,
+      claims,
+      BEARER_REFRESH_TTL_SECONDS,
+    );
+    if (!refreshed) {
+      logRefresh("bearer-mint-failed");
+      return c.json(
+        errorBody(
+          "Steward verification not configured on server",
+          "server_secret_missing",
+        ),
+        503,
+      );
+    }
+
+    logRefresh("ok-bearer");
+    return c.json({
+      ok: true,
+      token: refreshed.token,
+      expiresAt: refreshed.expiresAt,
+      expiresIn: refreshed.expiresIn,
+    });
+  }
+
   const originCheck = checkOrigin(c, isProduction);
   if (!originCheck.ok) {
     logRefresh("forbidden-origin");

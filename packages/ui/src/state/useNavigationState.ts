@@ -1,5 +1,5 @@
 /**
- * Navigation state — extracted from AppContext.
+ * Navigation state, one of the domain hooks AppContext composes.
  *
  * Owns: setTab wrappers, switchShellView, switchUiShellMode, setUiShellMode,
  * deferred post-tab-commit work, uiShellMode persist, lastNativeTab persist,

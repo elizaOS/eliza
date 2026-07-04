@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for emotion coercion and text→emotion inference, plus the
+ * omnivoice keyword mapping. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   coerceEmotion,

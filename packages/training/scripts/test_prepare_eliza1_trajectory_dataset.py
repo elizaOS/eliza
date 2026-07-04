@@ -107,6 +107,9 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
     assert len(train) == 1
     assert len(repair) == 2
     assert train[0]["format"] == "eliza_native_v1"
+    assert train[0]["metadata"]["privacy_attestation"]["schema"] == (
+        "eliza.privacy_filter_attestation.v1"
+    )
     assert train[0]["response"]["toolCalls"][0]["toolName"] == "SHELL"
     assert format_record(train[0]) is not None
     formatted = format_record(train[0])
@@ -139,6 +142,77 @@ def test_prepare_native_rows_canonicalizes_aliases_and_splits_failures(tmp_path:
     assert manifest["trajectoryFiles"]["train"] == "trajectory_records/train.jsonl"
     assert manifest["counts"] == {"repair_eval": 2, "test": 0, "train": 1, "val": 0}
     assert manifest["privacy"]["redactions"] == 1
+    assert manifest["privacy"]["attestationSchema"] == "eliza.privacy_filter_attestation.v1"
+    assert manifest["dedupedCount"] == 0
+    assert manifest["uniqueCount"] == 3
+
+
+def test_prepare_dedups_native_rows_by_content_hash(tmp_path: Path) -> None:
+    source = tmp_path / "duplicate-native.jsonl"
+    duplicate = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "trajectoryId": "traj-a",
+        "request": {
+            "messages": [
+                {"role": "user", "content": "Please create a note."},
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "CREATE_NOTE",
+                        "description": "create note",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            ],
+        },
+        "response": {
+            "text": "",
+            "toolCalls": [
+                {
+                    "toolCallId": "call_1",
+                    "toolName": "CREATE_NOTE",
+                    "input": {"title": "note"},
+                }
+            ],
+        },
+        "metadata": {"source_dataset": "unit_native"},
+    }
+    second = json.loads(json.dumps(duplicate))
+    second["trajectoryId"] = "traj-b"
+    second["stepIndex"] = 7
+    _write_jsonl(source, [duplicate, second])
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        [
+            "--input",
+            str(source),
+            "--output-dir",
+            str(out_dir),
+            "--val-ratio",
+            "0",
+            "--test-ratio",
+            "0",
+        ]
+    )
+
+    assert code == 0
+    train = _read_jsonl(out_dir / "train.jsonl")
+    trajectory_train = _read_jsonl(out_dir / "trajectory_records" / "train.jsonl")
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+
+    assert len(train) == 1
+    assert len(trajectory_train) == 1
+    assert manifest["dedupedCount"] == 1
+    assert manifest["uniqueCount"] == 1
+    assert manifest["dedup"] == {
+        "contentHashFields": ["request", "response", "tools"],
+        "dropped": 1,
+        "unique": 1,
+    }
 
 
 def test_prepare_lifeops_result_uses_scores_and_alias_prefixes(tmp_path: Path) -> None:
@@ -354,6 +428,102 @@ def test_prepare_keeps_requested_success_splits_non_empty(tmp_path: Path) -> Non
     assert len(_read_jsonl(out_dir / "train.jsonl")) == 1
     assert len(_read_jsonl(out_dir / "val.jsonl")) == 1
     assert len(_read_jsonl(out_dir / "test.jsonl")) == 1
+
+
+def _dup_native_row(trajectory_id: str) -> dict:
+    """A successful native row with a fixed (request, response) boundary. Only
+    provenance (trajectoryId) varies, so dedup — which keys on content, not
+    identity — must collapse repeats to one."""
+    return {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "status": "completed",
+        "trajectoryId": trajectory_id,
+        "stepIndex": 0,
+        "request": {"messages": [{"role": "user", "content": "what is 2+2?"}]},
+        "response": {
+            "text": "4",
+            "usage": {"promptTokens": 5, "completionTokens": 1},
+        },
+        "metadata": {"source_dataset": "unit_dedup"},
+    }
+
+
+def test_prepare_dedupes_identical_native_rows(tmp_path: Path) -> None:
+    """Repeated scenario/benchmark runs replay the same boundary; by default the
+    corpus MUST NOT accumulate exact-duplicate eliza_native_v1 rows."""
+    source = tmp_path / "dupes.jsonl"
+    _write_jsonl(
+        source,
+        [
+            _dup_native_row("traj-a"),
+            _dup_native_row("traj-b"),  # identical (request,response), diff id
+            _dup_native_row("traj-c"),  # identical again
+        ],
+    )
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0"]
+    )
+    assert code == 0
+
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 1, "only the first of three identical rows should survive"
+    assert train[0]["response"]["text"] == "4"
+
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 2
+    assert manifest["deduped_count"] == 2
+    assert manifest["unique_count"] == 1
+    assert manifest["counts"]["train"] == 1
+
+
+def test_prepare_no_dedup_keeps_duplicates(tmp_path: Path) -> None:
+    """--no-dedup is the escape hatch: all three identical rows are kept."""
+    source = tmp_path / "dupes.jsonl"
+    _write_jsonl(
+        source,
+        [_dup_native_row("traj-a"), _dup_native_row("traj-b"), _dup_native_row("traj-c")],
+    )
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0", "--no-dedup"]
+    )
+    assert code == 0
+
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 3
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 0
+    assert manifest["deduped_count"] == 0
+    assert manifest["unique_count"] == 3
+
+
+def test_prepare_dedup_keeps_distinct_boundaries(tmp_path: Path) -> None:
+    """Dedup must not over-collapse: two rows with different responses are both
+    kept."""
+    row_a = _dup_native_row("traj-a")
+    row_b = _dup_native_row("traj-b")
+    row_b["response"]["text"] = "22"  # distinct boundary
+    source = tmp_path / "distinct.jsonl"
+    _write_jsonl(source, [row_a, row_b])
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        ["--input", str(source), "--output-dir", str(out_dir),
+         "--val-ratio", "0", "--test-ratio", "0"]
+    )
+    assert code == 0
+    train = _read_jsonl(out_dir / "train.jsonl")
+    assert len(train) == 2
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["droppedDuplicateNativeRows"] == 0
+    assert manifest["deduped_count"] == 0
+    assert manifest["unique_count"] == 2
 
 
 def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:

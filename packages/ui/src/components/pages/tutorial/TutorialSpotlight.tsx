@@ -1,8 +1,3 @@
-import { Volume2, VolumeX } from "lucide-react";
-import * as React from "react";
-import { createPortal } from "react-dom";
-import { Z_TUTORIAL } from "../../../lib/floating-layers";
-
 /**
  * The tour spotlight: a full-screen overlay that
  *  - draws a breathing glow around the target (the indicator that points at the
@@ -15,6 +10,11 @@ import { Z_TUTORIAL } from "../../../lib/floating-layers";
  * orange in the default theme, white/black in the mono themes, gold on the
  * classic brand — instead of hardcoding one accent.
  */
+import { Volume2, VolumeX } from "lucide-react";
+import * as React from "react";
+import { createPortal } from "react-dom";
+import { Z_TUTORIAL } from "../../../lib/floating-layers";
+import { Button } from "../../ui/button";
 
 const PAD = 8; // glow  inset around the target
 
@@ -279,35 +279,36 @@ function SpotlightCard({
       </p>
       <div className="mt-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
+          <Button
             onClick={onToggleMute}
             data-testid="tutorial-mute"
             aria-label={muted ? "Unmute narration" : "Mute narration"}
             aria-pressed={muted}
-            className="text-muted transition-colors hover:text-card-foreground"
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 text-muted transition-colors hover:bg-transparent hover:text-card-foreground"
           >
             {muted ? (
               <VolumeX className="h-4 w-4" aria-hidden />
             ) : (
               <Volume2 className="h-4 w-4" aria-hidden />
             )}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             onClick={onSkip}
             data-testid="tutorial-skip"
-            className="text-[12px] text-muted underline-offset-2 hover:text-card-foreground hover:underline"
+            variant="ghost"
+            size="sm"
+            className="h-auto px-0 py-0 text-[12px] font-normal text-muted underline-offset-2 hover:bg-transparent hover:text-card-foreground hover:underline"
           >
             Skip tour
-          </button>
+          </Button>
         </div>
         {onContinue && (
-          <button
-            type="button"
+          <Button
             onClick={onContinue}
             data-testid="tutorial-continue"
-            className="rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors"
+            className="h-auto rounded-lg px-3 py-1.5 text-[13px] font-semibold transition-colors"
             style={{
               backgroundColor: "var(--accent)",
               color: "var(--accent-foreground)",
@@ -320,7 +321,7 @@ function SpotlightCard({
             }}
           >
             {continueLabel ?? "Continue"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

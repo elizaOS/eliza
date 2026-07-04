@@ -1,15 +1,31 @@
 import * as React from "react";
+import {
+  AXIS_COMMIT_SLOP,
+  commitAxis,
+  DEFAULT_PULL_DISTANCE,
+  DEFAULT_PULL_VELOCITY,
+  DEFAULT_SWIPE_DISTANCE,
+  DEFAULT_SWIPE_VELOCITY,
+  HORIZONTAL_DOMINANCE_RATIO,
+  isRealCaptureLoss,
+  resolvePull,
+  resolveSwipe,
+  TAP_SLOP,
+  useRafCoalescer,
+} from "../../gestures";
 
 /**
- * Pull/flick + swipe gesture detection for the homescreen shell.
+ * Pull/flick + swipe gesture detection for the homescreen shell — a thin adapter
+ * over the shared gesture core (`../../gestures`). It wires the pure recognizers
+ * (`resolvePull`/`resolveSwipe`/`commitAxis`), the rAF drag coalescer, and the
+ * lost-capture rule to React pointer handlers.
  *
  * Drives the Claude/Whisper-Flow-style interactions: pull UP on the homescreen
  * to reveal the chat, pull DOWN (or flick up on the voice overlay) to dismiss.
  * Optionally also detects horizontal swipes (left/right) for navigating between
- * conversations when the sheet is open. Pure pointer-event logic — bind the
- * returned handlers to any element. A gesture fires on release when it crosses
- * either a distance OR a velocity threshold, so both deliberate drags and quick
- * flicks register.
+ * conversations when the sheet is open. Bind the returned handlers to any
+ * element. A gesture fires on release when it crosses either a distance OR a
+ * velocity threshold, so both deliberate drags and quick flicks register.
  *
  * Axis lock: the gesture commits to a single axis (vertical OR horizontal) once
  * movement crosses {@link AXIS_COMMIT_SLOP}px, so a horizontal swipe never
@@ -67,14 +83,12 @@ export interface PullGestureOptions {
   verticalScrollPriority?: boolean;
 }
 
-/** Movement (px) under which a release is treated as a tap, not a drag.
- *  Exported so consumers that must classify the browser's compat `click`
- *  (synthesized from the same press) use the SAME tap definition as the
- *  gesture engine — see the HomeScreen notification pull zone. */
-export const PULL_GESTURE_TAP_SLOP = 8;
-const TAP_SLOP = PULL_GESTURE_TAP_SLOP;
-/** Movement (px) at which the gesture commits to a single axis. */
-const AXIS_COMMIT_SLOP = 8;
+/** Movement (px) under which a release is treated as a tap, not a drag. Exported
+ *  so consumers that must classify the browser's compat `click` (synthesized
+ *  from the same press) use the SAME tap definition as the gesture engine — see
+ *  the HomeScreen notification pull zone. Aliases the shared {@link TAP_SLOP}. */
+export const PULL_GESTURE_TAP_SLOP = TAP_SLOP;
+
 /**
  * Larger axis-commit slop used when {@link PullGestureOptions.verticalScrollPriority}
  * is set: the binding waits for a clearer horizontal intent before it commits
@@ -82,6 +96,8 @@ const AXIS_COMMIT_SLOP = 8;
  * frames of a thumb scroll on the shared transcript surface (#chat-scroll-web).
  */
 const AXIS_COMMIT_SLOP_SCROLL_SAFE = 16;
+
+export { resolvePull, resolveSwipe };
 
 export interface PullGestureBinding {
   onPointerDown: (event: React.PointerEvent) => void;
@@ -95,56 +111,6 @@ export interface PullGestureBinding {
 }
 
 type GestureAxis = "x" | "y";
-
-/** Decide whether a release should fire a pull, and in which direction. */
-export function resolvePull(
-  deltaUp: number,
-  velocityUp: number,
-  distanceThreshold: number,
-  velocityThreshold: number,
-): "up" | "down" | null {
-  const passed =
-    Math.abs(deltaUp) >= distanceThreshold ||
-    Math.abs(velocityUp) >= velocityThreshold;
-  if (!passed) return null;
-  return deltaUp > 0 ? "up" : "down";
-}
-
-/**
- * Fraction of the vertical travel the horizontal travel must reach to count as a
- * horizontal-dominant swipe (#10715). At 1.0 a swipe had to STRICTLY beat the
- * vertical (a 45° cone), which rejected clearly-horizontal swipes with moderate
- * vertical drift; 0.8 widens the cone to ~51° so a deliberate diagonal commits
- * while a mostly-vertical scroll/pull (horizontal well under 0.8× vertical) does
- * not.
- */
-const HORIZONTAL_DOMINANCE_RATIO = 0.8;
-
-/**
- * Decide whether a release should fire a horizontal swipe, and in which
- * direction. Requires horizontal dominance over the vertical travel so a
- * mostly-vertical drag never registers as a swipe. `deltaLeft` is positive when
- * the finger moved LEFT.
- */
-export function resolveSwipe(
-  deltaLeft: number,
-  velocityLeft: number,
-  deltaUp: number,
-  distanceThresholdX: number,
-  velocityThresholdX: number,
-): "left" | "right" | null {
-  // Horizontal must dominate the vertical component — but not STRICTLY (#10715):
-  // accept a wider (~51°) cone so a deliberate diagonal swipe commits while a
-  // mostly-vertical scroll/pull is still rejected. See HORIZONTAL_DOMINANCE_RATIO.
-  if (Math.abs(deltaLeft) < Math.abs(deltaUp) * HORIZONTAL_DOMINANCE_RATIO) {
-    return null;
-  }
-  const passed =
-    Math.abs(deltaLeft) >= distanceThresholdX ||
-    Math.abs(velocityLeft) >= velocityThresholdX;
-  if (!passed) return null;
-  return deltaLeft > 0 ? "left" : "right";
-}
 
 export function usePullGesture(
   options: PullGestureOptions,
@@ -161,10 +127,10 @@ export function usePullGesture(
     onSettleFree,
     onCancel,
     swipeEnabled = true,
-    distanceThreshold = 56,
-    velocityThreshold = 0.5,
-    distanceThresholdX = 64,
-    velocityThresholdX = 0.4,
+    distanceThreshold = DEFAULT_PULL_DISTANCE,
+    velocityThreshold = DEFAULT_PULL_VELOCITY,
+    distanceThresholdX = DEFAULT_SWIPE_DISTANCE,
+    velocityThresholdX = DEFAULT_SWIPE_VELOCITY,
     verticalScrollPriority = false,
   } = options;
 
@@ -188,60 +154,32 @@ export function usePullGesture(
     pointerId: number;
   } | null>(null);
   // Which axis the gesture committed to, once it crossed AXIS_COMMIT_SLOP.
-  const axis = React.useRef<"x" | "y" | null>(null);
+  const axis = React.useRef<GestureAxis | null>(null);
   // Last observed pointer position/time while pressed. REAL touch can end a
   // gesture with `pointercancel` (Android's renderer-unresponsive touch
   // pipeline, OS takeover) whose event coordinates are not trustworthy, so the
   // cancel-time commit decision (#9943) reads this tracked position instead.
   const last = React.useRef<{ x: number; y: number; t: number } | null>(null);
 
-  // Coalesce the continuous drag updates to at most one per animation frame.
-  // A trackpad/touch panel emits pointermove well above the display refresh
-  // (up to ~1000Hz), and each call fans out to MotionValue subscribers (vertical
-  // sheet) or a React setState (horizontal swipe `onDragX`) — running that more
-  // than once per painted frame is pure waste (only the last value is shown).
-  // rAF-pacing matches the work to the frame the user actually sees.
-  const pendingDrag = React.useRef<{ axis: GestureAxis; value: number } | null>(
-    null,
-  );
-  const dragRaf = React.useRef(0);
+  // Coalesce the continuous drag updates to at most one per animation frame: a
+  // trackpad/touch panel emits pointermove well above the display refresh, and
+  // each call fans out to a MotionValue subscriber (vertical sheet) or a React
+  // setState (horizontal swipe `onDragX`) — only the last value per frame shows.
   const onDragRef = React.useRef(onDrag);
   const onDragXRef = React.useRef(onDragX);
   onDragRef.current = onDrag;
   onDragXRef.current = onDragX;
-  const flushDrag = React.useCallback(() => {
-    dragRaf.current = 0;
-    const pending = pendingDrag.current;
-    pendingDrag.current = null;
-    if (!pending) return;
-    if (pending.axis === "x") onDragXRef.current?.(pending.value);
-    else onDragRef.current?.(pending.value);
-  }, []);
-  const scheduleDrag = React.useCallback(
-    (nextAxis: GestureAxis, value: number) => {
-      pendingDrag.current = { axis: nextAxis, value };
-      if (
-        dragRaf.current === 0 &&
-        typeof requestAnimationFrame === "function"
-      ) {
-        dragRaf.current = requestAnimationFrame(flushDrag);
-      }
+  const drag = useRafCoalescer<{ axis: GestureAxis; value: number }>(
+    (pending) => {
+      if (pending.axis === "x") onDragXRef.current?.(pending.value);
+      else onDragRef.current?.(pending.value);
     },
-    [flushDrag],
   );
-  const cancelDrag = React.useCallback(() => {
-    if (dragRaf.current !== 0 && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(dragRaf.current);
-    }
-    dragRaf.current = 0;
-    pendingDrag.current = null;
-  }, []);
-  const flushPendingDrag = React.useCallback(() => {
-    if (dragRaf.current !== 0 && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(dragRaf.current);
-    }
-    flushDrag();
-  }, [flushDrag]);
+  const scheduleDrag = React.useCallback(
+    (nextAxis: GestureAxis, value: number) =>
+      drag.schedule({ axis: nextAxis, value }),
+    [drag],
+  );
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
@@ -282,26 +220,25 @@ export function usePullGesture(
       const dx = s.x - event.clientX; // left positive
 
       if (axis.current === null) {
-        const ax = Math.abs(dx);
-        const ay = Math.abs(dy);
-        if (Math.max(ax, ay) >= midCommitSlop) {
-          // Same widened cone as resolveSwipe (#10715): when this binding can
-          // swipe, a deliberate diagonal (horizontal ≥ 0.8× vertical) commits
-          // the X axis. A strict ax > ay here re-narrowed the cone to 45° at
-          // the FIRST 8px of travel, so the exact diagonals the release-time
-          // dominance check was widened for never reached it.
-          //
-          // EXCEPTION — `verticalScrollPriority` (the transcript, #chat-scroll-web):
-          // the surface is ALSO a native vertical scroller, so a mid-gesture X
-          // commit here would capture the pointer and BLOCK the scroll. Require
-          // horizontal to STRICTLY dominate (`ax > ay`) so a mostly-vertical
-          // thumb scroll stays on the Y axis (uncaptured → native scroll wins);
-          // release-time recognition still lands a deliberate horizontal flick.
-          const horizontalWins =
-            hasSwipe && !verticalScrollPriority
-              ? ax >= ay * HORIZONTAL_DOMINANCE_RATIO
-              : ax > ay;
-          axis.current = horizontalWins ? "x" : "y";
+        // Same widened cone as resolveSwipe (#10715): when this binding can
+        // swipe, a deliberate diagonal (horizontal ≥ 0.8× vertical) commits the
+        // X axis. A strict ax > ay would re-narrow the cone to 45° at the first
+        // 8px of travel.
+        //
+        // EXCEPTION — `verticalScrollPriority` (the transcript, #chat-scroll-web):
+        // the surface is ALSO a native vertical scroller, so a mid-gesture X
+        // commit here would capture the pointer and BLOCK the scroll. Pass
+        // canSwipe=false so horizontal must STRICTLY dominate (`ax > ay`) and a
+        // mostly-vertical thumb scroll stays on the Y axis (uncaptured → native
+        // scroll wins); release-time recognition still lands a deliberate flick.
+        const committed = commitAxis(
+          dx,
+          dy,
+          midCommitSlop,
+          hasSwipe && !verticalScrollPriority,
+        );
+        if (committed !== null) {
+          axis.current = committed;
           // Take over the pointer now that intent is clear (deferred-capture path).
           if (hasSwipe && !hasVerticalPull) {
             try {
@@ -313,7 +250,7 @@ export function usePullGesture(
           // Reset the other axis's live offset to 0 so the committed axis owns
           // the visual. Drop any pending pre-commit frame first so it can't
           // override the reset on the next tick.
-          cancelDrag();
+          drag.cancel();
           if (axis.current === "x") {
             onDragReset?.();
             if (!hasSwipe) {
@@ -343,7 +280,7 @@ export function usePullGesture(
       onDragReset,
       onDragX,
       scheduleDrag,
-      cancelDrag,
+      drag,
       midCommitSlop,
       verticalScrollPriority,
     ],
@@ -356,12 +293,11 @@ export function usePullGesture(
       // Apply the latest coalesced drag before deciding the release. Consumers
       // read that live value to choose the nearest detent, and the canceled rAF
       // cannot replay stale motion after the settle below.
-      flushPendingDrag();
+      drag.flush();
       const committedAxis = axis.current;
       start.current = null;
       axis.current = null;
       last.current = null;
-      if (!s) return;
 
       const deltaUp = s.y - event.clientY; // up positive
       const deltaLeft = s.x - event.clientX; // left positive
@@ -430,7 +366,7 @@ export function usePullGesture(
       }
     },
     [
-      flushPendingDrag,
+      drag,
       hasSwipe,
       onDragReset,
       onDragX,
@@ -453,20 +389,19 @@ export function usePullGesture(
       if (!s || s.pointerId !== event.pointerId) return;
       const committedAxis = axis.current;
       const l = last.current;
-      cancelDrag();
+      drag.cancel();
       start.current = null;
       axis.current = null;
       last.current = null;
       // Commit-on-cancel (REAL touch, #9943): Android's touch pipeline can
       // revoke the pointer with `pointercancel` AFTER the finger already
       // completed the flick — the renderer-unresponsive ack timeout or an OS
-      // takeover, which `touch-action: none` on the handle cannot prevent
-      // (it only stops scroll-takeover cancels). If the track we observed
-      // before the cancel already crossed the horizontal swipe threshold on a
-      // horizontal-dominant, non-vertically-committed gesture, honor the swipe
-      // the user performed instead of silently discarding it. The cancel
-      // event's own coordinates are NOT trustworthy (Chromium may report a
-      // stale/zero position), so this reads only the tracked pointermoves.
+      // takeover, which `touch-action: none` on the handle cannot prevent. If
+      // the track we observed before the cancel already crossed the horizontal
+      // swipe threshold on a horizontal-dominant, non-vertically-committed
+      // gesture, honor the swipe the user performed instead of discarding it.
+      // The cancel event's own coordinates are NOT trustworthy (Chromium may
+      // report a stale/zero position), so this reads only the tracked moves.
       if (hasSwipe && committedAxis !== "y" && l) {
         const deltaUp = s.y - l.y; // up positive
         const deltaLeft = s.x - l.x; // left positive
@@ -497,7 +432,7 @@ export function usePullGesture(
       onCancel?.();
     },
     [
-      cancelDrag,
+      drag,
       hasSwipe,
       onDragReset,
       onDragX,
@@ -509,28 +444,16 @@ export function usePullGesture(
     ],
   );
 
-  // A `lostpointercapture` that BUBBLED UP from a descendant (its `target` is
-  // not the element the binding is on) is that child's IMPLICIT touch capture
-  // being handed to US at axis-commit — a swipe that STARTS on an interactive/
-  // selectable child (e.g. a message bubble) gives that child implicit pointer
-  // capture on pointerdown; when the deferred-capture path then calls
-  // `setPointerCapture` on this surface, the child fires `lostpointercapture`,
-  // which bubbles here. Treating it as a cancel (as `onLostPointerCapture:
-  // cancel` did) aborts the swipe the instant it commits, so a genuine
-  // horizontal swipe that began on a bubble self-cancels. Ignore it: only a
-  // capture loss on the bound element ITSELF (`target === currentTarget` —
-  // device rotation / OS takeover, the case this handler exists for) should
-  // settle the gesture.
+  // Only a capture loss on the bound element ITSELF (device rotation / OS
+  // takeover) settles the gesture; a descendant's bubbled loss at axis-commit is
+  // ignored so a swipe that STARTED on a child bubble doesn't self-cancel.
   const lostCapture = React.useCallback(
     (event: React.PointerEvent) => {
-      if (event.target !== event.currentTarget) return;
+      if (!isRealCaptureLoss(event)) return;
       cancel(event);
     },
     [cancel],
   );
-
-  // Cancel any in-flight coalesced frame if the consumer unmounts mid-gesture.
-  React.useEffect(() => cancelDrag, [cancelDrag]);
 
   return {
     onPointerDown,

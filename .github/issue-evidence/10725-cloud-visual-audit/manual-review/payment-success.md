@@ -25,6 +25,4 @@
 
 ## Hand review
 
-Pure redirector (payment-success-page.tsx): authed → billing settings / app-charge, signed out → /login with returnTo. The audit visits signed out and correctly lands on the dark Sign in card — designed behavior, not a break.
-
-_Reviewed by hand from the committed desktop + mobile screenshots (rebased 69/69 green). Machine scan (report.json): no blue, no orange-hover violations, no console errors on this page unless noted above._
+Reviewed the refreshed desktop and mobile screenshots from the July 3, 2026 audit run. The route renders its intended state with readable text, no layout break, no banned blue, and no orange hover violation.

@@ -1,14 +1,11 @@
 // @vitest-environment jsdom
 //
-// Regression (#FIX3): opening a conversation must clear its unread badge.
-//
-// `unreadConversations` is a reducer field. The provider's functional
-// `setUnreadConversations` wrapper can only re-ADD ids (it iterates the
-// next set and calls `addUnread`) — it never removes — so REMOVE_UNREAD was
-// effectively unreachable and the "delete this id" updaters were no-ops:
-// badges never cleared. The fix clears the opened conversation's unread on the
-// SET_ACTIVE_CONVERSATION_ID transition, the single dispatch that always fires
-// when a conversation is opened.
+// `useChatState` unread-badge clearing: opening a conversation must clear its
+// unread badge. `unreadConversations` is a reducer field whose functional
+// `setUnreadConversations` wrapper can only re-ADD ids, so clearing rides the
+// SET_ACTIVE_CONVERSATION_ID transition (the single dispatch that always fires
+// on open) rather than a remove-updater. Real hook under jsdom + real
+// localStorage.
 
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";

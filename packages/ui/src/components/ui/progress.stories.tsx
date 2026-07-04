@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the progress-bar primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Progress } from "./progress";
 

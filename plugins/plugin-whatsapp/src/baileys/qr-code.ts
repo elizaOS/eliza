@@ -1,3 +1,7 @@
+/**
+ * Renders a Baileys pairing QR string into displayable forms — a terminal ASCII
+ * block and a data-URL image — for the interactive QR onboarding flow.
+ */
 import QRCode from "qrcode";
 import * as QRCodeTerminal from "qrcode-terminal";
 import type { QRCodeData } from "../types";

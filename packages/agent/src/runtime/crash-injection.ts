@@ -12,7 +12,7 @@
  *   ELIZA_CRASH_INJECT="steady:throw"         → throw at steady state
  *   ELIZA_CRASH_INJECT="plugin-load:reject"   → unhandled rejection on plugin load
  *   ELIZA_CRASH_INJECT="model-load:hang:5000" → hang model load for 5s
- *   ELIZA_CRASH_INJECT="native-bridge:restart"→ request a clean restart (exit 75)
+ *   ELIZA_CRASH_INJECT="native-bridge:restart"→ request a clean restart
  *   ELIZA_CRASH_INJECT="steady:oom:200"       → grow heap by ~200MB chunks
  *
  * Logging deliberately uses `process.stderr` rather than the core logger: a
@@ -23,6 +23,9 @@
  * @module crash-injection
  */
 import process from "node:process";
+import { RESTART_EXIT_CODE } from "@elizaos/shared/restart";
+
+export { RESTART_EXIT_CODE };
 
 /** Lifecycle points an injected fault can target. Keep in sync with the matrix. */
 export const CRASH_INJECTION_POINTS = [
@@ -64,9 +67,6 @@ export type CrashInjectionConfig = Map<
   CrashInjectionPoint,
   CrashInjectionFault
 >;
-
-/** Exit code the supervisor (`run-node.mjs`) treats as "restart requested". */
-export const RESTART_EXIT_CODE = 75;
 
 const ENV_SPEC = "ELIZA_CRASH_INJECT";
 const ENV_ALLOW_PROD = "ELIZA_ALLOW_CRASH_INJECT";

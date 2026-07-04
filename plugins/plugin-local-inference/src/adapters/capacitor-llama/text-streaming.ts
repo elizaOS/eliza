@@ -4,8 +4,7 @@
  * The Capacitor `LlamaContext.completion(params, callback)` API is push-based:
  * `callback` fires once per token. The elizaOS runtime consumes a pull-based
  * `TextStreamResult` (`{ textStream, text, usage, finishReason }`). We bridge
- * the two with a queue-backed async iterator, identical in shape to the
- * legacy node-llama-cpp bridge.
+ * the two with a queue-backed async iterator.
  */
 
 import type { TextStreamResult, TokenUsage } from "@elizaos/core";

@@ -1,3 +1,10 @@
+/**
+ * Token-stream merge utility that de-duplicates overlapping chunks from a
+ * streaming text source. Given the previously emitted text and a fresh cumulative
+ * or incremental chunk, `resolveStreamingUpdate` classifies the delta as
+ * unchanged, an append, or a full replace so overlay/text consumers emit only
+ * new characters. Standalone: no dependency on stream state or the runtime.
+ */
 export type StreamingUpdateKind = "unchanged" | "append" | "replace";
 
 export interface StreamingUpdate {

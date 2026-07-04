@@ -1,3 +1,7 @@
+/**
+ * Core vault API types shared by factories, managers, and storage engines.
+ */
+
 import type { MasterKeyResolver } from "./master-key.js";
 import type {
   PasswordManagerReference,

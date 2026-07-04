@@ -151,16 +151,22 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
   await openAppPath(page, "/screenshare");
 
   await expect(page.getByText(/^Session:/)).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start host session" }),
-  ).toBeVisible();
+  // The operator ScreenshareView embeds the presentational ScreenshareSpatialView,
+  // so two "Start host session" buttons render (the operator toggle
+  // `screenshare-session-toggle` and the spatial view's `start`). Target the
+  // operator toggle explicitly to drive the host lifecycle unambiguously.
+  const hostSessionToggle = page.locator(
+    '[data-agent-id="screenshare-session-toggle"]',
+  );
+  await expect(hostSessionToggle).toBeVisible();
+  await expect(hostSessionToggle).toContainText("Start host session");
   await expect(page.getByText("Capabilities", { exact: true })).toBeVisible();
   await expect(page.getByText("screenshot", { exact: true })).toBeVisible();
   await expect(page.getByText("keyboard", { exact: true })).toBeVisible();
   await expect(page.getByText("playwright-frame")).toBeVisible();
   await expect(page.getByText("playwright-input")).toBeVisible();
 
-  await page.getByRole("button", { name: "Start host session" }).click();
+  await hostSessionToggle.click();
   await expect
     .poll(() => recorder.startRequests())
     .toEqual([{ label: "This machine" }]);
@@ -216,7 +222,9 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
   await page.getByPlaceholder("Server URL").fill("https://remote.example");
   await page.getByPlaceholder("Session").fill("remote-session");
   await page.getByPlaceholder("Token").fill("remote-token");
-  await page.getByRole("button", { name: "Connect to remote" }).click();
+  // The remote-connect action lives in the embedded ScreenshareSpatialView and
+  // is labelled just "Connect" (enabled once session id + token are set).
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect
     .poll(() =>
       page.evaluate(
@@ -238,7 +246,10 @@ test("screenshare GUI drives host lifecycle, copied details, remote connect, and
     .poll(() => recorder.capabilitiesRequests())
     .toBeGreaterThan(refreshesBefore);
 
-  await page.getByRole("button", { name: "Stop host session" }).click();
+  // "Stop host session" also renders twice (operator toggle + the spatial
+  // view's dedicated stop button); the operator toggle now reads "Stop host
+  // session" while active, so drive it through the same stable toggle locator.
+  await hostSessionToggle.click();
   await expect
     .poll(() => recorder.stopRequests())
     .toEqual([{ token: "screen-token-1" }]);

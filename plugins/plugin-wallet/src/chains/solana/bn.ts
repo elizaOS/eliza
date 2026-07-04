@@ -1,3 +1,4 @@
+/** Re-exports `bignumber.js` as the shared arbitrary-precision type for Solana token/lamport math. */
 import type { default as BigNumberType } from "bignumber.js";
 import BigNumberLib from "bignumber.js";
 

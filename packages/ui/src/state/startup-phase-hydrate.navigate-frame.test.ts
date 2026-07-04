@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 
+import {
+  NAVIGATE_VIEW_EVENT,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
 // Integration coverage for the full frontend ingestion of an agent-driven view
 // switch: a *raw* WebSocket frame (the literal JSON the agent backend emits via
-// broadcastWs({ type: "shell:navigate:view", ... }) at
+// broadcastWs({ type: SHELL_NAVIGATE_VIEW_WS_EVENT, ... }) at
 // packages/agent/src/api/views-routes.ts:788) is dispatched exactly the way the
 // real ElizaClient does it — JSON.parse(event.data), read `data.type`, fan out
 // to handlers registered for that type (client-base.ts:836-859) — and handed to
-// the real `bindReadyPhase` "shell:navigate:view" handler
+// the real `bindReadyPhase` SHELL_NAVIGATE_VIEW_WS_EVENT handler
 // (startup-phase-hydrate.ts:414), which must re-dispatch a normalized DOM
 // `eliza:navigate:view` CustomEvent.
 //
@@ -64,6 +68,7 @@ vi.mock("../components/views/view-interact-registry", () => ({
 
 function makeDeps(): ReadyPhaseDeps {
   return {
+    setActionNotice: vi.fn(),
     setAgentStatusIfChanged: vi.fn(),
     setPendingRestart: vi.fn(),
     setPendingRestartReasons: vi.fn(),
@@ -97,17 +102,17 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     clientMock.disconnectWs.mockClear();
     clientMock.onWsEvent.mockClear();
     navHandler = vi.fn();
-    window.addEventListener("eliza:navigate:view", navHandler);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     cleanup = bindReadyPhase({ current: makeDeps() });
   });
 
   function teardown() {
     cleanup();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   }
 
   it("registers a shell:navigate:view handler on ready-phase start", () => {
-    expect(clientMock.wsHandlers.has("shell:navigate:view")).toBe(true);
+    expect(clientMock.wsHandlers.has(SHELL_NAVIGATE_VIEW_WS_EVENT)).toBe(true);
     teardown();
   });
 
@@ -115,7 +120,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     // Mirrors broadcastWs(...) when the navigate body has action + alwaysOnTop.
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "remote-ledger",
         viewPath: "/views/remote-ledger",
         viewLabel: "Remote Ledger",
@@ -141,7 +146,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
   it("forwards a settings subview from the raw frame into the DOM event (#9945)", () => {
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "settings",
         viewPath: "/settings",
         viewLabel: "Settings",
@@ -162,7 +167,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     // (views-routes.ts:794-795), so a plain `show` navigation omits both keys.
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "settings",
         viewPath: "/settings",
         viewLabel: "Settings",
@@ -186,7 +191,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
   it("drops untrusted non-string / wrong-typed fields from a raw frame", () => {
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: 42,
         viewPath: { nested: "x" },
         viewLabel: ["arr"],
@@ -209,10 +214,78 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     teardown();
   });
 
+  it("forwards the split/tile layout fields so a multi-view action keeps every view", () => {
+    // Mirrors broadcastWs(...) for POST /api/views/:id/navigate with
+    // action:"tile-views" — the server spreads `layoutPayload`
+    // (views/layout/placement, views-routes.ts) into the frame. Dropping any
+    // of them here degrades an agent "tile A and B" to a single view.
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "browser",
+        viewPath: "/apps/browser",
+        viewLabel: "Browser",
+        viewType: "gui",
+        action: "tile-views",
+        views: ["browser", "wallet"],
+        layout: "horizontal",
+        placement: "left",
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.action).toBe("tile-views");
+    expect(detail.views).toEqual(["browser", "wallet"]);
+    expect(detail.layout).toBe("horizontal");
+    expect(detail.placement).toBe("left");
+    teardown();
+  });
+
+  it("sanitizes untrusted layout fields (non-string views entries, wrong types)", () => {
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "browser",
+        viewPath: "/apps/browser",
+        viewType: "gui",
+        action: "split-view",
+        views: ["browser", 7, "", null, "wallet"],
+        layout: 42,
+        placement: ["top"],
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.views).toEqual(["browser", "wallet"]);
+    expect(detail.layout).toBeUndefined();
+    expect(detail.placement).toBeUndefined();
+    teardown();
+  });
+
+  it("omits the layout fields on a plain single-view frame", () => {
+    clientMock.deliverFrame(
+      JSON.stringify({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewType: "gui",
+      }),
+    );
+
+    expect(navHandler).toHaveBeenCalledTimes(1);
+    const detail = (navHandler.mock.calls[0][0] as CustomEvent).detail;
+    expect(detail.views).toBeUndefined();
+    expect(detail.layout).toBeUndefined();
+    expect(detail.placement).toBeUndefined();
+    teardown();
+  });
+
   it("routes an xr view frame through the same type dispatch", () => {
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "spatial-room",
         viewPath: "/apps/spatial-room",
         viewLabel: "Spatial Room",
@@ -245,17 +318,19 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     cleanup();
     // Real ElizaClient unbind deletes the handler from the per-type Set but
     // leaves the (now empty) Set in the map, so assert no live handlers remain.
-    expect(clientMock.wsHandlers.get("shell:navigate:view")?.size ?? 0).toBe(0);
+    expect(
+      clientMock.wsHandlers.get(SHELL_NAVIGATE_VIEW_WS_EVENT)?.size ?? 0,
+    ).toBe(0);
 
     clientMock.deliverFrame(
       JSON.stringify({
-        type: "shell:navigate:view",
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
         viewId: "remote-ledger",
         viewPath: "/views/remote-ledger",
         viewType: "gui",
       }),
     );
     expect(navHandler).not.toHaveBeenCalled();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 });

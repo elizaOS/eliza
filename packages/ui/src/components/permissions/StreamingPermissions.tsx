@@ -1,3 +1,11 @@
+/**
+ * Settings view listing the Camera / Microphone / Screen media permissions for
+ * live-streaming, with a status badge and request button per row. The internal
+ * `useStreamingPermissions` hook checks and requests state through
+ * `navigator.permissions` / `navigator.mediaDevices` on web and the `ElizaCamera`
+ * Capacitor plugin on mobile; the `mode` ("web" | "mobile") also gates which rows
+ * show (Screen is web-only). Falls back to a "Not Set" state when those APIs are absent.
+ */
 import { Check, Cloud, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAppSelector } from "../../state";

@@ -1,3 +1,12 @@
+/**
+ * Domain types, constants, and the Zod config schema shared across the BlueSky
+ * plugin: config shape (`BlueSkyConfig` + `BlueSkyConfigSchema`), the adapted
+ * AT Protocol entities (`BlueSkyPost`, `BlueSkyMessage`, `BlueSkyConversation`,
+ * `BlueSkyProfile`, `BlueSkyNotification`), request/response shapes for the
+ * client, the `bluesky.*` event payload interfaces, and the `BlueSkyError`
+ * class. Also holds tuning defaults (poll/post intervals, max post length) and
+ * cache sizing/TTLs.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import * as zod from "zod";
 

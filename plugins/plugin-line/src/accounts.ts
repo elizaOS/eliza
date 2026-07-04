@@ -1,3 +1,10 @@
+/**
+ * Multi-account configuration layer for the LINE connector: resolves channel
+ * access tokens and secrets (from inline config, env, character settings, or
+ * on-disk token files), enumerates enabled accounts, and answers per-group
+ * access and mention-requirement questions. `LineService` uses these to decide
+ * which accounts to start and whether to respond to a given inbound message.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

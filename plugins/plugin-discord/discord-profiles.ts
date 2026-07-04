@@ -1,3 +1,8 @@
+/**
+ * Resolves Discord user and room profiles (display name, avatar) for message
+ * authors and rooms, caching avatars via the avatar cache and reconciling the
+ * stored entity profile.
+ */
 import {
 	type AgentRuntime,
 	normalizeConnectorSource,

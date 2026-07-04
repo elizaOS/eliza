@@ -1,3 +1,9 @@
+/**
+ * Shared assertion helper for entity-creation tests: checks that
+ * `createEntities` reports exactly the expected set of entity IDs as created,
+ * order-independent. Used across the entity/base-adapter test suites so each
+ * one doesn't hand-roll the same length + set-membership check.
+ */
 import type { UUID } from "@elizaos/core";
 import { expect } from "vitest";
 

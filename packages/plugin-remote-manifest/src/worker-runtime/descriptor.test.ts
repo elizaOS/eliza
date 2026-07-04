@@ -81,6 +81,7 @@ describe("buildAnnounceDescriptor", () => {
           name: "route",
           path: "/route",
           public: true,
+          publicReason: "Descriptor fixture public route.",
           isMultipart: false,
           routeHandler: handlers.routeHandler,
         },
@@ -174,6 +175,14 @@ describe("buildAnnounceDescriptor", () => {
       surface: "route",
       target: "POST /route",
       handler: handlers.routeHandler,
+    });
+    expect(descriptor.routes[0]).toMatchObject({
+      path: "/route",
+      type: "POST",
+      name: "route",
+      public: true,
+      publicReason: "Descriptor fixture public route.",
+      isMultipart: false,
     });
     expect(registry.size).toBe(9);
   });

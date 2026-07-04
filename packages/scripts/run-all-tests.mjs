@@ -90,6 +90,10 @@ import {
   runPool,
   taskBelongsToShard,
 } from "./lib/test-task-pool.mjs";
+import {
+  expandWorkspaceGlobs,
+  listWorkspaceDirs,
+} from "./lib/workspaces.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
@@ -368,88 +372,40 @@ const POSTGRES_INIT_SQL_PATH = path.join(
 );
 
 // ---------------------------------------------------------------------------
-// Workspace discovery (unchanged from original)
+// Workspace discovery
 // ---------------------------------------------------------------------------
 
-function expandWorkspacePattern(pattern) {
-  const segments = pattern.split("/").filter(Boolean);
-  let currentPaths = [repoRoot];
-
-  for (const segment of segments) {
-    const nextPaths = [];
-    for (const currentPath of currentPaths) {
-      if (segment === "*") {
-        if (!fs.existsSync(currentPath)) {
-          continue;
-        }
-        const entries = fs
-          .readdirSync(currentPath, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .sort((left, right) => left.name.localeCompare(right.name));
-        for (const entry of entries) {
-          nextPaths.push(path.join(currentPath, entry.name));
-        }
-        continue;
-      }
-      nextPaths.push(path.join(currentPath, segment));
-    }
-    currentPaths = nextPaths;
-  }
-
-  return currentPaths;
-}
-
 function collectPackageJsonPaths() {
+  // Whole-subtree exclusion of every `!`-negated workspace root. bun/npm/yarn
+  // exclude only the exact negated dir (so `packages/feed/packages/*` stay
+  // members), but the test lane must additionally drop feed's nested members:
+  // their tests need feed's own install/environment (its postinstall pulls
+  // python + agent-framework deps, and shared deps like drizzle-orm live in the
+  // excluded `@feed/root`), so they can't resolve under a plain root install and
+  // structurally belong to feed's own CI lane. Membership itself is the shared
+  // seam; this whole-subtree policy is a caller-local filter over its output.
   const rootPackageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
   );
-  const packageJsonPaths = new Set();
-
-  // Honor `!`-negated workspace patterns the same way bun/npm/yarn do: a
-  // negated dir is NOT a workspace member even if an earlier glob matched it
-  // (e.g. `packages/*` + `!packages/feed` keeps the nested feed monorepo root
-  // out — it has its own install/CI and its `test` runs the full feed suite).
-  //
-  // The exclusion covers the WHOLE excluded subtree, not just the literal dir:
-  // the root workspace also lists `packages/feed/packages/*` (so feed's
-  // sub-packages build alongside the rest), but those tests require feed's own
-  // install/environment (its postinstall pulls python + agent-framework deps,
-  // and shared deps like drizzle-orm live in the excluded `@feed/root`). They
-  // can't resolve under a plain root install, so honoring `!packages/feed` for
-  // the nested children keeps the full root `bun run test` from running tests
-  // that structurally belong to feed's own CI lane.
   const patterns = rootPackageJson.workspaces ?? [];
-  const excludedDirs = new Set();
-  for (const pattern of patterns) {
-    if (!pattern.startsWith("!")) {
-      continue;
-    }
-    for (const packageDir of expandWorkspacePattern(pattern.slice(1))) {
-      excludedDirs.add(packageDir);
-    }
-  }
-  const isExcluded = (packageDir) => {
-    for (const excluded of excludedDirs) {
-      if (packageDir === excluded || packageDir.startsWith(`${excluded}/`)) {
-        return true;
-      }
+  const excludedRoots = new Set(
+    patterns
+      .filter((pattern) => pattern.startsWith("!"))
+      .flatMap((pattern) =>
+        expandWorkspaceGlobs([pattern.slice(1)], { repoRoot }),
+      ),
+  );
+  const inExcludedSubtree = (relDir) => {
+    for (const excluded of excludedRoots) {
+      if (relDir === excluded || relDir.startsWith(`${excluded}/`)) return true;
     }
     return false;
   };
 
-  for (const pattern of patterns) {
-    if (pattern.startsWith("!")) {
-      continue;
-    }
-    for (const packageDir of expandWorkspacePattern(pattern)) {
-      if (isExcluded(packageDir)) {
-        continue;
-      }
-      const packageJsonPath = path.join(packageDir, "package.json");
-      if (fs.existsSync(packageJsonPath)) {
-        packageJsonPaths.add(packageJsonPath);
-      }
-    }
+  const packageJsonPaths = new Set();
+  for (const relDir of listWorkspaceDirs({ repoRoot })) {
+    if (inExcludedSubtree(relDir)) continue;
+    packageJsonPaths.add(path.join(repoRoot, relDir, "package.json"));
   }
 
   for (const packageDir of ADDITIONAL_PACKAGE_DIRS) {

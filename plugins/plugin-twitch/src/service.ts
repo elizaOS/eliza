@@ -1,7 +1,9 @@
 /**
- * Twitch service implementation for ElizaOS.
- *
- * This service provides Twitch chat integration using the @twurple library.
+ * TwitchService — the connector's IRC lifecycle and messaging core. Connects to
+ * Twitch chat over @twurple/chat, joins channels, applies role and @mention
+ * filters, and emits runtime events for every inbound message. Registers a
+ * `MessageConnector` (send/resolve/list/join/leave/chat_context) for outbound
+ * messaging and supports multi-account mode via `TWITCH_ACCOUNTS`.
  */
 
 import {

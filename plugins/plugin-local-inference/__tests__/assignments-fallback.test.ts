@@ -1,3 +1,8 @@
+/**
+ * Deterministic coverage for `buildRecommendedAssignments`, the fallback that
+ * maps installed models onto per-model-type slots when no explicit assignment
+ * exists. Pure function; no model or filesystem access.
+ */
 import { describe, expect, it } from "vitest";
 import type { InstalledModel } from "@elizaos/shared";
 import { buildRecommendedAssignments } from "../src/services/assignments.ts";

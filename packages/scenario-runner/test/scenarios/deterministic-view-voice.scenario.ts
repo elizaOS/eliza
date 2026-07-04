@@ -1,3 +1,7 @@
+/**
+ * Keyless coverage of per-view voice-transcript navigation. Runs on the
+ * pr-deterministic lane under the LLM proxy.
+ */
 import type {
   CapturedAction,
   ScenarioTurnExecution,

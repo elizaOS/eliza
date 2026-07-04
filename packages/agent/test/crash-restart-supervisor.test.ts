@@ -3,7 +3,7 @@
  *
  * Spawns the REAL `crash-injection` fixture child as a separate `bun` process
  * and drives it through a supervisor that mirrors `run-node.mjs`'s exit-code
- * contract: respawn on RESTART_EXIT_CODE (75), abort after MAX_RESTARTS_IN_WINDOW
+ * contract: respawn on RESTART_EXIT_CODE, abort after MAX_RESTARTS_IN_WINDOW
  * (5) restarts inside RESTART_WINDOW_MS (60s). This proves crash injection
  * actually produces the exit codes the supervisor keys on, and that the
  * supervisor restarts vs. propagates vs. storm-guards as designed — with real
@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { RESTART_EXIT_CODE } from "@elizaos/shared/restart";
 import { afterAll, describe, expect, it } from "vitest";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -28,8 +29,6 @@ const GUARDS_CHILD = path.join(HERE, "fixtures", "process-guards-child.ts");
 const describeE2E =
   process.env.RUN_CRASH_RESTART_E2E === "1" ? describe : describe.skip;
 
-// Mirrors run-node.mjs:154-159. Kept in sync via this comment + the e2e below.
-const RESTART_EXIT_CODE = 75;
 const MAX_RESTARTS_IN_WINDOW = 5;
 const RESTART_WINDOW_MS = 60_000;
 
@@ -72,7 +71,7 @@ const runMemoryChild = (env: Record<string, string>): Promise<number> =>
 const runGuardsChild = (env: Record<string, string>): Promise<number> =>
   runChildAt(GUARDS_CHILD, env, 10_000);
 
-/** Supervisor mirroring run-node.mjs: respawn on 75, storm-guard, else propagate. */
+/** Supervisor mirroring run-node.mjs: respawn on RESTART_EXIT_CODE, storm-guard, else propagate. */
 async function supervise(
   spawnChild: () => Promise<number>,
 ): Promise<{ spawns: number; finalCode: number; aborted: boolean }> {
@@ -98,7 +97,7 @@ async function supervise(
 describeE2E(
   "crash-injection produces the supervisor exit-code contract",
   () => {
-    it("restart mode exits 75 (supervisor would respawn)", async () => {
+    it("restart mode exits RESTART_EXIT_CODE (supervisor would respawn)", async () => {
       const code = await runChild({ ELIZA_CRASH_INJECT: "boot:restart" });
       expect(code).toBe(RESTART_EXIT_CODE);
     }, 20_000);
@@ -130,7 +129,7 @@ describeE2E(
 );
 
 describeE2E("supervisor restart contract (mirrors run-node.mjs)", () => {
-  it("respawns on exit 75 until the child stops requesting restart", async () => {
+  it("respawns on RESTART_EXIT_CODE until the child stops requesting restart", async () => {
     const counter = path.join(
       os.tmpdir(),
       `eliza-10203-counter-${process.pid}-a.txt`,
@@ -143,7 +142,7 @@ describeE2E("supervisor restart contract (mirrors run-node.mjs)", () => {
         CRASH_CHILD_RESTART_LIMIT: "3",
       }),
     );
-    // 3 restarts (exit 75) + 1 final clean run = 4 spawns; not aborted.
+    // 3 restarts + 1 final clean run = 4 spawns; not aborted.
     expect(result.spawns).toBe(4);
     expect(result.finalCode).toBe(0);
     expect(result.aborted).toBe(false);
@@ -174,7 +173,7 @@ describeE2E("supervisor restart contract (mirrors run-node.mjs)", () => {
 // End-to-end proof for the memory watchdog (#10197): the unit test covers
 // createMemoryWatchdog's threshold/debounce logic and the block above covers the
 // supervisor's exit-75 respawn — but nothing drives a REAL process whose real
-// RSS crosses the threshold through the real requestRestart seam. These close
+// RSS crosses the threshold through the real requestRestart path. These close
 // that gap with a spawned bun child under genuine memory pressure.
 describeE2E("memory watchdog -> supervised restart (real RSS pressure)", () => {
   it("trips on sustained RSS over threshold and exits RESTART_EXIT_CODE", async () => {
@@ -224,12 +223,18 @@ describeE2E("memory watchdog -> supervised restart (real RSS pressure)", () => {
 // rejection, proving the actual process.on(...) wiring behaves per policy.
 describeE2E("installProcessCrashGuards -> real process fault handling", () => {
   it("exits RESTART_EXIT_CODE on a real uncaught exception (restart policy)", async () => {
-    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "uncaught" });
+    const code = await runGuardsChild({
+      PG_POLICY: "restart",
+      PG_FAULT: "uncaught",
+    });
     expect(code).toBe(RESTART_EXIT_CODE);
   }, 15_000);
 
   it("exits 1 on a real uncaught exception (exit policy)", async () => {
-    const code = await runGuardsChild({ PG_POLICY: "exit", PG_FAULT: "uncaught" });
+    const code = await runGuardsChild({
+      PG_POLICY: "exit",
+      PG_FAULT: "uncaught",
+    });
     expect(code).toBe(1);
   }, 15_000);
 
@@ -242,7 +247,10 @@ describeE2E("installProcessCrashGuards -> real process fault handling", () => {
   }, 15_000);
 
   it("treats a real unhandled promise rejection as non-fatal -> stays alive, exit 0", async () => {
-    const code = await runGuardsChild({ PG_POLICY: "restart", PG_FAULT: "rejection" });
+    const code = await runGuardsChild({
+      PG_POLICY: "restart",
+      PG_FAULT: "rejection",
+    });
     expect(code).toBe(0);
   }, 15_000);
 });

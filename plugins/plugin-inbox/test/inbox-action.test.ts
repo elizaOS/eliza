@@ -363,6 +363,89 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
     });
   });
 
+  describe("degraded platforms", () => {
+    it("a failing platform is reported as degraded while healthy platforms still return items", async () => {
+      setInboxFetchers({
+        gmail: async () => {
+          throw new Error("gmail token expired");
+        },
+        discord: async () => [
+          makeItem({ platform: "discord", id: "d-1", snippet: "gm" }),
+        ],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail", "discord"],
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        items: InboxItem[];
+        degraded: Array<{ platform: string; error: string }>;
+      };
+      // Partial failure: discord's message survives the gmail blow-up.
+      expect(data.items.map((item) => item.id)).toEqual(["d-1"]);
+      expect(data.degraded).toEqual([
+        { platform: "gmail", error: "gmail token expired" },
+      ]);
+      // The planner-visible text names the broken platform and the reason.
+      expect(result.text).toContain("could not check gmail");
+      expect(result.text).toContain("gmail token expired");
+    });
+
+    it("an empty result with a degraded platform is never presented as a clean empty inbox", async () => {
+      setInboxFetchers({
+        gmail: async () => {
+          throw new Error("gmail token expired");
+        },
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+      });
+      expect(result.success).toBe(true);
+      expect(result.text).not.toContain("Your inbox is empty");
+      expect(result.text).toContain("No messages from reachable platforms");
+      expect(result.text).toContain("could not check gmail");
+      const data = result.data as {
+        degraded: Array<{ platform: string; error: string }>;
+      };
+      expect(data.degraded).toHaveLength(1);
+    });
+
+    it("a healthy fan-out reports an empty degraded list", async () => {
+      setInboxFetchers({
+        gmail: async () => [makeItem({ platform: "gmail", id: "g-1" })],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as { degraded: unknown[] };
+      expect(data.degraded).toEqual([]);
+      expect(result.text).not.toContain("could not check");
+    });
+
+    it("summarize appends the degradation warning to its rollup text", async () => {
+      setInboxFetchers({
+        gmail: async () => {
+          throw new Error("HTTP 503 from Gmail");
+        },
+        discord: async () => [
+          makeItem({ platform: "discord", id: "d-2", snippet: "hey" }),
+        ],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "summarize",
+        platforms: ["gmail", "discord"],
+      });
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("Summarized 2 platforms");
+      expect(result.text).toContain("could not check gmail");
+      expect(result.text).toContain("HTTP 503 from Gmail");
+    });
+  });
+
   describe("triage queue operations", () => {
     it("lists persisted unresolved triage entries and hides snoozed rows by default", async () => {
       const { runtime, calls } = makeDbRuntime((sql) =>

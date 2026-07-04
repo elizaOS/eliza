@@ -88,9 +88,13 @@ export async function runCapabilityRouterConnect(
 
   const text = await response.text();
   const data = parseJson(text);
+  if (data instanceof Error && response.ok) {
+    return fail(options, data.message);
+  }
   if (!response.ok) {
     const message =
-      readErrorMessage(data) || `Agent API returned HTTP ${response.status}.`;
+      (data instanceof Error ? null : readErrorMessage(data)) ||
+      `Agent API returned HTTP ${response.status}.`;
     return fail(options, message);
   }
 
@@ -276,12 +280,13 @@ function nonEmpty(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function parseJson(text: string): unknown {
-  if (!text) return null;
+function parseJson(text: string): unknown | Error {
+  if (!text.trim()) return null;
   try {
     return JSON.parse(text);
-  } catch {
-    return null;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return new Error(`Agent API returned invalid JSON: ${reason}`);
   }
 }
 

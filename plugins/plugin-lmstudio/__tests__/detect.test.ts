@@ -1,3 +1,8 @@
+/**
+ * Unit tests for detectLMStudio and parseModelsResponse, driven through an
+ * injected fake fetch — no live LM Studio server.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 
 import { detectLMStudio, parseModelsResponse } from "../utils/detect";

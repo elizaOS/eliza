@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Renders `LogsView` in jsdom with mocked state/agent-surface to verify the
+ * loading skeleton reserves tall row-shaped space and that the first hydration
+ * swap is flagged transient (no layout-shift flash on initial paint).
+ */
+
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

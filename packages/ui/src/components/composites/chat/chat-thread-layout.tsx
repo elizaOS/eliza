@@ -1,3 +1,9 @@
+/**
+ * Layout scaffold for a chat thread: a scrolling messages region above a fixed
+ * composer, with a footer stack slot. Reserves bottom space equal to
+ * `composerHeight` so the last message never hides behind the composer, and
+ * carries the game-modal spacing variant. Consumed by ChatView.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

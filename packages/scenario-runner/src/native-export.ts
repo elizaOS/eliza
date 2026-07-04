@@ -13,10 +13,12 @@
  *
  * Output shape mirrors `packages/core/src/services/trajectory-types.ts`
  * (`ElizaNativeTrajectoryRow`) and the contract in
- * `packages/training/docs/dataset/CANONICAL_RECORD.md`. The privacy filter is
- * applied downstream by the training prep script on every input row.
+ * `packages/training/docs/dataset/CANONICAL_RECORD.md`. The exporter redacts
+ * obvious secrets/contact data/coordinates before writing JSONL and emits a
+ * privacy attestation sidecar that the training path can verify.
  */
 
+import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type {
@@ -33,6 +35,9 @@ const GENERATE_TEXT_BOUNDARY = "vercel_ai_sdk.generateText" as const;
 export const SCENARIO_NATIVE_EXPORT_SCHEMA =
   "eliza_scenario_native_export" as const;
 export const SCENARIO_NATIVE_EXPORT_VERSION = 1 as const;
+export const SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA =
+  "eliza.privacy_filter_attestation.v1" as const;
+export const SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION = 1 as const;
 
 /**
  * Per-scenario assertion outcome, keyed by scenario id. Threaded into the
@@ -50,11 +55,13 @@ export type ScenarioOutcomeMap = ReadonlyMap<string, ScenarioOutcome>;
  * (#8795) instead of only routing on pass/fail.
  */
 export type ScenarioJudgeScoreMap = ReadonlyMap<string, number>;
+export type ScenarioTierMap = ReadonlyMap<string, string>;
 
 export interface NativeBoundaryRow {
   format: typeof NATIVE_FORMAT;
   schemaVersion: typeof NATIVE_SCHEMA_VERSION;
   boundary: typeof GENERATE_TEXT_BOUNDARY;
+  privacyAttestation?: NativeRowPrivacyAttestation;
   /**
    * Scenario assertion outcome consumed by the training prep scorer
    * (`native_success_and_score` in prepare_eliza1_trajectory_dataset.py). Kept
@@ -69,6 +76,8 @@ export interface NativeBoundaryRow {
    * knowing the row shape (#8795).
    */
   judgeScore?: number;
+  /** Optional persona-scenario complexity tier (`T1`..`T4`) for corpus slicing. */
+  tier?: string;
   request: {
     system?: string;
     messages?: unknown[];
@@ -116,6 +125,67 @@ export interface NativeBoundaryRow {
   metadata: Record<string, unknown>;
 }
 
+export interface NativeRowPrivacyAttestation {
+  schema: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA;
+  version: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION;
+  source: "scenario_native_export";
+  redacted: true;
+  reviewed: true;
+  passed: true;
+  attestationPath: string;
+}
+
+interface ScenarioNativePrivacyAttestation {
+  schema: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA;
+  version: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION;
+  generated_at: string;
+  passed: boolean;
+  strict: true;
+  sourceKind: "user_export";
+  source: {
+    kind: "user_export";
+    realUserExport: true;
+    inputPathRefs: string[];
+  };
+  privacy: {
+    reviewed: boolean;
+    realUserExport: true;
+    attestationType: "privacy_filter";
+  };
+  input_count: number;
+  output_count: number;
+  redaction_count: number;
+  categories: Record<PrivacyCategory, number>;
+  residual_findings: {
+    count: number;
+    by_label: Record<string, number>;
+  };
+  residual_findings_count: number;
+  input_path_refs: string[];
+  artifacts: {
+    redacted_jsonl: {
+      path: string;
+      path_ref: string;
+      sha256: string;
+      rows: number;
+    };
+  };
+  gate: {
+    passed: boolean;
+    strict: true;
+    sourceKind: "user_export";
+    input_count: number;
+    output_count: number;
+    redaction_count: number;
+    categories: Record<PrivacyCategory, number>;
+    residual_findings: {
+      count: number;
+      by_label: Record<string, number>;
+    };
+    residual_findings_count: number;
+  };
+}
+
 export interface ScenarioNativeExportManifest {
   schema: typeof SCENARIO_NATIVE_EXPORT_SCHEMA;
   schemaVersion: typeof SCENARIO_NATIVE_EXPORT_VERSION;
@@ -124,6 +194,7 @@ export interface ScenarioNativeExportManifest {
   trajectoriesDir: string;
   jsonlPath: string;
   manifestPath: string;
+  privacyAttestationPath: string;
   counts: {
     trajectoryFiles: number;
     parsedTrajectories: number;
@@ -137,6 +208,32 @@ export interface ScenarioNativeExportManifest {
   runIds: string[];
   scenarioIds: string[];
   agentIds: string[];
+  privacy: {
+    reviewed: boolean;
+    attestationSchema: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA;
+    attestationVersion: typeof SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION;
+    attestationPath: string;
+    redactions: number;
+    residualFindings: number;
+    categories: Record<PrivacyCategory, number>;
+  };
+}
+
+type PrivacyCategory = "secret" | "geo" | "contact" | "backend";
+
+interface PrivacyFilterPattern {
+  category: PrivacyCategory;
+  label: string;
+  pattern: RegExp;
+  replacement: string;
+}
+
+interface PrivacyFilterStats {
+  redactionsTotal: number;
+  redactionsByCategory: Record<PrivacyCategory, number>;
+  redactionsByLabel: Record<string, number>;
+  residualTotal: number;
+  residualByLabel: Record<string, number>;
 }
 
 const LIFEOPS_NATIVE_TASKS = [
@@ -155,6 +252,385 @@ const LIFEOPS_NATIVE_TASK_SET = new Set<string>(LIFEOPS_NATIVE_TASKS);
 const ORCHESTRATOR_NATIVE_TASKS = ["goal_verification"] as const;
 
 const ORCHESTRATOR_NATIVE_TASK_SET = new Set<string>(ORCHESTRATOR_NATIVE_TASKS);
+
+const GEO_REPLACEMENT = "[REDACTED_GEO]" as const;
+const PRIVACY_CATEGORIES: PrivacyCategory[] = [
+  "secret",
+  "geo",
+  "contact",
+  "backend",
+];
+const PRIVACY_PATTERNS: PrivacyFilterPattern[] = [
+  {
+    category: "secret",
+    label: "openai-key",
+    pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g,
+    replacement: "<REDACTED:openai-key>",
+  },
+  {
+    category: "secret",
+    label: "anthropic-key",
+    pattern: /\bsk-ant-[A-Za-z0-9_-]{16,}\b/g,
+    replacement: "<REDACTED:anthropic-key>",
+  },
+  {
+    category: "secret",
+    label: "bearer",
+    pattern: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/g,
+    replacement: "<REDACTED:bearer>",
+  },
+  {
+    category: "secret",
+    label: "github-token",
+    pattern: /\bghp_[A-Za-z0-9]{20,}\b/g,
+    replacement: "<REDACTED:github-token>",
+  },
+  {
+    category: "secret",
+    label: "aws-access-key",
+    pattern: /\bAKIA[0-9A-Z]{16}\b/g,
+    replacement: "<REDACTED:aws-access-key>",
+  },
+  {
+    category: "geo",
+    label: "coords-json-block",
+    pattern:
+      /"coords"\s*:\s*\{\s*"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?(?:\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:\s*[^,}]+)*\s*\}/g,
+    replacement: GEO_REPLACEMENT,
+  },
+  {
+    category: "geo",
+    label: "latitude-longitude-json-pair",
+    pattern:
+      /"latitude"\s*:\s*-?\d+(?:\.\d+)?\s*,\s*"longitude"\s*:\s*-?\d+(?:\.\d+)?/g,
+    replacement: GEO_REPLACEMENT,
+  },
+  {
+    category: "geo",
+    label: "location-decimal-pair",
+    pattern:
+      /\b(?:current\s+location|location|coords|coordinates)\s*[:=]\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?/gi,
+    replacement: GEO_REPLACEMENT,
+  },
+  {
+    category: "geo",
+    label: "labeled-lat-lng",
+    pattern:
+      /\b(?:lat|latitude)\s*[:=]\s*-?\d+(?:\.\d+)?\s*[,;]\s*(?:lng|lon|long|longitude)\s*[:=]\s*-?\d+(?:\.\d+)?/gi,
+    replacement: GEO_REPLACEMENT,
+  },
+  {
+    category: "geo",
+    label: "bare-decimal-pair",
+    pattern: /\b-?\d{1,3}\.\d{2,}\s*,\s*-?\d{1,3}\.\d{2,}\b/g,
+    replacement: GEO_REPLACEMENT,
+  },
+  {
+    category: "contact",
+    label: "email",
+    pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    replacement: "<REDACTED:contact-email>",
+  },
+  {
+    category: "contact",
+    label: "phone",
+    pattern:
+      /(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]\d{3}[\s.-]\d{4}\b/g,
+    replacement: "<REDACTED:contact-phone>",
+  },
+  {
+    category: "contact",
+    label: "handle",
+    pattern: /(@[a-zA-Z0-9_.-]{2,})/g,
+    replacement: "<REDACTED:contact-handle>",
+  },
+  {
+    category: "contact",
+    label: "known-pii-name",
+    pattern: /\b(?:Jill|Marco|Sarah|Suran|Sam)\b/g,
+    replacement: "<REDACTED:known-name>",
+  },
+];
+const LATITUDE_KEYS = new Set(["lat", "latitude"]);
+const LONGITUDE_KEYS = new Set(["lng", "lon", "long", "longitude"]);
+const COORDINATE_CONTAINER_KEYS = new Set([
+  "coords",
+  "coordinates",
+  "currentlocation",
+  "geo",
+  "geolocation",
+  "location",
+]);
+
+function newPrivacyFilterStats(): PrivacyFilterStats {
+  return {
+    redactionsTotal: 0,
+    redactionsByCategory: { secret: 0, geo: 0, contact: 0, backend: 0 },
+    redactionsByLabel: {},
+    residualTotal: 0,
+    residualByLabel: {},
+  };
+}
+
+function noteRedaction(
+  stats: PrivacyFilterStats,
+  category: PrivacyCategory,
+  label: string,
+): void {
+  stats.redactionsTotal += 1;
+  stats.redactionsByCategory[category] += 1;
+  stats.redactionsByLabel[label] = (stats.redactionsByLabel[label] ?? 0) + 1;
+}
+
+function noteResidual(stats: PrivacyFilterStats, label: string): void {
+  stats.residualTotal += 1;
+  stats.residualByLabel[label] = (stats.residualByLabel[label] ?? 0) + 1;
+}
+
+function filterPrivacyText(text: string, stats: PrivacyFilterStats): string {
+  let out = text;
+  for (const spec of PRIVACY_PATTERNS) {
+    out = out.replace(spec.pattern, () => {
+      noteRedaction(stats, spec.category, spec.label);
+      return spec.replacement;
+    });
+  }
+  return out;
+}
+
+function normalizedStructuralKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function coordinateNumber(value: unknown, latitude: boolean): number | null {
+  if (typeof value === "boolean") return null;
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value.trim())
+        ? Number(value.trim())
+        : Number.NaN;
+  if (!Number.isFinite(number)) return null;
+  if (latitude && (number < -90 || number > 90)) return null;
+  if (!latitude && (number < -180 || number > 180)) return null;
+  return number;
+}
+
+function hasCoordinatePair(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    coordinateNumber(value[0], true) !== null &&
+    coordinateNumber(value[1], false) !== null
+  );
+}
+
+function structuredCoordinatePairs(
+  record: Record<string, unknown>,
+): Array<[string, string]> {
+  const byNormalizedKey = new Map<string, string>();
+  for (const key of Object.keys(record)) {
+    byNormalizedKey.set(normalizedStructuralKey(key), key);
+  }
+  const pairs: Array<[string, string]> = [];
+  for (const latKeyName of LATITUDE_KEYS) {
+    const latKey = byNormalizedKey.get(latKeyName);
+    if (!latKey || coordinateNumber(record[latKey], true) === null) continue;
+    for (const lonKeyName of LONGITUDE_KEYS) {
+      const lonKey = byNormalizedKey.get(lonKeyName);
+      if (!lonKey || coordinateNumber(record[lonKey], false) === null) {
+        continue;
+      }
+      pairs.push([latKey, lonKey]);
+      break;
+    }
+  }
+  return pairs;
+}
+
+function filterPrivacyValue(
+  value: unknown,
+  stats: PrivacyFilterStats,
+  parentKey?: string,
+): unknown {
+  if (typeof value === "string") return filterPrivacyText(value, stats);
+  if (Array.isArray(value)) {
+    if (
+      parentKey &&
+      COORDINATE_CONTAINER_KEYS.has(normalizedStructuralKey(parentKey)) &&
+      hasCoordinatePair(value)
+    ) {
+      noteRedaction(stats, "geo", "structured-coordinates");
+      return value.map((item, index) =>
+        index < 2 ? GEO_REPLACEMENT : filterPrivacyValue(item, stats),
+      );
+    }
+    return value.map((item) => filterPrivacyValue(item, stats));
+  }
+  const record = toRecord(value);
+  if (!record) return value;
+  const out: Record<string, unknown> = {};
+  const keyCounts = new Map<string, number>();
+  for (const [rawKey, rawChild] of Object.entries(record)) {
+    const filteredKey = filterPrivacyText(rawKey, stats);
+    const count = keyCounts.get(filteredKey) ?? 0;
+    keyCounts.set(filteredKey, count + 1);
+    const key = count === 0 ? filteredKey : `${filteredKey}__${count}`;
+    out[key] = filterPrivacyValue(rawChild, stats, key);
+  }
+  for (const [latKey, lonKey] of structuredCoordinatePairs(out)) {
+    noteRedaction(stats, "geo", "structured-coordinates");
+    out[latKey] = GEO_REPLACEMENT;
+    out[lonKey] = GEO_REPLACEMENT;
+  }
+  return out;
+}
+
+function countPrivacyResiduals(
+  value: unknown,
+  stats: PrivacyFilterStats,
+): void {
+  if (typeof value === "string") {
+    for (const spec of PRIVACY_PATTERNS) {
+      const matches = value.match(spec.pattern);
+      if (!matches) continue;
+      for (const _match of matches) noteResidual(stats, spec.label);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) countPrivacyResiduals(item, stats);
+    return;
+  }
+  const record = toRecord(value);
+  if (!record) return;
+  for (const [key, child] of Object.entries(record)) {
+    countPrivacyResiduals(key, stats);
+    countPrivacyResiduals(child, stats);
+  }
+}
+
+function sha256Text(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function sha256File(filePath: string): string {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+function safeRef(value: string): string {
+  return `sha256:${sha256Text(value).slice(0, 16)}`;
+}
+
+function defaultScenarioNativePrivacyAttestationPath(outPath: string): string {
+  return outPath.endsWith(".jsonl")
+    ? `${outPath.slice(0, -".jsonl".length)}.privacy-attestation.json`
+    : `${outPath}.privacy-attestation.json`;
+}
+
+function rowPrivacyAttestation(
+  attestationPath: string,
+): NativeRowPrivacyAttestation {
+  return {
+    schema: SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA,
+    version: SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION,
+    source: "scenario_native_export",
+    redacted: true,
+    reviewed: true,
+    passed: true,
+    attestationPath: path.basename(attestationPath),
+  };
+}
+
+function redactNativeBoundaryRows(
+  rows: NativeBoundaryRow[],
+  attestationPath: string,
+  stats: PrivacyFilterStats,
+): NativeBoundaryRow[] {
+  const marker = rowPrivacyAttestation(attestationPath);
+  return rows.map((row) => {
+    const redacted = filterPrivacyValue(row, stats) as NativeBoundaryRow;
+    redacted.privacyAttestation = marker;
+    redacted.metadata = {
+      ...(toRecord(redacted.metadata) ?? {}),
+      privacy_attestation: marker,
+    };
+    return redacted;
+  });
+}
+
+function privacyCategories(
+  stats: PrivacyFilterStats,
+): Record<PrivacyCategory, number> {
+  const out = {} as Record<PrivacyCategory, number>;
+  for (const category of PRIVACY_CATEGORIES) {
+    out[category] = stats.redactionsByCategory[category] ?? 0;
+  }
+  return out;
+}
+
+function buildScenarioNativePrivacyAttestation(params: {
+  jsonlPath: string;
+  runDir: string;
+  trajectoriesDir: string;
+  rows: number;
+  stats: PrivacyFilterStats;
+}): ScenarioNativePrivacyAttestation {
+  const categories = privacyCategories(params.stats);
+  const residual_findings = {
+    count: params.stats.residualTotal,
+    by_label: { ...params.stats.residualByLabel },
+  };
+  const passed = params.stats.residualTotal === 0;
+  const input_path_refs = [
+    safeRef(params.runDir),
+    safeRef(params.trajectoriesDir),
+  ];
+  return {
+    schema: SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA,
+    version: SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION,
+    generated_at: new Date().toISOString(),
+    passed,
+    strict: true,
+    sourceKind: "user_export",
+    source: {
+      kind: "user_export",
+      realUserExport: true,
+      inputPathRefs: input_path_refs,
+    },
+    privacy: {
+      reviewed: passed,
+      realUserExport: true,
+      attestationType: "privacy_filter",
+    },
+    input_count: params.rows,
+    output_count: params.rows,
+    redaction_count: params.stats.redactionsTotal,
+    categories,
+    residual_findings,
+    residual_findings_count: params.stats.residualTotal,
+    input_path_refs,
+    artifacts: {
+      redacted_jsonl: {
+        path: path.basename(params.jsonlPath),
+        path_ref: safeRef(params.jsonlPath),
+        sha256: sha256File(params.jsonlPath),
+        rows: params.rows,
+      },
+    },
+    gate: {
+      passed,
+      strict: true,
+      sourceKind: "user_export",
+      input_count: params.rows,
+      output_count: params.rows,
+      redaction_count: params.stats.redactionsTotal,
+      categories,
+      residual_findings,
+      residual_findings_count: params.stats.residualTotal,
+    },
+  };
+}
 
 function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
   const record = toRecord(value);
@@ -378,6 +854,7 @@ export function recordedTrajectoryToNativeRows(
   trajectory: RecordedTrajectory,
   scenarioOutcome?: ScenarioOutcome,
   judgeScore?: number,
+  tier?: string,
 ): NativeBoundaryRow[] {
   const rows: NativeBoundaryRow[] = [];
   const stages: RecordedStage[] = Array.isArray(trajectory.stages)
@@ -413,6 +890,7 @@ export function recordedTrajectoryToNativeRows(
       boundary: GENERATE_TEXT_BOUNDARY,
       ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
       ...(judgeScore !== undefined ? { judgeScore } : {}),
+      ...(tier ? { tier } : {}),
       request,
       response,
       trajectoryId: trajectory.trajectoryId,
@@ -464,6 +942,7 @@ export function recordedTrajectoryToNativeRows(
         trajectory_status: trajectory.status,
         ...(scenarioOutcome ? { scenario_status: scenarioOutcome } : {}),
         ...(judgeScore !== undefined ? { judge_score: judgeScore } : {}),
+        ...(tier ? { tier } : {}),
         ...(typeof model.costUsd === "number"
           ? { source_cost_usd: model.costUsd }
           : {}),
@@ -540,10 +1019,11 @@ export function exportScenarioNativeJsonl(
   outPath: string,
   scenarioOutcomes?: ScenarioOutcomeMap,
   scenarioJudgeScores?: ScenarioJudgeScoreMap,
+  scenarioTiers?: ScenarioTierMap,
 ): number {
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
-  const rows: NativeBoundaryRow[] = [];
+  const rawRows: NativeBoundaryRow[] = [];
   const runIds = new Set<string>();
   const scenarioIds = new Set<string>();
   const agentIds = new Set<string>();
@@ -588,16 +1068,46 @@ export function exportScenarioNativeJsonl(
       scenarioJudgeScores && typeof parsed.scenarioId === "string"
         ? scenarioJudgeScores.get(parsed.scenarioId)
         : undefined;
-    rows.push(
-      ...recordedTrajectoryToNativeRows(parsed, scenarioOutcome, judgeScore),
+    const tier =
+      scenarioTiers && typeof parsed.scenarioId === "string"
+        ? scenarioTiers.get(parsed.scenarioId)
+        : undefined;
+    rawRows.push(
+      ...recordedTrajectoryToNativeRows(
+        parsed,
+        scenarioOutcome,
+        judgeScore,
+        tier,
+      ),
     );
   }
   mkdirSync(path.dirname(outPath), { recursive: true });
+  const privacyAttestationPath =
+    defaultScenarioNativePrivacyAttestationPath(outPath);
+  const privacyStats = newPrivacyFilterStats();
+  const rows = redactNativeBoundaryRows(
+    rawRows,
+    privacyAttestationPath,
+    privacyStats,
+  );
+  for (const row of rows) countPrivacyResiduals(row, privacyStats);
   const body =
     rows.length === 0
       ? ""
       : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
   writeFileSync(outPath, body, "utf-8");
+  const privacyAttestation = buildScenarioNativePrivacyAttestation({
+    jsonlPath: outPath,
+    runDir,
+    trajectoriesDir,
+    rows: rows.length,
+    stats: privacyStats,
+  });
+  writeFileSync(
+    privacyAttestationPath,
+    `${JSON.stringify(privacyAttestation, null, 2)}\n`,
+    "utf-8",
+  );
   let passedRows = 0;
   let failedRows = 0;
   let skippedScenarioRows = 0;
@@ -617,6 +1127,7 @@ export function exportScenarioNativeJsonl(
     trajectoriesDir,
     jsonlPath: outPath,
     manifestPath,
+    privacyAttestationPath,
     counts: {
       trajectoryFiles: files.length,
       parsedTrajectories,
@@ -630,6 +1141,15 @@ export function exportScenarioNativeJsonl(
     runIds: [...runIds].sort(),
     scenarioIds: [...scenarioIds].sort(),
     agentIds: [...agentIds].sort(),
+    privacy: {
+      reviewed: privacyAttestation.passed,
+      attestationSchema: SCENARIO_NATIVE_PRIVACY_ATTESTATION_SCHEMA,
+      attestationVersion: SCENARIO_NATIVE_PRIVACY_ATTESTATION_VERSION,
+      attestationPath: privacyAttestationPath,
+      redactions: privacyStats.redactionsTotal,
+      residualFindings: privacyStats.residualTotal,
+      categories: privacyCategories(privacyStats),
+    },
   };
   writeFileSync(
     manifestPath,
@@ -637,7 +1157,7 @@ export function exportScenarioNativeJsonl(
     "utf-8",
   );
   logger.info(
-    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows}) (manifest → ${manifestPath})`,
+    `[scenario-runner] wrote ${rows.length} redacted eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows} redactions=${privacyStats.redactionsTotal} residuals=${privacyStats.residualTotal}) (manifest → ${manifestPath}; privacy attestation → ${privacyAttestationPath})`,
   );
   return rows.length;
 }

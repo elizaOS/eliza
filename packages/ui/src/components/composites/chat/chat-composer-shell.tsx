@@ -1,3 +1,10 @@
+/**
+ * Positioning shell that anchors the chat composer to the bottom of the chat
+ * surface: the sticky wrapper handling safe-area / mobile-nav insets and the
+ * optional `before` slot (e.g. voice status bar). Presentation only — the
+ * `default` and `game-modal` variants are separate render paths, not a param
+ * switch on the input itself.
+ */
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";

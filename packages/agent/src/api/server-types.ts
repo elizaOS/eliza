@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
+import type { CloudManager } from "@elizaos/plugin-elizacloud/host-routes";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
@@ -13,7 +14,7 @@ import type { ElizaConfig } from "../config/config.ts";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
-export type CloudManagerLike = unknown;
+export type CloudManagerLike = CloudManager | null;
 export type AppManagerLike = unknown;
 
 export interface StoppablePairingSession {
@@ -218,8 +219,8 @@ export interface ServerState {
    */
   deliveryDedupe?: import("./delivery-dedupe.ts").DeliveryDedupeState;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.ts").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.ts").CodexFlow;
+  _anthropicFlow?: import("@elizaos/auth/anthropic").AnthropicFlow;
+  _codexFlow?: import("@elizaos/auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from the desktop bridge). */
   permissionStates?: Record<string, import("@elizaos/shared").PermissionState>;

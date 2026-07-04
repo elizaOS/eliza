@@ -1,3 +1,8 @@
+/**
+ * Ensures a model exists on the Ollama server before inference: probes `/api/show` and, when the
+ * model is absent, issues a blocking `/api/pull`. Runs ahead of every text and embedding call
+ * (`models/text.ts`, `models/embedding.ts`), so a first-use miss adds download latency.
+ */
 import { logger } from "@elizaos/core";
 
 export async function ensureModelAvailable(

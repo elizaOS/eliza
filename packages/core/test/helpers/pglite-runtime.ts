@@ -16,6 +16,11 @@ export interface TestRuntimeOptions {
 	plugins?: Plugin[];
 	pgliteDir?: string;
 	removePgliteDirOnCleanup?: boolean;
+	/**
+	 * Host-injected trajectory-write flush. Kept optional so this core-package
+	 * live helper does not import agent internals.
+	 */
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 export interface TestRuntimeResult {
@@ -30,14 +35,10 @@ type TrajectoryWriteService = {
 
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>,
 ): Promise<void> {
-	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
+	if (flushTrajectoryWrites) {
 		await flushTrajectoryWrites(runtime);
-	} catch {
-		// Best effort only.
 	}
 
 	for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -89,7 +90,10 @@ export async function createTestRuntime(
 
 	const cleanup = async () => {
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[test] trajectory flush error: ${err}`);
 		}
@@ -99,7 +103,10 @@ export async function createTestRuntime(
 			logger.debug(`[test] runtime.stop() error: ${err}`);
 		}
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[test] post-stop trajectory flush error: ${err}`);
 		}

@@ -1,3 +1,11 @@
+/**
+ * Card for one connector account in the account-management list: shows
+ * status/role/privacy, an editable label, and the per-account actions (set
+ * default, sync, privacy/purpose edit, delete-with-confirmation). Edits are
+ * sent as `ConnectorAccountUpdateInput` through the parent's callbacks; delete
+ * goes through a confirmation dialog.
+ */
+
 import { RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {

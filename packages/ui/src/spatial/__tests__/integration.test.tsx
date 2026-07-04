@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * End-to-end parity check for the spatial framework: one primitive tree
+ * (Stack/Text/Card/…) evaluated to the layout IR, then rendered to both the DOM
+ * modality (auto-switching to xr when the XR host global is present) and the TUI
+ * modality. Static/string render (no live headset).
+ */
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import {

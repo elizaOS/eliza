@@ -1,3 +1,10 @@
+/**
+ * Logs page: renders the agent's structured server log stream as a searchable,
+ * auto-refreshing list. Polls the logs store only while the document is
+ * visible, and gates the first paint on a local loading flag so the empty state
+ * never flashes mid-hydration. Mountable standalone or inside a modal.
+ */
+
 import { ScrollText } from "lucide-react";
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -296,7 +303,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={levelControl.ref}
-              className="w-40 h-10 rounded-sm text-sm text-txt"
+              className="h-11 w-40 rounded-sm text-sm text-txt"
               {...levelControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllLevels")} />
@@ -318,7 +325,7 @@ function LogsViewBody() {
           >
             <SelectTrigger
               ref={sourceControl.ref}
-              className="w-40 h-10 rounded-sm text-sm text-txt"
+              className="h-11 w-40 rounded-sm text-sm text-txt"
               {...sourceControl.agentProps}
             >
               <SelectValue placeholder={t("logsview.AllSources")} />
@@ -342,7 +349,7 @@ function LogsViewBody() {
             >
               <SelectTrigger
                 ref={tagControl.ref}
-                className="w-40 h-10 rounded-sm text-sm text-txt"
+                className="h-11 w-40 rounded-sm text-sm text-txt"
                 {...tagControl.agentProps}
               >
                 <SelectValue placeholder={t("logsview.AllTags")} />

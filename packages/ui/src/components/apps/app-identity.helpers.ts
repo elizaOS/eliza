@@ -1,3 +1,12 @@
+/**
+ * Icon/image resolution helpers for the app-identity tiles: maps an app's
+ * category to a Lucide icon, resolves a raw icon/hero value to a renderable
+ * source, and rewrites runtime-relative image paths to a fetchable URL. The
+ * runtime resolver routes API-resource paths to `resolveApiUrl` vs asset paths
+ * to `resolveAppAssetUrl` based on the host's app-shell capability flags, so
+ * limited cloud-agent hosts don't request routes they can't serve.
+ */
+
 import { getAppHeroThemeKey } from "@elizaos/shared";
 import {
   Bot,

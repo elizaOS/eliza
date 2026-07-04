@@ -1,9 +1,8 @@
 /**
- * Discord event listener setup — extracted from service.ts
- *
- * Contains the body of `setupEventListeners()`: all `client.on(...)` registrations
- * for messageCreate, reactions, guild events, interactions, voice streams,
- * and permission audit events.
+ * Wires the discord.js Client event stream into DiscordService. Binds every
+ * `client.on(...)` listener — messageCreate, reactions, guild lifecycle,
+ * interactions, voice streams, and permission audit events — to the service's
+ * handlers.
  */
 import {
 	createUniqueUuid,
@@ -296,9 +295,8 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	// ── Per-DM-channel serialization ───────────────────────────────────
 	// discord.js invokes the messageCreate listener WITHOUT awaiting it, so N
 	// rapid DMs from one author would otherwise launch N concurrent
-	// handleMessage runs → interleaved / out-of-order / duplicate replies. (The
-	// removed message-debouncer used to serialize per author as a side effect of
-	// batching.) DMs are now dispatched directly, so we chain each DM channel's
+	// handleMessage runs → interleaved / out-of-order / duplicate replies. DMs
+	// are dispatched directly (not batched), so we chain each DM channel's
 	// handleMessage calls through a promise tail: a given DM channel is processed
 	// strictly in order, one message at a time, and nothing is dropped. Guild
 	// channels are unaffected — they still route through the channel debouncer.
@@ -469,12 +467,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				// from one author are handled strictly in order, one at a time, with
 				// no drop (see dispatchDmInOrder above).
 				//
-				// Intentional behavior change: the removed message-debouncer used to
-				// COALESCE rapid same-author multi-part DM text (and an
-				// attachment-then-text pair) into a single handleMessage turn. Direct
-				// dispatch no longer coalesces — each DM is its own turn. For 1:1 DMs
-				// this is acceptable and removes the debounce-window drop; ordering
-				// and no-drop are guaranteed by the per-channel queue.
+				// Direct dispatch does not coalesce — each DM is its own turn, unlike
+				// channel messages which the debouncer may merge. For 1:1 DMs this is
+				// acceptable and avoids a debounce-window drop; ordering and no-drop
+				// are guaranteed by the per-channel queue.
 				await dispatchDmInOrder(message.channel.id, message);
 			} else if (service.channelDebouncer) {
 				service.channelDebouncer.enqueue(message);

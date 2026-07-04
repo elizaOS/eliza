@@ -1,12 +1,9 @@
 #!/usr/bin/env bun
 /**
  * Standalone build script for @elizaos/plugin-discord-local.
- * Uses Bun's native bundler — no monorepo build-utils dependency.
- *
- * Migrated onto the shared `buildPlugin` driver (issue #10078). Emits the
- * same single Node ESM bundle (`dist/index.js` + linked sourcemap) and the
- * tolerant `tsc` declaration pass to `dist/src/`, byte-identical to the prior
- * hand-rolled build.
+ * Runs the shared `buildPlugin` driver over Bun's native bundler (no monorepo
+ * build-utils dependency): a single Node ESM bundle (`dist/index.js` + linked
+ * sourcemap) plus a tolerant `tsc` declaration pass to `dist/src/`.
  */
 import { buildPlugin } from "../plugin-build";
 
@@ -14,9 +11,8 @@ await buildPlugin({
   name: "@elizaos/plugin-discord-local",
   externals: "auto",
   externalsOptions: {
-    // Preserve the bare-string node builtins the prior hand-list included so
-    // any source that imports them without the `node:` prefix still resolves
-    // externally under Bun.build.
+    // Bare-string node builtins: source that imports these without the `node:`
+    // prefix still resolves externally under Bun.build.
     extra: [
       "fs",
       "path",

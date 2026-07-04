@@ -1,3 +1,6 @@
+/**
+ * Terminal theme built on the CLI palette via chalk, honoring FORCE_COLOR.
+ */
 import chalk, { Chalk } from "chalk";
 import { CLI_PALETTE } from "./palette";
 

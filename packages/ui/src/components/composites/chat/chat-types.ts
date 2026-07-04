@@ -1,3 +1,9 @@
+/**
+ * Shared prop and data shapes for the chat composites: the `ChatVariant` skin,
+ * the localizable `ChatLabelSet`, message/attachment/conversation records, and
+ * voice-speaker types. The single source these sibling components import their
+ * types from so their contracts stay in sync.
+ */
 export type ChatVariant = "default" | "game-modal";
 
 export interface ChatLabelSet {

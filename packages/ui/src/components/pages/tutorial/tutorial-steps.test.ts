@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the tutorial step model: buildTutorialSteps returns the eight
+ * frames in order (branded with the app name, targeting real controls), the
+ * new-chat and swipe auto-advance predicates fire only on the right
+ * conversation transition, and each frame's capability lock permits its own
+ * tabs while blocking off-path ones. Pure functions + nav-lock state.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import { isNavAllowed, setNavLock } from "../../../navigation/nav-lock";
 import {

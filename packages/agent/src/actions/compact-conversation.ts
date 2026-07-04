@@ -30,6 +30,7 @@ const MIN_COMPACTABLE_MESSAGES = 6;
 const MAX_MESSAGES_TO_READ = 5000;
 const MESSAGE_FETCH_PAGE_SIZE = 250;
 const STRATEGY: StrategyName = "hybrid-ledger";
+export const COMPACT_CONVERSATION_ACTION_NAME = "COMPACT_CONVERSATION";
 
 type CompactParams = {
   targetTokens: unknown;
@@ -154,7 +155,7 @@ async function getCompactableMessages(
 }
 
 export const compactConversationAction: Action = {
-  name: "COMPACT_CONVERSATION",
+  name: COMPACT_CONVERSATION_ACTION_NAME,
   contexts: ["general", "memory", "messaging", "agent_internal"],
   roleGate: { minRole: "OWNER" },
   similes: [

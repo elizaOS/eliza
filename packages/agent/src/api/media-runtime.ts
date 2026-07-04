@@ -66,11 +66,16 @@ async function rehostRemoteMediaUrl(url: string): Promise<string | null> {
 const MEDIA_URL_PREFIX = "/api/media/";
 
 /**
- * Public GET route for stored media. On HTTP platforms (browser, desktop,
- * Android) the pre-auth `serveMediaFile` handler answers first and this route
- * is never reached; it exists for iOS, where requests are dispatched in-process
- * over `runtime.routes` with no HTTP server. The native bridge base64-encodes
- * the returned `Buffer` body losslessly.
+ * Public GET route for stored media. On HTTP platforms with a listening port
+ * the pre-auth `serveMediaFile` handler answers first and this route is never
+ * reached; it exists for the port-free native IPC path — iOS/desktop/Android
+ * native scheme handlers (`eliza-local-agent://ipc/api/media/…`) that dispatch
+ * in-process over `runtime.routes` with no HTTP server. The native bridge
+ * base64-encodes the returned `Buffer` body losslessly.
+ *
+ * The `Range` request header is forwarded so `handleMediaRouteRequest` can
+ * answer `206 Partial Content`, which is what lets `<audio>`/`<video>` seek
+ * over the native scheme handler.
  */
 export const mediaFileRoute: Route = {
   type: "GET",
@@ -79,11 +84,15 @@ export const mediaFileRoute: Route = {
   rawPath: true,
   public: true,
   name: "media-file",
+  publicReason:
+    "Media URLs are content-addressed capability links served pre-auth.",
   routeHandler: async (ctx) => {
     const filename = ctx.params?.filename ?? "";
     const result = handleMediaRouteRequest(
       `${MEDIA_URL_PREFIX}${filename}`,
       ctx.method ?? "GET",
+      // `dispatchRoute` lowercases request headers before building the context.
+      ctx.headers?.range,
     );
     return {
       status: result.status,

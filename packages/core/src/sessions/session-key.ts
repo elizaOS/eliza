@@ -23,6 +23,10 @@ const INVALID_CHARS_RE = /[^a-z0-9_-]+/g;
 const LEADING_DASH_RE = /^-+/;
 const TRAILING_DASH_RE = /-+$/;
 
+function trimOptionalString(value: string | undefined | null): string {
+	return value ? value.trim() : "";
+}
+
 // ============================================================================
 // Parsing Types
 // ============================================================================
@@ -66,7 +70,7 @@ export type ParsedAgentSessionKey = {
 export function parseAgentSessionKey(
 	sessionKey: string | undefined | null,
 ): ParsedAgentSessionKey | null {
-	const raw = (sessionKey ?? "").trim().toLowerCase();
+	const raw = trimOptionalString(sessionKey).toLowerCase();
 	if (!raw) {
 		return null;
 	}
@@ -163,7 +167,7 @@ export function resolveThreadParentSessionKey(
 // ============================================================================
 
 function normalizeToken(value: string | undefined | null): string {
-	return (value ?? "").trim().toLowerCase();
+	return trimOptionalString(value).toLowerCase();
 }
 
 /**
@@ -173,7 +177,7 @@ function normalizeToken(value: string | undefined | null): string {
  * @returns Normalized main key
  */
 export function normalizeMainKey(value: string | undefined | null): string {
-	const trimmed = (value ?? "").trim();
+	const trimmed = trimOptionalString(value);
 	return trimmed ? trimmed.toLowerCase() : DEFAULT_MAIN_KEY;
 }
 
@@ -186,7 +190,7 @@ export function normalizeMainKey(value: string | undefined | null): string {
  * @returns Normalized agent ID
  */
 export function normalizeAgentId(value: string | undefined | null): string {
-	const rawTrimmed = (value ?? "").trim();
+	const rawTrimmed = trimOptionalString(value);
 	if (!rawTrimmed) {
 		return DEFAULT_AGENT_ID;
 	}
@@ -224,7 +228,7 @@ export function sanitizeAgentId(value: string | undefined | null): string {
  * @returns Normalized account ID
  */
 export function normalizeAccountId(value: string | undefined | null): string {
-	const rawTrimmed = (value ?? "").trim();
+	const rawTrimmed = trimOptionalString(value);
 	if (!rawTrimmed) {
 		return DEFAULT_ACCOUNT_ID;
 	}
@@ -331,7 +335,7 @@ export function buildAgentPeerSessionKey(params: {
 	const peerKind = params.peerKind ?? "dm";
 	if (peerKind === "dm") {
 		const dmScope = params.dmScope ?? "main";
-		let peerId = (params.peerId ?? "").trim();
+		let peerId = trimOptionalString(params.peerId);
 		const linkedPeerId =
 			dmScope === "main"
 				? null
@@ -362,7 +366,7 @@ export function buildAgentPeerSessionKey(params: {
 		});
 	}
 	const channel = params.channel.trim().toLowerCase() || "unknown";
-	const peerId = ((params.peerId ?? "").trim() || "unknown").toLowerCase();
+	const peerId = (trimOptionalString(params.peerId) || "unknown").toLowerCase();
 	return `agent:${normalizeAgentId(params.agentId)}:${channel}:${peerKind}:${peerId}`;
 }
 
@@ -425,7 +429,7 @@ function resolveLinkedPeerId(params: {
 export function toAgentRequestSessionKey(
 	storeKey: string | undefined | null,
 ): string | undefined {
-	const raw = (storeKey ?? "").trim();
+	const raw = trimOptionalString(storeKey);
 	if (!raw) {
 		return undefined;
 	}
@@ -443,7 +447,7 @@ export function toAgentStoreSessionKey(params: {
 	requestKey: string | undefined | null;
 	mainKey?: string | undefined;
 }): string {
-	const raw = (params.requestKey ?? "").trim();
+	const raw = trimOptionalString(params.requestKey);
 	if (!raw || raw === DEFAULT_MAIN_KEY) {
 		return buildAgentMainSessionKey({
 			agentId: params.agentId,
@@ -507,7 +511,7 @@ export function resolveThreadSessionKeys(params: {
 	parentSessionKey?: string;
 	useSuffix?: boolean;
 }): { sessionKey: string; parentSessionKey?: string } {
-	const threadId = (params.threadId ?? "").trim();
+	const threadId = trimOptionalString(params.threadId);
 	if (!threadId) {
 		return { sessionKey: params.baseSessionKey, parentSessionKey: undefined };
 	}

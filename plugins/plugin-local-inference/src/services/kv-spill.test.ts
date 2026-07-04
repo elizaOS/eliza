@@ -1,3 +1,4 @@
+/** Unit tests for `planKvSpill`: deciding how much KV cache spills to disk given geometry and the RAM budget. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	estimateQuantizedKvBytesPerToken,

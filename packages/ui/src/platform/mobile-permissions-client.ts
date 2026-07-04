@@ -1,3 +1,7 @@
+/**
+ * Mobile permission client: maps the shared permission registry to the Capacitor
+ * permission plugins and reports normalized states.
+ */
 import type {
   IPermissionsRegistry,
   PermissionFeatureRef,
@@ -887,6 +891,14 @@ export function createMobileSignalsPermissionsRegistry(
           at: lastRequested,
         },
       });
+    },
+    async openSettings(id) {
+      const result = await openMobilePermissionSettings(
+        id,
+        plugin,
+        native.system,
+      );
+      return result?.opened === true;
     },
     recordBlock(id, feature: PermissionFeatureRef) {
       const current =

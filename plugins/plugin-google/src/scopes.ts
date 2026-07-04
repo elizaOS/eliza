@@ -1,3 +1,11 @@
+/**
+ * Canonical capability catalog and OAuth scope derivation for the Google
+ * connector. Defines the `GoogleCapability` set, maps each capability to its
+ * Google OAuth scope URLs, and derives the minimal scope list (plus identity
+ * scopes) for any requested capability subset. Everything scope-related — the
+ * consolidated grant, per-method scope requirements, connector metadata — reads
+ * from this single source, so adding a capability here propagates everywhere.
+ */
 export const GOOGLE_CAPABILITIES = [
   "gmail.read",
   "gmail.send",

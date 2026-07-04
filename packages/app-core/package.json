@@ -41,7 +41,6 @@
     "format:fix": "bunx @biomejs/biome format --write src",
     "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../scripts/copy-package-assets.mjs packages/app-core src/styles scripts platforms packaging patches test/scripts test/helpers && node ../scripts/prepare-package-dist.mjs packages/app-core && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "benchmark:server": "node --import tsx src/benchmark/server.ts",
     "stability:suite": "node scripts/stability-suite.mjs",
     "voice:interactive": "bun ./scripts/voice-interactive.mjs",
     "voice:duet": "bun ./scripts/voice-duet.mjs",
@@ -90,11 +89,6 @@
       "types": "./dist/entry.d.ts",
       "import": "./dist/entry.js",
       "default": "./dist/entry.js"
-    },
-    "./agent-bridge": {
-      "types": "./dist/agent-bridge.d.ts",
-      "import": "./dist/agent-bridge.js",
-      "default": "./dist/agent-bridge.js"
     },
     "./account-pool": {
       "types": "./src/account-pool.ts",
@@ -254,6 +248,7 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
+    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
@@ -281,10 +276,10 @@
     "ethers": "^6.16.0",
     "jose": "^6.2.2",
     "json5": "^2.2.3",
-    "telegraf": "^4.16.3",
     "undici": "8.5.0",
     "ws": "^8.19.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/auth": "workspace:*"
   },
   "publishConfig": {
     "access": "public",

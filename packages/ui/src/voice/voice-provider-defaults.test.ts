@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for picking the default voice provider per platform/runtime mode.
+ * Pure function, no live TTS.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type PresetPlatform,

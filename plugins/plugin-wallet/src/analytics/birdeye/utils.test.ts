@@ -1,3 +1,8 @@
+/**
+ * Birdeye analytics formatting + intent extraction. These render financial
+ * figures shown to the user and parse the result limit from free text, so the
+ * suffix thresholds, sign handling, and clamping are pinned.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractLimit,
@@ -6,12 +11,6 @@ import {
   formatValue,
   shortenAddress,
 } from "./utils.js";
-
-/**
- * Birdeye analytics formatting + intent extraction. These render financial
- * figures shown to the user and parse the result limit from free text, so the
- * suffix thresholds, sign handling, and clamping are pinned.
- */
 
 describe("formatValue", () => {
   it("scales to K/M/B with a $ prefix, N/A for falsy", () => {

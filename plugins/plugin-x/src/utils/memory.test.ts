@@ -1,3 +1,4 @@
+/** Unit tests for the Twitter memory utilities: idempotent/retried memory writes, processed-tweet lookup fallback, and near-duplicate tweet detection; mocked runtime storage. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemorySafe, isDuplicateTweet, isTweetProcessed } from "./memory";

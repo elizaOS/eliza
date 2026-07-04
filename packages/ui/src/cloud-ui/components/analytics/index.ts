@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud analytics components.
+ */
 export {
   CostAlerts,
   type CostAlertsProps,

@@ -3,8 +3,20 @@ import { createInterface } from "node:readline";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
   E2BRemoteCapabilityRouterService,
+  type E2BSandboxFactory,
   type SandboxRunnerProvider,
 } from "../src/services/e2b-capability-router.ts";
+
+async function loadE2BSandboxFactory(
+  runtime: IAgentRuntime,
+): Promise<E2BSandboxFactory | undefined> {
+  try {
+    const mod = await import("@elizaos/plugin-e2b-sandbox");
+    return await mod.E2BSandboxFactoryService.start(runtime);
+  } catch {
+    return undefined;
+  }
+}
 
 type SmokeTarget = SandboxRunnerProvider | "codex-app-server";
 type JsonRecord = Record<string, unknown>;
@@ -62,7 +74,16 @@ async function runSandboxProviderSmoke(
     };
   }
   const runtime = makeRuntime({ ELIZA_CODING_REMOTE_RUNNER: provider });
-  const service = new E2BRemoteCapabilityRouterService(runtime);
+  // The e2b (`e2b.dev`) SDK backend lives in the optional
+  // `@elizaos/plugin-e2b-sandbox` plugin (not in `@elizaos/agent`); inject its
+  // sandbox factory so the router can reach the e2b provider in this smoke.
+  const factory =
+    provider === "e2b" ? await loadE2BSandboxFactory(runtime) : undefined;
+  const service = new E2BRemoteCapabilityRouterService(
+    runtime,
+    undefined,
+    factory,
+  );
   const availability = await service.availability();
   if (!availability.available) {
     return {

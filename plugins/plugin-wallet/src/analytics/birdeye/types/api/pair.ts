@@ -1,6 +1,10 @@
+/**
+ * Request/response shapes for Birdeye's per-pair endpoints: recent trades,
+ * OHLCV candles, and single/multi pair overview (liquidity, volume, and trade
+ * counts bucketed across several trailing windows).
+ */
 import type { TimeInterval } from "./common";
 
-// Pair Trades Types
 export interface PairTradesParams {
   pair: string;
   limit?: number;
@@ -32,7 +36,6 @@ export interface PairTradesResponse {
   };
 }
 
-// OHLCV Pair Types
 export interface OHLCVPairParams {
   address: string;
   type?: TimeInterval;
@@ -56,7 +59,6 @@ export interface OHLCVPairResponse {
   };
 }
 
-// Pair Overview Types
 export interface PairOverviewMultiParams {
   list_address: string;
   before_time?: number;

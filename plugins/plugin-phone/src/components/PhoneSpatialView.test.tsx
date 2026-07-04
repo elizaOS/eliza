@@ -1,3 +1,9 @@
+/**
+ * Renders the presentational PhoneSpatialView through both the DOM (static
+ * markup) and the terminal registry (real rendered lines), asserting the same
+ * spatial component renders correctly across GUI and TUI surfaces.
+ */
+
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

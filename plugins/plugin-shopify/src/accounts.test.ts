@@ -1,3 +1,8 @@
+/**
+ * Unit tests for Shopify account resolution (./accounts) against a stubbed
+ * runtime: legacy single-store defaults, explicit `accountId` selection from
+ * `SHOPIFY_ACCOUNTS`, and default-account fallback.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

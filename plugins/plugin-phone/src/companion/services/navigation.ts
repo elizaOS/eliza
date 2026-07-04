@@ -1,9 +1,3 @@
-import { Capacitor } from "@capacitor/core";
-import { Haptics, ImpactStyle } from "@capacitor/haptics";
-import { Preferences } from "@capacitor/preferences";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { logger } from "./logger";
-
 /**
  * Minimal stack navigator for the phone-companion surface.
  *
@@ -12,6 +6,12 @@ import { logger } from "./logger";
  * persists the current view across launches, and fires a Capacitor haptic on
  * each transition when native haptics are available.
  */
+
+import { Capacitor } from "@capacitor/core";
+import { Haptics, ImpactStyle } from "@capacitor/haptics";
+import { Preferences } from "@capacitor/preferences";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { logger } from "./logger";
 
 export type ViewName = "chat" | "pairing" | "remote-session";
 

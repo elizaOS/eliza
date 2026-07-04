@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the `/app` embedded-app launch slash command (#9947).
+ * Mocked runtime and interaction.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

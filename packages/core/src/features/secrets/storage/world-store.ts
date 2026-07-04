@@ -14,6 +14,7 @@ import type {
 	SecretConfig,
 	SecretContext,
 	SecretMetadata,
+	SecretPermissionType,
 	StorageBackend,
 	StoredSecret,
 } from "../types.ts";
@@ -55,6 +56,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 		if (!context.worldId) {
 			return false;
 		}
+		await this.assertReadPermission(key, context);
 
 		const secrets = await this.getWorldSecrets(context.worldId);
 		return key in secrets;
@@ -65,6 +67,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			logger.warn("[WorldMetadataStorage] Cannot get secret without worldId");
 			return null;
 		}
+		await this.assertReadPermission(key, context);
 
 		const secrets = await this.getWorldSecrets(context.worldId);
 		const stored = secrets[key];
@@ -85,7 +88,15 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 				storedSecret.config.expiresAt &&
 				storedSecret.config.expiresAt < Date.now()
 			) {
-				await this.delete(key, context);
+				if (
+					context.requesterId &&
+					(await this.checkWritePermission(
+						context.worldId,
+						context.requesterId,
+					))
+				) {
+					await this.delete(key, context);
+				}
 				return null;
 			}
 
@@ -112,16 +123,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			throw new StorageError("Cannot set world secret without worldId");
 		}
 
-		// Check write permission
-		if (context.requesterId) {
-			const hasPermission = await this.checkWritePermission(
-				context.worldId,
-				context.requesterId,
-			);
-			if (!hasPermission) {
-				throw new PermissionDeniedError(key, "write", context);
-			}
-		}
+		await this.assertWritePermission(key, "write", context);
 
 		const world = await this.getWorld(context.worldId);
 		if (!world) {
@@ -177,16 +179,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		// Check write permission
-		if (context.requesterId) {
-			const hasPermission = await this.checkWritePermission(
-				context.worldId,
-				context.requesterId,
-			);
-			if (!hasPermission) {
-				throw new PermissionDeniedError(key, "delete", context);
-			}
-		}
+		await this.assertWritePermission(key, "delete", context);
 
 		const world = await this.getWorld(context.worldId);
 		if (!world) {
@@ -218,6 +211,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 		if (!context.worldId) {
 			return {};
 		}
+		await this.assertReadPermission("*", context);
 
 		const secrets = await this.getWorldSecrets(context.worldId);
 		const metadata: SecretMetadata = {};
@@ -256,6 +250,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 		if (!context.worldId) {
 			return null;
 		}
+		await this.assertReadPermission(key, context);
 
 		const secrets = await this.getWorldSecrets(context.worldId);
 		const stored = secrets[key];
@@ -284,16 +279,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		// Check write permission
-		if (context.requesterId) {
-			const hasPermission = await this.checkWritePermission(
-				context.worldId,
-				context.requesterId,
-			);
-			if (!hasPermission) {
-				throw new PermissionDeniedError(key, "write", context);
-			}
-		}
+		await this.assertWritePermission(key, "write", context);
 
 		const world = await this.getWorld(context.worldId);
 		if (!world) {
@@ -387,6 +373,59 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
 		const userRole = roles[userId];
 		return userRole === Role.OWNER || userRole === Role.ADMIN;
+	}
+
+	private async assertReadPermission(
+		key: string,
+		context: SecretContext,
+	): Promise<void> {
+		if (!context.worldId || !context.requesterId) {
+			throw new PermissionDeniedError(key, "read", context);
+		}
+
+		if (await this.checkReadPermission(context.worldId, context.requesterId)) {
+			return;
+		}
+
+		throw new PermissionDeniedError(key, "read", context);
+	}
+
+	private async assertWritePermission(
+		key: string,
+		action: Extract<SecretPermissionType, "write" | "delete">,
+		context: SecretContext,
+	): Promise<void> {
+		if (!context.worldId || !context.requesterId) {
+			throw new PermissionDeniedError(key, action, context);
+		}
+
+		if (await this.checkWritePermission(context.worldId, context.requesterId)) {
+			return;
+		}
+
+		throw new PermissionDeniedError(key, action, context);
+	}
+
+	private async checkReadPermission(
+		worldId: string,
+		userId: string,
+	): Promise<boolean> {
+		const world = await this.getWorld(worldId);
+		if (!world) {
+			return false;
+		}
+
+		if (userId === this.runtime.agentId) {
+			return true;
+		}
+
+		if (world.metadata?.ownership?.ownerId === userId) {
+			return true;
+		}
+
+		const roles = world.metadata?.roles as Record<string, Role> | undefined;
+		const userRole = roles?.[userId];
+		return Boolean(userRole && userRole !== Role.NONE);
 	}
 
 	/**

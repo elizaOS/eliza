@@ -1,3 +1,4 @@
+/** Unit tests for account-config resolution and auth-mode selection; pure, no network. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

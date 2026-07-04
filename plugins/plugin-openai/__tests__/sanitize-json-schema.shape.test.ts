@@ -152,3 +152,104 @@ describe("sanitizeJsonSchema strict-constraint stripping", () => {
     expect(new Set(out.required as string[])).toEqual(new Set(["a", "b"]));
   });
 });
+
+/**
+ * A DECLARED free-form/open map (`additionalProperties: {type:"string"}` or
+ * `true`) must still be closed on the wire (strict providers 400 on open maps,
+ * and strictness is proxy-blind), but the intent must survive in `description`
+ * instead of being lost silently, so the map arg no longer always arrives empty
+ * (#11249).
+ */
+describe("sanitizeJsonSchema free-form record args (#11249)", () => {
+  it("closes a schema-valued additionalProperties but folds the intent into description", () => {
+    const out = sanitize({
+      type: "object",
+      properties: {
+        customFields: {
+          type: "object",
+          additionalProperties: { type: "string" },
+        },
+      },
+      required: ["customFields"],
+      additionalProperties: false,
+    });
+    const prop = (out.properties as Record<string, Record<string, unknown>>).customFields;
+    // Still closed on the wire — no strict-grammar 400.
+    expect(prop.additionalProperties).toBe(false);
+    // Intent preserved (with the value type), not lost silently.
+    expect(typeof prop.description).toBe("string");
+    expect(prop.description as string).toContain("string");
+    expect(prop.description as string).toMatch(/key\/value pairs/);
+  });
+
+  it("closes additionalProperties:true and records the open-map intent", () => {
+    const out = sanitize({
+      type: "object",
+      properties: {
+        attributes: { type: "object", additionalProperties: true },
+      },
+      required: ["attributes"],
+      additionalProperties: false,
+    });
+    const prop = (out.properties as Record<string, Record<string, unknown>>).attributes;
+    expect(prop.additionalProperties).toBe(false);
+    expect(prop.description as string).toMatch(/key\/value pairs/);
+  });
+
+  it("does NOT add a hint to a plain object that never declared additionalProperties", () => {
+    const out = sanitize({
+      type: "object",
+      properties: { a: { type: "string" } },
+      required: ["a"],
+    });
+    // Closed as before, but no spurious open-map hint on a normal object.
+    expect(out.additionalProperties).toBe(false);
+    expect(out.description).toBeUndefined();
+  });
+
+  it("preserves an existing description when folding the open-map hint", () => {
+    const out = sanitize({
+      type: "object",
+      properties: {
+        prefs: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "User preferences.",
+        },
+      },
+      required: ["prefs"],
+      additionalProperties: false,
+    });
+    const prop = (out.properties as Record<string, Record<string, unknown>>).prefs;
+    expect(prop.description as string).toContain("User preferences.");
+    expect(prop.description as string).toMatch(/key\/value pairs/);
+    expect(prop.additionalProperties).toBe(false);
+  });
+
+  it("closes nested free-form maps at any depth (no open map survives to the wire)", () => {
+    const out = sanitize({
+      type: "object",
+      properties: {
+        list: {
+          type: "array",
+          items: { type: "object", additionalProperties: { type: "number" } },
+        },
+        map: { type: "object", additionalProperties: true },
+      },
+      required: ["list", "map"],
+      additionalProperties: false,
+    });
+    // No truthy additionalProperties anywhere — every object is closed.
+    const keys = collectKeys(out);
+    expect(keys.has("additionalProperties")).toBe(true);
+    const openMapSurvived = JSON.stringify(out).includes('"additionalProperties":true');
+    expect(openMapSurvived).toBe(false);
+    const itemProp = (
+      (out.properties as Record<string, Record<string, unknown>>).list.items as Record<
+        string,
+        unknown
+      >
+    ).additionalProperties;
+    expect(itemProp).toBe(false);
+  });
+});

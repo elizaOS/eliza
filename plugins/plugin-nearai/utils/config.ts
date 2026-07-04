@@ -1,3 +1,10 @@
+/**
+ * Single source for every runtime setting / env read in the plugin. Each getter
+ * consults `runtime.getSetting(key)` first, then `process.env[key]` (guarded so
+ * browser builds never touch an undefined `process`), applying the `NEARAI_*`
+ * defaults. `getBaseURL` swaps to `NEARAI_BROWSER_BASE_URL` under `isBrowser()`;
+ * API-key and model getters return the branded types from `../types`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ModelName, ValidatedApiKey } from "../types";
 import { assertValidApiKey, createModelName } from "../types";

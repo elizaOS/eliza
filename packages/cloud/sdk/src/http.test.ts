@@ -1,3 +1,5 @@
+/** Unit tests for `ElizaCloudHttpClient` with an injected fake fetch: verb/URL/query/header construction and error mapping. */
+
 import { describe, expect, it } from "vitest";
 
 import { type CloudApiError, ElizaCloudHttpClient } from "./http.js";

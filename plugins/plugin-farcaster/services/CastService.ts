@@ -1,3 +1,11 @@
+/**
+ * Cast-facing half of the connector: reads and writes casts through
+ * `FarcasterClient` and maps between Neynar casts and the domain `Cast`/`Memory`
+ * shapes. Backs the runtime's `farcaster` post connector — `handleSendPost`,
+ * `fetchFeed`, and `searchPosts` are the handlers `FarcasterService` registers —
+ * and also serves `getCasts`/`createCast`/`likeCast`/`recast` for the managers.
+ * Cast deletion is a no-op warning: the Farcaster protocol has no delete.
+ */
 import {
   ChannelType,
   type Content,
@@ -429,7 +437,6 @@ export class FarcasterCastService implements CastServiceInterface {
         createdAt: Date.now(),
       };
 
-      // Use the database adapter's createMemory method
       await this.runtime.createMemory(memory, "farcaster_casts");
     } catch (error) {
       this.runtime.logger.error(`Failed to store cast in memory: ${JSON.stringify({ error })}`);

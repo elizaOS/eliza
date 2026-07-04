@@ -1,3 +1,7 @@
+/**
+ * Lists the audit-safe UI targets from the report JSON, for the regression-gate
+ * tooling.
+ */
 import fs from "node:fs";
 import path from "node:path";
 

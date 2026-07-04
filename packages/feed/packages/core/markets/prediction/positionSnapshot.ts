@@ -1,3 +1,10 @@
+/**
+ * Derives the live valuation of a prediction-market position — cost basis, current
+ * probability and unit price, mark-to-market value, and unrealized PnL — from its shares
+ * and the current CPMM pool. For resolved markets the outcome fixes the unit price; for
+ * open markets value is a fee-aware sell preview, with a caller-selectable fallback when
+ * that preview cannot be computed.
+ */
 import { PredictionPricing } from "./pricing";
 
 export interface PredictionPositionSnapshot {

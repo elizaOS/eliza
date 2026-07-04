@@ -21,6 +21,33 @@ describe("extractFirstSentence", () => {
 		expect(r.rest).toBe("He waved.");
 	});
 
+	it("does not split at abbreviations preceded by quotes/parens/asterisks", () => {
+		// Regression from the [\w.]+ tightening: `(?:^|\s)` required start-of-string
+		// or whitespace immediately before the token, so '"Dr' / '(Mr' / '*Dr'
+		// never matched the abbreviation list and the first-sentence / TTS
+		// early-emit path chopped mid-name ('He cited "Dr.'). The old \b regex
+		// handled these.
+		const quoted = extractFirstSentence(
+			'He cited "Dr. Smith" as the source. Next sentence.',
+		);
+		expect(quoted.first).toBe('He cited "Dr. Smith" as the source.');
+		expect(quoted.rest).toBe("Next sentence.");
+
+		const paren = extractFirstSentence("(Mr. Jones agreed. Everyone left.)");
+		expect(paren.first).toBe("(Mr. Jones agreed.");
+		expect(paren.rest).toBe("Everyone left.)");
+
+		const emphasized = extractFirstSentence("*Dr. Smith* arrived. He waved.");
+		expect(emphasized.first).toBe("*Dr. Smith* arrived.");
+		expect(emphasized.rest).toBe("He waved.");
+
+		const quotedDotted = extractFirstSentence(
+			'He said "etc." and moved on. Fine.',
+		);
+		expect(quotedDotted.first).toBe('He said "etc." and moved on.');
+		expect(quotedDotted.rest).toBe("Fine.");
+	});
+
 	it("splits normal sentences at the first real boundary", () => {
 		const r = extractFirstSentence("Hello world. Next one.");
 		expect(r.first).toBe("Hello world.");

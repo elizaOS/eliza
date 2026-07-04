@@ -1,3 +1,7 @@
+/**
+ * Provider that supplies the bug-report draft context to the shell so any
+ * surface can open the report form pre-populated.
+ */
 import type { ReactNode } from "react";
 import {
   BugReportContext,

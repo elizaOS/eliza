@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for the Settings → Capabilities section, toggling the
+ * wallet / browser / computer-use capabilities under a mock App context.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { CapabilitiesSection } from "./CapabilitiesSection";

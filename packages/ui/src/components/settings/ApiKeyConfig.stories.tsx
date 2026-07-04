@@ -1,3 +1,5 @@
+/** Storybook fixtures for `ApiKeyConfig`: configured, needs-setup, saving, saved, and validation-issue states of a provider's API-key form. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { ApiKeyConfig, type ApiKeyConfigProps } from "./ApiKeyConfig";

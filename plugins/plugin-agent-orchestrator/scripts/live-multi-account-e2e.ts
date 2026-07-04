@@ -37,8 +37,7 @@ import { assessCodingAccountReadiness } from "../src/services/coding-account-sel
 // app-core/core graph. They are dynamically imported AFTER the gate so the
 // clean-skip path never loads them — the scheduled lane invokes this with no
 // secrets and must exit 0 without touching the build graph.
-type SaveAccount =
-  typeof import("@elizaos/agent/auth/account-storage").saveAccount;
+type SaveAccount = typeof import("@elizaos/auth/account-storage").saveAccount;
 type GetBridge =
   typeof import("../../../packages/app-core/src/services/coding-account-bridge.ts").getCodingAgentSelectorBridge;
 let saveAccount: SaveAccount;
@@ -182,7 +181,7 @@ async function main(): Promise<void> {
   process.env.ELIZA_CODING_ACCOUNT_STRATEGY ??= "least-used";
 
   // Gate passed and credentials present — now load the runtime graph.
-  ({ saveAccount } = await import("@elizaos/agent/auth/account-storage"));
+  ({ saveAccount } = await import("@elizaos/auth/account-storage"));
   ({ getCodingAgentSelectorBridge } = await import(
     "../../../packages/app-core/src/services/coding-account-bridge.ts"
   ));

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `renderTelegramInteractions`: plain replies pass through with no
+ * keyboard, choice blocks render as callback buttons with the marker stripped,
+ * and task cards link out or stay as text depending on the url resolver.
+ * Deterministic; no live API.
+ */
 import type { Content } from "@elizaos/core";
 import { decodeCallback } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

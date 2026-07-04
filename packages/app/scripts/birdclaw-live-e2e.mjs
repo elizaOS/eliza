@@ -74,7 +74,7 @@ async function drive(label, viewport) {
   // second dev agent on the default port, and the client's fallback would
   // resolve there (CORS-blocked) instead of this stack's API.
   await page.addInitScript((apiBase) => {
-    window.__ELIZA_API_BASE__ = apiBase;
+    window.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase };
   }, API);
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));

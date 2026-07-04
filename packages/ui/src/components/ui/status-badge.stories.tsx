@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the status-badge primitive (semantic status pill).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { StatusBadge } from "./status-badge";
 

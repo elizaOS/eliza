@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Probes the installed Bun binary for native iOS compile-target support.
+ *
+ * The check documents whether upstream Bun can produce `bun-ios-*` standalone
+ * targets yet; strict mode lets CI fail when the fork-only framework path is
+ * still required.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

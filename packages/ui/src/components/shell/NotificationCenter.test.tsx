@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// NotificationCenter list rendering and per-item actions (read / mark-all /
+// remove / clear) over the real notification store. The API client, WS event
+// feed, and desktop/native notification bridges are mocked; store ingestion uses
+// the real reducer via the test-only ingest helper.
 import type { AgentNotification } from "@elizaos/core";
 import {
   cleanup,

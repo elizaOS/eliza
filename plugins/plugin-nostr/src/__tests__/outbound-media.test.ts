@@ -1,11 +1,14 @@
+/**
+ * Verifies the Nostr connector appends agent-generated attachments as inline
+ * URLs in note/DM text rather than dropping them (#8876). Mocked send paths —
+ * runs offline.
+ */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { NostrService } from "../service.js";
 
-// Outbound media coverage for the Nostr connector (#8876). Nostr has no separate
-// attachment field — kind:1 notes and DMs carry media as URLs in the content
-// (clients render them inline). So agent-generated attachments are appended to
-// the text as URLs rather than dropped. Mocked send paths → runs offline.
+// Nostr has no separate attachment field: kind:1 notes and DMs carry media as
+// URLs in the content, which clients render inline — hence the URL-append path.
 
 function runtime(): IAgentRuntime {
   return {

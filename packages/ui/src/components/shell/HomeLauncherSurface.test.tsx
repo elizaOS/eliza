@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// HomeLauncherSurface's Home ↔ Launcher paging: both pages stay mounted, flicks
+// and store navigation flip between them, and the fine-pointer rail edge buttons
+// hide on coarse pointers. Real component in jsdom with matchMedia stubbed to
+// simulate pointer capabilities.
 import {
   act,
   cleanup,
@@ -7,8 +12,8 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
-import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 
 function LauncherProbe() {
   return <div data-testid="launcher-probe">launcher</div>;
@@ -79,7 +84,7 @@ describe("HomeLauncherSurface", () => {
     ).toBe("launcher");
   });
 
-  it("accepts navigation events and a right flick on the launcher half rides the rail home", () => {
+  it("accepts store navigation and a right flick on the launcher half rides the rail home", () => {
     render(
       <HomeLauncherSurface
         home={<div>home</div>}
@@ -87,7 +92,7 @@ describe("HomeLauncherSurface", () => {
       />,
     );
 
-    act(() => dispatchHomeLauncherNavigation("launcher"));
+    act(() => goLauncher());
     expect(
       screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
     ).toBe("launcher");
@@ -127,6 +132,32 @@ describe("HomeLauncherSurface", () => {
     expect(
       screen.getByTestId("home-launcher-surface").getAttribute("data-page"),
     ).toBe("launcher");
+  });
+
+  it("moves focus out of the half that becomes inert on a rail flip (#12179)", () => {
+    act(() => goHome());
+    render(
+      <HomeLauncherSurface
+        home={
+          <button type="button" data-testid="home-focusable">
+            home control
+          </button>
+        }
+        launcher={<LauncherProbe />}
+      />,
+    );
+
+    const control = screen.getByTestId("home-focusable");
+    act(() => control.focus());
+    expect(document.activeElement).toBe(control);
+
+    // Flip to the launcher: the home half becomes `inert`; focus must not linger
+    // inside it (the browser does not auto-blur an inert descendant).
+    act(() => goLauncher());
+    expect(
+      document.activeElement instanceof HTMLElement &&
+        document.activeElement.closest("[inert]"),
+    ).toBeFalsy();
   });
 
   it("hides rail edge buttons when the pointer is coarse", () => {
@@ -199,9 +230,9 @@ describe("HomeLauncherSurface", () => {
     expect(next.getAttribute("aria-label")).toBe("Launcher");
     expect((next as HTMLButtonElement).disabled).toBe(false);
 
-    // Navigate to the launcher via the store event (same intent the shell
-    // dispatches): the button unmounts entirely.
-    act(() => dispatchHomeLauncherNavigation("launcher"));
+    // Navigate to the launcher via the store (the same intent the shell
+    // controller drives): the button unmounts entirely.
+    act(() => goLauncher());
     expect(screen.queryByTestId("rail-pager-edge-next")).toBeNull();
     // The way BACK (left "Home" chevron) is offered instead.
     expect(
@@ -209,7 +240,7 @@ describe("HomeLauncherSurface", () => {
     ).toBe("Home");
 
     // Navigate away again: the Launcher button re-appears.
-    act(() => dispatchHomeLauncherNavigation("home"));
+    act(() => goHome());
     expect(screen.queryByTestId("rail-pager-edge-next")).not.toBeNull();
   });
 

@@ -45,6 +45,7 @@ export const appPhonePlugin: Plugin = {
       tags: ["phone", "calls", "android"],
       visibleInManager: true,
       desktopTabEnabled: true,
+      nativeOs: true,
     },
   ],
   app: {
@@ -54,6 +55,7 @@ export const appPhonePlugin: Plugin = {
         label: "Phone Companion",
         icon: "Smartphone",
         path: "/phone-companion",
+        tabAffinity: "phone-companion",
         componentExport: "@elizaos/plugin-phone#PhoneCompanionApp",
       },
     ],

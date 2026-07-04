@@ -1,3 +1,4 @@
+/** Test helper: builds a lightweight mock `ChildProcess` that emits a scripted error or close event, so consumer tests can drive process-spawn code without spawning real processes. */
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 

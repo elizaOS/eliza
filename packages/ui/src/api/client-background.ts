@@ -1,3 +1,8 @@
+/**
+ * ElizaClient extension for background-image generation: the server runs the
+ * agent's image provider, persists to the content-addressed media store, and
+ * returns a durable /api/media/<hash> URL.
+ */
 import { ElizaClient } from "./client-base";
 
 // ---------------------------------------------------------------------------

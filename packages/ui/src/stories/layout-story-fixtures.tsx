@@ -1,3 +1,6 @@
+/**
+ * Reusable layout fixture components (page panel + sidebar parts) shared by layout stories.
+ */
 import type { ReactNode } from "react";
 import { PagePanel } from "../components/composites/page-panel";
 import { SidebarContent } from "../components/composites/sidebar/sidebar-content";

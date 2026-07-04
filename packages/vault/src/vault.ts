@@ -1,3 +1,10 @@
+/**
+ * Vault factory wired to the default PGlite storage engine and master key.
+ *
+ * Resolves the elizaOS state directory, audit log path, legacy JSON store, and
+ * default master-key resolver before constructing the vault implementation.
+ */
+
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { defaultMasterKey } from "./master-key.js";

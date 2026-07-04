@@ -1,3 +1,8 @@
+/**
+ * Covers `FarcasterWorkflowCredentialProvider.resolve`/`checkCredentialTypes`:
+ * trimmed Neynar-key delivery for `httpHeaderAuth` and rejection of unsupported
+ * credential types, with a fake runtime (no network).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FarcasterWorkflowCredentialProvider } from "../workflow-credential-provider";

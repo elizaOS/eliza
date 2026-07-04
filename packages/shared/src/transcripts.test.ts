@@ -139,9 +139,67 @@ describe("summarizeTranscript", () => {
       durationMs: 2600,
       speakerCount: 2,
       status: "ready",
+      source: "voice-session",
       preview: "hello there hi bye",
       hasAudio: true,
     });
+  });
+
+  it("projects meeting fields (platform + participantCount) for a meeting row", () => {
+    // The exact metadata shape the meetings writer persists
+    // (plugin-meetings meeting-transcript-writer): { platform, participants }.
+    const meeting: Transcript = {
+      id: "m1",
+      title: "Design sync",
+      createdAt: 2000,
+      durationMs: 2600,
+      segments: segs,
+      source: "meeting",
+      scope: "owner-private",
+      status: "recording",
+      speakerCount: 2,
+      metadata: {
+        platform: "google_meet",
+        meetingUrl: "https://meet.google.com/abc-defg-hij",
+        participants: [
+          { id: "p1", displayName: "Alice" },
+          { id: "p2", displayName: "Bob" },
+          { id: "p3", displayName: "Carol" },
+        ],
+      },
+    };
+    const summary = summarizeTranscript(meeting);
+    expect(summary.source).toBe("meeting");
+    expect(summary.meeting).toEqual({
+      platform: "google_meet",
+      participantCount: 3,
+    });
+  });
+
+  it("omits meeting fields and counts zero roster safely for non-meeting/empty metadata", () => {
+    const t: Transcript = {
+      id: "t2",
+      title: "Note",
+      createdAt: 3000,
+      durationMs: 0,
+      segments: [],
+      source: "import",
+      scope: "owner-private",
+      status: "ready",
+      speakerCount: 0,
+    };
+    const summary = summarizeTranscript(t);
+    expect(summary.source).toBe("import");
+    expect(summary.meeting).toBeUndefined();
+
+    // A meeting row with no participants array yields count 0, no crash.
+    const bare: Transcript = {
+      ...t,
+      id: "t3",
+      source: "meeting",
+      metadata: {},
+    };
+    expect(summarizeTranscript(bare).meeting).toEqual({ participantCount: 0 });
   });
 });
 

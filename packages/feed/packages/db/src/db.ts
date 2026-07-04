@@ -664,6 +664,16 @@ const WRITE_METHODS = new Set([
 ]);
 
 /**
+ * A per-table accessor is a Proxy built over an empty target, so it is
+ * structurally opaque to TypeScript even though it behaves as a
+ * `DrizzleClient` table client at runtime. Centralize the unavoidable cast here
+ * so it lives in exactly one place rather than at each proxy construction site.
+ */
+function asTableClient(proxy: object): DrizzleClient[keyof DrizzleClient] {
+  return proxy as unknown as DrizzleClient[keyof DrizzleClient];
+}
+
+/**
  * Create a lazy proxy that switches between PostgreSQL and JSON mode,
  * and automatically routes reads to replica when available.
  */
@@ -734,7 +744,8 @@ function createModeAwareDbProxy(): DrizzleClient {
         }
         const boundMethodCache = boundMethodCachePerTable.get(prop)!;
 
-        const tableProxy = new Proxy({} as Record<string, never>, {
+        const tableProxy = asTableClient(
+          new Proxy({} as Record<string, never>, {
           get(_tableTarget, method: string | symbol) {
             const methodStr = String(method);
 
@@ -806,7 +817,8 @@ function createModeAwareDbProxy(): DrizzleClient {
 
             return tableRepo;
           },
-        }) as unknown as DrizzleClient[keyof DrizzleClient];
+          }),
+        );
 
         if (tableProxyCache.size >= TABLE_PROXY_CACHE_MAX) {
           const firstKey = tableProxyCache.keys().next().value;
@@ -920,7 +932,8 @@ function createReplicaDbProxy(): DrizzleClient {
         !isWriteMethod &&
         !isClientControlMethod
       ) {
-        return new Proxy({} as Record<string, never>, {
+        return asTableClient(
+          new Proxy({} as Record<string, never>, {
           get(_tableTarget, method: string | symbol) {
             const tableRepo =
               getReadReplicaDbClient()?.[prop as keyof DrizzleClient];
@@ -937,7 +950,8 @@ function createReplicaDbProxy(): DrizzleClient {
               "Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
             );
           },
-        }) as unknown as DrizzleClient[keyof DrizzleClient];
+          }),
+        );
       }
 
       const replicaClient = getReadReplicaDbClient();

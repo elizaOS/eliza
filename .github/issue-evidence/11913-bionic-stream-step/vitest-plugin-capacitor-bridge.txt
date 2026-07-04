@@ -1,0 +1,10 @@
+$ vitest run --config vitest.config.ts
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/11913-bionic-maxtokens/plugins/plugin-capacitor-bridge
+
+
+ Test Files  9 passed (9)
+      Tests  53 passed (53)
+   Start at  08:07:12
+   Duration  16.50s (transform 5.66s, setup 0ms, import 3.13s, tests 11.74s, environment 1ms)
+

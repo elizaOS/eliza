@@ -1,3 +1,7 @@
+/**
+ * Audit dispatcher for validating privileged-action events and fanning them out to sinks.
+ */
+
 import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {

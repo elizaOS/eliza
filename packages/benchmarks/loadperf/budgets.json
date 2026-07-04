@@ -4,7 +4,7 @@
     "initialEntryBrotliBytes": 3260000,
     "totalAssetsBrotliBytes": 6000000,
     "largestChunkBrotliBytes": 1600000,
-    "maxDuplicateLibBytes": 350000,
+    "maxDuplicateLibBytes": 25000,
     "perChunkWarnBrotliBytes": 600000,
     "eagerGraphBrotliBytes": 3330000
   },

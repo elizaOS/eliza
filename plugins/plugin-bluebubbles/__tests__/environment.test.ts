@@ -1,3 +1,8 @@
+/**
+ * Covers config parsing (`getConfigFromRuntime`), multi-account resolution, and
+ * handle allowlist policy (`isHandleAllowed`) against hand-built runtime
+ * settings — deterministic, no live server.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

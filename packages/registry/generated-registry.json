@@ -748,6 +748,55 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-true402": {
+      "git": {
+        "repo": "true402/elizaos-plugin-true402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-true402",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pre-trade rug/honeypot guard for Base tokens — real buy/sell simulation plus liquidity and ownership checks, pay-per-call over x402 (USDC on Base). No accounts, no API keys; free daily trial.",
+      "homepage": "https://true402.dev",
+      "topics": [
+        "x402",
+        "base",
+        "usdc",
+        "token-safety",
+        "rug-check",
+        "honeypot",
+        "defi",
+        "micropayments",
+        "trading"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-agentscoin": {
       "git": {
         "repo": "axiosdevs/plugin-agentscoin",

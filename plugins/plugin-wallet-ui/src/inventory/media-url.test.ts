@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `normalizeInventoryImageUrl`: gateway rewriting for
+ * ipfs/ipns/arweave URIs, rejection of `javascript:`/executable `data:` URIs,
+ * and pass-through of safe raster `data:image` URLs. Pure function, no
+ * network or DOM.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeInventoryImageUrl } from "./media-url.ts";
 

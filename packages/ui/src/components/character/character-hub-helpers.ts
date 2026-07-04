@@ -1,3 +1,10 @@
+/**
+ * Section metadata and record-shaping helpers for the character hub: the
+ * ordered section list + labels, and the mappers that turn API records
+ * (history, experiences, relationship activity, documents) into the view-model
+ * shapes the hub components render (timeline items, overview widgets, activity
+ * items). Pure, no React — the hub view calls these on fetched data.
+ */
 import type {
   CharacterHistoryEntry,
   DocumentRecord,

@@ -1,3 +1,4 @@
+/** Barrel for the chat composite parts (bubble, transcript, composer, sidebar rows, permission card). */
 export * from "./ChatEmptyStateWithRecommendations";
 export * from "./chat-attachment-strip";
 export * from "./chat-bubble";

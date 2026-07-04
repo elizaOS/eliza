@@ -1,3 +1,7 @@
+/**
+ * Local desktop KMS adapter that derives persistent symmetric keys from a caller-provided root key.
+ */
+
 import {
   createHmac,
   createPrivateKey,

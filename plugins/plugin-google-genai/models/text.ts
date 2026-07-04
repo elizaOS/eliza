@@ -1,7 +1,28 @@
+/**
+ * Text-generation handlers backing every text `ModelType` tier
+ * (nano/small/medium/large/mega, response-handler, action-planner). Each
+ * handler resolves its concrete Gemini model name via `../utils/config`, builds
+ * a `generateContent` request, and runs it through `recordLlmCall` so the call
+ * lands in the trajectory log before returning.
+ *
+ * This module owns the translation between elizaOS's generic call shape and
+ * Google's native `@google/genai` protocol: `normalizeToolsForGoogle` /
+ * `normalizeToolConfigForGoogle` convert generic or native tool definitions to
+ * `functionDeclarations` + `functionCallingConfig`, `resolveResponseJsonSchema`
+ * routes structured-output schemas into `responseJsonSchema`, and
+ * `buildPromptParts` inlines attachments (data URLs, remote URIs, raw bytes).
+ * On the way back, `buildGoogleNativeTextResult` folds text, tool calls, finish
+ * reason, and token usage into a single object that is returned as a
+ * string-with-attached-fields (`GoogleTextModelResult`) whenever the caller
+ * passed messages/tools/toolChoice/responseSchema, else as plain text.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,
+  JsonValue,
   RecordLlmCallDetails,
+  TokenUsage,
+  ToolCall,
 } from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
@@ -53,6 +74,48 @@ type GoogleFunctionDeclaration = {
 type GoogleToolDeclaration = {
   functionDeclarations?: GoogleFunctionDeclaration[];
 };
+
+type GoogleFunctionCall = {
+  id?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+};
+
+type GoogleContentPart = {
+  text?: string;
+  thought?: boolean;
+  functionCall?: GoogleFunctionCall;
+};
+
+type GoogleGenerateContentResponse = {
+  text?: string;
+  functionCalls?: GoogleFunctionCall[];
+  candidates?: Array<{
+    content?: {
+      parts?: GoogleContentPart[];
+    };
+    finishReason?: string;
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+    cachedContentTokenCount?: number;
+  };
+  modelVersion?: string;
+  responseId?: string;
+  createTime?: string;
+};
+
+type GoogleNativeTextResult = {
+  text: string;
+  toolCalls: ToolCall[];
+  finishReason?: string;
+  usage: TokenUsage;
+  providerMetadata: Record<string, JsonValue | object | undefined>;
+};
+
+type GoogleTextModelResult = string & GoogleNativeTextResult;
 
 type GenericToolDescriptor = {
   name?: string;
@@ -289,6 +352,181 @@ function getModelNameForType(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function toJsonValue(value: unknown): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => toJsonValue(entry));
+  }
+  if (isRecord(value)) {
+    const record: Record<string, JsonValue> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry !== undefined) {
+        record[key] = toJsonValue(entry);
+      }
+    }
+    return record;
+  }
+  return String(value);
+}
+
+function toToolArguments(value: unknown): Record<string, JsonValue> {
+  if (!isRecord(value)) {
+    return {};
+  }
+  const jsonValue = toJsonValue(value);
+  return isRecord(jsonValue) ? (jsonValue as Record<string, JsonValue>) : {};
+}
+
+function readGoogleText(response: GoogleGenerateContentResponse): string {
+  if (typeof response.text === "string") {
+    return response.text;
+  }
+  return (
+    response.candidates?.[0]?.content?.parts
+      ?.filter((part) => !part.thought && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("") ?? ""
+  );
+}
+
+function readGoogleFunctionCalls(
+  response: GoogleGenerateContentResponse,
+): GoogleFunctionCall[] {
+  if (
+    Array.isArray(response.functionCalls) &&
+    response.functionCalls.length > 0
+  ) {
+    return response.functionCalls;
+  }
+  const calls: GoogleFunctionCall[] = [];
+  for (const candidate of response.candidates ?? []) {
+    for (const part of candidate.content?.parts ?? []) {
+      if (part.functionCall) {
+        calls.push(part.functionCall);
+      }
+    }
+  }
+  return calls;
+}
+
+function normalizeGoogleToolCalls(
+  response: GoogleGenerateContentResponse,
+): ToolCall[] {
+  return readGoogleFunctionCalls(response)
+    .map((call, index): ToolCall | undefined => {
+      const name = typeof call.name === "string" ? call.name : "";
+      if (!name) {
+        return undefined;
+      }
+      const id =
+        typeof call.id === "string" && call.id.length > 0
+          ? call.id
+          : `google-genai-tool-call-${index + 1}`;
+      const args = toToolArguments(call.args);
+      return {
+        id,
+        name,
+        arguments: args,
+        toolName: name,
+        toolCallId: id,
+        type: "function",
+        args,
+        input: args,
+      };
+    })
+    .filter((call): call is ToolCall => Boolean(call));
+}
+
+function normalizeGoogleFinishReason(
+  response: GoogleGenerateContentResponse,
+  toolCalls: ToolCall[],
+): string | undefined {
+  if (toolCalls.length > 0) {
+    return "tool-calls";
+  }
+  return response.candidates?.find((candidate) => candidate.finishReason)
+    ?.finishReason;
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+async function normalizeGoogleUsage(
+  response: GoogleGenerateContentResponse,
+  prompt: string,
+  text: string,
+): Promise<TokenUsage> {
+  const metadata = response.usageMetadata;
+  const promptTokens =
+    firstNumber(metadata?.promptTokenCount) ?? (await countTokens(prompt));
+  const completionTokens =
+    firstNumber(metadata?.candidatesTokenCount) ?? (await countTokens(text));
+  const totalTokens =
+    firstNumber(metadata?.totalTokenCount) ?? promptTokens + completionTokens;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cacheReadInputTokens: firstNumber(metadata?.cachedContentTokenCount),
+  };
+}
+
+async function buildGoogleNativeTextResult(
+  response: GoogleGenerateContentResponse,
+  prompt: string,
+  modelName: string,
+): Promise<GoogleNativeTextResult> {
+  const text = readGoogleText(response);
+  const toolCalls = normalizeGoogleToolCalls(response);
+  const usage = await normalizeGoogleUsage(response, prompt, text);
+
+  return {
+    text,
+    toolCalls,
+    finishReason: normalizeGoogleFinishReason(response, toolCalls),
+    usage,
+    providerMetadata: {
+      provider: "google-genai",
+      modelName,
+      modelVersion: response.modelVersion,
+      responseId: response.responseId,
+      createTime: response.createTime,
+      usageMetadata: response.usageMetadata,
+    },
+  };
+}
+
+function usesNativeTextResult(
+  params: GenerateTextParamsWithAttachments,
+): boolean {
+  return Boolean(
+    params.messages ||
+      params.tools ||
+      params.toolChoice ||
+      params.responseSchema,
+  );
+}
+
 function buildGoogleGenerationConfig(
   params: GenerateTextParamsWithAttachments,
   systemInstruction: string | undefined,
@@ -353,6 +591,7 @@ async function generateContentWithTrajectory(
   maxTokens: number | undefined,
   maxTokensOmitted: boolean | undefined,
   request: GenerateContentParams,
+  shouldReturnNativeResult: boolean,
 ): Promise<string> {
   const details = createLlmCallDetails(
     modelName,
@@ -364,26 +603,31 @@ async function generateContentWithTrajectory(
     maxTokensOmitted,
   );
   const response = await recordLlmCall(runtime, details, async () => {
-    const result = await genAI.models.generateContent(request);
-    const text = result.text || "";
-    details.response = text;
-    details.promptTokens = await countTokens(prompt);
-    details.completionTokens = await countTokens(text);
-    return result;
+    const result = (await genAI.models.generateContent(
+      request,
+    )) as GoogleGenerateContentResponse;
+    const normalized = await buildGoogleNativeTextResult(
+      result,
+      prompt,
+      modelName,
+    );
+    details.response = normalized.text;
+    details.toolCalls = normalized.toolCalls;
+    details.finishReason = normalized.finishReason;
+    details.providerMetadata = normalized.providerMetadata;
+    details.promptTokens = normalized.usage.promptTokens;
+    details.completionTokens = normalized.usage.completionTokens;
+    details.cacheReadInputTokens = normalized.usage.cacheReadInputTokens;
+    return normalized;
   });
 
-  const text = response.text || "";
-  const promptTokens = details.promptTokens ?? (await countTokens(prompt));
-  const completionTokens =
-    details.completionTokens ?? (await countTokens(text));
+  emitModelUsageEvent(runtime, modelType, prompt, response.usage);
 
-  emitModelUsageEvent(runtime, modelType, prompt, {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  });
+  if (shouldReturnNativeResult) {
+    return response as GoogleTextModelResult;
+  }
 
-  return text;
+  return response.text;
 }
 
 export async function handleTextSmall(
@@ -435,6 +679,7 @@ export async function handleTextSmall(
           stopSequences,
         ),
       },
+      usesNativeTextResult(params),
     );
   } catch (error) {
     logger.error(
@@ -493,6 +738,7 @@ export async function handleTextLarge(
           stopSequences,
         ),
       },
+      usesNativeTextResult(params),
     );
   } catch (error) {
     logger.error(
@@ -587,6 +833,7 @@ async function handleTextWithType(
           stopSequences,
         ),
       },
+      usesNativeTextResult(params),
     );
   } catch (error) {
     logger.error(

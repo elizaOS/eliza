@@ -1,3 +1,12 @@
+/**
+ * LLM-backed goal progress review (`evaluateGoalProgressWithLlm`): prompts a
+ * model to judge a goal's review state and emit semantic suggestions, then
+ * validates the output against the allowed review-state / suggestion-kind sets
+ * before shaping it into the metadata from `goal-grounding.ts`.
+ *
+ * PA re-exports this for back-compat. Model output is untrusted — unknown enum
+ * values are rejected rather than passed through.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,

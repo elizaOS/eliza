@@ -1,3 +1,18 @@
+/**
+ * Cmd/Ctrl+K command palette for the app shell: a search-as-you-type dialog
+ * that lists agent lifecycle actions (start/stop/restart), a clear-chat entry,
+ * a bug report, and a nav entry for every registered, user-visible GUI view —
+ * so it doubles as a complete cross-plugin launcher. Command construction lives
+ * in `buildCommands` (../../chat); this component owns the dialog, the query
+ * filter, keyboard navigation, and dispatch.
+ *
+ * The palette opens on the COMMAND_PALETTE_EVENT (desktop shortcut) or a
+ * Ctrl/Meta+K keydown in the browser; view switches route through the shared
+ * `eliza:navigate:view` dispatcher and report VIEW_SWITCHED so the proactive
+ * decider sees the same signal a manual nav produces. Visible-view gating
+ * mirrors the view catalog, so hidden developer/preview views never leak.
+ */
+
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -16,7 +31,7 @@ import {
   reportShortcutFired,
   reportUserViewSwitch,
 } from "../../chat/useSlashCommandController";
-import { COMMAND_PALETTE_EVENT } from "../../events";
+import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../../events";
 import { useBugReport } from "../../hooks";
 import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
@@ -114,11 +129,7 @@ export function CommandPalette() {
   // desktop tab, and always dispatch so path-less views still route via the
   // consumer's `/apps/<viewId>` fallback.
   const navigateView = useCallback((viewId: string, path?: string) => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId, viewPath: path },
-      }),
-    );
+    dispatchNavigateViewEvent({ viewId, viewPath: path });
     reportUserViewSwitch(viewId, path);
   }, []);
 

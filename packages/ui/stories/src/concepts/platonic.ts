@@ -1,10 +1,12 @@
-// Morphing platonic solids — sacred geometry transmutation.
-//
-// Five platonic solids (tetra → cube → octa → dodeca → icosa) each rendered as
-// a faint crystal-glass body + crisp glowing edge lines. One solid is visible at
-// a time; every few seconds they cross-fade: the outgoing solid scales/fades to 0
-// while the incoming scales/fades from 0. The whole form slow-rotates, quickening
-// on energy. On respond the transition snaps and edges flare brighter.
+/**
+ * Morphing platonic solids — sacred geometry transmutation.
+ *
+ * Five platonic solids (tetra → cube → octa → dodeca → icosa) each rendered as
+ * a faint crystal-glass body + crisp glowing edge lines. One solid is visible at
+ * a time; every few seconds they cross-fade: the outgoing solid scales/fades to 0
+ * while the incoming scales/fades from 0. The whole form slow-rotates, quickening
+ * on energy. On respond the transition snaps and edges flare brighter.
+ */
 
 import type {
   ConceptDescriptor,

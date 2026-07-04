@@ -21,7 +21,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { hasAdminAccess } from "../security/access.ts";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
 
@@ -327,7 +326,9 @@ export function createDynamicSkillProvider(): Provider {
     contextGate: { anyOf: ["general", "agent_internal"] },
     cacheStable: false,
     cacheScope: "turn",
-    roleGate: { minRole: "USER" },
+    // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
+    // Declared roleGate is now enforced by applyPluginRoleGating.
+    roleGate: { minRole: "ADMIN" },
 
     async get(
       runtime: IAgentRuntime,
@@ -335,10 +336,6 @@ export function createDynamicSkillProvider(): Provider {
       state: State,
     ): Promise<ProviderResult> {
       try {
-        if (!(await hasAdminAccess(runtime, message))) {
-          return { text: "", values: {}, data: {} };
-        }
-
         const service = runtime.getService<Service & AgentSkillsServiceLike>(
           "AGENT_SKILLS_SERVICE",
         );

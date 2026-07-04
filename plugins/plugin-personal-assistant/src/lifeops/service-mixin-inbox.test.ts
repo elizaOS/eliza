@@ -41,6 +41,7 @@ describe("LifeOps inbox phone account filtering", () => {
       {
         limit: request.limit,
         allowed: request.allowed,
+        sources: [{ source: "chat", state: "ok", degradations: [] }],
         phoneAccountIds: request.phoneAccountIds,
       },
     );

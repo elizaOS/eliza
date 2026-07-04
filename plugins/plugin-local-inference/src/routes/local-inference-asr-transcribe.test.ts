@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `transcribeWavWithWords`: the fused-engine timed path vs the
+ * `useModel` provider-chain fallback and its missing-provider skip logic. The
+ * engine is mocked; no GGUF/FFI runs.
+ */
+
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { localInferenceEngine } from "../services/engine";

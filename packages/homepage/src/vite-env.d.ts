@@ -1,3 +1,6 @@
+/**
+ * Vite environment declarations for homepage browser configuration.
+ */
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {

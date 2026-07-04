@@ -1,3 +1,11 @@
+/**
+ * Runtime inspector page: fetches a deep snapshot of the live AgentRuntime
+ * (services, actions, providers, evaluators, plugins, and their registration
+ * order) and renders it as a sidebar-navigated, expandable object tree. Depth
+ * and array/object caps are user-adjustable and encoded into the cache key so
+ * distinct fetch parameters revalidate independently instead of colliding.
+ */
+
 import {
   type ReactNode,
   useCallback,

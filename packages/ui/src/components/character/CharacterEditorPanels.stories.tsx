@@ -1,3 +1,4 @@
+/** Storybook stories for the character editor's identity/style/examples panels. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { CharacterData } from "../../api/client-types-config";
 import {

@@ -1,3 +1,8 @@
+/**
+ * Resolves the app-update policy for the current platform + distribution channel
+ * (desktop-direct/store, iOS/Android store, web): who has update authority and
+ * what actions the UI may offer.
+ */
 import { Capacitor } from "@capacitor/core";
 import type { AgentUpdateAuthority, AgentUpdateStatus } from "@elizaos/shared";
 import { type BuildVariant, getBuildVariant } from "../../build-variant";

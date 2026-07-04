@@ -78,6 +78,15 @@ export interface DesktopShellWindowPresentation {
   transparent: boolean;
 }
 
+/**
+ * Resolve the window presentation for the current shell mode.
+ *
+ * Transparency is scoped to the chromeless bottom-bar pill on macOS only. The
+ * full dashboard ("default") window and kiosk stay opaque: a transparent window
+ * over dark web content reads as a full-window frosted sheet (the pill is the
+ * only surface that should show the desktop through it). Win/Linux transparency
+ * support varies, so the pill also stays opaque there for now (fork gap G4).
+ */
 export function resolveDesktopShellWindowPresentation(
   env: Record<string, string | undefined> = process.env,
   argv: readonly string[] = process.argv,
@@ -93,7 +102,7 @@ export function resolveDesktopShellWindowPresentation(
         : platform === "darwin"
           ? "hiddenInset"
           : "default",
-    transparent: !kiosk && platform === "darwin",
+    transparent: bottomBar && platform === "darwin",
   };
 }
 
@@ -120,4 +129,24 @@ export function computeBottomBarFrame(
   const y =
     Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
   return { x, y, width, height };
+}
+
+/**
+ * Whether the bottom bar must be re-anchored because the primary display's
+ * usable work area moved or resized (a display was plugged/unplugged, the dock
+ * or menu bar changed size, or the resolution changed). The bar frame is
+ * derived entirely from the work area, so any change to it strands the bar off
+ * the new bottom edge until we recompute + `setFrame`. Pure so the poll +
+ * `showWindow()` re-anchor decision is unit-testable.
+ */
+export function shouldReanchorBottomBar(
+  prevWorkArea: ScreenWorkArea,
+  nextWorkArea: ScreenWorkArea,
+): boolean {
+  return (
+    prevWorkArea.x !== nextWorkArea.x ||
+    prevWorkArea.y !== nextWorkArea.y ||
+    prevWorkArea.width !== nextWorkArea.width ||
+    prevWorkArea.height !== nextWorkArea.height
+  );
 }

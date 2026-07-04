@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders the settings-layout primitives (SettingsRow/Group/Stack) and the
+ * agent-addressable rows (SettingsSelectRow/SettingsSwitchRow) to assert label
+ * + inline-control structure and agent-surface wiring. jsdom, no backend.
+ */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Bell } from "lucide-react";

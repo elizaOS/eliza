@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the `shouldEnable` opt-in predicate: only CLAUDE_MAX_PROXY_MODE
+ * `inline`/`shared` enable the plugin; `off`/unset/unknown do not, with
+ * case-folding and whitespace trimming. Pure logic, no network.
+ */
+
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable";
 

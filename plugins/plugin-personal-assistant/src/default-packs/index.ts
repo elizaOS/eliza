@@ -97,6 +97,19 @@ import {
   morningBriefPack,
 } from "./morning-brief.js";
 import {
+  ADHD_BODY_DOUBLE_PACK_KEY,
+  ADHD_BODY_DOUBLE_RECORD_IDS,
+  adhdBodyDoublePack,
+  LOW_ENERGY_SUPPORT_PACK_KEY,
+  LOW_ENERGY_SUPPORT_RECORD_IDS,
+  lowEnergySupportPack,
+  OBJECT_PERMANENCE_WATCHER_PACK_KEY,
+  OBJECT_PERMANENCE_WATCHER_RECORD_IDS,
+  objectPermanenceWatcherPack,
+  PERSONA_PACKS,
+  SOFT_LOW_ENERGY_ESCALATION_STEPS,
+} from "./persona-packs.js";
+import {
   deriveQuietObservations,
   QUIET_THRESHOLD_DAYS,
   QUIET_USER_WATCHER_PACK_KEY,
@@ -128,6 +141,8 @@ export const DEFAULT_PACKS: ReadonlyArray<DefaultPack> = [
   inboxTriageStarterPack,
   habitStartersPack,
   executiveAssistantPack,
+  // Persona packs (issue #12186): offered at customize, not auto-seeded.
+  ...PERSONA_PACKS,
   // Health ships the byte-identical DefaultPack shape but types
   // requiredCapabilities as optional; normalize to PA's required form at the
   // registry boundary (the packs always provide it).
@@ -185,6 +200,9 @@ export type {
   QuietUserWatcherObservation,
 };
 export {
+  ADHD_BODY_DOUBLE_PACK_KEY,
+  ADHD_BODY_DOUBLE_RECORD_IDS,
+  adhdBodyDoublePack,
   assembleMorningBrief,
   buildFollowupTaskForRelationship,
   buildMorningBriefPromptFromReport,
@@ -216,16 +234,24 @@ export {
   INBOX_TRIAGE_STARTER_PACK_KEY,
   inboxTriageStarterPack,
   isInboxTriageEligible,
+  LOW_ENERGY_SUPPORT_PACK_KEY,
+  LOW_ENERGY_SUPPORT_RECORD_IDS,
   lintPack,
   lintPacks,
   lintPromptText,
+  lowEnergySupportPack,
   MORNING_BRIEF_PACK_KEY,
   MORNING_BRIEF_RECORD_IDS,
   morningBriefPack,
+  OBJECT_PERMANENCE_WATCHER_PACK_KEY,
+  OBJECT_PERMANENCE_WATCHER_RECORD_IDS,
+  objectPermanenceWatcherPack,
+  PERSONA_PACKS,
   QUIET_THRESHOLD_DAYS,
   QUIET_USER_WATCHER_PACK_KEY,
   QUIET_USER_WATCHER_RECORD_IDS,
   quietUserWatcherPack,
   runQuietUserWatcher,
+  SOFT_LOW_ENERGY_ESCALATION_STEPS,
   validateTaskDefinition,
 };

@@ -1,3 +1,10 @@
+/**
+ * `AerodromeLpService` implements `IEvmLpService` for Aerodrome, the ve(3,3)
+ * DEX on Base (chain 8453 only): pool lookup/reads via the factory and pool
+ * contracts, and add/remove-liquidity writes through the Aerodrome router
+ * with ERC-20 approval handled inline. `getAllPositions` is not implemented
+ * (would need pool tracking or an indexer) and always returns an empty list.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,
@@ -518,9 +525,8 @@ export class AerodromeLpService extends Service implements IEvmLpService {
   async getAllPositions(chainId: number, _owner: Address): Promise<EvmPositionDetails[]> {
     if (!this.supportsChain(chainId)) return [];
 
-    // For Aerodrome, we would need to iterate through known pools
-    // This is a simplified implementation - in production, you'd want to
-    // track pools the user has interacted with or use an indexer
+    // Not implemented: would require tracking pools the user has interacted
+    // with, or an indexer, since Aerodrome has no on-chain "positions by owner" query.
     logger.info(`[AerodromeLpService] getAllPositions not fully implemented - need pool tracking`);
     return [];
   }

@@ -18,6 +18,7 @@
  *   - The trajectory recorder already uses the same pattern; this matches.
  */
 
+import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";
 import { StackContextManager } from "../utils/stack-context-manager";
 
@@ -37,9 +38,6 @@ interface IActionRoutingContextManager {
 }
 
 const MANAGER_KEY = Symbol.for("elizaos.actionRoutingContextManager");
-type GlobalWithManager = typeof globalThis & {
-	[MANAGER_KEY]?: IActionRoutingContextManager;
-};
 
 function isNodeEnvironment(): boolean {
 	return (
@@ -74,19 +72,10 @@ function initManagerSync(): IActionRoutingContextManager {
 	return new StackContextManager<ActionRoutingContext | undefined>();
 }
 
-let globalManager: IActionRoutingContextManager | null = null;
-
 function getOrCreate(): IActionRoutingContextManager {
-	if (!globalManager) {
-		const existing = (globalThis as GlobalWithManager)[MANAGER_KEY];
-		if (existing) {
-			globalManager = existing;
-		} else {
-			globalManager = initManagerSync();
-			(globalThis as GlobalWithManager)[MANAGER_KEY] = globalManager;
-		}
-	}
-	return globalManager;
+	// Shared global slot is the single source of truth (no module-local cache),
+	// matching the trajectory context manager — see ambient-context.ts.
+	return getAmbientSingleton(MANAGER_KEY, initManagerSync);
 }
 
 export function runWithActionRoutingContext<T>(
@@ -118,6 +107,5 @@ export function runWithoutActionRoutingContext<T>(
 export function setActionRoutingContextManager(
 	manager: IActionRoutingContextManager,
 ): void {
-	globalManager = manager;
-	(globalThis as GlobalWithManager)[MANAGER_KEY] = manager;
+	setAmbientSingleton(MANAGER_KEY, manager);
 }

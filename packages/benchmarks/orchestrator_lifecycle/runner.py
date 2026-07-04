@@ -5,7 +5,7 @@ behavior across multi-turn lifecycle scenarios (clarification, status,
 scope changes, pause/resume/cancel, summaries). Two execution modes:
 
   - **bridge** (default): each scenario turn is forwarded to the TS
-    bench server (`packages/app-core/src/benchmark/server.ts`) via
+    bench server (`packages/lifeops-bench/src/server.ts`) via
     `ElizaClient.send_message`. The bench server boots a real
     `AgentRuntime` with all CORE_PLUGINS registered, so the agent's
     real planner, action registry, and tool dispatch are what

@@ -1,3 +1,12 @@
+/**
+ * Pure resolvers for embedding a running app's viewer in an iframe: turns a
+ * viewer URL into an absolute origin, derives the postMessage target origin and
+ * `*_READY` handshake event type from the auth message, builds a per-run viewer
+ * session key, and decides whether a run should use the embedded viewer path.
+ * Shared by `EmbeddedAppViewer`, `GameViewOverlay`, and `FullscreenView` so the
+ * origin-pinning rules that keep the auth token from leaking are defined once.
+ */
+
 import type {
   AppRunSummary,
   AppViewerAuthMessage,

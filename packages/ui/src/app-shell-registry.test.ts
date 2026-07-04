@@ -1,12 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+/**
+ * Unit coverage for the app-shell page registry (register/list/snapshot). In-
+ * memory registry, no runtime.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
   registerAppShellPage,
   subscribeAppShellPages,
 } from "./app-shell-registry";
+import { resetUiRegistryHostForTests } from "./registry-host";
 
 describe("app-shell-registry", () => {
+  beforeEach(() => {
+    resetUiRegistryHostForTests();
+  });
+
   it("stores metadata-only lazy registrations and notifies subscribers", () => {
     const listener = vi.fn();
     const unsubscribe = subscribeAppShellPages(listener);

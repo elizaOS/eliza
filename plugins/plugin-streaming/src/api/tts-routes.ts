@@ -1,3 +1,12 @@
+/**
+ * TTS configuration and preview routes for the streaming dashboard.
+ *
+ * `handleTtsRoutes` serves `/api/tts/config` (provider status snapshot),
+ * `/api/tts/elevenlabs` (ElevenLabs voice preview), and
+ * `/api/tts/local-inference` (on-device TTS via the runtime's
+ * `TEXT_TO_SPEECH` model). Wired into the HTTP server by the consuming
+ * runtime; not registered in `Plugin.routes`.
+ */
 import type http from "node:http";
 import {
   type IAgentRuntime,

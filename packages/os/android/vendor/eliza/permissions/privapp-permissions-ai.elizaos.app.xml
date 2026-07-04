@@ -41,5 +41,17 @@
           Settings.canDrawOverlays + ACTION_MANAGE_OVERLAY_PERMISSION.
         -->
         <permission name="android.permission.SYSTEM_ALERT_WINDOW" />
+        <!--
+          Intentionally NOT listed here: BIND_VOICE_INTERACTION and
+          BIND_INPUT_METHOD. Those signature permissions are declared as the
+          android:permission guard on ElizaVoiceInteractionService /
+          ElizaVoiceInputMethodService so that only the framework (which holds
+          them) may bind to those services — the Eliza app itself never holds
+          them. Adding them here would make PackageManager try to grant an
+          app-side permission it must not have and trip the priv-app boot check.
+          The digital-assistant role comes from config_defaultAssistant /
+          ROLE_ASSISTANT (see overlays/.../config.xml + the manifest roleDefaults),
+          not from a privileged manifest permission.
+        -->
     </privapp-permissions>
 </permissions>

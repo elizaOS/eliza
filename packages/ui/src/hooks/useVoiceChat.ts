@@ -98,6 +98,7 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
   type VoiceTranscriptPreviewEvent,
+  type VoiceTtsError,
   type VoiceTurn,
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
@@ -259,6 +260,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const micReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  // Set when the configured TTS engine fails and the queue is stopped WITHOUT
+  // substituting a different voice (#12253). The voice UI renders this as a
+  // toast/banner; cleared on the next enqueue/stop.
+  const [ttsError, setTtsError] = useState<VoiceTtsError | null>(null);
 
   // Refs — stable across renders, read from animation loop & callbacks
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -1129,6 +1134,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     cancelPlayback();
     setIsSpeaking(false);
     setUsingAudioAnalysis(false);
+    setTtsError(null);
   }, [cancelPlayback]);
   interruptSpeechRef.current = stopSpeaking;
 
@@ -1258,11 +1264,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               return cloudRes;
             }
 
+            // Same-engine transport fallback (cloud proxy → direct ElevenLabs
+            // proxy): still ElevenLabs, same voice — NOT a voice swap (#12253).
+            // Log at warn (not debug-only) so the retry is visible in the
+            // console without the TTS debug flag.
+            console.warn(
+              `[useVoiceChat] Cloud TTS proxy returned ${cloudRes.status}; retrying via the direct ElevenLabs proxy (same voice)`,
+            );
             ttsDebug("useVoiceChat:cloud-proxy-fallback", {
               status: cloudRes.status,
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
             });
           } catch (error) {
+            console.warn(
+              `[useVoiceChat] Cloud TTS proxy unreachable; retrying via the direct ElevenLabs proxy (same voice): ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
             ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
               error: error instanceof Error ? error.message : String(error),
@@ -1831,6 +1849,26 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
     void (async () => {
       let workerError: unknown = null;
+      // Set alongside `workerError` at a fail-closed site so the tail can raise
+      // a user-visible error state instead of silently swapping voices (#12253).
+      let ttsFailure: VoiceTtsError | null = null;
+      const failClosed = (
+        engine: VoiceTtsError["engine"],
+        error: unknown,
+      ): void => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[useVoiceChat] ${engine} TTS failed; failing closed (no voice-engine swap): ${message}`,
+        );
+        workerError = error;
+        ttsFailure = {
+          engine,
+          message,
+          atMs:
+            typeof performance !== "undefined" ? performance.now() : Date.now(),
+        };
+        queueRef.current = [];
+      };
       try {
         while (queueRef.current.length > 0) {
           if (workerGeneration !== generationRef.current) break;
@@ -1861,7 +1899,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           // Native mobile (Android/iOS Capacitor): route the reply through the
           // native TalkMode engine (Kotlin AudioTrack / on-device local-inference
           // TTS) per the Android TTS-owner decision, instead of the WebView
-          // AudioContext path. Falls through to the web TTS path on a native error.
+          // AudioContext path. Native errors fail closed below so the configured
+          // voice is not silently swapped for a different engine.
           if (Capacitor.isNativePlatform()) {
             const trimmed = task.text.trim();
             if (!trimmed) continue;
@@ -1890,13 +1929,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ) {
                 break;
               }
-              ttsDebug("useVoiceChat:native-talkmode-failed-fallback", {
+              // FAIL CLOSED (#12253): the native talkmode engine is the
+              // configured voice. Do not fall through to the web TTS chain
+              // (a different voice) — stop the queue and surface the error.
+              usingAudioAnalysisRef.current = false;
+              setUsingAudioAnalysis(false);
+              ttsDebug("useVoiceChat:native-talkmode-failed", {
                 err:
                   error instanceof Error
                     ? `${error.name}: ${error.message.slice(0, 200)}`
                     : String(error).slice(0, 200),
               });
-              // Fall through to the web TTS path (elevenlabs/local/browser).
+              failClosed("native-talkmode", error);
+              break;
             }
           }
 
@@ -1921,23 +1966,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                     ? `${error.name}: ${error.message.slice(0, 200)}`
                     : String(error).slice(0, 200),
               });
-              // Local TTS failed — fall back to browser SpeechSynthesis so the
-              // reply stays audible rather than going silent. Only hard-error
-              // if the fallback ALSO fails.
-              try {
-                await speakBrowser(task.text, task, workerGeneration);
-                continue;
-              } catch (fallbackError) {
-                if (
-                  workerGeneration !== generationRef.current ||
-                  isAbortError(fallbackError)
-                ) {
-                  break;
-                }
-                workerError = fallbackError;
-                queueRef.current = [];
-                break;
-              }
+              // FAIL CLOSED (#12253): local-inference (Kokoro) is the configured
+              // voice. Do not silently swap to browser SpeechSynthesis — stop the
+              // queue and surface the error so the user hears silence + sees why,
+              // not a stranger's voice.
+              failClosed("local-inference", error);
+              break;
             }
           }
 
@@ -1969,24 +2003,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               });
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
-              // Cloud TTS failed (commonly: no ElevenLabs / cloud key on a
-              // default deploy). Fall back to the browser's built-in
-              // SpeechSynthesis so the reply is still AUDIBLE instead of going
-              // silent. Only hard-error if that fallback ALSO fails.
-              try {
-                await speakBrowser(task.text, task, workerGeneration);
-                continue;
-              } catch (fallbackError) {
-                if (
-                  workerGeneration !== generationRef.current ||
-                  isAbortError(fallbackError)
-                ) {
-                  break;
-                }
-                workerError = fallbackError;
-                queueRef.current = [];
-                break;
-              }
+              // FAIL CLOSED (#12253): ElevenLabs is the explicitly configured
+              // voice here (provider === "elevenlabs"). Do not silently swap to
+              // browser SpeechSynthesis — stop the queue and surface the error.
+              // (Same-engine transport retries live inside speakElevenLabs: the
+              // cloud proxy → /api/tts/elevenlabs retry is ElevenLabs→ElevenLabs,
+              // not a voice swap.)
+              failClosed("elevenlabs", error);
+              break;
             }
           } else {
             usingAudioAnalysisRef.current = false;
@@ -2025,6 +2049,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         usingAudioAnalysisRef.current = false;
         setUsingAudioAnalysis(false);
         setIsSpeaking(false);
+        // Raise a user-visible error only when a configured engine failed
+        // closed (#12253); the generic catch above leaves ttsFailure null.
+        if (ttsFailure) {
+          setTtsError(ttsFailure);
+        }
         return;
       }
       if (queueRef.current.length > 0) {
@@ -2041,6 +2070,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     (task: SpeakTask) => {
       const speakable = toSpeakableText(task.text);
       if (!speakable) return;
+
+      // A new utterance clears any prior fail-closed TTS error banner (#12253).
+      setTtsError(null);
 
       if (!task.append) {
         cancelPlayback();
@@ -2361,5 +2393,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     micReconnected,
     unlockAudio,
     assistantTtsQuality,
+    ttsError,
   };
 }

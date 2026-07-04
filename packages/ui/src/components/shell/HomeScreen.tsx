@@ -20,6 +20,7 @@ import {
 } from "../../state/notifications/notification-shell";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { useNotificationPull } from "./use-notification-pull";
 import { usePullGesture } from "./use-pull-gesture";
@@ -145,14 +146,6 @@ export interface HomeScreenProps {
   onOpenTile: (target: HomeTileTarget) => void;
   /** Render the AOSP-only phone/contacts tiles (native OS surfaces). */
   showNativeOsTiles?: boolean;
-  /**
-   * Optional host-provided header content rendered at the top of the home
-   * screen (e.g. a brand wallet widget). The framework intentionally ships no
-   * default clock to keep the home minimal; this host-override slot stays so a
-   * host app can opt back into a header
-   * without the framework providing one.
-   */
-  clockAccessory?: React.ReactNode;
 }
 
 /**
@@ -169,7 +162,6 @@ export interface HomeScreenProps {
 export function HomeScreen({
   onOpenTile,
   showNativeOsTiles = false,
-  clockAccessory,
 }: HomeScreenProps): React.JSX.Element {
   // Only the AOSP native-OS tiles remain, and they need an AOSP build. On every
   // other platform `tiles` is empty and the grid renders nothing.
@@ -227,11 +219,11 @@ export function HomeScreen({
           deadened ~70px of home content on notched iPhones). It only spans the
           residual tucked band — the part of the safe area the root deliberately
           shaves, capped at 1.25rem — plus a 30px grab margin. */}
-      <button
-        type="button"
+      <Button
         data-testid="home-notification-pull-zone"
         aria-label="Open notifications"
-        className="absolute inset-x-0 top-0 z-[2] h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+30px)] cursor-default rounded-none border-0 bg-transparent p-0 outline-none"
+        variant="ghost"
+        className="absolute inset-x-0 top-0 z-[2] h-[calc(min(max(var(--safe-area-top,0px)-1.25rem,0px),1.25rem)+44px)] min-h-11 cursor-default rounded-none border-0 bg-transparent p-0 outline-none hover:bg-transparent"
         style={{ touchAction: "none" }}
         onClick={() => dispatchOpenNotificationCenter()}
         {...edgePull}
@@ -274,12 +266,6 @@ export function HomeScreen({
             it, so an empty widget set reads as calm airiness rather than a
             broken gap; the AOSP tiles settle at the BOTTOM. */}
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-          {clockAccessory ? (
-            <div className={cn(enterClass, "flex justify-end pb-4")}>
-              {clockAccessory}
-            </div>
-          ) : null}
-
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours — no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
@@ -319,15 +305,15 @@ export function HomeScreen({
                 {tiles.map((tile) => {
                   const Icon = tile.icon;
                   return (
-                    <button
+                    <Button
                       key={tile.id}
-                      type="button"
                       data-testid={`home-tile-${tile.id}`}
                       onClick={() => onOpenTile(tile.target)}
+                      variant="ghost"
                       className={cn(
                         // Naked tile: icon + label sit directly on the ambient
                         // orange field — no fill, no border.
-                        "flex flex-col items-center gap-1.5 rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
+                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5 text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.38)]",
                         // Tactile press: a quick scale-down on tap (stilled for
                         // reduce-motion users), plus a faint white wash on hover.
                         "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
@@ -341,7 +327,7 @@ export function HomeScreen({
                       <span className="max-w-full truncate text-[11px] font-medium text-white">
                         {tile.label}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
               </div>

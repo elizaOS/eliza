@@ -15,6 +15,10 @@ export const VIEW_ICON_ALIASES: Record<string, string> = {
   smartglasses: "glasses",
   "trajectory-logger": "trajectory",
   "phone-companion": "companion",
+  // Character-family views promoted out of the old Character hub reuse the
+  // nearest baked icons (no dedicated art baked for these ids yet).
+  "character-skills": "skills",
+  experience: "memories",
 };
 
 /**

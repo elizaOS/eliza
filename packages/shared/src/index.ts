@@ -5,10 +5,16 @@
  */
 
 export * from "./api/agent-api-types.js";
+export * from "./api/command-transport-types.js";
 export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art.js";
+// Email-classification primitives — canonical two-stage classifier + the
+// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
+// inbox-curation and finance bill-extraction in
+// @elizaos/plugin-personal-assistant.
+export * from "./apps/index.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
 export * from "./character-presets.characters.js";
@@ -241,15 +247,14 @@ export * from "./dev-settings-table.js";
 // elizacloud helpers — pure utilities + config-driven server helpers used by
 // app-core and the agent so they don't reverse-import from plugin-elizacloud.
 export * from "./elizacloud/index.js";
-// Email-classification primitives — canonical two-stage classifier + the
-// untrusted-content fence. Dependency-free beyond @elizaos/core; consumed by
-// inbox-curation and finance bill-extraction in
-// @elizaos/plugin-personal-assistant.
 export * from "./email-classification/index.js";
 export * from "./env-utils.js";
 export * from "./error-classification.js";
 export * from "./events/index.js";
 export * from "./format-error.js";
+// Canonical UI language codes + BCP-47 normalization (React-free) so Node
+// route handlers can normalize `Accept-Language` without the renderer.
+export * from "./i18n/language.js";
 // Knowledge-graph primitives — canonical Entity/Relationship types + the
 // identity-merge engine. Dependency-free; the DB-backed stores stay in
 // @elizaos/plugin-personal-assistant.
@@ -268,9 +273,12 @@ export * from "./lifeops-normalize/index.js";
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
+export * from "./meetings.js";
+export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export * from "./process-guards.js";
 export * from "./recent-messages-state.js";
+export * from "./registry-host.js";
 export * from "./restart.js";
 export * from "./runtime-env.js";
 export * from "./self-edit.js";
@@ -300,6 +308,7 @@ export * from "./utils/env.js";
 export * from "./utils/errors.js";
 export * from "./utils/exec-safety.js";
 export * from "./utils/format.js";
+export * from "./utils/host-capabilities.js";
 export * from "./utils/labels.js";
 export * from "./utils/log-prefix.js";
 export * from "./utils/name-tokens.js";
@@ -317,7 +326,9 @@ export * from "./utils/trajectory-format.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./view-hero-art.js";
+export * from "./views/view-interact-protocol.js";
 export * from "./voice/first-sentence-snip.js";
 export * from "./voice/voice-cancellation-token.js";
 export * from "./voice.js";
 export * from "./voice-wer.js";
+export * from "./wallet/market-overview.js";

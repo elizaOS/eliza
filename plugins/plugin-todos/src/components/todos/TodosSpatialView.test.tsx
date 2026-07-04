@@ -1,3 +1,4 @@
+/** Render tests for the todos spatial view over the TUI surface (deterministic static markup). */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

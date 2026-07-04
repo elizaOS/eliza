@@ -1,3 +1,4 @@
+/** Unit tests for voice bench helpers: SNR mixing, monotonicity violations, and speaker-timeline building. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	attributeByEnrollment,

@@ -1,3 +1,9 @@
+/**
+ * HTTP-contract tests for the ASR route: auth, audio-body decoding, and the
+ * status probe. `transcribeWavWithWords` and the engine are stubbed — no real
+ * model runs.
+ */
+
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { ModelType } from "@elizaos/core";

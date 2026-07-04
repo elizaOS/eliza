@@ -1,3 +1,8 @@
+/**
+ * Settings types: `RuntimeSettings` key/value strings and `SettingDefinition`
+ * metadata (required, secret, dependencies) used to describe and validate a
+ * plugin's or character's configurable settings.
+ */
 import type { JsonValue } from "./primitives";
 
 /**

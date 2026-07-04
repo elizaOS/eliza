@@ -1,3 +1,8 @@
+/**
+ * Tests `applyScenarioSeedStep` (seeds.ts) against a runtime stub, covering the
+ * todo / contact / memory / LifeOps / Gmail-inbox seed types. Gmail seeding is
+ * exercised through a real local HTTP server so the loopback-URL gate is hit.
+ */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { AgentRuntime, UUID } from "@elizaos/core";

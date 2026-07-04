@@ -1,3 +1,8 @@
+/**
+ * Compile-time check (no runtime assertions beyond expectTypeOf) that
+ * plugin-sql's re-exported connector-account storage types stay identical to
+ * the `@elizaos/core` contract types, including the adapter method signature.
+ */
 import type {
   ConnectorAccountRecord as CoreConnectorAccountRecord,
   UpsertConnectorAccountParams as CoreUpsertConnectorAccountParams,

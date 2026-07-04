@@ -1,3 +1,8 @@
+/**
+ * Zod schema for the agent-runtime slice of config: message examples, streaming,
+ * human-delay, tools, and identity. Composes the primitives in zod-schema.core.ts
+ * and validates instances of the agent config before the runtime trusts them.
+ */
 import z from "zod";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import {

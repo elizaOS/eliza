@@ -1,3 +1,7 @@
+/**
+ * The AppContext object and useApp() accessor. The context is pinned on
+ * globalThis so a single instance survives HMR and duplicate module copies.
+ */
 import { createContext, useContext } from "react";
 import type { AppContextValue } from "./types";
 

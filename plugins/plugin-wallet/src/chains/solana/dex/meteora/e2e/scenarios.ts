@@ -1,9 +1,3 @@
-import { strict as assert } from "node:assert";
-import type { IAgentRuntime, Memory, State, TestSuite } from "@elizaos/core";
-import { Keypair } from "@solana/web3.js";
-import { meteoraPositionProvider } from "../providers/positionProvider.ts";
-import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
-
 /**
  * Defines a suite of E2E tests for Meteora LP management scenarios.
  *
@@ -11,6 +5,12 @@ import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
  * interactions including pool discovery, liquidity provision, position management,
  * and market data retrieval.
  */
+import { strict as assert } from "node:assert";
+import type { IAgentRuntime, Memory, State, TestSuite } from "@elizaos/core";
+import { Keypair } from "@solana/web3.js";
+import { meteoraPositionProvider } from "../providers/positionProvider.ts";
+import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
+
 export const meteoraScenarios: TestSuite = {
   name: "Meteora Plugin E2E Scenarios",
   tests: [
@@ -22,7 +22,6 @@ export const meteoraScenarios: TestSuite = {
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
         assert(meteoraService, "MeteoraLpService should be available");
 
-        // Test getting all pools
         const allPools = await meteoraService.getPools();
         console.log(`Found ${allPools.length} Meteora pools`);
 
@@ -48,7 +47,6 @@ export const meteoraScenarios: TestSuite = {
 
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
 
-        // Test with specific token pair filter
         const solUsdcMint = "So11111111111111111111111111111111111111112"; // SOL
         const usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // USDC
 
@@ -77,11 +75,10 @@ export const meteoraScenarios: TestSuite = {
 
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
 
-        // First get some pools to test with
         const pools = await meteoraService.getPools();
         assert(pools.length > 0, "Need at least one pool for market data test");
 
-        const poolIds = pools.slice(0, 3).map((p) => p.id); // Test with first 3 pools
+        const poolIds = pools.slice(0, 3).map((p) => p.id);
         const marketData = await meteoraService.getMarketDataForPools(poolIds);
 
         assert(typeof marketData === "object", "Market data should be an object");
@@ -130,8 +127,6 @@ export const meteoraScenarios: TestSuite = {
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing position provider integration...");
 
-        // Test that the position provider is properly registered and can be called
-        // Create a minimal Memory object for testing
         const testMemory: Memory = {
           id: "test-memory-id",
           entityId: "test-user",
@@ -167,10 +162,8 @@ export const meteoraScenarios: TestSuite = {
 
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
 
-        // Test start/stop methods exist and can be called
         assert(typeof meteoraService.stop === "function", "Service should have stop method");
 
-        // These should not throw errors
         await meteoraService.stop();
 
         console.log("✅ Service lifecycle test passed");
@@ -184,7 +177,6 @@ export const meteoraScenarios: TestSuite = {
 
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
 
-        // Test with invalid pool ID
         const invalidPoolId = "invalid-pool-id-12345";
         const userKeypair = Keypair.generate();
 
@@ -214,7 +206,6 @@ export const meteoraScenarios: TestSuite = {
         // Use a random public key that likely has no positions
         const randomUser = Keypair.generate().publicKey.toBase58();
 
-        // Get a real pool ID to test with
         const pools = await meteoraService.getPools();
         if (pools.length === 0) {
           console.log("Skipping test - no pools available");
@@ -224,7 +215,6 @@ export const meteoraScenarios: TestSuite = {
         const poolId = pools[0].id;
         const positionDetails = await meteoraService.getLpPositionDetails(randomUser, poolId);
 
-        // Should return null for user with no positions
         assert(positionDetails === null, "Should return null for user with no positions");
 
         console.log("✅ Position details test passed");
@@ -238,7 +228,6 @@ export const meteoraScenarios: TestSuite = {
 
         const meteoraService = runtime.getService("meteora-lp") as MeteoraLpService;
 
-        // Get a real pool ID
         const pools = await meteoraService.getPools();
         if (pools.length === 0) {
           console.log("Skipping test - no pools available");

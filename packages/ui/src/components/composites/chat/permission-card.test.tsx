@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders PermissionCard in jsdom against a stub permissions registry to cover
+ * each permission state (not-determined/granted/denied/restricted) and its CTA:
+ * request, open-settings, coming-soon, unavailable, and auto-collapse on grant.
+ */
 import type {
   IPermissionsRegistry,
   PermissionId,
@@ -29,6 +33,7 @@ function makeRegistry(
     subscribe: vi.fn(() => () => {}),
     registerProber: vi.fn(),
     ...overrides,
+    openSettings: overrides.openSettings ?? vi.fn(async () => false),
   };
 }
 

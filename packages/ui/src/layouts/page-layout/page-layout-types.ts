@@ -1,3 +1,6 @@
+/**
+ * Props for PageLayout, extending WorkspaceLayout with the sidebar shape.
+ */
 import type * as React from "react";
 
 import type { SidebarProps } from "../../components/composites/sidebar";

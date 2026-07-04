@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for persisting the mobile runtime mode (including the
+ * server-target derivation). Capacitor Preferences + native detection mocked,
+ * no real device.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MOBILE_RUNTIME_MODE_STORAGE_KEY,

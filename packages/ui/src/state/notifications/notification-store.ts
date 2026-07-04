@@ -1,3 +1,8 @@
+/**
+ * Client store for agent notifications: validates untrusted WS payloads into
+ * typed AgentNotification records, tracks unread state, and fans out to the
+ * toast + native-notification bridges. Subscribed via useSyncExternalStore.
+ */
 import {
   type AgentNotification,
   DEFAULT_NOTIFICATION_CATEGORY,
@@ -186,7 +191,6 @@ function optionalTimestamp(value: unknown): number | null | undefined {
  * required (a notification without either is unrenderable, so drop it), the
  * category/priority unions fall back to their canonical defaults, `createdAt`
  * falls back to now, and the optional fields pass through only when well-typed.
- * This replaces the previous double-cast that trusted every field but `id`.
  */
 function validateWsNotification(value: unknown): AgentNotification | null {
   if (!value || typeof value !== "object") return null;

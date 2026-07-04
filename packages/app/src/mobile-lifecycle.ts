@@ -31,6 +31,13 @@ let activeVisibilityHandler: (() => void) | null = null;
 let activeOnlineHandler: (() => void) | null = null;
 let activeOfflineHandler: (() => void) | null = null;
 
+const COLD_LAUNCH_URL_REPLAY_MS = 15_000;
+const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
+
+function unrefTimer(timer: ReturnType<typeof setInterval>): void {
+  (timer as unknown as { unref?: () => void }).unref?.();
+}
+
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let keyboardListenersRegistered = false;
   let lifecycleListenersRegistered = false;
@@ -65,25 +72,31 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   async function initializeKeyboard(): Promise<void> {
     if (keyboardListenersRegistered) return;
 
-    if (ctx.isIOS) {
-      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-      await Keyboard.setScroll({ isDisabled: true });
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
+    // A Keyboard-bridge throw (pod/plugin skew) must not reject and strand the
+    // rest of lifecycle wiring — guard it like the sibling initializeStatusBar.
+    try {
+      if (ctx.isIOS) {
+        await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+        await Keyboard.setScroll({ isDisabled: true });
+        await Keyboard.setAccessoryBarVisible({ isVisible: true });
+      }
+
+      keyboardListenersRegistered = true;
+      Keyboard.addListener("keyboardWillShow", (info) => {
+        document.body.style.setProperty(
+          "--keyboard-height",
+          `${info.keyboardHeight}px`,
+        );
+        document.body.classList.add("keyboard-open");
+      });
+
+      Keyboard.addListener("keyboardWillHide", () => {
+        document.body.style.setProperty("--keyboard-height", "0px");
+        document.body.classList.remove("keyboard-open");
+      });
+    } catch (error) {
+      logNativePluginUnavailable("Keyboard", error);
     }
-
-    keyboardListenersRegistered = true;
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      document.body.style.setProperty(
-        "--keyboard-height",
-        `${info.keyboardHeight}px`,
-      );
-      document.body.classList.add("keyboard-open");
-    });
-
-    Keyboard.addListener("keyboardWillHide", () => {
-      document.body.style.setProperty("--keyboard-height", "0px");
-      document.body.classList.remove("keyboard-open");
-    });
   }
 
   function initializeAppLifecycle(): void {
@@ -96,10 +109,18 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     // Capacitor `appStateChange` listener and the `visibilitychange` fallback
     // below never double-dispatch — each only fires on an actual transition.
     let lastActive: boolean | null = null;
+    const handledDeepLinks = new Set<string>();
     const setAppActive = (active: boolean): void => {
       if (lastActive === active) return;
       lastActive = active;
       dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
+    };
+    const handleDeepLinkOnce = (url: string | null | undefined): boolean => {
+      const trimmed = url?.trim();
+      if (!trimmed || handledDeepLinks.has(trimmed)) return false;
+      handledDeepLinks.add(trimmed);
+      ctx.handleDeepLink(trimmed);
+      return true;
     };
 
     void Promise.resolve(
@@ -154,21 +175,38 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
 
     void Promise.resolve(
       CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        ctx.handleDeepLink(url);
+        handleDeepLinkOnce(url);
       }),
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
 
-    void CapacitorApp.getLaunchUrl()
-      .then((result) => {
-        if (result?.url) {
-          ctx.handleDeepLink(result.url);
-        }
-      })
-      .catch((error) => {
-        logNativePluginUnavailable("App", error);
-      });
+    let replayTimer: ReturnType<typeof setInterval> | null = null;
+    const replayStartedAt = Date.now();
+    const stopReplay = (): void => {
+      if (!replayTimer) return;
+      clearInterval(replayTimer);
+      replayTimer = null;
+    };
+    const readLaunchUrl = (): void => {
+      void CapacitorApp.getLaunchUrl()
+        .then((result) => {
+          if (handleDeepLinkOnce(result?.url)) stopReplay();
+        })
+        .catch((error) => {
+          stopReplay();
+          logNativePluginUnavailable("App", error);
+        });
+    };
+    readLaunchUrl();
+    replayTimer = setInterval(() => {
+      if (Date.now() - replayStartedAt >= COLD_LAUNCH_URL_REPLAY_MS) {
+        stopReplay();
+        return;
+      }
+      readLaunchUrl();
+    }, COLD_LAUNCH_URL_REPLAY_INTERVAL_MS);
+    unrefTimer(replayTimer);
   }
 
   async function initializeNetworkListener(): Promise<void> {

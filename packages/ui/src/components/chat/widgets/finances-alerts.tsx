@@ -1,3 +1,12 @@
+/**
+ * FINANCES "Bills & Balance" home widget — a glanceable summary of money
+ * attention: an overdrawn-balance escalation row plus the next few recurring
+ * bills landing within a week. Fetches the same `/api/lifeops/money/*` routes
+ * FinancesView reads (dashboard + recurring + sources; transactions skipped),
+ * polling quietly while the document is visible. One of the home-attention
+ * widget family; publishes escalation/reminder signals into the shared
+ * home-attention store to rank itself on the home surface.
+ */
 import { Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
@@ -163,13 +172,6 @@ function billsDueWithin7Days(
     });
 }
 
-/**
- * FINANCES "Bills & Balance" home widget (#9143). Glanceable summary of money
- * attention: an overdrawn-balance escalation row plus the next few recurring
- * bills landing within a week. Fetches the same `/api/lifeops/money/*` routes
- * FinancesView reads (dashboard + recurring + sources; transactions skipped),
- * polling quietly while the document is visible.
- */
 /** Shallow content equality so an unchanged 30s poll doesn't re-render. */
 function financesEqual(
   a: FinancesWidgetData | null,

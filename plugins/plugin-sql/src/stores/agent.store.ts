@@ -1,3 +1,9 @@
+/**
+ * CRUD store for the `agents` table: maps between the DB row shape (Drizzle
+ * insert/select types, epoch-millis timestamps, DB-encoded knowledge/message
+ * examples) and the runtime's `Agent` domain type. `update` deep-merges
+ * `settings` with the existing row rather than overwriting it wholesale.
+ */
 import { type Agent, logger, type UUID } from "@elizaos/core";
 import { count, eq } from "drizzle-orm";
 import {

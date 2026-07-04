@@ -1,3 +1,5 @@
+/** Storybook stories for DeviceBridgeStatusBar — connected, offline-pending, no-device, and null states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";

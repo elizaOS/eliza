@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the non-destructive `app_lifeops` → `app_goals` table copy,
+ * driven by a scripted in-memory `SqlExecutor` (no real database): asserts the
+ * skip-when-source-missing / skip-when-target-non-empty / copy paths.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_GOAL_TABLES,

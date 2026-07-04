@@ -18,6 +18,8 @@ import {
 } from "./plugin-validation.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
+export { BLOCKED_ENV_KEYS } from "../config/blocked-env-keys.ts";
+
 const require = createRequire(import.meta.url);
 
 // Pure-disk override helpers — inlined here to avoid module-scope dynamic
@@ -633,54 +635,6 @@ export function prefixLabel(key: string, suffix: string): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ");
 }
-
-// ---------------------------------------------------------------------------
-// Blocked env keys — dangerous system vars that must never be written via API
-// ---------------------------------------------------------------------------
-
-export const BLOCKED_ENV_KEYS = new Set([
-  // System-level injection vectors
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
-  "DYLD_INSERT_LIBRARIES",
-  "DYLD_LIBRARY_PATH",
-  "NODE_OPTIONS",
-  "NODE_EXTRA_CA_CERTS",
-  // TLS bypass — setting to "0" disables ALL certificate verification,
-  // enabling MITM interception of every outbound HTTPS request (API keys
-  // for OpenAI, Anthropic, ElevenLabs etc. sent in plaintext headers).
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  // Proxy hijack — routes all HTTP/HTTPS traffic through attacker proxy,
-  // exposing Authorization headers and API keys in transit.
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "NO_PROXY",
-  // Module resolution override
-  "NODE_PATH",
-  // CA certificate override — trust rogue CAs for MITM
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "CURL_CA_BUNDLE",
-  "PATH",
-  "HOME",
-  "SHELL",
-  // Auth / step-up tokens — writable via API would grant privilege escalation
-  "ELIZA_API_TOKEN",
-  "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_TERMINAL_RUN_TOKEN",
-  // Wallet private keys — writable via API would enable key theft / replacement
-  "EVM_PRIVATE_KEY",
-  "SOLANA_PRIVATE_KEY",
-  // Opinion Trade plugin secrets
-  "OPINION_PRIVATE_KEY",
-  "OPINION_API_KEY",
-  // Third-party auth tokens
-  "GITHUB_TOKEN",
-  // Database connection strings
-  "DATABASE_URL",
-  "POSTGRES_URL",
-]);
 
 /**
  * Top-level config keys accepted by `PUT /api/config`.

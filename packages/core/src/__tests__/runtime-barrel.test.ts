@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,5 +13,17 @@ describe("@elizaos/core runtime barrel", () => {
 
 			expect(source).not.toMatch(/export\s+\*\s+from\s+["']\.\/testing["']/);
 		}
+	});
+
+	it("does not ship the filesystem-probing plugin-loader (workspace probing is host/CLI concern)", () => {
+		// The loader that probed sibling packages' unbuilt src/ trees and imported
+		// them by variable specifier is gone; core resolves plugins only through
+		// injected Plugin objects or a host-provided PluginResolver.
+		expect(existsSync(resolve(sourceRoot, "utils/plugin-loader.ts"))).toBe(
+			false,
+		);
+
+		const barrel = readFileSync(resolve(sourceRoot, "index.node.ts"), "utf8");
+		expect(barrel).not.toMatch(/plugin-loader/);
 	});
 });

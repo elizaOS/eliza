@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for detached-window shell route parsing and target resolution.
+ * Pure functions, no real window.
+ */
 import { describe, expect, it } from "vitest";
 import {
   parseWindowShellRoute,

@@ -1,3 +1,8 @@
+/**
+ * Small status pill in one of a fixed tone set (success/warning/danger/…), with
+ * a spinning variant for in-flight states. Tone/label derivation from raw status
+ * strings lives in `status-badge.helpers.ts`.
+ */
 import { Loader2 } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

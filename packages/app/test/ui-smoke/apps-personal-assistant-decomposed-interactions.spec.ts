@@ -40,12 +40,13 @@ async function expectTopmostAtCenter(
     return element === topmost || element.contains(topmost);
   });
 
-  // #11144 regressed when ShellBackButton visually cleared the content but kept
-  // intercepting first-chip pointer input. This guard asserts the target chip is
-  // the DOM hit-test winner at its own center before clicking it.
+  // #11144 regressed when the (now-removed) global corner back button visually
+  // cleared the content but kept intercepting first-chip pointer input. This
+  // guard still asserts the target chip is the DOM hit-test winner at its own
+  // center before clicking it, so any future overlay that occludes it fails.
   expect(
     isTopmost,
-    `${owner} should be topmost at its center, not occluded by the shell back button (#11144)`,
+    `${owner} should be topmost at its center, not occluded by an overlay (#11144)`,
   ).toBe(true);
 }
 
@@ -267,8 +268,8 @@ test("relationships decomposed view: renders the graph and toggles a kind filter
   });
 
   // #11144 guard: the first "All" kind chip is the one that used to sit under
-  // ShellBackButton. Drive the real restore path through it, then assert every
-  // kind is visible again.
+  // the removed global corner back button. Drive the real restore path through
+  // it, then assert every kind is visible again.
   const allChip = page
     .getByRole("button", { name: "All", exact: true })
     .first();

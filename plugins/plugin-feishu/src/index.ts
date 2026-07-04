@@ -1,3 +1,8 @@
+/**
+ * Plugin entry point for @elizaos/plugin-feishu. Exports the Plugin object that
+ * registers FeishuService and FeishuWorkflowCredentialProvider; init() wires the
+ * Feishu ConnectorAccountProvider into the runtime's connector account manager.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createFeishuConnectorAccountProvider } from "./connector-account-provider";
@@ -15,7 +20,7 @@ const feishuPlugin: Plugin = {
 	tests: [],
 	// Self-declared auto-enable: activate when the "feishu" connector is
 	// configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map
-	// in plugin-auto-enable-engine.ts still serves as a fallback.
+	// in plugin-auto-enable-engine.ts serves as a fallback.
 	autoEnable: {
 		connectorKeys: ["feishu"],
 	},

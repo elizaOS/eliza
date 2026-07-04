@@ -1,4 +1,4 @@
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -6,6 +6,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
@@ -51,6 +52,22 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "../internal/normalize.js";
+import {
+  normalizeRecurrence,
+  normalizeRecurrenceScope,
+  recurringEventIdFrom,
+} from "../internal/recurrence.js";
+import {
+  cancelAllMeetingAutoJoinTasks,
+  reconcileMeetingAutoJoin,
+  restoreMeetingAutoJoinAnchors,
+} from "../meetings/auto-join.js";
+import {
+  isMeetingAutoJoinPolicy,
+  type MeetingAutoJoinSettings,
+  readMeetingAutoJoinSettings,
+  writeMeetingAutoJoinPolicy,
+} from "../meetings/auto-join-settings.js";
 import {
   CalendarRepository,
   createLifeOpsCalendarSyncState,
@@ -151,6 +168,14 @@ function appleCalendarPlaceholderSummary(args: {
   };
 }
 
+function failAppleRecurrenceUnsupported(operation: string): never {
+  fail(
+    400,
+    `Apple Calendar does not support recurring-event ${operation} through this integration. Connect Google Calendar for recurring events.`,
+    "CALENDAR_RECURRENCE_UNSUPPORTED_PROVIDER",
+  );
+}
+
 function shouldIncludeAppleCalendar(request: {
   mode?: LifeOpsConnectorMode | null;
   side?: LifeOpsConnectorSide | null;
@@ -209,10 +234,92 @@ export class CalendarService extends Service {
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<CalendarService> {
-    return new CalendarService(runtime);
+    const service = new CalendarService(runtime);
+    // Anchor registrations for meeting auto-join are in-memory; restore them
+    // for upcoming events so persisted join tasks resolve after a restart.
+    // Best-effort: the schema may not be migrated yet on first boot.
+    void service.restoreMeetingAutoJoinAnchorsOnBoot();
+    return service;
   }
 
   override async stop(): Promise<void> {}
+
+  private async restoreMeetingAutoJoinAnchorsOnBoot(): Promise<void> {
+    try {
+      const nowIso = new Date().toISOString();
+      const horizonIso = new Date(
+        Date.now() + 14 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+      const events = [
+        ...(await this.repo.listCalendarEvents(
+          this.agentId(),
+          "google",
+          nowIso,
+          horizonIso,
+        )),
+        ...(await this.repo.listCalendarEvents(
+          this.agentId(),
+          APPLE_CALENDAR_PROVIDER,
+          nowIso,
+          horizonIso,
+        )),
+      ];
+      await restoreMeetingAutoJoinAnchors(this.runtime, this.agentId(), events);
+    } catch (error) {
+      logger.debug(
+        { src: "calendar:service", error },
+        "[CalendarService] Meeting auto-join anchor restore skipped (calendar store not ready yet).",
+      );
+    }
+  }
+
+  async getMeetingAutoJoin(): Promise<MeetingAutoJoinSettings> {
+    return readMeetingAutoJoinSettings(this.runtime);
+  }
+
+  async setMeetingAutoJoin(policy: unknown): Promise<MeetingAutoJoinSettings> {
+    if (!isMeetingAutoJoinPolicy(policy)) {
+      throw new CalendarServiceError(
+        400,
+        'policy must be one of "off", "ask", "all"',
+      );
+    }
+    const settings = await writeMeetingAutoJoinPolicy(this.runtime, policy);
+    if (policy === "off") {
+      await cancelAllMeetingAutoJoinTasks(this.runtime, this.agentId());
+    } else {
+      // Re-reconcile upcoming events under the new policy so tasks flip
+      // between direct-join and approval-gated without waiting for a sync.
+      await this.reconcileUpcomingMeetingAutoJoin();
+    }
+    return settings;
+  }
+
+  private async reconcileUpcomingMeetingAutoJoin(): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const horizonIso = new Date(
+      Date.now() + 14 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const events = [
+      ...(await this.repo.listCalendarEvents(
+        this.agentId(),
+        "google",
+        nowIso,
+        horizonIso,
+      )),
+      ...(await this.repo.listCalendarEvents(
+        this.agentId(),
+        APPLE_CALENDAR_PROVIDER,
+        nowIso,
+        horizonIso,
+      )),
+    ];
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events,
+    });
+  }
 
   /** LifeOps injects its connector + reminder + audit implementation here. */
   setGate(gate: CalendarHostGate): void {
@@ -458,6 +565,12 @@ export class CalendarService extends Service {
       await this.repo.upsertCalendarEvent(event, grant.side);
     }
     await this.syncCalendarReminderPlans(nextEvents);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: nextEvents,
+      removedEventIds,
+    });
     await this.repo.upsertCalendarSyncState(
       createLifeOpsCalendarSyncState({
         agentId: this.agentId(),
@@ -534,6 +647,12 @@ export class CalendarService extends Service {
       await this.repo.upsertCalendarEvent(event, "owner");
     }
     await this.syncCalendarReminderPlans(nextEvents);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: nextEvents,
+      removedEventIds,
+    });
     await this.repo.upsertCalendarSyncState(
       createLifeOpsCalendarSyncState({
         agentId: this.agentId(),
@@ -710,6 +829,9 @@ export class CalendarService extends Service {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const calendarId = normalizeCalendarId(request.calendarId);
+    // Validate recurrence up front so an invalid rule fails the request
+    // instead of silently creating a one-off event.
+    const recurrence = normalizeRecurrence(request.recurrence);
     const { startAt, endAt, timeZone } = resolveCalendarEventRange(
       request,
       now,
@@ -752,6 +874,7 @@ export class CalendarService extends Service {
         description: normalizeOptionalString(request.description),
         location: normalizeOptionalString(request.location),
         attendees: normalizeCalendarAttendees(request.attendees),
+        recurrence,
       }),
     );
     const event = lifeOpsCalendarEventFromGoogle({
@@ -761,6 +884,11 @@ export class CalendarService extends Service {
     });
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.syncCalendarReminderPlans([event]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [event],
+    });
     await this.recordCalendarEventAudit(
       event.id,
       "calendar event created through plugin-google",
@@ -775,6 +903,9 @@ export class CalendarService extends Service {
     calendarId: string,
     range: { startAt: string; endAt: string; timeZone: string },
   ): Promise<LifeOpsCalendarEvent> {
+    if (normalizeRecurrence(request.recurrence)) {
+      failAppleRecurrenceUnsupported("create");
+    }
     const nativeEvent = await createNativeAppleCalendarEvent({
       agentId: this.agentId(),
       request: {
@@ -792,6 +923,11 @@ export class CalendarService extends Service {
     }
     await this.repo.upsertCalendarEvent(nativeEvent.data, "owner");
     await this.syncCalendarReminderPlans([nativeEvent.data]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [nativeEvent.data],
+    });
     await this.recordCalendarEventAudit(
       nativeEvent.data.id,
       "calendar event created through native Apple Calendar",
@@ -816,10 +952,21 @@ export class CalendarService extends Service {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<LifeOpsCalendarEvent> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
+    const recurrence = normalizeRecurrence(request.recurrence);
+    const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
+    if (recurrence && recurrenceScope === "instance") {
+      fail(
+        400,
+        'Recurrence rules apply to the whole series. Use recurrenceScope "series" to change how an event repeats.',
+        "CALENDAR_RECURRENCE_SCOPE_CONFLICT",
+      );
+    }
     const timeZone = request.timeZone
       ? normalizeCalendarTimeZone(request.timeZone)
       : undefined;
@@ -850,6 +997,9 @@ export class CalendarService extends Service {
           : normalizeCalendarAttendees(request.attendees),
     };
     if (isAppleCalendarGrant(request.grantId)) {
+      if (recurrence || recurrenceScope) {
+        failAppleRecurrenceUnsupported("update");
+      }
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
     }
 
@@ -865,14 +1015,28 @@ export class CalendarService extends Service {
       if (request.grantId) {
         throw error;
       }
+      if (recurrence || recurrenceScope) {
+        failAppleRecurrenceUnsupported("update");
+      }
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+    }
+    let targetEventId = requireNonEmptyString(request.eventId, "eventId");
+    // A series edit addressed through a flattened occurrence must patch the
+    // series master; a recurrence-rule change is always a series edit.
+    if (recurrenceScope === "series" || (recurrence && !recurrenceScope)) {
+      targetEventId = await this.resolveSeriesMasterEventId({
+        grant,
+        calendarId: request.calendarId,
+        eventId: targetEventId,
+      });
     }
     const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
     const googleEvent = await updateEvent(
       googleCalendarEventPatchInput({
         accountId: accountIdForGrant(grant),
         calendarId: request.calendarId,
-        eventId: requireNonEmptyString(request.eventId, "eventId"),
+        eventId: targetEventId,
+        recurrence,
         title: request.title,
         description: request.description,
         location: request.location,
@@ -904,6 +1068,11 @@ export class CalendarService extends Service {
     });
     await this.repo.upsertCalendarEvent(event, grant.side);
     await this.syncCalendarReminderPlans([event]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [event],
+    });
     await this.recordCalendarEventAudit(
       event.id,
       "calendar event updated through plugin-google",
@@ -932,6 +1101,11 @@ export class CalendarService extends Service {
     }
     await this.repo.upsertCalendarEvent(nativeEvent.data, "owner");
     await this.syncCalendarReminderPlans([nativeEvent.data]);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [nativeEvent.data],
+    });
     await this.recordCalendarEventAudit(
       nativeEvent.data.id,
       "calendar event updated through native Apple Calendar",
@@ -950,12 +1124,17 @@ export class CalendarService extends Service {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<void> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
+    const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
     const eventId = requireNonEmptyString(request.eventId, "eventId");
     if (isAppleCalendarGrant(request.grantId)) {
+      if (recurrenceScope) {
+        failAppleRecurrenceUnsupported("delete");
+      }
       await this.deleteAppleCalendarEvent(eventId, request.calendarId);
       return;
     }
@@ -972,37 +1151,150 @@ export class CalendarService extends Service {
       if (request.grantId) {
         throw error;
       }
+      if (recurrenceScope) {
+        failAppleRecurrenceUnsupported("delete");
+      }
       await this.deleteAppleCalendarEvent(eventId, request.calendarId);
       return;
     }
+    // A series delete addressed through a flattened occurrence deletes the
+    // series master — one provider call, never an iteration over occurrences.
+    const targetEventId =
+      recurrenceScope === "series"
+        ? await this.resolveSeriesMasterEventId({
+            grant,
+            calendarId: request.calendarId,
+            eventId,
+          })
+        : eventId;
     const deleteEvent = requireGoogleServiceMethod(this.runtime, "deleteEvent");
     await deleteEvent({
       accountId: accountIdForGrant(grant),
       calendarId: request.calendarId ?? undefined,
-      eventId,
+      eventId: targetEventId,
     });
-    const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
-      provider: "google",
-      externalEventId: eventId,
-      calendarId: request.calendarId,
-      side: grant.side,
-      grantId: grant.id,
+    let removedOwnerIds: string[];
+    if (recurrenceScope === "series") {
+      // Purge every cached flattened occurrence of the deleted series so the
+      // cache does not serve ghost instances until the next sync.
+      const cachedSeries = await this.findCachedSeriesEvents({
+        masterEventId: targetEventId,
+        calendarId: request.calendarId,
+        side: grant.side,
+        grantId: grant.id,
+      });
+      for (const cachedEvent of cachedSeries) {
+        await this.repo.deleteCalendarEventByExternalId(
+          this.agentId(),
+          "google",
+          cachedEvent.calendarId,
+          cachedEvent.externalId,
+          grant.side,
+        );
+      }
+      removedOwnerIds = cachedSeries.map((cachedEvent) => cachedEvent.id);
+      await this.deleteCalendarReminderPlansForEvents(removedOwnerIds);
+    } else {
+      removedOwnerIds = await this.findCachedCalendarEventOwnerIds({
+        provider: "google",
+        externalEventId: targetEventId,
+        calendarId: request.calendarId,
+        side: grant.side,
+        grantId: grant.id,
+      });
+      await this.repo.deleteCalendarEventByExternalId(
+        this.agentId(),
+        "google",
+        request.calendarId,
+        targetEventId,
+        grant.side,
+      );
+      await this.deleteCalendarReminderPlansForEvents(removedOwnerIds);
+    }
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [],
+      removedEventIds: removedOwnerIds,
     });
-    await this.repo.deleteCalendarEventByExternalId(
-      this.agentId(),
-      "google",
-      request.calendarId,
-      eventId,
-      grant.side,
-    );
-    await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
     await this.recordCalendarEventAudit(
-      eventId,
+      targetEventId,
       "calendar event deleted through plugin-google",
-      { eventId },
+      { eventId: targetEventId, recurrenceScope: recurrenceScope ?? null },
       { deleted: true },
       "calendar_event_deleted",
     );
+  }
+
+  /**
+   * Resolve the series master id for an event id that may address a flattened
+   * recurring occurrence: cached instance metadata first, then a provider
+   * lookup. An id with no `recurringEventId` already is the master.
+   */
+  private async resolveSeriesMasterEventId(args: {
+    grant: LifeOpsConnectorGrant;
+    calendarId?: string | null;
+    eventId: string;
+  }): Promise<string> {
+    const cached = await this.repo.listCalendarEvents(
+      this.agentId(),
+      "google",
+      undefined,
+      undefined,
+      args.grant.side,
+    );
+    const match = cached.find(
+      (event) =>
+        event.externalId === args.eventId &&
+        (args.calendarId && args.calendarId !== "all"
+          ? event.calendarId === args.calendarId
+          : true) &&
+        (event.grantId ? event.grantId === args.grant.id : true),
+    );
+    const cachedMaster = recurringEventIdFrom(match ?? null);
+    if (cachedMaster) {
+      return cachedMaster;
+    }
+    if (match) {
+      // Cached and not an occurrence: the id addresses the master directly.
+      return args.eventId;
+    }
+    const getEvent = requireGoogleServiceMethod(this.runtime, "getEvent");
+    const googleEvent = await getEvent({
+      accountId: accountIdForGrant(args.grant),
+      calendarId: args.calendarId ?? undefined,
+      eventId: args.eventId,
+    });
+    return recurringEventIdFrom(googleEvent) ?? args.eventId;
+  }
+
+  private async findCachedSeriesEvents(args: {
+    masterEventId: string;
+    calendarId?: string | null;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+  }): Promise<LifeOpsCalendarEvent[]> {
+    const events = await this.repo.listCalendarEvents(
+      this.agentId(),
+      "google",
+      undefined,
+      undefined,
+      args.side,
+    );
+    return events
+      .filter(
+        (event) =>
+          event.externalId === args.masterEventId ||
+          recurringEventIdFrom(event) === args.masterEventId,
+      )
+      .filter((event) =>
+        args.calendarId && args.calendarId !== "all"
+          ? event.calendarId === args.calendarId
+          : true,
+      )
+      .filter((event) =>
+        event.grantId ? event.grantId === args.grantId : true,
+      );
   }
 
   private async deleteAppleCalendarEvent(
@@ -1030,6 +1322,12 @@ export class CalendarService extends Service {
       "owner",
     );
     await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [],
+      removedEventIds: cachedOwnerIds,
+    });
     await this.recordCalendarEventAudit(
       eventId,
       "calendar event deleted through native Apple Calendar",

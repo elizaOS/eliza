@@ -1,3 +1,8 @@
+import {
+	peekAmbientSingleton,
+	setAmbientSingleton,
+} from "./ambient-context.js";
+
 interface AppBootConfig {
 	envAliases?: readonly (readonly [string, string])[];
 	[key: string]: unknown;
@@ -23,25 +28,32 @@ function getGlobalSlot(): GlobalConfigSlot {
 }
 
 function getBootConfigStore(): BootConfigStore {
+	// The store singleton lives on the shared global slot so every bundled copy
+	// of `@elizaos/core` observes the same instance. Read/write it through the
+	// core-owned ambient-context accessor rather than hand-rolling the
+	// `globalThis[Symbol.for(...)]` access (matches the trajectory/action/app
+	// registries consolidated in #12164).
+	//
+	// An established store always wins. The window-key mirror is only a
+	// pre-boot seed (set by the HTML bootstrap / Electrobun preload before any
+	// bundle loads) and must never replace a store that already exists —
+	// otherwise a stale or partial window value silently clobbers config that
+	// setBootConfig already committed, and the store's object identity churns
+	// on every read (dropping any store-only state).
+	const existing = peekAmbientSingleton<BootConfigStore>(BOOT_CONFIG_STORE_KEY);
+	if (existing && typeof existing === "object" && "current" in existing) {
+		return existing;
+	}
+
+	// No store yet: seed it once. Prefer a cross-bundle window mirror when a
+	// bootstrap set it, otherwise fall back to defaults. The slot is written
+	// once here and thereafter returned as-is by the branch above.
 	const globalObject = getGlobalSlot();
 	const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
-	if (mirroredWindowConfig) {
-		const mirroredStore: BootConfigStore = { current: mirroredWindowConfig };
-		globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
-		return mirroredStore;
-	}
-
-	const existing = globalObject[BOOT_CONFIG_STORE_KEY];
-	if (
-		existing &&
-		typeof existing === "object" &&
-		"current" in (existing as Record<string, unknown>)
-	) {
-		return existing as BootConfigStore;
-	}
-
-	const store: BootConfigStore = { current: DEFAULT_BOOT_CONFIG };
-	globalObject[BOOT_CONFIG_STORE_KEY] = store;
+	const store: BootConfigStore = {
+		current: mirroredWindowConfig ?? DEFAULT_BOOT_CONFIG,
+	};
+	setAmbientSingleton(BOOT_CONFIG_STORE_KEY, store);
 	globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
 	return store;
 }

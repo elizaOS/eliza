@@ -4,7 +4,15 @@
  */
 
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import {
+  loadLabArtifacts,
+  renderLabMarkdown,
+  summarizeLabArtifacts,
+} from "./lab-artifacts.mjs";
 import {
   checkBudgets,
   computeThroughput,
@@ -219,4 +227,106 @@ test("checkBudgets without workloadId keeps the full check set (non-idle workloa
   assert.ok(names.includes("peakRssMb"));
   // postIdleRss is idle-reclaim-only — chat workloads must not be gated on it.
   assert.ok(!names.includes("postIdleRssMb"));
+});
+
+test("lab-artifacts normalizes repeated power-meter and iOS physical runs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "eliza-mobile-resource-lab-"));
+  try {
+    writeFileSync(
+      join(dir, "android-idle-eliza-1-2b-all-runs.csv"),
+      [
+        "runId,platform,deviceClass,tier,workload,elapsedSeconds,powerW,temperatureC,isCharging",
+        "idle-1,android,android-phone,eliza-1-2b,idle,0,1.00,31,false",
+        "idle-1,android,android-phone,eliza-1-2b,idle,60,1.10,32,false",
+        "idle-2,android,android-phone,eliza-1-2b,idle,0,1.04,31,false",
+        "idle-2,android,android-phone,eliza-1-2b,idle,60,1.05,32,false",
+        "idle-3,android,android-phone,eliza-1-2b,idle,0,1.07,31,false",
+        "idle-3,android,android-phone,eliza-1-2b,idle,60,1.03,32,false",
+      ].join("\n"),
+    );
+    for (const workload of ["chat", "voice", "background"]) {
+      for (let run = 1; run <= 3; run++) {
+        writeFileSync(
+          join(dir, `android-${workload}-eliza-1-2b-run${run}.csv`),
+          [
+            "platform,deviceClass,tier,workload,elapsedSeconds,powerW,temperatureC,isCharging",
+            `android,android-phone,eliza-1-2b,${workload},0,2.${run},32,false`,
+            `android,android-phone,eliza-1-2b,${workload},60,2.${run},33,false`,
+          ].join("\n"),
+        );
+      }
+    }
+    for (const tier of ["eliza-1-2b", "eliza-1-4b"]) {
+      for (let run = 1; run <= 3; run++) {
+        writeFileSync(
+          join(dir, `ios-chat-${tier}-run${run}.json`),
+          JSON.stringify({
+            platform: "ios",
+            deviceClass: "ios-phone",
+            tier,
+            workload: "single-turn",
+            recordedAt: `${tier}-${run}`,
+            summary: {
+              resourceSamples: 4,
+              battery: { drainPct: 2, chargingObserved: false },
+              rss: { peakMb: 2200 + run, steadyMb: 2100 + run },
+              ttftMs: { p90: 50_000 + run },
+              thermal: { maxState: "fair" },
+            },
+          }),
+        );
+      }
+    }
+
+    const { records, errors } = loadLabArtifacts([dir]);
+    assert.equal(errors.length, 0);
+    const summary = summarizeLabArtifacts(records, { minRuns: 3 });
+    assert.equal(summary.pass, true);
+    assert.deepEqual(summary.gaps, []);
+    const ios2b = summary.groups.find(
+      (group) => group.key === "ios|ios-phone|eliza-1-2b|chat",
+    );
+    assert.equal(ios2b.runs, 3);
+    assert.equal(ios2b.stable, true);
+    assert.match(renderLabMarkdown(summary), /Status: PASS/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("lab-artifacts reports coverage gaps instead of fabricating missing evidence", () => {
+  const records = [
+    {
+      file: "ios-one.json",
+      source: "workbench",
+      platform: "ios",
+      deviceClass: "ios-phone",
+      tier: "eliza-1-2b",
+      workload: "chat",
+      runId: "one",
+      sampleCount: 4,
+      energyWh: null,
+      avgPowerW: null,
+      batteryDrainPct: 1,
+      peakRssMb: 2000,
+      ttftP90Ms: 1000,
+      thermalMaxState: "fair",
+      maxTemperatureC: null,
+      chargingObserved: true,
+      notes: ["workbench-result"],
+    },
+  ];
+  const summary = summarizeLabArtifacts(records, { minRuns: 3 });
+  assert.equal(summary.pass, false);
+  assert.ok(
+    summary.gaps.includes("missing power-meter energy evidence for idle"),
+  );
+  assert.ok(
+    summary.gaps.includes("missing physical iOS chat metrics for eliza-1-4b"),
+  );
+  assert.ok(
+    summary.gaps.includes(
+      "ios|ios-phone|eliza-1-2b|chat observed charging during a lab run",
+    ),
+  );
 });

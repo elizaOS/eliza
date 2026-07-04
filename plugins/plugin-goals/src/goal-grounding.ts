@@ -1,3 +1,11 @@
+/**
+ * Grounding and semantic-review metadata for goals: the grounding-state
+ * vocabulary and the pure builders that shape a goal's grounding /
+ * semantic-review metadata records.
+ *
+ * Consumed by `goal-semantic-evaluator.ts` (which fills these from an LLM pass);
+ * PA re-exports this module for back-compat, so keep the exported shapes stable.
+ */
 import type { LifeOpsGoalReviewState } from "@elizaos/shared";
 import { LIFEOPS_REVIEW_STATES } from "@elizaos/shared";
 

@@ -1,3 +1,4 @@
+/** Covers voice-workbench scoring wiring (EOT / respond / diarization) over the scenario matrix. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	scoreDiarization,

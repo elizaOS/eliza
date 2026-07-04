@@ -1,9 +1,5 @@
-import type { ComponentType } from "react";
-import type { RegistryAppInfo } from "../../../api";
-
-export interface AppDetailExtensionProps {
-  app: RegistryAppInfo;
-}
-
-export type AppDetailExtensionComponent =
-  ComponentType<AppDetailExtensionProps>;
+/** Re-export of the app detail-extension contract types from `@elizaos/shared`. */
+export type {
+  AppDetailExtensionComponent,
+  AppDetailExtensionProps,
+} from "@elizaos/shared";

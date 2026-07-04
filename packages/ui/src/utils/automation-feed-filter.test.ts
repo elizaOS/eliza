@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the automations feed filter predicate (all/active/kind).
+ * Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { passesFilter } from "./automation-feed-filter";
 
@@ -7,14 +11,14 @@ describe("passesFilter", () => {
     expect(passesFilter({ kind: "workflow", active: false }, "all")).toBe(true);
   });
 
-  it("'tasks' filters out workflows", () => {
-    expect(passesFilter({ kind: "workflow", active: true }, "tasks")).toBe(
+  it("'prompts' filters out workflows", () => {
+    expect(passesFilter({ kind: "workflow", active: true }, "prompts")).toBe(
       false,
     );
-    expect(passesFilter({ kind: "task", active: true }, "tasks")).toBe(true);
+    expect(passesFilter({ kind: "task", active: true }, "prompts")).toBe(true);
   });
 
-  it("'workflows' filters out tasks", () => {
+  it("'workflows' filters out prompt automations", () => {
     expect(passesFilter({ kind: "task", active: true }, "workflows")).toBe(
       false,
     );

@@ -322,7 +322,7 @@ export class CapacitorLlamaUnsupportedError extends Error {
 	}
 }
 
-// === Model registry (re-exported from legacy types.ts) =====================
+// === Model registry =======================================================
 
 export interface ModelSpec {
 	name: string;

@@ -1,7 +1,12 @@
+/**
+ * `XWorkflowCredentialProvider` (`serviceType = "workflow_credential_provider"`) —
+ * supplies the workflow plugin with OAuth 1.0a `twitterApi` credentials for X. Only
+ * `twitterApi` is resolved; `twitterOAuth2Api` is unsupported.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
-// Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.
-// The runtime duck-types the service — only the serviceType string and resolve() shape matter.
+// Inlined to avoid a compile-time dependency on @elizaos/plugin-workflow: the runtime
+// duck-types the service, so only the serviceType string and resolve() shape matter.
 const WORKFLOW_CREDENTIAL_PROVIDER_TYPE = "workflow_credential_provider";
 type CredentialProviderResult =
   | { status: "credential_data"; data: Record<string, unknown> }

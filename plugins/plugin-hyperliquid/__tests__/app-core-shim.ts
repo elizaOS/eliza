@@ -1,3 +1,8 @@
+/**
+ * Minimal stand-in for `@elizaos/app-core`'s route-response helpers, used by
+ * the route-level tests in this package so they don't pull in the full
+ * app-core dependency tree.
+ */
 export const client = {};
 
 export function sendJson(

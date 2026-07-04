@@ -1,3 +1,4 @@
+/** Storybook stories for the cockpit new-session (spawn) form. */
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { CockpitNewSessionForm } from "./CockpitNewSessionForm";

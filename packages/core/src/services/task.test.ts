@@ -177,6 +177,32 @@ describe("TaskService tick re-arm", () => {
 		expect(execute.mock.calls.length).toBeGreaterThanOrEqual(8);
 	});
 
+	it("clears stale baseInterval after a worker returns a fresh nextInterval", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => ({ nextInterval: 72 * 60 * 60_000 }));
+		workers.set("VARIABLE_CRON", { name: "VARIABLE_CRON", execute });
+		tasks.set("t-cron", {
+			id: "t-cron" as UUID,
+			name: "VARIABLE_CRON",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: {
+				updateInterval: 60_000,
+				baseInterval: 24 * 60 * 60_000,
+				updatedAt: T0 - 61_000,
+			},
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await service.runDueTasks();
+
+		expect(execute).toHaveBeenCalledTimes(1);
+		const meta = tasks.get("t-cron")?.metadata;
+		expect(meta?.updateInterval).toBe(72 * 60 * 60_000);
+		expect(meta?.baseInterval).toBeUndefined();
+	});
+
 	it("never auto-pauses a repeat task with maxFailures <= 0", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => {
@@ -209,6 +235,56 @@ describe("TaskService tick re-arm", () => {
 		expect(meta?.lastError).toBe("boom");
 	});
 
+	it("skips a repeat task whose previous run is still executing (self-queue suppression, #11914)", async () => {
+		// The on-device starvation in #11914 came from a scheduled background
+		// job that outlived its own period: each next firing must SKIP while the
+		// previous run is still executing (blocking default), never enqueue.
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let releaseRun: (() => void) | undefined;
+		const running = new Promise<void>((resolve) => {
+			releaseRun = resolve;
+		});
+		const execute = vi.fn(() => running.then(() => undefined));
+		workers.set("LONG_BACKGROUND_JOB", {
+			name: "LONG_BACKGROUND_JOB",
+			execute,
+		});
+		tasks.set("t-long", {
+			id: "t-long" as UUID,
+			name: "LONG_BACKGROUND_JOB",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			// Due immediately: last ran a full interval ago.
+			metadata: { updateInterval: 60_000, updatedAt: T0 - 61_000 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// First firing starts and hangs mid-run (a long on-device decode).
+		const firstRun = service.runDueTasks();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		// The next firings arrive while it is still running: they must skip.
+		await service.runDueTasks();
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		releaseRun?.();
+		await firstRun;
+
+		// Immediately after completion the task is not yet due again (interval
+		// re-measured from completion) — still no extra run.
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(1);
+
+		// A full interval after completion it fires again exactly once.
+		await vi.advanceTimersByTimeAsync(61_000);
+		await service.runDueTasks();
+		expect(execute).toHaveBeenCalledTimes(2);
+	});
+
 	it("still auto-pauses a repeat task after 5 consecutive failures by default", async () => {
 		const { runtime, tasks, workers } = makeTaskRuntime();
 		const execute = vi.fn(async () => {
@@ -233,6 +309,50 @@ describe("TaskService tick re-arm", () => {
 		// Paused task stays paused: no further executions.
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(execute).toHaveBeenCalledTimes(5);
+	});
+
+	it("does not compound backoff and restores the original cadence when baseInterval was never set", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		let failuresLeft = 2;
+		const execute = vi.fn(async () => {
+			if (failuresLeft > 0) {
+				failuresLeft -= 1;
+				throw new Error("boom");
+			}
+			return undefined;
+		});
+		workers.set("FLAKY_NO_BASE", { name: "FLAKY_NO_BASE", execute });
+		tasks.set("t-nobase", {
+			id: "t-nobase" as UUID,
+			name: "FLAKY_NO_BASE",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			// Deliberately NO baseInterval — the common createTask shape (e.g.
+			// createTestTasks). Backoff must still double off the ORIGINAL
+			// interval, not off the already-inflated updateInterval.
+			metadata: { updateInterval: 1_000, updatedAt: T0 },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// Failure 1 at +1s: backoff to 2^1 * 1s = 2s.
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(tasks.get("t-nobase")?.metadata?.updateInterval).toBe(2_000);
+
+		// Failure 2 at +3s: backoff must be 2^2 * ORIGINAL 1s = 4s, not
+		// 2^2 * the already-doubled 2s = 8s (exponential-of-exponential).
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(execute).toHaveBeenCalledTimes(2);
+		expect(tasks.get("t-nobase")?.metadata?.updateInterval).toBe(4_000);
+
+		// Success at +7s: cadence restored to the ORIGINAL 1s interval, not
+		// left permanently inflated at the last backoff value.
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(execute).toHaveBeenCalledTimes(3);
+		const meta = tasks.get("t-nobase")?.metadata;
+		expect(meta?.failureCount).toBe(0);
+		expect(meta?.updateInterval).toBe(1_000);
 	});
 });
 

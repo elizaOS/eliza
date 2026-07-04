@@ -1,10 +1,12 @@
 import type http from "node:http";
 import {
+  CLOUD_CONTAINER_SERVICE_TYPE,
   PromoteVfsToCloudContainerRequestSchema,
   RequestCodingAgentContainerRequestSchema,
   SyncCloudCodingContainerRequestSchema,
 } from "@elizaos/shared";
 import type {
+  CloudCodingContainerService,
   PromoteVfsToCloudContainerRequest,
   PromoteVfsToCloudContainerResponse,
   RequestCodingAgentContainerRequest,
@@ -18,19 +20,6 @@ export interface CloudCodingContainerRouteState {
   runtime: {
     getService?: (name: string) => unknown;
   } | null;
-}
-
-interface CodingContainerServiceLike {
-  promoteVfsToCloudContainer(
-    request: PromoteVfsToCloudContainerRequest,
-  ): Promise<PromoteVfsToCloudContainerResponse>;
-  requestCodingAgentContainer(
-    request: RequestCodingAgentContainerRequest,
-  ): Promise<RequestCodingAgentContainerResponse>;
-  syncCodingContainerChanges(
-    containerId: string,
-    request: SyncCloudCodingContainerRequest,
-  ): Promise<SyncCloudCodingContainerResponse>;
 }
 
 export async function handleCloudCodingContainerRoute(
@@ -128,19 +117,16 @@ export async function handleCloudCodingContainerRoute(
 
 function getCloudContainerService(
   state: CloudCodingContainerRouteState,
-): CodingContainerServiceLike | null {
-  const service =
-    state.runtime?.getService?.("CLOUD_CONTAINER") ??
-    state.runtime?.getService?.("cloud-container") ??
-    state.runtime?.getService?.("cloudContainer");
+): CloudCodingContainerService | null {
+  const service = state.runtime?.getService?.(CLOUD_CONTAINER_SERVICE_TYPE);
   if (!service || typeof service !== "object") return null;
-  const candidate = service as Partial<CodingContainerServiceLike>;
+  const candidate = service as Partial<CloudCodingContainerService>;
   if (
     typeof candidate.promoteVfsToCloudContainer === "function" &&
     typeof candidate.requestCodingAgentContainer === "function" &&
     typeof candidate.syncCodingContainerChanges === "function"
   ) {
-    return candidate as CodingContainerServiceLike;
+    return candidate as CloudCodingContainerService;
   }
   return null;
 }

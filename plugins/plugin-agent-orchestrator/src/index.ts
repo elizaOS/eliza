@@ -204,6 +204,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS action that explains the limitation when the planner reaches for a coding-agent action."),
+    dependencies: ["@elizaos/plugin-edge-tts"],
     widgets: [
       {
         id: "agent-orchestrator.apps",

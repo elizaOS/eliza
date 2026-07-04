@@ -1,3 +1,8 @@
+/**
+ * Tests for the path-resolution helpers (`expandTildePath`, `resolveEnvFile`,
+ * `resolvePgliteDir`) against a real temp directory and real `.env` files on
+ * disk — no filesystem mocking.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,7 +18,6 @@ describe("Utils Integration Tests", () => {
     originalEnv = { ...process.env };
     originalCwd = process.cwd;
 
-    // Create a temporary directory for tests
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "utils-test-"));
     process.cwd = () => tempDir;
   });
@@ -22,7 +26,6 @@ describe("Utils Integration Tests", () => {
     process.env = originalEnv;
     process.cwd = originalCwd;
 
-    // Clean up temp directory
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -54,7 +57,6 @@ describe("Utils Integration Tests", () => {
 
   describe("resolveEnvFile", () => {
     it("should find .env in current directory", () => {
-      // Create .env file in temp dir
       fs.writeFileSync(path.join(tempDir, ".env"), "TEST=true");
 
       const result = resolveEnvFile(tempDir);
@@ -62,11 +64,9 @@ describe("Utils Integration Tests", () => {
     });
 
     it("should traverse up directories to find .env", () => {
-      // Create nested directories
       const subDir = path.join(tempDir, "sub", "nested");
       fs.mkdirSync(subDir, { recursive: true });
 
-      // Create .env in parent
       fs.writeFileSync(path.join(tempDir, ".env"), "TEST=true");
 
       const result = resolveEnvFile(subDir);
@@ -118,7 +118,6 @@ describe("Utils Integration Tests", () => {
     });
 
     it("should load .env file if it exists", () => {
-      // Create .env file with PGLITE_DATA_DIR
       fs.writeFileSync(path.join(tempDir, ".env"), "PGLITE_DATA_DIR=/from/env/file");
       delete process.env.PGLITE_DATA_DIR;
 
@@ -137,7 +136,6 @@ describe("Utils Integration Tests", () => {
 
       const result = resolvePgliteDir(customPath);
 
-      // Should return the provided path as-is
       expect(result).toBe(customPath);
     });
   });

@@ -1,3 +1,11 @@
+/**
+ * Non-JSX helpers for chat message provenance and voice speakers: a pluggable
+ * registry mapping a source key (imessage/telegram/…) to badge styling + icon,
+ * a pluggable reaction-emoji renderer, source-key normalization, and
+ * speaker-label resolution. The registry/renderer are injected by the host app
+ * so this UI package carries no connector-specific assets; consumed by
+ * chat-source.tsx and chat-message.tsx.
+ */
 import { MessageSquareText } from "lucide-react";
 import type * as React from "react";
 

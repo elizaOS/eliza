@@ -1,5 +1,8 @@
-// === Phase 5C: ./app-config moved to @elizaos/app-core/config/app-config ===
-// Re-export the app-config types from @elizaos/shared for backward compat.
+/**
+ * Barrel for the config surface. Re-exports the app-config types from
+ * `@elizaos/shared` (the canonical app-config lives in
+ * `@elizaos/app-core/config/app-config`) alongside the local config modules.
+ */
 export type {
   AndroidUserAgentMarker,
   AospVariantConfig,

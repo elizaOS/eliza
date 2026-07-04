@@ -11,6 +11,7 @@
 
 export {
   buildHuggingFaceResolveUrl,
+  buildHuggingFaceResolveUrlCandidatesForPath,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
   ELIZA_1_HF_REPO,
@@ -26,6 +27,7 @@ export {
   eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
+  type HfResolveUrlCandidate,
   isDefaultEligibleId,
   isOnDeviceTier,
   MODEL_CATALOG,
@@ -49,6 +51,7 @@ export {
 export {
   type HfDownloadBase,
   resolveHfDownloadBase,
+  resolveHfDownloadBases,
 } from "./hf-proxy.js";
 export {
   hasHuggingFaceToken,

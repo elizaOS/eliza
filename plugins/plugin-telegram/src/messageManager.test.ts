@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `MessageManager` outbound chunking and malformed-payload
+ * handling: over-limit messages hard-split at Telegram's size cap (preferring
+ * newline boundaries), interaction-only replies still carry fallback text, and
+ * unknown attachment types degrade to a document upload. Telegraf is mocked.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
@@ -246,9 +252,9 @@ describe("MessageManager malformed payload handling", () => {
       throw new Error("telegram unavailable");
     });
 
-    // Unknown/absent content types no longer throw synchronously (which, inside
-    // Promise.all, aborted the whole reply). They degrade to a document upload;
-    // the underlying send failure is still awaited and propagated.
+    // Unknown/absent content types degrade to a document upload rather than
+    // throwing synchronously (a sync throw inside Promise.all would abort the
+    // whole reply); the underlying send failure is still awaited and propagated.
     await expect(
       manager.sendMessageInChunks(
         {
@@ -527,6 +533,44 @@ describe("MessageManager send resilience (sendWithRetry)", () => {
         undefined,
     );
     expect(fallbackCall).toBeDefined();
+  });
+
+  it("the plain-text fallback sends UNescaped text, not the MarkdownV2 backslash-escaped chunk", async () => {
+    const sendMessage = vi.fn(
+      async (
+        chatId: number | string,
+        text: string,
+        opts?: { parse_mode?: string },
+      ) => {
+        if (opts?.parse_mode === "MarkdownV2") {
+          throw {
+            response: {
+              error_code: 400,
+              description: "Bad Request: can't parse entities",
+            },
+          };
+        }
+        return {
+          message_id: 1,
+          date: 1,
+          text,
+          chat: { id: chatId, type: "private" },
+        };
+      },
+    );
+    const { manager, ctx } = managerWith(sendMessage);
+    // MarkdownV2 escapes `!`, `-`, `.` → "Sure\! Step 1 \- done\." on the
+    // primary send. The fallback must degrade to the clean original, not that.
+    await manager.sendMessageInChunks(ctx, { text: "Sure! Step 1 - done." });
+    const fallbackCall = sendMessage.mock.calls.find(
+      (call) =>
+        (call[2] as { parse_mode?: string } | undefined)?.parse_mode ===
+        undefined,
+    );
+    expect(fallbackCall).toBeDefined();
+    const fallbackText = fallbackCall?.[1] as string;
+    expect(fallbackText).not.toContain("\\");
+    expect(fallbackText).toContain("Sure! Step 1 - done.");
   });
 
   it("does not retry a 403 (blocked) and propagates the error", async () => {

@@ -1,3 +1,10 @@
+/**
+ * Parses inbound Feishu message events into the runtime's message envelope and
+ * dispatches them. Deduplicates on message ID (in-memory Set capped at 1000),
+ * resolves chat/sender identity, applies the chat allowlist, and emits both the
+ * Feishu-specific and generic MESSAGE_RECEIVED events. Driven by FeishuService's
+ * WebSocket event handlers.
+ */
 import {
 	ChannelType,
 	createUniqueUuid,

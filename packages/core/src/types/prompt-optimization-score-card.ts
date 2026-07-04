@@ -1,3 +1,9 @@
+/**
+ * `ScoreCard`: in-memory aggregation of DPE `ScoreSignal`s into a single weighted
+ * `composite` for one trace row. Single-path ingest (`addAll` delegates to `add`)
+ * avoids drift; malformed (NaN) signals are dropped at aggregate time so one bad
+ * plugin signal cannot poison a score. Pairs with `prompt-optimization-trace`.
+ */
 import {
 	DEFAULT_SIGNAL_WEIGHTS,
 	type ScoreCardData,

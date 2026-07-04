@@ -1,12 +1,10 @@
 /**
- * resource-cache — a tiny stale-while-revalidate store shared across the app.
+ * A tiny stale-while-revalidate store shared across the dashboard.
  *
- * The dashboard had no shared data cache: every view hand-rolled
- * `useState({ loading: true })` + a fetch-on-mount effect, so navigating away
- * and back always dropped to a spinner and re-fetched from scratch. This store
- * keeps the last successful result for a key in memory (optionally mirrored to
- * localStorage), so a revisited view paints instantly from cache and revalidates
- * in the background.
+ * Holds the last successful result for a key in memory (optionally mirrored to
+ * localStorage) so a revisited view paints instantly from cache and revalidates
+ * in the background, rather than dropping to a spinner and re-fetching cold on
+ * every navigation.
  *
  * Responsibilities, kept deliberately small:
  *   - hold the last successful value per key (data only — loading/error live in

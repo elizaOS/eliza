@@ -1,3 +1,10 @@
+/**
+ * Password-manager reference resolver for external vault entries.
+ *
+ * Resolves 1Password and Proton Pass pointers through their CLIs when callers
+ * explicitly request the referenced secret value.
+ */
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { PasswordManagerReference } from "./types.js";

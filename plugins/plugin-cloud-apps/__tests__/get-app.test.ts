@@ -1,3 +1,6 @@
+/**
+ * GET_APP action tests: single-app detail resolved by name or id. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,

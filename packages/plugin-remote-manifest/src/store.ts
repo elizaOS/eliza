@@ -1,3 +1,10 @@
+/**
+ * On-disk install store for remote plugins: reads/writes the install registry,
+ * installs and uninstalls plugin artifacts, and loads/bootstraps installed
+ * plugins for the host runtime. Owns the atomic staging (mkdtemp + rename)
+ * install layout under the state dir.
+ */
+
 import {
   cpSync,
   existsSync,

@@ -1,3 +1,8 @@
+/**
+ * Covers how WhatsAppConnectorService registers with the runtime's message
+ * connector registry — the declared capabilities, supported target kinds, and
+ * send-handler wiring. Uses a hand-built fake runtime; no live WhatsApp API.
+ */
 import type {
   IAgentRuntime,
   UUID,

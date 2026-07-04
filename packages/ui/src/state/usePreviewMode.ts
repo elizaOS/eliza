@@ -1,3 +1,7 @@
+/**
+ * Preview-mode toggle store (localStorage-backed): gates preview/alpha views.
+ * Always opt-in; mirrors useDeveloperMode apart from its default.
+ */
 import { useSyncExternalStore } from "react";
 
 /**

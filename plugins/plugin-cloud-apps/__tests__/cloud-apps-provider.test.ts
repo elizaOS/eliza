@@ -1,3 +1,6 @@
+/**
+ * CLOUD_APPS provider tests: app inventory injected into planner context, plus the 60s cache and invalidation. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   FakeElizaCloudClient,

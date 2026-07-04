@@ -1,3 +1,7 @@
+/**
+ * Timeout hook that tracks pending timers and clears them on unmount, so
+ * deferred callbacks never fire against an unmounted component.
+ */
 import { useCallback, useEffect, useRef } from "react";
 
 export function useTimeout() {

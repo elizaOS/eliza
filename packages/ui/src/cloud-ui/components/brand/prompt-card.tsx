@@ -3,6 +3,7 @@
  */
 
 import { ArrowUp } from "lucide-react";
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
 
 interface PromptCardProps {
@@ -13,7 +14,8 @@ interface PromptCardProps {
 
 export function PromptCard({ prompt, onClick, className }: PromptCardProps) {
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={onClick}
       className={cn(
@@ -25,7 +27,7 @@ export function PromptCard({ prompt, onClick, className }: PromptCardProps) {
         {prompt}
       </p>
       <ArrowUp className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground group-hover:text-txt" />
-    </button>
+    </Button>
   );
 }
 

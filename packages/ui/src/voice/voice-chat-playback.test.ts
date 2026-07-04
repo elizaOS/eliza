@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for extracting speakable text from assistant payloads (JSON with
+ * text/actions vs plain). Pure function, no live TTS.
+ */
 import { describe, expect, it } from "vitest";
 import { extractVoiceText } from "./voice-chat-playback";
 

@@ -1,3 +1,9 @@
+/**
+ * Inline hardware summary for the model hub — CPU/RAM/chip, GPU backend + VRAM,
+ * and the recommended model preset — read from a `HardwareProbe`. Flags a
+ * limited GPU probe when only the OS-fallback detector ran.
+ */
+
 import { AlertTriangle, Cpu, Gauge, HardDrive } from "lucide-react";
 import type { HardwareProbe } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";

@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the runtime-class labeling + platform-servability helpers,
+ * with the platform guard mocked to exercise each frontend platform.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FrontendPlatform } from "../../platform/platform-guards";
 
@@ -18,9 +23,6 @@ afterEach(() => {
   getFrontendPlatform.mockReset();
 });
 
-// RuntimeClass collapsed to the single fused Eliza-1 tier (eliza-1-only cutover,
-// #9033); the generic-gguf path was removed, so the helpers only handle the one
-// class now.
 describe("runtimeClassBadge", () => {
   it("labels fused Eliza-1 as eliza-1", () => {
     expect(runtimeClassBadge("fused-eliza1")).toBe("eliza-1");

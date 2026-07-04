@@ -1,3 +1,9 @@
+/**
+ * Tests that `ensureLocalInferenceHandler` registers the TEXT_SMALL/TEXT_LARGE/
+ * TEXT_EMBEDDING handlers and wires the router at boot. Routing mode,
+ * assignments, and the registry are mocked; no model loads.
+ */
+
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

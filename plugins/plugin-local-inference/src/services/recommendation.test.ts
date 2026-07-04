@@ -1,3 +1,4 @@
+/** Covers recommendation-platform classification, device-caps derivation, and catalog download sizing. Deterministic, synthetic probes. */
 import type { CatalogModel, HardwareProbe } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { MODEL_CATALOG } from "./catalog.js";

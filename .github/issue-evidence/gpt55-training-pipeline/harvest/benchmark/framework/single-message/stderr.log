@@ -1,0 +1,3 @@
+ Warn       [CORE:SETTINGS] SECRET_SALT is not set or using default value (event=core.settings.default_secret_salt)
+ Warn       [trajectory-logger] Runtime adapter does not support db.execute (likely InMemory adapter); skipping table setup
+Internal error: directory mismatch for directory "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/tsconfig.json", fd 3. You don't need to do anything, but this indicates a bug.

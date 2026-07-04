@@ -1,3 +1,7 @@
+/**
+ * Bug-report draft context: the draft shape plus the provider/consumer hooks
+ * that let any view seed and submit a report.
+ */
 import { createContext, useCallback, useContext, useState } from "react";
 
 export interface BugReportDraft {

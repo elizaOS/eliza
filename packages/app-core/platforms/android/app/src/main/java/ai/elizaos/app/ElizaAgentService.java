@@ -10,8 +10,11 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -29,10 +32,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.net.HttpURLConnection;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +89,14 @@ public class ElizaAgentService extends Service {
     // trick, no custom domain, no symlinks: the binary just sits in the
     // app's writable data dir at canonical names.
     private static final String AGENT_DIR_NAME = "agent";
+    // Sibling dirs of AGENT_DIR_NAME under getFilesDir(), on the same filesystem
+    // so File.renameTo() between them is an atomic rename(2). Asset refreshes
+    // extract into the staging dir and swap it into place; the trash dir holds
+    // the previous extraction across the two-rename swap so a crash between them
+    // still leaves a recoverable last-good copy (#12453).
+    private static final String AGENT_STAGING_DIR_NAME = "agent.staging";
+    private static final String AGENT_TRASH_DIR_NAME = "agent.trash";
+    private static final String AGENT_STAMP_NAME = ".apk-stamp";
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
@@ -100,10 +107,13 @@ public class ElizaAgentService extends Service {
     /** Serializes rotate-check + append so concurrent events can't interleave JSONL lines. */
     private static final Object DIAGNOSTICS_LOCK = new Object();
     private static final String EXIT_INFO_PREFS = "eliza-agent-exit-info";
+    private static final String DETACHED_LAUNCH_STAMP_KEY = "detachedLaunchStartedAtMs";
     private static final String EXIT_INFO_LAST_TIMESTAMP = "lastTimestamp";
 
+    // The agent binds no TCP port by default (requests ride the abstract UDS
+    // below). AGENT_PORT is only used when ELIZA_API_EXPOSE_PORT re-opens the
+    // HTTP listener for dev/LAN/e2e, and to advertise the port in status text.
     private static final int AGENT_PORT = 31337;
-    private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
 
     /**
      * Abstract-namespace AF_UNIX socket the in-process bionic GPU inference
@@ -113,7 +123,19 @@ public class ElizaAgentService extends Service {
      * agent reaches it as {@code Bun.connect({unix:"\0" + name})}.
      */
     static final String BIONIC_INFERENCE_SOCKET_NAME = "eliza_bionic_infer_v1";
-    private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
+
+    /**
+     * Abstract-namespace AF_UNIX socket the on-device agent binds to serve the
+     * WebView's local-agent requests (the port-free replacement for the
+     * 127.0.0.1:31337 loopback HTTP path). The bun agent listens (see
+     * android/bridge.ts) and this service connects per request/stream, speaking
+     * the same NDJSON frame protocol the iOS bridge uses. Abstract namespace
+     * (no filesystem path) is the sanctioned priv_app IPC — same reason the
+     * bionic host above uses it. Exported to the agent as
+     * ELIZA_LOCAL_AGENT_SOCKET; Java reaches it via {@link LocalSocketAddress}
+     * with {@code Namespace.ABSTRACT}.
+     */
+    static final String LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1";
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
     // Read-timeout budget applied to slow on-device inference routes (ASR / TTS
@@ -271,6 +293,29 @@ public class ElizaAgentService extends Service {
     }
 
     public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
+        LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+        JSONObject payload = buildRequestPayload(req);
+        return dispatchBufferedOverSocket(payload, req.timeoutMs).toString();
+    }
+
+    /** Parsed, validated, timeout-normalized local-agent request. */
+    private static final class LocalAgentRequest {
+        final String method;
+        final String path;
+        final JSONObject headers;
+        final String body;
+        final int timeoutMs;
+
+        LocalAgentRequest(String method, String path, JSONObject headers, String body, int timeoutMs) {
+            this.method = method;
+            this.path = path;
+            this.headers = headers;
+            this.body = body;
+            this.timeoutMs = timeoutMs;
+        }
+    }
+
+    private static LocalAgentRequest parseLocalAgentRequest(String requestJson) throws JSONException {
         JSONObject request = requestJson == null || requestJson.trim().isEmpty()
             ? new JSONObject()
             : new JSONObject(requestJson);
@@ -278,9 +323,7 @@ public class ElizaAgentService extends Service {
         if (!isSafeLocalAgentPath(path)) {
             throw new IllegalArgumentException("Local agent request requires a path that starts with /");
         }
-        String method = request.optString("method", "GET")
-            .trim()
-            .toUpperCase(Locale.US);
+        String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
         if (!method.matches("^[A-Z]{1,16}$")) {
             throw new IllegalArgumentException("Unsupported HTTP method");
         }
@@ -290,11 +333,10 @@ public class ElizaAgentService extends Service {
         // chat model — is a multi-second synchronous llama load before the agent
         // emits a single byte, and transcription/synthesis/generation on
         // emulated or low-end CPU runs well past 10 s. The WebView transport
-        // sends its generic 10 s fetch timeout for these calls too, which aborts
-        // them mid-decode and surfaces "Local agent request failed" /
-        // local_agent_unavailable, failing the whole voice turn (and every route
-        // that touches inference). FLOOR inference/voice routes at the inference
-        // budget — raise a too-short caller timeout, never lower a longer one.
+        // sends its generic 10 s fetch timeout for these calls too; FLOOR
+        // inference/voice routes at the inference budget so a cold load never
+        // trips a spurious local_agent_unavailable — raise a too-short caller
+        // timeout, never lower a longer one.
         if (isLongRunningInferencePath(path)) {
             timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
         }
@@ -302,26 +344,46 @@ public class ElizaAgentService extends Service {
         JSONObject headers = request.optJSONObject("headers");
         Object rawBody = request.opt("body");
         String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
-
-        return performLocalAgentRequest(
-            method,
-            path,
-            headers == null ? new JSONObject() : headers,
-            body,
-            timeoutMs,
-            currentLocalAgentToken
-        ).toString();
+        return new LocalAgentRequest(method, path, headers == null ? new JSONObject() : headers, body, timeoutMs);
     }
 
     /**
-     * Streaming variant of {@link #requestLocalAgent}. Where that buffers the
-     * whole loopback response into one JSON string (so an SSE body's token
-     * frames arrive all at once and the chat reply never streams on mobile),
-     * this opens the same request and reads the response InputStream
-     * INCREMENTALLY, pushing each fragment to {@code onEvent} as a small JSON
-     * envelope the AgentPlugin maps to Capacitor events:
+     * Build the NDJSON request payload the agent's stdio kernel expects. The
+     * per-boot bearer token is injected (the agent still honors it when
+     * ELIZA_REQUIRE_LOCAL_AUTH=1) and the forwarded-header blocklist strips
+     * hop-by-hop headers that no longer make sense over the socket transport.
+     */
+    private static JSONObject buildRequestPayload(LocalAgentRequest req) throws JSONException {
+        JSONObject headers = filterForwardedHeaders(req.headers);
+        String token = currentLocalAgentToken;
+        if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
+            headers.put("Authorization", "Bearer " + token.trim());
+        }
+        boolean methodTakesBody = !"GET".equals(req.method) && !"HEAD".equals(req.method);
+        if (req.body != null && methodTakesBody && !hasHeader(headers, "content-type")) {
+            headers.put("Content-Type", "application/json; charset=utf-8");
+        }
+        JSONObject payload = new JSONObject()
+            .put("method", req.method)
+            .put("path", req.path)
+            .put("headers", headers);
+        if (req.body != null && methodTakesBody) {
+            byte[] bodyBytes = req.body.getBytes(StandardCharsets.UTF_8);
+            if (bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
+                throw new IllegalArgumentException("Request body is too large");
+            }
+            payload.put("body", req.body);
+        }
+        return payload;
+    }
+
+    /**
+     * Streaming variant of {@link #requestLocalAgent}. Where that returns one
+     * buffered result, this sends an {@code http_request_stream} frame and reads
+     * the agent's response/chunk/complete frames as they arrive, translating each
+     * into the small envelope the AgentPlugin maps to Capacitor events:
      *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
-     *   {"type":"chunk","dataBase64":".."}                              (per read)
+     *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
      * Single attempt by design: a connect failure emits a terminal error event
@@ -331,105 +393,69 @@ public class ElizaAgentService extends Service {
      */
     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
         try {
-            JSONObject request = requestJson == null || requestJson.trim().isEmpty()
-                ? new JSONObject()
-                : new JSONObject(requestJson);
-            String path = request.optString("path", "").trim();
-            if (!isSafeLocalAgentPath(path)) {
-                throw new IllegalArgumentException("Local agent request requires a path that starts with /");
-            }
-            String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
-            if (!method.matches("^[A-Z]{1,16}$")) {
-                throw new IllegalArgumentException("Unsupported HTTP method");
-            }
-            int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
-            if (isLongRunningInferencePath(path)) {
-                timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
-            }
-            timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
-            JSONObject headers = request.optJSONObject("headers");
-            if (headers == null) headers = new JSONObject();
-            Object rawBody = request.opt("body");
-            String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
-            streamLocalAgentRequest(method, path, headers, body, timeoutMs, currentLocalAgentToken, onEvent);
+            LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+            JSONObject payload = buildRequestPayload(req);
+            streamOverSocket(payload, req.timeoutMs, onEvent);
         } catch (Exception error) {
             emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
         }
     }
 
-    private static void streamLocalAgentRequest(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
+    /**
+     * Send a streaming request over the abstract UDS and translate the agent's
+     * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
+     * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
+     * (the agent may not have bound the socket yet); once a frame arrives the
+     * request is in-flight, so a mid-stream failure surfaces as a terminal error
+     * and is never silently re-dialed.
+     */
+    private static void streamOverSocket(
+        JSONObject payload,
         int timeoutMs,
-        String token,
         java.util.function.Consumer<String> onEvent
     ) throws IOException, JSONException {
-        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
-        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
-            throw new IOException("Request body is too large");
-        }
+        JSONObject frame = new JSONObject()
+            .put("id", nextFrameId())
+            .put("method", "http_request_stream")
+            .put("stream", true)
+            .put("payload", payload);
 
-        HttpURLConnection conn = null;
+        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
         try {
-            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method);
-            conn.setConnectTimeout(timeoutMs);
-            conn.setReadTimeout(timeoutMs);
-            conn.setInstanceFollowRedirects(false);
-            conn.setUseCaches(false);
-            applyLocalAgentHeaders(conn, headers);
-            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
-                if (!hasHeader(headers, "content-type")) {
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                }
-                conn.setDoOutput(true);
-                try (OutputStream out = conn.getOutputStream()) {
-                    out.write(bodyBytes);
-                    out.flush();
-                }
-            }
-
-            int status = conn.getResponseCode();
-            JSONObject responseHeaders = new JSONObject();
-            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
-                String key = entry.getKey();
-                List<String> values = entry.getValue();
-                if (key == null || values == null || values.isEmpty()) continue;
-                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
-            }
-            onEvent.accept(new JSONObject()
-                .put("type", "response")
-                .put("status", status)
-                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
-                .put("headers", responseHeaders)
-                .toString());
-
-            // Read the body as it arrives. The agent flushes each SSE frame, so a
-            // blocking read returns per-frame rather than waiting for the whole
-            // body — that is exactly the incremental delivery the WebView needs.
-            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            if (stream != null) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = stream.read(buffer)) != -1) {
-                    if (read == 0) continue;
-                    String dataBase64 = android.util.Base64.encodeToString(
-                        java.util.Arrays.copyOf(buffer, read), android.util.Base64.NO_WRAP);
+            socket.setSoTimeout(timeoutMs);
+            writeFrameLine(socket.getOutputStream(), frame);
+            InputStream in = socket.getInputStream();
+            for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
+                if (line.isEmpty()) continue;
+                JSONObject response = new JSONObject(line);
+                String phase = response.optString("stream", "");
+                if ("response".equals(phase)) {
+                    onEvent.accept(new JSONObject()
+                        .put("type", "response")
+                        .put("status", response.optInt("status"))
+                        .put("statusText", response.optString("statusText"))
+                        .put("headers", response.optJSONObject("headers") != null
+                            ? response.optJSONObject("headers")
+                            : new JSONObject())
+                        .toString());
+                } else if ("chunk".equals(phase)) {
                     onEvent.accept(new JSONObject()
                         .put("type", "chunk")
-                        .put("dataBase64", dataBase64)
+                        .put("dataBase64", response.optString("dataBase64"))
                         .toString());
+                } else if ("complete".equals(phase)) {
+                    emitStreamComplete(onEvent, response.has("error") ? response.optString("error") : null);
+                    return;
+                } else if (response.has("error")) {
+                    // A parse/dispatch error before the stream started.
+                    emitStreamComplete(onEvent, response.optString("error"));
+                    return;
                 }
             }
+            // Socket closed without a terminal frame — treat as completion.
             emitStreamComplete(onEvent, null);
         } finally {
-            if (conn != null) conn.disconnect();
+            closeQuietly(socket);
         }
     }
 
@@ -451,132 +477,113 @@ public class ElizaAgentService extends Service {
             && !path.contains("://");
     }
 
-    private static JSONObject performLocalAgentRequest(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
-        int timeoutMs,
-        String token
-    ) throws IOException, JSONException {
-        // The on-device agent is single-threaded: while bun is inside a long
-        // synchronous FFI call (a cold ASR/TTS model load, or a llama_decode for
-        // a chat reply) its HTTP listener briefly stops accepting connections, so
-        // a concurrent request — e.g. createConversation right after a voice
-        // transcription — can hit "connection refused". The request bytes were
-        // never sent, so it is safe to back off and re-dial rather than surface a
-        // spurious local_agent_unavailable that fails the whole voice turn. Only
-        // connection-establishment failures are retried; a read timeout (request
-        // already sent) propagates so non-idempotent POSTs are never replayed.
-        // The window must outlast the longest event-loop stall: after a voice
-        // transcription the agent evicts + cold-reloads the chat model (a
-        // synchronous ~10-15 s llama load on phone CPU) before generating the
-        // reply, during which the HTTP listener refuses connections.
+    /**
+     * Send one buffered request over the abstract UDS and return the agent's
+     * response envelope ({@code {status,statusText,headers,body,bodyBase64,
+     * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
+     * AgentPlugin + WebView transport are unchanged. The connect (not the sent
+     * request) carries the cold-boot retry: while the agent is inside a long
+     * synchronous FFI call (a cold model load, a chat llama_decode) its accept
+     * loop briefly stalls, so a concurrent request can hit connection-refused.
+     * Only the connect phase is retried; once bytes are written the request is
+     * in-flight and a read failure propagates so non-idempotent POSTs never
+     * replay. The window must outlast the longest event-loop stall (~10-15 s
+     * chat-model cold reload after a voice transcription).
+     */
+    private static JSONObject dispatchBufferedOverSocket(JSONObject payload, int timeoutMs)
+        throws IOException, JSONException {
+        JSONObject frame = new JSONObject()
+            .put("id", nextFrameId())
+            .put("method", "http_request")
+            .put("payload", payload);
+
+        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        try {
+            socket.setSoTimeout(timeoutMs);
+            writeFrameLine(socket.getOutputStream(), frame);
+            String line = readFrameLine(socket.getInputStream());
+            if (line == null || line.isEmpty()) {
+                throw new IOException("local agent closed the connection with no response");
+            }
+            JSONObject response = new JSONObject(line);
+            if (!response.optBoolean("ok", false)) {
+                throw new IOException(response.optString("error", "local agent request failed"));
+            }
+            JSONObject result = response.optJSONObject("result");
+            if (result == null) {
+                throw new IOException("local agent returned no result payload");
+            }
+            return result;
+        } finally {
+            closeQuietly(socket);
+        }
+    }
+
+    /**
+     * Connect to the agent's abstract-namespace request socket, retrying only the
+     * connect phase across the cold-boot window (the bun agent may not have bound
+     * the socket yet, or its accept loop is stalled mid-decode). Returns a
+     * connected {@link LocalSocket}; the caller owns closing it.
+     */
+    private static LocalSocket connectLocalAgentSocket(int timeoutMs) throws IOException {
         final int connectRetries = 15;
-        IOException lastConnectError = null;
+        IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            LocalSocket socket = new LocalSocket();
             try {
-                return performLocalAgentRequestOnce(
-                    method, path, headers, body, timeoutMs, token);
-            } catch (java.net.ConnectException connectError) {
-                lastConnectError = connectError;
-            } catch (java.net.SocketTimeoutException timeoutError) {
-                // Distinguish connect-timeout (never sent → retry) from
-                // read-timeout (sent → must not replay). HttpURLConnection
-                // surfaces both as SocketTimeoutException; the connect phase
-                // message contains "connect".
-                String msg = timeoutError.getMessage();
-                if (msg != null && msg.toLowerCase(Locale.US).contains("connect")) {
-                    lastConnectError = timeoutError;
-                } else {
-                    throw timeoutError;
-                }
+                socket.connect(new LocalSocketAddress(
+                    LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                return socket;
+            } catch (IOException connectError) {
+                closeQuietly(socket);
+                lastError = connectError;
             }
             if (attempt < connectRetries) {
                 try {
                     Thread.sleep(250L * (attempt + 1));
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    throw lastConnectError;
+                    throw lastError;
                 }
             }
         }
-        throw lastConnectError != null
-            ? lastConnectError
-            : new IOException("local agent unreachable");
+        throw lastError != null ? lastError : new IOException("local agent socket unreachable");
     }
 
-    private static JSONObject performLocalAgentRequestOnce(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
-        int timeoutMs,
-        String token
-    ) throws IOException, JSONException {
-        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
-        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
-            throw new IOException("Request body is too large");
-        }
-
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method);
-            conn.setConnectTimeout(timeoutMs);
-            conn.setReadTimeout(timeoutMs);
-            conn.setInstanceFollowRedirects(false);
-            conn.setUseCaches(false);
-            applyLocalAgentHeaders(conn, headers);
-            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
-                if (!hasHeader(headers, "content-type")) {
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                }
-                conn.setDoOutput(true);
-                try (OutputStream out = conn.getOutputStream()) {
-                    out.write(bodyBytes);
-                    out.flush();
-                }
-            }
-
-            int status = conn.getResponseCode();
-            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            // Read the raw response bytes so binary payloads (e.g. local TTS WAV
-            // audio, images) survive the bridge intact. `body` is a best-effort
-            // UTF-8 view for text callers; `bodyBase64` carries the lossless raw
-            // bytes that binary callers decode — encoding the bytes as a UTF-8
-            // String first (the old path) replaced every non-UTF-8 byte with
-            // U+FFFD, corrupting WAV/PNG payloads beyond recovery.
-            byte[] responseBytes = readResponseBytes(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
-            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
-            JSONObject responseHeaders = new JSONObject();
-            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
-                String key = entry.getKey();
-                List<String> values = entry.getValue();
-                if (key == null || values == null || values.isEmpty()) continue;
-                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
-            }
-            return new JSONObject()
-                .put("status", status)
-                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
-                .put("headers", responseHeaders)
-                .put("body", responseBody)
-                .put(
-                    "bodyBase64",
-                    android.util.Base64.encodeToString(responseBytes, android.util.Base64.NO_WRAP)
-                )
-                .put("bodyEncoding", "base64");
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
+    /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
+    private static void writeFrameLine(OutputStream out, JSONObject frame) throws IOException {
+        byte[] line = (frame.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+        out.write(line);
+        out.flush();
     }
 
-    private static void applyLocalAgentHeaders(HttpURLConnection conn, JSONObject headers) {
-        if (headers == null) return;
+    /**
+     * Read one newline-delimited frame line from the socket. Returns the line
+     * without the trailing newline, or null at end-of-stream. Caps a single
+     * frame at the response-byte budget so a runaway agent can't exhaust memory.
+     */
+    private static String readFrameLine(InputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') {
+                return buffer.toString(StandardCharsets.UTF_8.name());
+            }
+            if (b != '\r') {
+                buffer.write(b);
+                if (buffer.size() > LOCAL_REQUEST_MAX_RESPONSE_BYTES) {
+                    throw new IOException("local agent response frame exceeds size cap");
+                }
+            }
+        }
+        if (buffer.size() == 0) return null;
+        return buffer.toString(StandardCharsets.UTF_8.name());
+    }
+
+    /** Copy request headers into the payload, dropping hop-by-hop headers. */
+    private static JSONObject filterForwardedHeaders(JSONObject headers) throws JSONException {
+        JSONObject out = new JSONObject();
+        if (headers == null) return out;
         java.util.Iterator<String> keys = headers.keys();
         while (keys.hasNext()) {
             String key = keys.next();
@@ -585,8 +592,24 @@ public class ElizaAgentService extends Service {
             if (value == null || value == JSONObject.NULL) continue;
             String stringValue = value.toString();
             if (!stringValue.trim().isEmpty()) {
-                conn.setRequestProperty(key, stringValue);
+                out.put(key, stringValue);
             }
+        }
+        return out;
+    }
+
+    private static long frameIdCounter = 0L;
+
+    private static synchronized long nextFrameId() {
+        return ++frameIdCounter;
+    }
+
+    private static void closeQuietly(LocalSocket socket) {
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Best-effort close; nothing to recover.
         }
     }
 
@@ -610,12 +633,19 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        appendDiagnosticEvent("service-onCreate", null);
-        logRecentApplicationExitReasons("service-onCreate");
         ensureNotificationChannel();
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
 
+        // Enter the foreground BEFORE any diagnostic IO. Android's FGS-start
+        // timeout begins ticking at onCreate; spending it on the synchronous
+        // getHistoricalProcessExitReasons() + diagnostic file writes below (or,
+        // on a slow/loaded device, the later ~170 MB asset copy) trips
+        // "Timeout executing service" and AMS kills the process mid-work — which
+        // feeds the interrupted-extraction crashloop in #12453. startForeground()
+        // first stops that clock. The heavy asset copy stays off the main thread
+        // on the startWorker (requestAgentStart), so onCreate only needs to keep
+        // the FGS-start critical path free of blocking IO.
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -644,7 +674,13 @@ public class ElizaAgentService extends Service {
             foregroundStartDenied = true;
             shuttingDown = true;
             stopSelf();
+            return;
         }
+
+        // FGS is up; these diagnostic reads can no longer trip the FGS-start
+        // timeout.
+        appendDiagnosticEvent("service-onCreate", null);
+        logRecentApplicationExitReasons("service-onCreate");
     }
 
     @Override
@@ -698,8 +734,13 @@ public class ElizaAgentService extends Service {
 
     @Override
     public void onDestroy() {
+        // Only an explicit stop (ACTION_STOP → shuttingDown) may tear the
+        // agent process down. The FGS-denial path also sets shuttingDown, but
+        // its contract is the opposite — "a surviving detached agent process
+        // is left untouched for [the next launch] to adopt" — so exclude it.
+        boolean requestedStop = shuttingDown && !foregroundStartDenied;
         Map<String, String> details = new LinkedHashMap<>();
-        details.put("shuttingDown", String.valueOf(shuttingDown));
+        details.put("shuttingDown", String.valueOf(requestedStop));
         details.put("currentStatus", currentStatus);
         details.put("detachedAgentMode", String.valueOf(detachedAgentMode));
         appendDiagnosticEvent("service-onDestroy", details);
@@ -712,7 +753,24 @@ public class ElizaAgentService extends Service {
             bionicInferenceServer.stop();
             bionicInferenceServer = null;
         }
-        stopAgentProcess();
+        if (requestedStop) {
+            stopAgentProcess();
+        } else {
+            // AMS tore this record down without an explicit stop request (an
+            // ANR'd duplicate record whose startForeground never got processed
+            // on a blocked main thread, LMK pressure, task removal). The
+            // detached agent outlives its launching service BY DESIGN — leave
+            // it running so the next service instance adopts it via
+            // isLoopbackAgentListening(). Calling stopAgentProcess() here
+            // pkills the agent by path: observed on the emulator e2e, an
+            // in-flight start worker (asset refresh holding processLock for
+            // ~33s) launched the agent and this destroy path then killed it
+            // 1s later; the Android-15 background FGS-start denial meant
+            // nothing ever restarted it and local mode stayed dead until the
+            // next manual app launch.
+            appendDiagnosticEvent("service-destroy-preserved-agent", details);
+            Log.i(TAG, "Service destroyed without a stop request; leaving the agent process running for adoption.");
+        }
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
@@ -860,39 +918,114 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Copy assets/agent/** into the app's data dir on first launch.
-     * Idempotent: skips files that already exist on disk and are
-     * non-empty. Sets +x on bun, the musl loader, and launch.sh.
+     * Materialise assets/agent/** into the app's data dir, crash-safely.
+     *
+     * <p>The extracted agent (~170 MB: agent-bundle.js + bun + ABI libs) lives
+     * in {@code files/agent/}. When the installed APK changes, the new payload
+     * is copied into {@code files/agent.staging/} and atomically swapped into
+     * place — the old extraction is never wiped before the replacement is fully
+     * staged and stamped, so an interrupted copy (ANR, LMK-kill, crash) always
+     * leaves the last-good extraction bootable instead of the permanent
+     * extract-failed loop of #12453. The crash-safety decision (when to swap,
+     * when to keep the existing extraction, when to fail) is the pure
+     * {@link ElizaAssetExtractionPolicy}; this method executes it.
+     *
+     * <p>Invariants: {@code .apk-stamp} is written INSIDE the staged tree so it
+     * lands with the swap and never runs ahead of a completed extraction; a UI-
+     * only build that lacks {@code assets/agent/*} keeps (never wipes) a valid
+     * full-agent extraction; a staging failure falls back to the last-good
+     * extraction rather than looping on a wipe.
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
+        File filesDir = getFilesDir();
         File root = agentRoot();
-        File abiDir = agentAbiDir(abi);
         File stateDir = agentStateDir();
-        if (!root.exists() && !root.mkdirs()) {
-            throw new IOException("Could not create " + root);
-        }
-        if (!abiDir.exists() && !abiDir.mkdirs()) {
-            throw new IOException("Could not create " + abiDir);
-        }
+        File staging = new File(filesDir, AGENT_STAGING_DIR_NAME);
+        File trash = new File(filesDir, AGENT_TRASH_DIR_NAME);
         if (!stateDir.exists() && !stateDir.mkdirs()) {
             throw new IOException("Could not create " + stateDir);
         }
 
-        // Compare APK source-file mtime against a stamp file in the agent
-        // root; when the APK was upgraded under us (adb push to
-        // /system/priv-app + reboot, a Play update, or an OTA) wipe the
-        // cached bundle + ABI binaries so the new asset payload gets
-        // re-extracted. Without this, copyAssetIfMissing silently keeps
-        // the previous extraction forever and shipping a fresh
-        // agent-bundle.js does nothing.
-        //
-        // We use the APK file's mtime (sourceDir → File.lastModified)
-        // rather than PackageInfo.lastUpdateTime because /system/priv-app
-        // installs (the AOSP image embed path) DO NOT bump
-        // lastUpdateTime — that field reflects pm-install + Play-update
-        // events. The on-disk APK mtime always reflects the current
-        // payload, which is what we need to invalidate cached extractions.
-        File stamp = new File(root, ".apk-stamp");
+        AssetManager assets = getAssets();
+
+        // Recover from a swap interrupted between its two renames: the trash dir
+        // still holds the last-good extraction, restore it before deciding.
+        recoverInterruptedAgentSwap(root, trash);
+
+        long pkgUpdate = computeApkUpdateTime();
+        long stampedUpdate = readApkStamp(root);
+        boolean apkChanged = ElizaAssetExtractionPolicy.apkChanged(pkgUpdate, stampedUpdate);
+        boolean apkHasAgentAssets = apkShipsAgentAssets(assets, abi);
+        boolean haveValidExtraction = extractionIsBootable(root, abi);
+
+        ElizaAssetExtractionPolicy.Action action = ElizaAssetExtractionPolicy.decide(
+            apkChanged, apkHasAgentAssets, haveValidExtraction);
+
+        boolean staged = false;
+        switch (action) {
+            case STAGE_AND_SWAP:
+                Log.i(TAG, "[ElizaAgentService] Refreshing agent assets via atomic staging "
+                    + "(apkChanged=" + apkChanged + ", validExtraction=" + haveValidExtraction
+                    + ", was=" + stampedUpdate + ", now=" + pkgUpdate + ")");
+                try {
+                    deleteRecursively(staging);
+                    stageAgentRoot(assets, abi, pkgUpdate, staging);
+                    swapStagedAgentRoot(staging, root, trash);
+                    staged = true;
+                    Log.i(TAG, "[ElizaAgentService] Atomic agent asset swap complete; stamp=" + pkgUpdate);
+                } catch (IOException error) {
+                    deleteRecursively(staging);
+                    if (extractionIsBootable(root, abi)) {
+                        // Fall back to the last-good extraction and leave the
+                        // stamp unchanged so a later boot retries the refresh.
+                        // Never loop on a wipe of a working extraction (#12453).
+                        Log.e(TAG, "[ElizaAgentService] Agent asset staging failed; "
+                            + "falling back to the existing last-good extraction and "
+                            + "leaving the stamp at " + stampedUpdate + " so the refresh retries.",
+                            error);
+                    } else {
+                        throw new IOException("Agent asset staging failed and no valid prior "
+                            + "extraction exists to fall back to", error);
+                    }
+                }
+                break;
+            case KEEP_MISSING_ASSETS:
+                // A UI-only / WebView-debug APK lacks assets/agent/* but bumped
+                // the APK mtime. Wiping here would brick a working full-agent
+                // install; keep it and leave the stamp so the guard re-checks.
+                Log.w(TAG, "[ElizaAgentService] Installed APK ships NO assets/agent/* for abi="
+                    + abi + " (UI-only build?); KEEPING the existing agent extraction rather than "
+                    + "wiping it. Stamp left unchanged (was=" + stampedUpdate + ", apk=" + pkgUpdate + ").");
+                break;
+            case FAIL_NO_ASSETS:
+                throw new IOException("Installed APK ships no assets/agent/* for abi=" + abi
+                    + " and there is no valid prior extraction to boot");
+            case USE_EXISTING:
+            default:
+                // Stamp matches and the extraction is bootable. Because the stamp
+                // only advances with a completed swap, the on-disk tree is
+                // complete by invariant — nothing to copy or wipe.
+                break;
+        }
+
+        // Aux runtime assets live OUTSIDE the atomically-swapped agent root
+        // (vector/fuzzy tarballs in files/, bundled models in .eliza/). They are
+        // small and/or persistent, their partial state does not brick boot, and
+        // they self-heal idempotently. Force-refresh the tarballs only when we
+        // just re-staged from a full APK.
+        extractAuxRuntimeAssets(assets, filesDir, stateDir, staged);
+    }
+
+    /**
+     * Resolve the current APK payload timestamp. Prefers the on-disk APK mtime
+     * ({@code sourceDir → File.lastModified}) over {@code lastUpdateTime}
+     * because /system/priv-app installs (the AOSP image embed path) do NOT bump
+     * {@code lastUpdateTime} — that field reflects pm-install + Play-update
+     * events, while the APK mtime always reflects the current payload, which is
+     * what invalidates a cached extraction. Returns 0 when unknown, which the
+     * policy reads as "no change" (safe: it boots the existing extraction).
+     */
+    private long computeApkUpdateTime() {
         long pkgUpdate = 0L;
         try {
             String sourceDir = getApplicationInfo().sourceDir;
@@ -903,101 +1036,121 @@ public class ElizaAgentService extends Service {
             long pmUpdate = getPackageManager()
                 .getPackageInfo(getPackageName(), 0).lastUpdateTime;
             if (pmUpdate > pkgUpdate) pkgUpdate = pmUpdate;
-        } catch (Exception ignored) {
-            // best-effort; no stamp known on early-boot failure
+        } catch (PackageManager.NameNotFoundException error) {
+            // The package cannot fail to find itself in practice; on the
+            // impossible path, an unknown APK time reads as "no change".
+            Log.w(TAG, "[ElizaAgentService] Could not resolve APK update time: " + error.getMessage());
         }
-        long stampedUpdate = 0L;
-        if (stamp.exists()) {
-            try (InputStream in = new java.io.FileInputStream(stamp)) {
-                byte[] buf = new byte[64];
-                int n = in.read(buf);
-                if (n > 0) {
-                    stampedUpdate = Long.parseLong(new String(buf, 0, n).trim());
-                }
-            } catch (Exception ignored) {
-                // corrupt stamp — treat as missing
+        return pkgUpdate;
+    }
+
+    /** Read the APK-mtime stamp from a completed extraction; 0 if absent/corrupt. */
+    private long readApkStamp(File root) {
+        File stamp = new File(root, AGENT_STAMP_NAME);
+        if (!stamp.isFile()) {
+            return 0L;
+        }
+        try (InputStream in = new java.io.FileInputStream(stamp)) {
+            byte[] buf = new byte[64];
+            int n = in.read(buf);
+            if (n > 0) {
+                return Long.parseLong(new String(buf, 0, n, StandardCharsets.UTF_8).trim());
             }
+        } catch (IOException | NumberFormatException error) {
+            Log.w(TAG, "[ElizaAgentService] Corrupt/unreadable " + AGENT_STAMP_NAME
+                + "; treating extraction as stale: " + error.getMessage());
         }
-        if (pkgUpdate > 0L && pkgUpdate != stampedUpdate) {
-            Log.i(TAG, "APK changed (was=" + stampedUpdate + ", now=" + pkgUpdate + "); refreshing extracted agent assets");
-            File bundle = new File(root, AGENT_BUNDLE_NAME);
-            if (bundle.exists() && !bundle.delete()) Log.w(TAG, "Could not delete stale agent-bundle.js");
-            File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
-            if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
-            File pgWasm = new File(root, "pglite.wasm");
-            if (pgWasm.exists()) pgWasm.delete();
-            File initDbWasm = new File(root, "initdb.wasm");
-            if (initDbWasm.exists()) initDbWasm.delete();
-            File pgData = new File(root, "pglite.data");
-            if (pgData.exists()) pgData.delete();
-            File ortWasmLoader = new File(root, "ort-wasm-simd-threaded.mjs");
-            if (ortWasmLoader.exists()) ortWasmLoader.delete();
-            File ortWasmBinary = new File(root, "ort-wasm-simd-threaded.wasm");
-            if (ortWasmBinary.exists()) ortWasmBinary.delete();
-            File vec = new File(getFilesDir(), "vector.tar.gz");
-            if (vec.exists()) vec.delete();
-            File fuzzy = new File(getFilesDir(), "fuzzystrmatch.tar.gz");
-            if (fuzzy.exists()) fuzzy.delete();
-            File pluginsManifest = new File(root, "plugins-manifest.json");
-            if (pluginsManifest.exists()) pluginsManifest.delete();
-            File[] abiContents = abiDir.listFiles();
-            if (abiContents != null) {
-                for (File f : abiContents) {
-                    try {
-                        java.nio.file.Files.deleteIfExists(f.toPath());
-                    } catch (IOException | SecurityException error) {
-                        Log.w(TAG, "Could not delete stale ABI asset " + f.getName() + ": " + error.getMessage());
-                    }
-                }
-            }
+        return 0L;
+    }
+
+    /** Persist the APK stamp; throws so a stamp-write failure fails the staging. */
+    private void writeApkStamp(File stamp, long value) throws IOException {
+        try (FileOutputStream out = new FileOutputStream(stamp)) {
+            out.write(Long.toString(value).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+
+    /**
+     * Whether the installed APK actually ships the agent payload: the bundle
+     * asset AND a non-empty {@code assets/agent/<abi>/} dir. False for a UI-only
+     * WebView-debug build — the signal the missing-assets guard keys on.
+     */
+    private boolean apkShipsAgentAssets(AssetManager assets, String abi) {
+        boolean bundlePresent;
+        try (InputStream probe = assets.open("agent/" + AGENT_BUNDLE_NAME)) {
+            bundlePresent = true;
+        } catch (IOException missing) {
+            bundlePresent = false;
+        }
+        try {
+            String[] abiFiles = assets.list("agent/" + abi);
+            return bundlePresent && abiFiles != null && abiFiles.length > 0;
+        } catch (IOException error) {
+            Log.w(TAG, "[ElizaAgentService] Could not enumerate APK agent assets for abi="
+                + abi + "; treating as absent: " + error.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Whether an on-disk extraction can actually boot: bundle + launch.sh +
+     * bun + a musl loader all present and non-empty. Mirrors the guards in
+     * {@link #startAgentProcess()}, so a "valid extraction" is exactly one that
+     * would pass them.
+     */
+    private boolean extractionIsBootable(File root, String abi) {
+        File bundle = new File(root, AGENT_BUNDLE_NAME);
+        if (!bundle.isFile() || bundle.length() <= 0) {
+            return false;
+        }
+        File launch = new File(root, AGENT_LAUNCH_SCRIPT);
+        if (!launch.isFile() || launch.length() <= 0) {
+            return false;
+        }
+        File abiDir = new File(root, abi);
+        File bun = new File(abiDir, BUN_BINARY);
+        if (!bun.isFile() || bun.length() <= 0) {
+            return false;
+        }
+        return findMuslLoader(abiDir) != null;
+    }
+
+    /**
+     * Build a complete, ready-to-boot agent tree in {@code stagingRoot} from the
+     * APK assets — every agent-root file, the ABI binaries, +x bits, and the
+     * runtime symlinks — then write the {@code .apk-stamp} last so it lands only
+     * on a fully-staged tree. Throws on any failure; the caller keeps the last-
+     * good extraction and never swaps a partial tree into place.
+     */
+    private void stageAgentRoot(AssetManager assets, String abi, long pkgUpdate, File stagingRoot)
+            throws IOException {
+        File stagingAbiDir = new File(stagingRoot, abi);
+        if (!stagingRoot.isDirectory() && !stagingRoot.mkdirs()) {
+            throw new IOException("Could not create staging dir " + stagingRoot);
+        }
+        if (!stagingAbiDir.isDirectory() && !stagingAbiDir.mkdirs()) {
+            throw new IOException("Could not create staging abi dir " + stagingAbiDir);
         }
 
-        AssetManager assets = getAssets();
+        // Staging is fresh, so copyAssetIfMissing always copies here.
+        copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(stagingRoot, AGENT_BUNDLE_NAME));
+        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_SCRIPT));
 
-        copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
-        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
-
-        // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data
-        // sit next to the bundle (`new URL("./pglite.X", import.meta.url)`);
-        // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
-        // ABOVE the bundle because PGlite resolves them via
-        // `new URL("../X.tar.gz", ...)`.
-        //
-        // aapt2 quirk: even with `androidResources.noCompress` listing
-        // `tar.gz` and `tar`, aapt2 strips the `.gz` suffix from
-        // `*.tar.gz` assets at packaging time (the `noCompress` flag
-        // only controls ZIP-level compression of the entry, not the
-        // pre-processing aapt2 does to "doubly compressed" extensions).
-        // The asset on disk inside the APK is therefore named
-        // `vector.tar` / `fuzzystrmatch.tar`, but PGlite's runtime
-        // loader still resolves `../vector.tar.gz` and
-        // `../fuzzystrmatch.tar.gz`. Look up under the aapt2-rewritten
-        // name and write to the runtime-expected `.tar.gz` name so the
-        // loader contract is preserved without changing the bundle.
-        copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
-        copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
-        copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
+        // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data sit
+        // next to the bundle (`new URL("./pglite.X", import.meta.url)`).
+        copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
+        copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
+        copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
         // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
         // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
         // not ship these files; keep extraction best-effort for older APKs.
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
-            new File(root, "ort-wasm-simd-threaded.mjs"));
+            new File(stagingRoot, "ort-wasm-simd-threaded.mjs"));
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
-            new File(root, "ort-wasm-simd-threaded.wasm"));
-        // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
-        // DECOMPRESSES them into raw tar bytes. PGlite's loader does
-        // `new URL("../X.tar.gz", ...)` then pipes the bytes through
-        // gunzip — fed raw tar it errors with `Z_DATA_ERROR: incorrect
-        // header check` and the agent crashloops at PGlite init. Re-gzip
-        // on extraction so the on-disk file matches what the loader
-        // expects: a gzipped tarball at `vector.tar.gz` /
-        // `fuzzystrmatch.tar.gz`.
-        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar",
-            new File(getFilesDir(), "vector.tar.gz"));
-        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar",
-            new File(getFilesDir(), "fuzzystrmatch.tar.gz"));
+            new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
-            new File(root, "plugins-manifest.json"));
+            new File(stagingRoot, "plugins-manifest.json"));
 
         // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
@@ -1007,7 +1160,7 @@ public class ElizaAgentService extends Service {
         }
         for (String name : abiFiles) {
             try {
-                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
+                copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(stagingAbiDir, name));
             } catch (java.io.FileNotFoundException error) {
                 if ("libgcc_s.so.1".equals(name)) {
                     Log.w(TAG, "Optional runtime library missing from APK assets: " + abiAssetDir + "/" + name);
@@ -1017,6 +1170,21 @@ public class ElizaAgentService extends Service {
             }
         }
 
+        finalizeAgentAbiDir(stagingRoot, stagingAbiDir, abiFiles);
+
+        // Stamp LAST, inside staging, so it travels with the atomic swap and
+        // never gets ahead of a completed extraction.
+        if (pkgUpdate > 0L) {
+            writeApkStamp(new File(stagingRoot, AGENT_STAMP_NAME), pkgUpdate);
+        }
+    }
+
+    /**
+     * Set the +x bits and create the runtime symlinks on an extracted ABI dir.
+     * The libstdc++ soname symlink is relative and the packaged-native links are
+     * absolute, so both survive the staging→root rename intact.
+     */
+    private void finalizeAgentAbiDir(File root, File abiDir, String[] abiFiles) {
         File bun = new File(abiDir, BUN_BINARY);
         if (bun.exists()) bun.setExecutable(true, false);
         File llamaServer = new File(abiDir, "llama-server");
@@ -1025,9 +1193,9 @@ public class ElizaAgentService extends Service {
         if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
             // The musl loader (`ld-musl-<arch>.so.1`) needs +x. With the
-            // SIGSYS-shim wrapper installed (x86_64 only) the original
-            // Alpine loader is shipped as `ld-musl-<arch>.so.1.real` and
-            // ALSO needs +x because loader-wrap execve()s it directly.
+            // SIGSYS-shim wrapper installed (x86_64 only) the original Alpine
+            // loader is shipped as `ld-musl-<arch>.so.1.real` and ALSO needs +x
+            // because loader-wrap execve()s it directly.
             if (name.startsWith("ld-musl-")
                 && (name.endsWith(".so.1") || name.endsWith(".so.1.real"))) {
                 File loader = new File(abiDir, name);
@@ -1042,13 +1210,12 @@ public class ElizaAgentService extends Service {
         );
         linkPackagedRuntimeLibrary(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
 
-        // bun's binary requests `libstdc++.so.6` at runtime (the soname),
-        // but the actual file we shipped is the versioned realpath
-        // (`libstdc++.so.6.0.33`). Without a symlink the musl loader
-        // can't find the shared object and bun crashes with hundreds of
-        // "Error relocating: symbol not found" lines. Create the symlink
-        // pointing from the soname to the realpath inside the same abi
-        // dir so LD_LIBRARY_PATH resolution works without LD_PRELOAD.
+        // bun requests `libstdc++.so.6` (the soname) at runtime, but the file we
+        // shipped is the versioned realpath (`libstdc++.so.6.0.33`). Without a
+        // symlink the musl loader can't find the shared object and bun crashes
+        // with hundreds of "Error relocating: symbol not found" lines. Link the
+        // soname to the realpath inside the same abi dir so LD_LIBRARY_PATH
+        // resolution works without LD_PRELOAD.
         if (!stdcxxLinkedFromNative) {
             for (String name : abiFiles) {
                 if (name.startsWith("libstdc++.so.6.")) {
@@ -1072,49 +1239,140 @@ public class ElizaAgentService extends Service {
                 }
             }
         }
+    }
 
-        // Bundled default models (chat + embedding GGUF files staged by
-        // scripts/elizaos/stage-default-models.mjs at AOSP build time).
-        // Land them under $ELIZA_STATE_DIR/local-inference/models/ so
-        // the runtime's first-run bootstrap discovers them at canonical
-        // paths and registers them in the local-inference registry as
-        // eliza-owned models. The manifest.json carried alongside the
-        // GGUF files lets the bootstrap pick the right id + role for
-        // each file without re-deriving them from the filename.
-        //
-        // assets/agent/models/ may not exist on Capacitor (non-AOSP)
-        // builds — bundling defaults to off there since the desktop /
-        // Capacitor flows already have download UX. assets.list()
-        // returns null on missing paths, which we treat as "no models
-        // to extract".
+    /**
+     * Atomically replace {@code root} with {@code staging}: move the current
+     * extraction aside to {@code trash}, move the staged tree into place, then
+     * delete the trash. There is never an instant where both the working
+     * extraction is gone AND no recoverable copy exists — a crash between the
+     * two renames leaves the last-good tree in {@code trash} for
+     * {@link #recoverInterruptedAgentSwap} to restore on the next boot.
+     */
+    private void swapStagedAgentRoot(File staging, File root, File trash) throws IOException {
+        deleteRecursively(trash);
+        if (root.exists() && !root.renameTo(trash)) {
+            throw new IOException("Could not move current agent extraction aside to " + trash);
+        }
+        if (!staging.renameTo(root)) {
+            // Restore the last-good extraction before surfacing the failure.
+            if (trash.exists() && !root.exists() && !trash.renameTo(root)) {
+                Log.e(TAG, "[ElizaAgentService] Could not restore agent extraction from "
+                    + trash.getName() + " after a failed swap; next boot recovers it.");
+            }
+            throw new IOException("Could not move staged agent extraction into place at " + root);
+        }
+        deleteRecursively(trash);
+    }
+
+    /**
+     * Restore the last-good extraction if a prior swap died between its two
+     * renames. If {@code trash} exists and {@code root} already holds a bundle,
+     * the swap completed and the trash is just leftover — delete it. Otherwise
+     * the working root never landed; move the trash back into place.
+     */
+    private void recoverInterruptedAgentSwap(File root, File trash) {
+        if (!trash.isDirectory()) {
+            return;
+        }
+        if (new File(root, AGENT_BUNDLE_NAME).exists()) {
+            deleteRecursively(trash);
+            Log.w(TAG, "[ElizaAgentService] Cleaned leftover " + trash.getName()
+                + " from a prior interrupted asset swap; working extraction intact.");
+            return;
+        }
+        if (root.exists()) {
+            deleteRecursively(root);
+        }
+        if (trash.renameTo(root)) {
+            Log.w(TAG, "[ElizaAgentService] Restored the last-good agent extraction from "
+                + trash.getName() + " after an interrupted asset swap.");
+        } else {
+            Log.e(TAG, "[ElizaAgentService] Could not restore agent extraction from "
+                + trash.getName() + "; a fresh extraction will be staged.");
+        }
+    }
+
+    /**
+     * Extract the aux runtime assets that live outside the swapped agent root:
+     * the PGlite extension tarballs (files/) and bundled default models
+     * (.eliza/). Both self-heal idempotently. Force-refresh the tarballs on a
+     * fresh stage; never force-delete the large, persistent model files.
+     */
+    private void extractAuxRuntimeAssets(AssetManager assets, File filesDir, File stateDir,
+            boolean forceRefreshTarballs) throws IOException {
+        // vector.tar.gz / fuzzystrmatch.tar.gz must live one directory ABOVE the
+        // bundle (PGlite resolves them via `new URL("../X.tar.gz", ...)`), so
+        // they sit in files/ rather than the agent root. aapt2 strips the `.gz`
+        // from `*.tar.gz` asset names AND decompresses them to raw tar at
+        // packaging time (even with `androidResources.noCompress`), so the APK
+        // entry is `vector.tar` / `fuzzystrmatch.tar`; re-gzip on extraction so
+        // the on-disk file is the gzipped tarball the loader's gunzip expects
+        // (raw tar → `Z_DATA_ERROR: incorrect header check` → PGlite crashloop).
+        File vector = new File(filesDir, "vector.tar.gz");
+        File fuzzy = new File(filesDir, "fuzzystrmatch.tar.gz");
+        if (forceRefreshTarballs) {
+            if (vector.exists() && !vector.delete()) Log.w(TAG, "Could not delete stale vector.tar.gz");
+            if (fuzzy.exists() && !fuzzy.delete()) Log.w(TAG, "Could not delete stale fuzzystrmatch.tar.gz");
+        }
+        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar", vector);
+        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar", fuzzy);
+
+        // Bundled default models (chat + embedding GGUF, staged by
+        // scripts/elizaos/stage-default-models.mjs at AOSP build time). Land
+        // them under $ELIZA_STATE_DIR/local-inference/models/ so the runtime's
+        // first-run bootstrap discovers them at canonical paths and registers
+        // them as eliza-owned models via the alongside manifest.json. Absent on
+        // Capacitor (non-AOSP) builds — assets.list() returns null, treated as
+        // "no models to extract".
         String modelsAssetDir = "agent/models";
         String[] modelFiles = assets.list(modelsAssetDir);
         if (modelFiles != null && modelFiles.length > 0) {
-            File modelsDest = new File(
-                new File(stateDir, "local-inference"),
-                "models"
-            );
+            File modelsDest = new File(new File(stateDir, "local-inference"), "models");
             if (!modelsDest.exists() && !modelsDest.mkdirs()) {
                 throw new IOException("Could not create " + modelsDest);
             }
             for (String name : modelFiles) {
-                copyAssetIfMissing(
-                    assets,
-                    modelsAssetDir + "/" + name,
-                    new File(modelsDest, name)
-                );
+                copyAssetIfMissing(assets, modelsAssetDir + "/" + name, new File(modelsDest, name));
             }
             Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
         }
+    }
 
-        // Persist the APK's mtime stamp so subsequent boots can detect a
-        // stale extraction and force a refresh.
-        if (pkgUpdate > 0L) {
-            try (FileOutputStream out = new FileOutputStream(stamp)) {
-                out.write(Long.toString(pkgUpdate).getBytes());
-            } catch (IOException error) {
-                Log.w(TAG, "Could not write APK stamp: " + error.getMessage());
+    /**
+     * Recursively delete a file tree, deleting symlinks as links (never
+     * following them into their targets — the ABI dir holds symlinks into the
+     * packaged nativeLibraryDir, which must not be traversed and wiped).
+     */
+    private void deleteRecursively(File target) {
+        if (target == null) {
+            return;
+        }
+        if (isSymlink(target)) {
+            if (!target.delete()) {
+                Log.w(TAG, "Could not delete symlink " + target);
             }
+            return;
+        }
+        if (!target.exists()) {
+            return;
+        }
+        File[] children = target.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        if (!target.delete()) {
+            Log.w(TAG, "Could not delete " + target);
+        }
+    }
+
+    private static boolean isSymlink(File file) {
+        try {
+            return java.nio.file.Files.isSymbolicLink(file.toPath());
+        } catch (SecurityException error) {
+            return false;
         }
     }
 
@@ -1379,42 +1637,56 @@ public class ElizaAgentService extends Service {
             // WebView's /api/auth/me startup probe fails with "Backend
             // Unreachable". That is the emulator e2e churn — the Activity/FGS
             // gets recreated mid-run and onStartCommand → startAgentProcess
-            // would relaunch a perfectly healthy agent. Gate on the raw TCP
-            // listener (not /api/health), so a bun that is alive but busy
-            // mid-llama_decode — when an HTTP probe would time out — is still
+            // would relaunch a perfectly healthy agent. Gate on the raw socket
+            // accept (not /api/health), so a bun that is alive but busy
+            // mid-llama_decode — when a full request would time out — is still
             // recognised as running and left alone.
-            if (detachedAgentMode && isLoopbackAgentListening()) {
+            // Adopt on the socket signal alone — not `detachedAgentMode &&`.
+            // detachedAgentMode is an instance field, so a service instance
+            // created after an AMS teardown / process death always sees it
+            // false and would skip adoption, fall through to launch.sh, and
+            // pkill a perfectly healthy surviving agent (the exact churn the
+            // comment above describes). Mark the instance detached on adopt so
+            // an explicit ACTION_STOP still tears the adopted agent down.
+            if (isLocalAgentSocketListening()) {
+                detachedAgentMode = true;
                 if (!"running".equals(currentStatus)) {
                     currentStatus = "running";
                     updateNotification();
                 }
-                Map<String, String> details = new LinkedHashMap<>();
-                details.put("port", String.valueOf(AGENT_PORT));
-                appendDiagnosticEvent("detached-agent-adopted", details);
-                Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
-                    + "; adopting it (no relaunch).");
+                appendDiagnosticEvent("detached-agent-adopted", null);
+                Log.i(TAG, "Detached agent already accepting on the request socket; adopting it (no relaunch).");
                 return;
             }
 
             // The agent may have been launched moments ago and still be in its
             // (slow) cold boot — plugin resolution + first model load can take
-            // 60-90s on an emulated CPU before bun binds the port. During that
-            // window isLoopbackAgentListening() is false, so without this guard a
+            // 60-90s on an emulated CPU before bun binds the socket. During that
+            // window isLocalAgentSocketListening() is false, so without this guard a
             // recreated Activity/FGS (onStartCommand fires repeatedly as the e2e
             // foregrounds/navigates) would relaunch.sh-pkill the booting bun and
             // restart the whole boot — an endless churn that never reaches ready.
             // If we launched within the boot grace window, assume it is still
             // coming up and leave it alone rather than kill + restart it.
-            if (detachedAgentMode
-                    && detachedLaunchStartedAtMs > 0
-                    && (System.currentTimeMillis() - detachedLaunchStartedAtMs)
+            // The launch timestamp must survive service-instance churn: a new
+            // instance created while a prior instance's agent is still cold
+            // booting (port not yet bound) would otherwise see 0, skip this
+            // guard, and launch.sh-pkill the booting bun. Fall back to the
+            // persisted stamp written at launch (cleared on explicit stop).
+            long launchStartedAt = detachedLaunchStartedAtMs > 0L
+                ? detachedLaunchStartedAtMs
+                : readPersistedDetachedLaunchTimestamp();
+            if (launchStartedAt > 0L
+                    && (System.currentTimeMillis() - launchStartedAt)
                         < AGENT_BOOT_GRACE_MS) {
+                detachedAgentMode = true;
+                detachedLaunchStartedAtMs = launchStartedAt;
                 Map<String, String> details = new LinkedHashMap<>();
-                details.put("ageMs", String.valueOf(System.currentTimeMillis() - detachedLaunchStartedAtMs));
+                details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
                 details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
                 appendDiagnosticEvent("detached-agent-cold-boot-guard", details);
                 Log.i(TAG, "Detached agent still in cold boot (launched "
-                    + (System.currentTimeMillis() - detachedLaunchStartedAtMs)
+                    + (System.currentTimeMillis() - launchStartedAt)
                     + "ms ago); not relaunching.");
                 return;
             }
@@ -1546,17 +1818,25 @@ public class ElizaAgentService extends Service {
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
-            agentEnv.put("PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
-            // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
-            // (defaulting to 2138) before falling back to PORT. Without
-            // these the agent binds 2138 even though the service advertises
-            // 31337, the loopback healthcheck never sees a listener, and
-            // the watchdog churns indefinitely. Both env vars resolve to
-            // the same port — UI bundles in the same Hono server.
-            agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
+            // Port-free by default: the WebView reaches the agent over the
+            // abstract-namespace request socket below, so the agent binds NO TCP
+            // listener (localAgentMode in android/bridge.ts → startEliza). The
+            // port only re-opens when ELIZA_API_EXPOSE_PORT is set (dev tooling,
+            // LAN access, e2e harnesses) — then the agent advertises AGENT_PORT
+            // and the launch.sh PORT default applies. Passing the port env
+            // unconditionally is what used to make the agent open 31337.
+            if ("1".equals(env.get("ELIZA_API_EXPOSE_PORT"))
+                    || "true".equalsIgnoreCase(env.get("ELIZA_API_EXPOSE_PORT"))) {
+                agentEnv.put("PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
+                agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
+            }
+            // The abstract-namespace request socket the agent binds and this
+            // service dials (see LOCAL_AGENT_SOCKET_NAME). Both sides read the
+            // same env var so the name stays in sync.
+            agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
@@ -1564,13 +1844,12 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
-            // Local passwordless mode: the on-device agent trusts its own
-            // loopback so the single device owner never hits a login/pairing
+            // Local passwordless mode: the on-device agent trusts its own sealed
+            // request socket so the single device owner never hits a login/pairing
             // gate. The per-boot bearer-token guard (ELIZA_REQUIRE_LOCAL_AUTH=1)
             // is intentionally OFF — the WebView cannot reliably present that
             // token at cold start, which otherwise dead-ends the dashboard at
-            // 401 ("Connecting to backend…" forever). Tradeoff: other apps on
-            // THIS device can reach 127.0.0.1:31337. The token is still minted
+            // 401 ("Connecting to backend…" forever). The token is still minted
             // and exposed via the Agent plugin for callers that opt to use it.
             agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "0");
             agentEnv.put("ELIZA_API_TOKEN", token);
@@ -2170,6 +2449,7 @@ public class ElizaAgentService extends Service {
             agentProcess = started;
             detachedAgentMode = true;
             detachedLaunchStartedAtMs = System.currentTimeMillis();
+            persistDetachedLaunchTimestamp(detachedLaunchStartedAtMs);
             // stdoutPump/stderrPump no longer needed — bun writes straight
             // to agent.log on disk via the OS-level redirect above.
             stdoutPump = null;
@@ -2254,6 +2534,7 @@ public class ElizaAgentService extends Service {
             currentLocalAgentToken = null;
             currentTerminalRunToken = null;
         }
+        persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
             stopDetachedAgentProcess();
@@ -2306,6 +2587,25 @@ public class ElizaAgentService extends Service {
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * Persist the detached-agent launch timestamp so the cold-boot guard in
+     * {@link #startAgentProcess()} survives service-instance churn (AMS
+     * record teardown, process restart). 0 clears the stamp; written on every
+     * launch and cleared by {@link #stopAgentProcess()} (explicit stops and
+     * restart-first restarts).
+     */
+    private void persistDetachedLaunchTimestamp(long timestampMs) {
+        getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(DETACHED_LAUNCH_STAMP_KEY, timestampMs)
+            .apply();
+    }
+
+    private long readPersistedDetachedLaunchTimestamp() {
+        return getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+            .getLong(DETACHED_LAUNCH_STAMP_KEY, 0L);
     }
 
     private static String shellQuote(String value) {
@@ -2461,39 +2761,37 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Quick liveness probe for an already-running detached agent: can a TCP
-     * connection be opened to the loopback agent port? Unlike {@link
-     * #probeHealth()} this only completes the socket handshake, so it returns
-     * true even while bun is busy inside a synchronous native call
-     * (mid-llama_decode) and the HTTP layer is unresponsive — precisely the
-     * state we must NOT mistake for a dead agent and relaunch over. Used by
-     * {@link #startAgentProcess()} to adopt a surviving detached agent instead
-     * of killing + restarting it when the service/Activity is recreated.
+     * Quick liveness probe for an already-running detached agent: can a
+     * connection be opened to its request socket? Unlike {@link #probeHealth()}
+     * this only completes the socket handshake, so it returns true even while bun
+     * is busy inside a synchronous native call (mid-llama_decode) and the accept
+     * loop is briefly unresponsive to a full request — precisely the state we
+     * must NOT mistake for a dead agent and relaunch over. Used by {@link
+     * #startAgentProcess()} to adopt a surviving detached agent instead of
+     * killing + restarting it when the service/Activity is recreated.
      */
-    private boolean isLoopbackAgentListening() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", AGENT_PORT), 2000);
+    private boolean isLocalAgentSocketListening() {
+        LocalSocket socket = new LocalSocket();
+        try {
+            socket.connect(new LocalSocketAddress(
+                LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
             return true;
         } catch (IOException ignored) {
             return false;
+        } finally {
+            closeQuietly(socket);
         }
     }
 
     private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(HEALTH_URL);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout((int) HEALTH_TIMEOUT_MS);
-            conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
-            conn.setRequestMethod("GET");
-            String token = currentLocalAgentToken;
-            if (token != null && !token.trim().isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            int status = conn.getResponseCode();
+            JSONObject payload = new JSONObject()
+                .put("method", "GET")
+                .put("path", "/api/health");
+            JSONObject result = dispatchBufferedOverSocket(payload, (int) HEALTH_TIMEOUT_MS);
+            int status = result.optInt("status", 0);
             if (status >= 200 && status < 300) {
-                String body = readResponseBody(conn);
+                String body = result.optString("body", "");
                 if (!isReadyHealthBody(body)) {
                     Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
                     return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
@@ -2501,17 +2799,16 @@ public class ElizaAgentService extends Service {
                 return ElizaAgentWatchdogPolicy.ProbeResult.OK;
             }
             // Non-2xx: agent process is up but not healthy/authenticated.
-            // Treat as DEAD so strikes accumulate — this is a crash or
-            // readiness signal, not a busy signal.
+            // Treat as DEAD so strikes accumulate — a crash/readiness signal.
             return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-        } catch (IOException error) {
-            // HTTP request failed (timeout / connect refused / read
-            // interrupt). If the direct child process is still alive the
-            // most likely cause is bun synchronously inside a native FFI
-            // call. Detached mode has no live Java child to inspect, so use a
-            // cheap TCP connect probe: an open listener means the detached bun
-            // is alive but too busy to answer HTTP; a closed port is DEAD and
-            // the startup probe/watchdog owns retry timing.
+        } catch (IOException | JSONException error) {
+            // The request failed (socket connect refused / read interrupt / no
+            // response). If the direct child process is still alive the most
+            // likely cause is bun synchronously inside a native FFI call. Detached
+            // mode has no live Java child to inspect, so use a cheap connect
+            // probe: an accepting socket means the detached bun is alive but too
+            // busy to answer a full request; a closed socket is DEAD and the
+            // startup probe/watchdog owns retry timing.
             Process current;
             boolean detached;
             synchronized (processLock) {
@@ -2521,48 +2818,12 @@ public class ElizaAgentService extends Service {
             if (current != null && current.isAlive()) {
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
-            if (detached && isLoopbackAgentListening()) {
-                appendDiagnosticEvent("detached-agent-probe-busy-port-open", null);
-                Log.i(TAG, "Detached agent HTTP probe failed but loopback port is open — likely mid-decode. No strike.");
+            if (detached && isLocalAgentSocketListening()) {
+                appendDiagnosticEvent("detached-agent-probe-busy-socket-open", null);
+                Log.i(TAG, "Detached agent request probe failed but socket is accepting — likely mid-decode. No strike.");
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
             return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
-
-    private static String readResponseBody(HttpURLConnection conn) throws IOException {
-        try (InputStream in = conn.getInputStream()) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) >= 0) {
-                out.write(buf, 0, n);
-            }
-            return out.toString(StandardCharsets.UTF_8.name());
-        }
-    }
-
-    private static String readResponseBody(InputStream in, int maxBytes) throws IOException {
-        return new String(readResponseBytes(in, maxBytes), StandardCharsets.UTF_8);
-    }
-
-    private static byte[] readResponseBytes(InputStream in, int maxBytes) throws IOException {
-        if (in == null) return new byte[0];
-        try (InputStream input = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int total = 0;
-            int n;
-            while ((n = input.read(buf)) >= 0) {
-                total += n;
-                if (total > maxBytes) {
-                    throw new IOException("Response body is too large");
-                }
-                out.write(buf, 0, n);
-            }
-            return out.toByteArray();
         }
     }
 
@@ -2930,7 +3191,7 @@ public class ElizaAgentService extends Service {
         switch (currentStatus) {
             case "running":
                 title = "Eliza agent · Running";
-                text = "Local agent listening on :" + AGENT_PORT;
+                text = "On-device agent ready";
                 break;
             case "starting":
                 title = "Eliza agent · Starting";

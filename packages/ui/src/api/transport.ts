@@ -1,3 +1,8 @@
+/**
+ * The AgentRequestTransport interface and the default fetch-backed
+ * implementation, plus the small helpers (body/header coercion, method rules)
+ * the platform-specific transports share.
+ */
 export interface AgentRequestTransport {
   request(
     url: string,

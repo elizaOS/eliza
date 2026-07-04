@@ -1,3 +1,4 @@
+/** Handler for the WALLET `search_address` subaction: Birdeye wallet/portfolio lookup by address, routed through `TokenInfoService`. */
 import type {
   ActionResult,
   HandlerCallback,

@@ -1,12 +1,15 @@
+/**
+ * Static source-text assertions on `components/InventoryAppView.tsx` (the rich
+ * dashboard that `InventoryView` renders as its GUI/XR child) guarding two
+ * copy regressions: raw bullet separators in the RPC-provider status line,
+ * and reintroduced paragraph helper copy in the empty-wallet market pulse.
+ * No rendering — this is a text-fixture check, not a component test.
+ */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// The RPC-provider status copy + the empty-wallet market-pulse hero live in the
-// rich dashboard (`InventoryAppView`), which the unified `InventoryView` renders
-// as its GUI/XR `Escape` child; the spatial `InventorySpatialView` is the TUI
-// fallback.
 const source = readFileSync(
   resolve(
     dirname(fileURLToPath(import.meta.url)),

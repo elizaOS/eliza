@@ -1,3 +1,9 @@
+/**
+ * Tab bookkeeping for the background sync loop: merges freshly queried tabs
+ * into the remembered set, ranks them by focus then recency, and selects the
+ * subset to sync according to the tracking mode (current tab vs active tabs).
+ * Pure functions over RememberedTab — no browser API calls.
+ */
 import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
 import type { CompanionSyncRequest } from "./protocol";
 

@@ -1,4 +1,10 @@
+/**
+ * Renders the character's personality-change history as an expandable timeline:
+ * each entry shows the edited field, scope, actor, and a before/after diff of
+ * the change. Pure presentation over the items the hub passes in.
+ */
 import { useState } from "react";
+import { Button } from "../ui/button";
 import type { CharacterPersonalityHistoryItem } from "./character-hub-types";
 
 function formatWhen(iso: string): string {
@@ -83,15 +89,16 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
         ) : null}
         {hasDiff ? (
           <div>
-            <button
-              type="button"
-              className="text-2xs font-medium text-accent hover:underline"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto px-0 py-0 text-2xs font-medium text-accent hover:bg-transparent hover:underline"
               onClick={() => {
                 setOpen((o) => !o);
               }}
             >
               {open ? "Hide" : "Show"} before / after
-            </button>
+            </Button>
             {open ? (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {entry.beforeText ? (

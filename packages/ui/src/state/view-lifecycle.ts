@@ -391,15 +391,20 @@ class ViewLifecycleController {
     }
   }
 
-  /** Resume every paused view (app-resume / tab visible). */
+  /**
+   * Resume the ACTIVE paused view (app-resume / tab visible). Hidden retained
+   * views deliberately stay "paused": that is their resting phase — `setActive`
+   * pauses a pausable keep-alive view the moment it is hidden — so waking them
+   * here (the old paused → "inactive" transition) restarted their timers/
+   * polling/media (`usePausableInterval` gates on `isPaused`, and views restart
+   * media/native subscriptions in `onResume`) while they were still hidden,
+   * on every tab refocus or app foreground.
+   */
   private resumeAll(): void {
     for (const record of this.records.values()) {
-      if (record.phase === "paused") {
-        this.transition(
-          record,
-          record.viewId === this.activeId ? "active" : "inactive",
-          "resume",
-        );
+      if (record.phase !== "paused") continue;
+      if (record.viewId === this.activeId) {
+        this.transition(record, "active", "resume");
       }
     }
   }

@@ -1,3 +1,8 @@
+/**
+ * Backs the `IMAGE_DESCRIPTION` model handler with the active Eliza-1 bundle's
+ * vision GGUF: resolves the vision file from the bundle manifest, loads it
+ * through `localInferenceEngine`, and runs a describe pass over an image path.
+ */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { localInferenceEngine } from "./engine";

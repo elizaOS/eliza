@@ -10,6 +10,12 @@ const minutes = (expr: string): number[] => {
 	return Array.from(schedule.minute).sort((a, b) => a - b);
 };
 
+const daysOfWeek = (expr: string): number[] => {
+	const schedule = parseCronExpression(expr);
+	if (!schedule) throw new Error(`expected ${expr} to parse`);
+	return Array.from(schedule.dayOfWeek).sort((a, b) => a - b);
+};
+
 describe("parseCronExpression - minute field", () => {
 	it("expands `N/step` from N to the field max (regression: previously dropped the step)", () => {
 		// `5/15` means 5,20,35,50 — not just [5].
@@ -36,6 +42,36 @@ describe("parseCronExpression - minute field", () => {
 		expect(parseCronExpression("*/0 * * * *")).toBeNull(); // zero step
 		expect(parseCronExpression("1-2-3 * * * *")).toBeNull(); // bad range
 		expect(parseCronExpression("* * * *")).toBeNull(); // too few fields
+	});
+});
+
+describe("parseCronExpression - day-of-week Sunday alias (7 == 0)", () => {
+	// POSIX/Vixie cron accepts BOTH 0 and 7 for Sunday, and LLMs commonly emit
+	// `7`. Previously the dayOfWeek range was capped at 6, so `7` (and any range
+	// or step touching it) hard-failed trigger creation.
+	it("accepts a bare `7` and folds it onto Sunday (0)", () => {
+		expect(daysOfWeek("0 0 * * 7")).toEqual([0]);
+	});
+
+	it("accepts ranges ending in `7` (e.g. `5-7` = Fri/Sat/Sun)", () => {
+		expect(daysOfWeek("0 0 * * 5-7")).toEqual([0, 5, 6]);
+		expect(daysOfWeek("0 0 * * 0-7")).toEqual([0, 1, 2, 3, 4, 5, 6]);
+	});
+
+	it("accepts `7` inside a comma list and dedupes against a literal 0", () => {
+		expect(daysOfWeek("0 0 * * 0,7")).toEqual([0]);
+		expect(daysOfWeek("0 0 * * 1,7")).toEqual([0, 1]);
+	});
+
+	it("still accepts the canonical `0` for Sunday", () => {
+		expect(daysOfWeek("0 0 * * 0")).toEqual([0]);
+	});
+
+	it("does not accept `7` in fields where it is not a Sunday alias", () => {
+		// minute/hour ranges are unchanged: `7` is a valid minute but the
+		// Sunday-alias relaxation must not bleed into other fields.
+		expect(parseCronExpression("0 0 * * 8")).toBeNull(); // dow out of range
+		expect(parseCronExpression("0 0 * 13 *")).toBeNull(); // month still max 12
 	});
 });
 
@@ -97,6 +133,51 @@ describe("computeNextCronRunAtMs - DST fall-back dedupe (#11046)", () => {
 				lordHowe,
 			),
 		).toBe(at("2026-04-05T15:15:00.000Z"));
+	});
+});
+
+describe("computeNextCronRunAtMs - POSIX day-of-month/day-of-week OR semantics", () => {
+	// Standard (POSIX/Vixie) cron: when BOTH dom and dow are restricted, the
+	// job runs on days matching EITHER field. `0 0 13 * 5` = every 13th AND
+	// every Friday — not only Friday-the-13th.
+	const FRIDAY_JUL_3 = Date.UTC(2026, 6, 3, 12, 0, 0); // 2026-07-03 (a Friday)
+
+	it("sanity: the base date is a Friday", () => {
+		expect(new Date(FRIDAY_JUL_3).getUTCDay()).toBe(5);
+	});
+
+	it("fires on the next matching day-of-week even when the day-of-month has not arrived", () => {
+		// Next Friday (Jul 10) comes before the next 13th (Jul 13). AND
+		// semantics would instead wait months for a Friday-the-13th
+		// (2026-11-13).
+		expect(computeNextCronRunAtMs("0 0 13 * 5", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 10, 0, 0, 0),
+		);
+	});
+
+	it("fires on the next matching day-of-month when it comes before the day-of-week", () => {
+		// `0 0 5 * 1`: the 5th (Sunday Jul 5) comes before the next Monday
+		// (Jul 6).
+		expect(computeNextCronRunAtMs("0 0 5 * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 5, 0, 0, 0),
+		);
+	});
+
+	it("keeps AND semantics when only one day field is restricted", () => {
+		// dom restricted, dow `*`: fire on the 13th regardless of weekday.
+		expect(computeNextCronRunAtMs("0 0 13 * *", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 13, 0, 0, 0),
+		);
+		// dow restricted, dom `*`: fire on the next Monday.
+		expect(computeNextCronRunAtMs("0 0 * * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 6, 0, 0, 0),
+		);
+		// dom `*/2` starts with `*` => unrestricted for the OR rule (Vixie):
+		// dow must ALSO match, so the next fire is a Monday on an odd
+		// day-of-month (Jul 6 is Monday the 6th — even — so Jul 13 it is).
+		expect(computeNextCronRunAtMs("0 0 */2 * 1", FRIDAY_JUL_3)).toBe(
+			Date.UTC(2026, 6, 13, 0, 0, 0),
+		);
 	});
 });
 

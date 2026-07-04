@@ -37,6 +37,11 @@
       "reason": "Generic per-control interaction harness (#8796); for every built-in view it fills inputs and clicks every control. Run on demand via `E2E_RECORD=1 bun run --cwd packages/app test:e2e test/ui-smoke/all-views-interaction.spec.ts`; it exercises destructive controls broadly so it is a coverage tool, not a narrow keyless PR gate."
     },
     {
+      "spec": "tap-target-geometry-all-views.spec.ts",
+      "category": "dedicated-tool",
+      "reason": "Generic per-view rendered-geometry 44px tap-target + role/DOM coherence gate (#10722); it walks every built-in view and measures every standalone control, and the component-library defaults still render 32-40px controls, so the gate cannot pass keyless today. Run on demand via `bun run --cwd packages/app test:e2e test/ui-smoke/tap-target-geometry-all-views.spec.ts`; it is a coverage/audit tool, not a narrow keyless PR gate."
+    },
+    {
       "spec": "launcher-interaction.spec.ts",
       "category": "dedicated-tool",
       "reason": "Drives Launcher view-catalog controls (#8796; renamed from springboard-interaction in #10001). Run on demand, not as a keyless PR gate."

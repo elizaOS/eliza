@@ -1,3 +1,9 @@
+/**
+ * Status panel for the native macOS iMessage connector. Surfaces the
+ * chat-database availability, send-only vs. read/write capability, and the
+ * full-disk-access permission prompt the connector needs to read messages.
+ */
+
 import { useCallback, useEffect, useState } from "react";
 import { client, type IMessageApiStatus } from "../../api";
 import { useAppSelector } from "../../state";

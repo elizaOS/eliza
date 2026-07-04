@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for CockpitView: it renders the live room-deck from the
+// roster prop and the spawn form, and surfaces select/create callbacks.
+// Deterministic RTL/jsdom, no network.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

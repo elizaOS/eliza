@@ -1,3 +1,8 @@
+/**
+ * Per-distribution branding tokens and the first-run setup provider options.
+ * White-label apps read these to name the product and inject custom model/API
+ * providers into onboarding without being limited to the built-in provider union.
+ */
 import { EXTERNAL_URLS } from "../brand/index.ts";
 
 /**

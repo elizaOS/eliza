@@ -1,0 +1,56 @@
+{
+  "pass": {
+    "scenario_id": "smoke_static_calendar_01",
+    "score": 1.0,
+    "state_hash_match": true,
+    "terminated_reason": "respond",
+    "latency_ms": 1654,
+    "turns": [
+      {
+        "turn": 1,
+        "actions": [
+          "CALENDAR_CREATE_EVENT"
+        ],
+        "agent_message": "",
+        "input_tokens": 41276,
+        "output_tokens": 52,
+        "tool_results": "<elided: deterministic world observation>"
+      },
+      {
+        "turn": 2,
+        "actions": [],
+        "agent_message": "OK. I've scheduled your 30-minute 'deep work' focus block for tomorrow, May 11th, at 10:00 AM UTC.",
+        "input_tokens": 41371,
+        "output_tokens": 38,
+        "tool_results": "<elided: deterministic world observation>"
+      }
+    ]
+  },
+  "fail": {
+    "scenario_id": "calendar.create_dentist_event_next_friday",
+    "score": 0.3,
+    "state_hash_match": false,
+    "terminated_reason": "respond",
+    "latency_ms": 1198,
+    "turns": [
+      {
+        "turn": 1,
+        "actions": [
+          "CALENDAR_CREATE_EVENT"
+        ],
+        "agent_message": "",
+        "input_tokens": 41293,
+        "output_tokens": 61,
+        "tool_results": "<elided: deterministic world observation>"
+      },
+      {
+        "turn": 2,
+        "actions": [],
+        "agent_message": "OK. I've added your dentist appointment at Bright Smile Dental for next Friday, May 15th, from 2:00 PM to 3:00 PM UTC.",
+        "input_tokens": 41396,
+        "output_tokens": 40,
+        "tool_results": "<elided: deterministic world observation>"
+      }
+    ]
+  }
+}

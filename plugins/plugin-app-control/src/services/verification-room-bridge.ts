@@ -33,8 +33,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { logger, resolveServerOnlyPort, Service } from "@elizaos/core";
+import path from "node:path";
+import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
+import {
+	getSwarmCoordinatorService,
+	logger,
+	resolveServerOnlyPort,
+	Service,
+} from "@elizaos/core";
 
 export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
@@ -69,23 +75,6 @@ const ATTACH_RETRY_INTERVAL_MS = 500;
 // the old 30s window), it just gets coarser and louder past here.
 const ATTACH_MAX_RETRIES = 60;
 const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
-
-/**
- * Minimal shape of the SwarmCoordinator service surface this bridge
- * depends on. We only need `subscribe`; declared locally so we don't
- * pull in plugin-agent-orchestrator as a hard dependency just for
- * types.
- */
-interface SwarmEventLike {
-	type: string;
-	sessionId: string;
-	timestamp: number;
-	data: unknown;
-}
-
-interface SwarmCoordinatorLike {
-	subscribe(listener: (event: SwarmEventLike) => void): () => void;
-}
 
 interface BridgeEventPayload {
 	originRoomId: string;
@@ -129,7 +118,7 @@ function readNumber(
  * originRoomId, missing target name, malformed shape). Returns `null` for
  * non-actionable events — callers ignore those silently.
  */
-function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
+function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 	if (event.type !== "task_complete" && event.type !== "escalation") {
 		return null;
 	}
@@ -227,11 +216,97 @@ async function loadPluginFromWorkdir(
 	}
 }
 
+interface RegisteredAppItem {
+	slug: string;
+	canonicalName: string;
+}
+
+/**
+ * Register a freshly built app into the running runtime via the loopback agent
+ * API so a subsequent `launch <name>` resolves. The
+ * `/api/apps/load-from-directory` route scans a *parent* directory for app
+ * subdirs and registers each valid one through the AppRegistryService
+ * (`trust: "external"`), so we pass the workdir's parent, not the workdir
+ * itself. That register is idempotent by slug and the worker host returns the
+ * existing worker for an already-registered sibling, so re-scanning the shared
+ * apps dir does not churn unrelated apps. Returns the registered items so the
+ * verdict message can confirm the app is actually launchable instead of
+ * promising a `launch` that would fail with "No installed app matches".
+ */
+async function loadAppFromWorkdir(
+	workdir: string,
+): Promise<
+	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
+> {
+	const port = resolveServerOnlyPort(process.env);
+	const directory = path.dirname(workdir);
+	try {
+		const resp = await fetch(
+			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ directory }),
+				signal: AbortSignal.timeout(30_000),
+			},
+		);
+		const body = (await resp.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		if (resp.ok && body.ok === true) {
+			const items = Array.isArray(body.items)
+				? body.items.filter(
+						(item): item is RegisteredAppItem =>
+							isRecord(item) &&
+							typeof item.slug === "string" &&
+							typeof item.canonicalName === "string",
+					)
+				: [];
+			return { ok: true, items };
+		}
+		return {
+			ok: false,
+			error:
+				typeof body.error === "string"
+					? body.error
+					: `register returned HTTP ${resp.status}`,
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			error: err instanceof Error ? err.message : String(err),
+		};
+	}
+}
+
 async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 	const isApp = payload.method === VERIFY_APP_METHOD;
 	if (isApp) {
-		// Apps resolve through the launch/registry path.
-		return `${payload.targetName} app built and verified. Reply 'launch ${payload.targetName}' to open it.`;
+		// Register the freshly built app so `launch <name>` resolves. Without this
+		// the app is on disk but absent from the registry + installs, and launch
+		// fails with "No installed app matches" (#11954). Only promise the launch
+		// once a registered app actually resolves to the name we'd tell the user.
+		if (!payload.workdir) {
+			return `${payload.targetName} app built and verified, but its build directory is unknown, so it could not be installed. It won't launch until it's registered.`;
+		}
+		const load = await loadAppFromWorkdir(payload.workdir);
+		if (!load.ok) {
+			return `${payload.targetName} app built and verified at ${payload.workdir}, but installing it failed: ${load.error}. It won't launch until it's registered — reload the agent or check its package.json manifest.`;
+		}
+		const target = payload.targetName.toLowerCase();
+		const launchable = load.items.some(
+			(item) =>
+				item.slug.toLowerCase() === target ||
+				item.canonicalName.toLowerCase() === target,
+		);
+		if (launchable) {
+			return `${payload.targetName} app built, verified, and installed — reply 'launch ${payload.targetName}' to open it.`;
+		}
+		// The registry scan succeeded but nothing resolved to the requested name:
+		// the built manifest is missing its `elizaos.app` block or registered
+		// under a different name. Don't promise a launch that would fail.
+		return `${payload.targetName} app built and verified at ${payload.workdir}, but it did not register under a launchable name — reply 'list apps' to see what installed.`;
 	}
 
 	// Plugins: attempt to live-load the built source so its views/actions appear
@@ -322,10 +397,8 @@ export class VerificationRoomBridgeService extends Service {
 	}
 
 	private attach(): void {
-		const coordinator = this.runtime.getService(
-			"SWARM_COORDINATOR",
-		) as SwarmCoordinatorLike | null;
-		if (!coordinator || typeof coordinator.subscribe !== "function") {
+		const coordinator = getSwarmCoordinatorService(this.runtime);
+		if (!coordinator) {
 			// Orchestrator plugin isn't loaded yet — but plugin start ordering
 			// is not deterministic, so the orchestrator may register its
 			// SwarmCoordinator after we ran. Retry on a backoff up to
@@ -390,7 +463,7 @@ export class VerificationRoomBridgeService extends Service {
 		}, interval);
 	}
 
-	private async handleEvent(event: SwarmEventLike): Promise<void> {
+	private async handleEvent(event: SwarmEvent): Promise<void> {
 		const payload = decodeEvent(event);
 		if (!payload) return;
 

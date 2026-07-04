@@ -1,0 +1,31 @@
+╔══════════════════════════════════════════════════════════╗
+║         Eliza Framework Benchmark — TypeScript          ║
+╚══════════════════════════════════════════════════════════╝
+
+NOTE: Using real LLM. Results will include network latency
+      and are not suitable for framework overhead measurement.
+
+System: darwin 25.2.0 arm64 | 16 CPUs | 128GB RAM
+Runtime: Bun 1.3.14
+LLM Mode: real (cli:codex gpt-5.5)
+Scenarios: 1 selected
+
+Running: Single Message Processing... Info       [cli-inference] enabled via ELIZA_CHAT_VIA_CLI=codex — large-tier handlers spawn the codex CLI
+ Info       [cli-inference] text-planner mode (ELIZA_PLANNER_NATIVE_TOOLS=0) — ACTION_PLANNER also served via this route (standalone SAFE stack)
+ Info       Starting Documents service for agent: 00000000-0000-0000-0000-000000000001
+ Info       [RelationshipsService] Loaded 0 contacts from components
+ Info       [RelationshipsService] Initialized successfully
+ Info       [FollowUpService] Successfully acquired RelationshipsService via service promise
+ Info       [FollowUpService] Initialized successfully
+ done (13.99s)
+
+  single-message
+    Iterations: 1 (warmup: 0)
+    Latency:  avg=13.95s  median=13.95s  p95=13.95s  p99=13.95s
+    Range:    min=13.95s  max=13.95s  stddev=0us
+    Throughput: 0.1 msg/s (1 messages in 13.95s)
+    Memory:   start=144.5MB  peak=169.3MB  delta=24.8MB
+    Pipeline: state=3.84ms  model=6.95s  actions=0us  memory=149us
+    Timing:   model_total=13.90s  framework_total=45.82ms
+
+Results written to: /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/benchmark/framework/single-message/result.json

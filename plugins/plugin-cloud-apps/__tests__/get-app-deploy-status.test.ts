@@ -1,3 +1,6 @@
+/**
+ * GET_APP_DEPLOY_STATUS tests covering the pure formatDeployStatus mapping and the action. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { AppDeployStatusResponse } from "@elizaos/cloud-sdk";
 import {

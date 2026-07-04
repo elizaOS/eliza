@@ -1,3 +1,8 @@
+/**
+ * Picks the X auth provider for a run from `TWITTER_AUTH_MODE`: `env` selects the
+ * OAuth 1.0a `EnvAuthProvider`, `oauth` selects the OAuth 2.0 PKCE
+ * `OAuth2PKCEAuthProvider`. `ClientBase` calls `createTwitterAuthProvider` during init.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";

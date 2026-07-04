@@ -1,3 +1,8 @@
+/**
+ * `TwitterPostService` — the `IPostService` implementation for public tweets,
+ * covering create/get posts, mention retrieval, and like/retweet plus their
+ * inverses through `ClientBase`. Backs the post connector handlers on `XService`.
+ */
 import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { SearchMode } from "../client";

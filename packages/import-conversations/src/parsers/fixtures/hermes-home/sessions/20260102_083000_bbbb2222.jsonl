@@ -1,0 +1,3 @@
+{"role": "session_meta", "tools": [], "model": "", "platform": "cli", "timestamp": "2026-01-02T08:30:00.000000"}
+{"role": "user", "content": "second session first message", "timestamp": "2026-01-02T08:30:01.000000"}
+{"role": "assistant", "content": "second session reply", "reasoning": "some private thoughts", "finish_reason": "stop", "timestamp": "2026-01-02T08:30:02.000000"}

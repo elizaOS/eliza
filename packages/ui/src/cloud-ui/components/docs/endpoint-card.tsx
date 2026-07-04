@@ -1,8 +1,11 @@
 "use client";
 
+/**
+ * Docs card summarizing an API endpoint (method, cost, capability icons).
+ */
 import { ChevronRight, Coins, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
-
+import { Button } from "../../../components/ui/button";
 import { cn } from "../../lib/utils";
 
 export interface ApiEndpointCardPricing {
@@ -65,7 +68,8 @@ export function EndpointCard<
   formatPricing,
 }: EndpointCardProps<TEndpoint>) {
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={() => onSelect(endpoint)}
       className="group relative w-full min-w-0 overflow-hidden rounded-sm border border-white/5 bg-neutral-900/50 p-4 text-left transition-all hover:border-white/10 hover:bg-neutral-900/70"
@@ -159,6 +163,6 @@ export function EndpointCard<
           </div>
         </div>
       </div>
-    </button>
+    </Button>
   );
 }

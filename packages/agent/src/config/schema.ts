@@ -1,28 +1,8 @@
+import { CONNECTOR_IDS } from "@elizaos/shared/config/schema";
 import { VERSION } from "../runtime/version.ts";
+import { isSensitiveConfigKey } from "./sensitive-keys.ts";
 
-/** Known connector IDs for config schema generation. Keep in sync with runtime/plugin maps. */
-export const CONNECTOR_IDS = [
-  "bluebubbles",
-  "telegram",
-  "telegramAccount",
-  "discord",
-  "discordLocal",
-  "slack",
-  "twitter",
-  "whatsapp",
-  "signal",
-  "imessage",
-  "farcaster",
-  "lens",
-  "msteams",
-  "feishu",
-  "matrix",
-  "nostr",
-  "blooio",
-  "twitch",
-  "mattermost",
-  "googlechat",
-] as const;
+export { CONNECTOR_IDS };
 
 import { ElizaSchema } from "./zod-schema.ts";
 
@@ -81,6 +61,16 @@ export type ConfigUiHint = {
   maxItems?: number;
   /** Plugin-provided custom React component name. */
   component?: string;
+  /** Render a toggle that hides this backing field when enabled. */
+  modeToggle?: {
+    kind: "mode-toggle-with-hidden-field";
+    enabledLabel: string;
+    disabledLabel: string;
+    enabledHelp?: string;
+    disabledHelp?: string;
+    hiddenValue?: string;
+    restoreValue?: string;
+  };
 };
 
 export type ConfigUiHints = Record<string, ConfigUiHint>;
@@ -122,6 +112,7 @@ export type PluginUiMetadata = {
       | "max"
       | "step"
       | "unit"
+      | "modeToggle"
     >
   >;
   configSchema?: JsonSchemaNode;
@@ -973,10 +964,8 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   "agents.list[].identity.avatar": "avatars/eliza.png",
 };
 
-const SENSITIVE_PATTERNS = [/token/i, /password/i, /secret/i, /api.?key/i];
-
 function isSensitivePath(path: string): boolean {
-  return SENSITIVE_PATTERNS.some((pattern) => pattern.test(path));
+  return isSensitiveConfigKey(path);
 }
 
 type JsonSchemaObject = JsonSchemaNode & {

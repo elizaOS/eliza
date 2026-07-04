@@ -1,3 +1,8 @@
+/**
+ * Verifies the X-Hub-Signature-256 HMAC check that gates Meta webhook POSTs:
+ * accepts a correctly signed body and rejects tampered, missing, or
+ * wrong-secret signatures. Deterministic — signs payloads with node:crypto.
+ */
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

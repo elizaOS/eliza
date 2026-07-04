@@ -1,3 +1,11 @@
+/**
+ * Dropdown that lets the user pick which connected connector account a chat
+ * message is sent "as" (e.g. which Telegram/X identity), plus connect/reconnect
+ * affordances for unusable accounts. Presentational and controlled: the caller
+ * owns the account list and selection and wires the connect/reconnect/select
+ * callbacks. Mounted in the chat composer via `useConnectorSendAsAccount`;
+ * account usability/status labels come from `./connector-send-as`.
+ */
 import { Check, ChevronDown, RefreshCw, UserRound } from "lucide-react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { cn } from "../../lib/utils";

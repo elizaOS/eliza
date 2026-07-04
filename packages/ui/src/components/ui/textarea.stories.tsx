@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the textarea primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Textarea } from "./textarea";
 

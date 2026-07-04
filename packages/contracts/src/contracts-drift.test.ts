@@ -1,3 +1,10 @@
+/**
+ * Drift tests for literal contract exports consumed outside @elizaos/contracts.
+ *
+ * Runtime assertions pin the exported tuple values while expectTypeOf checks
+ * keep their public union types aligned with those literals.
+ */
+
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
 	type BscTradeRoutePreference,
@@ -6,6 +13,7 @@ import {
 	type BscTradeTxStatus,
 	CHARACTER_LANGUAGES,
 	type CharacterLanguage,
+	DEFAULT_TASK_EXECUTION_PROFILE,
 	DEPLOYMENT_TARGET_RUNTIMES,
 	type DeploymentTargetRuntime,
 	ELIZA_CLOUD_SERVICES,
@@ -31,6 +39,8 @@ import {
 	type ServiceRouteAccountStrategy,
 	type ServiceTransport,
 	type StewardWebhookEventType,
+	TASK_EXECUTION_PROFILES,
+	type TaskExecutionProfile,
 	type TradePermissionMode,
 	type WalletChainKind,
 	type WalletMarketOverviewProviderId,
@@ -145,6 +155,19 @@ describe('@elizaos/contracts public literals', () => {
 		expect(new Set(CHARACTER_LANGUAGES).size).toBe(CHARACTER_LANGUAGES.length);
 
 		expectTypeOf<CharacterLanguage>().toEqualTypeOf<(typeof CHARACTER_LANGUAGES)[number]>();
+	});
+
+	it('keeps scheduled-task execution profile literals exhaustive for runner + host probe', () => {
+		expect([...TASK_EXECUTION_PROFILES]).toEqual([
+			'foreground',
+			'bg-light-30s',
+			'bg-heavy-fgs',
+			'notify-only',
+		]);
+		expect(new Set(TASK_EXECUTION_PROFILES).size).toBe(TASK_EXECUTION_PROFILES.length);
+		expect(DEFAULT_TASK_EXECUTION_PROFILE).toBe('foreground');
+
+		expectTypeOf<TaskExecutionProfile>().toEqualTypeOf<(typeof TASK_EXECUTION_PROFILES)[number]>();
 	});
 
 	it('keeps role unions exhaustive for role-resolution consumers', () => {

@@ -25,7 +25,7 @@ function unwrapPlannerIdentifier(value: string): string {
 	return trimmed;
 }
 
-function normalizeActionIdentifier(actionName: string): string {
+export function normalizeActionIdentifier(actionName: string): string {
 	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
 
@@ -166,6 +166,40 @@ export function findAvailableActionName(
 	return undefined;
 }
 
+export const CODING_DELEGATION_ACTION_TAGS = [
+	"domain:coding",
+	"resource:agent-task",
+	"capability:delegate",
+] as const;
+
+export const LEGACY_CODING_DELEGATION_ACTION_NAMES = [
+	"TASKS",
+	"TASKS_SPAWN_AGENT",
+	"SPAWN_AGENT",
+	"START_CODING_TASK",
+	"CODE_TASK",
+	"SPAWN_CODING_AGENT",
+] as const;
+
+export function hasActionTags(
+	action: Pick<Action, "tags">,
+	requiredTags: readonly string[],
+): boolean {
+	const tags = new Set((action.tags ?? []).map((tag) => tag.toLowerCase()));
+	return requiredTags.every((tag) => tags.has(tag));
+}
+
+export function findCodingDelegationActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): string | undefined {
+	return (
+		actions.find((action) =>
+			hasActionTags(action, CODING_DELEGATION_ACTION_TAGS),
+		)?.name ??
+		findAvailableActionName(actions, LEGACY_CODING_DELEGATION_ACTION_NAMES)
+	);
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -174,6 +208,7 @@ export function inferDirectCurrentRequestCandidateActions(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findAvailableActionName(actions, [
 			"SHELL",
+			"TERMINAL_SHELL",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",

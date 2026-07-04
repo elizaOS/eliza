@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the DocsLayout.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router-dom";
 import { DocsLayout } from "./docs-layout";

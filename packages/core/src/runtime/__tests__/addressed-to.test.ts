@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Entity, IAgentRuntime, Memory, UUID } from "../../types/index.ts";
-import { addresseeIsNonOwnerBot } from "../addressed-to.ts";
+import { messageAddressedToOtherParticipant } from "../addressed-to.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
-const BOT_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
+const OTHER_BOT = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const HUMAN_X = "00000000-0000-0000-0000-0000000000cc" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const SENDER_ID = "00000000-0000-0000-0000-0000000000dd" as UUID;
@@ -12,7 +12,6 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
 	return {
 		agentId: AGENT_ID,
 		character: { name: "MyAgent" },
-		getAgent: vi.fn(async () => null),
 		getEntitiesForRoom: vi.fn(async () => [] as Entity[]),
 		...overrides,
 	} as unknown as IAgentRuntime;
@@ -34,10 +33,22 @@ function makeMessage(
 	} as Memory;
 }
 
-describe("addresseeIsNonOwnerBot (#9874 item 1)", () => {
-	it("returns false when there are no explicit addressees", async () => {
+// Room with this agent plus two other resolvable participants — one bot, one
+// human — so name→id resolution works and the human/bot cases are symmetric.
+function roomWithOthers(): Partial<IAgentRuntime> {
+	return {
+		getEntitiesForRoom: vi.fn(async () => [
+			{ id: AGENT_ID, names: ["MyAgent", "myagent_bot"] },
+			{ id: OTHER_BOT, names: ["SomeOtherBot"] },
+			{ id: HUMAN_X, names: ["Alice"] },
+		]),
+	} as unknown as Partial<IAgentRuntime>;
+}
+
+describe("messageAddressedToOtherParticipant (#9874 — uniform addressing gate)", () => {
+	it("returns false when there are no explicit addressees (DMs / undirected asks)", async () => {
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
 				message: makeMessage(),
 				addressedTo: [],
@@ -47,9 +58,9 @@ describe("addresseeIsNonOwnerBot (#9874 item 1)", () => {
 
 	it("returns false when addressed to this agent by name (case/@-insensitive)", async () => {
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
-				message: makeMessage({ fromBot: true }),
+				message: makeMessage(),
 				addressedTo: ["@myagent"],
 			}),
 		).toBe(false);
@@ -57,60 +68,80 @@ describe("addresseeIsNonOwnerBot (#9874 item 1)", () => {
 
 	it("returns false when addressed to this agent by id", async () => {
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
-				message: makeMessage({ fromBot: true }),
+				message: makeMessage(),
 				addressedTo: [AGENT_ID],
 			}),
 		).toBe(false);
 	});
 
-	it("returns true when a bot addresses someone other than us (sender fromBot)", async () => {
+	it("returns true when addressed to another bot participant (by id)", async () => {
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(),
+				message: makeMessage(),
+				addressedTo: [OTHER_BOT],
+			}),
+		).toBe(true);
+	});
+
+	it("returns true when addressed to another bot participant (resolved by name)", async () => {
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: makeMessage(),
+				addressedTo: ["@SomeOtherBot"],
+			}),
+		).toBe(true);
+	});
+
+	it("returns true when addressed to a HUMAN participant — same as a bot (uniform, not bot-specific)", async () => {
+		// The decisive change from the bot-specific version: a turn directed at a
+		// human who is not us is overheard crosstalk too, and is gated identically.
+		// Bot-ness is never consulted here.
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: makeMessage(),
+				addressedTo: ["Alice"],
+			}),
+		).toBe(true);
+	});
+
+	it("does NOT depend on the sender being a bot — fromBot is irrelevant to the gate", async () => {
+		// A non-bot sender addressing another participant still gates (no fromBot /
+		// getAgent requirement)...
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: makeMessage(),
+				addressedTo: ["Alice"],
+			}),
+		).toBe(true);
+		// ...and a bot sender addressing an UNRESOLVABLE name does NOT gate
+		// structurally: fromBot is no longer a trigger, so this residual overheard
+		// crosstalk is left to the model + the "(bot)" transcript tag (either
+		// content-level or legacy top-level fromBot).
+		expect(
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
 				message: makeMessage({ fromBot: true }),
-				addressedTo: ["SomeOtherBot"],
+				addressedTo: ["@ghost"],
 			}),
-		).toBe(true);
-	});
-
-	it("also accepts legacy top-level fromBot metadata", async () => {
+		).toBe(false);
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
 				message: makeMessage(undefined, { fromBot: true }),
-				addressedTo: ["SomeOtherBot"],
-			}),
-		).toBe(true);
-	});
-
-	it("returns true when an addressee resolves to a registered agent (no fromBot)", async () => {
-		const getAgent = vi.fn(async (id: UUID) =>
-			id === BOT_B ? ({ id: BOT_B } as unknown) : null,
-		);
-		expect(
-			await addresseeIsNonOwnerBot({
-				runtime: makeRuntime({ getAgent } as Partial<IAgentRuntime>),
-				message: makeMessage(),
-				addressedTo: [BOT_B],
-			}),
-		).toBe(true);
-	});
-
-	it("returns false when the addressee is a human (not a registered agent, not fromBot)", async () => {
-		expect(
-			await addresseeIsNonOwnerBot({
-				runtime: makeRuntime(),
-				message: makeMessage(),
-				addressedTo: [HUMAN_X],
+				addressedTo: ["@ghost"],
 			}),
 		).toBe(false);
 	});
 
-	it("returns false when an addressed name cannot be resolved and the sender is not a bot", async () => {
+	it("fails safe (false) when an addressed bare name cannot be resolved to a real participant", async () => {
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime: makeRuntime(),
 				message: makeMessage(),
 				addressedTo: ["@ghost"],
@@ -118,22 +149,30 @@ describe("addresseeIsNonOwnerBot (#9874 item 1)", () => {
 		).toBe(false);
 	});
 
-	it("returns false when a BOT addresses us by a platform-handle ALIAS (not character.name)", async () => {
-		// Regression: the agent's room entity carries platform-handle aliases
-		// (e.g. samantha_ai_bot) that are not character.name. A bot addressing us
-		// by such an alias must be recognized as addressed-to-us and NOT have its
-		// tool request suppressed — the self-by-resolution check runs before the
-		// fromBot short-circuit.
+	it("returns false when addressed to us by a platform-handle ALIAS (resolved to self, not character.name)", async () => {
+		// The agent's room entity carries platform aliases (e.g. samantha_ai_bot)
+		// that are not character.name. A turn addressed to us by such an alias must
+		// resolve to self and NOT be mistaken for an other-participant address.
 		const runtime = makeRuntime({
 			getEntitiesForRoom: vi.fn(async () => [
 				{ id: AGENT_ID, names: ["samantha_ai_bot", "Samantha"] },
 			]),
 		} as unknown as Partial<IAgentRuntime>);
 		expect(
-			await addresseeIsNonOwnerBot({
+			await messageAddressedToOtherParticipant({
 				runtime,
 				message: makeMessage({ fromBot: true }),
 				addressedTo: ["@samantha_ai_bot"],
+			}),
+		).toBe(false);
+	});
+
+	it("returns false when addressed to us AND another participant (we are among the addressees)", async () => {
+		expect(
+			await messageAddressedToOtherParticipant({
+				runtime: makeRuntime(roomWithOthers()),
+				message: makeMessage(),
+				addressedTo: ["@myagent", "@SomeOtherBot"],
 			}),
 		).toBe(false);
 	});

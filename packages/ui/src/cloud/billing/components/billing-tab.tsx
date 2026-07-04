@@ -47,6 +47,7 @@ const DirectCryptoCreditCard = lazy(() =>
   })),
 );
 
+import { Button } from "../../../components/ui/button";
 import { PayAsYouGoCard } from "./pay-as-you-go-card";
 
 interface BillingTabProps {
@@ -279,7 +280,8 @@ export function BillingTab({ user }: BillingTabProps) {
 
                 {cryptoStatus?.enabled && (
                   <div className="flex gap-2">
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => setPaymentMethod("card")}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
@@ -290,8 +292,9 @@ export function BillingTab({ user }: BillingTabProps) {
                     >
                       <CreditCard className="h-4 w-4" />
                       {t("cloud.billingTab.card", { defaultValue: "Card" })}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => setPaymentMethod("crypto")}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
@@ -302,7 +305,7 @@ export function BillingTab({ user }: BillingTabProps) {
                     >
                       <Wallet className="h-4 w-4" />
                       {t("cloud.billingTab.crypto", { defaultValue: "Crypto" })}
-                    </button>
+                    </Button>
                   </div>
                 )}
 
@@ -502,13 +505,14 @@ export function BillingTab({ user }: BillingTabProps) {
                       </p>
                     </div>
                     <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-3 md:p-4">
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         onClick={() => handleViewInvoice(invoice)}
                         className="text-xs md:text-sm font-mono text-white underline uppercase hover:text-white/80 transition-colors"
                       >
                         {t("cloud.billingTab.view", { defaultValue: "View" })}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 ))

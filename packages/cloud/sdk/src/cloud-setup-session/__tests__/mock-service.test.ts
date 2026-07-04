@@ -1,3 +1,5 @@
+/** Unit tests for `MockCloudSetupSessionService`: scripted-tour progression, transcript/fact accumulation, and the provisioning→ready transition, driven by injected clock/id. */
+
 import { describe, expect, it } from "vitest";
 import { MockCloudSetupSessionService } from "../mock-service.js";
 

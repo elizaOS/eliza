@@ -1,3 +1,7 @@
+/**
+ * Source-scanning gate enforcing chromeless home/dashboard widgets (#10708):
+ * widgets render directly, no card chrome. Reads the src tree, no runtime.
+ */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

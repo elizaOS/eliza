@@ -1,3 +1,10 @@
+/**
+ * Dispatcher that renders the correct setup panel for a connector. Resolves the
+ * panel from the runtime registry (`connector-setup-panel-registry`) plus the
+ * built-in connector panels in this directory, and falls back to the generic
+ * account-management panel for plugin-managed connectors.
+ */
+
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { ConnectorAccountList } from "./ConnectorAccountList";
@@ -11,6 +18,7 @@ import {
   getConnectorPluginManagedAccountOption,
   parseConnectorAccountManagementPanelPluginId,
 } from "./connector-account-options";
+import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -57,21 +65,18 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     return <RegisteredPanel />;
   }
 
-  // Fall back to hardcoded components
-  if (
-    normalized.includes("lifeopsbrowser") ||
-    normalized.includes("browserbridg")
-  ) {
-    const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
-    return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
-  }
-  if (normalized.includes("telegramaccount")) {
-    return <TelegramAccountConnectorPanel />;
-  }
-  if (normalized.includes("plugintelegram")) {
-    return <TelegramBotSetupPanel />;
-  }
-  switch (normalized) {
+  // Fall back to the built-in panels resolved from the setup-panel registry.
+  switch (resolveConnectorSetupPanelToken(normalized)) {
+    case "lifeops-browser": {
+      // The registry only yields this token while the host has supplied the
+      // panel (its rule's `available` gate), so the component is present here.
+      const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
+      return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
+    }
+    case "telegram-account":
+      return <TelegramAccountConnectorPanel />;
+    case "telegram-bot":
+      return <TelegramBotSetupPanel />;
     case "whatsapp":
       return (
         <ConnectorAccountSetupScope provider="whatsapp" connectorId={pluginId}>
@@ -88,14 +93,12 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
           )}
         </ConnectorAccountSetupScope>
       );
-    case "discordlocal":
+    case "discord-local":
       return <DiscordLocalConnectorPanel />;
     case "bluebubbles":
       return <BlueBubblesStatusPanel />;
     case "imessage":
       return <IMessageStatusPanel />;
-    case "telegram":
-      return <TelegramBotSetupPanel />;
     default:
       return null;
   }

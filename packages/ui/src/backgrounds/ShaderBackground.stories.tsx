@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the animated ShaderBackground (see block below).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ShaderBackground } from "./ShaderBackground";
 

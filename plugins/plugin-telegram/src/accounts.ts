@@ -1,3 +1,10 @@
+/**
+ * Multi-account configuration resolution for Telegram. Reads
+ * `character.settings.telegram` (a single bot token or an `accounts` map) plus
+ * `TELEGRAM_BOT_TOKEN`/env fallbacks and resolves each enabled account to a
+ * `ResolvedTelegramAccount` the service launches a bot for. `default` is the
+ * synthetic id for the single-account configuration.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_ACCOUNT_ID = "default";

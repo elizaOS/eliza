@@ -1,3 +1,4 @@
+/** Shape tests for `handleImageDescription` title/description parsing, with the `ai` `generateText` mocked. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleImageDescription } from "../models/image";

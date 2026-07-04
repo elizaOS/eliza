@@ -30,10 +30,17 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
 	type AgentRuntime,
+	applyBackgroundInferenceBudget,
 	type GenerateTextParams,
+	getInferencePriorityGate,
 	type IAgentRuntime,
+	inferenceRamClassFromEnv,
+	type LocalInferencePriority,
 	logger,
+	MobileDeviceBridgeService,
+	type MobileDeviceBridgeStatus,
 	ModelType,
+	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
@@ -329,19 +336,7 @@ interface BundledModelManifest {
 	models?: BundledModelManifestEntry[];
 }
 
-export interface MobileDeviceBridgeStatus {
-	enabled: boolean;
-	connected: boolean;
-	devices: Array<{
-		deviceId: string;
-		capabilities: DeviceCapabilities;
-		loadedPath: string | null;
-		connectedSince: string;
-	}>;
-	primaryDeviceId: string | null;
-	pendingRequests: number;
-	modelPath: string | null;
-}
+export type { MobileDeviceBridgeStatus };
 
 class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
@@ -1241,6 +1236,21 @@ function bionicSocketName(): string | null {
 	return sock ? sock : null;
 }
 
+/**
+ * Per-native-call token budget hint for the host's streaming decode
+ * (#11913). Reads the shared agent-side streaming knob
+ * (`ELIZA_LOCAL_STREAM_TOKENS_PER_STEP`, the same one the desktop FFI runner
+ * honors); undefined lets the bionic host apply its own default (8, the
+ * #9174 user-visible streaming knee). The host clamps whatever we send to
+ * its JNI token buffer (1..256).
+ */
+export function resolveBionicStreamStep(): number | undefined {
+	const raw = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP?.trim();
+	if (!raw) return undefined;
+	const parsed = Number.parseInt(raw, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 // A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
 // layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
 // *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
@@ -1511,8 +1521,46 @@ function bionicHostGenerateStream(
 	});
 }
 
+/**
+ * Clamp a background-priority request to the device-class budget and resolve
+ * its bounded lane wait (#11914). Interactive requests pass through untouched
+ * with an unbounded lane wait (their transport timeout governs the total).
+ */
+function resolveMobileLaneBudget(
+	priority: LocalInferencePriority,
+	prompt: string,
+	maxTokens: number | undefined,
+): { prompt: string; maxTokens: number | undefined; lockWaitMs?: number } {
+	if (priority !== "background") {
+		return { prompt, maxTokens };
+	}
+	const budget = resolveBackgroundInferenceBudget(
+		inferenceRamClassFromEnv() ?? "standard",
+	);
+	const clamped = applyBackgroundInferenceBudget({ prompt, maxTokens }, budget);
+	if (clamped.clamped.length > 0) {
+		logger.info(
+			`[mobile-device-bridge] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
+		);
+	}
+	return {
+		prompt: clamped.prompt,
+		maxTokens: clamped.maxTokens,
+		lockWaitMs: budget.lockWaitMs,
+	};
+}
+
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
+		// The bionic host decodes ONE request at a time on its resident-model
+		// lock, and the device-bridge path shares one loaded model — so every
+		// generate goes through the process-wide interactive-over-background
+		// lane (#11914): interactive turns dispatch ahead of queued background
+		// jobs; background jobs run only when the lane is idle, wait a bounded
+		// time, and are clamped to the device-class budget. Without this, one
+		// long autonomous job self-queues on the host lock and starves chat.
+		const priority = params.priority ?? "interactive";
+
 		// GPU delegation: run the whole decode in the bionic app process over the
 		// abstract UDS (the device-bridge renderer path can't reach Vulkan). The
 		// in-process host OWNS its default bundle (filesDir/eliza-1/bundle), so a
@@ -1525,27 +1573,52 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
 			const installed = resolveLocalLoadArgs(slot);
+			const lane = resolveMobileLaneBudget(
+				priority,
+				buildGemmaBionicPrompt(params),
+				params.maxTokens ?? 256,
+			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
-				prompt: buildGemmaBionicPrompt(params),
-				maxTokens: params.maxTokens ?? 256,
+				prompt: lane.prompt,
+				maxTokens: lane.maxTokens ?? 256,
 			};
-			// When the runtime wants streaming (chat SSE / voice), server-push the
-			// decode token-by-token over the UDS so the UI paints at the first
-			// token instead of after the whole reply. Otherwise one buffered RPC.
-			const onChunk = params.onStreamChunk;
-			let accumulated = "";
-			const res =
-				typeof onChunk === "function"
-					? await bionicHostGenerateStream(bionicSock, baseRequest, (text) => {
-							accumulated += text;
-							void onChunk(text, undefined, accumulated);
-						})
-					: await bionicHostGenerate(bionicSock, {
-							op: "generate",
-							...baseRequest,
-						});
+			const res = await getInferencePriorityGate().runExclusive(
+				{
+					priority,
+					label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens})`,
+					...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
+					...(params.signal ? { signal: params.signal } : {}),
+				},
+				async () => {
+					// When the runtime wants streaming (chat SSE / voice), server-push
+					// the decode token-by-token over the UDS so the UI paints at the
+					// first token instead of after the whole reply. Otherwise one
+					// buffered RPC. `streamStep` bounds how many tokens the host
+					// decodes per native call before flushing a frame (#11913) — the
+					// host clamps it to its JNI buffer and defaults to the #9174
+					// streaming knee (8) when the agent-side knob is unset.
+					const onChunk = params.onStreamChunk;
+					const streamStep = resolveBionicStreamStep();
+					let accumulated = "";
+					return typeof onChunk === "function"
+						? bionicHostGenerateStream(
+								bionicSock,
+								streamStep !== undefined
+									? { ...baseRequest, streamStep }
+									: baseRequest,
+								(text) => {
+									accumulated += text;
+									void onChunk(text, undefined, accumulated);
+								},
+							)
+						: bionicHostGenerate(bionicSock, {
+								op: "generate",
+								...baseRequest,
+							});
+				},
+			);
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
@@ -1594,12 +1667,22 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			}
 		}
 		const prompt = nativePrompt ?? flattenChatParamsForPrompt(params);
-		return mobileDeviceBridge.generate({
-			prompt,
-			stopSequences: params.stopSequences,
-			maxTokens: params.maxTokens,
-			temperature: params.temperature,
-		});
+		const lane = resolveMobileLaneBudget(priority, prompt, params.maxTokens);
+		return getInferencePriorityGate().runExclusive(
+			{
+				priority,
+				label: `${slot} device-bridge (${lane.prompt.length} chars)`,
+				...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
+				...(params.signal ? { signal: params.signal } : {}),
+			},
+			() =>
+				mobileDeviceBridge.generate({
+					prompt: lane.prompt,
+					stopSequences: params.stopSequences,
+					maxTokens: lane.maxTokens,
+					temperature: params.temperature,
+				}),
+		);
 	};
 }
 
@@ -1796,6 +1879,41 @@ export async function loadMobileDeviceBridgeModel(
 
 export async function unloadMobileDeviceBridgeModel(): Promise<void> {
 	await mobileDeviceBridge.unloadModel();
+}
+
+/**
+ * Runtime service wrapper over the module-level {@link mobileDeviceBridge}
+ * singleton. Registering this via a plugin `services` array lets consumers
+ * resolve the bridge with
+ * `runtime.getService(ServiceType.MOBILE_DEVICE_BRIDGE)` instead of reaching a
+ * global `Symbol.for` slot or dynamically importing this module by name.
+ */
+export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeService {
+	capabilityDescription =
+		"Relays on-device GPU inference to a paired mobile device over the device bridge.";
+
+	static async start(
+		runtime: IAgentRuntime,
+	): Promise<CapacitorMobileDeviceBridgeService> {
+		return new CapacitorMobileDeviceBridgeService(runtime);
+	}
+
+	getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus {
+		return mobileDeviceBridge.status();
+	}
+
+	async loadMobileDeviceBridgeModel(
+		modelPath: string,
+		modelId?: string,
+	): Promise<void> {
+		await loadMobileDeviceBridgeModel(modelPath, modelId);
+	}
+
+	async unloadMobileDeviceBridgeModel(): Promise<void> {
+		await unloadMobileDeviceBridgeModel();
+	}
+
+	async stop(): Promise<void> {}
 }
 
 export async function attachMobileDeviceBridgeToServer(

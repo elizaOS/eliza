@@ -1,3 +1,4 @@
+/** Branded string types (`ModelName`, `ValidatedApiKey`, `ModelSize`) and their constructors. */
 export type ValidatedApiKey = string & { readonly __brand: "ValidatedApiKey" };
 
 export type ModelName = string & { readonly __brand: "ModelName" };

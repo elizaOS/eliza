@@ -788,6 +788,31 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     assert e["manifest"]["kind"] == "eliza-1-optimized"
 
 
+def test_sync_catalog_main_defaults_to_elizaos(sync_catalog, tmp_path, monkeypatch):
+    out = tmp_path / "diff.json"
+    calls: dict[str, object] = {}
+
+    def fake_collect_entries(**kwargs):
+        calls["collect"] = kwargs
+        return []
+
+    def fake_write_diff(entries, out_path, *, org):
+        calls["write"] = {"entries": entries, "out_path": out_path, "org": org}
+
+    monkeypatch.setattr(sync_catalog, "collect_entries", fake_collect_entries)
+    monkeypatch.setattr(sync_catalog, "write_diff", fake_write_diff)
+
+    rc = sync_catalog.main(["--out", str(out)])
+
+    assert rc == 0
+    assert calls["collect"] == {
+        "org": "elizaos",
+        "filter_prefix": "eliza-1-",
+        "filter_suffix": None,
+    }
+    assert calls["write"] == {"entries": [], "out_path": out, "org": "elizaos"}
+
+
 def test_sync_catalog_selects_manifest_text_file(sync_catalog):
     manifest = {
         "files": {

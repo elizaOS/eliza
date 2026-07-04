@@ -1,3 +1,5 @@
+/** Module-level singleton cache returning the default `capacitorLlama` adapter. */
+
 import { capacitorLlama } from "./capacitor-llama-adapter";
 import type { LlamaAdapter } from "./definitions";
 

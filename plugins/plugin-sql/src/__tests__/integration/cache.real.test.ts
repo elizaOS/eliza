@@ -1,3 +1,7 @@
+/**
+ * Verifies BaseDrizzleAdapter's cache get/set/delete behavior (set, overwrite,
+ * delete, and miss-on-unknown-key) against a real isolated adapter instance.
+ */
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";

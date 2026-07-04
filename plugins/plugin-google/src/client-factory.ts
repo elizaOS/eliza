@@ -1,3 +1,11 @@
+/**
+ * Builds authenticated googleapis clients (Gmail, Calendar, Drive, Docs, Sheets,
+ * Meet) for the sub-clients in this plugin. Each factory method resolves an
+ * OAuth2 client for the account+capabilities through the injected
+ * `GoogleCredentialResolver`, then constructs the matching per-API client. A
+ * fresh client is created per call; the auth client itself is cached upstream in
+ * the resolver. Honors `ELIZA_MOCK_GOOGLE_BASE` to point at a local mock server.
+ */
 import {
   type calendar_v3,
   type docs_v1,

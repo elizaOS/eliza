@@ -1,3 +1,11 @@
+/**
+ * The runtime-facing interface surface: `IAgentRuntime` (the contract plugins and
+ * services program against) plus the message-target and connector-account types
+ * it exposes for multi-account messaging connectors. Sits atop the type system —
+ * it pulls together components, memory, model, and database types into the single
+ * object the whole framework passes around.
+ */
+import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
@@ -7,6 +15,11 @@ import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
+import type {
+	ChatPreHandler,
+	ChatPreHandlerContext,
+	ChatPreHandlerResult,
+} from "./chat-pre-handler";
 import type {
 	Action,
 	ActionMode,
@@ -40,6 +53,8 @@ import type {
 	GenerateTextParams,
 	GenerateTextResult,
 	ModelParamsMap,
+	ModelRegistrationInfo,
+	ModelRegistrationMetadata,
 	ModelResultMap,
 	ModelTypeName,
 	TextGenerationModelType,
@@ -724,6 +739,12 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	registerShortcut(shortcut: ShortcutDefinition): void;
 	registerShortcuts(shortcuts: readonly ShortcutDefinition[]): void;
 	unregisterShortcut(id: string): void;
+	registerChatPreHandler(handler: ChatPreHandler): void;
+	registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void;
+	unregisterChatPreHandler(id: string): void;
+	drainChatPreHandlers(
+		ctx: ChatPreHandlerContext,
+	): Promise<ChatPreHandlerResult | null>;
 	registerEvaluator(evaluator: RegisteredEvaluator): void;
 	unregisterEvaluator(name: string): boolean;
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;
@@ -876,6 +897,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	 * @param handler - The handler function that processes model requests
 	 * @param provider - The name of the provider (plugin) registering this handler
 	 * @param priority - Optional priority for handler selection (higher = preferred)
+	 * @param metadata - Optional handler-free provider metadata for observers
 	 */
 	registerModel(
 		modelType: ModelTypeName | string,
@@ -885,6 +907,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		) => Promise<JsonValue | object>,
 		provider: string,
 		priority?: number,
+		metadata?: ModelRegistrationMetadata,
 	): void;
 
 	/**
@@ -901,6 +924,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined;
+
+	/**
+	 * List every registered model handler as handler-free metadata, sorted by
+	 * priority (descending) then registration order within each model type.
+	 * Hosts and observers use this to render a routing table or seed a mirror
+	 * of the model registry without capturing handlers or patching the runtime.
+	 * Pair with the {@link EventType.MODEL_REGISTERED} event to stay live.
+	 */
+	getModelRegistrations(): ModelRegistrationInfo[];
 
 	registerEvent<T extends keyof EventPayloadMap>(
 		event: T,
@@ -932,6 +964,30 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		params: EventPayloadMap[T],
 	): Promise<void>;
 	emitEvent(event: string | string[], params: EventPayload): Promise<void>;
+
+	/**
+	 * Report a runtime failure that occurred outside the action path (a
+	 * provider, service, background job, or event handler) so it becomes
+	 * observable: logs via the structured logger with a `[scope]` prefix, emits
+	 * {@link EventType.ERROR_REPORTED}, forwards into the AgentEventService
+	 * `"error"` stream when registered, and records it in the in-memory ring the
+	 * RECENT_ERRORS provider and the owner-escalation threshold read.
+	 *
+	 * This is the diagnostic boundary (#12263): it never throws. Its own
+	 * failures — and failures inside `ERROR_REPORTED` handlers — are warn-only
+	 * and never re-enter `reportError`.
+	 */
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
+
+	/**
+	 * Snapshot of recently reported errors (newest last), read by the
+	 * RECENT_ERRORS provider. Returns a copy; callers must not mutate the ring.
+	 */
+	getRecentReportedErrors(): ReportedError[];
 
 	// In-memory task definition methods
 	registerTaskWorker(taskHandler: TaskWorker): void;

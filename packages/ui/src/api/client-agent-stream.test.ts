@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the agent chat-streaming transport: terminal-done handling
+ * and stream-generation errors. Deterministic streams, no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 import { StreamGenerationError } from "./client-base";

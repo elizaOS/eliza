@@ -1,3 +1,4 @@
+/** Per-agent key/value cache store backed by the `cache` table (upsert on `set`, scoped by `agentId`). */
 import { logger } from "@elizaos/core";
 import { and, eq } from "drizzle-orm";
 import { cacheTable } from "../schema/index";

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the desktop HTTP transport: Electrobun-RPC vs fetch routing.
+ * Runtime detection mocked, no real shell.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const runtimeMock = vi.hoisted(() => ({

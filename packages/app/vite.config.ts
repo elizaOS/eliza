@@ -189,6 +189,7 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
+const cloudUiPkgRoot = path.join(elizaRoot, "packages/cloud-ui");
 const capacitorCoreEntry = path.join(
   path.dirname(_require.resolve("@capacitor/core/package.json")),
   "dist/index.js",
@@ -2271,10 +2272,6 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.resolve(here, "src/shims/unpdf.ts"),
       },
       {
-        find: /^react-plaid-link$/,
-        replacement: path.resolve(here, "src/shims/react-plaid-link.ts"),
-      },
-      {
         find: /^handlebars$/,
         replacement: path.resolve(here, "src/shims/handlebars.ts"),
       },
@@ -2514,6 +2511,21 @@ export const INVALID_TRACER_PROVIDER = {};
             },
           ]
         : []),
+      // @elizaos/cloud-ui — the Eliza Cloud product UI, split out of @elizaos/ui
+      // as a real package (arch #12092 item 23). Resolved to source like every
+      // other linked workspace package. This is a REAL dependency, not a
+      // passthrough stub: cloud-free builds never import it (the app only
+      // imports it inside the `__ELIZA_WEB_SHELL__`-guarded lazy block, which is
+      // statically unreachable when the shell is excluded), so its surface
+      // tree-shakes out with no stub alias.
+      {
+        find: /^@elizaos\/cloud-ui$/,
+        replacement: path.join(cloudUiPkgRoot, "src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-ui\/(.+)$/,
+        replacement: path.join(cloudUiPkgRoot, "src/$1"),
+      },
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {

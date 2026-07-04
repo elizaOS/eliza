@@ -1,3 +1,5 @@
+/** Storybook fixtures for `ConnectorsSection`: default list, single/all-disabled connectors, a validation-error row, and the empty state. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { PluginInfo } from "../../api";
 import { mockApp } from "../../storybook/mock-providers.helpers";

@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Account-failure propagation (#9960 error-handling audit): a spawned account's
  * auth / rate-limit failure must feed back to the pool (markNeedsReauth /
@@ -87,9 +88,7 @@ describe("classifyAccountFailure", () => {
   });
 });
 
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 const ROOM = "11111111-2222-3333-4444-555555555555";
 const SESSION_ID = "01234567-89ab-cdef-0123-456789abcdef";
 

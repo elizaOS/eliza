@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the pure startup reducer and the shell-paintable predicate.
+ * In-memory, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   INITIAL_STARTUP_STATE,

@@ -1,3 +1,10 @@
+/**
+ * Pipeline-hook types for the single `registerPipelineHook` / `applyPipelineHooks`
+ * extension model: the phase enumeration (message compose/reply, model I/O,
+ * post-persist, stream chunks) and handler shapes. One registration + ordering
+ * model lets the runtime attach a uniform metrics/logging envelope to every hook.
+ * Rationale: `docs/PIPELINE_HOOKS.md`.
+ */
 import type { AgentContext } from "./contexts";
 import type { Room } from "./environment";
 import type { Memory } from "./memory";

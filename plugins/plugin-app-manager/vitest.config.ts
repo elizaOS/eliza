@@ -1,3 +1,9 @@
+/**
+ * Vitest config for plugin-app-manager: aliases the `@elizaos/agent/*` and
+ * `@elizaos/auth/*` host imports to local test stubs (test/stubs/) so the
+ * library's route and service code runs under test without the full agent
+ * package.
+ */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -19,8 +25,8 @@ export default defineConfig({
       "@elizaos/agent/services/registry-client-queries": fromHere(
         "test/stubs/agent-registry-client-queries.ts",
       ),
-      "@elizaos/agent/utils/atomic-json": fromHere(
-        "../../packages/agent/src/utils/atomic-json.ts",
+      "@elizaos/auth/atomic-json": fromHere(
+        "../../packages/auth/src/atomic-json.ts",
       ),
       "@elizaos/plugin-registry": fromHere("../plugin-registry/src/index.ts"),
     },

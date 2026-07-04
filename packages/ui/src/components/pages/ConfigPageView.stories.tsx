@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `ConfigPageView` (RPC provider + Cloud config). Runs
+ * against `mockApp`; the Cloud-connected and signed-out states are driven by the
+ * `elizaCloudConnected` mock flag, with static wallet-config fixtures.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { ConfigPageView } from "./ConfigPageView";

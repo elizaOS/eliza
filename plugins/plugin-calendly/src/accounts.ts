@@ -1,3 +1,11 @@
+/**
+ * Resolves Calendly account configurations and the active account id from three
+ * sources in priority order: character `settings.calendly.accounts`, the
+ * `CALENDLY_ACCOUNTS` JSON env var, and the legacy single `CALENDLY_ACCESS_TOKEN`.
+ * CalendlyService and the connector-account provider read these to choose which
+ * credentials a request uses; the account id defaults to "default".
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_CALENDLY_ACCOUNT_ID = "default";

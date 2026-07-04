@@ -1,3 +1,7 @@
+/**
+ * Helpers for the Storybook mock providers (options + composed decorator) used
+ * across stories.
+ */
 import type { Decorator } from "@storybook/react";
 import {
   type MockAppOptions,

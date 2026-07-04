@@ -1,3 +1,7 @@
+/**
+ * Storybook stories for `ChatView`. Runs against `mockApp` (no backend); sample
+ * messages use a fixed epoch (`NOW`) so story-gate screenshots stay byte-stable.
+ */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { ConversationMessagesCtx } from "../../state/ConversationMessagesContext.hooks";

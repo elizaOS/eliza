@@ -1,12 +1,13 @@
+/**
+ * Outbound media coverage for the WhatsApp connector (#8876): agent attachments
+ * ship as native WhatsApp media messages via sendMediaMessage, including turns
+ * that carry attachments with empty text. Both transports (Cloud API + Baileys)
+ * build their payload from the same WhatsAppMessage media type, so one path
+ * covers both. Mocked runtime — runs offline.
+ */
 import type { IAgentRuntime, Media, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsAppConnectorService } from "../src/runtime-service";
-
-// Outbound media coverage for the WhatsApp connector (#8876). Agent attachments
-// must ship as native WhatsApp media messages via sendMediaMessage — the send
-// handler previously dropped content.attachments and threw on empty text. Both
-// transports (Cloud API + Baileys) build their payload from the same
-// WhatsAppMessage media type, so one path covers both. Mocked → runs offline.
 
 type RuntimeSendHandler = Parameters<IAgentRuntime["registerSendHandler"]>[1];
 type ConnectorTargetInfo = Parameters<RuntimeSendHandler>[1];

@@ -1,7 +1,8 @@
-// Covers the `interact` view-bundle capability handler (terminal list/send/role)
-// — the surviving terminal surface after the tri-modal collapse. Render coverage
-// for the unified spatial surface lives in MessagesView.test.tsx and
-// MessagesSpatialView.test.tsx.
+/**
+ * Covers the `interact` view-bundle capability handler (terminal list/send/role
+ * capabilities). Render coverage for the unified spatial surface lives in
+ * MessagesView.test.tsx and MessagesSpatialView.test.tsx.
+ */
 
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";

@@ -1,3 +1,8 @@
+/**
+ * Discord connector config validation. Reads and validates env vars and
+ * character settings into `DiscordSettings` and enforces the required
+ * `DISCORD_API_TOKEN`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";

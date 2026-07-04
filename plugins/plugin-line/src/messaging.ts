@@ -1,4 +1,15 @@
 /**
+ * Text-processing utilities that flatten agent output into LINE-sendable text.
+ *
+ * LINE renders no markdown, so outbound content is normalised here: tables and
+ * fenced code blocks are extracted and reformatted as plain text, links are
+ * surfaced, inline formatting is stripped, and the result is chunked to respect
+ * LINE's per-message length cap. Also holds chat-context helpers that resolve
+ * group/room/user identity and precedence for routing. Consumed by LineService's
+ * send path.
+ */
+
+/**
  * LINE text chunk limit (API supports 5000 characters per message)
  */
 export const LINE_TEXT_CHUNK_LIMIT = 5000;

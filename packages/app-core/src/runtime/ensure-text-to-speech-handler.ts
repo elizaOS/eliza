@@ -1,9 +1,11 @@
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
+import { loadDefaultTextToSpeechHandler } from "./tts-default-handler.js";
 import {
   DEFAULT_TEXT_TO_SPEECH_PROVIDER,
   isTextToSpeechProviderDisabled,
+  resolveDefaultTextToSpeechProvider,
   type TextToSpeechProviderConfig,
   type TtsModelHandler,
 } from "./tts-provider-registry.js";
@@ -27,19 +29,15 @@ type RuntimeWithModelRegistration = AgentRuntime & {
   ) => void;
 };
 
-/**
- * `@elizaos/agent` boot calls its own `collectPluginNames`, so the app wrapper
- * that adds the default TTS provider is bypassed. Register the model handler on
- * the live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
- */
+/** Register the runtime fallback TTS model for streaming / swarm voice paths. */
 export async function ensureTextToSpeechHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
   const config = loadElizaConfig();
-  const provider = DEFAULT_TEXT_TO_SPEECH_PROVIDER;
-  if (isTextToSpeechProviderDisabled(config, provider)) {
+  if (isTextToSpeechProviderDisabled(config, DEFAULT_TEXT_TO_SPEECH_PROVIDER)) {
     return;
   }
+  const provider = resolveDefaultTextToSpeechProvider();
 
   const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
   if (
@@ -55,7 +53,7 @@ export async function ensureTextToSpeechHandler(
   }
 
   try {
-    const handler = await provider.loadHandler();
+    const handler = await loadDefaultTextToSpeechHandler();
 
     // Wrap the TTS handler with the first-sentence LRU cache so short
     // opener phrases like "Got it." / "Sure!" reuse synthesised bytes across

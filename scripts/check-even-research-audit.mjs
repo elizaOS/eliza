@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * CI gate that the Even Realities smartglasses upstream research is complete:
+ * every requested reference repo is checked out under research/even-realities,
+ * the upstream-audit and smartglasses docs exist, and the implemented facewear
+ * surface files are present. Exits non-zero on any gap. `--self-test` exercises
+ * the gate logic against synthetic inputs.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 

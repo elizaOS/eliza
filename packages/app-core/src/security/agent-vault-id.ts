@@ -1,12 +1,27 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
 
 import type { SecureStoreSecretKind } from "./platform-secure-store";
 
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */
 export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
+
+// Keep this dependency-light: platform secure-store modules are imported by
+// Electrobun bootstrap code where pulling the @elizaos/core barrel is costly.
+function resolveStateDir(): string {
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  if (explicit) return explicit;
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(homedir(), xdgStateHome)
+    : path.join(homedir(), ".local", "state");
+  return path.join(stateHome, namespace);
+}
 
 /**
  * Canonical state directory for this process. Mirrors the canonical

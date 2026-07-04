@@ -1,3 +1,8 @@
+/**
+ * Header building blocks for a page panel: PanelHeader (heading + description +
+ * actions row), plus the small trim pieces — MetaPill, PageActionRail,
+ * PanelNotice, and SummaryCard — composed by pages via the PagePanel compound.
+ */
 import { cn } from "../../../lib/utils";
 import type {
   MetaPillProps,

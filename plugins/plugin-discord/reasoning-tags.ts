@@ -1,3 +1,8 @@
+/**
+ * Strips model reasoning/thinking tags (`<thinking>`, `<reasoning>`, …) and
+ * end-of-turn sentinels from generated text before it is sent to Discord,
+ * preserving the contents of fenced code blocks.
+ */
 const REASONING_TAGS = [
 	"thinking",
 	"reasoning",

@@ -1,3 +1,13 @@
+/**
+ * `Client` — the low-level twitter-api-v2 wrapper the rest of the plugin talks to.
+ * Holds a `TwitterAuth` (installed via `authenticate`/`login`) and exposes the full
+ * X surface: profile/user lookups, home/user timelines, search (tweets, profiles,
+ * quotes), tweet CRUD (post/note/long/quote/delete), like/retweet + inverses,
+ * follows, direct messages, and retweeter/quote enumeration. Each method delegates
+ * to a focused helper in `tweets.ts` / `profile.ts` / `relationships.ts` / `search.ts`
+ * and unwraps the `RequestApiResult` via `handleResponse`. `ClientBase` wraps this
+ * with caching and runtime-memory bookkeeping.
+ */
 import type {
   TTweetv2Expansion,
   TTweetv2MediaField,
@@ -17,7 +27,6 @@ import type {
   TwitterAuthProvider,
   TwitterOAuth1Provider,
 } from "./auth-providers/types";
-// Removed messages imports - using Twitter API v2 instead
 import {
   getEntityIdByScreenName,
   getProfile,

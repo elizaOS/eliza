@@ -25,6 +25,10 @@ import type {
 // public `ElizaClient` surface that consumers import from `@elizaos/ui`.
 import type {} from "@elizaos/ui";
 import { ElizaClient } from "@elizaos/ui/api";
+import type {
+  MeetingAutoJoinPolicy,
+  MeetingAutoJoinSettings,
+} from "../meetings/auto-join-settings.js";
 
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
@@ -49,10 +53,23 @@ export interface CalendarClientMethods {
   deleteLifeOpsCalendarEvent(
     eventId: string,
     options?: Partial<
-      Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
+      Pick<
+        LifeOpsCalendarEventUpdate,
+        "calendarId" | "grantId" | "side" | "recurrenceScope"
+      >
     >,
   ): Promise<{ deleted: true }>;
+  getMeetingAutoJoinSettings(): Promise<MeetingAutoJoinSettings>;
+  setMeetingAutoJoinPolicy(
+    policy: MeetingAutoJoinPolicy,
+  ): Promise<MeetingAutoJoinSettings>;
 }
+
+// The `/api/meetings` client (requestMeetingBot / listMeetings / getMeeting /
+// stopMeeting) is canonical in `@elizaos/ui` (packages/ui/src/api/client-meetings.ts)
+// and already installed on this same prototype via the `@elizaos/ui/api`
+// side-effect import. Do NOT re-declare meeting join/list methods here — call
+// the ui client's `requestMeetingBot` / `listMeetings` directly.
 
 declare module "@elizaos/ui" {
   interface ElizaClient extends CalendarClientMethods {}
@@ -163,18 +180,45 @@ calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
   options: Partial<
-    Pick<LifeOpsCalendarEventUpdate, "calendarId" | "grantId" | "side">
+    Pick<
+      LifeOpsCalendarEventUpdate,
+      "calendarId" | "grantId" | "side" | "recurrenceScope"
+    >
   > = {},
 ) {
   const params = new URLSearchParams();
   if (options.calendarId) params.set("calendarId", options.calendarId);
   if (options.grantId) params.set("grantId", options.grantId);
   if (options.side) params.set("side", options.side);
+  if (options.recurrenceScope) {
+    params.set("recurrenceScope", options.recurrenceScope);
+  }
   const query = params.toString();
   return this.fetch<{ deleted: true }>(
     `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,
     {
       method: "DELETE",
+    },
+  );
+};
+
+calendarClientPrototype.getMeetingAutoJoinSettings = async function (
+  this: ElizaClient,
+) {
+  return this.fetch<MeetingAutoJoinSettings>(
+    "/api/lifeops/calendar/meeting-auto-join",
+  );
+};
+
+calendarClientPrototype.setMeetingAutoJoinPolicy = async function (
+  this: ElizaClient,
+  policy: MeetingAutoJoinPolicy,
+) {
+  return this.fetch<MeetingAutoJoinSettings>(
+    "/api/lifeops/calendar/meeting-auto-join",
+    {
+      method: "PUT",
+      body: JSON.stringify({ policy }),
     },
   );
 };

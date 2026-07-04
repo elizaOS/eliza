@@ -1,3 +1,5 @@
+/** Storybook stories for SetupStepDivider — default, between-steps, on-light-background, and stacked states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { SetupStepDivider } from "./setup-step-chrome";
 

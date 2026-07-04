@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for SectionHeader / SectionLabel.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { SectionHeader, SectionLabel } from "./section-header";
 

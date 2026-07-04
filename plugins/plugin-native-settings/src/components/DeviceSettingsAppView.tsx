@@ -8,7 +8,7 @@ import {
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
 import type { OverlayAppContext } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
+import { Button, Input } from "@elizaos/ui";
 import {
   ArrowLeft,
   Bell,
@@ -302,7 +302,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                   {percent(brightness)}%
                 </span>
               </div>
-              <input
+              <Input
                 type="range"
                 min={0}
                 max={100}
@@ -310,7 +310,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onChange={(event) =>
                   setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
-                className="w-full accent-info"
+                className="h-auto w-full border-0 bg-transparent p-0 accent-info"
                 aria-label="Brightness"
                 data-testid="device-settings-brightness"
               />
@@ -441,7 +441,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                       </div>
                     </div>
                     <div className="mt-3 flex items-center gap-3">
-                      <input
+                      <Input
                         type="range"
                         min={0}
                         max={volume.max}
@@ -455,7 +455,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                             ),
                           }))
                         }
-                        className="min-w-0 flex-1 accent-info"
+                        className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 accent-info"
                         aria-label={`${label} volume`}
                         data-testid={`device-settings-volume-${volume.stream}`}
                       />

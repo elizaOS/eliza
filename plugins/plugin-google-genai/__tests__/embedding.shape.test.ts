@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `handleTextEmbedding`: the null-probe marker vector, usage
+ * emission, and the throw paths (empty input, empty API response). The config,
+ * events, tokenization, and `@google/genai` layers are mocked — no live call.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

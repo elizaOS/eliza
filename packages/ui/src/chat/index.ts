@@ -3,7 +3,11 @@
  * and the typed command registry.
  */
 
-import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
+import {
+  type EnabledViewKinds,
+  isViewVisible,
+  MESSAGE_SOURCE_CODING_AGENT,
+} from "@elizaos/core";
 import type { ViewRegistryEntry } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import type {
@@ -94,7 +98,7 @@ export function isRoutineCodingAgentMessage(message: {
   text: string;
 }): boolean {
   return (
-    message.source === "coding-agent" &&
+    message.source === MESSAGE_SOURCE_CODING_AGENT &&
     ROUTINE_CODING_AGENT_RE.test(message.text)
   );
 }
@@ -134,7 +138,7 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     // Views + Apps consolidated into the single Launcher (#9143).
     { id: "nav-launcher", label: "Open Launcher", tab: "views" },
     { id: "nav-character", label: "Open Character", tab: "character" },
-    { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
+    { id: "nav-triggers", label: "Open Triggers", tab: "triggers" },
     { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
     { id: "nav-documents", label: "Open Knowledge", tab: "documents" },
     { id: "nav-tasks", label: "Open Tasks", tab: "tasks" },

@@ -41,6 +41,9 @@ export const activeWorkspaceContextProvider: Provider = {
   contextGate: { anyOf: ["code", "tasks", "agent_internal"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Live coding-workspace / task-agent state is operator context — admin+ only
+  // (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     const acpService = getAcpService(runtime);

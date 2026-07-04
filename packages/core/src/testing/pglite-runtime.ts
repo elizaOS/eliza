@@ -38,6 +38,14 @@ export interface TestRuntimeOptions {
 	 * Defaults to true only when this helper created the directory.
 	 */
 	removePgliteDirOnCleanup?: boolean;
+	/**
+	 * Host-injected trajectory-write flush (the agent's `flushTrajectoryWrites`),
+	 * awaited during cleanup before the runtime stops. Injected so this core
+	 * `./testing` export never imports `@elizaos/agent` src (a reverse dependency
+	 * edge that silently degrades outside the monorepo checkout). When omitted,
+	 * cleanup relies on draining the trajectories service's own write queues.
+	 */
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 export interface TestRuntimeResult {
@@ -51,10 +59,6 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
-type TrajectoryStorageModule = {
-	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
-};
-
 type RuntimePluginModule = {
 	default?: Plugin;
 	elizaPlugin?: Plugin;
@@ -62,15 +66,10 @@ type RuntimePluginModule = {
 
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
+	flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>,
 ): Promise<void> {
-	try {
-		const modulePath = "../../../agent/src/runtime/trajectory-storage";
-		const { flushTrajectoryWrites } = (await import(
-			modulePath
-		)) as TrajectoryStorageModule;
-		await flushTrajectoryWrites?.(runtime);
-	} catch {
-		// Best effort only. Some test runtimes do not register this helper.
+	if (flushTrajectoryWrites) {
+		await flushTrajectoryWrites(runtime);
 	}
 
 	for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -137,7 +136,10 @@ export async function createTestRuntime(
 
 	const cleanup = async () => {
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[test] trajectory flush error: ${err}`);
 		}
@@ -147,7 +149,10 @@ export async function createTestRuntime(
 			logger.debug(`[test] runtime.stop() error: ${err}`);
 		}
 		try {
-			await flushPendingTrajectoryWrites(runtime);
+			await flushPendingTrajectoryWrites(
+				runtime,
+				options?.flushTrajectoryWrites,
+			);
 		} catch (err) {
 			logger.debug(`[test] post-stop trajectory flush error: ${err}`);
 		}

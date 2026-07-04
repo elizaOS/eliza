@@ -1,3 +1,11 @@
+/**
+ * Central EVM types module: zod schemas (and their inferred types) for
+ * addresses/hashes/hex/amounts and each action's params (transfer, swap,
+ * bridge, governance vote/queue/execute), the `EVMError`/`EVMErrorCode`
+ * error type used across the EVM chain, and small runtime assertion helpers
+ * (`assertDefined`, `assertChainConfigured`) used at wallet-provider
+ * boundaries.
+ */
 import type { Route, Token } from "@lifi/sdk";
 import type {
   Account,

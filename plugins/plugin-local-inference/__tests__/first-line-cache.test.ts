@@ -1,3 +1,8 @@
+/**
+ * Coverage for `FirstLineCache`, the on-disk cache of pre-synthesized first
+ * TTS sentences plus its voice-revision fingerprint/invalidation helpers.
+ * Exercises the real filesystem against a temp directory.
+ */
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

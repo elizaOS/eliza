@@ -1,3 +1,4 @@
+/** Covers voice-budget role priority classification and reservation accounting. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { classifyDeviceTier } from "../device-tier";
 import type { HardwareProbe } from "../types";

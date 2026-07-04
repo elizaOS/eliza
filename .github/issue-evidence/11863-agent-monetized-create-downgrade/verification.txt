@@ -1,0 +1,60 @@
+=== #11863 local verification (worktree fix/11863-agent-create-app-monetization-warn, base origin/develop a747ced409) ===
+
+[1] Integration (real middleware chain + real route handlers, in-process):
+    $ bun test packages/cloud/api/__tests__/apps-crud.integration.test.ts
+    41 pass / 0 fail
+    (pre-fix: 40 pass / 1 fail — new downgrade test got 403; see fail-without-fix-integration.txt)
+
+[2] Plugin unit tests:
+    $ cd plugins/plugin-cloud-apps && bun test __tests__
+    321 pass / 0 fail (958 expect() calls, 28 files)
+
+[3] Deterministic scenarios (real CREATE_APP action + real SDK client over loopback HTTP):
+    $ SCENARIO_USE_LLM_PROXY=1 bun packages/scenario-runner/bin/eliza-scenarios run \
+        plugins/plugin-cloud-apps/test/scenarios --lane pr-deterministic
+    cloud-apps-create-monetized-review  passed
+    cloud-apps-structured-confirm       passed
+    Totals: 2 passed, 0 failed, 0 skipped of 2
+    Reply captured in scenario-report.json:
+      Created "Coin" on Eliza Cloud (status: draft).
+      Note: Monetization requires an approved app review, so the app was created with
+      monetization disabled. Submit it for review (the Monetize tab in the dashboard,
+      or POST /api/v1/apps/:id/review), then enable monetization after approval.
+      Want me to deploy it now? Just say "deploy Coin".
+    data: { monetization: false, reviewStatus: "draft" }; loopback saw exactly one
+    POST /api/v1/apps with monetization_enabled=true + inference_markup_percentage=20.
+
+[4] SDK client tests:
+    $ bun test packages/cloud/sdk/src/apps.client.test.ts
+    16 pass / 0 fail
+
+[5] Live-Worker e2e (contract updated; loud counted skips without a Worker):
+    $ REQUIRE_E2E_SERVER=0 bun test packages/cloud/api/test/e2e/group-i-apps-lifecycle.test.ts
+    0 pass / 33 skip / 0 fail
+
+[6] Typechecks:
+    $ bun run --cwd packages/cloud/api typecheck    → PASS
+    $ bun run --cwd packages/cloud/sdk typecheck    → PASS
+    $ bun run --cwd plugins/plugin-cloud-apps typecheck → PASS
+
+[7] Lint:
+    $ bunx biome check <8 touched files>            → clean, no fixes
+
+[8] Root verify (expanded — the one-shot `bun run verify` crashed twice on this
+    host with SIGSEGV/SIGBUS during the 8-way parallel fan-out, both times in
+    unrelated packages; each phase run separately at --concurrency=4):
+    $ bun run audit:type-safety-ratchet                     → PASS
+      (baseline can shrink: as unknown as 75->74, `?? {}` 377->375 — develop drift, not this branch)
+    $ node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=4 \
+        --filter='!@elizaos/example-code'                   → 485/485 tasks successful
+      (required clearing an inherited @elizaos/ui#lint red present on
+       origin/develop a747ced409 in two files this branch never touched —
+       mechanical biome --write fix committed separately)
+    $ bun run audit:build-model                             → PASS
+    $ bun run audit:turbo-build-deps                        → PASS
+    $ bun run audit:tee-secret-leak                         → PASS
+    $ bun run audit:scripts                                 → PASS
+    $ bun run audit:test-realness                           → PASS
+    $ bun run typecheck:dist                                → PASS (28 consumer configs)
+      (required regenerating tsconfig.dist-paths.json — stale on origin/develop
+       since packages/import-conversations landed; committed separately)

@@ -1,3 +1,12 @@
+/**
+ * Renders a declarative `UiSpec` (the plugin-config UI-spec engine's element
+ * tree) into React. Walks the spec's element graph from its root, resolves
+ * bound props / state paths / visibility conditions against a live state store,
+ * runs field validators, and fires `UiAction`s back through the `onAction`
+ * callback. Link hrefs are sanitized (`sanitizeLinkHref`) and only supported
+ * component types render; the spec is data, not code. Contrast with
+ * `ConfigRenderer`, which drives a JSON-Schema config form rather than a spec tree.
+ */
 import type React from "react";
 import {
   createContext,
@@ -19,6 +28,7 @@ import { useAppSelector } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
 import {
   Select,
   SelectContent,
@@ -26,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import { ConfigFieldErrors } from "./config-control-primitives";
 import {
   getConfigInputClassName,
@@ -323,7 +334,7 @@ const InputComponent: ComponentFn = (props, _children, ctx, el) => {
       {props.label ? (
         <span className="text-xs font-semibold">{String(props.label)}</span>
       ) : null}
-      <input
+      <Input
         className={getConfigInputClassName({
           density: "compact",
           hasError: !!errors?.length,
@@ -363,7 +374,7 @@ const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
       {props.label ? (
         <span className="text-xs font-semibold">{String(props.label)}</span>
       ) : null}
-      <textarea
+      <Textarea
         className={getConfigTextareaClassName({
           density: "compact",
           hasError: !!errors?.length,
@@ -481,12 +492,13 @@ const RadioComponent: ComponentFn = (props, _children, ctx) => {
           key={o.value}
           className="flex items-center gap-2 text-xs cursor-pointer"
         >
-          <input
+          <Input
             type="radio"
             name={String(props.name ?? "")}
             value={o.value}
             checked={value === o.value}
             onChange={() => setValue(o.value)}
+            className="h-4 w-4 p-0"
           />
           <span>{o.label}</span>
         </span>
@@ -531,14 +543,14 @@ const SliderComponent: ComponentFn = (props, _children, ctx) => {
           <span className="text-muted">{String(value ?? props.min ?? 0)}</span>
         </div>
       ) : null}
-      <input
+      <Input
         type="range"
         min={Number(props.min ?? 0)}
         max={Number(props.max ?? 100)}
         step={Number(props.step ?? 1)}
         value={Number(value ?? props.min ?? 0)}
         onChange={(e) => setValue(Number(e.target.value))}
-        className="w-full"
+        className="h-6 w-full p-0"
         style={{ accentColor: "var(--accent)" }}
       />
     </div>
@@ -1397,17 +1409,18 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       aria-modal="true"
     >
       <div className="w-full max-h-[80vh] bg-card p-5 overflow-y-auto animate-[slide-up_200ms_ease]">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           aria-label="Close drawer"
           onClick={close}
-          className="group mx-auto mb-3 flex h-8 w-32 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-surface/70"
+          className="group mx-auto mb-3 h-8 w-32 cursor-pointer rounded-full transition-colors hover:bg-surface/70"
         >
           <span
             className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
             aria-hidden
           />
-        </button>
+        </Button>
         {props.title ? (
           <div className="font-bold text-sm">{String(props.title)}</div>
         ) : null}
@@ -1533,7 +1546,10 @@ function ElementRenderer({ elementId }: { elementId: string }) {
     );
   }
 
-  const resolvedProps = resolveProps(el.props, ctx);
+  // Model-emitted specs routinely omit `props`/`children` on an element;
+  // Object.entries(undefined) / undefined.map() would throw and (without the
+  // ErrorBoundary around MessageUiSpecBlock) crash the whole app. Default them.
+  const resolvedProps = resolveProps(el.props ?? {}, ctx);
 
   // Handle repeat / list rendering
   if (el.repeat) {
@@ -1562,8 +1578,8 @@ function ElementRenderer({ elementId }: { elementId: string }) {
     );
   }
 
-  // Normal rendering: resolve children
-  const childNodes = el.children.map((childId) => (
+  // Normal rendering: resolve children (default missing children to []).
+  const childNodes = (el.children ?? []).map((childId) => (
     <ElementRenderer key={childId} elementId={childId} />
   ));
 

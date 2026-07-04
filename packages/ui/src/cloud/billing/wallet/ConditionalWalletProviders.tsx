@@ -13,6 +13,7 @@
 
 import { Component, lazy, type ReactNode, Suspense, useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 // The billing surface (the only wallet consumer) mounts at /settings.
@@ -95,7 +96,8 @@ export function ConditionalWalletProviders({
               })}
             </p>
             <p className="mt-2">
-              <button
+              <Button
+                variant="ghost"
                 className="underline"
                 onClick={() => {
                   if (typeof window !== "undefined") {
@@ -106,7 +108,7 @@ export function ConditionalWalletProviders({
                 type="button"
               >
                 {t("cloud.wallet.reloadPage", { defaultValue: "Reload page" })}
-              </button>
+              </Button>
             </p>
           </div>
         </div>

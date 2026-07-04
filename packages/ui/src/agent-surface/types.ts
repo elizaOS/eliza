@@ -71,6 +71,12 @@ export interface AgentElementDescriptor {
   description?: string;
   /** Current status token rendered as `data-state` (e.g. "active", "error"). */
   status?: string;
+  /**
+   * Marks this element as credential/sensitive data. Sensitive elements remain
+   * addressable, but their values are redacted from snapshots and agent fills
+   * are rejected.
+   */
+  sensitive?: boolean;
   /** Sort priority for `list-elements` (lower first). Falls back to DOM order. */
   order?: number;
   /** Override fillability (else derived from role). */
@@ -98,6 +104,8 @@ export interface AgentElementSnapshot {
   description?: string;
   status?: string;
   value?: unknown;
+  sensitive?: boolean;
+  valueRedacted?: boolean;
   fillable: boolean;
   clickable: boolean;
   focused: boolean;
@@ -127,15 +135,8 @@ export interface AgentActionResult {
   value?: unknown;
 }
 
-/** Capability ids handled generically by the agent-surface registry. */
-export const AGENT_SURFACE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
-  "list-elements",
-  "describe-element",
-  "get-focus",
-  "get-agent-state",
-  "agent-click",
-  "agent-fill",
-  "agent-focus",
-  "agent-scroll-to",
-  "set-highlight",
-]);
+// Capability ids handled generically by the agent-surface registry. The
+// canonical definition lives in @elizaos/shared so the agent server can dispatch
+// against it without importing UI internals (#12408); re-exported here for the
+// UI's agent-surface consumers.
+export { AGENT_SURFACE_CAPABILITY_IDS } from "@elizaos/shared/views/view-interact-protocol";

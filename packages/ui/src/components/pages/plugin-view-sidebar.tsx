@@ -1,3 +1,10 @@
+/**
+ * The connector-mode sidebar for `PluginsView`: a collapsible rail/panel that
+ * lists connector plugins, groups them by subgroup tag, and drives selection +
+ * per-connector enable toggles. Registers its rail/viewport/items with the agent
+ * surface so the sidebar is agent-navigable. Presentation only — state lives in
+ * the parent view.
+ */
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback, RefObject } from "react";
 import { useAgentElement } from "../../agent-surface";

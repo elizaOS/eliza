@@ -1,3 +1,4 @@
+/** Default vitest config: runs the `__tests__/**` shape/unit suite in Node, excluding the live and harness lanes. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

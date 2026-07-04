@@ -7,6 +7,7 @@
 
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { CreditBalanceResponse } from "../types";
@@ -77,7 +78,8 @@ export function CreditBalanceDisplay() {
                 defaultValue: "Could not load balance",
               })}
         </div>
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => void fetchCreditBalance()}
           className="mt-2 inline-flex items-center gap-1 text-xs text-red-300 hover:text-red-200"
@@ -86,7 +88,7 @@ export function CreditBalanceDisplay() {
           {t("cloud.successClient.refreshBalance", {
             defaultValue: "Refresh balance",
           })}
-        </button>
+        </Button>
       </div>
     );
   }

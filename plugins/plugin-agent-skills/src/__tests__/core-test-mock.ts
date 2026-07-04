@@ -77,6 +77,15 @@ vi.mock("@elizaos/core", () => {
 		annotateActiveTrajectoryStep: vi.fn(async () => true),
 		getTrajectoryContext: vi.fn(() => undefined),
 		captureSkillInvocationIO,
+		Service: class {
+			constructor(public runtime?: unknown) {}
+			static serviceType = "mock-service";
+			capabilityDescription = "mock service";
+			static async start() {
+				return new this();
+			}
+			async stop() {}
+		},
 		logger,
 	};
 });

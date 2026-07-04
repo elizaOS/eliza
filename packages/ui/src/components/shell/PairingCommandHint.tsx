@@ -1,3 +1,12 @@
+/**
+ * Pairing-code helper card for the startup/pairing flow: shows the copyable
+ * shell command(s) that mint a one-time pairing code on the agent host. For a
+ * loopback URL it shows just the on-server `curl`; for a remote URL it also
+ * offers the wrapped `ssh` form and hints where to substitute the real SSH
+ * target. Command strings come from `buildPairingCodeCommandInfo`
+ * (./pairing-command); this only renders and handles clipboard copy.
+ */
+
 import { Copy, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useAppSelector } from "../../state";

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `PredictionMarketService` buy/sell/resolve flows against the real CPMM
+ * pricing, using in-memory fakes for the wallet, DB, cache, and broadcast ports.
+ */
 import { beforeEach, describe, expect, it } from "bun:test";
 import type {
   BroadcastPort,

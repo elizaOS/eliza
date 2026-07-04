@@ -1,21 +1,69 @@
 // @vitest-environment jsdom
+
+/**
+ * jsdom tests for `WalletSectionNav` and `isWalletSectionPath`: exercises the
+ * real app-shell page registry to confirm active-route matching, alias
+ * resolution to Wallet, and that a sub-view stops matching when its registration
+ * is absent.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { registerAppShellPage } from "../../app-shell-registry";
+import { resetUiRegistryHostForTests } from "../../registry-host";
 import { isWalletSectionPath, WalletSectionNav } from "./WalletSectionNav";
+
+function registerWalletSectionPages(): void {
+  registerAppShellPage({
+    id: "test.wallet",
+    pluginId: "test-wallet",
+    label: "Wallet",
+    path: "/inventory",
+    tabAffinity: "inventory",
+    group: "wallet",
+    order: 10,
+    loader: async () => ({ default: () => null }),
+  });
+  registerAppShellPage({
+    id: "test.perps",
+    pluginId: "test-perps",
+    label: "Perps",
+    path: "/perps",
+    tabAffinity: "inventory",
+    group: "wallet",
+    order: 20,
+    loader: async () => ({ default: () => null }),
+  });
+  registerAppShellPage({
+    id: "test.predictions",
+    pluginId: "test-predictions",
+    label: "Predictions",
+    path: "/predictions",
+    tabAffinity: "inventory",
+    group: "wallet",
+    order: 30,
+    loader: async () => ({ default: () => null }),
+  });
+}
+
+beforeEach(() => {
+  resetUiRegistryHostForTests();
+  registerWalletSectionPages();
+});
 
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
+  resetUiRegistryHostForTests();
 });
 
 describe("isWalletSectionPath", () => {
-  it("matches wallet + its sub-view routes", () => {
+  it("matches wallet + registered sub-view routes", () => {
     for (const path of [
       "/wallet",
       "/inventory",
-      "/hyperliquid",
-      "/polymarket",
-      "/hyperliquid?tab=positions",
+      "/perps",
+      "/predictions",
+      "/perps?tab=positions",
     ]) {
       expect(isWalletSectionPath(path)).toBe(true);
     }
@@ -25,6 +73,23 @@ describe("isWalletSectionPath", () => {
     for (const path of ["/browser", "/automations", "/apps/logs", "/"]) {
       expect(isWalletSectionPath(path)).toBe(false);
     }
+  });
+
+  it("stops matching a sub-view when its app-shell registration is absent", () => {
+    resetUiRegistryHostForTests();
+    registerAppShellPage({
+      id: "test.wallet",
+      pluginId: "test-wallet",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      group: "wallet",
+      order: 10,
+      loader: async () => ({ default: () => null }),
+    });
+
+    expect(isWalletSectionPath("/perps")).toBe(false);
+    expect(isWalletSectionPath("/wallet")).toBe(true);
   });
 });
 
@@ -43,8 +108,8 @@ describe("WalletSectionNav", () => {
     ).toBeNull();
   });
 
-  it("marks Perps active on the hyperliquid route", () => {
-    render(<WalletSectionNav activePath="/hyperliquid" />);
+  it("marks Perps active on its registered route", () => {
+    render(<WalletSectionNav activePath="/perps" />);
     expect(
       screen
         .getByRole("button", { name: "Perps" })
@@ -55,7 +120,7 @@ describe("WalletSectionNav", () => {
   it("navigates to the sub-view route on click", () => {
     render(<WalletSectionNav activePath="/wallet" />);
     fireEvent.click(screen.getByRole("button", { name: "Predictions" }));
-    expect(window.location.pathname).toBe("/polymarket");
+    expect(window.location.pathname).toBe("/predictions");
   });
 
   it("does not renavigate when the active tab is clicked", () => {

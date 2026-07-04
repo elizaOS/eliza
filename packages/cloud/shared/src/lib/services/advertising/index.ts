@@ -19,6 +19,7 @@ import { secretsService } from "../secrets";
 import { googleAdsProvider } from "./providers/google";
 import { linkedinAdsProvider } from "./providers/linkedin";
 import { metaAdsProvider } from "./providers/meta";
+import { programmaticDspProvider } from "./providers/programmatic-dsp";
 import { redditAdsProvider } from "./providers/reddit";
 import { snapAdsProvider } from "./providers/snap";
 import { tiktokAdsProvider } from "./providers/tiktok";
@@ -64,6 +65,7 @@ const providers: Record<AdPlatform, AdProvider | null> = {
   "x-twitter": xTwitterAdsProvider,
   reddit: redditAdsProvider,
   linkedin: linkedinAdsProvider,
+  "programmatic-dsp": programmaticDspProvider,
 };
 
 const REPORT_TOKEN_BYTES = 24;

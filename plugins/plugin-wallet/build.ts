@@ -6,7 +6,7 @@
  * previous hand-rolled build.
  *
  * Notable specifics reproduced here:
- * - Four entrypoints are bundled together under `dist/` with Bun's default
+ * - Five entrypoints are bundled together under `dist/` with Bun's default
  *   `[dir]/[name].[ext]` naming, so `src/sdk/index.ts` etc. keep their tree.
  * - Only the primary `index.js`/`index.js.map` are renamed to `.mjs`/`.mjs.map`
  *   (the package `main`/`exports` point at `dist/index.mjs`); the secondary
@@ -30,6 +30,7 @@ await buildPlugin({
       label: "Node",
       entry: [
         "src/index.ts",
+        "src/diagnostic.ts",
         "src/sdk/index.ts",
         "src/wallet-action.ts",
         "src/lib/server-wallet-trade.ts",

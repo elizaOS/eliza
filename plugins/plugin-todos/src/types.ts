@@ -1,3 +1,4 @@
+/** Shared constants and types for @elizaos/plugin-todos: the service type + log prefix, the todo status enum, and the provider context tags. */
 export const TODOS_LOG_PREFIX = "[Todos]";
 export const TODOS_SERVICE_TYPE = "todos";
 

@@ -12,7 +12,11 @@
  *
  * These tests drive the REAL handleEvent (private, invoked directly) with a
  * fake ACP service, plus the REAL TASKS action cap branch, and pin:
- *  1. verify-retry handoff still captures the completion for the origin;
+ *  1. verify-retry handoff does NOT capture the verify-FAILED completion —
+ *     the router just judged that build incomplete, so recording its (dead-URL
+ *     annotated, systematically longer) narration would let longest-wins
+ *     shadow the successful retry's shorter clean answer and relay the failure
+ *     at the spawn cap (see origin-result-verify-failed-shadow.test.ts);
  *  2. lineage dedupe still lets a LONGER late completion win (longest-wins);
  *  3. the spawn-cap fallback is an honest "attempted N times" message, not
  *     the misleading "still working" that conflates capped-and-failed with
@@ -80,6 +84,10 @@ function makeRuntime(
   } as unknown as IAgentRuntime;
 }
 
+function mockCallCount(fn: unknown): number {
+  return (fn as { mock: { calls: unknown[] } }).mock.calls.length;
+}
+
 function sessionInfo(
   id: string,
   metadata: Record<string, unknown>,
@@ -118,13 +126,18 @@ async function startRouter(
 }
 
 describe("origin-result capture on task_complete early returns", () => {
-  it("verify-retry handoff records the completion for the origin before returning", async () => {
+  it("verify-retry handoff does NOT record the verify-FAILED completion", async () => {
     // A completion that claims a DEAD loopback URL (nothing listens on the
     // discard port) with explicit deploy/live intent in the task → the
     // verifier flags it dead → retryIncompleteBuild spawns a retry → the
-    // handler takes the verify-retry early return. Before the fix, that
-    // return skipped recordOriginResult and the completion was lost: at the
-    // spawn cap the user got the generic fallback instead of this result.
+    // handler takes the verify-retry early return. That suppressed completion
+    // is a build the router itself judged INCOMPLETE: it must not become the
+    // origin's relayable best result, or its (dead-URL annotated,
+    // systematically longer) narration shadows the successful retry's shorter
+    // clean answer under longest-wins and gets relayed — planner-only
+    // verification directive included — verbatim to the user at the spawn cap
+    // (35a9e8163a / #11514 regression). With nothing clean captured, the cap
+    // falls back to the honest "attempted N times" message instead.
     const deadUrl = "http://127.0.0.1:9/apps/game/index.html";
     const sessions = new Map<string, Record<string, unknown>>([
       [
@@ -155,13 +168,8 @@ describe("origin-result capture on task_complete early returns", () => {
     expect(acp.spawnSession).toHaveBeenCalledTimes(1);
     expect(runtime.emitEvent).not.toHaveBeenCalled();
 
-    // …and the completion was still captured for the origin (the loopback
-    // URL itself is redacted from narration by design, so assert on the
-    // narration body + the honest verification annotation).
-    const best = router.bestResultFor("disc-verify-1\0codex");
-    expect(best).toBeDefined();
-    expect(best?.text).toContain("The game is built and live at");
-    expect(best?.text).toContain("NOT reachable");
+    // …and the verify-FAILED completion was NOT captured for the origin.
+    expect(router.bestResultFor("disc-verify-1\0codex")).toBeUndefined();
     await router.stop();
   });
 
@@ -191,7 +199,7 @@ describe("origin-result capture on task_complete early returns", () => {
       response: "479",
       stopReason: "end_turn",
     });
-    const deliveriesAfterFirst = vi.mocked(runtime.emitEvent).mock.calls.length;
+    const deliveriesAfterFirst = mockCallCount(runtime.emitEvent);
     expect(deliveriesAfterFirst).toBeGreaterThan(0);
     const afterFirst = router.bestResultFor("disc-dedupe-1\0codex");
     expect(afterFirst?.text).toContain("479");
@@ -202,9 +210,7 @@ describe("origin-result capture on task_complete early returns", () => {
       response: "479001600 (the full answer)",
       stopReason: "end_turn",
     });
-    expect(vi.mocked(runtime.emitEvent).mock.calls.length).toBe(
-      deliveriesAfterFirst,
-    );
+    expect(mockCallCount(runtime.emitEvent)).toBe(deliveriesAfterFirst);
     const best = router.bestResultFor("disc-dedupe-1\0codex");
     expect(best?.text).toContain("479001600");
     await router.stop();

@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the mobile permission client against mocked Capacitor
+ * permission plugins (calendar, contacts, …). No real device.
+ */
 import type { PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import type {

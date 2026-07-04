@@ -154,7 +154,15 @@ export function injectApiBaseIntoHtml(
 
   const parts: string[] = [];
   if (trimmedBase) {
-    parts.push(`window.__ELIZA_API_BASE__=${JSON.stringify(trimmedBase)};`);
+    // Seed the boot-config store (the single source of truth for the API base)
+    // before any renderer JS runs, mirroring the Electrobun renderer injection.
+    // Writing both the `Symbol.for("elizaos.app.boot-config")` slot and its
+    // `window.__ELIZAOS_APP_BOOT_CONFIG__` mirror means the appClient, every
+    // transport, and the native web shims resolve this reverse-proxy base
+    // through one accessor instead of a bespoke API-base window global.
+    parts.push(
+      `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${JSON.stringify(trimmedBase)}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`,
+    );
   }
   if (trimmedToken) {
     parts.push(`window.__ELIZA_API_TOKEN__=${JSON.stringify(trimmedToken)};`);

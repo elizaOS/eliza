@@ -1,0 +1,68 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 364637754 Realtime: 364637754
+
+** MEMINFO in pid 5304 [ai.elizaos.app] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    13785    13600      180    25184    14712    52980    43152     5711
+  Dalvik Heap    18500    18476        8      156    19216    30190     5614    24576
+ Dalvik Other    13874     4300       84      104    23636                           
+        Stack     1280     1204       76     1540     1284                           
+       Ashmem       98        4        0        0      256                           
+    Other dev        4        0        4        0      288                           
+     .so mmap     1009      184      340      338    15344                           
+    .jar mmap     1228        0        8        0    42224                           
+    .apk mmap     6501      160     1536      556    21304                           
+    .dex mmap       22        0        0        0      768                           
+    .oat mmap       17        0        0        0     2024                           
+    .art mmap     4529     4096      200     3121    13892                           
+   Other mmap      307      180       20        0      740                           
+   EGL mtrack    60916    60916        0        0    60916                           
+    GL mtrack    15672    15672        0        0    15672                           
+      Unknown    12017     9084     2824    45159    15208                           
+        TOTAL   225917   127876     5280    76158   247484    83170    48766    30287
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:    22772                          33108
+         Native Heap:    13600                          14712
+                Code:     2608                         101020
+               Stack:     1204                           1284
+            Graphics:    76588                          76588
+       Private Other:    16384
+              System:    92761
+             Unknown:                                   20772
+ 
+           TOTAL PSS:   225917            TOTAL RSS:   247484       TOTAL SWAP PSS:    76158
+ 
+ Objects
+               Views:        9         ViewRootImpl:        1
+         AppContexts:        8           Activities:        1
+              Assets:       30        AssetManagers:        0
+       Local Binders:       56        Proxy Binders:       75
+       Parcel memory:       18         Parcel count:       72
+    Death Recipients:        5             WebViews:        1
+ 
+ Native Allocations
+                         Count                       Total(kB)
+                        ------                         ------
+    Other (malloced):      418                             38
+ Other (nonmalloced):      157                            105
+   Bitmap (malloced):        2                            123
+ 
+ SQL
+         MEMORY_USED:      394
+  PAGECACHE_OVERFLOW:      109          MALLOC_SIZE:       46
+ 
+ DATABASES
+      pgsz     dbsz   Lookaside(b) cache hits cache misses cache size  Dbname
+PER CONNECTION STATS
+         4      104            122  2161   724    25  /data/user/0/ai.elizaos.app/no_backup/androidx.work.workdb
+         4        8                    0     0     0    (attached) temp
+         4      104             57   181    24     6  /data/user/0/ai.elizaos.app/no_backup/androidx.work.workdb (1)
+POOL STATS
+     cache hits  cache misses    cache size  Dbname
+           2342           752            31  /data/user/0/ai.elizaos.app/no_backup/androidx.work.workdb
+ 

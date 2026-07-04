@@ -1,3 +1,9 @@
+/**
+ * Tests the Capacitor push→pull streaming bridge (`streamCapacitorPrompt`). A
+ * fake context replays token callbacks; asserts the assembled `TextStreamResult`
+ * text, usage, and finish reason. No native model.
+ */
+
 import type { TokenUsage } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { streamCapacitorPrompt } from "../text-streaming";

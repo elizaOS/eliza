@@ -1,5 +1,8 @@
 import type { IAgentRuntime } from "./types/runtime";
 import type { Service } from "./types/service";
+import { ServiceType } from "./types/service";
+
+type TunnelRuntime = Pick<IAgentRuntime, "getService">;
 
 export type TunnelProvider = "tailscale" | "headscale" | "ngrok";
 
@@ -22,9 +25,9 @@ export interface ITunnelService {
 }
 
 export function getTunnelService(
-	runtime: IAgentRuntime,
+	runtime: TunnelRuntime,
 ): ITunnelService | null {
-	const service = runtime.getService("tunnel");
+	const service = runtime.getService(ServiceType.TUNNEL);
 	if (!service) return null;
 	if (typeof (service as Partial<ITunnelService>).startTunnel !== "function") {
 		return null;
@@ -32,6 +35,6 @@ export function getTunnelService(
 	return service as Service & ITunnelService;
 }
 
-export function tunnelSlotIsFree(runtime: IAgentRuntime): boolean {
-	return runtime.getService("tunnel") === null;
+export function tunnelSlotIsFree(runtime: TunnelRuntime): boolean {
+	return runtime.getService(ServiceType.TUNNEL) === null;
 }

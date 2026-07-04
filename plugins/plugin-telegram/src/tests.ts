@@ -1,3 +1,8 @@
+/**
+ * Live smoke `TestSuite` for the Telegram connector: exercises a real bot
+ * connection, text and image sends, and inbound message/attachment handling
+ * against a live bot (requires `TELEGRAM_TEST_CHAT_ID`).
+ */
 import { type IAgentRuntime, logger, type TestSuite } from "@elizaos/core";
 import type { Chat, Message, User } from "@telegraf/types";
 import type { Context, Telegraf } from "telegraf";

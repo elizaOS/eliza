@@ -1,3 +1,7 @@
+/**
+ * Cross-platform native notification bridge: shows OS/mobile notifications and
+ * routes their tap deep-links back into the app.
+ */
 import { Capacitor } from "@capacitor/core";
 import { navigateDeepLink } from "../state/notifications/navigate-deep-link";
 import { getNativePlugin } from "./native-plugins";

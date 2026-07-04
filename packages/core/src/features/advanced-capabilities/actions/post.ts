@@ -648,6 +648,8 @@ export const postAction: Action = {
 	similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
 	description: POST_DESCRIPTION,
 	descriptionCompressed: POST_COMPRESSED,
+	routingHint:
+		"publish/broadcast to a PUBLIC feed or timeline (tweet/cast/publish), or read/search public posts -> POST; do NOT use for a direct/private message, DM, group, or channel -> MESSAGE, to reply in the CURRENT chat/thread -> REPLY, or to join/mute/follow a channel -> ROOM",
 	contexts: POST_CONTEXTS,
 	roleGate: { minRole: "ADMIN" },
 	validate: async (runtime, message, state) => {

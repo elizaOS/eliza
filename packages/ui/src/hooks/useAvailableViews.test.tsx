@@ -163,15 +163,15 @@ describe("useAvailableViews", () => {
     });
   });
 
-  it("strips native-OS views (phone/messages/contacts/camera) off the AOSP fork", async () => {
+  it("strips views declaring `nativeOs: true` off the AOSP fork", async () => {
     fetchWithCsrf
       .mockResolvedValueOnce(
         response(200, {
           views: [
-            view("phone"),
-            view("messages"),
-            view("contacts"),
-            view("camera"),
+            view("phone", { nativeOs: true }),
+            view("messages", { nativeOs: true }),
+            view("contacts", { nativeOs: true }),
+            view("camera", { nativeOs: true }),
             view("wallet"),
           ],
         }),
@@ -186,11 +186,39 @@ describe("useAvailableViews", () => {
     expect(result.current.views.map((v) => v.id)).toEqual(["wallet"]);
   });
 
+  it("gates on the declared `nativeOs` flag, not the view id", async () => {
+    // A view id-matching an old native surface but WITHOUT the flag survives;
+    // a plugin-owned view declaring the flag is stripped. Proves the filter is
+    // declaration-driven rather than a hardcoded id set.
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [
+            view("phone"),
+            view("some-plugin-native-app", { nativeOs: true }),
+            view("wallet"),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(response(200, { views: [] }))
+      .mockResolvedValueOnce(response(200, { views: [] }));
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.views.map((v) => v.id).sort()).toEqual([
+      "phone",
+      "wallet",
+    ]);
+  });
+
   it("keeps native-OS views on the AOSP fork (?android=true)", async () => {
     window.history.replaceState(null, "", "/?android=true");
     fetchWithCsrf
       .mockResolvedValueOnce(
-        response(200, { views: [view("phone"), view("wallet")] }),
+        response(200, {
+          views: [view("phone", { nativeOs: true }), view("wallet")],
+        }),
       )
       .mockResolvedValueOnce(response(200, { views: [] }))
       .mockResolvedValueOnce(response(200, { views: [] }));

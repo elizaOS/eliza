@@ -1,3 +1,9 @@
+/**
+ * Assembles the built-in character `StylePreset`s from character definitions,
+ * shared style rules, and per-language reply rules. Kept separate from
+ * character-language.ts because its module-level builders eagerly materialize
+ * ~49KB of preset data; import from there for language helpers on hot paths.
+ */
 import {
   addLanguageRule,
   DEFAULT_CHARACTER_LANGUAGE as DEFAULT_LANGUAGE,

@@ -1,3 +1,8 @@
+/**
+ * Shared request/response interfaces and upstream API base URLs for the
+ * Polymarket integration — the contract between `routes.ts` (producer),
+ * `client.ts` (typed fetch), and the view/action consumers.
+ */
 export const POLYMARKET_GAMMA_API_BASE = "https://gamma-api.polymarket.com";
 export const POLYMARKET_DATA_API_BASE = "https://data-api.polymarket.com";
 export const POLYMARKET_CLOB_API_BASE = "https://clob.polymarket.com";

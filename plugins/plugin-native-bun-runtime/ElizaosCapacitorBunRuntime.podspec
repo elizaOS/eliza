@@ -19,6 +19,8 @@ source_files = if include_full_bun_engine
     'ios/Sources/ElizaBunRuntimePlugin/ElizaBunRuntime.swift',
     'ios/Sources/ElizaBunRuntimePlugin/FullBunEngineHost.swift',
     'ios/Sources/ElizaBunRuntimePlugin/SandboxPaths.swift',
+    'ios/Sources/ElizaBunRuntimePlugin/bridge/KeepAwakeBridge.swift',
+    'ios/Sources/ElizaBunRuntimePlugin/bridge/BackgroundDownloadBridge.swift',
     'ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridgeImpl.swift',
     'ios/Sources/ElizaBunRuntimePlugin/kokoro/**/*.swift'
   ]

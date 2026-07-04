@@ -1,3 +1,4 @@
+/** tsup build config: dual-entry build (Node `index.ts` + browser `index.browser.ts`), ESM only, with declaration output. */
 import { defineConfig } from "tsup";
 
 export default defineConfig({

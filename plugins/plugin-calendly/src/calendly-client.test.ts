@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the Calendly client's request-URL rewriting (absolute
+ * api.calendly.com URLs → ELIZA_MOCK_CALENDLY_BASE) and availability
+ * normalization, driven by a stubbed fetch (deterministic, no network).
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getCalendlyAvailability } from "./calendly-client.js";
 

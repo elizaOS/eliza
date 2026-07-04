@@ -1,3 +1,11 @@
+/**
+ * The single top-level `SHOPIFY` action; routes a request to one of five
+ * operation handlers (search / products / inventory / orders / customers).
+ *
+ * Routing is by explicit `op` option when present, otherwise by matching the
+ * message text against each `ShopifyRoute.match` regex. `promoteSubactionsToActions`
+ * (in index.ts) expands this into the legacy per-op similes callers still use.
+ */
 import type {
   Action,
   ActionResult,
@@ -94,11 +102,8 @@ function selectRoute(
   options?: HandlerOptions | Record<string, unknown>,
 ): ShopifyRoute | null {
   const opts = readOptions(options);
-  // Canonical discriminator is `action`. The dispatcher accepts two legacy
-  // aliases — `op` (pre-canonicalization name) and `entity` (planner shorthand
-  // for "which Shopify entity am I working with") — but those do not appear in
-  // the schema. Other historical aliases (subaction, etc.) are no longer
-  // accepted.
+  // Canonical discriminator is `action`; `op` and `entity` (planner shorthand
+  // for "which Shopify entity") are accepted aliases but are not in the schema.
   const requested = normalizeOp(opts.action ?? opts.op ?? opts.entity);
   if (requested) {
     const route = ROUTES.find((candidate) => candidate.op === requested);

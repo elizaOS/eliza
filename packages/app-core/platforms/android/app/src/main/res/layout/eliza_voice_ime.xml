@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Voice-input keyboard surface for ElizaVoiceInputMethodService (FUTO Voice
+    Input pattern). Voice-only: a mic button, a live level/state indicator, and
+    a "switch back" affordance to return to the previous keyboard. No QWERTY.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/eliza_ime_root"
+    android:layout_width="match_parent"
+    android:layout_height="280dp"
+    android:background="#1C1C1E"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="18dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/eliza_ime_state"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/eliza_ime_prompt"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/eliza_ime_switch"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/eliza_ime_switch_back"
+            android:scaleType="fitCenter"
+            android:padding="10dp"
+            android:src="@drawable/ic_eliza_ime_keyboard"
+            android:tint="#B0FFFFFF" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp">
+
+        <ImageButton
+            android:id="@+id/eliza_ime_mic"
+            android:layout_width="84dp"
+            android:layout_height="84dp"
+            android:layout_gravity="center"
+            android:background="@drawable/eliza_ime_mic_bg"
+            android:contentDescription="@string/eliza_ime_prompt"
+            android:scaleType="fitCenter"
+            android:padding="24dp"
+            android:src="@drawable/ic_eliza_ime_mic"
+            android:tint="#FFFFFFFF" />
+    </FrameLayout>
+
+    <ProgressBar
+        android:id="@+id/eliza_ime_level"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginBottom="8dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="@color/eliza_orange" />
+
+    <TextView
+        android:id="@+id/eliza_ime_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="@string/eliza_ime_hint"
+        android:textColor="#80FFFFFF"
+        android:textSize="12sp" />
+</LinearLayout>

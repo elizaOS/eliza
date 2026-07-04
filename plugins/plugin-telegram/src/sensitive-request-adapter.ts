@@ -13,7 +13,7 @@
  * Both this adapter and the Discord DM adapter register under the "dm" target;
  * the dispatch registry keeps every adapter per target and selects the right one
  * per request via `resolve(target, channelId, runtime)` + this adapter's
- * `supportsChannel`, so loading both connectors no longer collides on "dm"
+ * `supportsChannel`, so loading both connectors does not collide on "dm"
  * (registration order is irrelevant). See `dispatch-registry.ts`.
  */
 

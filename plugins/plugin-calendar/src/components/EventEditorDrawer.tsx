@@ -697,14 +697,15 @@ export function EventEditorDrawer({
             <div>
               <div className="text-sm font-semibold text-txt">{titleLabel}</div>
             </div>
-            <button
+            <Button
+              unstyled
               type="button"
               onClick={onClose}
               aria-label={t("common.close", { defaultValue: "Close" })}
               className="p-1.5 text-muted transition-colors hover:text-txt"
             >
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-4 px-5 py-5">

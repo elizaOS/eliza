@@ -1,3 +1,5 @@
+/** Storybook stories for the cloud-source controls — mode toggle (cloud/own-key/custom-labels/interactive) and connection status (connected/disconnected/custom-label). */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { MockAppProvider } from "../../storybook/mock-providers";

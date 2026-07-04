@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for ShareButtons.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ShareButtons } from "./share-buttons";
 

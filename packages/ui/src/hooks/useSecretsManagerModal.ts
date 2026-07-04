@@ -1,3 +1,7 @@
+/**
+ * Global open/close state for the Vault (secrets manager) modal, event-backed so
+ * any trigger path can toggle it without context plumbing.
+ */
 import { useCallback, useEffect, useState } from "react";
 
 /**

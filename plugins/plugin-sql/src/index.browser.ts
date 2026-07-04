@@ -1,3 +1,10 @@
+/**
+ * Browser entry point for `@elizaos/plugin-sql`: registers a PGlite
+ * (WASM-only) `IDatabaseAdapter`, backed by a process-global, per-agent
+ * `PGliteClientManager` singleton cache so repeated imports never spin up
+ * duplicate PGlite instances. No PostgreSQL support — see `index.node.ts`
+ * for the Node/Bun entry that adds it.
+ */
 import {
   type IAgentRuntime,
   type IDatabaseAdapter,
@@ -5,9 +12,20 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
-import { getOrCreatePgliteManagerForAgent, type PgliteManagerCache } from "./pglite/manager-cache";
+import {
+  type ClosePgliteSingletonResult,
+  dropActivePgliteManager,
+  getOrCreatePgliteManagerForAgent,
+  type PgliteManagerCache,
+  type PgliteSingletonCache,
+} from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 
@@ -38,6 +56,59 @@ export function createDatabaseAdapter(
   return new PgliteDatabaseAdapter(agentId, getOrCreatePgliteManager(agentId));
 }
 
+/**
+ * Close and drop the process-global PGlite singleton manager.
+ *
+ * Awaits the manager's `close()` bounded by `timeoutMs` (default 1000ms), then
+ * removes it from the singleton cache so the next `createDatabaseAdapter()`
+ * builds a fresh manager. Returns whether a manager was closed and whether
+ * close() timed out.
+ */
+export async function closePgliteSingleton(options?: {
+  timeoutMs?: number;
+}): Promise<ClosePgliteSingletonResult> {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    return { closed: false, timedOut: false, error: null };
+  }
+
+  let timedOut = false;
+  let error: Error | null = null;
+  const timeoutMs = options?.timeoutMs ?? 1_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    await Promise.race([
+      Promise.resolve(manager.close()),
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    error = err instanceof Error ? err : new Error(String(err));
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  dropActivePgliteManager(globalSingletons, manager);
+  return { closed: true, timedOut, error };
+}
+
+/**
+ * Public handle onto the process-global PGlite singleton cache. Lets a host
+ * pre-seed or inspect the active manager (e.g. a browser bundle that
+ * pre-initializes PGlite with custom asset loading) without hand-copying the
+ * private `Symbol.for("elizaos.plugin-sql.global-singletons")`.
+ */
+export function getPgliteSingletonCache(): PgliteSingletonCache {
+  return globalSingletons;
+}
+
 export const plugin: Plugin = {
   name: "@elizaos/plugin-sql",
   description: "A plugin for SQL database access (PGlite WASM in browser).",
@@ -57,7 +128,27 @@ export const plugin: Plugin = {
         );
         return;
       }
-    } catch (_error) {}
+    } catch (error) {
+      if (isMissingDatabaseAdapterError(error)) {
+        logger.info(
+          { src: "plugin:sql", agentId: runtime.agentId },
+          "No pre-registered database adapter detected; registering browser adapter"
+        );
+      } else {
+        logger.error(
+          {
+            src: "plugin:sql",
+            agentId: runtime.agentId,
+            error: describeAdapterReadinessError(error),
+          },
+          "Browser database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "browser",
+        });
+      }
+    }
 
     const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
     runtimeWithAdapter.registerDatabaseAdapter(dbAdapter);
@@ -94,6 +185,11 @@ export type {
 export * from "./connector-credential-store";
 export { DatabaseMigrationService } from "./migration-service";
 export * from "./pglite/errors";
+export type {
+  ClosePgliteSingletonResult,
+  PgliteSingletonCache,
+  PgliteSingletonManager,
+} from "./pglite/manager-cache";
 export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
 export type { DrizzleDatabase } from "./types";

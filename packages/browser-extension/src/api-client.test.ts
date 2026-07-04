@@ -1,3 +1,7 @@
+/**
+ * Unit tests for BrowserBridgeRelayClient: URL joining, Bearer auth, and
+ * RelayApiError mapping, driven against a mocked fetch.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserBridgeRelayClient, type RelayApiError } from "./api-client";
 import type {

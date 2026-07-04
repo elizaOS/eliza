@@ -1,3 +1,9 @@
+/**
+ * Package-level vitest config: aliases `@elizaos/app-core`, `@elizaos/core`,
+ * and `@elizaos/logger` to source so tests resolve without a pre-built dist,
+ * and excludes live/opt-in suites (funded-wallet transfer tests, guarded
+ * post-merge-only suites) from the default run.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -7,6 +13,13 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
+      // app-core only ships a built-dist export condition; point the automation
+      // node contributor registry at source so vitest resolves it without a
+      // pre-built app-core dist (the module is type-only at runtime).
+      "@elizaos/app-core/api/automation-node-contributors": path.resolve(
+        rootDir,
+        "../../packages/app-core/src/api/automation-node-contributors.ts",
+      ),
       "@elizaos/core": path.resolve(
         rootDir,
         "../../packages/core/src/index.node.ts",

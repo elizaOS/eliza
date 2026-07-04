@@ -1,3 +1,5 @@
+/** Vitest config for the plugin's unit tests (node environment). */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,5 +1,7 @@
 import type { JsonObject, JsonValue } from "../types/primitives";
 
+export * from "./sandbox-factory";
+
 export const CAPABILITY_ROUTER_SERVICE_TYPE = "capability-router" as const;
 
 export type CapabilityEnvironment =
@@ -214,6 +216,7 @@ export type RemotePluginRouteManifest = {
 	path: string;
 	name?: string;
 	public?: boolean;
+	publicReason?: string;
 	description?: string;
 };
 
@@ -839,6 +842,8 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 				path: "/fixture/route",
 				public: true,
 				name: "fixture-route",
+				publicReason:
+					"Capability-router fixture route is unauthenticated test transport.",
 			},
 		],
 		views: [
@@ -3306,14 +3311,22 @@ function requireRemotePluginRoute(
 	validateRemotePluginRouteMethod(routeMethod, "method", method, true);
 	const name = optionalString(object, "name", method);
 	const isPublic = optionalBoolean(object, "public", method);
+	const publicReason = optionalString(object, "publicReason", method);
 	const description = optionalString(object, "description", method);
 	const path = requireNonEmptyString(object, "path", method);
 	validateRemotePluginPath(path, "path", method);
+	if (isPublic === true && !publicReason?.trim()) {
+		throw decodeError(
+			method,
+			"publicReason must be a non-empty string for public routes.",
+		);
+	}
 	return {
 		method: routeMethod,
 		path,
 		...(name === undefined ? {} : { name }),
 		...(isPublic === undefined ? {} : { public: isPublic }),
+		...(publicReason === undefined ? {} : { publicReason }),
 		...(description === undefined ? {} : { description }),
 	};
 }

@@ -1,3 +1,9 @@
+/**
+ * Storybook stories for `AppWindowRenderer`: renders a registered mock overlay
+ * app through the slug-resolution + Suspense path, plus the not-found and
+ * case-insensitive-slug states.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactElement } from "react";
 import { AppWindowRenderer } from "./AppWindowRenderer";

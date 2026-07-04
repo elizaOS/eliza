@@ -209,3 +209,39 @@ def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
         assert "gguf-q5_k_m" in e.quantization_after
         assert "gguf-q6_k" in e.quantization_after
         assert "gguf-q8_0" in e.quantization_after
+
+
+def test_gemma4_unified_tiers_disable_liger() -> None:
+    """gemma4_unified (dense 12B/31B → eliza-1-9b/27b) has no validated Liger
+    kernel path — its fused RMSNorm/RoPE/CE assume the Gemma2/3 layout and NaN
+    the forward (the all-NaN 12B checkpoint incident). The registry MUST keep
+    Liger off for these tiers as the single source of truth, independent of the
+    arch-string backstop in train_local.py."""
+    assert REGISTRY["gemma4-12b"].use_liger is False
+    assert REGISTRY["gemma4-31b"].use_liger is False
+    assert get("eliza-1-9b").use_liger is False
+    assert get("eliza-1-27b").use_liger is False
+
+
+def test_local_gemma4_tiers_keep_liger() -> None:
+    """The E2B/E4B "gemma4" (non-unified) local tiers train fine with Liger and
+    rely on it for their seq_len budgets — they must stay enabled."""
+    assert REGISTRY["gemma4-e2b"].use_liger is True
+    assert REGISTRY["gemma4-e4b"].use_liger is True
+
+
+def test_registry_owns_per_tier_grad_clip() -> None:
+    """Stage 2 numerics guard: every tier must carry an explicit gradient
+    clipping norm instead of inheriting TRL/HF defaults by accident."""
+    for key in VERIFIED_KEYS:
+        assert get(key).max_grad_norm > 0
+
+    assert get("gemma4-e2b").max_grad_norm == 1.0
+    assert get("gemma4-e4b").max_grad_norm == 1.0
+    assert get("gemma4-12b").max_grad_norm == 0.5
+    assert get("gemma4-31b").max_grad_norm == 0.5
+
+
+def test_registry_train_dtype_is_explicit_and_supported() -> None:
+    for key in VERIFIED_KEYS:
+        assert get(key).train_dtype == "bf16"

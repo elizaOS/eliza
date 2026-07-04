@@ -66,6 +66,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("gguf_eliza1_apply")
 
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_FORK_LLAMA_CPP = (
+    _REPO_ROOT / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+)
+
 
 # Source-of-truth slot numbers for the Eliza-added GGML types. Mirrors
 # packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
@@ -93,7 +98,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     """Locate ``convert_hf_to_gguf.py`` in the elizaOS/llama.cpp fork checkout.
 
     Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
-    submodule (``packages/inference/llama.cpp``, the single canonical
+    submodule (``plugins/plugin-local-inference/native/llama.cpp``, the single canonical
     llama.cpp checkout) → the standalone clone at
     ``~/.cache/eliza-mtp/eliza-llama-cpp`` (used when the build scripts'
     ELIZA_MTP_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
@@ -104,14 +109,10 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     env_dir = os.environ.get("LLAMA_CPP_DIR")
     if env_dir:
         cands.append(Path(env_dir))
-    # packages/inference/llama.cpp is the canonical fork submodule
-    # (.gitmodules: url=https://github.com/elizaOS/llama.cpp.git).
-    here = Path(__file__).resolve()
-    for p in here.parents:
-        cand = p / "packages" / "inference" / "llama.cpp"
-        if cand.is_dir():
-            cands.append(cand)
-            break
+    # plugins/plugin-local-inference/native/llama.cpp is the canonical fork
+    # submodule (.gitmodules: url=https://github.com/elizaOS/llama.cpp.git).
+    if _FORK_LLAMA_CPP.is_dir():
+        cands.append(_FORK_LLAMA_CPP)
     cands.append(Path.home() / ".cache" / "eliza-mtp" / "eliza-llama-cpp")
     for c in cands:
         cand = c / "convert_hf_to_gguf.py"
@@ -123,7 +124,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path>, set "
         "LLAMA_CPP_DIR=<elizaOS/llama.cpp checkout>, or run "
-        "`git submodule update --init packages/inference/llama.cpp`."
+        "`git submodule update --init plugins/plugin-local-inference/native/llama.cpp`."
     )
 
 
@@ -251,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the elizaOS/llama.cpp v1.0.0-eliza checkout (defaults to the in-repo submodule packages/inference/llama.cpp).",
+        help="Path to the elizaOS/llama.cpp v1.0.0-eliza checkout (defaults to the in-repo submodule plugins/plugin-local-inference/native/llama.cpp).",
     )
     ap.add_argument(
         "--polarquant-sidecar",
@@ -298,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Local-debug escape hatch: when q4_polar cannot be emitted, "
             "fall back to f16/q8_0 and mark the sidecar as deferred. "
-            "Do not use for Eliza-1 release artifacts."
+            "Rejected when --release-state is set."
         ),
     )
     # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
@@ -431,6 +432,14 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
         args.outtype = "q8_0"
 
+    if fallback_reason is not None and args.release_state is not None:
+        log.error(
+            "refusing --allow-unoptimized-fallback with --release-state=%s: "
+            "fallback GGUFs are local-debug artifacts and are not release-eligible",
+            args.release_state,
+        )
+        return 2
+
     base_model = args.checkpoint.name
     if polar_sidecar:
         base_model = str(polar_sidecar.get("source_model") or base_model)
@@ -461,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
         "actual": args.outtype,
         "deferred": requested_outtype != args.outtype,
         "deferral_reason": fallback_reason,
+        "releaseEligible": fallback_reason is None,
         # PolarQuant codebook is still available as a sidecar even when the GGUF
         # body is q8_0/f16 — the runtime can apply it once the fork's converter
         # (or a runtime-side path) lands.

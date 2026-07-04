@@ -1,3 +1,7 @@
+/**
+ * Live end-to-end suite driving the real OpenAI endpoints through the registered
+ * plugin handlers. Runs only when credentials are present.
+ */
 import { ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
 

@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "composite": false,
+    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -25,16 +26,38 @@
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/spatial": ["../../packages/ui/src/spatial/index.ts"],
+      "@elizaos/ui/spatial/*": ["../../packages/ui/src/spatial/*"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["../../packages/agent/src/*"]
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": [
+        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"],
-  "exclude": []
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "../../packages/agent/src/external-modules.d.ts",
+    "../../packages/app-core/src/ambient-modules.d.ts"
+  ],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

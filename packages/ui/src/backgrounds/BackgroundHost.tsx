@@ -1,3 +1,7 @@
+/**
+ * Static solid shell background for marketing/landing/login pages — a plain
+ * inset-0 fill, distinct from the animated AppBackground.
+ */
 import { SOLID_BACKGROUND_CSS } from "./types";
 
 export interface BackgroundHostProps {

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+// Renders the real PluginsView against mocked state + api to cover the plugin
+// catalog: load-once on mount (stable even when ensurePluginsLoaded identity
+// churns), card rendering from context (no raw emoji icon strings), the
+// enable-toggle dispatch with inverted state, and install-progress WS
+// subscription. jsdom; in-memory stubs.
+
 import {
   cleanup,
   fireEvent,

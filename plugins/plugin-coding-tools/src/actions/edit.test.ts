@@ -1,3 +1,4 @@
+/** Tests for the FILE `edit` handler over the real filesystem, including the read-before-write staleness guard. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {

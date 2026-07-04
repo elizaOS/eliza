@@ -1,3 +1,4 @@
+/** Exercises the `MemoryArbiter`: acquire/reuse/release, one-model-per-role swap, and fit-to-budget LRU eviction. Deterministic, fake loaders. */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type ArbiterCapability,

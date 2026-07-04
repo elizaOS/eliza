@@ -1,6 +1,10 @@
+/**
+ * Message-handling configuration types: inbound message queue mode/drop policy
+ * and group-chat settings. A slice of the `ElizaConfig` tree (see types.eliza.ts).
+ */
 import type { GroupChatConfig, NativeCommandsSetting } from "@elizaos/core";
 
-// --- Queue types (merged from types.queue.ts) ---
+// --- Queue types ---
 
 export type QueueMode =
   | "steer"

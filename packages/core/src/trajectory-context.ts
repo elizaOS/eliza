@@ -6,6 +6,7 @@
  * Browser: stack-based fallback.
  */
 
+import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context";
 import type { PseudonymSession } from "./security/pii-pseudonymizer";
 import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
@@ -63,14 +64,9 @@ export interface ITrajectoryContextManager {
 // The previous lazy async init (.then()) caused a race: the stack-based
 // fallback was used for early messages, which doesn't propagate context
 // through async/await — so logLlmCall never saw the trajectory step ID.
-let globalContextManager: ITrajectoryContextManager | null = null;
 const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.trajectoryContextManager",
 );
-
-type GlobalWithTrajectoryContextManager = typeof globalThis & {
-	[TRAJECTORY_CONTEXT_MANAGER_KEY]?: ITrajectoryContextManager;
-};
 
 function isNodeEnvironment(): boolean {
 	return (
@@ -106,29 +102,19 @@ function initContextManagerSync(): ITrajectoryContextManager {
 }
 
 function getOrCreateContextManager(): ITrajectoryContextManager {
-	if (!globalContextManager) {
-		const globalManager = (globalThis as GlobalWithTrajectoryContextManager)[
-			TRAJECTORY_CONTEXT_MANAGER_KEY
-		];
-		if (globalManager) {
-			globalContextManager = globalManager;
-		} else {
-			globalContextManager = initContextManagerSync();
-			(globalThis as GlobalWithTrajectoryContextManager)[
-				TRAJECTORY_CONTEXT_MANAGER_KEY
-			] = globalContextManager;
-		}
-	}
-	return globalContextManager;
+	// The shared global slot is the single source of truth (no module-local
+	// cache): under a duplicated core bundle every copy must observe the same
+	// manager, and `setTrajectoryContextManager` must be visible everywhere.
+	return getAmbientSingleton(
+		TRAJECTORY_CONTEXT_MANAGER_KEY,
+		initContextManagerSync,
+	);
 }
 
 export function setTrajectoryContextManager(
 	manager: ITrajectoryContextManager,
 ): void {
-	globalContextManager = manager;
-	(globalThis as GlobalWithTrajectoryContextManager)[
-		TRAJECTORY_CONTEXT_MANAGER_KEY
-	] = manager;
+	setAmbientSingleton(TRAJECTORY_CONTEXT_MANAGER_KEY, manager);
 }
 
 export function getTrajectoryContextManager(): ITrajectoryContextManager {

@@ -71,19 +71,23 @@ vi.mock("@elizaos/ui", () => ({
     children,
     onClick,
     disabled,
-    "aria-label": ariaLabel,
+    // Drop `@elizaos/ui` Button-only props that a raw <button> rejects, then
+    // forward EVERYTHING else (data-testid, aria-pressed, type, className, …)
+    // so tests can find controls by testid and assert their aria state.
+    unstyled: _unstyled,
+    variant: _variant,
+    size: _size,
+    ...rest
   }: {
     children: ReactNode;
     onClick?: () => void;
     disabled?: boolean;
-    "aria-label"?: string;
+    unstyled?: boolean;
+    variant?: string;
+    size?: string;
+    [key: string]: unknown;
   }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-    >
+    <button type="button" onClick={onClick} disabled={disabled} {...rest}>
       {children}
     </button>
   ),

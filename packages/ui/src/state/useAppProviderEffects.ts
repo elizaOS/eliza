@@ -1,3 +1,8 @@
+/**
+ * Side-effect wiring for AppProvider: subscribes to the app-shell page
+ * registry, syncs navigation to the browser path, and seeds the onboarding
+ * greeting. Kept out of the provider body so the render stays declarative.
+ */
 import { type RefObject, useEffect, useRef, useSyncExternalStore } from "react";
 import { type ConversationMessage, client } from "../api";
 import {

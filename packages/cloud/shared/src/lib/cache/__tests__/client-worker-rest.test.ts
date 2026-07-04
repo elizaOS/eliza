@@ -1,3 +1,5 @@
+/** Verifies CacheClient selects the Upstash REST backend in Worker envs, with the Upstash client mocked. */
+
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const constructedClients: Array<{ url: string; token: string }> = [];

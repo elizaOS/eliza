@@ -41,6 +41,8 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   views: "system",
   character: "system",
   "character-select": "system",
+  "character-skills": "system",
+  experience: "system",
   inventory: "system",
   documents: "system",
   files: "system",

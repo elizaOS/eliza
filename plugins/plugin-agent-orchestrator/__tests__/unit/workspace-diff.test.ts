@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   captureBaselineDirty,
   captureBaselineSha,
   captureChangeSet,
+  parseLsFiles,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
 } from "../../src/services/workspace-diff.ts";
@@ -302,5 +303,83 @@ describe("workspace-diff — unborn HEAD + untracked (#11578)", () => {
   it("returns undefined on an unborn HEAD with no files", async () => {
     const cs = await captureChangeSet(dir);
     expect(cs).toBeUndefined();
+  });
+});
+
+// The unborn-HEAD untracked scoop (37813124bf, #11605) could flood the
+// MAX_CHANGED_FILES cap and evict the agent's real files:
+// 1. a fresh scaffold that runs `npm install` BEFORE writing .gitignore has
+//    thousands of untracked node_modules paths (`--exclude-standard` has no
+//    .gitignore to honor yet), all of which entered the scoop;
+// 2. agent-written tool paths were spread LAST into the changed-files union,
+//    and Set dedupe keeps first-occurrence order, so the flood evicted them.
+describe("workspace-diff — unborn-HEAD scoop flood (#11605)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "wsdiff-flood-"));
+    git(dir, ["init", "-q"]);
+    git(dir, ["config", "user.email", "t@t.t"]);
+    git(dir, ["config", "user.name", "t"]);
+    // NO initial commit — HEAD is unborn. NO .gitignore — install ran first.
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("filters vendor install output that predates any .gitignore", async () => {
+    // Shell-scaffolded app (no tool paths at all) + `npm install` output.
+    writeFileSync(join(dir, "index.html"), "<h1>app</h1>\n");
+    writeFileSync(join(dir, "package.json"), "{}\n");
+    writeFileSync(join(dir, "server.js"), "require('http');\n");
+    for (let i = 0; i < 120; i++) {
+      const pkg = join(
+        dir,
+        "node_modules",
+        `pkg-${String(i).padStart(3, "0")}`,
+      );
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(join(pkg, "index.js"), "module.exports={};\n");
+    }
+    const cs = await captureChangeSet(dir);
+    expect(cs).toBeDefined();
+    // ls-files sorts node_modules/* between index.html and package.json —
+    // without the vendor filter the cap kept index.html + 59 node_modules
+    // paths and evicted package.json and server.js entirely.
+    expect(cs?.changedFiles).toContain("index.html");
+    expect(cs?.changedFiles).toContain("package.json");
+    expect(cs?.changedFiles).toContain("server.js");
+    expect(cs?.changedFiles.some((f) => f.startsWith("node_modules/"))).toBe(
+      false,
+    );
+  });
+
+  it("agent-written files survive the cap ahead of a large scaffold", async () => {
+    // More legit untracked files than MAX_CHANGED_FILES, all sorting before
+    // the agent's tool-written file.
+    for (let i = 0; i < 70; i++) {
+      writeFileSync(
+        join(dir, `page-${String(i).padStart(2, "0")}.html`),
+        "<p></p>\n",
+      );
+    }
+    writeFileSync(join(dir, "zzz-server.js"), "require('http');\n");
+    const cs = await captureChangeSet(dir, undefined, ["zzz-server.js"]);
+    expect(cs).toBeDefined();
+    // agentWritten-first: the explicit tool write leads the list and cannot
+    // be evicted by the cap (previously it sat at position 71 and was cut).
+    expect(cs?.changedFiles[0]).toBe("zzz-server.js");
+    expect(cs?.changedFiles.length).toBeLessThanOrEqual(60);
+    expect(cs?.truncated).toBe(true);
+  });
+
+  it("parseLsFiles drops the truncated garbage tail of an over-maxBuffer listing", () => {
+    // A complete `git ls-files` listing always ends with a newline; output cut
+    // at maxBuffer (ENOBUFS) ends mid-path instead.
+    expect(parseLsFiles("a.txt\nb.txt\nnode_mod")).toEqual(["a.txt", "b.txt"]);
+    expect(parseLsFiles("a.txt\nb.txt\n")).toEqual(["a.txt", "b.txt"]);
+    expect(parseLsFiles("partial-only-no-newline")).toEqual([]);
+    expect(parseLsFiles(undefined)).toEqual([]);
   });
 });

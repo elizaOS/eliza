@@ -549,12 +549,16 @@ async function controlSkipHandler(
  * **Agentic path:** the chat action PLAYBACK_OP (op=pause|resume|skip|stop|queue)
  * still routes control through the agent for natural language.
  */
+const PUBLIC_RADIO_ROUTE_REASON =
+  "Public radio endpoints must be reachable by audio clients that cannot send bearer tokens.";
+
 export const musicPlayerRoutes: Route[] = [
   {
     type: "GET",
     path: "/stream",
     public: true,
     name: "Stream Audio",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: streamAudioHandler,
   },
   {
@@ -562,6 +566,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/stream/:guildId",
     public: true,
     name: "Stream Audio (with guildId param)",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: streamAudioHandler,
   },
   {
@@ -569,6 +574,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/now-playing",
     public: true,
     name: "Now Playing",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: nowPlayingHandler,
   },
   {
@@ -576,6 +582,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/now-playing/:guildId",
     public: true,
     name: "Now Playing (with guildId param)",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: nowPlayingHandler,
   },
   {
@@ -583,6 +590,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/queue",
     public: true,
     name: "Queue",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: queueHandler,
   },
   {
@@ -590,6 +598,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/queue/:guildId",
     public: true,
     name: "Queue (with guildId param)",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: queueHandler,
   },
   {
@@ -597,6 +606,7 @@ export const musicPlayerRoutes: Route[] = [
     path: "/status",
     public: true,
     name: "Playback Status",
+    publicReason: PUBLIC_RADIO_ROUTE_REASON,
     handler: statusHandler,
   },
   {

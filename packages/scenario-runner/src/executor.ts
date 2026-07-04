@@ -2085,6 +2085,7 @@ export async function runScenario(
     tags: Array.isArray(scenario.tags)
       ? scenario.tags.filter((t): t is string => typeof t === "string")
       : [],
+    ...(typeof scenario.tier === "string" ? { tier: scenario.tier } : {}),
     status: "passed",
     durationMs: 0,
     turns: [],

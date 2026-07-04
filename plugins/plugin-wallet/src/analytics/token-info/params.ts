@@ -1,3 +1,11 @@
+/**
+ * Turns loose `WALLET` action options (and, failing that, free-form message
+ * text) into a typed `TokenInfoParams` query: subaction aliasing/normalization
+ * (`normalizeTokenInfoSubaction`, `SUBACTION_ALIASES`), keyword-based intent
+ * inference when no explicit subaction is given (`inferTokenInfoSubaction`),
+ * and tolerant param readers that coerce strings/numbers/booleans from a
+ * merged top-level + nested `parameters` bag.
+ */
 import type { HandlerOptions, Memory, State } from "@elizaos/core";
 import {
   TOKEN_INFO_SUBACTIONS,

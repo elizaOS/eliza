@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the analytics ExportButton.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ExportButton } from "./export-button";
 

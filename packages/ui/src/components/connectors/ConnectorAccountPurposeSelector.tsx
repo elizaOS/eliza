@@ -1,3 +1,9 @@
+/**
+ * Role/purpose selector for a connector account. Promoting an account to the
+ * OWNER role opens a confirmation dialog whose requirement comes from
+ * `connector-account-options`, keeping the owner-escalation guard centralized.
+ */
+
 import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountRole } from "../../api/client-agent";
 import { useTranslation } from "../../state/TranslationContext.hooks";

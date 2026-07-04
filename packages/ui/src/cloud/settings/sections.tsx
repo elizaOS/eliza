@@ -20,6 +20,7 @@
  */
 
 import { ExternalLink, Grid3x3 } from "lucide-react";
+import { Button } from "../../components/ui/button";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -68,7 +69,8 @@ function ApplicationsEntry(): React.JSX.Element {
     }
   };
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={open}
       className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-left transition-colors hover:border-accent/40 hover:bg-surface   "
@@ -93,7 +95,7 @@ function ApplicationsEntry(): React.JSX.Element {
         className="h-4 w-4 shrink-0 text-muted/70 transition-colors group-hover:text-accent"
         aria-hidden
       />
-    </button>
+    </Button>
   );
 }
 

@@ -6,7 +6,7 @@ within terminal environments, including code compilation, system administration,
 and machine learning model training.
 
 All runs are routed through the elizaOS TypeScript benchmark bridge
-(``packages/app-core/src/benchmark/server.ts``); the legacy Python
+(``packages/lifeops-bench/src/server.ts``); the legacy Python
 ``AgentRuntime`` path has been removed.
 """
 

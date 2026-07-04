@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the Discord DM sensitive-request adapter — DM delivery of
+ * approval requests, against a mocked runtime and Discord client.
+ */
 import type { IAgentRuntime, SensitiveRequest } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDiscordDmSensitiveRequestAdapter } from "../sensitive-request-adapter";

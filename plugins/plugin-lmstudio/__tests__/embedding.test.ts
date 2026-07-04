@@ -1,3 +1,9 @@
+/**
+ * Unit tests for handleTextEmbedding with the AI SDK `embed` and the provider
+ * factory mocked — covers the unset-model zero vector, the empty-input probe
+ * substitution, oversized-input truncation, and throw-on-provider-failure.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

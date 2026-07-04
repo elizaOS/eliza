@@ -1,3 +1,9 @@
+/**
+ * HTTP-contract tests for the `/api/local-inference/*` compat routes (catalog,
+ * downloads, hardware, routing) covering auth and response shape. The service
+ * layer is mocked; no models are downloaded or loaded.
+ */
+
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";

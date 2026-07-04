@@ -1,3 +1,11 @@
+/**
+ * Schema-evolution tests proving `RuntimeMigrator` handles index changes
+ * (single-column, composite, expression/JSONB, partial, GIN, descending, text
+ * search) as safe, data-preserving operations: adding a first batch of
+ * indexes, dropping/renaming/recreating indexes on an existing table, a
+ * larger real-world-shaped indexing strategy verified via `EXPLAIN`, and
+ * redefining an index that keeps its name but targets a different column.
+ */
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,13 +16,6 @@ import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-he
 type IndexRow = Record<string, unknown>;
 type IndexDefRow = Record<string, unknown>;
 type CountRow = { count: number };
-
-/**
- * Schema Evolution Test 9 & 10: Index Evolution
- *
- * Tests adding, dropping, and recreating various types of indexes.
- * Index operations are generally safe as they don't affect data.
- */
 
 describe("Schema Evolution Test: Index Evolution", () => {
   let db: DrizzleDB;
@@ -56,7 +57,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     console.log("📦 Creating table without indexes...");
     await migrator.migrate("@elizaos/index-test-v1", schemaV1);
 
-    // Insert sample data
     await db.insert(memoryTableV1).values([
       {
         type: "conversation",
@@ -139,7 +139,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     await migrator.migrate("@elizaos/index-test-v1", schemaV2);
     console.log("  ✅ All indexes created successfully");
 
-    // Verify indexes were created
     const indexes = await db.execute(
       sql`SELECT indexname, indexdef 
           FROM pg_indexes 
@@ -182,7 +181,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     console.log("📦 Creating table with initial indexes...");
     await migrator.migrate("@elizaos/index-change-v1", schemaV1);
 
-    // Insert test data
     await db.insert(testTableV1).values([
       { col1: "a", col2: "b", col3: "c", metadata: { key: "value1" } },
       { col1: "d", col2: "e", col3: "f", metadata: { key: "value2" } },
@@ -231,7 +229,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     await migrator.migrate("@elizaos/index-change-v1", schemaV2);
     console.log("  ✅ Index modifications completed");
 
-    // Verify index changes
     const indexes = await db.execute(
       sql`SELECT indexname 
           FROM pg_indexes 
@@ -244,13 +241,11 @@ describe("Schema Evolution Test: Index Evolution", () => {
     console.log("\n📊 Final indexes:");
     indexNames.forEach((name) => console.log(`  - ${name}`));
 
-    // Check specific changes
     expect(indexNames).not.toContain("idx_col1"); // Should be dropped
     expect(indexNames).toContain("idx_col2"); // Should remain
     expect(indexNames).toContain("idx_col3"); // Should be added
     expect(indexNames).toContain("idx_metadata_key"); // Should be added
 
-    // Verify data is intact
     const dataCount = await db.execute(sql`SELECT COUNT(*) as count FROM test_index_changes`);
     expect(Number((dataCount.rows[0] as unknown as CountRow).count)).toBe(3);
     console.log("\n✅ All data preserved during index changes");
@@ -273,7 +268,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     console.log("📦 Creating initial table...");
     await migrator.migrate("@elizaos/complex-index-v1", schemaV1);
 
-    // Insert varied data
     const statuses = ["pending", "active", "completed", "archived"];
     const categories = ["A", "B", "C", null];
     const priorities = ["high", "medium", "low", "urgent"];
@@ -338,7 +332,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
 
     await migrator.migrate("@elizaos/complex-index-v1", schemaV2);
 
-    // Verify complex indexes
     const indexes = await db.execute(
       sql`SELECT 
             indexname, 
@@ -363,16 +356,13 @@ describe("Schema Evolution Test: Index Evolution", () => {
       console.log(`  - ${index.indexname} (${index.index_type})`);
     }
 
-    // Test index usage with EXPLAIN
     console.log("\n🔍 Testing index usage:");
 
-    // Test partial index usage
     const _explainPending = await db.execute(
       sql`EXPLAIN SELECT * FROM complex_indexes WHERE status = 'pending' ORDER BY created_at`
     );
     console.log("  ✅ Partial index for pending status can be used");
 
-    // Test covering index
     const _explainCovering = await db.execute(
       sql`EXPLAIN SELECT status, priority, created_at FROM complex_indexes WHERE status = 'active'`
     );
@@ -416,7 +406,6 @@ describe("Schema Evolution Test: Index Evolution", () => {
     console.log("\n📦 Changing index definition with same name...");
     await migrator.migrate("@elizaos/conflict-test-v1", schemaV2);
 
-    // Verify the index now points to field2
     const indexDef = await db.execute(
       sql`SELECT indexdef FROM pg_indexes 
           WHERE tablename = 'test_conflicts' 

@@ -1,3 +1,9 @@
+/**
+ * Filesystem path resolvers for the local-inference state tree (root, models
+ * dir, registry.json, downloads staging), all anchored under `resolveStateDir()`
+ * so `ELIZA_STATE_DIR` relocates them. Includes the containment check used to
+ * keep downloads and registry writes inside the local-inference root.
+ */
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 

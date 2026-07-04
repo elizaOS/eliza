@@ -1,3 +1,15 @@
+/**
+ * AI SDK client factory for the Anthropic provider. `createAnthropicClientWithTopPSupport`
+ * builds a `@ai-sdk/anthropic` client wired to the resolved auth mode: API key,
+ * OAuth bearer (via the credential store, with async refresh and 401/429
+ * failover reporting into the multi-account pool), or the browser proxy base URL.
+ *
+ * The name reflects a custom fetch wrapper that preserves `top_p` alongside
+ * `temperature` handling and injects OAuth headers per request. Consumed by the
+ * text and image handlers; the credential-store failover hooks
+ * (`reportClaudeOAuthInvalid` / `reportClaudeOAuthRateLimited`) let a bad token
+ * be retired without killing the call.
+ */
 import { createAnthropic } from "@ai-sdk/anthropic";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";

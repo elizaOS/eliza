@@ -1,34 +1,28 @@
 /**
- * Side-registry of model handlers registered on an AgentRuntime.
+ * Side-registry that mirrors the model handlers registered on an AgentRuntime.
  *
- * The elizaOS core exposes `runtime.registerModel(type, handler, provider,
- * priority)` but no way to list who registered what. This module intercepts
- * `registerModel` at runtime to record every registration in a Map keyed by
- * model type, plus fires status listeners so the UI can render a live
- * [ModelType × Provider] routing table.
+ * elizaOS core owns the model registry; this module keeps a handler-free mirror
+ * of it so the settings API/UI can render a live [ModelType × Provider] routing
+ * table and so `providers.ts` can report which slots a provider serves. It
+ * stays in sync through the public core API — {@link IAgentRuntime.getModelRegistrations}
+ * for the initial snapshot and the `MODEL_REGISTERED` runtime event for
+ * subsequent registrations — instead of monkey-patching the runtime's
+ * `registerModel` method on `AgentRuntime.prototype`.
  *
- * Because we monkey-patch `registerModel` we also keep the original
- * handler reference — the router-handler (see `router-handler.ts`) uses
- * this to dispatch inference calls by policy without going through
- * `runtime.useModel` (which would loop back to us and recurse).
+ * The mirror holds registration metadata only (never handler functions).
+ * Actual dispatch/failover is core's job; the router-handler picks a provider
+ * from this metadata and invokes it through live runtime introspection, so this
+ * module never captures or calls a handler.
  */
 
-import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
+import type { ModelRegisteredEventPayload } from "@elizaos/core";
+import { EventType, type IAgentRuntime } from "@elizaos/core";
 
 export interface HandlerRegistration {
 	modelType: string;
 	provider: string;
 	priority: number;
 	registeredAt: string;
-	/**
-	 * The original handler function. Captured so the router-handler can
-	 * dispatch to it directly, bypassing `runtime.useModel` which would
-	 * re-enter the router itself.
-	 */
-	handler: (
-		runtime: IAgentRuntime,
-		params: Record<string, unknown>,
-	) => Promise<unknown>;
 }
 
 type Listener = (registrations: HandlerRegistration[]) => void;
@@ -36,7 +30,7 @@ type Listener = (registrations: HandlerRegistration[]) => void;
 class HandlerRegistry {
 	private readonly registrations = new Map<string, HandlerRegistration[]>();
 	private readonly listeners = new Set<Listener>();
-	private installedOn: WeakSet<object> = new WeakSet();
+	private readonly installedOn = new WeakSet<object>();
 
 	/**
 	 * Snapshot of all registrations grouped by model type, sorted by
@@ -58,8 +52,8 @@ class HandlerRegistry {
 	}
 
 	/**
-	 * Registrations excluding a specific provider. Used by the router-handler
-	 * to find "all providers except me" when dispatching.
+	 * Registrations excluding a specific provider. Used by the router-handler's
+	 * diagnostics to describe "all providers except me".
 	 */
 	getForTypeExcluding(
 		modelType: string,
@@ -101,125 +95,43 @@ class HandlerRegistry {
 	}
 
 	/**
-	 * Install the interception on a runtime. Idempotent per runtime instance.
-	 * For most boot paths the prototype-level patch below already covers the
-	 * runtime before any plugin registers; this method is the belt-and-braces
-	 * fallback for runtimes constructed before the patch ran.
+	 * Mirror a runtime's model registry into this side-registry. Idempotent
+	 * per runtime instance. Seeds from the current registrations, then stays
+	 * live via the `MODEL_REGISTERED` event — no prototype patching, no
+	 * handler capture.
 	 */
-	installOn(runtime: AgentRuntime): void {
-		installPrototypePatch();
-		const rt = runtime as AgentRuntime & {
-			registerModel?: unknown;
-		};
-		if (typeof rt.registerModel !== "function") return;
-		if (this.installedOn.has(rt)) return;
-		this.installedOn.add(rt);
+	installOn(runtime: IAgentRuntime): void {
+		if (this.installedOn.has(runtime)) return;
+		this.installedOn.add(runtime);
 
-		// If the runtime already inherited the patched prototype method the
-		// prototype handles every call. Nothing to do per-instance.
-		const protoMethod = Object.getPrototypeOf(rt)?.registerModel as
-			| PatchMarkedRegisterModel
-			| undefined;
-		if (protoMethod?.[PATCH_MARK]) {
-			return;
-		}
-
-		// Per-instance wrap only for legacy runtimes whose prototype pre-dates
-		// our prototype patch (shouldn't happen in practice).
-		const original = rt.registerModel.bind(runtime) as (
-			modelType: string,
-			handler: HandlerRegistration["handler"],
-			provider: string,
-			priority?: number,
-		) => void;
-		rt.registerModel = ((
-			modelType: string,
-			handler: HandlerRegistration["handler"],
-			provider: string,
-			priority?: number,
-		) => {
+		const now = new Date().toISOString();
+		for (const reg of runtime.getModelRegistrations()) {
 			this.record({
-				modelType: String(modelType),
-				provider: String(provider),
-				priority: typeof priority === "number" ? priority : 0,
-				registeredAt: new Date().toISOString(),
-				handler,
+				modelType: reg.modelType,
+				provider: reg.provider,
+				priority: reg.priority,
+				registeredAt: now,
 			});
-			return original(modelType, handler, provider, priority);
-		}) as typeof rt.registerModel;
-	}
-
-	/** Exposed so the prototype patch can record through the singleton. */
-	recordFromPrototype(reg: HandlerRegistration): void {
-		this.record(reg);
-	}
-}
-
-const PATCH_MARK = Symbol.for("eliza.local-inference.registerModel.patched");
-let prototypePatched = false;
-
-type RegisterModelMethod = (
-	this: AgentRuntime,
-	modelType: string,
-	handler: HandlerRegistration["handler"],
-	provider: string,
-	priority?: number,
-) => void;
-
-type PatchMarkedRegisterModel = RegisterModelMethod & {
-	[PATCH_MARK]?: true;
-};
-
-/**
- * One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
- * instance — including ones constructed later in boot — records through
- * the singleton handler registry. Idempotent.
- */
-function installPrototypePatch(): void {
-	if (prototypePatched) return;
-	const proto = AgentRuntime.prototype as AgentRuntime & {
-		registerModel: RegisterModelMethod;
-	};
-	const original = proto.registerModel;
-	if (typeof original !== "function") return;
-	if ((original as PatchMarkedRegisterModel)[PATCH_MARK]) {
-		prototypePatched = true;
-		return;
-	}
-	const patched = function patchedRegisterModel(
-		this: AgentRuntime,
-		modelType: string,
-		handler: HandlerRegistration["handler"],
-		provider: string,
-		priority?: number,
-	): void {
-		try {
-			handlerRegistry.recordFromPrototype({
-				modelType: String(modelType),
-				provider: String(provider),
-				priority: typeof priority === "number" ? priority : 0,
-				registeredAt: new Date().toISOString(),
-				handler,
-			});
-		} catch {
-			// Never let registry bookkeeping break the registration path.
 		}
-		original.call(this, modelType, handler, provider, priority);
-	} as typeof original & { [PATCH_MARK]?: true };
-	patched[PATCH_MARK] = true;
-	proto.registerModel = patched;
-	prototypePatched = true;
-}
 
-// Install at module-import time. This is a process-wide side effect but a
-// benign one: the patch is idempotent and forwards to the original.
-installPrototypePatch();
+		runtime.registerEvent(
+			EventType.MODEL_REGISTERED,
+			async (payload: ModelRegisteredEventPayload) => {
+				this.record({
+					modelType: payload.modelType,
+					provider: payload.provider,
+					priority: payload.priority,
+					registeredAt: new Date().toISOString(),
+				});
+			},
+		);
+	}
+}
 
 export const handlerRegistry = new HandlerRegistry();
 
 /**
- * Public type used by the API/UI — omits the handler function for
- * serialisation and to prevent UI code from accidentally calling it.
+ * Public type used by the API/UI — the serialisable registration shape.
  */
 export interface PublicRegistration {
 	modelType: string;

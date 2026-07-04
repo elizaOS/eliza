@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
 
+/**
+ * The Steward login seam (`cloud-steward-login`): stored-JWT usability checks
+ * (expiry parsing), launcher registration, and `launchStewardLogin` dispatch.
+ * jsdom + real `localStorage`; JWTs are synthetic (unsigned) — no real Steward
+ * service.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hasStewardLoginLauncher,
+  hasUsableStoredStewardToken,
   launchStewardLogin,
   registerStewardLoginLauncher,
 } from "./cloud-steward-login";
@@ -123,6 +130,27 @@ describe("cloud-steward-login seam", () => {
   it("throws when no launcher is registered and no token is stored", async () => {
     await expect(launchStewardLogin()).rejects.toThrow(
       /Steward login surface is not mounted/,
+    );
+  });
+
+  it("hasUsableStoredStewardToken mirrors the short-circuit rules", () => {
+    // No token stored.
+    expect(hasUsableStoredStewardToken()).toBe(false);
+    // Still-valid JWT — usable.
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(600));
+    expect(hasUsableStoredStewardToken()).toBe(true);
+    // Expired JWT — NOT usable (would only be drained + rethrown launcher-less).
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    expect(hasUsableStoredStewardToken()).toBe(false);
+    // Within the safety margin — NOT usable.
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(5));
+    expect(hasUsableStoredStewardToken()).toBe(false);
+    // Opaque device-code token (no decodable exp) — treated usable.
+    localStorage.setItem(STEWARD_TOKEN_KEY, "opaque-device-code-token");
+    expect(hasUsableStoredStewardToken()).toBe(true);
+    // Checking must never drain the stored value.
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+      "opaque-device-code-token",
     );
   });
 

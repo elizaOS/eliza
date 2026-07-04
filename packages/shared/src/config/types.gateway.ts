@@ -1,3 +1,8 @@
+/**
+ * Gateway server configuration types: bind mode (loopback/lan/tailnet/custom),
+ * TLS/mTLS settings, and discovery. A slice of the `ElizaConfig` tree
+ * (see types.eliza.ts).
+ */
 export type GatewayBindMode =
   | "auto"
   | "lan"

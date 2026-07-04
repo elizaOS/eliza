@@ -30,7 +30,7 @@ import path from "node:path";
 
 import type { CharacterInput } from "./character";
 import { parseCharacter } from "./character";
-import { resolvePlugins } from "./plugin";
+import { type PluginResolver, resolvePlugins } from "./plugin";
 import {
 	ensureAgentInfrastructure,
 	ensureEmbeddingDimension,
@@ -281,6 +281,12 @@ export interface CreateRuntimesOptions {
 	settings?: Record<string, string | boolean | number>;
 	/** When false, the runtime always responds (e.g. direct chat / harness). Passed to AgentRuntime. */
 	checkShouldRespond?: boolean;
+	/**
+	 * Resolves string plugin references (from character config) to Plugin
+	 * objects. Core never imports plugins by name or installs packages; hosts
+	 * inject this. When omitted, string plugin references are skipped.
+	 */
+	pluginResolver?: PluginResolver;
 }
 
 /**
@@ -322,7 +328,11 @@ export async function createRuntimes(
 	if (options?.sharedPlugins?.length) {
 		pluginInput.push(...options.sharedPlugins);
 	}
-	const resolvedPlugins = await resolvePlugins(pluginInput);
+	const resolvedPlugins = await resolvePlugins(
+		pluginInput,
+		false,
+		options?.pluginResolver,
+	);
 
 	const agentIds: UUID[] = [];
 	for (const c of characters) {

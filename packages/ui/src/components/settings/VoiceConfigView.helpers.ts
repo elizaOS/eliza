@@ -1,3 +1,9 @@
+/**
+ * Click-audit manifest for VoiceConfigView's desktop Talk Mode panel — the
+ * expected desktop-only interactive controls and their coverage, consumed by
+ * the desktop click-audit tooling.
+ */
+
 import type { DesktopClickAuditItem } from "../../utils";
 
 export const DESKTOP_TALKMODE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [

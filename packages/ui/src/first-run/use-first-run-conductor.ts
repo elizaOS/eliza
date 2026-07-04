@@ -1,32 +1,38 @@
-// ============================================================================
-// In-chat first-run conductor (headless).
-//
-// Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
-// seeds synthetic assistant turns into the SAME live transcript the floating
-// `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
-// the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
-// routes the user's first-run-scoped picks to the headless finish use case
-// (`first-run-finish.ts`). It owns NO presentation — the existing
-// `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
-// free from message fields. It registers an action handler on the first-run
-// channel so the chat's single send funnel short-circuits first-run picks
-// before they hit the server.
-//
-// Provisioning runs exactly once and POSTs /api/first-run exactly once (the
-// finish module funnels + idempotency-guards it). The real
-// `firstRunComplete` flip is DEFERRED to the tutorial-or-skip pick, so the
-// tutorial step is reachable after every runtime path.
-//
-// Confused-user guards (spam taps, stale widgets, out-of-order picks):
-// - `busyRef` — one finish/provision flow at a time; extra picks are consumed
-//   as no-ops while one is in flight.
-// - `provisionedRef` latch — after provisioning succeeds only the tutorial
-//   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
-// - Strict id validation per group — garbage under the reserved prefix is
-//   consumed, never acted on and never forwarded to the server.
-// - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
-//   connect-and-resume continuation (`pendingCloudResumeRef`).
-// ============================================================================
+/**
+ * In-chat first-run conductor (headless).
+ *
+ * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
+ * seeds synthetic assistant turns into the SAME live transcript the floating
+ * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
+ * the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
+ * routes the user's first-run-scoped picks to the headless finish use case
+ * (`first-run-finish.ts`). It owns NO presentation — the existing
+ * `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
+ * free from message fields. It registers an action handler on the first-run
+ * channel so the chat's single send funnel short-circuits first-run picks
+ * before they hit the server.
+ *
+ * The composer is UNLOCKED during onboarding (#12178): the user can type
+ * freely, and a second channel handler (`setFirstRunTextHandler`) answers that
+ * free text with a local user turn + a deterministic assistant reply that
+ * varies by flow position. Free text NEVER reaches the server pre-completion —
+ * the AppContext funnel enforces that; this hook only renders the local echo.
+ *
+ * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
+ * finish module funnels + idempotency-guards it). The real `firstRunComplete`
+ * flip is DEFERRED to the tutorial-or-skip pick, so the tutorial step is
+ * reachable after every runtime path.
+ *
+ * Confused-user guards (spam taps, stale widgets, out-of-order picks):
+ * - `busyRef` — one finish/provision flow at a time; extra picks are consumed
+ *   as no-ops while one is in flight.
+ * - `provisionedRef` latch — after provisioning succeeds only the tutorial
+ *   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
+ * - Strict id validation per group — garbage under the reserved prefix is
+ *   consumed, never acted on and never forwarded to the server.
+ * - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
+ *   connect-and-resume continuation (`pendingCloudResumeRef`).
+ */
 
 import * as React from "react";
 import type {
@@ -38,14 +44,20 @@ import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
 import { getBootConfig } from "../config/boot-config";
-import { useAppSelectorShallow } from "../state";
+import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
   setFirstRunActionHandler,
+  setFirstRunTextHandler,
 } from "./first-run-action-channel";
+import {
+  clearCloudLoginPending,
+  markCloudLoginPending,
+  readCloudLoginPending,
+} from "./first-run-cloud-resume";
 import {
   bindCloudAgent,
   type FirstRunFinishDraft,
@@ -63,12 +75,32 @@ const GREETING =
 function cloudFailureMessage(err: unknown): string {
   const detail = err instanceof Error ? err.message : "";
   return detail
-    ? `Couldn't connect to Eliza Cloud: ${detail}. Pick how to run your agent again.`
-    : "Couldn't connect to Eliza Cloud. Pick how to run your agent again.";
+    ? `Couldn't connect to Eliza Cloud: ${detail}.`
+    : "Couldn't connect to Eliza Cloud.";
 }
 
 const RESTORE_GREETING =
   "I found an existing local backup for this device. Restore it before setup, or start fresh?";
+
+// The onboarding composer is unlocked (#12178) — the user can type freely
+// before the model is running. Free text never reaches the server; the
+// conductor answers locally with a deterministic, friendly not-ready line that
+// varies by where we are in the flow and re-points at the pending choice. Copy
+// is a plain constant (deterministic — no clocks/RNG in the render path).
+const FIRST_RUN_TEXT_REPLY = {
+  // Before a runtime is picked / mid-choice: no agent exists yet.
+  choosing:
+    "I'm not fully set up yet — pick one of the options above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+  // A finish/provision call is in flight.
+  provisioning:
+    "Hang tight — I'm getting your agent ready right now. I'll answer as soon as I'm set up.",
+  // Provisioning succeeded; only the accent + tutorial wrap-up remains.
+  wrapUp:
+    "Almost there — pick a tutorial option above (or skip) and I'm all yours.",
+  // A finish failed and the recovery choice is on screen.
+  error:
+    "Setup hit a snag. Use one of the options above to try again, choose another way to run, or open Settings — then I'll be right with you.",
+} as const;
 
 function makeTurn(
   id: string,
@@ -101,11 +133,11 @@ function newestLocalBackup(
 
 // The first-run location chooser: Cloud (managed), On this device, or Remote
 // (connect to an existing agent elsewhere). "Bring your own keys" is NOT a
-// location — it just ran the local backend and pre-highlighted the BYOK
-// inference provider, so it lived on the wrong axis; it stays reachable one step
-// later via the provider sub-choice (provider:other → localInference
-// "configure-later"). Remote picks an already-running agent by URL + token; it
-// owns its own provider, so it skips the provider sub-step.
+// location — it lives one step later on the provider sub-choice as
+// "Other / configure in Settings" (provider:other), which finishes the local
+// runtime with `configure-later` and hands off provider setup to Settings via
+// the finish path's banner. Remote picks an already-running agent by URL +
+// token; it owns its own provider, so it skips the provider sub-step.
 const RUNTIME_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
@@ -136,6 +168,50 @@ const TUTORIAL_CHOICE = [
   "[CHOICE:first-run id=tutorial]",
   `${FIRST_RUN_ACTION_PREFIX}tutorial:start=Take the tutorial`,
   `${FIRST_RUN_ACTION_PREFIX}tutorial:skip=Skip for now`,
+  "[/CHOICE]",
+].join("\n");
+
+// Recovery choice seeded when a finish/provision flow fails (e.g. a 404 from
+// POST /api/first-run). Every option here is a real way forward — retry the
+// same runtime, pick a different one, or bail out to Settings — so a persistent
+// finish error surfaces an escape instead of re-looping the runtime prompt
+// and configure a provider by hand.
+const ERROR_CHOICE = [
+  "[CHOICE:first-run id=error]",
+  `${FIRST_RUN_ACTION_PREFIX}error:retry=Try again`,
+  `${FIRST_RUN_ACTION_PREFIX}error:restart=Choose a different way to run`,
+  `${FIRST_RUN_ACTION_PREFIX}error:settings=Configure in Settings`,
+  "[/CHOICE]",
+].join("\n");
+
+/**
+ * Turn a raw finish error into a human sentence. The underlying message can be
+ * a terse transport string ("Not found" for a 404, "Failed to fetch", …) that
+ * means nothing to a first-run user; lead with a clear framing and keep the raw
+ * detail for context.
+ */
+function finishErrorMessage(message: string): string {
+  const detail = message.trim();
+  const isTerse = /^(not found|failed to fetch|forbidden|unauthorized)$/i.test(
+    detail,
+  );
+  const lead = isTerse
+    ? `I couldn't finish setting up your agent (${detail}).`
+    : `I couldn't finish setting up your agent: ${detail}`;
+  return `${lead}\n\nYou can try again, pick a different way to run your agent, or configure a model provider yourself in Settings.`;
+}
+
+// The "make it yours" accent step. Reuses the shared ACCENT_PRESETS (the same
+// list Appearance settings renders) so onboarding + Settings drive one
+// persisted preference. In-chat CHOICE options render as text buttons, so each
+// carries an emoji swatch to hint its color. Non-blocking: it's seeded next to
+// the tutorial CHOICE, so a user who ignores it just taps the tutorial option;
+// the `default` swatch keeps the brand accent.
+const ACCENT_CHOICE = [
+  "[CHOICE:first-run id=accent]",
+  ...ACCENT_PRESETS.map(
+    (p) => `${FIRST_RUN_ACTION_PREFIX}accent:${p.id}=${p.swatch} ${p.label}`,
+  ),
   "[/CHOICE]",
 ].join("\n");
 
@@ -225,6 +301,7 @@ export function useFirstRunConductor(): void {
     showActionBanner,
     setTab,
     setState,
+    setUiAccent,
     uiLanguage,
   } = useAppSelectorShallow((s) => ({
     firstRunComplete: s.firstRunComplete,
@@ -235,6 +312,7 @@ export function useFirstRunConductor(): void {
     showActionBanner: s.showActionBanner,
     setTab: s.setTab,
     setState: s.setState,
+    setUiAccent: s.setUiAccent,
     uiLanguage: s.uiLanguage,
   }));
   const { setConversationMessages } = useConversationMessages();
@@ -266,6 +344,13 @@ export function useFirstRunConductor(): void {
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
   const completedRef = React.useRef(false);
+  // True while a finish error's recovery choice is on screen; steers the
+  // free-text reply persona (below). Cleared when the next pick supersedes it.
+  const erroredRef = React.useRef(false);
+  // Monotonic id source for typed-text turns: guarantees a unique user/reply id
+  // per send even when two land in the same millisecond, so `seedTurn`'s id
+  // dedup never silently swallows an acknowledged message.
+  const textTurnSeqRef = React.useRef(0);
 
   // ── Transcript seam ──────────────────────────────────────────────────────
   const seedTurn = React.useCallback(
@@ -304,6 +389,15 @@ export function useFirstRunConductor(): void {
 
   const seedTutorial = React.useCallback(() => {
     provisionedRef.current = true;
+    // "Make it yours" — the accent step is seeded alongside the tutorial prompt
+    // so it never blocks finishing: a user who ignores it just taps a tutorial
+    // option below. Picking a swatch applies + persists the accent live.
+    seedTurn(
+      makeTurn(
+        "first-run:appearance",
+        `First, make it yours — pick an accent color (or keep the default and continue below).\n\n${ACCENT_CHOICE}`,
+      ),
+    );
     seedTurn(
       makeTurn(
         "first-run:tutorial",
@@ -320,19 +414,32 @@ export function useFirstRunConductor(): void {
 
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
-      latestLocalBackupRef.current = newestLocalBackup(backups);
-      if (!latestLocalBackupRef.current) {
-        seedRuntimeChoice();
-        return;
-      }
-      seedTurn(
-        makeTurn(
-          "first-run:backup-restore",
-          `${RESTORE_GREETING}\n\n${BACKUP_RESTORE_CHOICE}`,
-        ),
-      );
+      const latest = newestLocalBackup(backups);
+      // The greeting + runtime choice is already seeded on mount, so there is
+      // nothing to fall back to when there is no restorable backup.
+      if (!latest) return;
+      latestLocalBackupRef.current = latest;
+      // Offer restore as an ADDITIONAL turn below the greeting — but only while
+      // the user has NOT advanced past it (picking a runtime seeds a
+      // provider / cloud-oauth / remote-connect / tutorial / error turn, all
+      // source "first_run" with a non-greeting id). The atomic updater also
+      // prevents a double-seed if the backup probe ever fires twice (the
+      // restore turn itself is source "first_run" + non-greeting id).
+      setConversationMessages((prev) => {
+        const advancedPastGreeting = prev.some(
+          (m) => m.source === "first_run" && m.id !== "first-run:greeting",
+        );
+        if (advancedPastGreeting) return prev;
+        return [
+          ...prev,
+          makeTurn(
+            "first-run:backup-restore",
+            `${RESTORE_GREETING}\n\n${BACKUP_RESTORE_CHOICE}`,
+          ),
+        ];
+      });
     },
-    [seedRuntimeChoice, seedTurn],
+    [setConversationMessages],
   );
 
   // Ports for the headless finish use case. completeFirstRun is INTERCEPTED:
@@ -374,15 +481,33 @@ export function useFirstRunConductor(): void {
 
   const seedError = React.useCallback(
     (message: string) => {
+      erroredRef.current = true;
+      // A DISTINCT, non-looping error surface: the error turn carries its own
+      // recovery choice (retry / restart / Settings escape) so onboarding is
+      // always recoverable. It must NOT re-append the runtime CHOICE — that
+      // would re-offer the same runtime question forever with no way out on a
+      // persistent finish error (e.g. the /api/first-run 404).
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,
-          `${message}\n\n${RUNTIME_CHOICE}`,
+          `${finishErrorMessage(message)}\n\n${ERROR_CHOICE}`,
         ),
       );
     },
     [seedTurn],
   );
+
+  // Explicit, non-finish escape hatch out of onboarding: flip the real gate and
+  // land the user in Settings so they can wire a model provider by hand. Used
+  // ONLY by the error-recovery "Configure in Settings" choice, so a broken
+  // finish never traps the user in the loop. Latched by completedRef so a
+  // double-tap can't flip the gate twice.
+  const exitToSettings = React.useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    setTab("settings");
+    completeFirstRun("settings");
+  }, [setTab, completeFirstRun]);
 
   const seedCloudAgentChoice = React.useCallback(
     (agents: { id?: string; name?: string }[]) => {
@@ -439,6 +564,9 @@ export function useFirstRunConductor(): void {
     void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
         if (outcome.kind === "done" || outcome.kind === "pick-cloud-agent") {
+          // Login resolved + provisioning is proceeding — the resume marker has
+          // served its purpose; drop it so a later relaunch doesn't re-resume.
+          clearCloudLoginPending();
           replaceTurn(
             "first-run:cloud-oauth",
             makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
@@ -466,6 +594,33 @@ export function useFirstRunConductor(): void {
       });
   }, [handleOutcome]);
 
+  // Continue an interrupted cloud/hybrid flow once the connection is present.
+  // Shared by (a) the auto-resume effect below — used when the user connects
+  // from the retry turn's OAuth block and the store later learns the connection
+  // landed — and (b) the mount-time cloud-login rehydrate, which calls this
+  // directly when the durable token already made the connection live at launch
+  // (the effect fired once before the marker was armed, so it can't self-fire).
+  const runCloudResume = React.useCallback(
+    (resume: "cloud" | "hybrid") => {
+      if (busyRef.current || provisionedRef.current) return;
+      pendingCloudResumeRef.current = null;
+      if (resume === "cloud") {
+        replaceTurn(
+          "first-run:cloud-oauth",
+          makeTurn(
+            "first-run:cloud-oauth",
+            "Connecting your Eliza Cloud account…",
+            { secretRequest: cloudOAuthSecretRequest("pending") },
+          ),
+        );
+        startCloudProvisionFlow();
+        return;
+      }
+      startProviderFinish();
+    },
+    [replaceTurn, startCloudProvisionFlow, startProviderFinish],
+  );
+
   // Auto-resume: when the user connects Eliza Cloud from the retry turn's
   // OAuth block (instead of re-picking a runtime), continue the interrupted
   // flow the moment the store learns the connection landed. A fresh pick
@@ -473,28 +628,18 @@ export function useFirstRunConductor(): void {
   React.useEffect(() => {
     if (!active || !elizaCloudConnected) return;
     const resume = pendingCloudResumeRef.current;
-    if (!resume || busyRef.current || provisionedRef.current) return;
-    pendingCloudResumeRef.current = null;
-    if (resume === "cloud") {
-      replaceTurn(
-        "first-run:cloud-oauth",
-        makeTurn(
-          "first-run:cloud-oauth",
-          "Connecting your Eliza Cloud account…",
-          { secretRequest: cloudOAuthSecretRequest("pending") },
-        ),
-      );
-      startCloudProvisionFlow();
-      return;
-    }
-    startProviderFinish();
-  }, [
-    active,
-    elizaCloudConnected,
-    replaceTurn,
-    startCloudProvisionFlow,
-    startProviderFinish,
-  ]);
+    if (!resume) return;
+    runCloudResume(resume);
+  }, [active, elizaCloudConnected, runCloudResume]);
+
+  // Read-only mirrors so the mount effect can resume immediately when the
+  // durable token already made the connection live at launch — without adding
+  // elizaCloudConnected/runCloudResume to the mount effect's deps (which would
+  // re-register the action handler and re-seed on every connection change).
+  const elizaCloudConnectedRef = React.useRef(elizaCloudConnected);
+  elizaCloudConnectedRef.current = elizaCloudConnected;
+  const runCloudResumeRef = React.useRef(runCloudResume);
+  runCloudResumeRef.current = runCloudResume;
 
   const handleFirstRunAction = React.useCallback(
     (value: string): boolean => {
@@ -510,11 +655,26 @@ export function useFirstRunConductor(): void {
       // finish call is still in flight — consume those as no-ops instead of
       // starting a concurrent flow.
       if (busyRef.current) return true;
-      // Once provisioning succeeded only the tutorial pick is live; taps on
-      // leftover runtime/provider/cloud-agent widgets must not re-provision.
-      if (provisionedRef.current && group !== "tutorial") return true;
-      // A fresh pick supersedes any armed connect-and-resume continuation.
+      // Once provisioning succeeded only the wrap-up picks (accent + tutorial)
+      // are live; taps on leftover runtime/provider/cloud-agent widgets must not
+      // re-provision.
+      if (
+        provisionedRef.current &&
+        group !== "tutorial" &&
+        group !== "accent"
+      ) {
+        return true;
+      }
+      // Once the real gate flipped (tutorial pick or the Settings escape),
+      // every further first-run pick is a stale-widget no-op.
+      if (completedRef.current) return true;
+      // A fresh pick supersedes any armed connect-and-resume continuation —
+      // including the durable cloud-resume marker (the cloud/hybrid branches
+      // below re-arm it if the new pick is a cloud one) — and clears the error
+      // persona so the free-text reply tracks the live step, not a stale error.
       pendingCloudResumeRef.current = null;
+      clearCloudLoginPending();
+      erroredRef.current = false;
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
@@ -524,6 +684,14 @@ export function useFirstRunConductor(): void {
             runtime: "cloud",
             localInference: "cloud-inference",
           };
+          // Persist a resume marker BEFORE the (device) external-browser OAuth
+          // backgrounds/evicts the WebView, so a cold-launch on return
+          // rehydrates this cloud flow instead of restarting at the greeting.
+          markCloudLoginPending({
+            runtime: "cloud",
+            localInference: "cloud-inference",
+            agentName: draftRef.current.agentName,
+          });
           const connecting = makeTurn(
             "first-run:cloud-oauth",
             "Connecting your Eliza Cloud account…",
@@ -553,7 +721,8 @@ export function useFirstRunConductor(): void {
         }
         // On this device: run the local backend, then ask which model provider.
         // BYOK is the provider:other sub-choice ("Other / configure in
-        // Settings" → localInference "configure-later").
+        // Settings"), which finishes with `configure-later` and defers provider
+        // setup to Settings.
         draftRef.current = {
           ...draftRef.current,
           runtime: "local",
@@ -615,22 +784,31 @@ export function useFirstRunConductor(): void {
         if (id !== "on-device" && id !== "elizacloud" && id !== "other") {
           return true;
         }
-        if (id === "elizacloud") {
-          draftRef.current = {
-            ...draftRef.current,
-            localInference: "cloud-inference",
-          };
-        } else if (id === "other") {
-          // "Other / configure in Settings" (bring your own keys): run locally
-          // but wire NO provider, so the finish path's `needsProviderSetup`
-          // handoff surfaces the "Open Settings" banner where the user picks a
-          // subscription provider (Anthropic / Codex / z.ai / Kimi). NOT
-          // all-local — that would silently download an on-device model and
-          // suppress the banner.
+        if (id === "other") {
+          // "Other / configure in Settings" (bring your own keys): finish the
+          // LOCAL runtime with no provider wired and no model download.
+          // `configure-later` keeps `needsProviderSetup` true, so the finish
+          // path still starts + persists the runtime (one POST /api/first-run)
+          // and hands the user the "Open Settings" banner for provider setup.
+          // If the finish fails, the ERROR_CHOICE recovery turn's
+          // error:settings pick is the Settings escape.
           draftRef.current = {
             ...draftRef.current,
             localInference: "configure-later",
           };
+        } else if (id === "elizacloud") {
+          draftRef.current = {
+            ...draftRef.current,
+            localInference: "cloud-inference",
+          };
+          // Hybrid (local runtime + Cloud inference) also opens the external
+          // OAuth browser — persist a resume marker so a WebView eviction on
+          // return rehydrates the hybrid finish rather than restarting.
+          markCloudLoginPending({
+            runtime: "hybrid",
+            localInference: "cloud-inference",
+            agentName: draftRef.current.agentName,
+          });
         } else {
           // on-device: run every model locally (kicks off the download now).
           draftRef.current = {
@@ -666,9 +844,54 @@ export function useFirstRunConductor(): void {
         return true;
       }
 
+      if (group === "error") {
+        if (id !== "retry" && id !== "restart" && id !== "settings") {
+          return true;
+        }
+        if (id === "settings") {
+          exitToSettings();
+          return true;
+        }
+        if (id === "restart") {
+          // Re-offer a FRESH (unlocked) runtime choice so the user can switch
+          // how their agent runs after a failed finish. seedFreshChoiceTurn
+          // seeds a retry turn when the greeting already exists (the original
+          // runtime widget locked itself on its first pick).
+          seedFreshChoiceTurn(
+            "first-run:greeting",
+            `${GREETING}\n\n${RUNTIME_CHOICE}`,
+          );
+          return true;
+        }
+        // retry: re-run the SAME finish for the runtime the user last chose.
+        // The persist guard released itself on the failed POST, so a local
+        // retry re-POSTs; a cloud retry re-runs provisioning.
+        if (draftRef.current.runtime === "cloud") {
+          const connecting = makeTurn(
+            "first-run:cloud-oauth",
+            "Connecting your Eliza Cloud account…",
+            { secretRequest: cloudOAuthSecretRequest("pending") },
+          );
+          seedTurn(connecting);
+          replaceTurn("first-run:cloud-oauth", connecting);
+          startCloudProvisionFlow();
+          return true;
+        }
+        startProviderFinish();
+        return true;
+      }
+
+      if (group === "accent") {
+        // "Make it yours": apply + persist the chosen accent live. Non-blocking
+        // — the tutorial CHOICE seeded alongside still finishes onboarding, so
+        // this never gates completion. Garbage ids are consumed as no-ops.
+        if (!ACCENT_PRESETS.some((p) => p.id === id)) return true;
+        setUiAccent(id);
+        return true;
+      }
+
       if (group === "tutorial") {
         if (id !== "start" && id !== "skip") return true;
-        if (completedRef.current) return true;
         completedRef.current = true;
         // The single real completion: flip the gate (deactivates the conductor),
         // then optionally launch the interactive tutorial.
@@ -688,41 +911,111 @@ export function useFirstRunConductor(): void {
       replaceTurn,
       handleOutcome,
       completeFirstRun,
+      exitToSettings,
       seedError,
       startCloudProvisionFlow,
       startProviderFinish,
+      setUiAccent,
     ],
   );
   const handleActionRef = React.useRef(handleFirstRunAction);
   handleActionRef.current = handleFirstRunAction;
 
+  // Free-text handler: the user can type freely during onboarding (#12178).
+  // Render their text as a local user turn, then a deterministic assistant
+  // reply keyed on the live flow position. Nothing here touches the network —
+  // the "no server send pre-completion" property is enforced at the AppContext
+  // funnel; this only echoes into the transcript.
+  const handleFirstRunText = React.useCallback(
+    (text: string): boolean => {
+      const trimmed = text.trim();
+      if (!trimmed) return true;
+      const reply = busyRef.current
+        ? FIRST_RUN_TEXT_REPLY.provisioning
+        : provisionedRef.current
+          ? FIRST_RUN_TEXT_REPLY.wrapUp
+          : erroredRef.current
+            ? FIRST_RUN_TEXT_REPLY.error
+            : FIRST_RUN_TEXT_REPLY.choosing;
+      const seq = (textTurnSeqRef.current += 1);
+      seedTurn({
+        id: `first-run:user:${seq}`,
+        role: "user",
+        text: trimmed,
+        timestamp: Date.now(),
+        source: "first_run",
+      });
+      seedTurn(makeTurn(`first-run:reply:${seq}`, reply));
+      return true;
+    },
+    [seedTurn],
+  );
+  const handleTextRef = React.useRef(handleFirstRunText);
+  handleTextRef.current = handleFirstRunText;
+
   // Register the interceptor + seed the greeting while onboarding is active.
   React.useEffect(() => {
     if (!active) {
       setFirstRunActionHandler(null);
+      setFirstRunTextHandler(null);
       return;
     }
     resetFirstRunPersistGuard();
     setFirstRunActionHandler((value) => handleActionRef.current(value));
+    setFirstRunTextHandler((value) => handleTextRef.current(value));
+    // Cloud-login resume: if the app was cold-launched mid cloud OAuth (the
+    // external browser evicted the WebView on a device), rehydrate the
+    // interrupted cloud/hybrid flow instead of restarting at the greeting.
+    // The durable steward token (persisted at login) makes elizaCloudConnected
+    // recompute true after relaunch, so the auto-resume effect above completes
+    // onboarding into chat; the re-tappable OAuth turn below is the fallback if
+    // login never finished — either way the user is never bounced back to
+    // "where should your agent run?".
+    const cloudResume = readCloudLoginPending();
+    if (cloudResume) {
+      draftRef.current = {
+        ...draftRef.current,
+        agentName: cloudResume.agentName || draftRef.current.agentName,
+        runtime: cloudResume.runtime === "cloud" ? "cloud" : "local",
+        localInference: cloudResume.localInference,
+      };
+      pendingCloudResumeRef.current = cloudResume.runtime;
+      seedTurn(
+        makeTurn(
+          "first-run:cloud-oauth",
+          "Connecting your Eliza Cloud account…",
+          { secretRequest: cloudOAuthSecretRequest("pending") },
+        ),
+      );
+      // If the durable token already made the connection live at launch, the
+      // auto-resume effect above fired once before this marker was armed, so it
+      // won't self-fire — resume now. Otherwise leave the marker armed for the
+      // effect to catch when elizaCloudConnected flips true after the poll.
+      if (elizaCloudConnectedRef.current) {
+        runCloudResumeRef.current(cloudResume.runtime);
+      }
+    } else {
+      // Seed the greeting + runtime choice IMMEDIATELY on mount — never gate it
+      // on the agent-readiness probe below. `listLocalAgentBackups()` hits the
+      // local agent API, which on a fresh/booting/wedged device can hang
+      // indefinitely; coupling the greeting to it stranded the user at a locked
+      // composer ("Tap a highlighted option above to continue") with no visible
+      // choices. The backup probe is now a purely additive upgrade.
+      seedRuntimeChoice();
+    }
     let cancelled = false;
     void client
       .listLocalAgentBackups()
       .then((backups) => {
-        if (cancelled) return;
-        if (backups.length > 0) {
-          seedBackupRestoreChoice(backups);
-          return;
-        }
-        seedRuntimeChoice();
+        if (!cancelled && backups.length > 0) seedBackupRestoreChoice(backups);
       })
-      .catch(() => {
-        if (!cancelled) seedRuntimeChoice();
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
       setFirstRunActionHandler(null);
+      setFirstRunTextHandler(null);
     };
-  }, [active, seedBackupRestoreChoice, seedRuntimeChoice]);
+  }, [active, seedBackupRestoreChoice, seedRuntimeChoice, seedTurn]);
 }
 
 /** Mount point — call once inside the AppContext provider tree. Renders null. */

@@ -3,6 +3,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
+import { CLOUD_CONTAINER_SERVICE_TYPE } from "@elizaos/shared";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CloudContainerService } from "../services/cloud-container";
 
@@ -19,12 +20,16 @@ export const containerHealthProvider: Provider = {
   contextGate: { anyOf: ["settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Cloud container health is operator context — admin+ only (#12094 item 3).
+  roleGate: { minRole: "ADMIN" },
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     try {
       const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
       if (!auth?.isAuthenticated()) return { text: "" };
 
-      const svc = runtime.getService("CLOUD_CONTAINER") as CloudContainerService | undefined;
+      const svc = runtime.getService(CLOUD_CONTAINER_SERVICE_TYPE) as
+        | CloudContainerService
+        | undefined;
       const running = svc?.getTrackedContainers().filter((c) => c.status === "running") ?? [];
       if (running.length === 0)
         return {

@@ -1,3 +1,9 @@
+/**
+ * Translates between Baileys protobuf messages and the plugin's transport types.
+ * `toNormalized` maps an inbound proto.IWebMessageInfo into a NormalizedMessage
+ * (chat id, type, content, reply target); `toBaileys` builds the outbound
+ * Baileys payload from a WhatsAppMessage, validating media links before send.
+ */
 import type { proto } from "@whiskeysockets/baileys";
 import { assertValidWhatsAppMediaLink } from "../media";
 import type {

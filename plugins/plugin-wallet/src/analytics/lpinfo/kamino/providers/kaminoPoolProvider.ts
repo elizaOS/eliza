@@ -1,3 +1,8 @@
+/**
+ * `KAMINO_POOL` provider: looks up a single Kamino pool by the address found
+ * in the message and renders its strategy/token/metrics data into planner
+ * context, with an LLM pass producing a short pool-health analysis.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type {
@@ -8,10 +13,6 @@ import type {
 const KAMINO_POOL_TEXT_LIMIT = 4000;
 type KaminoPoolReportData = NonNullable<KaminoPoolByAddressResult>;
 
-/**
- * Kamino Pool-Specific Provider
- * Provides detailed information about specific Kamino pools by their address
- */
 export const kaminoPoolProvider: Provider = {
   name: "KAMINO_POOL",
   description:
@@ -28,7 +29,6 @@ export const kaminoPoolProvider: Provider = {
     let poolInfo = "";
 
     try {
-      // Extract pool address from message content
       const content = message.content.text || "";
       const poolMatch = content.match(/([A-Za-z0-9]{32,44})/);
 
@@ -37,7 +37,6 @@ export const kaminoPoolProvider: Provider = {
         poolAddress = poolMatch[1];
       }
 
-      // Get Kamino liquidity service
       const kaminoLiquidityService = runtime.getService(
         "KAMINO_LIQUIDITY_SERVICE",
       ) as KaminoLiquidityService;
@@ -48,7 +47,6 @@ export const kaminoPoolProvider: Provider = {
           poolInfo += `=== KAMINO POOL ANALYSIS ===\n\n`;
           poolInfo += `🔍 Pool Address: ${poolAddress}\n\n`;
 
-          // Get detailed pool information
           const poolData =
             await kaminoLiquidityService.getPoolByAddress(poolAddress);
 
@@ -72,11 +70,9 @@ export const kaminoPoolProvider: Provider = {
             poolInfo += `🔗 Check available pools at: https://app.kamino.finance/liquidity\n`;
           }
         } else {
-          // No specific pool address provided, show usage instructions
           poolInfo += `=== KAMINO POOL PROVIDER ===\n\n`;
           poolInfo += `🔍 Kamino Pool-Specific Information\n\n`;
 
-          // Use testConnection to get basic info
           const testResults = await kaminoLiquidityService.testConnection();
 
           poolInfo += `📊 Service Status:\n`;
@@ -85,7 +81,6 @@ export const kaminoPoolProvider: Provider = {
           poolInfo += `   🔗 RPC Endpoint: ${testResults.rpcEndpoint}\n`;
           poolInfo += `   📈 Available Strategies: ${testResults.strategyCount}\n\n`;
 
-          // Add usage instructions
           poolInfo += `💡 How to use:\n`;
           poolInfo += `   • Provide a pool address to get detailed information\n`;
           poolInfo += `   • Example: "Kamino stats on pool cccsdfsdsdsxcxcxcsdsdsd"\n`;
@@ -215,9 +210,6 @@ function formatPromptValue(value: unknown): string {
   return String(value);
 }
 
-/**
- * Generate detailed pool report
- */
 async function generatePoolReport(
   runtime: IAgentRuntime,
   poolData: KaminoPoolReportData,
@@ -226,7 +218,6 @@ async function generatePoolReport(
   let report = "";
 
   try {
-    // Pool basic information
     report += `🏊‍♂️ POOL OVERVIEW:\n`;
     report += `   📍 Address: ${poolData.address}\n`;
     report += `   📅 Last Updated: ${new Date(poolData.timestamp).toLocaleString()}\n\n`;
@@ -243,12 +234,10 @@ async function generatePoolReport(
       report += `   🔄 Rebalancing: ${strategy.rebalancing}\n`;
       report += `   🕒 Last Rebalance: ${new Date(strategy.lastRebalance).toLocaleDateString()}\n\n`;
 
-      // Token information
       report += `🪙 TOKEN PAIR:\n`;
       report += `   Token A: ${strategy.tokenA}\n`;
       report += `   Token B: ${strategy.tokenB}\n\n`;
 
-      // Position details
       if (strategy.positions && strategy.positions.length > 0) {
         report += `📍 POSITIONS:\n`;
         for (const position of strategy.positions) {
@@ -260,7 +249,6 @@ async function generatePoolReport(
       }
     }
 
-    // Token information if available
     if (poolData.tokenInfo) {
       const tokenInfo = poolData.tokenInfo;
       report += `🔍 TOKEN INFORMATION:\n`;
@@ -282,7 +270,6 @@ async function generatePoolReport(
       report += `\n`;
     }
 
-    // Metrics summary
     if ("metrics" in poolData) {
       const metrics = poolData.metrics;
       report += `📈 PERFORMANCE METRICS:\n`;
@@ -295,7 +282,6 @@ async function generatePoolReport(
       report += `   🕒 Last Activity: ${new Date(metrics.lastRebalance).toLocaleString()}\n\n`;
     }
 
-    // Generate enhanced analysis using LLM
     const enhancedAnalysis = await generateEnhancedPoolAnalysis(
       runtime,
       poolData,
@@ -304,7 +290,6 @@ async function generatePoolReport(
       report += enhancedAnalysis;
     }
 
-    // Add action links
     report += `🔗 ACTIONS:\n`;
     report += `   • View on Kamino: https://app.kamino.finance/liquidity\n`;
     report += `   • Add Liquidity: https://app.kamino.finance/liquidity/deposit\n`;
@@ -317,15 +302,11 @@ async function generatePoolReport(
   return report;
 }
 
-/**
- * Generate enhanced pool analysis using LLM
- */
 async function generateEnhancedPoolAnalysis(
   runtime: IAgentRuntime,
   poolData: KaminoPoolReportData,
 ): Promise<string> {
   try {
-    // Create a focused prompt for the LLM
     const analysisPrompt = `Generate a concise pool analysis for Kamino Finance pool at address ${poolData.address}.
 
 POOL DATA:
@@ -347,7 +328,6 @@ Keep the analysis:
 
 Generate a concise Kamino pool analysis:`;
 
-    // Use LLM to generate the enhanced analysis
     const enhancedAnalysis = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: analysisPrompt,
     });
@@ -359,6 +339,6 @@ Generate a concise Kamino pool analysis:`;
     return "";
   } catch (error) {
     console.error("Error generating enhanced pool analysis:", error);
-    return ""; // Return empty string if LLM analysis fails
+    return "";
   }
 }

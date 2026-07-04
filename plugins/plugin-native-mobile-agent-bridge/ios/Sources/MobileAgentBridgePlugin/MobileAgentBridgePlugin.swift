@@ -188,10 +188,11 @@ public class MobileAgentBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let body = """
-        if (typeof window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__ !== "function") {
+        const handler = window.__ELIZA_BRIDGE__?.iosLocalAgentRequest;
+        if (typeof handler !== "function") {
           throw new Error("iOS local agent IPC bridge is unavailable");
         }
-        return await window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__(options);
+        return await handler(options);
         """
         DispatchQueue.main.async {
             webView.callAsyncJavaScript(body, arguments: ["options": options], in: nil, in: .page) { result in

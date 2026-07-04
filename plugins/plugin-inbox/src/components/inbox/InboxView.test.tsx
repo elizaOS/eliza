@@ -24,7 +24,11 @@ vi.mock("@elizaos/ui", () => ({
   },
 }));
 
-import { type InboxFetchers, InboxView } from "./InboxView.tsx";
+import {
+  type InboxFetchers,
+  type InboxSourceStatusWire,
+  InboxView,
+} from "./InboxView.tsx";
 
 function agent(agentId: string): HTMLElement {
   const el = document.querySelector(`[data-agent-id="${agentId}"]`);
@@ -79,7 +83,26 @@ const ALL_COUNTS = {
   x_dm: { total: 0, unread: 0 },
 };
 
-function populatedInbox() {
+const HEALTHY_SOURCES: InboxSourceStatusWire[] = [
+  { source: "chat", state: "ok", degradations: [] },
+  { source: "gmail", state: "ok", degradations: [] },
+];
+
+const GMAIL_AUTH_EXPIRED_SOURCE: InboxSourceStatusWire = {
+  source: "gmail",
+  state: "degraded",
+  degradations: [
+    {
+      axis: "auth-expired",
+      code: "gmail_needs_reauth",
+      message:
+        "Gmail authorization has expired — reconnect Google to resume inbox sync.",
+      retryable: false,
+    },
+  ],
+};
+
+function populatedInbox(sources: InboxSourceStatusWire[] = HEALTHY_SOURCES) {
   return {
     messages: [gmailMessage(), discordMessage()],
     channelCounts: {
@@ -88,16 +111,21 @@ function populatedInbox() {
       discord: { total: 1, unread: 0 },
     },
     fetchedAt: "2026-06-17T12:00:00.000Z",
+    sources,
   };
 }
 
-function emptyInbox(connected = false) {
+function emptyInbox(
+  connected = false,
+  sources: InboxSourceStatusWire[] = HEALTHY_SOURCES,
+) {
   return {
     messages: [],
     channelCounts: connected
       ? { ...ALL_COUNTS, gmail: { total: 1, unread: 0 } }
       : { ...ALL_COUNTS },
     fetchedAt: "2026-06-17T12:00:00.000Z",
+    sources,
   };
 }
 
@@ -179,6 +207,90 @@ describe("InboxView — empty states", () => {
     );
     await screen.findByText(/Inbox zero/i);
     expect(screen.queryByText("None")).toBeNull();
+  });
+});
+
+describe("InboxView — degraded connector", () => {
+  it("renders the degraded banner alongside messages from healthy channels", async () => {
+    render(
+      <InboxView
+        fetchers={makeFetchers({
+          fetchInbox: async () =>
+            populatedInbox([
+              { source: "chat", state: "ok", degradations: [] },
+              GMAIL_AUTH_EXPIRED_SOURCE,
+            ]),
+        })}
+      />,
+    );
+    await screen.findByText("Gmail unavailable");
+    // Partial degradation: the healthy channels' messages still render.
+    expect(screen.getByText("Invoice 42 overdue")).toBeTruthy();
+    expect(screen.getByText(/Gmail authorization has expired/i)).toBeTruthy();
+    expect(agent("reconnect:gmail")).toBeTruthy();
+  });
+
+  it("an empty inbox with a degraded source never reads as inbox zero", async () => {
+    render(
+      <InboxView
+        fetchers={makeFetchers({
+          fetchInbox: async () =>
+            emptyInbox(true, [
+              { source: "chat", state: "ok", degradations: [] },
+              GMAIL_AUTH_EXPIRED_SOURCE,
+            ]),
+        })}
+      />,
+    );
+    await screen.findByText("Gmail unavailable");
+    expect(screen.queryByText(/Inbox zero/i)).toBeNull();
+    expect(
+      screen.getByText(/No messages from reachable channels/i),
+    ).toBeTruthy();
+  });
+
+  it("Reconnect routes a reauth request for the degraded connector through chat", async () => {
+    render(
+      <InboxView
+        fetchers={makeFetchers({
+          fetchInbox: async () => populatedInbox([GMAIL_AUTH_EXPIRED_SOURCE]),
+        })}
+      />,
+    );
+    await screen.findByText("Gmail unavailable");
+    fireEvent.click(agent("reconnect:gmail"));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    const prompt = String(sendChatMessage.mock.calls[0]?.[0]);
+    expect(prompt).toContain("Reconnect Gmail");
+    expect(prompt).toContain("Gmail authorization has expired");
+  });
+
+  it("disconnected (never-connected) sources do not render the degraded banner", async () => {
+    render(
+      <InboxView
+        fetchers={makeFetchers({
+          fetchInbox: async () =>
+            emptyInbox(false, [
+              {
+                source: "gmail",
+                state: "disconnected",
+                degradations: [
+                  {
+                    axis: "disconnected",
+                    code: "gmail_disconnected",
+                    message: "Gmail is not connected.",
+                    retryable: false,
+                  },
+                ],
+              },
+            ]),
+        })}
+      />,
+    );
+    // Not-connected is the connect empty state, not a degradation warning.
+    await screen.findByText("None");
+    expect(screen.queryByText("Gmail unavailable")).toBeNull();
+    expect(agent("connect")).toBeTruthy();
   });
 });
 

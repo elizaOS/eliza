@@ -1,3 +1,8 @@
+/**
+ * `TwitterMessageService` — the `IMessageService` implementation for X direct
+ * messages, sending and listing DMs through `ClientBase`. Backs the message
+ * connector handlers and the LifeOps DM adapter.
+ */
 import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { SearchMode } from "../client";

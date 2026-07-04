@@ -1,3 +1,8 @@
+/**
+ * FILE `ls` handler: lists a directory's entries after SandboxService validation,
+ * rooted at an explicit path or the conversation's SessionCwdService cwd. Supports
+ * the `device_filesystem` bridge for device targets.
+ */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 

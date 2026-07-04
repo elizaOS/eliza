@@ -40,6 +40,7 @@ function makeRegistry(
     subscribe: vi.fn(() => () => {}),
     registerProber: vi.fn(),
     ...overrides,
+    openSettings: overrides.openSettings ?? vi.fn(async () => false),
   };
 }
 
@@ -119,6 +120,67 @@ describe("permission routes", () => {
       feature: { app: "settings", action: "request.reminders" },
     });
     expect(ctx.captured.data).toEqual(reminders);
+  });
+
+  it("reads website-blocking through the registry like any other permission", async () => {
+    const websiteBlocking = permissionState("website-blocking", {
+      status: "denied",
+      canRequest: true,
+      reason: "hosts file requires administrator approval",
+    });
+    const registry = makeRegistry(websiteBlocking);
+    const ctx = makeContext("/api/permissions/website-blocking", {
+      registry,
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    expect(registry.get).toHaveBeenCalledWith("website-blocking");
+    expect(ctx.captured.data).toEqual(websiteBlocking);
+  });
+
+  it("requests website-blocking through the registry with feature metadata", async () => {
+    const websiteBlocking = permissionState("website-blocking", {
+      status: "granted",
+      canRequest: false,
+    });
+    const registry = makeRegistry(websiteBlocking);
+    const ctx = makeContext("/api/permissions/website-blocking/request", {
+      method: "POST",
+      registry,
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    expect(registry.request).toHaveBeenCalledWith("website-blocking", {
+      reason: "Requested from permissions API.",
+      feature: { app: "settings", action: "request.website-blocking" },
+    });
+    expect(ctx.captured.data).toEqual(websiteBlocking);
+  });
+
+  it("opens website-blocking settings through the registry hook", async () => {
+    const websiteBlocking = permissionState("website-blocking", {
+      status: "denied",
+      canRequest: true,
+    });
+    const registry = makeRegistry(websiteBlocking, {
+      openSettings: vi.fn(async () => true),
+    });
+    const ctx = makeContext("/api/permissions/website-blocking/open-settings", {
+      method: "POST",
+      registry,
+      state: { permissionStates: { "website-blocking": websiteBlocking } },
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    expect(registry.openSettings).toHaveBeenCalledWith("website-blocking");
+    expect(ctx.captured.data).toEqual({
+      opened: true,
+      id: "website-blocking",
+      permission: websiteBlocking,
+    });
   });
 
   it("rejects unknown permission ids", async () => {

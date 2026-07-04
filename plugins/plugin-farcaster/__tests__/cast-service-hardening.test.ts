@@ -1,3 +1,7 @@
+/**
+ * Hardens `FarcasterCastService` against malformed input and error paths using a
+ * fake runtime and mocked Neynar client (no network).
+ */
 import type { Content, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FarcasterCastService } from "../services/CastService";

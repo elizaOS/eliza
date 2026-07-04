@@ -1,3 +1,8 @@
+/**
+ * Tests the `/api/setup/signal/*` status/start/cancel route handlers against a
+ * mocked runtime and pairing layer (no live signal-cli); each case re-imports
+ * the route module under a fresh mock graph.
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,13 @@
+/**
+ * Entry point for the web-search plugin.
+ *
+ * Exports the `webSearchPlugin` object and the `"web"` search-category
+ * definition (`WEB_SEARCH_CATEGORY`). Registering the plugin adds the
+ * Tavily-backed `WebSearchService` and registers the category with core's search
+ * dispatch (via `runtime.registerSearchCategory`) so web/news queries route
+ * here. Opt-in, and registers no actions/providers/evaluators/routes.
+ */
+
 import type { IAgentRuntime, Plugin, SearchCategoryRegistration } from "@elizaos/core";
 import { ServiceType } from "@elizaos/core";
 

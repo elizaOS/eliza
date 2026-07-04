@@ -7,6 +7,7 @@
  */
 
 import type { LucideIcon } from "lucide-react";
+import { Button } from "../../ui/button";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -113,11 +114,11 @@ function PipelineNodeButton({
   };
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       onClick={onClick}
       className={`
-        flex min-w-[90px] flex-col items-center gap-1.5 rounded-sm border
+        h-auto min-w-[90px] flex-col items-center gap-1.5 rounded-sm border
         px-3 py-2.5 transition-all duration-150 cursor-pointer select-none
         ${statusClasses[node.status]}
       `}
@@ -134,7 +135,7 @@ function PipelineNodeButton({
       >
         {node.id === "input" ? "\u2713" : node.callCount}
       </span>
-    </button>
+    </Button>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   handleAccountsRoutes,
 } from "../../src/api/accounts-routes";
 import { listAccounts, saveAccount } from "../../src/auth/account-storage.js";
+import { getAccessToken } from "../../src/auth/credentials.ts";
 
 const poolMock = vi.hoisted(() => ({
   list: vi.fn(),
@@ -31,6 +32,12 @@ vi.mock("../../src/auth/account-storage.js", () => ({
   loadAccount: vi.fn(() => null),
   saveAccount: vi.fn(),
 }));
+
+vi.mock("../../src/auth/credentials.ts", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/auth/credentials.ts")>();
+  return { ...actual, getAccessToken: vi.fn(async () => null) };
+});
 
 function linkedAccount(
   providerId: LinkedAccountConfig["providerId"],
@@ -88,6 +95,34 @@ describe("accounts routes provider-scoped account resolution", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the oauth beta header when testing an anthropic subscription", async () => {
+    vi.mocked(getAccessToken).mockResolvedValue("sk-ant-oat01-test");
+    poolMock.get.mockReturnValue(linkedAccount("anthropic-subscription"));
+    const fetchMock = vi.fn(
+      async () => new Response('{"id":"msg_1"}', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/shared-id/test",
+    });
+
+    const handled = await handleAccountsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
+    expect(headers.Authorization).toBe("Bearer sk-ant-oat01-test");
+    expect(ctx.body).toMatchObject({ ok: true, status: 200 });
   });
 
   it("patches the provider-matching account when ids collide", async () => {

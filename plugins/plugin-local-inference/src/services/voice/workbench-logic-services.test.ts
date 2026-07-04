@@ -1,3 +1,4 @@
+/** Covers `realDecisionLogicServices` across the built-in scenario matrix. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { generateVoiceCorpus } from "./corpus-generator";
 import type { VoiceScenario } from "./voice-scenario";
@@ -31,6 +32,9 @@ function editDistance(a: string, b: string): number {
 }
 
 describe("realDecisionLogicServices over the built-in scenario matrix", () => {
+	// Generous timeout: the matrix synthesizes + blind-FFT-clusters every scenario,
+	// including the ~30 s long-turn-diarization corpus, so it runs well past the
+	// default 5 s (especially on the slower CI runner).
 	it("every built-in scenario PASSES against the real decision logic", async () => {
 		const services = realDecisionLogicServices();
 		const runs = [];
@@ -46,7 +50,7 @@ describe("realDecisionLogicServices over the built-in scenario matrix", () => {
 		).toEqual([]);
 		expect(report.overall).toBe("pass");
 		expect(report.scenariosRan).toBe(VOICE_WORKBENCH_SCENARIOS.length);
-	});
+	}, 60_000);
 
 	it("attributes the multi-speaker scenarios from AUDIO, scoring DER 0", async () => {
 		// The real diarization gate: blind acoustic clustering must partition the

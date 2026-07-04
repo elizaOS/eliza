@@ -1,3 +1,7 @@
+/**
+ * Incremental patch application for streamed GenUI specs: applies RFC-6902
+ * patches onto the in-flight spec and reports validation issues.
+ */
 import type {
   ElizaGenUiJsonValue,
   ElizaGenUiPatch,

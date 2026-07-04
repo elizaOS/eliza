@@ -41,7 +41,12 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     path: "/tutorial",
   },
   { id: "help", label: "Help", labelKey: "desktop.views.help", path: "/help" },
-  { id: "chat", label: "Chat", labelKey: "desktop.views.chat", path: "/chat" },
+  {
+    id: "chat",
+    label: "Messages",
+    labelKey: "desktop.views.chat",
+    path: "/chat",
+  },
   {
     id: "character",
     label: "Character",
@@ -103,7 +108,7 @@ export function buildTrayViewItems(): DesktopTrayMenuItem[] {
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
   {
     id: "tray-open-chat",
-    label: "Open Chat",
+    label: "Open Messages",
     labelKey: "desktop.tray.openChat",
   },
   {
@@ -192,7 +197,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {
     id: "tray-open-chat",
     entryPoint: "tray",
-    label: "Open Chat",
+    label: "Open Messages",
     expectedAction: "Show and focus the main window, then switch to chat.",
     runtimeRequirement: "desktop",
     coverage: "automated",

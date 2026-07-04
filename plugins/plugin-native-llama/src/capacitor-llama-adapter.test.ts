@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `CapacitorLlamaAdapter` against a mocked `llama-cpp-capacitor`
+ * (no live model): context-id isolation between chat and embedding instances,
+ * reload behavior, and platform-aware load-param wiring.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 
 interface InitContextCall {
@@ -207,9 +213,8 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
     await chatAdapter.load({ modelPath: "/tmp/llama.gguf" });
     await embeddingAdapter.load({ modelPath: "/tmp/bge.gguf" });
 
-    // Loading two adapters back-to-back used to release-all; the fix
-    // releases only the adapter's own contextId (if any) and leaves the
-    // sibling's context intact.
+    // Loading a second adapter releases only that adapter's own contextId
+    // (if any) and leaves the sibling's context intact.
     expect(state.releaseAllCalls).toBe(0);
   });
 

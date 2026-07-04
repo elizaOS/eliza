@@ -1,6 +1,11 @@
+/**
+ * `CodingTaskExecutor`: maps a coding-related task spec into the agent action that
+ * fulfils it, resolving the delegation action name via the core registry. Consumed
+ * by orchestration plugins that hand coding work to a coding-capable agent.
+ */
 import crypto from "node:crypto";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { findCodingDelegationActionName, ModelType } from "@elizaos/core";
 
 type TaskSpec = {
   id: string;
@@ -96,11 +101,8 @@ function findCreateTaskAction(
   const actions = Array.isArray(runtime.actions)
     ? (runtime.actions as CreateTaskActionLike[])
     : [];
-  return (
-    actions.find((action) => action.name === "START_CODING_TASK") ??
-    actions.find((action) => action.name === "CREATE_TASK") ??
-    null
-  );
+  const actionName = findCodingDelegationActionName(actions);
+  return actions.find((action) => action.name === actionName) ?? null;
 }
 
 function buildSyntheticTaskMemory(

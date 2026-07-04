@@ -61,6 +61,19 @@ export const MOBILE_CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * Model-provider plugins that are statically imported by the mobile runtime and
+ * may survive the final mobile allow-list when their env/config gates select
+ * them. Keep this beside MOBILE_CORE_PLUGINS so the mobile bundle contract has
+ * one owner.
+ */
+export const MOBILE_MODEL_PROVIDER_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-openai",
+  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-elizacloud",
+];
+
+/**
  * View-providing plugins that must register their `/api/views` entries on EVERY
  * platform — including stock mobile — so their home tiles resolve to a real
  * destination instead of dead-ending in the apps catalog. These are bundled

@@ -16,7 +16,6 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "../security/access.ts";
 import {
   filterInitFilesForSession,
   isDefaultBoilerplate,
@@ -204,7 +203,9 @@ export function createWorkspaceProvider(options?: {
     contextGate: { anyOf: ["general"] },
     cacheStable: false,
     cacheScope: "turn",
-    roleGate: { minRole: "USER" },
+    // #12087 Item 14: was USER but the body enforced ADMIN (hasAdminAccess).
+    // Declared roleGate is now enforced by applyPluginRoleGating.
+    roleGate: { minRole: "ADMIN" },
 
     async get(
       _runtime: IAgentRuntime,
@@ -221,16 +222,6 @@ export function createWorkspaceProvider(options?: {
           data: {
             workspaceDir: dir,
             skipped: "voice_channel",
-          },
-        };
-      }
-
-      if (!(await hasAdminAccess(_runtime, message))) {
-        return {
-          text: "",
-          data: {
-            workspaceDir: dir,
-            skipped: "role_gate",
           },
         };
       }

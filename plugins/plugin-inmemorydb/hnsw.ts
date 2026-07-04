@@ -1,3 +1,11 @@
+/**
+ * `EphemeralHNSW`: an in-memory, cosine-distance HNSW (Hierarchical Navigable
+ * Small World) vector index implementing `IVectorStorage`. Nodes are assigned
+ * a random level on insert; search descends from the entry point through
+ * upper layers before doing a beam search (`efSearch`) on layer 0. All state
+ * lives in the `nodes` map — nothing is persisted, and `clear()`/losing the
+ * process discards the index entirely.
+ */
 import type { IVectorStorage, VectorSearchResult } from "./types";
 
 interface HNSWNode {

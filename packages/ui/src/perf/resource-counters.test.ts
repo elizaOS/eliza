@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the live resource counters (snapshot/total). In-memory, no
+ * runtime.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetResourceCountersForTests,

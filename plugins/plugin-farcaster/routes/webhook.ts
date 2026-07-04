@@ -1,3 +1,10 @@
+/**
+ * `POST /webhook` handler for Neynar webhook mode. Validates the raw payload
+ * against the `NeynarWebhookData` shape (guarding against malformed input),
+ * resolves the target `FarcasterAgentManager` for the account, and dispatches
+ * to its interaction manager's `processWebhookData`. Registered as
+ * `farcasterWebhookRoutes` in the plugin object.
+ */
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse, UUID } from "@elizaos/core";
 import type { FarcasterAgentManager } from "../managers/AgentManager";
 import { FARCASTER_SERVICE_NAME, type NeynarWebhookData } from "../types";

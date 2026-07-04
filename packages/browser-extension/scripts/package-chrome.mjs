@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+/**
+ * Packages dist/chrome into a versioned .zip for Chrome Web Store upload.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

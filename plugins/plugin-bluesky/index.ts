@@ -1,3 +1,12 @@
+/**
+ * Plugin entry point: exports `blueSkyPlugin` (the elizaOS `Plugin` object) plus
+ * the public API surface (client, service, connector-account provider, config
+ * helpers). The plugin registers `BlueSkyService` and the workflow credential
+ * provider as services and, in `init`, registers a `ConnectorAccountProvider`
+ * with the runtime's `ConnectorAccountManager`. It has no actions — social
+ * behavior is driven by the `bluesky.*` events the service emits. The bundled
+ * `pluginTests` do a credentials-present / service-start smoke check.
+ */
 import {
 	getConnectorAccountManager,
 	type IAgentRuntime,

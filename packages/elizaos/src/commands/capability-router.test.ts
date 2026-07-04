@@ -20,6 +20,16 @@ function mockFetch(response: unknown, status = 200): ReturnType<typeof vi.fn> {
   return fetchMock;
 }
 
+function mockFetchText(text: string, status = 200): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    text: vi.fn().mockResolvedValue(text),
+  });
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
 describe("runCapabilityRouterConnect", () => {
   it("posts a direct endpoint payload to the local agent API", async () => {
     const fetchMock = mockFetch({
@@ -227,5 +237,33 @@ describe("runCapabilityRouterConnect", () => {
     expect(error.mock.calls[0]?.[0]).toContain("Unauthorized");
     expect(JSON.stringify(error.mock.calls)).not.toContain("api-secret");
     expect(JSON.stringify(error.mock.calls)).not.toContain("endpoint-secret");
+  });
+
+  it("fails successful API calls that return malformed JSON", async () => {
+    mockFetchText("{not-json");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+    });
+
+    expect(code).toBe(1);
+    expect(error.mock.calls[0]?.[0]).toContain(
+      "Agent API returned invalid JSON",
+    );
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it("keeps HTTP status fallback when an API error body is malformed JSON", async () => {
+    mockFetchText("{not-json", 502);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+    });
+
+    expect(code).toBe(1);
+    expect(error.mock.calls[0]?.[0]).toContain("Agent API returned HTTP 502.");
   });
 });

@@ -1,5 +1,18 @@
+/**
+ * Horizontal paging gesture for the home↔launcher rail: axis-lock, half-viewport
+ * commit threshold, and velocity-aware settle so a flick commits early and a
+ * slow drag springs back. Tuned for the iOS carousel feel.
+ */
 import * as React from "react";
+import {
+  isRealCaptureLoss,
+  useClickSuppression,
+  useRafCoalescer,
+} from "../gestures";
 
+// Per-surface tuned overrides (deliberately tighter than the shared pull
+// defaults): the launcher rail commits its axis at a shorter slop and requires
+// stronger horizontal dominance than the vertical-pull surfaces (#12349).
 const AXIS_COMMIT_SLOP = 6;
 const AXIS_DOMINANCE_RATIO = 1.15;
 const MIN_DISTANCE_THRESHOLD = 64;
@@ -16,8 +29,8 @@ const EDGE_RESISTANCE = 0.35;
 const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 // Velocity-aware momentum settle (#10717): after a drag release, the settle
 // duration is derived from the release velocity instead of a constant rate — a
-// fast flick settles quickly, a slow drag eases in — so the rail no longer
-// snaps home at the same speed regardless of how the finger left it.
+// fast flick settles quickly, a slow drag eases in — so the rail's snap-home
+// speed reflects how the finger left it.
 const MIN_SETTLE_MS = 130;
 const MAX_SETTLE_MS = 440;
 // Slowest settle speed (px/ms): a near-zero release velocity eases the
@@ -73,119 +86,9 @@ interface DragState {
   hadButtons: boolean;
 }
 
-/**
- * Cross-pager gesture arbitration (nested pagers).
- *
- * The home↔launcher rail nests the launcher's grid pager and both attach
- * pointer handlers along the same bubble path, so without arbitration one
- * horizontal drag is tracked — and painted — by BOTH pagers at once, and for
- * mouse/pen the outer handler's later `setPointerCapture` steals the pointer
- * from the inner pager mid-drag. This registry makes a swipe claimed by two
- * pagers structurally impossible (the shell-surface store invariant): every
- * pager that sees a pointerdown registers as a tracker in bubble order
- * (innermost first), and the first pager that commits a horizontal axis AND
- * can move in the drag direction claims the pointer exclusively, evicting
- * every other tracker on the spot.
- */
-interface PagerPointerTracker {
-  /**
-   * Called when another pager claims the pointer. Eviction is pushed (not
-   * polled) because once the winner holds mouse capture the losers may never
-   * receive another pointer event to learn from.
-   */
-  onEvicted: () => void;
-}
-
-interface PagerPointerGesture {
-  /** The pointerdown that opened this gesture — tells a fresh gesture apart
-   *  from a stale entry when the browser reuses a pointer id. */
-  downEvent: Event;
-  /** Trackers in bubble order: index 0 is the innermost pager. */
-  trackers: PagerPointerTracker[];
-  /** Exclusive owner of the horizontal gesture, once claimed. */
-  owner: PagerPointerTracker | null;
-}
-
-const pagerPointerGestures = new Map<number, PagerPointerGesture>();
-
-function registerPagerPointerTracker(
-  pointerId: number,
-  downEvent: Event,
-  tracker: PagerPointerTracker,
-): void {
-  const gesture = pagerPointerGestures.get(pointerId);
-  // A different pointerdown under a reused pointer id is a NEW gesture — the
-  // old entry is stale (its pointerup never reached us), so replace it.
-  if (!gesture || gesture.downEvent !== downEvent) {
-    pagerPointerGestures.set(pointerId, {
-      downEvent,
-      trackers: [tracker],
-      owner: null,
-    });
-    return;
-  }
-  if (!gesture.trackers.includes(tracker)) gesture.trackers.push(tracker);
-}
-
-function unregisterPagerPointerTracker(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): void {
-  const gesture = pagerPointerGestures.get(pointerId);
-  if (!gesture) return;
-  gesture.trackers = gesture.trackers.filter((t) => t !== tracker);
-  if (gesture.owner === tracker) gesture.owner = null;
-  if (gesture.trackers.length === 0) pagerPointerGestures.delete(pointerId);
-}
-
-/** True when a DIFFERENT pager holds the exclusive claim on this pointer. */
-function isPagerPointerOwnedElsewhere(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const owner = pagerPointerGestures.get(pointerId)?.owner ?? null;
-  return owner !== null && owner !== tracker;
-}
-
-/**
- * Claim the pointer for `tracker` (first claim wins) and evict every other
- * tracker. Returns whether `tracker` owns the pointer after the call.
- */
-function claimPagerPointer(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const gesture = pagerPointerGestures.get(pointerId);
-  // An untracked pointer means this pager is the only one listening.
-  if (!gesture) return true;
-  if (gesture.owner === tracker) return true;
-  if (gesture.owner !== null) return false;
-  gesture.owner = tracker;
-  // Iterate a snapshot: eviction unregisters, which replaces the array.
-  for (const other of [...gesture.trackers]) {
-    if (other !== tracker) other.onEvicted();
-  }
-  return true;
-}
-
-/**
- * True when `tracker` sits closest to the original event target among the
- * pagers still tracking this pointer. An UNOWNED horizontal drag (every pager
- * at its edge) paints its rubber-band on the innermost pager only, so two
- * nested rails never translate for the same finger.
- */
-function isInnermostPagerPointerTracker(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const gesture = pagerPointerGestures.get(pointerId);
-  return !gesture || gesture.trackers[0] === tracker;
-}
-
 export interface UseHorizontalPagerOptions {
   page: number;
   pageCount: number;
-  enabled?: boolean;
   onPageChange: (page: number) => void;
 }
 
@@ -333,18 +236,14 @@ export function useHorizontalPager<
 >({
   page,
   pageCount,
-  enabled = true,
   onPageChange,
 }: UseHorizontalPagerOptions): HorizontalPagerBinding<TViewport> {
   const viewportRef = React.useRef<TViewport | null>(null);
   const railRef = React.useRef<HTMLDivElement | null>(null);
   const dragRef = React.useRef<DragState | null>(null);
-  const rafRef = React.useRef(0);
-  const pendingOffsetRef = React.useRef<number | null>(null);
-  // Set true for one tick when a gesture commits, so the click the browser
-  // synthesizes from the same press is swallowed (onClickCapture below) instead
-  // of tap-launching the element under the finger.
-  const suppressClickRef = React.useRef(false);
+  // Swallow the click the browser synthesizes from a committed swipe/flick so it
+  // can't also tap-launch the element under the release point.
+  const clickSuppression = useClickSuppression();
   // A committed swipe advances the page via onPageChange, which re-runs the
   // layout effect below — so the velocity-derived settle duration is handed to
   // that effect here (instead of the fixed SETTLE_MS) so the momentum survives
@@ -356,18 +255,10 @@ export function useHorizontalPager<
   const mountedRef = React.useRef(false);
   const pageRef = React.useRef(page);
   const pageCountRef = React.useRef(pageCount);
-  const enabledRef = React.useRef(enabled);
   const onPageChangeRef = React.useRef(onPageChange);
-  // This pager's identity in the shared pointer-claim registry. `onEvicted`
-  // dispatches through a ref so the registry never holds a stale closure.
-  const abandonDragRef = React.useRef<() => void>(() => {});
-  const pointerTrackerRef = React.useRef<PagerPointerTracker>({
-    onEvicted: () => abandonDragRef.current(),
-  });
 
   pageRef.current = page;
   pageCountRef.current = pageCount;
-  enabledRef.current = enabled;
   onPageChangeRef.current = onPageChange;
 
   const measureWidth = React.useCallback(() => {
@@ -394,41 +285,13 @@ export function useHorizontalPager<
     [],
   );
 
-  const flushOffset = React.useCallback(() => {
-    rafRef.current = 0;
-    const offset = pendingOffsetRef.current;
-    pendingOffsetRef.current = null;
-    if (offset == null) return;
-    writeOffset(offset, null);
-  }, [writeOffset]);
-
-  const scheduleOffset = React.useCallback(
-    (offset: number) => {
-      pendingOffsetRef.current = offset;
-      if (rafRef.current !== 0) return;
-      if (typeof requestAnimationFrame === "function") {
-        // Mark the frame pending BEFORE scheduling: a synchronous rAF (test
-        // environments run the callback inline) clears rafRef inside
-        // flushOffset, and assigning the returned handle afterwards would
-        // re-mark the frame as pending forever — swallowing every later
-        // offset of the gesture.
-        rafRef.current = -1;
-        const handle = requestAnimationFrame(flushOffset);
-        if (rafRef.current === -1) rafRef.current = handle;
-        return;
-      }
-      flushOffset();
-    },
-    [flushOffset],
+  // Live pointer movement writes directly to the rail transform (no transition),
+  // paced by rAF so a drag never waits on React render scheduling.
+  const railWrite = useRafCoalescer<number>((offset) =>
+    writeOffset(offset, null),
   );
-
-  const cancelScheduledOffset = React.useCallback(() => {
-    if (rafRef.current !== 0 && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(rafRef.current);
-    }
-    rafRef.current = 0;
-    pendingOffsetRef.current = null;
-  }, []);
+  const scheduleOffset = railWrite.schedule;
+  const cancelScheduledOffset = railWrite.cancel;
 
   const canMove = React.useCallback((state: DragState, dx: number) => {
     if (dx < 0) return state.page < pageCountRef.current - 1;
@@ -454,12 +317,10 @@ export function useHorizontalPager<
   }, []);
 
   /**
-   * Stand down mid-gesture: another pager claimed this pointer (or this pager
-   * is unmounting). Dropping the drag immediately — rather than waiting for a
-   * pointerup that may never arrive once the winner holds capture — re-arms
-   * the ResizeObserver resync and the controlled-page layout effect, and
-   * settles the rail back to its resting page so a half-painted rubber-band
-   * never sticks.
+   * Stand down mid-gesture: a mouse/pen press ended off-surface (so no pointerup
+   * will arrive). Dropping the drag immediately re-arms the ResizeObserver
+   * resync and the controlled-page layout effect, and settles the rail back to
+   * its resting page so a half-painted rubber-band never sticks.
    */
   const abandonDrag = React.useCallback(() => {
     const state = dragRef.current;
@@ -467,13 +328,11 @@ export function useHorizontalPager<
     cancelScheduledOffset();
     dragRef.current = null;
     releaseCapture(state);
-    unregisterPagerPointerTracker(state.pointerId, pointerTrackerRef.current);
     // Re-measure: a viewport resize DURING the drag makes state.width stale, so
     // settling to pageOffset(page, staleWidth) would leave the rail permanently
     // mis-offset.
     writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
   }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
-  abandonDragRef.current = abandonDrag;
 
   React.useLayoutEffect(() => {
     const width = measureWidth();
@@ -511,11 +370,7 @@ export function useHorizontalPager<
     return () => observer.disconnect();
   }, [measureWidth, writeOffset]);
 
-  React.useEffect(() => cancelScheduledOffset, [cancelScheduledOffset]);
-
-  // Unmounting mid-gesture must not leave a dead tracker (or a stale claim)
-  // in the shared registry.
-  React.useEffect(() => () => abandonDragRef.current(), []);
+  // (useRafCoalescer cancels its own in-flight frame on unmount.)
 
   const finish = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
@@ -524,7 +379,6 @@ export function useHorizontalPager<
       cancelScheduledOffset();
       dragRef.current = null;
       releaseCapture(state);
-      unregisterPagerPointerTracker(event.pointerId, pointerTrackerRef.current);
 
       // Settle geometry uses the CURRENT width (a mid-drag resize makes
       // state.width stale); the commit decision below keeps state.width so the
@@ -560,16 +414,9 @@ export function useHorizontalPager<
           momentumSettleMs(Math.abs(offset - lastVisual), velocity),
         );
 
-      // A page only advances for the gesture's exclusive owner. Claiming here
-      // covers a release whose direction flipped after the last move: the
-      // first pager to claim wins and evicts the rest, so two nested pagers
-      // can never both advance off one pointerup.
-      if (
-        cancelled ||
-        state.axis !== "horizontal" ||
-        !canMove(state, dx) ||
-        !claimPagerPointer(event.pointerId, pointerTrackerRef.current)
-      ) {
+      // A page only advances for a committed horizontal drag that can actually
+      // move in the drag direction; anything else settles back.
+      if (cancelled || state.axis !== "horizontal" || !canMove(state, dx)) {
         settleTo(base);
         return;
       }
@@ -611,10 +458,7 @@ export function useHorizontalPager<
         };
         // A committed page change is a gesture commit — swallow the synthesized
         // click so the flick doesn't also tap-launch the element under it.
-        suppressClickRef.current = true;
-        setTimeout(() => {
-          suppressClickRef.current = false;
-        }, 0);
+        clickSuppression.arm();
         onPageChangeRef.current(targetPage);
       } else {
         // Already at the clamped edge — settle directly (no page change fires).
@@ -624,6 +468,7 @@ export function useHorizontalPager<
     [
       canMove,
       cancelScheduledOffset,
+      clickSuppression,
       measureWidth,
       releaseCapture,
       visualDragOffset,
@@ -646,7 +491,6 @@ export function useHorizontalPager<
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (
-        !enabledRef.current ||
         pageCountRef.current <= 0 ||
         event.isPrimary === false ||
         // Only the primary (left) button starts a drag. A right/middle-button
@@ -659,14 +503,6 @@ export function useHorizontalPager<
         return;
       }
       cancelScheduledOffset();
-      // Enter the shared claim registry. Handlers run innermost-first in the
-      // bubble phase, so registration order records which pager sits closest
-      // to the finger.
-      registerPagerPointerTracker(
-        event.pointerId,
-        event.nativeEvent,
-        pointerTrackerRef.current,
-      );
       const currentPage = clampPage(pageRef.current, pageCountRef.current);
       const width = measureWidth();
       const restingOffset = pageOffset(currentPage, width);
@@ -717,16 +553,6 @@ export function useHorizontalPager<
         return;
       }
 
-      // Another pager already owns this pointer's horizontal gesture — stand
-      // down instead of double-tracking it. (Eviction usually beat us to it;
-      // this guards any event that still slips through.)
-      if (
-        isPagerPointerOwnedElsewhere(event.pointerId, pointerTrackerRef.current)
-      ) {
-        abandonDrag();
-        return;
-      }
-
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
       if (state.axis === "pending") {
@@ -736,26 +562,6 @@ export function useHorizontalPager<
         state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
       }
       if (state.axis !== "horizontal") return;
-
-      // A pager that can actually move in the drag direction claims the
-      // pointer exclusively. Handlers run innermost-first in the bubble phase,
-      // so a movable inner grid pager wins the gesture before the outer rail
-      // ever sees the move.
-      const owned = canMove(state, dx)
-        ? claimPagerPointer(event.pointerId, pointerTrackerRef.current)
-        : false;
-      // An unowned drag (every pager at its edge) rubber-bands on the
-      // innermost pager only — the outer rail must not paint edge resistance
-      // for a gesture it does not own.
-      if (
-        !owned &&
-        !isInnermostPagerPointerTracker(
-          event.pointerId,
-          pointerTrackerRef.current,
-        )
-      ) {
-        return;
-      }
 
       // Touch pointers are IMPLICITLY captured to the target on pointerdown, so
       // an explicit setPointerCapture is redundant — and on Android WebView it
@@ -785,7 +591,7 @@ export function useHorizontalPager<
       }
       scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
-    [abandonDrag, canMove, scheduleOffset, visualDragOffset],
+    [abandonDrag, scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(
@@ -808,23 +614,10 @@ export function useHorizontalPager<
   // for mouse/pen only, so a genuine loss still has target === currentTarget.
   const onLostPointerCapture = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) return;
+      if (!isRealCaptureLoss(event)) return;
       finish(event, true);
     },
     [finish],
-  );
-
-  // Swallow the click a committed swipe/flick synthesizes (armed in finish() on
-  // page-change commits) so it can't tap-launch the element under the release
-  // point. One mechanism for every consumer.
-  const onClickCapture = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
   );
 
   const clampedPage = clampPage(page, pageCount);
@@ -838,7 +631,7 @@ export function useHorizontalPager<
       onPointerUp,
       onPointerCancel,
       onLostPointerCapture,
-      onClickCapture,
+      onClickCapture: clickSuppression.onClickCapture,
     },
     canPrev: clampedPage > 0,
     canNext: clampedPage < pageCount - 1,

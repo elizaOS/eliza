@@ -1,3 +1,8 @@
+/**
+ * Unit and property tests (fast-check) for the tolerant LLM-response parsing
+ * helpers: JSON extraction from fenced/prose output and per-field
+ * scalar/array/boolean/number/priority coercion. Deterministic, no live model.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Covers ViewAgentRegistry: registering/snapshotting/unregistering agent
+ * elements per (view, modality) and routing agent-surface capabilities against
+ * the registered snapshot. Uses real DOM nodes under jsdom.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleAgentSurfaceCapability } from "./capabilities";
 import {
@@ -91,6 +97,57 @@ describe("ViewAgentRegistry", () => {
     expect(result).toEqual({ ok: true, id: "amount", value: "42" });
     expect(input.value).toBe("42");
     expect(onInput).toHaveBeenCalledOnce();
+  });
+
+  it("redacts and refuses to fill sensitive fields", () => {
+    const registry = makeRegistry();
+    const password = document.createElement("input");
+    password.type = "password";
+    password.value = "correct horse";
+    document.body.appendChild(password);
+    registry.register(
+      { id: "login.password", role: "text-input", label: "Password" },
+      () => password,
+    );
+
+    const snapshot = registry.snapshot().elements[0];
+    expect(snapshot).toMatchObject({
+      id: "login.password",
+      sensitive: true,
+      valueRedacted: true,
+    });
+    expect("value" in snapshot).toBe(false);
+
+    const result = registry.fill("login.password", "new password");
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("sensitive element");
+    expect(password.value).toBe("correct horse");
+  });
+
+  it("honors explicit sensitive descriptors without a mounted DOM node", () => {
+    const registry = makeRegistry();
+    const onFill = vi.fn();
+    registry.register(
+      {
+        id: "api-key",
+        role: "text-input",
+        label: "Public provider key",
+        sensitive: true,
+        getValue: () => "sk-live",
+        onFill,
+      },
+      () => null,
+    );
+
+    const snapshot = registry.describe("api-key");
+    expect(snapshot).toMatchObject({
+      id: "api-key",
+      sensitive: true,
+      valueRedacted: true,
+    });
+    expect(snapshot && "value" in snapshot).toBe(false);
+    expect(registry.fill("api-key", "sk-next").ok).toBe(false);
+    expect(onFill).not.toHaveBeenCalled();
   });
 
   it("rejects fills that violate the options whitelist", () => {

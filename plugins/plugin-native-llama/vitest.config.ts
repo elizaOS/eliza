@@ -1,3 +1,5 @@
+/** Vitest config: runs this package's src test suites in a node environment, rooted at the package dir. */
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

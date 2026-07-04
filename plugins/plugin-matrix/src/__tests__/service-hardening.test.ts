@@ -1,3 +1,9 @@
+/**
+ * Hardening tests for `MatrixService`, focused on the passive-connector
+ * auto-reply gate. Mocks `@elizaos/core` to supply
+ * `lifeOpsPassiveConnectorsEnabled` (omitted by the vitest core shim) so the
+ * gate is exercised deterministically — no live homeserver.
+ */
 import { type Content, EventType, type HandlerCallback, type IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

@@ -22,9 +22,11 @@ import {
   BrandButton,
 } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import type {
-  InviteRole,
-  UserWithOrganizationDto,
+import {
+  canManageOrg,
+  type InviteRole,
+  isOrgOwner,
+  type UserWithOrganizationDto,
 } from "./data/cloud-org-types";
 import {
   organizationErrorMessage,
@@ -47,8 +49,8 @@ export function MembersTab({ user }: MembersTabProps) {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
 
-  const canManageMembers = user.role === "owner" || user.role === "admin";
-  const isOwner = user.role === "owner";
+  const canManageMembers = canManageOrg(user.role);
+  const isOwner = isOrgOwner(user.role);
 
   const membersQuery = useOrganizationMembers(canManageMembers);
   const invitesQuery = useOrganizationInvites(canManageMembers);

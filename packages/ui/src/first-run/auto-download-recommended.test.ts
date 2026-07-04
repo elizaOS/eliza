@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for auto-downloading the recommended local model on first run.
+ * Client mocked, no real download.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockClient = vi.hoisted(() => ({

@@ -10,6 +10,8 @@
 
 export * from "./access-context";
 export * from "./access-control/filter";
+export * from "./account-pool-bridge";
+export * from "./action-names";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./capabilities";
@@ -35,6 +37,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./errors";
 export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -44,6 +47,7 @@ export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./plugin";
 export * from "./prompts";
+export * from "./providers/recent-errors";
 export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
@@ -61,7 +65,6 @@ export * from "./services/approval";
 export * from "./services/message";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
-export * from "./services/plugin-hooks";
 export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
 export * from "./services/setup-rpc";

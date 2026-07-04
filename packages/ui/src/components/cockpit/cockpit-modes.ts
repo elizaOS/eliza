@@ -3,9 +3,8 @@
  * `providerPolicy` lowering. The picker lives in the UI library (it must not
  * import a node plugin), and the orchestrator create-task route accepts the
  * `{preferredFramework, providerSource, model}` policy this file emits — so the
- * lowering and the display metadata both live here, unambiguously. (There is no
- * separate "canonical" server copy; that earlier duplicate was unused and was
- * removed to avoid two-sources-of-truth drift.)
+ * lowering and the display metadata both live here, unambiguously. There is no
+ * server-side copy to drift against.
  *
  * The four modes (locked product vision):
  *   1. Eliza Cloud = eliza-code on Cerebras, fast/smart tier (gemma-4-31b)

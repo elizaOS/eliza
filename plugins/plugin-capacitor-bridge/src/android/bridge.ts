@@ -1,40 +1,42 @@
 /**
- * android-mobile-bridge.ts — Android counterpart to ios-bridge.ts.
+ * Android counterpart to the iOS stdio bridge — the native-side of the
+ * port-free local-agent transport (#12352, #12180 phase 2).
  *
- * On Android, the elizaOS agent runs as a Bun child process managed by
- * `ElizaAgentService`. Unlike the iOS path (which uses a stdio JSON-RPC
- * bridge to a JSContext host), the Android Bun process boots the full
- * elizaOS backend as an HTTP server listening on 127.0.0.1:31337.
+ * On Android the elizaOS agent runs as a DETACHED Bun child process managed by
+ * `ElizaAgentService` (launch.sh setsid double-fork, so it outlives the service
+ * and survives app-swipe). This module boots that runtime with `localAgentMode`
+ * so it binds NO TCP listener (unless `ELIZA_API_EXPOSE_PORT` re-opens it for
+ * dev/LAN/e2e), then serves the WebView over an abstract-namespace AF_UNIX
+ * socket — the same in-process `dispatchRoute` kernel the HTTP server used, with
+ * no loopback hop. True stdin/stdout piping is impossible here: the detach
+ * severs the parent pipe, and the priv_app SELinux domain denies pipe ioctl. The
+ * abstract UDS is the sanctioned Android IPC (the bionic inference host uses the
+ * same). `ElizaAgentService.requestLocalAgent` / `requestLocalAgentStream`
+ * connect to this socket per call; the WebView `Agent.request` / `requestStream`
+ * Capacitor contract is unchanged.
  *
- * The agent bundle entry-point (`serve` / `start` command) already binds
- * the server when `ELIZA_DISABLE_DIRECT_RUN` is unset.  This module:
- *   1. Sets Android-specific environment variables before any module import.
- *   2. Installs the mobile fs sandbox shim.
- *   3. Boots the elizaOS runtime via the canonical `startEliza` path.
- *   4. Wires the `ELIZA_DEVICE_BRIDGE_ENABLED` inference delegation layer
- *      so the Capacitor WebView's llama-cpp plugin routes through the
- *      on-device agent over loopback.
+ * Frame protocol (shared kernel `createStdioBridge`), one connection per call:
+ *   in:  {"id","method":"http_request"|"http_request_stream","stream?":true,"payload":{path,method,headers,body}}
+ *   out (buffered):  {"id","ok":true,"result":{status,statusText,headers,body,bodyBase64,bodyEncoding}}
+ *   out (streaming): {"id","stream":"response",status,statusText,headers}
+ *                    {"id","stream":"chunk","dataBase64"}
+ *                    {"id","stream":"complete"[,"error"]}
+ * All logging goes to the file logger (stdout is /dev/null on the detached
+ * process); the socket carries only protocol frames.
  *
  * This module is imported by the agent bundle's `android-bridge` CLI command:
  *   `bun agent-bundle.js android-bridge`
  *
- * Environment variables set here mirror those set by `ElizaAgentService`:
- *   - ELIZA_PLATFORM=android
- *   - ELIZA_MOBILE_PLATFORM=android
- *   - ELIZA_ANDROID_LOCAL_BACKEND=1   (Android-specific backend flag)
- *   - ELIZA_HEADLESS=1                (no terminal UI)
- *   - ELIZA_API_BIND=127.0.0.1        (loopback only)
- *   - ELIZA_VAULT_BACKEND=file
- *   - ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1
- *   - ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1
- *   - LOG_LEVEL=error                 (quiet on-device)
- *
- * All values use the `||=` pattern so that values pre-set by the
- * `ElizaAgentService` environment take precedence over these defaults.
- * The service sets richer values (e.g. `ELIZA_API_TOKEN`, port, state dir)
+ * Environment defaults set here mirror `ElizaAgentService` and use `||=` so the
+ * service's values (state dir, tokens) win. The service sets richer values
  * before spawning the bundle; this module only fills gaps for direct runs.
  */
 
+import {
+	createServer as createNetServer,
+	type Server as NodeServer,
+	type Socket as NodeSocket,
+} from "node:net";
 import process from "node:process";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
@@ -45,7 +47,6 @@ process.env.ELIZA_MOBILE_PLATFORM ||= "android";
 process.env.ELIZA_ANDROID_LOCAL_BACKEND ||= "1";
 process.env.ELIZA_DISABLE_DIRECT_RUN ||= "1";
 process.env.ELIZA_HEADLESS ||= "1";
-process.env.ELIZA_API_BIND ||= "127.0.0.1";
 process.env.ELIZA_VAULT_BACKEND ||= "file";
 process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER ||= "1";
 process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP ||= "1";
@@ -61,11 +62,30 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
 import { installMobileFsShim } from "../shared/fs-shim.ts";
+import {
+	createStdioBridge,
+	type StdioBridgeResponseFrame,
+} from "../shared/stdio-bridge.ts";
+import {
+	type AndroidDispatchRoute,
+	type AndroidRequestPayload,
+	dispatchBufferedRequest,
+	dispatchStreamingRequest,
+} from "./dispatch.ts";
 
-type StartEliza = (options: { serverOnly: true }) => Promise<unknown>;
+type StartEliza = (options: {
+	serverOnly: true;
+	localAgentMode: true;
+}) => Promise<IAgentRuntime | undefined>;
 
-async function loadStartEliza(): Promise<StartEliza> {
+interface AndroidAgentModule {
+	startEliza: StartEliza;
+	dispatchRoute: AndroidDispatchRoute;
+}
+
+async function loadAgentModule(): Promise<AndroidAgentModule> {
 	// Literal specifier with @vite-ignore: Vite skips it (so the WebView build's
 	// import-analysis boundary gate doesn't try to pull @elizaos/agent into the
 	// renderer bundle), while Bun.build — which ignores @vite-ignore — sees the
@@ -75,8 +95,9 @@ async function loadStartEliza(): Promise<StartEliza> {
 	// `Cannot find module '@elizaos/agent'` (no node_modules on device).
 	const mod = (await import(/* @vite-ignore */ "@elizaos/agent")) as {
 		startEliza: StartEliza;
+		dispatchRoute: AndroidDispatchRoute;
 	};
-	return mod.startEliza;
+	return { startEliza: mod.startEliza, dispatchRoute: mod.dispatchRoute };
 }
 
 // ── Resolve canonical paths and install mobile fs sandbox ─────────────────
@@ -155,7 +176,105 @@ function _logToFile(line: string): void {
 	}
 }
 
-// ── Step 3: boot the runtime ──────────────────────────────────────────────
+// ── Step 3: abstract-namespace AF_UNIX request server ──────────────────────
+//
+// The bun agent runs DETACHED (launch.sh setsid double-fork, stdin from
+// /dev/null, stdout to a log file) so it survives the service that spawned it —
+// which severs any stdin/stdout pipe to the parent. And on the priv_app SELinux
+// domain a Java ProcessBuilder PIPE (fifo_file) is denied ioctl and kills bun on
+// stdio init. So the "stdio" transport is realized as an abstract-namespace
+// AF_UNIX socket — the same IPC the bionic inference host already uses under
+// priv_app ("no filesystem path, avoids SELinux file-label issues"). The bun
+// agent BINDS the socket; ElizaAgentService connects as a client per request.
+//
+// The socket name (no leading NUL — the connectors add it) is
+// ELIZA_LOCAL_AGENT_SOCKET, defaulting to a stable per-app name. Each accepted
+// connection gets its own NDJSON kernel over the socket byte stream; the WebView
+// contract (buffered result / agentStream* frames) is served by the same shared
+// createStdioBridge used on iOS.
+
+const DEFAULT_LOCAL_AGENT_SOCKET = "eliza_local_agent_v1";
+
+function localAgentSocketName(): string {
+	const name = process.env.ELIZA_LOCAL_AGENT_SOCKET?.trim();
+	return name && name.length > 0 ? name : DEFAULT_LOCAL_AGENT_SOCKET;
+}
+
+/** Serve one accepted connection: NDJSON frames in, response frames out. */
+function serveConnection(
+	socket: NodeSocket,
+	runtime: IAgentRuntime,
+	dispatchRoute: AndroidDispatchRoute,
+): void {
+	const bridge = createStdioBridge({
+		request: async (frame) =>
+			dispatchBufferedRequest(
+				runtime,
+				dispatchRoute,
+				(frame.payload ?? {}) as AndroidRequestPayload,
+			),
+		requestStream: async (frame, sink) =>
+			dispatchStreamingRequest(
+				runtime,
+				dispatchRoute,
+				(frame.payload ?? {}) as AndroidRequestPayload,
+				sink,
+			),
+		writeFrame: (frame: StdioBridgeResponseFrame) => {
+			if (!socket.destroyed) socket.write(`${JSON.stringify(frame)}\n`);
+		},
+	});
+
+	let buffered = "";
+	socket.setEncoding("utf8");
+	socket.on("data", (chunk: string) => {
+		buffered += chunk;
+		for (;;) {
+			const newline = buffered.indexOf("\n");
+			if (newline < 0) break;
+			const line = buffered.slice(0, newline).replace(/\r$/, "");
+			buffered = buffered.slice(newline + 1);
+			void bridge.handleLine(line);
+		}
+	});
+	socket.once("end", () => {
+		if (buffered.trim()) {
+			const line = buffered;
+			buffered = "";
+			void bridge.handleLine(line);
+		}
+		void bridge.drain().finally(() => {
+			if (!socket.destroyed) socket.end();
+		});
+	});
+	socket.once("error", (err: Error) => {
+		_logToFile(`[android-bridge] connection error: ${err.message}`);
+	});
+}
+
+/** Bind the abstract-namespace request server. Rejects if the name is taken. */
+function startLocalAgentServer(
+	runtime: IAgentRuntime,
+	dispatchRoute: AndroidDispatchRoute,
+): Promise<NodeServer> {
+	const name = localAgentSocketName();
+	// Abstract namespace: a leading NUL byte in the path (Linux). Mirrors
+	// BionicHostLoader's `net.connect({ path: "\0" + name })`.
+	const abstractPath = `\0${name}`;
+	const server = createNetServer((socket) => {
+		serveConnection(socket, runtime, dispatchRoute);
+	});
+	return new Promise<NodeServer>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen({ path: abstractPath }, () => {
+			server.removeListener("error", reject);
+			_logToFile(`[android-bridge] listening on abstract UDS "${name}"`);
+			resolve(server);
+		});
+	});
+}
+
+// ── Step 4: boot the runtime + serve over the abstract UDS ─────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
 	setupAndroidBridgeEnvironment();
@@ -203,18 +322,22 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		);
 	});
 
-	_logToFile("[android-bridge] importing startEliza...");
-	const startEliza = await loadStartEliza();
-	_logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
+	_logToFile("[android-bridge] importing agent module...");
+	const { startEliza, dispatchRoute } = await loadAgentModule();
+	_logToFile(
+		"[android-bridge] calling startEliza({ serverOnly: true, localAgentMode: true })...",
+	);
 
 	// Heartbeat: log every 10s during startEliza so we can see where it stalls.
 	const _hb = setInterval(() => {
 		_logToFile("[android-bridge] startEliza still running...");
 	}, 10_000);
 
-	let runtime: unknown;
+	let runtime: IAgentRuntime | undefined;
 	try {
-		runtime = await startEliza({ serverOnly: true });
+		// localAgentMode: no TCP listener binds (the WebView reaches us over the
+		// stdio pipe below). ELIZA_API_EXPOSE_PORT re-opens the port for dev/e2e.
+		runtime = await startEliza({ serverOnly: true, localAgentMode: true });
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.stack || err.message : String(err);
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
@@ -222,14 +345,17 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	} finally {
 		clearInterval(_hb);
 	}
-	_logToFile(
-		`[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
-	);
 
 	_logToFile(
 		`[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +
 			`ELIZA_ANDROID_LOCAL_BACKEND=${process.env.ELIZA_ANDROID_LOCAL_BACKEND ?? "(unset)"}`,
 	);
+
+	if (!runtime) {
+		throw new Error(
+			"[android-bridge] startEliza returned no runtime; cannot serve stdio requests",
+		);
+	}
 
 	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
 	// Registers TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING handlers (registerModel) on
@@ -269,12 +395,32 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		}
 	}
 
-	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM
-	// when the user stops the service or the app is swiped away.
-	await new Promise<void>((resolve) => {
-		process.once("SIGINT", resolve);
-		process.once("SIGTERM", resolve);
+	// ── Serve WebView requests over the abstract UDS ──────────────────────────
+	// The runtime is up with the in-process route kernel wired but no TCP
+	// listener; ElizaAgentService connects per request/stream and drives
+	// dispatchRoute over the socket until the user stops the service (SIGTERM /
+	// app swiped away).
+	let stop: (() => void) | null = null;
+	const stopped = new Promise<void>((resolve) => {
+		stop = resolve;
 	});
+	process.once("SIGINT", () => stop?.());
+	process.once("SIGTERM", () => stop?.());
 
+	let server: NodeServer;
+	try {
+		server = await startLocalAgentServer(runtime, dispatchRoute);
+	} catch (err) {
+		_logToFile(
+			`[android-bridge] failed to bind local-agent socket: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+		);
+		throw err;
+	}
+	_logToFile("[android-bridge] local-agent request server ready");
+
+	await stopped;
+	server.close();
 	_logToFile("[android-bridge] shutdown signal received, exiting.");
 }

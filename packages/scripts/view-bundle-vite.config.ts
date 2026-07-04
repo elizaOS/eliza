@@ -8,6 +8,13 @@ type ViewBundleOptions = {
   outDir?: string;
   componentExport?: string;
   additionalExternals?: string[];
+  /**
+   * Module specifiers this bundle resolves to a local replacement (e.g. a stub)
+   * and bundles inline instead of leaving external. Lets a plugin own a
+   * dependency the shared host does not — e.g. the finances view bundling its
+   * own `react-plaid-link` stub rather than the shell providing it.
+   */
+  aliases?: Record<string, string>;
 };
 
 function isKnownToleratedViewBundleWarning(message: unknown): boolean {
@@ -38,13 +45,13 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
     "@elizaos/ui",
     "lucide-react",
     "react",
-    "react-plaid-link",
     "react/jsx-dev-runtime",
     "react/jsx-runtime",
     ...(options.additionalExternals ?? []),
   ]);
 
   return defineConfig({
+    resolve: options.aliases ? { alias: options.aliases } : undefined,
     build: {
       emptyOutDir: false,
       outDir,

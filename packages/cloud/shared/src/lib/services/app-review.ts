@@ -394,6 +394,15 @@ export async function runAppReview(params: RunAppReviewParams): Promise<AppRevie
         review_content_hash: candidate.contentHash,
         reviewed_at: now,
         updated_at: now,
+        // A rejection revokes monetization entirely — "a rejected re-review
+        // DOES cut everything off" (invariant at api/v1/apps/[id]/route.ts).
+        // Without this, an app that enabled monetization while approved kept
+        // `monetization_enabled = true` after a ban, and the inference-markup
+        // earnings path (app-credits.ts, gated on that flag — only NEW paid
+        // charges check isAppMonetizationApproved) kept paying the creator.
+        // Pricing fields are preserved; re-enabling goes back through
+        // PUT /apps/:id/monetization, which requires a fresh approval.
+        ...(reviewStatus === "rejected" ? { monetization_enabled: false } : {}),
       })
       .where(eq(apps.id, app.id));
 

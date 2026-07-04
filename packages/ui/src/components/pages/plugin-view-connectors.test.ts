@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `shouldRenderConnectorPluginConfig` — the pure predicate that
+ * decides whether a connector's local config params render alongside a companion
+ * setup panel in `PluginsView`.
+ */
 import { describe, expect, it } from "vitest";
 import { shouldRenderConnectorPluginConfig } from "./plugin-view-connectors";
 

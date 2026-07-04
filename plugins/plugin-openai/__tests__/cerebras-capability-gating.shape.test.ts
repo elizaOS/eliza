@@ -1,3 +1,8 @@
+/**
+ * Shape test asserting that in Cerebras mode the media model types (image /
+ * transcription / TTS) stay unregistered absent an explicit per-capability
+ * endpoint override. Deterministic, mocked runtime.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

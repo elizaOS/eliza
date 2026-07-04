@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension and status types for the iMessage connector (native /
+ * imsg / bluebubbles bridges), including chat-db availability and send-only mode.
+ */
 import { ElizaClient } from "./client-base";
 
 export interface IMessageApiStatus {

@@ -64,6 +64,8 @@ export interface ScenarioReport {
   title: string;
   domain: string;
   tags: readonly string[];
+  /** Optional persona-scenario complexity tier (`T1`..`T4`) from the scenario definition. */
+  tier?: string;
   status: "passed" | "failed" | "skipped";
   skipReason?: string;
   durationMs: number;

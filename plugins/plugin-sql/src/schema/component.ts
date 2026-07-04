@@ -1,3 +1,10 @@
+/**
+ * Attaches structured, typed data (`type` + freeform `data` JSON) to an
+ * entity within a room/world context — e.g. profile fields, connector-
+ * specific metadata, or other per-entity extensions that don't belong on the
+ * core entity row. Cascade-deletes with its owning entity, agent, or room;
+ * `worldId` and `sourceEntityId` are optional and also cascade when set.
+ */
 import { sql } from "drizzle-orm";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
@@ -5,13 +12,9 @@ import { entityTable } from "./entity";
 import { roomTable } from "./room";
 import { worldTable } from "./world";
 
-/**
- * Represents a component table in the database.
- */
 export const componentTable = pgTable("components", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`).notNull(),
 
-  // Foreign keys
   entityId: uuid("entity_id")
     .references(() => entityTable.id, { onDelete: "cascade" })
     .notNull(),
@@ -28,10 +31,8 @@ export const componentTable = pgTable("components", {
     onDelete: "cascade",
   }),
 
-  // Data
   type: text("type").notNull(),
   data: jsonb("data").default(sql`'{}'::jsonb`),
 
-  // Timestamps
   createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });

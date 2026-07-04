@@ -1,8 +1,7 @@
 /**
- * Discord slash command registration — extracted from service.ts
- *
- * Contains transformCommandToDiscordApi(), isGuildOnlyCommand(),
- * handleGuildCreate(), and the core registerSlashCommands() logic.
+ * Slash-command registration for DiscordService. Converts the plugin's
+ * SlashCommand specs into Discord REST command payloads and registers them
+ * per-guild for guild-only commands or globally on GuildCreate.
  */
 import {
 	createUniqueUuid,

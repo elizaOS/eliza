@@ -19,6 +19,7 @@ import {
 import { useIntervalWhenDocumentVisible } from "../../../hooks";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
 import { useAppSelector } from "../../../state";
+import { Button } from "../../ui/button";
 import { WidgetSection } from "./shared";
 import type { ChatSidebarWidgetProps } from "./types";
 
@@ -119,13 +120,13 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
           const label = tabLabel(tab);
           const status = tabStatus(tab);
           return (
-            <button
+            <Button
               key={tab.id}
-              type="button"
               onClick={() => handleTabClick(tab)}
               title={tab.url ?? label}
               data-testid={`chat-widget-browser-tab-${tab.id}`}
-              className="flex items-center gap-2 rounded-sm px-0.5 py-0.5 text-left transition-colors hover:bg-bg-hover/40"
+              variant="ghost"
+              className="flex h-auto w-full items-center justify-start gap-2 whitespace-normal rounded-sm px-0.5 py-0.5 text-left font-normal transition-colors hover:bg-bg-hover/40"
             >
               <span
                 className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.dotClass}`}
@@ -139,7 +140,7 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               <span className="shrink-0 text-3xs uppercase tracking-wider text-muted/70">
                 {status.label}
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>

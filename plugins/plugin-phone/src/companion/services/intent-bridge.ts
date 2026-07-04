@@ -6,12 +6,12 @@ import {
 import { logger } from "./logger";
 
 /**
- * Intent bridge — single entry point used by UI layers to forward an
- * agent-issued device-bus intent (see plan §6.24) to the native plugin.
+ * Single entry point UI layers use to forward an agent-issued device-bus intent
+ * to the native plugin via `ElizaIntent.receiveIntent`.
  *
- * This is a thin wrapper, not an abstraction layer. It exists so that
- * when push payloads land (T9c) there is one place to attach decoding +
- * authentication rather than scattering `ElizaIntent.receiveIntent` calls.
+ * A thin wrapper, not an abstraction layer: it gives push-payload decoding and
+ * authentication one place to live rather than scattering `receiveIntent` calls
+ * across the surface.
  */
 export async function forwardIntent(
   payload: ReceiveIntentPayload,

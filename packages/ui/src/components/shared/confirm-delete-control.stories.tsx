@@ -1,3 +1,5 @@
+/** Storybook stories for ConfirmDeleteControl: default, custom labels, ghost/outline variants, disabled, and busy state, under a stub AppContext supplying `t`. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { AppContextValue } from "../../state/types";

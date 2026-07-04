@@ -289,6 +289,8 @@ export class DocumentService extends Service {
 		}
 
 		const role = await checkSenderRole(this.runtime, message).catch(() => null);
+		// Record OWNER/ADMIN provenance verbatim (the comparison narrows the return
+		// type to the DocumentAddedByRole subset); everyone else is a plain USER.
 		if (role?.role === "OWNER" || role?.role === "ADMIN") {
 			return role.role;
 		}

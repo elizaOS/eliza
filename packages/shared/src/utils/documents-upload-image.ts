@@ -1,3 +1,8 @@
+/**
+ * Client-side image preparation for document uploads: types and helpers to
+ * compress/resize an image `File` through an injected platform canvas provider
+ * before upload. The platform abstraction keeps this usable in browser and native.
+ */
 export type DocumentImageUploadFile = File & {
   webkitRelativePath?: string;
 };

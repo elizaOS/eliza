@@ -17,7 +17,11 @@
  *   --url         renderer URL (default http://localhost:$ELIZA_UI_PORT|2138)
  *   --runs        cold + (N-1) warm reloads (default 1)
  *   --wait-ready  also wait for `coordinator:ready` (needs a reachable backend);
- *                 default waits for `startup-shell:first-paint` (renderer-only)
+ *                 default waits for `startup-shell:first-paint` OR
+ *                 `startup-shell:mounted` (renderer-only) — first-paint is
+ *                 delay-gated (STARTUP_SPLASH_DELAY_MS) and never fires on a
+ *                 boot faster than the gate, so the unconditional mount mark
+ *                 keeps the harness reachable
  *   --out         write JSON artifact (default: print only)
  *   --timeout     per-run wait budget in ms (default 60000)
  *   --headed      run a visible browser (debugging)
@@ -54,6 +58,7 @@ function parseArgs(argv) {
 
 const READY_MARK = "coordinator:ready";
 const FIRST_PAINT_MARK = "startup-shell:first-paint";
+const MOUNTED_MARK = "startup-shell:mounted";
 
 /** Read window.__ELIZA_STARTUP_TRACE__ inside the page. */
 function readTrace() {
@@ -85,16 +90,16 @@ function deltas(marks) {
   return rows;
 }
 
-async function captureRun(page, { url, waitGoal, timeout }, runIndex) {
+async function captureRun(page, { url, waitGoals, timeout }, runIndex) {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout });
 
   await page
     .waitForFunction(
-      (goal) => {
+      (goals) => {
         const trace = window.__ELIZA_STARTUP_TRACE__;
-        return Boolean(trace?.marks?.some((m) => m.name === goal));
+        return Boolean(trace?.marks?.some((m) => goals.includes(m.name)));
       },
-      waitGoal,
+      waitGoals,
       { timeout },
     )
     .catch(() => {
@@ -137,9 +142,15 @@ function printRun(run) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  const waitGoal = args.waitReady ? READY_MARK : FIRST_PAINT_MARK;
+  // Renderer-only default: first-paint is gated behind STARTUP_SPLASH_DELAY_MS
+  // and never fires on boots faster than the gate, so the unconditional
+  // startup-shell:mounted mark also satisfies the wait. --wait-ready still
+  // requires coordinator:ready alone.
+  const waitGoals = args.waitReady
+    ? [READY_MARK]
+    : [FIRST_PAINT_MARK, MOUNTED_MARK];
   console.log(
-    `Capturing startup trace: url=${args.url} runs=${args.runs} waitFor=${waitGoal}`,
+    `Capturing startup trace: url=${args.url} runs=${args.runs} waitFor=${waitGoals.join("|")}`,
   );
 
   const browser = await chromium.launch({ headless: !args.headed });
@@ -152,7 +163,7 @@ async function main() {
       // warm (module/asset caches primed).
       const run = await captureRun(
         page,
-        { url: args.url, waitGoal, timeout: args.timeout },
+        { url: args.url, waitGoals, timeout: args.timeout },
         i,
       );
       run.kind = i === 0 ? "cold" : "warm";
@@ -167,7 +178,7 @@ async function main() {
   if (args.out) {
     const artifact = {
       url: args.url,
-      waitGoal,
+      waitGoal: waitGoals.join("|"),
       capturedAtIso: new Date().toISOString(),
       runs: results,
     };

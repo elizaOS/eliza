@@ -1,7 +1,6 @@
 /**
  * useAutomationDeepLink — hash-based deep-link state for the automations
- * feed. Replaces the old `getPathForAutomationSubpage` /
- * `syncAutomationSubpagePath` history-API helpers from AutomationsView.
+ * feed, owning the location-hash sync that AutomationsView reads.
  *
  * Hash format:
  *   #automations                → list view

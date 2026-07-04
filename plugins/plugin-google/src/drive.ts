@@ -1,3 +1,10 @@
+/**
+ * `GoogleDriveClient` — Drive file discovery plus Docs and Sheets read/write
+ * behind the workspace service. Searches and lists files, reads Google Docs as
+ * plain text and Sheets as row arrays, and creates files / appends to Docs /
+ * writes Sheet cells. Spans the Drive, Docs, and Sheets googleapis surfaces,
+ * each acquired scoped from `GoogleApiClientFactory`.
+ */
 import type { docs_v1, drive_v3, sheets_v4 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {

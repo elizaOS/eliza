@@ -1,3 +1,9 @@
+/**
+ * Routing tests for `ProxyServer` with `node:https` mocked: the auth-token gate,
+ * `/health`, header rewriting, SSE vs JSON reverse-mapping, and non-200
+ * error passthrough. Captures the outbound upstream request; no live upstream.
+ */
+
 import { EventEmitter } from "node:events";
 import type { ClientRequest, RequestOptions } from "node:https";
 import { afterEach, describe, expect, it, vi } from "vitest";

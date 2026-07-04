@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `handlePolymarketRoute` against hand-built Node request/
+ * response doubles — no real HTTP server. Focuses on the trading boundary:
+ * status stays readiness-only even with credentials present, and the
+ * orders route always returns 501.
+ */
 import { describe, expect, it } from "vitest";
 
 import { handlePolymarketRoute } from "./routes";

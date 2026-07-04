@@ -1,3 +1,7 @@
+/**
+ * A fixed GenUI spec used as the starter-pack setup demo — a stable example the
+ * renderer and stories exercise.
+ */
 import type { ElizaGenUiSpec } from "./types";
 
 export const ELIZA_STARTER_PACK_SETUP_SPEC: ElizaGenUiSpec = {

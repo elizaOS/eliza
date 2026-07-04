@@ -47,18 +47,20 @@ export function PtyConsoleDrawer({
         </header>
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {sessions.length === 0 ? (
-            <button
+            <Button
+              unstyled
               type="button"
               onClick={onNewSession}
               className="w-full rounded-md border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted hover:border-accent hover:text-txt"
             >
               Start terminal
-            </button>
+            </Button>
           ) : (
             sessions.map((session) => {
               const selected = session.sessionId === resolvedSessionId;
               return (
-                <button
+                <Button
+                  unstyled
                   key={session.sessionId}
                   type="button"
                   onClick={() => onSessionClick(session.sessionId)}
@@ -74,7 +76,7 @@ export function PtyConsoleDrawer({
                   <div className="truncate text-[11px] opacity-75">
                     {session.workdir ?? session.sessionId}
                   </div>
-                </button>
+                </Button>
               );
             })
           )}

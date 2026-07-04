@@ -1,3 +1,6 @@
+/**
+ * BOOK_INFLUENCER action tests, including the two-phase money confirm before a paid booking. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type {
   CreateBookingInput,

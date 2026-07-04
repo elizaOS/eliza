@@ -1,3 +1,10 @@
+/**
+ * localStorage-backed cache of the last-fetched apps catalog, used to paint the
+ * apps grid instantly on boot before the network fetch resolves. Reads validate
+ * each entry against a minimal `RegistryAppInfo` shape guard and drop the whole
+ * cache on any malformed or unparseable payload.
+ */
+
 import type { RegistryAppInfo } from "@elizaos/shared";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";

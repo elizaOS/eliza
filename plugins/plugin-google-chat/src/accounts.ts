@@ -1,3 +1,10 @@
+/**
+ * Resolves per-account Google Chat connector settings from top-level
+ * env/character values (the implicit `default` account), a
+ * `GOOGLE_CHAT_ACCOUNTS` JSON map, and `character.settings.googleChat` (or the
+ * `google-chat` alias), merging per field. Supplies the service the space list
+ * and service-account credentials for each configured account.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
 

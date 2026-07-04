@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the WeChat `ConnectorAccountProvider` against a mocked runtime:
+ * account discovery from config/env and the unconfigured (no-accounts) case.
+ */
 import type { ConnectorAccountManager, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createWechatConnectorAccountProvider } from "./connector-account-provider";

@@ -1,3 +1,4 @@
+/** Vitest config for the z.ai plugin unit suite (node environment, 60s timeouts). */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

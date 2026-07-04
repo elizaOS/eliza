@@ -1,5 +1,8 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders ChatComposer in jsdom (real component, mocked voice state) to cover
+ * its input/send/mic wiring and ref forwarding without a live voice pipeline.
+ */
 import { cleanup, render, screen } from "@testing-library/react";
 import { type ComponentProps, createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +18,6 @@ const voice: ChatComposerVoiceState = {
   startListening: vi.fn(),
   stopListening: vi.fn(),
   supported: false,
-  toggleListening: vi.fn(),
 };
 
 function renderInlineComposer(
@@ -39,7 +41,6 @@ function renderInlineComposer(
     onToggleAgentVoice: vi.fn(),
     placeholder: "Message",
     t: (key) => key,
-    textareaAriaLabel: "Message",
     textareaRef: createRef<HTMLTextAreaElement>(),
     variant: "default",
     voice,

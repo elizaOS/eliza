@@ -1,3 +1,9 @@
+/**
+ * Full-screen gate shown when the backend requires a device-pairing code before
+ * the shell will connect. Reads pairing state (enabled, expiry, input, error,
+ * busy) from the app store and submits the entered code via
+ * `handlePairingSubmit`. Blocks the rest of the shell until pairing succeeds.
+ */
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { startFreshFirstRunReload } from "../../platform";

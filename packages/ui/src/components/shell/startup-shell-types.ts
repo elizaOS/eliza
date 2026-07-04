@@ -1,3 +1,5 @@
+/** Shared view/prop types for the startup shell (StartupScreen ↔ StartupShell). */
+
 import type { StartupErrorState } from "../../state/types";
 
 export type StartupShellView =

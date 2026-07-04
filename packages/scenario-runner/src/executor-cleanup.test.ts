@@ -1,3 +1,8 @@
+/**
+ * Verifies `runScenario` tears down side effects it starts — here, that any
+ * website-blocker self-control block opened during a scenario is reconciled and
+ * cleared afterward, using the real plugin-blocker service.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

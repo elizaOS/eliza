@@ -15,6 +15,7 @@ import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -44,8 +45,8 @@ const VAD_RMS_STEP = 0.001;
 
 /**
  * A range slider that registers on the agent surface (role "slider") so chat
- * can read and set it. Renders the same native `<input type=range>` the rest
- * of the section uses.
+ * can read and set it. Uses the shared Input primitive while preserving the
+ * native range control contract.
  */
 function VadSlider({
   agentId,
@@ -89,7 +90,7 @@ function VadSlider({
           {valueText}
         </span>
       </div>
-      <input
+      <Input
         ref={ref}
         type="range"
         min={min}
@@ -97,7 +98,7 @@ function VadSlider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-accent"
+        className="h-auto border-0 bg-transparent p-0 accent-accent"
         data-testid={testId}
         aria-label={label}
         {...agentProps}
@@ -223,16 +224,18 @@ export function VoiceSection({
             label={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
             control={
               <label
+                htmlFor="voice-section-wake-toggle"
                 className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm"
                 data-testid="voice-section-wake-row"
               >
-                <input
+                <Input
+                  id="voice-section-wake-toggle"
                   ref={wakeWordRef}
                   type="checkbox"
                   checked={wakeWordEnabled}
                   onChange={(e) => onWakeWordToggle?.(e.target.checked)}
                   data-testid="voice-section-wake-toggle"
-                  className="h-5 w-5 rounded-sm border-border accent-accent"
+                  className="h-5 w-5 rounded-sm border-border p-0 accent-accent"
                   aria-current={wakeWordEnabled ? "true" : undefined}
                   aria-label={t("voicesection.toggleWakeWord", {
                     defaultValue: "Toggle wake word",

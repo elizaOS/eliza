@@ -300,15 +300,14 @@ describe("sub-planner helpers", () => {
 		).rejects.toThrow(/no sub-actions available/i);
 	});
 
-	it("exposes a child action when ACTION_ROLE_POLICY matches a child simile", async () => {
+	it("does not expose a child action when ACTION_ROLE_POLICY matches only a child simile", async () => {
 		process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "NONE" });
 		_resetActionRolePolicyCacheForTests();
 		const child = makeAction({
 			name: "SHELL",
 			similes: ["BASH", "EXEC", "RUN_COMMAND"],
 			contexts: ["terminal"],
-			contextGate: { anyOf: ["terminal"] },
-			roleGate: { minRole: "OWNER" },
+			contextGate: { anyOf: ["terminal"], roleGate: { minRole: "OWNER" } },
 		});
 		const parent = makeAction({
 			name: "PARENT",
@@ -326,29 +325,27 @@ describe("sub-planner helpers", () => {
 			data: { actionName: "SHELL" },
 		}));
 
-		await runSubPlanner({
-			runtime: makeRuntime([parent, child], useModel),
-			action: parent,
-			context: { id: "ctx", events: [] },
-			ctx: {
-				message: makeMessage(),
-				activeContexts: ["general"],
-				userRoles: ["GUEST"],
-			},
-			execute,
-			evaluate: async () => ({
-				success: true,
-				decision: "FINISH",
-				thought: "Done.",
-				messageToUser: "Done.",
+		await expect(
+			runSubPlanner({
+				runtime: makeRuntime([parent, child], useModel),
+				action: parent,
+				context: { id: "ctx", events: [] },
+				ctx: {
+					message: makeMessage(),
+					activeContexts: ["general"],
+					userRoles: ["GUEST"],
+				},
+				execute,
+				evaluate: async () => ({
+					success: true,
+					decision: "FINISH",
+					thought: "Done.",
+					messageToUser: "Done.",
+				}),
 			}),
-		});
+		).rejects.toThrow(/no sub-actions available/i);
 
-		expect(execute).toHaveBeenCalledWith(
-			expect.any(Object),
-			expect.any(Object),
-			expect.objectContaining({ name: "SHELL" }),
-			expect.objectContaining({ actions: [child] }),
-		);
+		expect(useModel).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
 	});
 });

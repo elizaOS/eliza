@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * The JS-heap-pressure monitor (`heap-pressure-monitor`): its poll loop reads
+ * `performance.memory` and emits `HEAP_PRESSURE_EVENT` past the threshold.
+ * jsdom with fake timers and a stubbed `performance.memory` — deterministic, no
+ * real heap.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HEAP_PRESSURE_EVENT } from "./bounded-view-lru";
 import {

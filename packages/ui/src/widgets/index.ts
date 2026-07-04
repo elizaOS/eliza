@@ -1,3 +1,7 @@
+/**
+ * Barrel for the widgets surface: home priority scoring, the registry, and host
+ * types.
+ */
 export {
   baseHomeScore,
   HOME_SIGNAL_WEIGHTS,
@@ -15,10 +19,12 @@ export {
   BUILTIN_WIDGET_DECLARATIONS,
   DEFAULT_WIDGET_SINK_COMPONENT,
   getWidgetComponent,
+  getWidgetRegistryVersion,
   registerBuiltinWidgetDeclarations,
   registerBuiltinWidgets,
   registerWidgetComponent,
   resolveWidgetsForSlot,
+  subscribeWidgetRegistry,
 } from "./registry";
 export type {
   PluginWidgetDeclaration,

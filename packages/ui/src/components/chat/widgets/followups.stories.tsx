@@ -1,3 +1,4 @@
+/** Storybook + story-gate visual states for the FollowupsWidget chips. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { FollowupOption } from "./followups";
 import { FollowupsWidget } from "./followups";

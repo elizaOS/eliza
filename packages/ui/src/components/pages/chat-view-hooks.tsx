@@ -1,3 +1,12 @@
+/**
+ * Hooks extracted from ChatView so they can be tested in isolation: the voice
+ * controller (`useChatVoiceController`) that resolves cloud-vs-own-key TTS/STT
+ * and speaks assistant turns, and the game-modal message bridge
+ * (`useGameModalMessages`) that carries conversation state into overlay app
+ * surfaces. Locale mapping and companion-speech memory reset helpers round out
+ * the file. See per-export JSDoc for the cloud-voice availability ordering.
+ */
+
 import {
   useCallback,
   useEffect,

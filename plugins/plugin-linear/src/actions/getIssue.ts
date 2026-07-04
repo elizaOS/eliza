@@ -1,3 +1,9 @@
+/**
+ * Handles the get_issue Linear op. Fetches a single issue by identifier when one
+ * is given, otherwise uses the getIssue prompt to extract a direct id or
+ * search-by fields, resolves those to issues via LinearService, and formats a
+ * single hit — or a shortlist for the user to disambiguate — into the reply.
+ */
 import {
   type Action,
   type ActionResult,

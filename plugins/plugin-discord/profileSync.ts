@@ -1,3 +1,8 @@
+/**
+ * Syncs the bot's Discord username and avatar on startup from the character
+ * profile, gated by `DISCORD_SYNC_PROFILE`. Hashes the avatar bytes to skip
+ * uploads when nothing changed.
+ */
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

@@ -1,3 +1,11 @@
+/**
+ * Applies a scenario's `seed` steps to a live runtime before turns execute,
+ * standing up the domain state a scenario assumes: todos, contacts, memories,
+ * LifeOps task definitions/occurrences, and Gmail inbox fixtures. `applyScenarioSeedStep`
+ * dispatches on the seed step's type and writes directly through the runtime's
+ * stores so scenarios start from a known, deterministic world. Consumed by the
+ * executor between setup and the first turn.
+ */
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type {

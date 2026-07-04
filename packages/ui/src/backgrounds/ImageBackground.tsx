@@ -1,3 +1,7 @@
+/**
+ * Cover-image background layer for the unified app background, given a data or
+ * /api/media URL.
+ */
 import type * as React from "react";
 
 export interface ImageBackgroundProps {

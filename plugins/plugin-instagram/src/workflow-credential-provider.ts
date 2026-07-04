@@ -1,3 +1,9 @@
+/**
+ * Supplies Instagram (Meta Graph API) credentials to the workflow plugin. A
+ * duck-typed `workflow_credential_provider` service: the workflow runtime looks
+ * up by `serviceType` and calls `resolve(userId, credType)`, so this package
+ * takes no compile-time dependency on `@elizaos/plugin-workflow`.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

@@ -1,16 +1,11 @@
+/** Kamino Protocol sub-plugin: lending/liquidity providers and services, composed into `lpinfoPlugin`. */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { kaminoLiquidityProvider } from "./providers/kaminoLiquidityProvider";
 import { kaminoPoolProvider } from "./providers/kaminoPoolProvider";
-// Providers
 import { kaminoProvider } from "./providers/kaminoProvider";
 import { KaminoLiquidityService } from "./services/kaminoLiquidityService";
-// Services
 import { KaminoService } from "./services/kaminoService";
 
-/**
- * Kamino Protocol Plugin
- * Provides comprehensive access to Kamino lending and liquidity protocols
- */
 export const kaminoPlugin: Plugin = {
   name: "kamino-protocol",
   description:

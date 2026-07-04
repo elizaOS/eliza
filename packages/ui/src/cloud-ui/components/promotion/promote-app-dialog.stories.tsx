@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the PromoteAppDialog.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../../storybook/mock-providers.helpers";
 import { PromoteAppDialog } from "./promote-app-dialog";

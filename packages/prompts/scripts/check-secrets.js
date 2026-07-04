@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Pre-publish scanner that greps the prompt template sources (plus a few core
+ * message/prompt files) for embedded secrets and PII, so a credential can never
+ * ship baked into a shared prompt string. `scanContent`/`walkFiles` are exported
+ * for the test; run as a script it exits non-zero on any finding.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

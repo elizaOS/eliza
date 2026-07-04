@@ -117,6 +117,9 @@ function makeApp(overrides: Partial<App>): App {
     response_notifications: true,
     is_active: true,
     is_approved: true,
+    review_status: "draft",
+    review_content_hash: null,
+    reviewed_at: null,
     created_at: new Date(),
     updated_at: new Date(),
     last_used_at: null,
@@ -580,7 +583,7 @@ describe("POST /api/v1/apps (create)", () => {
     });
   });
 
-  test("200 with monetization fields persisted", async () => {
+  test("200 create-time monetization enablement is downgraded: app created, monetization off, review warning", async () => {
     const { status, json } = await req("POST", "/api/v1/apps", {
       key: KEY_A,
       body: {
@@ -592,14 +595,46 @@ describe("POST /api/v1/apps (create)", () => {
     });
     expect(status).toBe(200);
     expect(json.success).toBe(true);
+    expect(createApp).toHaveBeenCalledTimes(1);
+    // Fail-closed: the requested enable is never honored at create time; the
+    // pricing default persists so approval needs no re-entry.
     expect(updateMonetizationSettings).toHaveBeenCalledTimes(1);
     expect(updateMonetizationSettings.mock.calls[0][1]).toMatchObject({
-      monetizationEnabled: true,
+      monetizationEnabled: false,
+      inferenceMarkupPercentage: 25,
+    });
+    const returned = json.app as App;
+    expect(returned.monetization_enabled).toBe(false);
+    expect(returned.inference_markup_percentage).toBe(25);
+    expect(returned.review_status).toBe("draft");
+    // The review requirement is surfaced instead of a dead 403 (#11863).
+    const warnings = json.warnings as string[];
+    expect(warnings.some((w) => w.includes("review"))).toBe(true);
+    expect(warnings.some((w) => w.includes("monetization disabled"))).toBe(
+      true,
+    );
+  });
+
+  test("200 with create-time pricing defaults persisted while disabled", async () => {
+    const { status, json } = await req("POST", "/api/v1/apps", {
+      key: KEY_A,
+      body: {
+        ...VALID_CREATE,
+        name: "Priced Draft App",
+        monetization_enabled: false,
+        inference_markup_percentage: 25,
+      },
+    });
+    expect(status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(updateMonetizationSettings).toHaveBeenCalledTimes(1);
+    expect(updateMonetizationSettings.mock.calls[0][1]).toMatchObject({
+      monetizationEnabled: false,
       inferenceMarkupPercentage: 25,
     });
     // Returned app reflects the monetization write (route re-reads via getById).
     const returned = json.app as App;
-    expect(returned.monetization_enabled).toBe(true);
+    expect(returned.monetization_enabled).toBe(false);
     expect(returned.inference_markup_percentage).toBe(25);
   });
 });

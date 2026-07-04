@@ -17,6 +17,11 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
+import {
+  getIpKey,
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -139,6 +144,18 @@ function errorBody(
 }
 
 const app = new Hono<AppEnv>();
+
+// Pre-auth session-mint endpoint: previously guarded only by the Origin
+// allowlist + JWT verify, with no per-IP throttle. Add a strict, per-IP,
+// fail-closed rate limit so a credential-stuffing / token-spray flood on a
+// money/auth surface is bounded even if Redis blips at request time (M11).
+app.use(
+  rateLimit({
+    ...RateLimitPresets.STRICT,
+    keyGenerator: getIpKey,
+    failClosed: true,
+  }),
+);
 
 app.post("/", async (c) => {
   try {

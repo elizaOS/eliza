@@ -1,3 +1,11 @@
+/**
+ * Real-PGlite tests for `DatabaseIntrospector`: reading table/column/FK/
+ * unique/check-constraint/index metadata back from tables created with raw
+ * SQL (not Drizzle), across the public schema, custom schemas, and plugin
+ * schemas; plus `RuntimeMigrator` behavior when tables pre-exist without a
+ * stored snapshot (introspect-then-diff) versus when a snapshot already
+ * exists (diff against the snapshot, skip re-introspection).
+ */
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { sql } from "drizzle-orm";
@@ -15,24 +23,22 @@ describe("Database Introspection Tests", () => {
   let introspector: DatabaseIntrospector;
 
   beforeEach(async () => {
-    // Create in-memory database for testing
     pgClient = new PGlite({ extensions: { vector } });
     db = drizzle(pgClient);
     migrator = new RuntimeMigrator(db);
     introspector = new DatabaseIntrospector(db);
 
-    // Initialize migration tables
     await migrator.initialize();
   });
 
   afterEach(async () => {
-    // Clean up
     await pgClient.close();
   });
 
   describe("Basic Introspection", () => {
     it("should introspect existing tables without snapshots", async () => {
-      // First, create tables directly in the database (simulating pre-existing tables)
+      // Tables created via raw SQL simulate pre-existing production tables
+      // that were never registered with the migrator.
       await db.execute(sql`
         CREATE TABLE users (
           id SERIAL PRIMARY KEY,
@@ -62,15 +68,12 @@ describe("Database Introspection Tests", () => {
         CREATE INDEX idx_posts_published ON posts(published) WHERE published = true
       `);
 
-      // Now introspect the database
       const snapshot = await introspector.introspectSchema("public");
 
-      // Verify the snapshot contains the correct tables
       expect(Object.keys(snapshot.tables)).toHaveLength(2);
       expect(snapshot.tables["public.users"]).toBeDefined();
       expect(snapshot.tables["public.posts"]).toBeDefined();
 
-      // Verify users table structure
       const usersTable = snapshot.tables["public.users"];
       expect(usersTable.name).toBe("users");
       expect(usersTable.schema).toBe("public");
@@ -84,13 +87,11 @@ describe("Database Introspection Tests", () => {
       expect(usersTable.columns.email.notNull).toBe(true);
       expect(usersTable.uniqueConstraints).toBeDefined();
 
-      // Verify posts table structure
       const postsTable = snapshot.tables["public.posts"];
       expect(postsTable.name).toBe("posts");
       expect(Object.keys(postsTable.columns)).toHaveLength(6);
       expect(postsTable.columns.user_id.notNull).toBe(true);
 
-      // Verify foreign key
       const foreignKeys = Object.values(postsTable.foreignKeys);
       expect(foreignKeys).toHaveLength(1);
       expect(foreignKeys[0]).toMatchObject({
@@ -101,12 +102,10 @@ describe("Database Introspection Tests", () => {
         onDelete: "cascade",
       });
 
-      // Verify indexes
       expect(Object.keys(postsTable.indexes)).toHaveLength(2);
     });
 
     it("should handle introspection with custom schemas", async () => {
-      // Create a custom schema with tables
       await db.execute(sql`CREATE SCHEMA plugin_test`);
 
       await db.execute(sql`
@@ -127,15 +126,12 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Introspect the custom schema
       const snapshot = await introspector.introspectSchema("plugin_test");
 
-      // Verify the snapshot
       expect(Object.keys(snapshot.tables)).toHaveLength(2);
       expect(snapshot.tables["plugin_test.settings"]).toBeDefined();
       expect(snapshot.tables["plugin_test.logs"]).toBeDefined();
 
-      // Verify schema is set correctly
       const settingsTable = snapshot.tables["plugin_test.settings"];
       expect(settingsTable.schema).toBe("plugin_test");
       expect(settingsTable.name).toBe("settings");
@@ -156,18 +152,15 @@ describe("Database Introspection Tests", () => {
       const snapshot = await introspector.introspectSchema("public");
       const productsTable = snapshot.tables["public.products"];
 
-      // Verify check constraints were captured
       expect(Object.keys(productsTable.checkConstraints)).toHaveLength(2);
       expect(productsTable.checkConstraints.positive_price).toBeDefined();
       expect(productsTable.checkConstraints.positive_quantity).toBeDefined();
     });
 
     it("should detect existing tables correctly", async () => {
-      // Initially no tables
       let hasExisting = await introspector.hasExistingTables("@elizaos/plugin-sql");
       expect(hasExisting).toBe(false);
 
-      // Create a table
       await db.execute(sql`
         CREATE TABLE test_table (
           id SERIAL PRIMARY KEY,
@@ -175,7 +168,6 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Now should detect tables
       hasExisting = await introspector.hasExistingTables("@elizaos/plugin-sql");
       expect(hasExisting).toBe(true);
     });
@@ -183,7 +175,6 @@ describe("Database Introspection Tests", () => {
 
   describe("Migration with Pre-existing Tables", () => {
     it("should handle migration when tables already exist without snapshots", async () => {
-      // Step 1: Create tables directly (simulating production tables)
       await db.execute(sql`
         CREATE TABLE accounts (
           id SERIAL PRIMARY KEY,
@@ -193,26 +184,22 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Step 2: Define the schema in code (might have some differences)
       const accountsTable = pgTable("accounts", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         username: text("username").notNull().unique(),
         email: text("email").notNull().unique(),
         created_at: timestamp("created_at").defaultNow(),
-        // New field that doesn't exist in DB yet
-        updated_at: timestamp("updated_at").defaultNow(),
+        updated_at: timestamp("updated_at").defaultNow(), // Not present in the DB table above.
       });
 
       const schema = { accounts: accountsTable };
 
-      // Step 3: Run migration - should introspect existing tables first
-      // Use force to allow type changes in test environment
+      // migrate() must introspect the pre-existing table first, since there's no snapshot.
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Step 4: Verify the new column was added
       const result = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -226,7 +213,6 @@ describe("Database Introspection Tests", () => {
     });
 
     it("should preserve data when introspecting and migrating", async () => {
-      // Create table with data
       await db.execute(sql`
         CREATE TABLE products (
           id SERIAL PRIMARY KEY,
@@ -242,7 +228,6 @@ describe("Database Introspection Tests", () => {
         ('Product C', 300)
       `);
 
-      // Define schema with additional column
       const productsTable = pgTable("products", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
         name: text("name").notNull(),
@@ -252,21 +237,17 @@ describe("Database Introspection Tests", () => {
 
       const schema = { products: productsTable };
 
-      // Run migration
-      // Use force to allow type changes in test environment
       await migrator.migrate("@elizaos/plugin-sql", schema, {
         verbose: false,
         force: true,
       });
 
-      // Verify data is preserved
       const result = await db.execute(sql`SELECT * FROM products ORDER BY id`);
       expect(result.rows).toHaveLength(3);
       expect(result.rows[0]).toMatchObject({ name: "Product A", price: 100 });
       expect(result.rows[1]).toMatchObject({ name: "Product B", price: 200 });
       expect(result.rows[2]).toMatchObject({ name: "Product C", price: 300 });
 
-      // Verify new column exists
       const columns = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -277,7 +258,6 @@ describe("Database Introspection Tests", () => {
     });
 
     it("should handle complex schema with foreign keys during introspection", async () => {
-      // Create related tables
       await db.execute(sql`
         CREATE TABLE organizations (
           id SERIAL PRIMARY KEY,
@@ -304,13 +284,10 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Introspect the schema
       const snapshot = await introspector.introspectSchema("public");
 
-      // Verify all tables are captured
       expect(Object.keys(snapshot.tables)).toHaveLength(3);
 
-      // Verify foreign keys are captured correctly
       const usersTable = snapshot.tables["public.users"];
       const usersFKs = Object.values(usersTable.foreignKeys);
       expect(usersFKs).toHaveLength(1);
@@ -325,7 +302,6 @@ describe("Database Introspection Tests", () => {
       const projectsFKs = Object.values(projectsTable.foreignKeys);
       expect(projectsFKs).toHaveLength(2);
 
-      // Verify composite unique constraint
       interface UniqueConstraint {
         columns: string[];
       }
@@ -337,7 +313,6 @@ describe("Database Introspection Tests", () => {
     });
 
     it("should handle plugin schemas correctly during introspection", async () => {
-      // Create schema for a plugin
       await db.execute(sql`CREATE SCHEMA test_plugin`);
 
       await db.execute(sql`
@@ -348,11 +323,9 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Test the hasExistingTables method for the plugin
       const hasExisting = await introspector.hasExistingTables("@elizaos/test-plugin");
       expect(hasExisting).toBe(true);
 
-      // Define schema in code
       const testSchema = pgSchema("test_plugin");
       const configTable = testSchema.table("config", {
         id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
@@ -363,12 +336,10 @@ describe("Database Introspection Tests", () => {
 
       const schema = { config: configTable };
 
-      // Run migration
       await migrator.migrate("@elizaos/test-plugin", schema, {
         verbose: false,
       });
 
-      // Verify the new column was added
       const result = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
@@ -398,7 +369,6 @@ describe("Database Introspection Tests", () => {
     });
 
     it("should not introspect when snapshot already exists", async () => {
-      // Create a table
       const testTable = pgTable("test", {
         id: integer("id").primaryKey(),
         name: text("name"),
@@ -406,10 +376,10 @@ describe("Database Introspection Tests", () => {
 
       const schema = { test: testTable };
 
-      // First migration - will create snapshot
+      // This first migrate() call creates the snapshot the second call diffs against.
       await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
-      // Manually create another table (simulating manual DB change)
+      // Table created outside the migrator, simulating an out-of-band manual DB change.
       await db.execute(sql`
         CREATE TABLE manual_table (
           id SERIAL PRIMARY KEY,
@@ -417,7 +387,6 @@ describe("Database Introspection Tests", () => {
         )
       `);
 
-      // Second migration with updated schema
       const updatedTestTable = pgTable("test", {
         id: integer("id").primaryKey(),
         name: text("name"),
@@ -426,12 +395,12 @@ describe("Database Introspection Tests", () => {
 
       const updatedSchema = { test: updatedTestTable };
 
-      // This should use the existing snapshot, not introspect
+      // Diffs against the stored snapshot rather than introspecting live tables.
       await migrator.migrate("@elizaos/plugin-sql", updatedSchema, {
         verbose: false,
       });
 
-      // The manual_table should still exist but not be in snapshots
+      // manual_table must survive untouched, since it was never part of any snapshot.
       const result = await db.execute(sql`
         SELECT table_name 
         FROM information_schema.tables 

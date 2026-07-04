@@ -111,7 +111,7 @@ export interface AppBootConfig {
   defaultApps?: readonly string[];
   /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
   apiBase?: string;
-  /** API auth token — replaces window.__ELIZAOS_API_TOKEN__. */
+  /** API auth token used by the browser API client. */
   apiToken?: string;
   /** Cloud API base URL — replaces window.__ELIZA_CLOUD_API_BASE__. */
   cloudApiBase?: string;
@@ -206,12 +206,11 @@ function getGlobalSlot(): GlobalConfigSlot {
 
 function getBootConfigStore(): BootConfigStore {
   const globalObject = getGlobalSlot();
-  const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
-  if (mirroredWindowConfig) {
-    const mirroredStore: BootConfigStore = { current: mirroredWindowConfig };
-    globalObject[BOOT_CONFIG_STORE_KEY] = mirroredStore;
-    return mirroredStore;
-  }
+
+  // An established store always wins. The window-key mirror is only a pre-boot
+  // seed and must never replace a store that already exists — see the matching
+  // note in `@elizaos/core`'s boot-env.ts. All three copies (core, shared, ui)
+  // share the same global slot, so they must agree on write-once semantics.
   const existing = globalObject[BOOT_CONFIG_STORE_KEY];
   if (
     existing &&
@@ -221,7 +220,12 @@ function getBootConfigStore(): BootConfigStore {
     return existing as BootConfigStore;
   }
 
-  const store: BootConfigStore = { current: DEFAULT_BOOT_CONFIG };
+  // No store yet: seed it once from a cross-bundle window mirror if a bootstrap
+  // set it, otherwise from defaults.
+  const mirroredWindowConfig = globalObject[BOOT_CONFIG_WINDOW_KEY];
+  const store: BootConfigStore = {
+    current: mirroredWindowConfig ?? DEFAULT_BOOT_CONFIG,
+  };
   globalObject[BOOT_CONFIG_STORE_KEY] = store;
   globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
   return store;

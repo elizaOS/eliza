@@ -1,0 +1,17 @@
+=== rung v3-prefill-len48 (06:42:32) ===
+{"label":"v3-prefill-len48","epoch0":1783086188064,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":63,"ttftMs":127939,"totalMs":128033,"chunkEvents":1,"firstContent":"40 plus 25 equals 65.","text":"40 plus 25 equals 65."}
+=== rung v3-prefill-len138 (06:45:16) ===
+{"label":"v3-prefill-len48","epoch0":1783086188064,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":63,"ttftMs":127939,"totalMs":128033,"chunkEvents":1,"firstContent":"40 plus 25 equals 65.","text":"40 plus 25 equals 65."}
+=== rung v3-prefill-len225 (06:50:51) ===
+{"label":"v3-prefill-len225","epoch0":1783086686476,"status":200,"contentType":"text/event-stream","qChars":225,"ttfbMs":44,"ttftMs":126071,"totalMs":126183,"chunkEvents":1,"firstContent":"The river flows past green hills while birds sing near the old stone bridge.","text":"The river flows past green hills while birds sing near the old stone bridge."}
+=== rung v3-prefill-len315 (06:53:32) ===
+{"label":"v3-prefill-len315","epoch0":1783086848096,"status":200,"contentType":"text/event-stream","qChars":315,"ttfbMs":76,"ttftMs":138157,"totalMs":138158,"chunkEvents":1,"firstContent":"The river flows past green hills under a pale sky.","text":"The river flows past green hills under a pale sky."}
+=== rung v3-prefill-len402 (06:56:26) ===
+{"label":"v3-prefill-len402","epoch0":1783087021644,"status":200,"contentType":"text/event-stream","qChars":402,"ttfbMs":70,"ttftMs":132860,"totalMs":132861,"chunkEvents":1,"firstContent":"The user asked a simple math question.","text":"The user asked a simple math question."}
+=== rung v3-prefill-len497 (06:59:14) ===
+{"label":"v3-prefill-len497","epoch0":1783087189907,"status":200,"contentType":"text/event-stream","qChars":497,"ttfbMs":72,"ttftMs":134345,"totalMs":134346,"chunkEvents":1,"firstContent":"The river flows past green hills beneath a pale sky.","text":"The river flows past green hills beneath a pale sky."}
+=== rung v3-prefill-len588 (07:02:04) ===
+{"label":"v3-prefill-len588","epoch0":1783087362467,"status":200,"contentType":"text/event-stream","qChars":588,"ttfbMs":47,"ttftMs":145213,"totalMs":145214,"chunkEvents":1,"firstContent":"The river flows past green hills beneath a pale sky.","text":"The river flows past green hills beneath a pale sky."}
+=== rung v3-prefill-len673 (07:05:07) ===
+{"label":"v3-prefill-len673","epoch0":1783087545835,"status":200,"contentType":"text/event-stream","qChars":673,"ttfbMs":50,"ttftMs":147369,"totalMs":147370,"chunkEvents":1,"firstContent":"40 plus 25 equals 65.","text":"40 plus 25 equals 65."}
+V3 SWEEP COMPLETE 07:08:13

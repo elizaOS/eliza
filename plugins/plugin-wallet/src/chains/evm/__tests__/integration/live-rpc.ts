@@ -1,3 +1,14 @@
+/**
+ * Shared helpers for the live-RPC integration tests: loads `.env.local` candidates
+ * (repo root, eliza/cloud, eliza/steward-fi) for credentials, then resolves which
+ * RPC transport to exercise — Eliza Cloud's proxy route when `ELIZAOS_CLOUD_API_KEY`
+ * is set and its `eth_blockNumber` probe succeeds, otherwise the first responsive
+ * public RPC from a per-chain candidate list (env-configured URLs first, then
+ * hardcoded public endpoints). Results are cached per-process via
+ * `HEALTHY_RPC_CACHE` and `cloudRpcReadyPromise` so repeated probes in the same
+ * test run don't re-hit the network. `LIVE_EVM_RPC_TEST` gates whether the real
+ * on-chain integration tests run at all.
+ */
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";

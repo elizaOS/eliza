@@ -1,3 +1,6 @@
+/**
+ * REGENERATE_APP_API_KEY action tests: key rotation and the one-time reveal of the new key. The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,

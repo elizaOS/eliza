@@ -1,3 +1,9 @@
+/**
+ * Bridges a chat action result that produced a workflow into the workflow graph
+ * viewer: scans action results (most-recent-successful first) for a `workflowId`
+ * value and dispatches the visualize-workflow event so the graph opens on it.
+ */
+
 import type { ChatActionResultSummary } from "../../api/client-types-chat";
 import { dispatchVisualizeWorkflow } from "./workflow-graph-events";
 

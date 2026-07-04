@@ -1,3 +1,10 @@
+/**
+ * Umbrella GITHUB action. Reads the `action` param off the handler options
+ * and dispatches to the issue-op, pr-op, or notification-triage sub-action,
+ * so the agent invokes a single action name and selects the operation by
+ * parameter rather than picking among many registered actions.
+ */
+
 import type {
   Action,
   ActionResult,

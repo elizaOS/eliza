@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Interactive API-route explorer: filter/select a discovered route and view its details.
+ */
 import {
   Check,
   Copy,
@@ -12,6 +15,8 @@ import {
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import { cn } from "../../lib/utils";
 import type { DiscoveredApiRouteDto, HttpMethod } from "../../types/cloud-api";
 
@@ -96,7 +101,8 @@ function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={handleCopy}
       aria-label={copied ? "Copied" : "Copy to clipboard"}
@@ -108,7 +114,7 @@ function CopyButton({ text }: { text: string }) {
         <Copy aria-hidden="true" className="size-3.5" strokeWidth={2} />
       )}
       {copied ? "Copied" : "Copy"}
-    </button>
+    </Button>
   );
 }
 
@@ -211,8 +217,12 @@ export function ApiRouteExplorerClient({
                     Route Explorer
                   </span>
                 </div>
-                <label className="flex min-h-touch items-center gap-2 text-xs text-muted select-none cursor-pointer hover:text-txt transition-colors">
-                  <input
+                <label
+                  htmlFor="api-route-explorer-show-all"
+                  className="flex min-h-touch items-center gap-2 text-xs text-muted select-none cursor-pointer hover:text-txt transition-colors"
+                >
+                  <Input
+                    id="api-route-explorer-show-all"
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
@@ -229,7 +239,7 @@ export function ApiRouteExplorerClient({
                   className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted"
                   strokeWidth={2}
                 />
-                <input
+                <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search endpoints..."
@@ -272,7 +282,8 @@ export function ApiRouteExplorerClient({
                           r.meta?.name ??
                           r.path.replace("/api/v1/", "").replace(/\//g, " / ");
                         return (
-                          <button
+                          <Button
+                            variant="ghost"
                             key={key}
                             type="button"
                             onClick={() => setSelectedKey(key)}
@@ -318,7 +329,7 @@ export function ApiRouteExplorerClient({
                                 </div>
                               </div>
                             </div>
-                          </button>
+                          </Button>
                         );
                       })}
                     </div>

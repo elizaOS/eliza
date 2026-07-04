@@ -1,15 +1,22 @@
 // @vitest-environment jsdom
 
+/**
+ * Steward auth-endpoint resolution and token-expiry helpers: staging/prod app
+ * hosts route directly to their api worker (never same-origin), unknown hosts
+ * fall back to the same-origin relative path, and `tokenIsExpired` reads the
+ * JWT `exp` claim.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { tokenIsExpired } from "./StewardProviderShared";
 
 // The Steward auth endpoints are resolved per browser host: co-hosted cloud
 // surfaces bypass the Pages/Worker proxy and call the matching API worker
-// directly. The regression this guards: `staging.elizacloud.ai` used to have no
-// direct mapping, so session-sync + refresh fell through to the same-origin
-// relative path and a stale worker proxy 401'd (then wiped) a valid session —
-// the sign-in loop. Staging MUST resolve to api-staging, not prod api.
+// directly. The invariant under guard: `staging.elizacloud.ai` MUST map to
+// api-staging (not prod api, not the same-origin relative path). Without a
+// direct mapping, session-sync + refresh fall through to a stale worker proxy
+// that 401s and wipes a valid session — the sign-in loop.
 
 function setHostname(hostname: string): void {
   Object.defineProperty(window, "location", {
@@ -48,8 +55,34 @@ describe("Steward auth endpoint resolution", () => {
     );
   });
 
+  it("routes the staging app host to the api-staging worker directly", async () => {
+    setHostname("app-staging.elizacloud.ai");
+    const { configuredSessionEndpoint, configuredRefreshEndpoint } =
+      await loadEndpoints();
+
+    expect(configuredSessionEndpoint()).toBe(
+      "https://api-staging.elizacloud.ai/api/auth/steward-session",
+    );
+    expect(configuredRefreshEndpoint()).toBe(
+      "https://api-staging.elizacloud.ai/api/auth/steward-refresh",
+    );
+  });
+
   it("routes prod to the prod api worker directly", async () => {
     setHostname("elizacloud.ai");
+    const { configuredSessionEndpoint, configuredRefreshEndpoint } =
+      await loadEndpoints();
+
+    expect(configuredSessionEndpoint()).toBe(
+      "https://api.elizacloud.ai/api/auth/steward-session",
+    );
+    expect(configuredRefreshEndpoint()).toBe(
+      "https://api.elizacloud.ai/api/auth/steward-refresh",
+    );
+  });
+
+  it("routes the prod app host to the prod api worker directly", async () => {
+    setHostname("app.elizacloud.ai");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 

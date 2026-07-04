@@ -1,3 +1,10 @@
+/**
+ * Per-slot inference routing controls: a routing-policy selector (manual / auto
+ * by device / on-device only / cloud only) plus a preferred-provider dropdown
+ * per agent model slot. Agent-controllable via useAgentElement; reads device
+ * tier and public registrations from the local-inference API.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";

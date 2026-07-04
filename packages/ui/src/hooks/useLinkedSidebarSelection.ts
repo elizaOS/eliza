@@ -1,3 +1,8 @@
+/**
+ * Two-way scroll-linking between a sidebar list and a scrollable content pane:
+ * selecting a row scrolls its section into view and scrolling updates the
+ * selection, with a configurable top offset.
+ */
 import { useCallback, useEffect, useRef } from "react";
 
 type ElementRecord<T extends string> = Partial<Record<T, HTMLElement | null>>;

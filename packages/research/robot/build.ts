@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Bun build entrypoint for the thin TypeScript surface of @elizaos/robot.
+ *
+ * Clears generated output, bundles the TS exports, emits declarations, and
+ * rewrites relative imports while the Python robotics stack remains unbundled.
+ */
+
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { externalsFromPackageJson } from "../../../plugins/plugin-build-externals.ts";

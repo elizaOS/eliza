@@ -33,6 +33,7 @@ import {
   type ElizaCloudTier,
   useRegisterViewChatBinding,
 } from "@elizaos/ui";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
   ArrowLeft,
   PanelRight,
@@ -264,7 +265,8 @@ export function CockpitSessionPane({
       data-testid="cockpit-session-pane"
     >
       <header className="flex shrink-0 items-center gap-2 border-border/40 border-b px-3 py-2">
-        <button
+        <Button
+          unstyled
           type="button"
           onClick={onBack}
           className="-ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
@@ -274,7 +276,7 @@ export function CockpitSessionPane({
           data-testid="cockpit-session-back"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
-        </button>
+        </Button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
           {detail?.title ??
             t("cockpit.session.loading", { defaultValue: "Loading room…" })}
@@ -293,7 +295,8 @@ export function CockpitSessionPane({
             defaultValue: "View mode",
           })}
         >
-          <button
+          <Button
+            unstyled
             type="button"
             onClick={() => setView("transcript")}
             aria-pressed={view === "transcript"}
@@ -308,8 +311,9 @@ export function CockpitSessionPane({
             }`}
           >
             <ScrollText className="h-4 w-4" aria-hidden />
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             type="button"
             onClick={() => setView("terminal")}
             aria-pressed={view === "terminal"}
@@ -324,10 +328,11 @@ export function CockpitSessionPane({
             }`}
           >
             <SquareTerminal className="h-4 w-4" aria-hidden />
-          </button>
+          </Button>
         </fieldset>
         {isMobile && detail ? (
-          <button
+          <Button
+            unstyled
             type="button"
             onClick={() => setInspectorOpen((prev) => !prev)}
             aria-pressed={inspectorOpen}
@@ -340,7 +345,7 @@ export function CockpitSessionPane({
             }`}
           >
             <PanelRight className="h-4 w-4" aria-hidden />
-          </button>
+          </Button>
         ) : null}
       </header>
 

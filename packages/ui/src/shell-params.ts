@@ -1,3 +1,6 @@
+/**
+ * The detached-shell tab union and parsing shared by the window-shell routing.
+ */
 export type DetachedShellTab =
   | "browser"
   | "chat"

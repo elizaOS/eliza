@@ -17,7 +17,7 @@ import {
   SETTINGS_SECTION_SUGGESTIONS,
 } from "../components/settings/settings-section-tokens";
 import { useBootConfig } from "../config/boot-config-react.hooks";
-import { COMMAND_PALETTE_EVENT } from "../events";
+import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
@@ -104,6 +104,14 @@ export interface SlashCommandController {
   resolveChoices: (source: CommandArgSource) => string[];
   /** Map a user-typed settings token to a canonical section id. */
   resolveSection: (token: string) => string | undefined;
+  /**
+   * Whether the current sender is authorized (rank ≥ USER). Exposed so the
+   * natural-language shortcut path re-applies the SAME gate as the visible menu
+   * (#12087 Item 20) instead of defaulting fail-open.
+   */
+  isAuthorized: boolean;
+  /** Whether the current sender is elevated (OWNER). See {@link isAuthorized}. */
+  isElevated: boolean;
   // ── App-level side effects ────────────────────────────────────────────────
   navigateTab: (tab: string) => void;
   navigateSettings: (section?: string) => void;
@@ -167,16 +175,18 @@ function mergeByAlias(
 
 export interface SlashCommandControllerOptions {
   /**
-   * Whether the current sender is authenticated. Commands flagged
-   * `requiresAuth` are hidden when this is false. Defaults to `true`: the local
-   * dashboard composer is the trusted owner surface (gated by the agent's own
-   * API token), so the dashboard user is authorized by definition.
+   * Whether the current sender is authorized (rank ≥ USER). Commands flagged
+   * `requiresAuth` are hidden when this is false. Defaults to `false`
+   * (fail-closed, #12087 Item 20): the caller MUST derive this from the
+   * authoritative role (`useRole().atLeast("USER")`). A missing option must not
+   * silently expose gated commands to an anonymous/remote sender.
    */
   isAuthorized?: boolean;
   /**
    * Whether the current sender has elevated/owner privileges. Commands flagged
-   * `requiresElevated` are hidden when this is false. Defaults to `true` for the
-   * same reason as {@link isAuthorized}.
+   * `requiresElevated` are hidden when this is false. Defaults to `false`
+   * (fail-closed) for the same reason as {@link isAuthorized}; derive from
+   * `useRole().isOwner`.
    */
   isElevated?: boolean;
 }
@@ -184,7 +194,7 @@ export interface SlashCommandControllerOptions {
 export function useSlashCommandController(
   options: SlashCommandControllerOptions = {},
 ): SlashCommandController {
-  const { isAuthorized = true, isElevated = true } = options;
+  const { isAuthorized = false, isElevated = false } = options;
   const bootConfig = useBootConfig();
   const { setTab, handleChatClear } = useAppSelectorShallow((s) => ({
     setTab: s.setTab,
@@ -295,14 +305,10 @@ export function useSlashCommandController(
   const navigateView = React.useCallback(
     (target: { viewId?: string; viewPath?: string }) => {
       if (typeof window === "undefined") return;
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: {
-            viewId: target.viewId,
-            viewPath: target.viewPath,
-          },
-        }),
-      );
+      dispatchNavigateViewEvent({
+        viewId: target.viewId,
+        viewPath: target.viewPath,
+      });
       // Report this user-initiated switch to the agent (#8792) so the server's
       // current-view state stays accurate and a VIEW_SWITCHED event fires for the
       // proactive decider. `source: "user"` tells the server to record + emit
@@ -331,6 +337,8 @@ export function useSlashCommandController(
       naturalShortcutsEnabled,
       resolveChoices,
       resolveSection: resolveSettingsSectionToken,
+      isAuthorized,
+      isElevated,
       navigateTab,
       navigateSettings,
       navigateView,
@@ -342,6 +350,8 @@ export function useSlashCommandController(
       loading,
       naturalShortcutsEnabled,
       resolveChoices,
+      isAuthorized,
+      isElevated,
       navigateTab,
       navigateSettings,
       navigateView,

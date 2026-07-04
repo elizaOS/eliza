@@ -27,11 +27,13 @@ import {
 	type Plugin,
 	type Provider,
 	type ProviderResult,
+	type ServiceClass,
 	type State,
 } from "@elizaos/core";
 // Deterministic command action layer (#8790): handlers, dispatch, settings,
 // and the registered *_COMMAND actions.
 import { commandActions, commandShortcuts } from "./actions";
+import { CommandRegistryService } from "./command-registry-service";
 import { detectCommand, hasCommand, normalizeCommandBody } from "./parser";
 import {
 	findCommandByAlias,
@@ -48,6 +50,8 @@ import type { CommandContext, CommandDefinition, CommandResult } from "./types";
 // Connector-neutral command catalog (getConnectorCommands / ConnectorCommand)
 // + settings-section resolution (resolveSettingsSection).
 export * from "./actions";
+// The runtime seam other packages register commands through.
+export { CommandRegistryService } from "./command-registry-service";
 // The documented ConnectorCommandBridge contract + shared auth-gating helpers
 // every communication connector implements (#8790).
 export * from "./connector-bridge";
@@ -169,6 +173,10 @@ export function isElevated(
 export const commandsPlugin: Plugin = {
 	name: "commands",
 	description: "Chat command system with /help, /status, /reset, etc.",
+
+	// Runtime seam: hosts/plugins register commands through this service instead
+	// of importing plugin-commands' module-level registry.
+	services: [CommandRegistryService as ServiceClass],
 
 	providers: [commandRegistryProvider],
 

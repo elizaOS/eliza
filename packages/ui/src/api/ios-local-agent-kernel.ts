@@ -1,4 +1,28 @@
-import { asRecord, type ProviderStatus } from "@elizaos/shared";
+/**
+ * In-renderer fetch kernel for the iOS local agent: services a subset of routes
+ * (market data, steward session) directly in the webview when the full-bun agent
+ * is not reachable, using the shared market-provider helpers.
+ */
+import {
+  asRecord,
+  buildCoinGeckoMarketsUrl,
+  buildMarketMovers,
+  buildMarketPriceSnapshots,
+  COINGECKO_MARKET_PROVIDER,
+  POLYMARKET_MARKET_PROVIDER,
+  type ProviderStatus,
+  parseCoinGeckoMarkets,
+} from "@elizaos/shared";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  summarizeTranscript,
+  type Transcript,
+  type TranscriptScope,
+  type TranscriptSegment,
+  type TranscriptSource,
+  transcriptDurationMs,
+  transcriptSpeakerCount,
+} from "@elizaos/shared/transcripts";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,
@@ -25,10 +49,12 @@ import type {
   ModelAssignments,
 } from "../services/local-inference/types";
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
+import type { MemoryBrowseItem } from "./client-types-chat";
 import type { IttpAgentRequestContext } from "./ittp-agent-transport";
 
 const STORAGE_PREFIX = "eliza:ios-local-agent";
 const CONVERSATIONS_KEY = `${STORAGE_PREFIX}:conversations:v1`;
+const TRANSCRIPTS_KEY = `${STORAGE_PREFIX}:transcripts:v1`;
 const ACTIVE_MODEL_KEY = `${STORAGE_PREFIX}:active-model:v1`;
 const ASSIGNMENTS_KEY = `${STORAGE_PREFIX}:assignments:v1`;
 const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
@@ -44,29 +70,6 @@ const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://elizacloud.ai";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
-const COINGECKO_MARKET_LIMIT = 80;
-const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"] as const;
-const MARKET_PRICE_ID_SET = new Set<string>(MARKET_PRICE_IDS);
-const STABLE_ASSET_IDS = new Set([
-  "tether",
-  "usd-coin",
-  "binance-usd",
-  "first-digital-usd",
-  "dai",
-  "ethena-usde",
-  "true-usd",
-  "usds",
-]);
-const STABLE_ASSET_SYMBOLS = new Set([
-  "usdt",
-  "usdc",
-  "busd",
-  "fdusd",
-  "dai",
-  "usde",
-  "tusd",
-  "usds",
-]);
 const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   preferredProvider: {},
   policy: {},
@@ -158,16 +161,6 @@ interface BrowserWorkspaceStore {
 interface CachedWalletMarketOverview {
   response: Record<string, unknown>;
   expiresAt: number;
-}
-
-interface CoinGeckoMarketRecord {
-  id: string;
-  symbol: string;
-  name: string;
-  currentPriceUsd: number;
-  change24hPct: number;
-  marketCapRank: number | null;
-  imageUrl: string | null;
 }
 
 const EMPTY_WALLET_ADDRESSES = {
@@ -299,6 +292,7 @@ function removeStorageItem(key: string): void {
 function resetIosLocalAgentState(): void {
   for (const key of [
     CONVERSATIONS_KEY,
+    TRANSCRIPTS_KEY,
     ACTIVE_MODEL_KEY,
     ASSIGNMENTS_KEY,
     BROWSER_WORKSPACE_KEY,
@@ -373,10 +367,9 @@ function readIosCloudPairing(): IosCloudPairing {
   const id = stringValue(activeServer.id);
   const agentId = id?.startsWith("cloud:") ? id.slice("cloud:".length) : null;
   const storedToken = stringValue(activeServer.accessToken);
-  const globalToken = stringValue(
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__,
-  );
-  const token = storedToken ?? globalToken;
+  // The device-code/pairing flow persists its cloud session token through the
+  // steward-session store (see client-cloud.getCloudAuthToken).
+  const token = storedToken ?? readStoredStewardToken()?.trim() ?? null;
   const label = stringValue(activeServer.label);
   return {
     paired: Boolean(agentId && token),
@@ -503,6 +496,348 @@ function readStore(): ConversationStore {
 
 function writeStore(store: ConversationStore): void {
   writeJson(CONVERSATIONS_KEY, store);
+}
+
+// ── Transcripts (local persistence — mirrors plugin-local-inference's
+//    /api/transcripts contract; records live in the WebView storage the same
+//    way conversations do, since iOS local mode has no runtime DB) ──────────
+
+interface LocalTranscriptRecord {
+  roomId: string;
+  transcript: Transcript;
+}
+
+interface TranscriptStoreState {
+  records: LocalTranscriptRecord[];
+}
+
+function readTranscriptStore(): TranscriptStoreState {
+  const parsed = readJson<TranscriptStoreState>(TRANSCRIPTS_KEY, {
+    records: [],
+  });
+  return { records: Array.isArray(parsed.records) ? parsed.records : [] };
+}
+
+function writeTranscriptStore(state: TranscriptStoreState): void {
+  writeJson(TRANSCRIPTS_KEY, state);
+}
+
+const TRANSCRIPT_SOURCES: readonly TranscriptSource[] = [
+  "voice-session",
+  "import",
+  "call",
+  "meeting",
+  "unknown",
+];
+
+const TRANSCRIPT_SCOPES: readonly TranscriptScope[] = [
+  "owner-private",
+  "user-private",
+  "global",
+  "agent-private",
+];
+
+function transcriptSourceFromUnknown(value: unknown): TranscriptSource {
+  return typeof value === "string" &&
+    (TRANSCRIPT_SOURCES as readonly string[]).includes(value)
+    ? (value as TranscriptSource)
+    : "voice-session";
+}
+
+function transcriptScopeFromUnknown(value: unknown): TranscriptScope {
+  return typeof value === "string" &&
+    (TRANSCRIPT_SCOPES as readonly string[]).includes(value)
+    ? (value as TranscriptScope)
+    : "owner-private";
+}
+
+function defaultLocalTranscriptTitle(createdAt: number): string {
+  return `Recording ${new Date(createdAt).toLocaleString()}`;
+}
+
+/** Mirror of the server route's transcript construction (transcripts-routes.ts
+ *  buildTranscriptFromRequest) over an untyped request body. The shell sends
+ *  audio as base64 WAV; with no media store in the WebView, the bytes are kept
+ *  as a playable data: URL on the record. */
+function buildLocalTranscript(
+  body: Record<string, unknown>,
+  id: string,
+  now: number,
+): Transcript {
+  const segments = Array.isArray(body.segments)
+    ? (body.segments as TranscriptSegment[])
+    : [];
+  const createdAt = numberFromUnknown(body.createdAt) ?? now;
+  let audioUrl = stringFromUnknown(body.audioUrl) ?? undefined;
+  let audioContentType = stringFromUnknown(body.audioContentType) ?? undefined;
+  const audioBase64 = stringFromUnknown(body.audioBase64);
+  if (audioBase64 && !audioUrl) {
+    audioUrl = `data:audio/wav;base64,${audioBase64}`;
+    audioContentType = "audio/wav";
+  }
+  return {
+    id,
+    title:
+      stringFromUnknown(body.title)?.trim() ||
+      defaultLocalTranscriptTitle(createdAt),
+    createdAt,
+    endedAt: now,
+    durationMs: transcriptDurationMs(segments),
+    audioUrl,
+    audioContentType,
+    segments,
+    source: transcriptSourceFromUnknown(body.source),
+    scope: transcriptScopeFromUnknown(body.scope),
+    status: "ready",
+    speakerCount: transcriptSpeakerCount(segments),
+  };
+}
+
+async function handleLocalTranscriptsRoute(
+  request: Request,
+  method: string,
+  pathname: string,
+  url: URL,
+): Promise<Response | null> {
+  if (method === "GET" && pathname === "/api/transcripts") {
+    const roomId = url.searchParams.get("roomId");
+    const transcripts = readTranscriptStore()
+      .records.filter((record) => !roomId || record.roomId === roomId)
+      .map((record) => record.transcript)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(summarizeTranscript);
+    return json({ transcripts });
+  }
+
+  if (method === "POST" && pathname === "/api/transcripts") {
+    const body = await requestJson(request);
+    if (!Array.isArray(body.segments) || body.segments.length === 0) {
+      return json({ error: "segments are required" }, 400);
+    }
+    const transcript = buildLocalTranscript(
+      body,
+      randomId("transcript"),
+      Date.now(),
+    );
+    const store = readTranscriptStore();
+    store.records.unshift({
+      roomId: stringFromUnknown(body.roomId) ?? AGENT_NAME,
+      transcript,
+    });
+    writeTranscriptStore(store);
+    return json({ transcript }, 201);
+  }
+
+  if (!pathname.startsWith("/api/transcripts/")) return null;
+  const id = decodeURIComponent(pathname.slice("/api/transcripts/".length));
+  if (!id || id.includes("/")) return null;
+
+  if (method === "GET") {
+    const record = readTranscriptStore().records.find(
+      (r) => r.transcript.id === id,
+    );
+    if (!record) return json({ error: "not found" }, 404);
+    return json({ transcript: record.transcript });
+  }
+
+  if (method === "PUT") {
+    const body = await requestJson(request);
+    if (body.title === undefined && body.segments === undefined) {
+      return json({ error: "title or segments is required" }, 400);
+    }
+    if (body.segments !== undefined && !Array.isArray(body.segments)) {
+      return json({ error: "segments must be an array" }, 400);
+    }
+    const store = readTranscriptStore();
+    const record = store.records.find((r) => r.transcript.id === id);
+    if (!record) return json({ error: "not found" }, 404);
+    const existing = record.transcript;
+    const segments = Array.isArray(body.segments)
+      ? (body.segments as TranscriptSegment[])
+      : existing.segments;
+    const updated: Transcript = {
+      ...existing,
+      title: stringFromUnknown(body.title)?.trim() || existing.title,
+      segments,
+      durationMs: transcriptDurationMs(segments),
+      speakerCount: transcriptSpeakerCount(segments),
+      editedAt: Date.now(),
+    };
+    record.transcript = updated;
+    writeTranscriptStore(store);
+    return json({ transcript: updated });
+  }
+
+  if (method === "DELETE") {
+    const store = readTranscriptStore();
+    store.records = store.records.filter((r) => r.transcript.id !== id);
+    writeTranscriptStore(store);
+    return json({ ok: true });
+  }
+
+  return null;
+}
+
+// ── Memory viewer (feed/browse/by-entity — mirrors packages/agent
+//    memory-routes.ts; the local message store IS the memory source on iOS) ──
+
+const LOCAL_MEMORY_TABLE_NAMES = [
+  "messages",
+  "memories",
+  "facts",
+  "documents",
+] as const;
+const MEMORY_FEED_DEFAULT_LIMIT = 50;
+const MEMORY_FEED_MAX_LIMIT = 100;
+const MEMORY_BROWSE_DEFAULT_LIMIT = 50;
+const MEMORY_BROWSE_MAX_LIMIT = 200;
+
+function positiveIntegerParam(value: string | null, fallback: number): number {
+  const parsed = integerFromUnknown(value);
+  return parsed !== null && parsed > 0 ? parsed : fallback;
+}
+
+/** Server semantics (resolveTableFilter): a known table name filters to that
+ *  table; anything else means "all tables". Locally only `messages` has rows. */
+function localMemoryTypeHasRows(typeParam: string | null): boolean {
+  if (!typeParam) return true;
+  const t = typeParam.toLowerCase();
+  return (
+    t === "messages" ||
+    !(LOCAL_MEMORY_TABLE_NAMES as readonly string[]).includes(t)
+  );
+}
+
+/** Every stored conversation message as a browse item, newest first — the same
+ *  projection memory-routes.ts memoryToBrowseItem produces from the messages
+ *  table. iOS local mode has no entity graph, so entityId is null. */
+function localMemoryFeedItems(): MemoryBrowseItem[] {
+  const items: MemoryBrowseItem[] = [];
+  for (const conversation of readStore().conversations) {
+    for (const message of conversation.messages) {
+      if (!message.text.trim()) continue;
+      items.push({
+        id: message.id,
+        type: "messages",
+        text: message.text,
+        entityId: null,
+        roomId: conversation.roomId,
+        agentId: null,
+        createdAt: message.timestamp,
+        metadata: { role: message.role, conversationId: conversation.id },
+        source: null,
+      });
+    }
+  }
+  items.sort((a, b) => b.createdAt - a.createdAt);
+  return items;
+}
+
+/** Keyword match — mirrors memory-routes.ts matchesKeyword. */
+function localMemoryMatchesKeyword(text: string, query: string): boolean {
+  const normalizedText = text.toLowerCase();
+  const normalizedQuery = query.toLowerCase().trim();
+  if (!normalizedText || !normalizedQuery) return false;
+  if (normalizedText.includes(normalizedQuery)) return true;
+  return normalizedQuery
+    .split(/\s+/)
+    .filter((term) => term.length >= 2)
+    .some((term) => normalizedText.includes(term));
+}
+
+function handleLocalMemoriesRoute(
+  method: string,
+  pathname: string,
+  url: URL,
+): Response | null {
+  if (method !== "GET") return null;
+
+  if (pathname === "/api/memories/feed") {
+    const limit = Math.min(
+      Math.max(
+        positiveIntegerParam(
+          url.searchParams.get("limit"),
+          MEMORY_FEED_DEFAULT_LIMIT,
+        ),
+        1,
+      ),
+      MEMORY_FEED_MAX_LIMIT,
+    );
+    const beforeParam = url.searchParams.get("before");
+    const before = beforeParam ? Number(beforeParam) : undefined;
+    let items = localMemoryTypeHasRows(url.searchParams.get("type"))
+      ? localMemoryFeedItems()
+      : [];
+    if (before) {
+      items = items.filter((item) => item.createdAt < before);
+    }
+    const page = items.slice(0, limit);
+    return json({
+      memories: page,
+      count: page.length,
+      limit,
+      hasMore: items.length > limit,
+    });
+  }
+
+  if (pathname === "/api/memories/browse") {
+    const limit = Math.min(
+      Math.max(
+        positiveIntegerParam(
+          url.searchParams.get("limit"),
+          MEMORY_BROWSE_DEFAULT_LIMIT,
+        ),
+        1,
+      ),
+      MEMORY_BROWSE_MAX_LIMIT,
+    );
+    const offset = positiveIntegerParam(url.searchParams.get("offset"), 0);
+    const searchQuery = url.searchParams.get("q")?.trim() ?? "";
+    const roomId = url.searchParams.get("roomId");
+    const entityIdParam = url.searchParams.get("entityId");
+    const entityIdsParam = url.searchParams.get("entityIds");
+    const hasEntityFilter = Boolean(entityIdParam || entityIdsParam);
+
+    let items = localMemoryTypeHasRows(url.searchParams.get("type"))
+      ? localMemoryFeedItems()
+      : [];
+    // Local items carry no entity ids — an entity filter matches nothing.
+    if (hasEntityFilter) items = [];
+    if (roomId) items = items.filter((item) => item.roomId === roomId);
+    if (searchQuery) {
+      items = items.filter((item) =>
+        localMemoryMatchesKeyword(item.text, searchQuery),
+      );
+    }
+    return json({
+      memories: items.slice(offset, offset + limit),
+      total: items.length,
+      limit,
+      offset,
+    });
+  }
+
+  if (pathname.startsWith("/api/memories/by-entity/")) {
+    const entityId = decodeURIComponent(
+      pathname.slice("/api/memories/by-entity/".length),
+    );
+    if (!entityId) return json({ error: "Missing entity identifier." }, 400);
+    const limit = Math.min(
+      Math.max(
+        positiveIntegerParam(
+          url.searchParams.get("limit"),
+          MEMORY_BROWSE_DEFAULT_LIMIT,
+        ),
+        1,
+      ),
+      MEMORY_BROWSE_MAX_LIMIT,
+    );
+    const offset = positiveIntegerParam(url.searchParams.get("offset"), 0);
+    // No entity graph in iOS local mode — no memory is attributed to an entity.
+    return json({ entityId, memories: [], total: 0, limit, offset });
+  }
+
+  return null;
 }
 
 function readBrowserWorkspaceStore(): BrowserWorkspaceStore {
@@ -994,105 +1329,14 @@ async function fetchJsonWithTimeout(url: string | URL): Promise<unknown> {
   }
 }
 
-function mapCoinGeckoMarket(input: unknown): CoinGeckoMarketRecord | null {
-  const record = asRecord(input);
-  if (!record) return null;
-
-  const id = stringFromUnknown(record.id);
-  const symbol = stringFromUnknown(record.symbol);
-  const name = stringFromUnknown(record.name);
-  const currentPriceUsd = numberFromUnknown(record.current_price);
-  const change24hPct = numberFromUnknown(record.price_change_percentage_24h);
-  if (
-    !id ||
-    !symbol ||
-    !name ||
-    currentPriceUsd === null ||
-    change24hPct === null
-  ) {
-    return null;
-  }
-
-  return {
-    id,
-    symbol: symbol.toUpperCase(),
-    name,
-    currentPriceUsd,
-    change24hPct,
-    marketCapRank: integerFromUnknown(record.market_cap_rank),
-    imageUrl: stringFromUnknown(record.image),
-  };
-}
-
-function isStableAsset(market: CoinGeckoMarketRecord): boolean {
-  const id = market.id.toLowerCase();
-  const symbol = market.symbol.toLowerCase();
-  return STABLE_ASSET_IDS.has(id) || STABLE_ASSET_SYMBOLS.has(symbol);
-}
-
-function buildLocalPriceSnapshots(markets: CoinGeckoMarketRecord[]): unknown[] {
-  const byId = new Map(markets.map((market) => [market.id, market]));
-  return MARKET_PRICE_IDS.reduce<unknown[]>((items, id) => {
-    const market = byId.get(id);
-    if (!market) return items;
-    items.push({
-      id: market.id,
-      symbol: market.symbol,
-      name: market.name,
-      priceUsd: market.currentPriceUsd,
-      change24hPct: market.change24hPct,
-      imageUrl: market.imageUrl,
-    });
-    return items;
-  }, []);
-}
-
-function buildLocalMovers(markets: CoinGeckoMarketRecord[]): unknown[] {
-  return markets
-    .filter((market) => !MARKET_PRICE_ID_SET.has(market.id))
-    .filter((market) => !isStableAsset(market))
-    .filter(
-      (market) => market.marketCapRank === null || market.marketCapRank <= 200,
-    )
-    .sort(
-      (left, right) =>
-        Math.abs(right.change24hPct) - Math.abs(left.change24hPct),
-    )
-    .slice(0, 6)
-    .map((market) => ({
-      id: market.id,
-      symbol: market.symbol,
-      name: market.name,
-      priceUsd: market.currentPriceUsd,
-      change24hPct: market.change24hPct,
-      marketCapRank: market.marketCapRank,
-      imageUrl: market.imageUrl,
-    }));
-}
-
 async function fetchCoinGeckoWalletMarketOverview(): Promise<
   Record<string, unknown>
 > {
-  const url = new URL("https://api.coingecko.com/api/v3/coins/markets");
-  url.searchParams.set("vs_currency", "usd");
-  url.searchParams.set("order", "market_cap_desc");
-  url.searchParams.set("per_page", String(COINGECKO_MARKET_LIMIT));
-  url.searchParams.set("page", "1");
-  url.searchParams.set("price_change_percentage", "24h");
-
-  const payload = await fetchJsonWithTimeout(url);
-  if (!Array.isArray(payload)) {
-    throw new Error("CoinGecko payload was not an array");
-  }
-
-  const markets = payload
-    .map(mapCoinGeckoMarket)
-    .filter((market): market is CoinGeckoMarketRecord => market !== null);
+  const payload = await fetchJsonWithTimeout(buildCoinGeckoMarketsUrl());
+  const markets = parseCoinGeckoMarkets(payload);
 
   const coinGeckoSource = {
-    providerId: "coingecko",
-    providerName: "CoinGecko",
-    providerUrl: "https://www.coingecko.com/",
+    ...COINGECKO_MARKET_PROVIDER,
     available: true,
     stale: false,
     error: null,
@@ -1106,16 +1350,14 @@ async function fetchCoinGeckoWalletMarketOverview(): Promise<
       prices: coinGeckoSource,
       movers: coinGeckoSource,
       predictions: {
-        providerId: "polymarket",
-        providerName: "Polymarket",
-        providerUrl: "https://polymarket.com/",
+        ...POLYMARKET_MARKET_PROVIDER,
         available: false,
         stale: false,
         error: "Polymarket preview requires the Eliza Cloud market feed.",
       },
     },
-    prices: buildLocalPriceSnapshots(markets),
-    movers: buildLocalMovers(markets),
+    prices: buildMarketPriceSnapshots(markets),
+    movers: buildMarketMovers(markets),
     predictions: [],
   };
 }
@@ -1145,13 +1387,11 @@ function emptyWalletMarketOverview(
   error = "Market data is unavailable in local iOS mode.",
 ): Record<string, unknown> {
   const unavailable = (
-    providerId: "coingecko" | "polymarket",
-    providerName: string,
-    providerUrl: string,
+    provider:
+      | typeof COINGECKO_MARKET_PROVIDER
+      | typeof POLYMARKET_MARKET_PROVIDER,
   ) => ({
-    providerId,
-    providerName,
-    providerUrl,
+    ...provider,
     available: false,
     stale: false,
     error,
@@ -1162,21 +1402,9 @@ function emptyWalletMarketOverview(
     cacheTtlSeconds: 0,
     stale: false,
     sources: {
-      prices: unavailable(
-        "coingecko",
-        "CoinGecko",
-        "https://www.coingecko.com",
-      ),
-      movers: unavailable(
-        "coingecko",
-        "CoinGecko",
-        "https://www.coingecko.com",
-      ),
-      predictions: unavailable(
-        "polymarket",
-        "Polymarket",
-        "https://polymarket.com",
-      ),
+      prices: unavailable(COINGECKO_MARKET_PROVIDER),
+      movers: unavailable(COINGECKO_MARKET_PROVIDER),
+      predictions: unavailable(POLYMARKET_MARKET_PROVIDER),
     },
     prices: [],
     movers: [],
@@ -3001,6 +3229,19 @@ export async function handleIosLocalAgentRequest(
     });
   }
 
+  // First-run finish persist. The on-device JSContext kernel completes
+  // onboarding client-side (the conductor clears local first-run state and flips
+  // firstRunComplete), and `/api/first-run/status` already reports complete —
+  // but `submitFirstRun` POSTs the finish payload here. Without this route the
+  // POST fell through to the catch-all 404 ("Not found"), which the local finish
+  // rethrew and the conductor turned into a re-offer of the runtime chooser
+  // (the "not found → pick again" loop). Accept + ack; there is no server-side
+  // profile store on the local kernel, so this is a no-op success that matches
+  // the full-Bun bundle's behavior.
+  if (method === "POST" && pathname === "/api/first-run") {
+    return json({ ok: true });
+  }
+
   if (method === "GET" && pathname === "/api/config") {
     return json(localConfig());
   }
@@ -3187,8 +3428,26 @@ export async function handleIosLocalAgentRequest(
     return unavailableLocalBackendRoute("document_store_unavailable");
   }
 
+  if (
+    pathname === "/api/transcripts" ||
+    pathname.startsWith("/api/transcripts/")
+  ) {
+    const response = await handleLocalTranscriptsRoute(
+      request,
+      method,
+      pathname,
+      url,
+    );
+    if (response) return response;
+  }
+
   if (method === "GET" && pathname === "/api/memories/stats") {
     return json({ total: 0, byType: {}, recent: [] });
+  }
+
+  if (pathname.startsWith("/api/memories/")) {
+    const response = handleLocalMemoriesRoute(method, pathname, url);
+    if (response) return response;
   }
 
   if (method === "GET" && pathname === "/api/mcp/config") {

@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders DiffReviewPanel in jsdom over ChangeSetData fixtures to cover empty
+ * states, per-file collapsible sections, added/removed line classification, and
+ * the truncation warning.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChangeSetData } from "../../../api/client-types-cloud";

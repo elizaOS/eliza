@@ -1,3 +1,13 @@
+/**
+ * Turns a `SchemaDiff` (from diff-calculator) into an ordered list of raw SQL
+ * migration statements — schemas and tables first, foreign keys after all
+ * tables exist, then column/index/constraint alterations, mirroring
+ * drizzle-kit's own statement ordering. Also runs a pre-flight data-loss
+ * check (`checkForDataLoss`) that flags destructive type changes, dropped
+ * tables/columns, and new NOT NULL columns without defaults. `ADD COLUMN` /
+ * `DROP COLUMN` statements are emitted with `IF NOT EXISTS` / `IF EXISTS` so
+ * a migration replays safely after a partial/crashed prior run.
+ */
 import { logger } from "@elizaos/core";
 import type {
   SchemaCheckConstraint,
@@ -45,7 +55,6 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     requiresConfirmation: false,
   };
 
-  // Check for table deletions
   if (diff.tables.deleted.length > 0) {
     result.hasDataLoss = true;
     result.requiresConfirmation = true;
@@ -55,7 +64,6 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     }
   }
 
-  // Check for column deletions
   if (diff.columns.deleted.length > 0) {
     result.hasDataLoss = true;
     result.requiresConfirmation = true;
@@ -65,14 +73,12 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     }
   }
 
-  // Check for column type changes that might cause data loss
   for (const modified of diff.columns.modified) {
     const from = modified.changes.from;
     const to = modified.changes.to;
 
     if (!from || !to) continue;
 
-    // Check if type change is destructive
     if (from.type !== to.type) {
       const isDestructive = checkIfTypeChangeIsDestructive(from.type, to.type);
 
@@ -93,7 +99,6 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
       }
     }
 
-    // Check for adding NOT NULL without default to existing column
     if (!from.notNull && to.notNull && !to.default) {
       result.hasDataLoss = true;
       result.requiresConfirmation = true;
@@ -104,16 +109,14 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     }
   }
 
-  // Check for adding NOT NULL columns without defaults
   for (const added of diff.columns.added) {
     if (added.definition.notNull && !added.definition.default) {
-      // This is only a problem if the table already has data
-      // We'll flag it as a potential issue
+      // Only a problem if the table already has rows, so this is a warning,
+      // not a hard data-loss finding — requiresConfirmation stays untouched.
       result.warnings.push(
         `Column "${added.column}" is being added to table "${added.table}" as NOT NULL without a default value. ` +
           `This will fail if the table contains data.`
       );
-      // Don't set requiresConfirmation here - it's only a warning
     }
   }
 
@@ -235,16 +238,13 @@ export async function generateMigrationSQL(
 ): Promise<string[]> {
   const statements: string[] = [];
 
-  // If no diff provided, calculate it
   if (!diff) {
     const { calculateDiff } = await import("./diff-calculator");
     diff = await calculateDiff(previousSnapshot, currentSnapshot);
   }
 
-  // Check for data loss
   const dataLossCheck = checkForDataLoss(diff);
 
-  // Log warnings if any
   if (dataLossCheck.warnings.length > 0) {
     logger.warn(
       { src: "plugin:sql", warnings: dataLossCheck.warnings },
@@ -252,7 +252,7 @@ export async function generateMigrationSQL(
     );
   }
 
-  // Phase 1: Collect unique schemas and create them first
+  // Phase 1: create every non-public schema referenced by a new table first.
   const schemasToCreate = new Set<string>();
   for (const tableName of diff.tables.created) {
     const table = currentSnapshot.tables[tableName];
@@ -264,12 +264,11 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Create schemas first (following drizzle-kit pattern)
   for (const schema of schemasToCreate) {
     statements.push(`CREATE SCHEMA IF NOT EXISTS "${schema}";`);
   }
 
-  // Phase 2: Generate CREATE TABLE statements for new tables (WITHOUT foreign keys)
+  // Phase 2: CREATE TABLE for new tables, without foreign keys.
   const createTableStatements: string[] = [];
   const foreignKeyStatements: string[] = [];
 
@@ -282,16 +281,14 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Add all CREATE TABLE statements
   statements.push(...createTableStatements);
 
-  // Phase 3: Add all foreign keys AFTER tables are created
-  // Deduplicate foreign key statements to avoid duplicate constraints
+  // Phase 3: add foreign keys after all tables exist, deduplicated by
+  // constraint name to avoid re-adding the same constraint twice.
   const uniqueFKs = new Set<string>();
   const dedupedFKStatements: string[] = [];
 
   for (const fkSQL of foreignKeyStatements) {
-    // Extract constraint name to check for duplicates
     const match = fkSQL.match(/ADD CONSTRAINT "([^"]+)"/);
     if (match) {
       const constraintName = match[1];
@@ -306,26 +303,20 @@ export async function generateMigrationSQL(
 
   statements.push(...dedupedFKStatements);
 
-  // Phase 4: Handle table modifications
-
-  // Generate DROP TABLE statements for deleted tables
+  // Phase 4: table modifications — drops, then column/index/constraint/FK changes.
   for (const tableName of diff.tables.deleted) {
     const [schema, name] = tableName.includes(".") ? tableName.split(".") : ["public", tableName];
     statements.push(`DROP TABLE IF EXISTS "${schema}"."${name}" CASCADE;`);
   }
 
-  // Generate ALTER TABLE statements for column changes
-  // Handle column additions
   for (const added of diff.columns.added) {
     statements.push(generateAddColumnSQL(added.table, added.column, added.definition));
   }
 
-  // Handle column deletions
   for (const deleted of diff.columns.deleted) {
     statements.push(generateDropColumnSQL(deleted.table, deleted.column));
   }
 
-  // Handle column modifications
   for (const modified of diff.columns.modified) {
     const alterStatements = generateAlterColumnSQL(
       modified.table,
@@ -335,29 +326,25 @@ export async function generateMigrationSQL(
     statements.push(...alterStatements);
   }
 
-  // Generate DROP INDEX statements (including altered ones - drop old version)
+  // Altered indexes are dropped (old definition) then recreated (new definition).
   for (const index of diff.indexes.deleted) {
     statements.push(generateDropIndexSQL(index));
   }
 
-  // Drop old version of altered indexes
   for (const alteredIndex of diff.indexes.altered) {
     statements.push(generateDropIndexSQL(alteredIndex.old));
   }
 
-  // Generate CREATE INDEX statements (including altered ones - create new version)
   for (const index of diff.indexes.created) {
     statements.push(generateCreateIndexSQL(index));
   }
 
-  // Create new version of altered indexes
   for (const alteredIndex of diff.indexes.altered) {
     statements.push(generateCreateIndexSQL(alteredIndex.new));
   }
 
-  // Generate CREATE UNIQUE CONSTRAINT statements
   for (const constraint of diff.uniqueConstraints.created) {
-    // Skip if it's part of a new table (already handled)
+    // Skip constraints on tables just created above — CREATE TABLE already includes them.
     const isNewTable = diff.tables.created.some((tableName) => {
       const [schema, table] = tableName.includes(".")
         ? tableName.split(".")
@@ -375,14 +362,12 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Generate DROP UNIQUE CONSTRAINT statements
   for (const constraint of diff.uniqueConstraints.deleted) {
     statements.push(generateDropUniqueConstraintSQL(constraint));
   }
 
-  // Generate CREATE CHECK CONSTRAINT statements
   for (const constraint of diff.checkConstraints.created) {
-    // Skip if it's part of a new table (already handled)
+    // Skip constraints on tables just created above — CREATE TABLE already includes them.
     const isNewTable = diff.tables.created.some((tableName) => {
       const [schema, table] = tableName.includes(".")
         ? tableName.split(".")
@@ -400,35 +385,28 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Generate DROP CHECK CONSTRAINT statements
   for (const constraint of diff.checkConstraints.deleted) {
     statements.push(generateDropCheckConstraintSQL(constraint));
   }
 
-  // Handle foreign key deletions first (including altered ones)
   for (const fk of diff.foreignKeys.deleted) {
     statements.push(generateDropForeignKeySQL(fk));
   }
 
-  // Drop old version of altered foreign keys
   for (const alteredFK of diff.foreignKeys.altered) {
     statements.push(generateDropForeignKeySQL(alteredFK.old));
   }
 
-  // Handle foreign key creations (for existing tables)
   for (const fk of diff.foreignKeys.created) {
-    // Only add if it's not part of a new table (those were handled above)
-    // Check both with and without schema prefix
+    // Skip FKs on tables just created above (Phase 3 already added them).
     const tableFrom = fk.tableFrom || "";
     const schemaFrom = fk.schemaFrom || "public";
 
     const isNewTable = diff.tables.created.some((tableName) => {
-      // Compare table names, handling schema prefixes
       const [createdSchema, createdTable] = tableName.includes(".")
         ? tableName.split(".")
         : ["public", tableName];
 
-      // Compare using the actual schema and table from the FK
       return createdTable === tableFrom && createdSchema === schemaFrom;
     });
 
@@ -437,7 +415,6 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Create new version of altered foreign keys
   for (const alteredFK of diff.foreignKeys.altered) {
     statements.push(generateCreateForeignKeySQL(alteredFK.new));
   }

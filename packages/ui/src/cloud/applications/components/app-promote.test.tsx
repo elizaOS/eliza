@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `AppPromote` asset-generation error surfacing (#9323): a failed
+ * `/promote/assets` call surfaces the error to the user (no silent swallow),
+ * and a successful generation shows none. The api-client, router, i18n
+ * provider, and promote-dialog are doubled; the component renders for real.
+ */
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

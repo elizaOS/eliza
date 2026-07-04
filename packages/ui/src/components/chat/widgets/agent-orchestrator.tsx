@@ -248,12 +248,12 @@ function ActivityItemsContent({
           : t("agentorchestrator.openTasks", { defaultValue: "Open tasks" });
 
         return (
-          <button
+          <Button
             key={event.id}
-            type="button"
             onClick={() => onSelectEvent(event)}
             aria-label={`${openLabel}: ${event.summary}`}
-            className="flex w-full items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors hover:bg-bg-hover/40   "
+            variant="ghost"
+            className="flex h-auto w-full items-start justify-start gap-1.5 whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal transition-colors hover:bg-bg-hover/40"
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
@@ -269,7 +269,7 @@ function ActivityItemsContent({
             <span className="min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt">
               {event.summary}
             </span>
-          </button>
+          </Button>
         );
       })}
     </div>

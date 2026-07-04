@@ -1,3 +1,10 @@
+/**
+ * Verifies entity `names` normalization handles every input shape the field
+ * can arrive in (string, Set, Map, number, boolean, plain object, custom
+ * iterable, null/undefined, mixed-type arrays) without throwing or silently
+ * corrupting data, plus entity delete/search/name-lookup behavior. Runs
+ * against a real Postgres or PGlite backend via `createIsolatedTestDatabase`.
+ */
 import type { Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

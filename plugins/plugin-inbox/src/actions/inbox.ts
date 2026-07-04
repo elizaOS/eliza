@@ -131,6 +131,12 @@ export interface InboxSummaryEntry {
   readonly latestAt: string | null;
 }
 
+/** A platform whose fetch failed during the fan-out, with the real error. */
+export interface InboxDegradedPlatform {
+  readonly platform: InboxPlatform;
+  readonly error: string;
+}
+
 export interface InboxResult {
   readonly subaction: Subaction;
   readonly platforms: readonly InboxPlatform[];
@@ -139,6 +145,12 @@ export interface InboxResult {
   readonly query?: string;
   readonly since?: string;
   readonly totalBeforeDedupe: number;
+  /**
+   * Platforms that could not be checked. Required: empty means every
+   * requested platform answered; non-empty means the result may be
+   * incomplete and must not be presented as a clean empty inbox.
+   */
+  readonly degraded: readonly InboxDegradedPlatform[];
 }
 
 export interface InboxQueueOperationResult {
@@ -221,10 +233,13 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
         return item ? [item] : [];
       });
     } catch (error) {
+      // Re-throw with the platform attached; fetchInboxItems settles the
+      // fan-out and reports the failure as a degraded platform instead of
+      // letting a broken connector masquerade as an empty feed.
       logger.warn(
         `[INBOX] ${platform} fetch failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return [];
+      throw error;
     }
   };
 }
@@ -332,8 +347,10 @@ function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
 
 /**
  * Fan out to the per-platform fetchers and return the deduped, recency-ordered
- * merge. Shared by the `list` / `search` / `summarize` reads and the `triage`
- * classification path.
+ * merge plus the platforms whose fetch failed. Shared by the `list` /
+ * `search` / `summarize` reads and the `triage` classification path. One
+ * broken platform never hides the others' messages, and never hides itself:
+ * every failure lands in `degraded` with its real error.
  */
 async function fetchInboxItems(args: {
   runtime: IAgentRuntime;
@@ -344,8 +361,9 @@ async function fetchInboxItems(args: {
 }): Promise<{
   merged: readonly InboxItem[];
   totalBeforeDedupe: number;
+  degraded: readonly InboxDegradedPlatform[];
 }> {
-  const fetched = await Promise.all(
+  const settled = await Promise.allSettled(
     args.platforms.map(async (platform) => {
       const fetcher = activeFetchers[platform];
       return fetcher({
@@ -356,8 +374,35 @@ async function fetchInboxItems(args: {
       });
     }),
   );
-  const flat = fetched.flat();
-  return { merged: dedupeAndOrder(flat), totalBeforeDedupe: flat.length };
+  const flat: InboxItem[] = [];
+  const degraded: InboxDegradedPlatform[] = [];
+  settled.forEach((result, index) => {
+    const platform = args.platforms[index];
+    if (!platform) return;
+    if (result.status === "fulfilled") {
+      flat.push(...result.value);
+      return;
+    }
+    degraded.push({
+      platform,
+      error:
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason),
+    });
+  });
+  return {
+    merged: dedupeAndOrder(flat),
+    totalBeforeDedupe: flat.length,
+    degraded,
+  };
+}
+
+/** One-line warning suffix naming every platform that could not be checked. */
+function degradedSuffix(degraded: readonly InboxDegradedPlatform[]): string {
+  if (degraded.length === 0) return "";
+  const parts = degraded.map((entry) => `${entry.platform} (${entry.error})`);
+  return ` Warning: could not check ${parts.join(", ")} — results may be incomplete.`;
 }
 
 /**
@@ -647,7 +692,7 @@ export async function executeInboxQueueOperation(args: {
         args.params.since.trim().length > 0
           ? args.params.since.trim()
           : undefined;
-      const { merged } = await fetchInboxItems({
+      const { merged, degraded } = await fetchInboxItems({
         runtime: args.runtime,
         platforms: resolvePlatforms(args.params.platforms),
         ...(since ? { since } : {}),
@@ -675,7 +720,7 @@ export async function executeInboxQueueOperation(args: {
             limit,
             includeSnoozed: args.params.includeSnoozed === true,
           });
-      const text =
+      const baseText =
         classifiedCount > 0
           ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; ${entries.length} pending inbox item${entries.length === 1 ? "" : "s"}.`
           : entries.length === 0
@@ -683,8 +728,13 @@ export async function executeInboxQueueOperation(args: {
             : `Loaded ${entries.length} pending inbox triage items.`;
       return {
         success: true,
-        text,
-        data: { subaction: "triage", classified: classifiedCount, entries },
+        text: `${baseText}${degradedSuffix(degraded)}`,
+        data: {
+          subaction: "triage",
+          classified: classifiedCount,
+          entries,
+          degraded,
+        },
       };
     }
     case "snooze": {
@@ -978,7 +1028,7 @@ export const inboxAction: Action & {
         ? params.since.trim()
         : undefined;
 
-    const { merged, totalBeforeDedupe } = await fetchInboxItems({
+    const { merged, totalBeforeDedupe, degraded } = await fetchInboxItems({
       runtime,
       platforms,
       ...(since ? { since } : {}),
@@ -990,15 +1040,20 @@ export const inboxAction: Action & {
       subaction === "summarize" ? buildSummary(merged, platforms) : undefined;
 
     logger.info(
-      `[INBOX] ${subaction} platforms=${platforms.join(",")} pre=${totalBeforeDedupe} post=${merged.length}`,
+      `[INBOX] ${subaction} platforms=${platforms.join(",")} pre=${totalBeforeDedupe} post=${merged.length} degraded=${degraded.map((entry) => entry.platform).join(",") || "none"}`,
     );
 
+    // An empty result with degraded platforms is NOT a clean empty inbox —
+    // say which platforms could not be checked so neither the planner nor the
+    // user mistakes a broken connector for "no mail".
     let text: string;
     switch (subaction) {
       case "list":
         text =
           merged.length === 0
-            ? "Your inbox is empty for this window."
+            ? degraded.length === 0
+              ? "Your inbox is empty for this window."
+              : "No messages from reachable platforms for this window."
             : `Pulled ${merged.length} messages across ${platforms.length} platforms.`;
         break;
       case "search":
@@ -1011,6 +1066,7 @@ export const inboxAction: Action & {
         text = `Summarized ${platforms.length} platforms (${merged.length} unique messages).`;
         break;
     }
+    text = `${text}${degradedSuffix(degraded)}`;
 
     await callback?.({
       text,
@@ -1029,6 +1085,7 @@ export const inboxAction: Action & {
         ...(query ? { query } : {}),
         ...(since ? { since } : {}),
         totalBeforeDedupe,
+        degraded,
       },
     };
   },

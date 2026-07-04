@@ -1,3 +1,4 @@
+/** Shared types for the WeChat connector: account/config shapes, resolved account state, inbound message context, and the proxy API response envelope. */
 type DeviceType = "ipad" | "mac";
 type LoginStatus = "waiting" | "need_verify" | "logged_in";
 

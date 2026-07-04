@@ -23,7 +23,7 @@ local agent route surface used by the rest of the mobile app.
 Tunnel frames use a path-only HTTP request envelope. The relay never
 sends absolute URLs, and the plugin rejects `//host` and scheme-bearing
 paths before dispatching to the agent. On iOS, dispatch goes through
-`window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__`, which is the same Capacitor
+`window.__ELIZA_BRIDGE__?.iosLocalAgentRequest`, which is the same Capacitor
 IPC bridge the UI uses for full-Bun local mode.
 
 ## Usage

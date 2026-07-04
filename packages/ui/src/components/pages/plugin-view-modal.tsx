@@ -1,3 +1,11 @@
+/**
+ * Full-screen "game/app" plugin modal for the Plugins view: a master/detail
+ * surface listing installable plugin apps on the left and the selected plugin's
+ * config, connector setup, and enable/disable toggle on the right. Purely
+ * presentational — all plugin state, config values, and action callbacks are
+ * passed in as props by the parent PluginsView.
+ */
+
 import { CheckCircle2, Puzzle, XCircle } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 import { useAgentElement } from "../../agent-surface";

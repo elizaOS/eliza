@@ -1,3 +1,11 @@
+/**
+ * Connect/disconnect UI for coding-plan subscription providers (Claude,
+ * Codex/OpenAI) inside the AI Model settings section. Renders the current
+ * subscription status and drives the paste-the-code OAuth exchange shell —
+ * start login, submit the callback code, sign out — against the shared client.
+ * Mounted by SubscriptionPanel (ProviderPanels.tsx).
+ */
+
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
@@ -19,6 +27,7 @@ import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { SettingsActionButton } from "./settings-agent-rows";
@@ -135,9 +144,10 @@ function SubscriptionTab({
     onActivate: onSelect,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={onSelect}
       aria-label={label}
       className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
@@ -148,7 +158,7 @@ function SubscriptionTab({
       {...agentProps}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

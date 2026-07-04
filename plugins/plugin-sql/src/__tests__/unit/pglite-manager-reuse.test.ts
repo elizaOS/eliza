@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `getOrCreatePgliteManagerForAgent` / `getActivePgliteManager`
+ * against an in-memory `PgliteManagerCache`, using a `FakeManager` stub (no
+ * real PGlite instance): confirms managers are reused per (dataDir, agentId)
+ * pair, are distinct across agent ids, and a manager reporting
+ * `isShuttingDown()` is replaced rather than reused.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   getActivePgliteManager,

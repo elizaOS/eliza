@@ -1,3 +1,6 @@
+/**
+ * Playwright configuration for the homepage route, visual, and recording suites.
+ */
 import path from "node:path";
 import { defineConfig, devices } from "playwright/test";
 

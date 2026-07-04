@@ -1,3 +1,12 @@
+/**
+ * Regression assertions on the shared prompt templates (src/index.ts): their
+ * wording and the structural rules baked into them, property-checked with
+ * fast-check against the exported template strings and
+ * `compressPromptDescription`. No model — these guard the template source text
+ * itself, which is what keeps cross-cutting rules (attachment routing,
+ * capability grounding, injection defense) from silently regressing when a
+ * template is edited.
+ */
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -43,16 +52,12 @@ describe("prompt templates (src/index.ts)", () => {
     }
   });
 
-  it("compresses arbitrary descriptions into bounded single-line text", () => {
+  it("compresses arbitrary descriptions into single-line normalized text (no length cap)", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 2_000 }), (description) => {
         const compressed = compressPromptDescription(description);
 
         assert.strictEqual(typeof compressed, "string");
-        assert.ok(
-          compressed.length <= 160,
-          `compressed description exceeded 160 chars: ${compressed.length}`,
-        );
         assert.ok(
           !/\s{2,}|\r|\n/.test(compressed),
           `compressed description should be single-line normalized text: ${JSON.stringify(
@@ -72,7 +77,6 @@ describe("prompt templates (src/index.ts)", () => {
     assert.match(compressed, /`npm run test`/);
     assert.match(compressed, /https:\/\/example\.com\/a\?b=c/);
     assert.match(compressed, /OPENAI_API_KEY/);
-    assert.ok(compressed.length <= 160);
   });
 
   it("exports at least one camelCaseTemplate constant", () => {
@@ -312,13 +316,11 @@ describe("prompt templates (src/index.ts)", () => {
   });
 
   it("messageHandlerTemplate routes visible attachment references through ATTACHMENT and ignores generic verbs in unrelated questions", () => {
-    // Regression coverage for the structural rule that replaced the
-    // regex-list-based attachment-inspection evaluator. Without this rule
-    // Stage 1 used to be hijacked by a post-Stage-1 evaluator whose
-    // VISUAL_INSPECTION_RE matched any use of "read"/"view"/"describe"/
-    // "analyze"/"inspect"/"open" whenever any attachment lingered in state,
-    // turning normal dev questions like "how do I read a file in node?" into
-    // 2 MB / $0.09 / 3-iteration planner trajectories.
+    // Structural guard: a visible attachment reference routes through the
+    // ATTACHMENT action, while generic verbs ("read"/"view"/"describe"/
+    // "analyze"/"inspect"/"open") in an unrelated question do not — so a normal
+    // dev question like "how do I read a file in node?" stays a cheap single
+    // turn instead of a 2 MB / $0.09 / 3-iteration planner trajectory.
     const src = readSrc();
     const messageHandlerTemplateRe =
       /export const messageHandlerTemplate = `([^`]+)`/;
@@ -541,9 +543,8 @@ describe("prompt templates (src/index.ts)", () => {
   });
 
   it("messageHandlerTemplate grounds capability denials in the action surface and requires fresh tool retries", () => {
-    // Two agent-generic rules previously hand-copied into individual
-    // characters, promoted to the framework layer (same as the #11149
-    // injection/credential baseline):
+    // Two agent-generic rules the framework-layer template must encode (the
+    // #11149 injection/credential baseline is the sibling case):
     //   1. Capability denial must be grounded in the action catalog — the
     //      model reflexively recites "I don't have memory" / "I can't
     //      schedule things" even when the corresponding action is exposed
@@ -670,7 +671,7 @@ describe("specs directory", () => {
     }
   });
 
-  it("generated plugin action spec descriptions stay prompt-budget friendly", () => {
+  it("generated plugin action spec descriptions compress to non-empty single-line text", () => {
     const generated = readJsonFile(
       join(SPECS_DIR, "actions", "plugins.generated.json"),
     );
@@ -679,10 +680,6 @@ describe("specs directory", () => {
       assert.strictEqual(typeof action.description, "string");
       const compressed = compressPromptDescription(action.description);
       assert.ok(compressed.length > 0, `${action.name} should compress`);
-      assert.ok(
-        compressed.length <= 160,
-        `${action.name} compressed description should fit in prompt budget`,
-      );
       if (
         action.compressedDescription !== undefined &&
         action.descriptionCompressed !== undefined

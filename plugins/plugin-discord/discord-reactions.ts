@@ -1,7 +1,7 @@
 /**
- * Discord reaction handling — extracted from service.ts
- *
- * Contains handleReaction(), handleReactionAdd(), handleReactionRemove().
+ * Reaction handling for DiscordService. Maps emoji reaction add/remove events
+ * into runtime reaction memories and emits the corresponding Discord reaction
+ * events.
  */
 import {
 	type ChannelType,

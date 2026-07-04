@@ -1,6 +1,20 @@
+/**
+ * Node/Bun entry point for `@elizaos/plugin-sql`: registers either a
+ * `PgDatabaseAdapter` (when `postgresUrl` is set, with per-RLS-server-id
+ * connection-pool reuse) or a `PgliteDatabaseAdapter` (per-agent PGlite
+ * singleton), both drawn from the process-global singleton cache under
+ * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Also re-exports the
+ * Drizzle query-helper subpath, RLS management functions, and the PGlite
+ * live-query / Electric Sync status/reset/close accessors used by hosts.
+ */
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 
 export {
   and,
@@ -30,9 +44,12 @@ import {
   type PgliteSyncTableStatus,
 } from "./pglite/manager";
 import {
+  type ClosePgliteSingletonResult,
+  dropActivePgliteManager,
   getActivePgliteManager,
   getOrCreatePgliteManagerForAgent,
   type PgliteManagerCache,
+  type PgliteSingletonCache,
 } from "./pglite/manager-cache";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
@@ -60,6 +77,11 @@ export type {
 export * from "./connector-credential-store";
 export * from "./pglite/errors";
 export type { LiveNamespace, PgliteSyncStatus, PgliteSyncTableStatus } from "./pglite/manager";
+export type {
+  ClosePgliteSingletonResult,
+  PgliteSingletonCache,
+  PgliteSingletonManager,
+} from "./pglite/manager-cache";
 export * from "./schema";
 export type { DrizzleDatabase } from "./types";
 
@@ -120,12 +142,10 @@ export function createDatabaseAdapter(
       );
     }
 
-    // Initialize connection managers map if needed
     if (!globalSingletons.postgresConnectionManagers) {
       globalSingletons.postgresConnectionManagers = new Map();
     }
 
-    // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!shouldReusePostgresManager(manager)) {
       logger.debug(
@@ -171,19 +191,22 @@ export const plugin: Plugin = {
       .isReady()
       .then(() => true)
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("Database adapter not registered")) {
+        const message = describeAdapterReadinessError(error);
+        if (isMissingDatabaseAdapterError(error)) {
           runtime.logger.info(
             { src: "plugin:sql", agentId: runtime.agentId },
             "No pre-registered database adapter detected; registering adapter"
           );
-        } else {
-          runtime.logger.warn(
-            { src: "plugin:sql", agentId: runtime.agentId, error: message },
-            "Database adapter readiness check error; proceeding to register adapter"
-          );
+          return false;
         }
-        return false;
+        runtime.logger.error(
+          { src: "plugin:sql", agentId: runtime.agentId, error: message },
+          "Database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "node",
+        });
       });
     if (adapterRegistered) {
       runtime.logger.info(
@@ -277,4 +300,57 @@ export async function forcePgliteResync(): Promise<{
   const manager = globalSingletons.pgLiteClientManager;
   if (!manager) return null;
   return manager.forceResync();
+}
+
+/**
+ * Close and drop the process-global PGlite singleton manager.
+ *
+ * Awaits the manager's `close()` bounded by `timeoutMs` (default 1000ms), then
+ * removes it from the singleton cache so the next `createDatabaseAdapter()`
+ * builds a fresh manager. Used by hosts recovering from a corrupt PGlite data
+ * directory. Returns whether a manager was closed and whether close() timed out.
+ */
+export async function closePgliteSingleton(options?: {
+  timeoutMs?: number;
+}): Promise<ClosePgliteSingletonResult> {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    return { closed: false, timedOut: false, error: null };
+  }
+
+  let timedOut = false;
+  let error: Error | null = null;
+  const timeoutMs = options?.timeoutMs ?? 1_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    await Promise.race([
+      Promise.resolve(manager.close()),
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    error = err instanceof Error ? err : new Error(String(err));
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  dropActivePgliteManager(globalSingletons, manager);
+  return { closed: true, timedOut, error };
+}
+
+/**
+ * Public handle onto the process-global PGlite singleton cache. Lets a host
+ * pre-seed or inspect the active manager (e.g. a browser bundle that
+ * pre-initializes PGlite with custom asset loading) without hand-copying the
+ * private `Symbol.for("elizaos.plugin-sql.global-singletons")`.
+ */
+export function getPgliteSingletonCache(): PgliteSingletonCache {
+  return globalSingletons;
 }

@@ -1,0 +1,7 @@
+{
+  "base": "http://127.0.0.1:2168",
+  "prompt": "In one short sentence, what is elizaOS? (ui-ux-polish live chat-input e2e)",
+  "assistantText": "Something went wrong on my end. Please try again.",
+  "capturedAt": "2026-07-03T20:39:01.660Z",
+  "provider": "cerebras (via @elizaos/plugin-openai, api.cerebras.ai)"
+}

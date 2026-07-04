@@ -1,3 +1,4 @@
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
 import type { AgentEventPayloadLike } from "../runtime/agent-event-service.ts";
 import { routeAutonomyTextToUser } from "./server-helpers-swarm.ts";
 import type { ServerState } from "./server-types.ts";
@@ -29,7 +30,7 @@ export async function maybeRouteAutonomyEventToConversation(
     explicitSource !== null && explicitSource.trim().length > 0;
   const source = hasExplicitSource ? explicitSource.trim() : "autonomy";
 
-  if (source === "client_chat") return;
+  if (source === MESSAGE_SOURCE_CLIENT_CHAT) return;
   if (!hasExplicitSource && !event.roomId) return;
 
   if (

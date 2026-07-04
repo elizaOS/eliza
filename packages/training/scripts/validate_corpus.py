@@ -68,6 +68,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -97,6 +98,9 @@ from scripts.lib.native_record import (  # noqa: E402
     validate_native_record,
 )
 
+PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
+PRIVACY_ATTESTATION_VERSION = 1
+
 # Stale action names that must not appear in fresh corpus rows (renamed/removed
 # in the runtime — see config/eliza1_action_aliases.json and action-docs.ts).
 _STALE_ACTION_NAMES = {
@@ -115,6 +119,65 @@ def _native_tool_name(call: dict) -> str | None:
     return name if isinstance(name, str) else None
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _privacy_attestation_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
+    metadata = _as_dict(record.get("metadata"))
+    candidates: list[dict[str, Any]] = []
+    for value in (
+        record.get("privacyAttestation"),
+        record.get("privacy_attestation"),
+        metadata.get("privacy_attestation"),
+        metadata.get("privacyAttestation"),
+        metadata.get("privacy"),
+        record.get("privacy"),
+    ):
+        if isinstance(value, dict):
+            candidates.append(value)
+    return candidates
+
+
+def _has_privacy_attestation(record: dict[str, Any]) -> bool:
+    for attestation in _privacy_attestation_candidates(record):
+        privacy = _as_dict(attestation.get("privacy"))
+        if (
+            attestation.get("schema") == PRIVACY_ATTESTATION_SCHEMA
+            and attestation.get("version") == PRIVACY_ATTESTATION_VERSION
+            and attestation.get("passed") is True
+            and (
+                attestation.get("reviewed") is True
+                or attestation.get("redacted") is True
+                or privacy.get("reviewed") is True
+            )
+        ):
+            return True
+    return False
+
+
+def native_content_hash(rec: dict[str, Any]) -> str | None:
+    if rec.get("format") != ELIZA_NATIVE_FORMAT:
+        return None
+    request = rec.get("request")
+    response = rec.get("response")
+    if not isinstance(request, dict) or not isinstance(response, dict):
+        return None
+    payload = {
+        "request": request,
+        "response": response,
+        "tools": request.get("tools"),
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8", "replace")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
     """Validator for canonical `eliza_native_v1` corpus rows (the runtime
     generateText boundary shape; see docs/dataset/CANONICAL_RECORD.md)."""
@@ -123,6 +186,13 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
     if not ok:
         errs.append(("native_v1_invalid_shape", why))
         return errs
+    has_privacy_attestation = _has_privacy_attestation(rec)
+    if not has_privacy_attestation:
+        errs.append((
+            "native_v1_missing_privacy_attestation",
+            f"eliza_native_v1 rows must carry {PRIVACY_ATTESTATION_SCHEMA} "
+            f"v{PRIVACY_ATTESTATION_VERSION} before training",
+        ))
     resp = rec.get("response") if isinstance(rec.get("response"), dict) else {}
     for call in resp.get("toolCalls") or []:
         name = _native_tool_name(call)
@@ -132,15 +202,17 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
                          f"use {_STALE_ACTION_NAMES[name]!r} "
                          "(config/eliza1_action_aliases.json)"))
     # Confirm it renders to a training example.
-    try:
-        from scripts.format_for_training import format_record  # noqa: PLC0415
-        rendered = format_record(rec)
-        if not rendered or not rendered.get("messages"):
-            errs.append(("native_v1_unrenderable",
-                         "format_record() produced no messages"))
-    except Exception as e:  # noqa: BLE001
-        errs.append(("native_v1_render_error", repr(e)))
+    if has_privacy_attestation:
+        try:
+            from scripts.format_for_training import format_record  # noqa: PLC0415
+            rendered = format_record(rec)
+            if not rendered or not rendered.get("messages"):
+                errs.append(("native_v1_unrenderable",
+                             "format_record() produced no messages"))
+        except Exception as e:  # noqa: BLE001
+            errs.append(("native_v1_render_error", repr(e)))
     return errs
+
 
 # task_types treated as `should_respond_with_context` for validation purposes.
 ROUTING_TASK_TYPES = {"should_respond_with_context", "should_respond",
@@ -609,6 +681,7 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
     err_by_task: dict[str, Counter] = defaultdict(Counter)
     err_by_source: dict[str, Counter] = defaultdict(Counter)
     failing: list[dict[str, Any]] = []
+    seen_content_hashes: dict[str, int] = {}
 
     for line_no, rec in iter_records(input_path, max_records):
         total += 1
@@ -628,6 +701,26 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
             continue
 
         errs = validate_record(rec)
+        dedup_hash = native_content_hash(rec)
+        if dedup_hash is not None:
+            first_line = seen_content_hashes.get(dedup_hash)
+            if first_line is not None:
+                hint = (
+                    "duplicate eliza_native_v1 training boundary; first seen "
+                    f"on line {first_line}; duplicates line {first_line} "
+                    f"(sha256={dedup_hash}). Re-run "
+                    "prepare_eliza1_trajectory_dataset.py with dedup enabled."
+                )
+                errs.append((
+                    "duplicate_native_content",
+                    hint,
+                ))
+                errs.append((
+                    "duplicate_content_hash",
+                    hint,
+                ))
+            else:
+                seen_content_hashes[dedup_hash] = line_no
         if not errs:
             valid += 1
             continue

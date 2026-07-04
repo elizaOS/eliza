@@ -1,3 +1,4 @@
+/** Covers optimistic-generation policy resolution and the power-source-aware gating. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,

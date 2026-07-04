@@ -1,3 +1,9 @@
+/**
+ * ElevenLabs plugin: registers TEXT_TO_SPEECH and TRANSCRIPTION (speech-to-text)
+ * model handlers backed by the @elevenlabs/elevenlabs-js SDK. Validates the
+ * configured TTS output format and STT model/timestamp granularity against the
+ * SDK's enums before calling the API.
+ */
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import type {
   BodySpeechToTextV1SpeechToTextPost,

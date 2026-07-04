@@ -1,3 +1,4 @@
+/** Unit tests for OAuth token resolution in the credential store; uses real temp dirs and env-var manipulation, no live API. */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

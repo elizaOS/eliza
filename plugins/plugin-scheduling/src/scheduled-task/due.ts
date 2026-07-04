@@ -10,7 +10,7 @@ import type {
 } from "./types.js";
 
 const MINUTE_MS = 60_000;
-const _DAY_MS = 24 * 60 * MINUTE_MS;
+const DAY_MS = 24 * 60 * MINUTE_MS;
 const CRON_CATCHUP_WINDOW_MS = 36 * 60 * MINUTE_MS;
 
 export interface ScheduledTaskDueContext {
@@ -383,6 +383,36 @@ function windowBoundsMinutes(
   return windows[windowKey] ?? [];
 }
 
+/**
+ * Stable per-occurrence key for a `during_window` fire. A window that wraps past
+ * midnight — `night` is `[eveningEnd, 24:00)` ∪ `[0, morningStart)` — is ONE
+ * occurrence per night, but its two segments share the name `"night"` and land
+ * on different calendar days. Attribute the after-midnight segment to the
+ * PREVIOUS local day so both halves collapse onto a single key; otherwise a
+ * night reminder fires once before midnight and a second time after it, because
+ * the date component of the key rolls over while the segment is still active
+ * (#12030). Returns `null` when no segment of the window is active at `at`.
+ */
+function windowOccurrenceKey(
+  at: Date,
+  timeZone: string,
+  windowKey: string,
+  ownerFacts: OwnerFactsView,
+): string | null {
+  const parts = localParts(at, timeZone);
+  const atMinutes = parts.hour * 60 + parts.minute;
+  const windows = windowBoundsMinutes(windowKey, ownerFacts);
+  const active = windows.find(
+    (window) => atMinutes >= window.start && atMinutes < window.end,
+  );
+  if (!active) return null;
+  const isAfterMidnightTail =
+    active.start === 0 &&
+    windows.some((w) => w.name === active.name && w.end === 24 * 60);
+  const anchor = isAfterMidnightTail ? new Date(at.getTime() - DAY_MS) : at;
+  return `${localDateKey(anchor, timeZone)}:${windowKey}:${active.name}`;
+}
+
 function duringWindowDue(
   task: ScheduledTask,
   trigger: Extract<ScheduledTaskTrigger, { kind: "during_window" }>,
@@ -390,34 +420,34 @@ function duringWindowDue(
 ): ScheduledTaskDueDecision {
   const ownerFacts = context.ownerFacts ?? {};
   const timeZone = ownerFacts.timezone ?? "UTC";
-  const parts = localParts(context.now, timeZone);
-  const nowMinutes = parts.hour * 60 + parts.minute;
-  const windows = windowBoundsMinutes(trigger.windowKey, ownerFacts);
-  const active = windows.find(
-    (window) => nowMinutes >= window.start && nowMinutes < window.end,
+  const fireKey = windowOccurrenceKey(
+    context.now,
+    timeZone,
+    trigger.windowKey,
+    ownerFacts,
   );
-  if (!active) return { due: false, reason: "window_inactive" };
-  const fireKey = `${localDateKey(context.now, timeZone)}:${trigger.windowKey}:${active.name}`;
+  if (fireKey === null) return { due: false, reason: "window_inactive" };
   if (task.metadata?.lastWindowFireKey === fireKey) {
     return { due: false, reason: "window_already_fired" };
   }
-  // A `firedAt` stamped inside the currently active window means this
-  // window's occurrence already happened. `lastWindowFireKey` is written by
-  // the tick AFTER the fire persists, so a recurrence-refire re-read in that
-  // gap (or a lost metadata edit) must still see the same window as spent —
-  // otherwise a parallel tick could double-fire one window occurrence.
+  // A `firedAt` stamped inside the same window occurrence means it already
+  // happened. `lastWindowFireKey` is written by the tick AFTER the fire
+  // persists, so a recurrence-refire re-read in that gap (or a lost metadata
+  // edit) must still see the occurrence as spent — otherwise a parallel tick
+  // could double-fire it. Comparing occurrence keys (not raw calendar dates)
+  // also collapses the two halves of a midnight-spanning window into one.
   const firedAtMs = parseIsoMs(task.state.firedAt);
   if (
     task.state.status !== "scheduled" &&
     firedAtMs !== null &&
-    localDateKey(new Date(firedAtMs), timeZone) ===
-      localDateKey(context.now, timeZone)
+    windowOccurrenceKey(
+      new Date(firedAtMs),
+      timeZone,
+      trigger.windowKey,
+      ownerFacts,
+    ) === fireKey
   ) {
-    const firedParts = localParts(new Date(firedAtMs), timeZone);
-    const firedMinutes = firedParts.hour * 60 + firedParts.minute;
-    if (firedMinutes >= active.start && firedMinutes < active.end) {
-      return { due: false, reason: "window_already_fired" };
-    }
+    return { due: false, reason: "window_already_fired" };
   }
   return {
     due: true,
@@ -474,15 +504,16 @@ export function markWindowFireIfNeeded(
   if (task.trigger.kind !== "during_window") return null;
   const ownerFacts = context.ownerFacts ?? {};
   const timeZone = ownerFacts.timezone ?? "UTC";
-  const parts = localParts(context.now, timeZone);
-  const nowMinutes = parts.hour * 60 + parts.minute;
-  const active = windowBoundsMinutes(task.trigger.windowKey, ownerFacts).find(
-    (window) => nowMinutes >= window.start && nowMinutes < window.end,
+  const fireKey = windowOccurrenceKey(
+    context.now,
+    timeZone,
+    task.trigger.windowKey,
+    ownerFacts,
   );
-  if (!active) return null;
+  if (fireKey === null) return null;
   return {
     ...(task.metadata ?? {}),
-    lastWindowFireKey: `${localDateKey(context.now, timeZone)}:${task.trigger.windowKey}:${active.name}`,
+    lastWindowFireKey: fireKey,
   };
 }
 

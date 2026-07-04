@@ -1,3 +1,10 @@
+/**
+ * Settings → Security section (the `security` section id), OWNER-only behind a
+ * RoleGate. Surfaces the access mode / bind endpoint (loopback vs all-
+ * interfaces, with private/public host warnings), the remote-access password,
+ * and the active device sessions with per-session revoke.
+ */
+
 import {
   KeyRound,
   Laptop,
@@ -31,6 +38,7 @@ import {
 import { useBootConfig } from "../../config/boot-config-react.hooks";
 import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -510,16 +518,17 @@ function AccessModeSection({
         )}
       </div>
       <div className="flex items-center justify-between gap-3">
-        <button
+        <Button
           ref={accessRefreshRef}
           {...accessRefreshAgentProps}
-          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => void onRefresh()}
-          className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
+          className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
         >
           <RefreshCw className="h-3 w-3" />
           {t("security.refresh", { defaultValue: "Refresh" })}
-        </button>
+        </Button>
         <AdvancedToggle label="Advanced" />
       </div>
     </SectionShell>
@@ -640,16 +649,17 @@ function SessionsSection() {
           )}
 
           <div className="flex items-center justify-between pt-1">
-            <button
+            <Button
               ref={sessionsRefreshRef}
               {...sessionsRefreshAgentProps}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={load}
-              className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-txt-strong"
+              className="h-7 gap-1.5 px-1 text-xs text-muted transition-colors hover:bg-transparent hover:text-txt-strong"
             >
               <RefreshCw className="h-3 w-3" />
               {t("security.refresh", { defaultValue: "Refresh" })}
-            </button>
+            </Button>
 
             {state.sessions.filter((s) => !s.current).length > 1 && (
               <Button
@@ -1082,7 +1092,21 @@ function RemotePasswordSection({
   );
 }
 
+/**
+ * Remote-access passwords, sessions, and device pairing are an OWNER-tier
+ * surface (#12087 Item 24): only the workspace owner manages who else may reach
+ * the agent. Gated once at the surface boundary via the canonical
+ * {@link RoleGate}.
+ */
 export function SecuritySettingsSection() {
+  return (
+    <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
+      <SecuritySettingsSectionBody />
+    </RoleGate>
+  );
+}
+
+function SecuritySettingsSectionBody() {
   const [accessState, setAccessState] = useState<AccessState>({
     phase: "loading",
   });

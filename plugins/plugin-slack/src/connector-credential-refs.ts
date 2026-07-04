@@ -1,3 +1,14 @@
+/**
+ * Persists Slack OAuth credential material to durable storage after an install
+ * flow completes. Writes secret values to the first available vault
+ * (connector credential store, `vault`, or `SECRETS`) under a normalized
+ * `connector.<agent>.<provider>.<account>.<credType>` vault ref, then records
+ * the ref metadata against the connector account via the account manager's
+ * storage. Refuses to complete (throws) when no durable vault or ref writer is
+ * available rather than marking an account connected with unpersisted secrets —
+ * this is the guard that prevents silently dropping OAuth tokens. Called by the
+ * connector account provider's OAuth callback.
+ */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,
@@ -204,7 +215,11 @@ function resolveVaultWriters(
         await secrets.set?.(
           vaultRef,
           credential.value,
-          { level: "global", agentId: runtime.agentId },
+          {
+            level: "global",
+            agentId: runtime.agentId,
+            requesterId: runtime.agentId,
+          },
           { sensitive: true },
         );
         return vaultRef;

@@ -1,3 +1,5 @@
+/** Storybook stories for DownloadProgress — just-started, downloading, nearly-done, completed, and unknown-total states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DownloadJob } from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";

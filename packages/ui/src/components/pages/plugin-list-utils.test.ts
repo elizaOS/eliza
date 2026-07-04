@@ -1,3 +1,11 @@
+/**
+ * Unit tests for plugin-list-utils: icon resolution precedence (image icons
+ * before lucide names, raw labels rejected; only URL/path-like image sources
+ * accepted) and buildPluginListState (hides db/always-on plugins, applies mode
+ * + search + status + subgroup filters and custom order, and sorts ready
+ * plugins before those needing config before disabled). Pure functions.
+ */
+
 import { Puzzle } from "lucide-react";
 import { describe, expect, it } from "vitest";
 import type { PluginInfo } from "../../api";

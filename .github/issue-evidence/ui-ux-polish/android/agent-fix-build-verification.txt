@@ -1,0 +1,15 @@
+=== Android detached-agent lifecycle fix: AFTER-fix build verification ===
+date: Fri Jul  3 17:37:07 EDT 2026
+commit under test: 4ed10049281 (fix(android): keep detached agent alive across non-explicit service teardown)
+
+APK: /Users/shawwalters/eliza-workspace/milady/ui-ux-develop/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk
+APK mtime: Jul  3 17:07:33 2026  size=493633098 bytes
+
+Fix markers compiled into the shipped APK (classes18.dex):
+  [PRESENT] service-destroy-preserved-agent
+  [PRESENT] leaving the agent process running for adoption
+  [PRESENT] detached-agent-cold-boot-guard
+  [PRESENT] detachedLaunchStartedAtMs
+  [PRESENT] Service destroyed without a stop request
+
+gradle result: BUILD SUCCESSFUL (see android-build.log)

@@ -7,6 +7,7 @@
 
 import {
   extractAssistantReplyText,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -18,11 +19,9 @@ import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-to
 import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import {
   clearElizaApiBase,
-  clearElizaApiToken,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
-  setElizaApiToken,
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
@@ -41,6 +40,7 @@ import type {
 } from "./client-types";
 import { ApiError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
+import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import {
   iosInProcessAgentTransportForUrl,
   isIosInProcessLocalAgentBase,
@@ -62,7 +62,9 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
 ]);
-const REPLAYABLE_WS_EVENT_TYPES = new Set(["shell:navigate:view"]);
+const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
 
 type StreamChatEvent = {
@@ -626,13 +628,13 @@ export class ElizaClient {
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
-    // Mirror to window globals for the Capacitor agent web fallback
-    // (native-plugins/agent/src/web.ts) and any direct readers via
-    // getElizaApiToken(). Parallels setBaseUrl()'s window-global mirror.
-    if (this._token) {
-      setElizaApiToken(this._token);
-    } else {
-      clearElizaApiToken();
+    // A same-view sign-in/out (this is the only path that writes the token
+    // without a page load) must refresh any mounted session gate — e.g. the
+    // Apps tab — without a remount. `steward-token-sync` is the established
+    // "re-read your token" signal that use-session-auth already listens for.
+    // (#12046 Nit 2)
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
     }
   }
 
@@ -653,15 +655,17 @@ export class ElizaClient {
   }
 
   /**
-   * Persist a base URL to every consumer that reads it out-of-band (boot config,
-   * localStorage, the `window.__ELIZA_API_BASE__` global). Shared by
-   * {@link setBaseUrl} and {@link repointBaseUrl} so both keep the same
-   * persistence semantics — the only difference between them is the WS handling.
+   * Persist a base URL to every consumer that reads it out-of-band (the
+   * boot-config store, plus localStorage). Shared by {@link setBaseUrl} and
+   * {@link repointBaseUrl} so both keep the same persistence semantics — the
+   * only difference between them is the WS handling.
    */
   private persistBaseUrl(normalized: string): void {
-    // Update boot config so other consumers (resolveApiUrl, etc.) see the new base.
-    const config = getBootConfig();
-    setBootConfig({ ...config, apiBase: normalized || undefined });
+    if (normalized) {
+      setElizaApiBase(normalized);
+    } else {
+      clearElizaApiBase();
+    }
     if (typeof window !== "undefined") {
       if (normalized) {
         window.localStorage.setItem(LOCAL_STORAGE_API_BASE_KEY, normalized);
@@ -670,17 +674,6 @@ export class ElizaClient {
       }
       // Clean up legacy sessionStorage entry (same key was used historically)
       window.sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
-    }
-    // Mirror to window.__ELIZA_API_BASE__ so the Capacitor agent plugin's web
-    // fallback (native-plugins/agent/src/web.ts) and any other consumers that
-    // read the global directly see the same base. Electrobun's main↔renderer
-    // bridge also writes this; mirroring in setBaseUrl() makes mobile + dev-
-    // server + Electrobun behave consistently for any caller (Local Agent,
-    // Remote Agent, Eliza Cloud).
-    if (normalized) {
-      setElizaApiBase(normalized);
-    } else {
-      clearElizaApiBase();
     }
   }
 
@@ -963,6 +956,7 @@ export class ElizaClient {
     return (
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
+      (await desktopLocalAgentTransportForUrl(requestUrl)) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport

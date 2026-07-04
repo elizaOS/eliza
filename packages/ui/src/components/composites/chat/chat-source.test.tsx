@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Covers chat voice-speaker provenance: `resolveChatVoiceSpeakerLabel` name/
+ * userName fallbacks and the ChatVoiceSpeakerBadge render (label presence, the
+ * OWNER crown affordance). RTL in jsdom, no live model.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";

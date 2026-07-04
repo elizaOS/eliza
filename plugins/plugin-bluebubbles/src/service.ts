@@ -1,5 +1,13 @@
 /**
- * BlueBubbles service for ElizaOS
+ * Core connector service: connects to the BlueBubbles REST server on a macOS
+ * host, registers the `bluebubbles`/`imessage` message-connector pair, and
+ * turns inbound webhook events into agent message memories.
+ *
+ * Inbound `new-message` webhooks are gated by DM/group allowlist policy, mapped
+ * to entity/room UUIDs, persisted, then dispatched through the runtime message
+ * service; outbound sends, reactions, edits, and unsends resolve a chat GUID via
+ * BlueBubblesClient. Multi-account aware — binds to the resolved default account
+ * (see accounts.ts). Phone/email handles are normalized before use.
  */
 import * as childProcess from "node:child_process";
 import {

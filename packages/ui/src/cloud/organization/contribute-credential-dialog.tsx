@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   POOLED_PROVIDER_LABELS,
@@ -273,7 +274,8 @@ export function ContributeCredentialDialog({
               </div>
 
               <DialogFooter className="gap-2 sm:gap-0 flex flex-col sm:flex-row">
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
@@ -282,7 +284,7 @@ export function ContributeCredentialDialog({
                   {t("cloud.contributeCredential.cancel", {
                     defaultValue: "Cancel",
                   })}
-                </button>
+                </Button>
                 <BrandButton
                   type="submit"
                   variant="primary"

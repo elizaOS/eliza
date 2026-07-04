@@ -1,3 +1,7 @@
+/**
+ * Unit tests for catalog-command mapping into `DiscordSlashCommand`, dedupe
+ * against built-ins, and per-target execute branching. Mocked runtime/registry.
+ */
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { getConnectorCommands } from "@elizaos/plugin-commands";
 import { beforeEach, describe, expect, it, vi } from "vitest";

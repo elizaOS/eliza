@@ -1,3 +1,12 @@
+/**
+ * Resolves Signal account configuration by merging environment defaults,
+ * character `settings.signal`, and per-account overrides into concrete
+ * `ResolvedSignalAccount` records.
+ *
+ * The service and the connector-account provider both read accounts through
+ * here. Account IDs are lowercased via `normalizeAccountId`, and `"default"`
+ * (`DEFAULT_ACCOUNT_ID`) is the sentinel for single-account env-only setups.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

@@ -282,18 +282,19 @@ function notificationsPayload() {
 // disabled on a cloud-only host).
 //
 // The local first-run path resolves the on-device agent base via
-// resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads
-// __ELIZA_API_BASE__ / __ELIZAOS_API_BASE__, NOT __ELIZA_APP_API_BASE__). Pin
-// all three to the page origin so client.setBaseUrl() in finishLocal keeps every
-// request on the live preview origin (and the route mocks) instead of falling
-// back to DEFAULT_LOCAL_AGENT_API_BASE (http://127.0.0.1:31337), which has no
-// server → ERR_CONNECTION_REFUSED on the chat/home surface.
+// resolveFirstRunLocalAgentApiBase() → getElizaApiBase() (which reads the
+// boot-config apiBase, NOT __ELIZA_APP_API_BASE__). Seed the boot-config mirror
+// (and the branded __ELIZAOS_API_BASE__) with the page origin so
+// client.setBaseUrl() in finishLocal keeps every request on the live preview
+// origin (and the route mocks) instead of falling back to
+// DEFAULT_LOCAL_AGENT_API_BASE (http://127.0.0.1:31337), which has no server →
+// ERR_CONNECTION_REFUSED on the chat/home surface.
 export async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const origin = window.location.origin;
     const win = window as unknown as Record<string, unknown>;
     win.__ELIZA_APP_API_BASE__ = origin;
-    win.__ELIZA_API_BASE__ = origin;
+    win.__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: origin };
     win.__ELIZAOS_API_BASE__ = origin;
     win.__electrobunWindowId = 1;
   });
@@ -568,10 +569,12 @@ export const CLOUD_AUTH_TOKEN = "ui-smoke-onboarding-cloud-token";
 export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
 export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
 
-/** Inject the cloud session token before React boots (getCloudAuthToken reads it). */
+/** Inject the cloud session token before React boots (getCloudAuthToken reads
+ *  the canonical steward-session store first). */
 export async function injectCloudAuthToken(page: Page): Promise<void> {
   await page.addInitScript((token) => {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ = token;
+    // STEWARD_TOKEN_KEY from @elizaos/shared/steward-session-client.
+    window.localStorage.setItem("steward_session_token", token);
   }, CLOUD_AUTH_TOKEN);
 }
 
@@ -744,7 +747,7 @@ export const NOTIFICATIONS_TESTID = "widget-notifications";
 // First-run runtime/provider buttons live in the real chat transcript. The
 // headless conductor seeds the ChoiceWidgets and the chat action channel routes
 // their sentinel values before they hit the server.
-export const RUNTIME_CHOICE = (id: "cloud" | "local" | "other"): string =>
+export const RUNTIME_CHOICE = (id: "cloud" | "local" | "remote"): string =>
   `choice-__first_run__:runtime:${id}`;
 export const PROVIDER_CHOICE = (
   id: "on-device" | "elizacloud" | "other",
@@ -785,17 +788,22 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
     timeout: 15_000,
   });
   await expect(page.getByTestId(RUNTIME_CHOICE("local"))).toBeVisible();
-  await expect(page.getByTestId(RUNTIME_CHOICE("other"))).toBeVisible();
+  await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
-  // Onboarding gating: the chat is NON-INTERACTIVE except the choice widgets.
-  // The composer is locked (disabled textarea + "choose" placeholder) and the
-  // pinned-open sheet is non-dismissable — Escape must NOT collapse it.
+  // Onboarding surface (#12178): the composer is UNLOCKED (typed text is
+  // answered by the in-chat conductor, never the server) with an inviting
+  // placeholder, the backdrop is OPAQUE so the launcher/home is hidden, and the
+  // pinned-open sheet is still non-dismissable — Escape must NOT collapse it.
   const composer = page.getByTestId("chat-composer-textarea");
-  await expect(composer).toBeDisabled();
+  await expect(composer).toBeEnabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Choose an option to continue",
+    "Ask me anything — or pick an option",
+  );
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
+    "data-first-run-opaque",
+    "true",
   );
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await page.keyboard.press("Escape");
@@ -1016,9 +1024,12 @@ export async function completeOtherProviderSettingsHandoff(
 
   await expectChatFirstOnboarding(page);
 
-  const otherRuntime = page.getByTestId(RUNTIME_CHOICE("other"));
-  await expect(otherRuntime).toBeVisible({ timeout: 15_000 });
-  await click(otherRuntime);
+  // "Other / configure in Settings" is a PROVIDER sub-choice under the LOCAL
+  // runtime (the old top-level runtime:other was renamed/removed when the
+  // chooser became cloud/local/remote), so reach it via local → provider:other.
+  const localRuntime = page.getByTestId(RUNTIME_CHOICE("local"));
+  await expect(localRuntime).toBeVisible({ timeout: 15_000 });
+  await click(localRuntime);
 
   const otherProvider = page.getByTestId(PROVIDER_CHOICE("other"));
   await expect(otherProvider).toBeVisible({ timeout: 15_000 });

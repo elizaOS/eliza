@@ -1,3 +1,7 @@
+// Edge cases for the inline-widget region finders (choice / followups / form /
+// task): adjacent markers, unicode payloads, duplicate ids, stable offsets in
+// long messages, title capping, and rejection of malformed lookalike markers.
+// Pure functions — no React, no jsdom.
 import { describe, expect, it } from "vitest";
 import { findChoiceRegions } from "./message-choice-parser";
 import { findFollowupsRegions } from "./message-followups-parser";

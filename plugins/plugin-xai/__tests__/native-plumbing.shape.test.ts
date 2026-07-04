@@ -1,3 +1,8 @@
+/**
+ * Verifies the xAI text/embedding handler request shape against a mocked fetch:
+ * the GROK_API_KEY auto-enable alias resolves, and requests carry the expected
+ * model/auth wiring. No live API — the OpenAI-compatible response is stubbed.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

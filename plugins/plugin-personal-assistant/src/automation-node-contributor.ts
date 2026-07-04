@@ -4,6 +4,7 @@ import {
 } from "@elizaos/app-core/api/automation-node-contributors";
 import { logger } from "@elizaos/core";
 import type {
+  AutomationNodeDescriptor,
   IPermissionsRegistry,
   LifeOpsDiscordConnectorStatus,
   LifeOpsGoogleConnectorStatus,
@@ -11,7 +12,6 @@ import type {
   LifeOpsTelegramConnectorStatus,
   PermissionState,
 } from "@elizaos/shared";
-import type { AutomationNodeDescriptor } from "@elizaos/ui";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

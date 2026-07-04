@@ -1,3 +1,7 @@
+/**
+ * Vitest config for the plugin: aliases the Neynar/provider SDKs to shims so
+ * the suite runs offline without real network SDK dependencies.
+ */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

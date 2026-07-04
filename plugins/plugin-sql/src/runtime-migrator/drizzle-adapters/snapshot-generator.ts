@@ -1,3 +1,13 @@
+/**
+ * Serializes a Drizzle schema module (tables, columns, indexes, foreign
+ * keys, primary/unique/check constraints) into the `SchemaSnapshot` shape
+ * used for diffing and migration generation. Much of the per-column and
+ * per-constraint handling deliberately mirrors Drizzle's own internal
+ * `pgSerializer`, since the fields it reads (`isUnique`, `config`, etc.) are
+ * internal Drizzle column properties not exposed in its public types. Also
+ * provides snapshot hashing (`hashSnapshot`, `hasChanges`) used to detect
+ * schema drift without a full field-by-field walk.
+ */
 import { is, SQL } from "drizzle-orm";
 import { getTableConfig, type PgColumn, PgDialect, PgTable } from "drizzle-orm/pg-core";
 import { extendedHash } from "../crypto-utils";
@@ -98,10 +108,8 @@ const sqlToStr = (sql: SQL, _casing: string | undefined) => {
 function extractTablesFromSchema(schema: DrizzleSchema): PgTable[] {
   const tables: PgTable[] = [];
 
-  // Iterate through all exports in the schema
   const exports = Object.values(schema);
   exports.forEach((t: unknown) => {
-    // Check if it's a PgTable using Drizzle's is() function
     if (is(t, PgTable)) {
       tables.push(t);
     }
@@ -120,10 +128,8 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
   const schemas: Record<string, string> = {};
   const enums: Record<string, SchemaEnum> = {};
 
-  // Extract tables from schema
   const pgTables = extractTablesFromSchema(schema);
 
-  // Process each table
   for (const table of pgTables) {
     const config = getTableConfig(table);
     const {
@@ -144,7 +150,8 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
     const uniqueConstraintObject: Record<string, SchemaUniqueConstraint> = {};
     const checksObject: Record<string, SchemaCheckConstraint> = {};
 
-    // Process columns - EXACT copy of Drizzle's logic
+    // Mirrors Drizzle's own column-processing logic exactly, since it reads
+    // internal column properties (see hasDrizzleColumnConfig above).
     columns.forEach((column: PgColumn) => {
       const name = column.name;
       const notNull = column.notNull;
@@ -159,7 +166,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
         notNull,
       };
 
-      // Handle defaults - EXACT copy from Drizzle's pgSerializer.ts lines 247-273
+      // Mirrors Drizzle's pgSerializer default-value handling.
       if (column.default !== undefined) {
         if (is(column.default, SQL)) {
           columnToSet.default = sqlToStr(column.default, undefined);
@@ -180,18 +187,14 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
             } else if (isPgArrayType(sqlTypeLowered) && Array.isArray(column.default)) {
               columnToSet.default = `'${buildArrayString(column.default as ArrayElement[], sqlTypeLowered)}'`;
             } else {
-              // Should do for all types
-              // columnToSet.default = `'${column.default}'::${sqlTypeLowered}`;
               columnToSet.default = column.default as string | number | boolean;
             }
           }
         }
       }
 
-      // Handle column-level unique constraints
-      // IMPORTANT: Check isUnique, not just uniqueName presence!
-      // Drizzle sets uniqueName for all columns but only unique ones should have constraints
-      // Type assertion: accessing internal Drizzle column properties not in public types
+      // Check isUnique, not just uniqueName presence: Drizzle sets uniqueName
+      // on every column but only actually-unique ones should get a constraint.
       const columnConfig = hasDrizzleColumnConfig(column) ? column.config : undefined;
       if (hasDrizzleColumnConfig(column) && column.isUnique && columnConfig?.uniqueName) {
         uniqueConstraintObject[columnConfig.uniqueName] = {
@@ -210,7 +213,6 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       getName: () => string;
     }
 
-    // Process primary keys
     primaryKeys.forEach((pk: DrizzlePrimaryKey) => {
       const columnNames = pk.columns.map((c) => c.name);
       const name = pk.getName();
@@ -228,7 +230,6 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       nullsNotDistinct?: boolean;
     }
 
-    // Process unique constraints
     uniqueConstraints.forEach((unq: DrizzleUniqueConstraint) => {
       const columnNames = unq.columns.map((c) => c.name);
       const name = unq.name || `${tableName}_${columnNames.join("_")}_unique`;
@@ -254,8 +255,8 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       onUpdate?: string;
     }
 
-    // Process foreign keys - includes both explicit foreignKeys and inline references
-    // Drizzle's getTableConfig automatically collects inline .references() into foreignKeys
+    // Covers both explicit foreignKeys and inline .references() — Drizzle's
+    // getTableConfig automatically collects inline references into foreignKeys.
     foreignKeys.forEach((fk: DrizzleForeignKey) => {
       const reference = fk.reference();
       const columnsFrom = reference.columns.map((it) => it.name);
@@ -268,7 +269,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       foreignKeysObject[name] = {
         name,
         tableFrom: tableName,
-        schemaFrom: tableSchema, // Add source table schema
+        schemaFrom: tableSchema,
         tableTo,
         schemaTo,
         columnsFrom,
@@ -298,8 +299,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       };
     }
 
-    // Process indexes
-    // Drizzle's getTableConfig returns indexes with internal types not exported from the package
+    // Drizzle's getTableConfig returns indexes with internal types not exported from the package.
     (indexes as DrizzleIndex[]).forEach((idx: DrizzleIndex) => {
       const indexCols = idx.config.columns;
       const indexColumns: IndexColumn[] = indexCols.map((col) => {
@@ -339,7 +339,6 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       value: SQL;
     }
 
-    // Process check constraints
     if (checks) {
       checks.forEach((check: DrizzleCheck) => {
         const checkName = check.name;
@@ -350,7 +349,6 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       });
     }
 
-    // Build the table object
     tables[`${tableSchema || "public"}.${tableName}`] = {
       name: tableName,
       schema: tableSchema || "public",
@@ -362,13 +360,11 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       checkConstraints: checksObject,
     };
 
-    // Track schemas
     if (tableSchema && tableSchema !== "public") {
       schemas[tableSchema] = tableSchema;
     }
   }
 
-  // Create snapshot in Drizzle's format
   const snapshot: SchemaSnapshot = {
     version: "7",
     dialect: "postgresql",

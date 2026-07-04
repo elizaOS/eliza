@@ -53,6 +53,14 @@ export class PromptDispatcher {
 					const params = {
 						prompt,
 						...mergedExecOptions,
+						// Batcher drains are deferred agent reasoning (autonomy think,
+						// audits, init sections) — background on single-lane local
+						// backends so interactive turns dispatch first (#11914). Only
+						// "immediate" plans (askNow, user-blocking flows) stay
+						// interactive.
+						priority: (callPlan.priority === "immediate"
+							? "interactive"
+							: "background") satisfies GenerateTextParams["priority"],
 					} satisfies Omit<GenerateTextParams, "prompt"> & {
 						prompt: string;
 					};

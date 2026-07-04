@@ -1,3 +1,10 @@
+/**
+ * Backward-compatible facade over `LpManagementService` for callers still
+ * written against the older DEX-interaction API surface (pool listing,
+ * add/remove liquidity, position lookups). New routing and protocol
+ * ownership live in `LpManagementService`; this class forwards to it plus
+ * `UserLpProfileService`/`VaultService`.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   AddLiquidityConfig,

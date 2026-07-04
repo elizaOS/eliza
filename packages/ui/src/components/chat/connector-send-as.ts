@@ -1,3 +1,13 @@
+/**
+ * Pure "send-as" logic for choosing which connector account a chat write goes
+ * out on. Provides the `connectorSendAs` metadata shape, helpers to normalize a
+ * send-as context, name/usability checks for an account, whether the account
+ * picker should show (>1 usable account), and building/merging the metadata a
+ * message carries. `isLikelyAccountRequiredError` classifies backend errors
+ * that mean "pick an account first" so the UI can surface `AccountRequiredCard`.
+ * Framework-free so it unit-tests without the React graph; consumed by
+ * `AccountRequiredCard`, `ConnectorAccountPicker`, and the composer.
+ */
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 
 export const CONNECTOR_SEND_AS_METADATA_KEY = "connectorSendAs";

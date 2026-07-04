@@ -3,6 +3,12 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+// Single source of the host-external view-import rewrite (owned by the agent
+// bundle route). Plain ESM so this node-run stub can import it without a build.
+import {
+  parseHostExternalSpecifiers,
+  rewriteHostExternalImports,
+} from "../../agent/src/api/dynamic-view-host-external.mjs";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(
@@ -65,6 +71,14 @@ const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
 // Plugins that still declare a standalone tui route (training) keep a separate
 // `tui` row with its own `/<id>/tui` path below.
 const smokeViewDeclarations = [
+  [
+    "birdclaw",
+    "Birdclaw",
+    "plugin-birdclaw",
+    "/birdclaw",
+    "BirdclawView",
+    ["gui", "tui"],
+  ],
   [
     "contacts",
     "Contacts",
@@ -1498,83 +1512,6 @@ function contentTypeForSmokeViewAsset(assetPath) {
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
   if (ext === ".webp") return "image/webp";
   return "application/octet-stream";
-}
-
-function convertNamedImportsToDestructuring(namedImports) {
-  return namedImports
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => part.replace(/\s+as\s+/u, ": "))
-    .join(", ");
-}
-
-function buildHostExternalImportReplacement(importClause, specifier, index) {
-  const moduleVar = `__eliza_dynamic_view_host_external_${index}`;
-  const lines = [
-    `const ${moduleVar} = await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(specifier)});`,
-  ];
-  const trimmed = importClause.trim();
-  if (trimmed.startsWith("* as ")) {
-    lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
-    return lines.join("\n");
-  }
-  const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
-  if (namedMatch) {
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(namedMatch[1])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-  const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
-  if (defaultAndNamedMatch) {
-    lines.push(
-      `const ${defaultAndNamedMatch[1].trim()} = ${moduleVar}.default ?? ${moduleVar};`,
-    );
-    lines.push(
-      `const { ${convertNamedImportsToDestructuring(defaultAndNamedMatch[2])} } = ${moduleVar};`,
-    );
-    return lines.join("\n");
-  }
-  lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
-  return lines.join("\n");
-}
-
-function rewriteHostExternalImports(source, specifiers) {
-  if (specifiers.length === 0) return source;
-  const specifierPattern = specifiers
-    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
-    .join("|");
-  const fromImportPattern = new RegExp(
-    `import\\s+([^;]*?)\\s+from\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  const sideEffectPattern = new RegExp(
-    `import\\s+["'](${specifierPattern})["'];?`,
-    "gu",
-  );
-  let replacementIndex = 0;
-  return source
-    .replace(fromImportPattern, (_match, importClause, specifier) =>
-      buildHostExternalImportReplacement(
-        String(importClause),
-        String(specifier),
-        replacementIndex++,
-      ),
-    )
-    .replace(
-      sideEffectPattern,
-      (_match, specifier) =>
-        `await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(String(specifier))});`,
-    );
-}
-
-function parseHostExternalSpecifiers(url) {
-  if (url.searchParams.get("hostExternalRuntime") !== "1") return [];
-  return (url.searchParams.get("hostExternalSpecifiers") ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function smokeViewByRequest(id, viewType) {
@@ -3481,6 +3418,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Birdclaw (local birdclaw.sh Twitter/X archive): the zero-key smoke stack
+  // has no local archive, so the honest state is "not installed" — the view
+  // renders its real setup card (BirdclawView never fetches tweets/inbox when
+  // status.installed is false).
+  if (req.method === "GET" && url.pathname === "/api/birdclaw/status") {
+    sendJson(req, res, 200, {
+      status: {
+        installed: false,
+        version: null,
+        home: null,
+        counts: null,
+        transport: null,
+        message:
+          "birdclaw is not installed on this host. Install birdclaw.sh and run a sync to build the local archive.",
+      },
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
     sendJson(req, res, 200, stubHyperliquidStatus);
     return;
@@ -4666,6 +4622,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/lifeops/calendar/feed") {
     sendJson(req, res, 200, emptyLifeOpsCalendarFeed);
+    return;
+  }
+
+  // Meeting sessions (calendar view polls active sessions on mount). Return
+  // 200-empty so the calendar view renders without the catch-all 501 the
+  // page-error guard would otherwise flag.
+  if (req.method === "GET" && url.pathname === "/api/meetings") {
+    sendJson(req, res, 200, { sessions: [] });
     return;
   }
 

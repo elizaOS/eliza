@@ -183,7 +183,7 @@ describe("EngineVoiceBridge runVoiceTurn — transcript join (#8786)", () => {
 		const payload = await observed;
 
 		// The whole point of #8786: the merge engine needs the words, not just
-		// the speaker. Previously this was hardcoded "".
+		// the speaker.
 		expect(payload.text).toBe("I'm Jill");
 	});
 

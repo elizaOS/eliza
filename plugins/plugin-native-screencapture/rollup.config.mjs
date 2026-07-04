@@ -1,3 +1,7 @@
+/**
+ * Rollup config bundling the built ESM into a single IIFE (`dist/plugin.js`)
+ * for the Capacitor native runtime, with @capacitor/core left external.
+ */
 import nodeResolve from "@rollup/plugin-node-resolve";
 
 const external = ["@capacitor/core"];

@@ -1,12 +1,27 @@
+/**
+ * Plugin entry point. Assembles the `whatsapp` Plugin object — the connector
+ * service, workflow credential provider, connector-account source, triage
+ * adapter registration, and setup routes — and re-exports the public API for
+ * callers. Auto-enables when a `connectors.whatsapp` config block is present.
+ */
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
+import { registerWhatsappTriageAdapter } from "./triage-adapter";
 import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
   description: "WhatsApp integration for ElizaOS (Cloud API + Baileys)",
+  connectorSources: [
+    {
+      source: "whatsapp",
+      aliases: ["whatsapp"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   actions: [],
   services: [WhatsAppConnectorService, WhatsAppWorkflowCredentialProvider],
   routes: whatsappSetupRoutes,
@@ -32,6 +47,9 @@ const whatsappPlugin: Plugin = {
         "Failed to register WhatsApp provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "whatsapp" source.
+    registerWhatsappTriageAdapter();
   },
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<WhatsAppConnectorService>(WhatsAppConnectorService.serviceType);

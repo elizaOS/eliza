@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for shader uniform parsing/validation and fragment-source safety
+ * (size cap, plausibility). Pure functions, no GPU.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SHADER_UNIFORMS,

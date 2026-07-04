@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { type ChatTurnStatus, client } from "../api";
+import { type ChatTurnStatus, client, type FirstRunOptions } from "../api";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
@@ -21,7 +21,9 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   classifyActionMessage,
   tryHandleFirstRunAction,
+  tryHandleFirstRunText,
 } from "../first-run/first-run-action-channel";
+import { tryHandleModelAction } from "../first-run/model-action-channel";
 import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
@@ -144,7 +146,7 @@ function AppProviderInner({
   }, []);
   // uiLanguage + t live in TranslationContext; consumed via useTranslation()
   const { t, uiLanguage, setUiLanguage } = useTranslation();
-  // --- Display preferences (extracted to useDisplayPreferences) ---
+  // --- Display preferences (via useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
     state: {
@@ -154,6 +156,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
     },
     setUiTheme,
     setUiThemeMode,
@@ -161,6 +164,7 @@ function AppProviderInner({
     undoBackgroundConfig,
     redoBackgroundConfig,
     setHomeTimeWidgetHidden,
+    setUiAccent,
   } = displayPrefs;
 
   // Apply the host app's brand theme (set via BrandingConfig.theme).
@@ -277,7 +281,7 @@ function AppProviderInner({
   const uiShellMode = deriveUiShellModeForTab(tab);
 
   // --- Pairing ---
-  // --- Pairing (extracted to usePairingState) ---
+  // --- Pairing (via usePairingState) ---
   const pairingHook = usePairingState();
   const {
     state: {
@@ -385,7 +389,7 @@ function AppProviderInner({
     [addUnread, removeUnread],
   );
 
-  // --- Triggers (extracted to useTriggersState) ---
+  // --- Triggers (via useTriggersState) ---
   const triggersHook = useTriggersState();
   const {
     state: {
@@ -407,7 +411,7 @@ function AppProviderInner({
     runTriggerNow,
   } = triggersHook;
 
-  // --- Plugins / Skills / Store / Catalog (extracted to usePluginsSkillsState) ---
+  // --- Plugins / Skills / Store / Catalog (via usePluginsSkillsState) ---
   const pluginsSkillsHook = usePluginsSkillsState({
     setActionNotice,
     setPendingRestart,
@@ -519,7 +523,7 @@ function AppProviderInner({
     setCatalogUninstalling,
   } = pluginsSkillsHook;
 
-  // --- Logs (extracted to useLogsState) ---
+  // --- Logs (via useLogsState) ---
   const logsHook = useLogsState();
   const {
     state: {
@@ -538,7 +542,7 @@ function AppProviderInner({
     loadLogs,
   } = logsHook;
 
-  // --- Character (extracted to useCharacterState) ---
+  // --- Character (via useCharacterState) ---
   const characterHook = useCharacterState({ agentStatus, setAgentStatus });
   const {
     state: {
@@ -602,7 +606,7 @@ function AppProviderInner({
 
   // Updates, Extension, and Workbench state are now in useDataLoaders (dataLoaders).
 
-  // --- Agent export/import (extracted to useExportImportState) ---
+  // --- Agent export/import (via useExportImportState) ---
   const exportImportHook = useExportImportState();
   const {
     state: {
@@ -629,169 +633,62 @@ function AppProviderInner({
     handleAgentImport,
   } = exportImportHook;
 
-  // ── First-run state (consolidated from 35+ useState hooks) ──
+  // ── First-run state (surviving cross-surface fields; see useFirstRunState) ──
   const firstRun = useFirstRunState(brandingOverride?.cloudOnly);
   const {
     state: {
-      step: setupStep,
-      mode: firstRunMode,
-      activeGuide: firstRunActiveGuide,
       deferredTasks: firstRunDeferredTasks,
       postChecklistDismissed: postFirstRunChecklistDismissed,
       options: firstRunOptions,
       name: firstRunName,
-      ownerName: firstRunOwnerName,
       style: firstRunStyle,
-      avatar: setupAvatar,
       serverTarget: firstRunRuntimeTarget,
-      cloudApiKey: firstRunCloudApiKey,
       provider: firstRunProvider,
-      apiKey: firstRunApiKey,
-      voiceProvider: firstRunVoiceProvider,
-      voiceApiKey: firstRunVoiceApiKey,
-      smallModel: firstRunSmallModel,
-      largeModel: firstRunLargeModel,
-      openRouterModel: firstRunOpenRouterModel,
-      primaryModel: firstRunPrimaryModel,
-      existingInstallDetected: firstRunExistingInstallDetected,
-      detectedProviders: firstRunDetectedProviders,
       remoteApiBase: firstRunRemoteApiBase,
       remoteToken: firstRunRemoteToken,
-      subscriptionTab: firstRunSubscriptionTab,
-      elizaCloudTab: firstRunElizaCloudTab,
-      selectedChains: firstRunSelectedChains,
-      rpcSelections: firstRunRpcSelections,
-      rpcKeys: firstRunRpcKeys,
-      featureTelegram: firstRunFeatureTelegram,
-      featureDiscord: firstRunFeatureDiscord,
-      featurePhone: firstRunFeaturePhone,
-      featureCrypto: firstRunFeatureCrypto,
-      featureBrowser: firstRunFeatureBrowser,
-      featureComputerUse: firstRunFeatureComputerUse,
-      featureOAuthPending: firstRunFeatureOAuthPending,
       cloudProvisionedContainer: firstRunCloudProvisionedContainer,
     },
-    setStep: setSetupStep,
-    setMode: setFirstRunMode,
-    setActiveGuide: setFirstRunActiveGuide,
-    addDeferredTask: addDeferredFirstRunTask,
-    setOptions: setFirstRunOptions,
-    setDetectedProviders: setFirstRunDetectedProviders,
     completionCommittedRef: firstRunCompletionCommittedRefFromHook,
-    forceLocalBootstrapRef: forceLocalBootstrapRefFromHook,
   } = firstRun;
 
   const {
     firstRunRemoteConnecting,
     firstRunRemoteError,
     firstRunRemoteConnected,
-    firstRunTelegramToken,
-    firstRunDiscordToken,
-    firstRunWhatsAppSessionPath,
-    firstRunTwilioAccountSid,
-    firstRunTwilioAuthToken,
-    firstRunTwilioPhoneNumber,
-    firstRunBlooioApiKey,
-    firstRunBlooioPhoneNumber,
-    firstRunGithubToken,
     setFirstRunName,
-    setFirstRunOwnerName,
     setFirstRunStyle,
     setFirstRunRuntimeTarget,
-    setFirstRunCloudApiKey,
-    setFirstRunSmallModel,
-    setFirstRunLargeModel,
     setFirstRunProvider,
-    setFirstRunApiKey,
-    setFirstRunVoiceProvider,
-    setFirstRunVoiceApiKey,
-    setFirstRunExistingInstallDetected,
+    setFirstRunOptions,
     setFirstRunRemoteApiBase,
     setFirstRunRemoteToken,
     setFirstRunRemoteConnecting,
     setFirstRunRemoteError,
     setFirstRunRemoteConnected,
-    setFirstRunOpenRouterModel,
-    setFirstRunPrimaryModel,
-    setFirstRunTelegramToken,
-    setFirstRunDiscordToken,
-    setFirstRunWhatsAppSessionPath,
-    setFirstRunTwilioAccountSid,
-    setFirstRunTwilioAuthToken,
-    setFirstRunTwilioPhoneNumber,
-    setFirstRunBlooioApiKey,
-    setFirstRunBlooioPhoneNumber,
-    setFirstRunGithubToken,
-    setFirstRunSubscriptionTab,
-    setFirstRunElizaCloudTab,
-    setFirstRunSelectedChains,
-    setFirstRunRpcSelections,
-    setFirstRunRpcKeys,
-    setSetupAvatar,
-    setFirstRunFeatureTelegram,
-    setFirstRunFeatureDiscord,
-    setFirstRunFeaturePhone,
-    setFirstRunFeatureCrypto,
-    setFirstRunFeatureBrowser,
-    setFirstRunFeatureComputerUse,
-    setFirstRunFeatureOAuthPending,
     setFirstRunCloudProvisionedContainer,
     setPostFirstRunChecklistDismissed,
     setFirstRunDeferredTasks,
   } = useMemo(() => {
-    const {
-      dispatch,
-      setConnectorToken,
-      setDeferredTasks,
-      setField,
-      setRemoteStatus,
-    } = firstRun;
-    const { connectorTokens, remote } = firstRun.state;
+    const { dispatch } = firstRun;
+    const { remote } = firstRun.state;
     const bindField =
       (field: string) =>
       (value: unknown): void => {
-        setField(field, value);
-      };
-    const bindConnectorToken =
-      (key: keyof typeof connectorTokens) =>
-      (value: string): void => {
-        setConnectorToken(key, value);
+        dispatch({ type: "SET_FIELD", field, value });
       };
     return {
       firstRunRemoteConnecting: remote.status === "connecting",
       firstRunRemoteError: remote.error,
       firstRunRemoteConnected: remote.status === "connected",
-      firstRunTelegramToken: connectorTokens.telegramToken,
-      firstRunDiscordToken: connectorTokens.discordToken,
-      firstRunWhatsAppSessionPath: connectorTokens.whatsAppSessionPath,
-      firstRunTwilioAccountSid: connectorTokens.twilioAccountSid,
-      firstRunTwilioAuthToken: connectorTokens.twilioAuthToken,
-      firstRunTwilioPhoneNumber: connectorTokens.twilioPhoneNumber,
-      firstRunBlooioApiKey: connectorTokens.blooioApiKey,
-      firstRunBlooioPhoneNumber: connectorTokens.blooioPhoneNumber,
-      firstRunGithubToken: connectorTokens.githubToken,
       setFirstRunName: bindField("name") as (value: string) => void,
-      setFirstRunOwnerName: bindField("ownerName") as (value: string) => void,
       setFirstRunStyle: bindField("style") as (value: string) => void,
       setFirstRunRuntimeTarget: bindField("serverTarget") as (
         value: FirstRunRuntimeTarget,
       ) => void,
-      setFirstRunCloudApiKey: bindField("cloudApiKey") as (
-        value: string,
-      ) => void,
-      setFirstRunSmallModel: bindField("smallModel") as (value: string) => void,
-      setFirstRunLargeModel: bindField("largeModel") as (value: string) => void,
       setFirstRunProvider: bindField("provider") as (value: string) => void,
-      setFirstRunApiKey: bindField("apiKey") as (value: string) => void,
-      setFirstRunVoiceProvider: bindField("voiceProvider") as (
-        value: string,
-      ) => void,
-      setFirstRunVoiceApiKey: bindField("voiceApiKey") as (
-        value: string,
-      ) => void,
-      setFirstRunExistingInstallDetected: bindField(
-        "existingInstallDetected",
-      ) as (value: boolean) => void,
+      setFirstRunOptions: (options: FirstRunOptions | null): void => {
+        dispatch({ type: "SET_OPTIONS", options });
+      },
       setFirstRunRemoteApiBase: (value: string): void => {
         dispatch({ type: "SET_REMOTE_API_BASE", value });
       },
@@ -800,83 +697,31 @@ function AppProviderInner({
       },
       setFirstRunRemoteConnecting: (value: boolean): void => {
         if (value) {
-          setRemoteStatus("connecting");
+          dispatch({ type: "SET_REMOTE_STATUS", status: "connecting" });
           return;
         }
         if (remote.status === "connecting") {
-          setRemoteStatus("idle");
+          dispatch({ type: "SET_REMOTE_STATUS", status: "idle" });
         }
       },
       setFirstRunRemoteError: (value: string | null): void => {
         if (value) {
-          setRemoteStatus("error", value);
+          dispatch({ type: "SET_REMOTE_STATUS", status: "error", error: value });
           return;
         }
         if (remote.status === "error") {
-          setRemoteStatus("idle");
+          dispatch({ type: "SET_REMOTE_STATUS", status: "idle" });
         }
       },
       setFirstRunRemoteConnected: (value: boolean): void => {
         if (value) {
-          setRemoteStatus("connected");
+          dispatch({ type: "SET_REMOTE_STATUS", status: "connected" });
           return;
         }
         if (remote.status === "connected") {
-          setRemoteStatus("idle");
+          dispatch({ type: "SET_REMOTE_STATUS", status: "idle" });
         }
       },
-      setFirstRunOpenRouterModel: bindField("openRouterModel") as (
-        value: string,
-      ) => void,
-      setFirstRunPrimaryModel: bindField("primaryModel") as (
-        value: string,
-      ) => void,
-      setFirstRunTelegramToken: bindConnectorToken("telegramToken"),
-      setFirstRunDiscordToken: bindConnectorToken("discordToken"),
-      setFirstRunWhatsAppSessionPath: bindConnectorToken("whatsAppSessionPath"),
-      setFirstRunTwilioAccountSid: bindConnectorToken("twilioAccountSid"),
-      setFirstRunTwilioAuthToken: bindConnectorToken("twilioAuthToken"),
-      setFirstRunTwilioPhoneNumber: bindConnectorToken("twilioPhoneNumber"),
-      setFirstRunBlooioApiKey: bindConnectorToken("blooioApiKey"),
-      setFirstRunBlooioPhoneNumber: bindConnectorToken("blooioPhoneNumber"),
-      setFirstRunGithubToken: bindConnectorToken("githubToken"),
-      setFirstRunSubscriptionTab: bindField("subscriptionTab") as (
-        value: "token" | "oauth",
-      ) => void,
-      setFirstRunElizaCloudTab: bindField("elizaCloudTab") as (
-        value: "login" | "apikey",
-      ) => void,
-      setFirstRunSelectedChains: bindField("selectedChains") as (
-        value: Set<string>,
-      ) => void,
-      setFirstRunRpcSelections: bindField("rpcSelections") as (
-        value: Record<string, string>,
-      ) => void,
-      setFirstRunRpcKeys: bindField("rpcKeys") as (
-        value: Record<string, string>,
-      ) => void,
-      setSetupAvatar: bindField("avatar") as (value: number) => void,
-      setFirstRunFeatureTelegram: bindField("featureTelegram") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeatureDiscord: bindField("featureDiscord") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeaturePhone: bindField("featurePhone") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeatureCrypto: bindField("featureCrypto") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeatureBrowser: bindField("featureBrowser") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeatureComputerUse: bindField("featureComputerUse") as (
-        value: boolean,
-      ) => void,
-      setFirstRunFeatureOAuthPending: bindField("featureOAuthPending") as (
-        value: string | null,
-      ) => void,
       setFirstRunCloudProvisionedContainer: bindField(
         "cloudProvisionedContainer",
       ) as (value: boolean) => void,
@@ -884,14 +729,14 @@ function AppProviderInner({
         dispatch({ type: "SET_POST_CHECKLIST_DISMISSED", value });
       },
       setFirstRunDeferredTasks: (tasks: string[]): void => {
-        setDeferredTasks(tasks);
+        dispatch({ type: "SET_DEFERRED_TASKS", tasks });
       },
     };
   }, [firstRun]);
 
   // startupStatus is now derived in useLifecycleState
 
-  // --- Command palette / emote picker / MCP / game / dropped files (extracted to useMiscUiState) ---
+  // --- Command palette / emote picker / MCP / game / dropped files (via useMiscUiState) ---
   const miscUiHook = useMiscUiState();
   const {
     state: {
@@ -953,29 +798,16 @@ function AppProviderInner({
     closeEmotePicker,
   } = miscUiHook;
 
-  // chatPendingImages now comes from useChatState
-
   // --- Refs for timers ---
-  // actionNoticeTimer, shownOnceNotices, agentStatusRef, lifecycleBusyRef,
-  // lifecycleActionRef, setAgentStatusIfChanged are now in useLifecycleState
-  // elizaCloudPollInterval, elizaCloudDisconnectInFlightRef,
-  // elizaCloudPreferDisconnectedUntilLoginRef, lastElizaCloudPollConnectedRef,
-  // elizaCloudLoginPollTimer are now in useCloudState (cloudHook)
   const _restartNotificationSignatureRef = useRef<string | null>(null);
   const _heartbeatNotificationKeyRef = useRef<string | null>(null);
-  // First-run refs now come from useFirstRunState
   const firstRunCompletionCommittedRef = firstRunCompletionCommittedRefFromHook;
-  const forceLocalBootstrapRef = forceLocalBootstrapRefFromHook;
-  // exportBusyRef and importBusyRef are now managed inside useExportImportState (exportImportHook)
-  // walletApiKeySavingRef is now managed inside useWalletState (walletHook)
-  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef
-  // are now managed inside useCloudState (cloudHook)
 
   // --- Confirm Modal ---
   const { modalProps } = useConfirm();
   const { prompt: promptModal, modalProps: promptModalProps } = usePrompt();
 
-  // --- Wallet / Inventory / Registry / Drop / Whitelist (extracted to useWalletState) ---
+  // --- Wallet / Inventory / Registry / Drop / Whitelist (via useWalletState) ---
   // Placed after characterHook (characterDraft) and promptModal — both are required params.
   const walletHook = useWalletState({
     setActionNotice,
@@ -1046,7 +878,7 @@ function AppProviderInner({
 
   // setActionNotice is now provided by useLifecycleState
 
-  // ── Cloud state (extracted to useCloudState) ───────────────────────
+  // ── Cloud state (via useCloudState) ───────────────────────
   // Placed after walletHook so loadWalletConfig is available.
   const cloudHook = useCloudState({
     setActionNotice,
@@ -1103,7 +935,7 @@ function AppProviderInner({
 
   // Language is managed by TranslationProvider (see useTranslation() above)
 
-  // ── Navigation (extracted to useNavigationState) ──────────────────
+  // ── Navigation (via useNavigationState) ──────────────────
   const navHook = useNavigationState({
     tab,
     setTabRaw,
@@ -1123,7 +955,7 @@ function AppProviderInner({
 
   // loadLogs is now in useLogsState (logsHook)
 
-  // ── Data loading (extracted to useDataLoaders) ────────────────────
+  // ── Data loading (via useDataLoaders) ────────────────────
   const dataLoaders = useDataLoaders({
     autonomousStoreRef,
     autonomousEventsRef,
@@ -1195,7 +1027,7 @@ function AppProviderInner({
 
   // beginLifecycleAction / finishLifecycleAction are now provided by useLifecycleState
 
-  // ── Chat callbacks (extracted to useChatCallbacks) ──────────────────
+  // ── Chat callbacks (via useChatCallbacks) ──────────────────
   const chatCallbacks = useChatCallbacks({
     t,
     uiLanguage,
@@ -1270,25 +1102,15 @@ function AppProviderInner({
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
     setFirstRunComplete,
-    setSetupStep,
-    setFirstRunMode,
-    setFirstRunActiveGuide,
     setFirstRunDeferredTasks,
     setPostFirstRunChecklistDismissed,
     setFirstRunName,
     setFirstRunStyle,
     setFirstRunRuntimeTarget,
     setFirstRunProvider,
-    setFirstRunApiKey,
-    setFirstRunVoiceProvider: setFirstRunVoiceProvider as (v: string) => void,
-    setFirstRunVoiceApiKey: setFirstRunVoiceApiKey as (v: string) => void,
-    setFirstRunPrimaryModel,
-    setFirstRunOpenRouterModel,
     setFirstRunRemoteConnected,
     setFirstRunRemoteApiBase,
     setFirstRunRemoteToken,
-    setFirstRunSmallModel,
-    setFirstRunLargeModel,
     setFirstRunOptions,
     setSelectedVrmIndex,
     setCustomVrmUrl,
@@ -1333,20 +1155,27 @@ function AppProviderInner({
   // after onboarding completes (conductor unregistered), a tap on a leftover
   // onboarding widget in the transcript is dropped here instead of sending the
   // literal sentinel to the agent as a chat message. While onboarding is
-  // ACTIVE (firstRunComplete false) every other value is dropped too: the
-  // transcript is choice-driven, so free text must never reach the server
-  // mid-setup (the overlay disables its composer; this is the send-seam
-  // backstop). Once onboarding completes, every non-first-run value falls
-  // through to the real send funnel unchanged. Widgets stay 100% display-only
-  // — both InlineWidgetText and MessageContent route picks through this single
-  // `sendActionMessage`.
+  // ACTIVE (firstRunComplete false) free text is routed to the conductor's
+  // in-chat reply persona (`tryHandleFirstRunText`) and never reaches the
+  // server — the #12178 composer unlock keeps chat interactive without
+  // breaking the "no server send pre-completion" property, which is enforced
+  // HERE (the `"conductor"` case never calls `rawSendActionMessage`). Once
+  // onboarding completes, every non-first-run value falls through to the real
+  // send funnel unchanged. Widgets stay 100% display-only — both
+  // InlineWidgetText and MessageContent route picks through this single
+  // `sendActionMessage`, and so does the unlocked composer during onboarding.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
+      // The in-chat model-status card's `__model__:` controls (cancel / switch
+      // to cloud / retry / download) are consumed by the model-status conductor
+      // and NEVER reach the server — regardless of onboarding state.
+      if (tryHandleModelAction(text)) return Promise.resolve();
       switch (classifyActionMessage(text, firstRunComplete === true)) {
         case "first-run":
           tryHandleFirstRunAction(text);
           return Promise.resolve();
-        case "dropped":
+        case "conductor":
+          tryHandleFirstRunText(text);
           return Promise.resolve();
         case "send":
           return rawSendActionMessage(text);
@@ -1434,52 +1263,18 @@ function AppProviderInner({
   // ── Inventory / Registry / Drop / Whitelist actions are provided by useWalletState (walletHook) ──
   // ── Character actions are provided by useCharacterState (characterHook) ──
 
-  // ── First-run callbacks (extracted to useFirstRunCallbacks) ──────
+  // ── First-run callbacks (via useFirstRunCallbacks) ──────
   const firstRunCallbacks = useFirstRunCallbacks({
     firstRun,
-    setSetupStep,
-    setFirstRunMode,
-    setFirstRunActiveGuide,
-    addDeferredFirstRunTask: addDeferredFirstRunTask,
-    setFirstRunDetectedProviders,
-    setFirstRunRuntimeTarget,
-    setFirstRunCloudApiKey,
-    setFirstRunProvider,
-    setFirstRunApiKey,
-    setFirstRunPrimaryModel,
-    setFirstRunRemoteApiBase,
-    setFirstRunRemoteToken,
-    setFirstRunRemoteConnecting,
-    setFirstRunRemoteError,
-    setFirstRunRemoteConnected,
     setPostFirstRunChecklistDismissed,
-    setBrowserEnabled,
-    setComputerUseEnabled,
     setFirstRunComplete,
     coordinatorFirstRunCompleteRef,
     initialTabSetRef,
     setTab,
     defaultLandingTab: DEFAULT_LANDING_TAB,
     loadCharacter,
-    uiLanguage,
-    selectedVrmIndex,
-    walletConfig,
-    elizaCloudConnected,
-    setActionNotice,
-    retryStartup,
-    setWalletEnabled,
-    forceLocalBootstrapRef,
-    client,
   });
-  const {
-    handleFirstRunBack,
-    handleFirstRunJumpToStep,
-    goToFirstRunStep,
-    handleFirstRunRemoteConnect,
-    handleFirstRunUseLocalBackend,
-    applyDetectedProviders,
-    completeFirstRun,
-  } = firstRunCallbacks;
+  const { completeFirstRun } = firstRunCallbacks;
 
   // handleAgentExport and handleAgentImport are now in useExportImportState (exportImportHook)
 
@@ -1503,7 +1298,6 @@ function AppProviderInner({
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
         tab: setTab,
-        setupStep: setSetupStep,
         chatInput: setChatInput,
         chatAvatarVisible: setChatAvatarVisible,
         chatAgentVoiceMuted: setChatAgentVoiceMuted,
@@ -1545,47 +1339,14 @@ function AppProviderInner({
         importError: setImportError,
         importSuccess: setImportSuccess,
         firstRunName: setFirstRunName,
-        firstRunOwnerName: setFirstRunOwnerName,
         firstRunStyle: setFirstRunStyle,
         firstRunRuntimeTarget: setFirstRunRuntimeTarget,
-        firstRunCloudApiKey: setFirstRunCloudApiKey,
-        firstRunSmallModel: setFirstRunSmallModel,
-        firstRunLargeModel: setFirstRunLargeModel,
         firstRunProvider: setFirstRunProvider,
-        firstRunApiKey: setFirstRunApiKey,
-        firstRunVoiceProvider: setFirstRunVoiceProvider,
-        firstRunVoiceApiKey: setFirstRunVoiceApiKey,
-        firstRunExistingInstallDetected: setFirstRunExistingInstallDetected,
-        firstRunDetectedProviders: setFirstRunDetectedProviders,
         firstRunRemoteApiBase: setFirstRunRemoteApiBase,
         firstRunRemoteToken: setFirstRunRemoteToken,
         firstRunRemoteConnecting: setFirstRunRemoteConnecting,
         firstRunRemoteError: setFirstRunRemoteError,
         firstRunRemoteConnected: setFirstRunRemoteConnected,
-        firstRunSelectedChains: setFirstRunSelectedChains,
-        firstRunRpcSelections: setFirstRunRpcSelections,
-        firstRunOpenRouterModel: setFirstRunOpenRouterModel,
-        firstRunPrimaryModel: setFirstRunPrimaryModel,
-        firstRunTelegramToken: setFirstRunTelegramToken,
-        firstRunDiscordToken: setFirstRunDiscordToken,
-        firstRunWhatsAppSessionPath: setFirstRunWhatsAppSessionPath,
-        firstRunTwilioAccountSid: setFirstRunTwilioAccountSid,
-        firstRunTwilioAuthToken: setFirstRunTwilioAuthToken,
-        firstRunTwilioPhoneNumber: setFirstRunTwilioPhoneNumber,
-        firstRunBlooioApiKey: setFirstRunBlooioApiKey,
-        firstRunBlooioPhoneNumber: setFirstRunBlooioPhoneNumber,
-        firstRunGithubToken: setFirstRunGithubToken,
-        firstRunSubscriptionTab: setFirstRunSubscriptionTab,
-        firstRunElizaCloudTab: setFirstRunElizaCloudTab,
-        firstRunRpcKeys: setFirstRunRpcKeys,
-        setupAvatar: setSetupAvatar,
-        firstRunFeatureTelegram: setFirstRunFeatureTelegram,
-        firstRunFeatureDiscord: setFirstRunFeatureDiscord,
-        firstRunFeaturePhone: setFirstRunFeaturePhone,
-        firstRunFeatureCrypto: setFirstRunFeatureCrypto,
-        firstRunFeatureBrowser: setFirstRunFeatureBrowser,
-        firstRunFeatureComputerUse: setFirstRunFeatureComputerUse,
-        firstRunFeatureOAuthPending: setFirstRunFeatureOAuthPending,
         elizaCloudEnabled: setElizaCloudEnabled,
         elizaCloudVoiceProxyAvailable: setElizaCloudVoiceProxyAvailable,
         cloudDashboardView: setCloudDashboardView,
@@ -1684,6 +1445,7 @@ function AppProviderInner({
     setConnected,
     setAgentStatus,
     setAgentStatusIfChanged,
+    setActionNotice,
     setStartupPhase,
     setStartupError,
     setAuthRequired,
@@ -1696,22 +1458,12 @@ function AppProviderInner({
     setPairingEnabled,
     setPairingExpiresAt,
     setFirstRunOptions,
-    setFirstRunExistingInstallDetected,
-    setSetupStep,
     setFirstRunRuntimeTarget,
-    setFirstRunCloudApiKey,
     setFirstRunProvider,
-    setFirstRunVoiceProvider,
-    setFirstRunApiKey,
-    setFirstRunPrimaryModel,
-    setFirstRunOpenRouterModel,
     setFirstRunRemoteConnected,
     setFirstRunRemoteApiBase,
     setFirstRunRemoteToken,
-    setFirstRunSmallModel,
-    setFirstRunLargeModel,
     setFirstRunCloudProvisionedContainer,
-    applyDetectedProviders,
     hydrateInitialConversationState,
     loadWorkbench,
     loadPlugins,
@@ -1737,13 +1489,11 @@ function AppProviderInner({
     setConversations,
     requestGreetingWhenRunningRef,
     firstRunCompletionCommittedRef,
-    forceLocalBootstrapRef,
     initialTabSetRef,
     activeConversationIdRef,
     elizaCloudPollInterval,
     elizaCloudLoginPollTimer,
     uiLanguage,
-    firstRunMode,
   });
 
   // useReducer dispatch is referentially stable across renders; bind it so
@@ -1973,6 +1723,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2157,54 +1908,18 @@ function AppProviderInner({
       importFile,
       importError,
       importSuccess,
-      setupStep,
-      firstRunMode,
-      firstRunActiveGuide,
       firstRunDeferredTasks,
       postFirstRunChecklistDismissed,
       firstRunOptions,
       firstRunName,
-      firstRunOwnerName,
       firstRunStyle,
       firstRunRuntimeTarget,
-      firstRunCloudApiKey,
-      firstRunSmallModel,
-      firstRunLargeModel,
       firstRunProvider,
-      firstRunApiKey,
-      firstRunVoiceProvider,
-      firstRunVoiceApiKey,
-      firstRunExistingInstallDetected,
-      firstRunDetectedProviders,
       firstRunRemoteApiBase,
       firstRunRemoteToken,
       firstRunRemoteConnecting,
       firstRunRemoteError,
       firstRunRemoteConnected,
-      firstRunOpenRouterModel,
-      firstRunPrimaryModel,
-      firstRunTelegramToken,
-      firstRunDiscordToken,
-      firstRunWhatsAppSessionPath,
-      firstRunTwilioAccountSid,
-      firstRunTwilioAuthToken,
-      firstRunTwilioPhoneNumber,
-      firstRunBlooioApiKey,
-      firstRunBlooioPhoneNumber,
-      firstRunGithubToken,
-      firstRunSubscriptionTab,
-      firstRunElizaCloudTab,
-      firstRunSelectedChains,
-      firstRunRpcSelections,
-      firstRunRpcKeys,
-      setupAvatar,
-      firstRunFeatureTelegram,
-      firstRunFeatureDiscord,
-      firstRunFeaturePhone,
-      firstRunFeatureCrypto,
-      firstRunFeatureBrowser,
-      firstRunFeatureComputerUse,
-      firstRunFeatureOAuthPending,
       firstRunCloudProvisionedContainer,
       commandPaletteOpen,
       commandQuery,
@@ -2260,6 +1975,7 @@ function AppProviderInner({
       undoBackgroundConfig,
       redoBackgroundConfig,
       setHomeTimeWidgetHidden,
+      setUiAccent,
       handleStart,
       handleStop,
 
@@ -2356,11 +2072,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunBack,
-      handleFirstRunJumpToStep,
-      goToFirstRunStep,
-      handleFirstRunRemoteConnect,
-      handleFirstRunUseLocalBackend,
       completeFirstRun,
       handleCloudLogin,
       handleCloudDisconnect,
@@ -2389,6 +2100,7 @@ function AppProviderInner({
       canUndoBackground,
       canRedoBackground,
       homeTimeWidgetHidden,
+      uiAccentId,
       connected,
       agentStatus,
       firstRunComplete,
@@ -2582,54 +2294,18 @@ function AppProviderInner({
       importFile,
       importError,
       importSuccess,
-      setupStep,
-      firstRunMode,
-      firstRunActiveGuide,
       firstRunDeferredTasks,
       postFirstRunChecklistDismissed,
       firstRunOptions,
       firstRunName,
-      firstRunOwnerName,
       firstRunStyle,
       firstRunRuntimeTarget,
-      firstRunCloudApiKey,
-      firstRunSmallModel,
-      firstRunLargeModel,
       firstRunProvider,
-      firstRunApiKey,
-      firstRunVoiceProvider,
-      firstRunVoiceApiKey,
-      firstRunExistingInstallDetected,
-      firstRunDetectedProviders,
       firstRunRemoteApiBase,
       firstRunRemoteToken,
       firstRunRemoteConnecting,
       firstRunRemoteError,
       firstRunRemoteConnected,
-      firstRunOpenRouterModel,
-      firstRunPrimaryModel,
-      firstRunTelegramToken,
-      firstRunDiscordToken,
-      firstRunWhatsAppSessionPath,
-      firstRunTwilioAccountSid,
-      firstRunTwilioAuthToken,
-      firstRunTwilioPhoneNumber,
-      firstRunBlooioApiKey,
-      firstRunBlooioPhoneNumber,
-      firstRunGithubToken,
-      firstRunSubscriptionTab,
-      firstRunElizaCloudTab,
-      firstRunSelectedChains,
-      firstRunRpcSelections,
-      firstRunRpcKeys,
-      setupAvatar,
-      firstRunFeatureTelegram,
-      firstRunFeatureDiscord,
-      firstRunFeaturePhone,
-      firstRunFeatureCrypto,
-      firstRunFeatureBrowser,
-      firstRunFeatureComputerUse,
-      firstRunFeatureOAuthPending,
       firstRunCloudProvisionedContainer,
       commandPaletteOpen,
       commandQuery,
@@ -2683,6 +2359,7 @@ function AppProviderInner({
       undoBackgroundConfig,
       redoBackgroundConfig,
       setHomeTimeWidgetHidden,
+      setUiAccent,
       handleStart,
       handleStop,
       handleRestart,
@@ -2775,11 +2452,6 @@ function AppProviderInner({
       handleCharacterArrayInput,
       handleCharacterStyleInput,
       handleCharacterMessageExamplesInput,
-      handleFirstRunBack,
-      handleFirstRunJumpToStep,
-      goToFirstRunStep,
-      handleFirstRunRemoteConnect,
-      handleFirstRunUseLocalBackend,
       completeFirstRun,
       handleCloudLogin,
       handleCloudDisconnect,

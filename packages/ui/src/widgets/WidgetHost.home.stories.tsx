@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the home WidgetHost, seeding activity/notification state.
+ */
 import type { AgentNotification } from "@elizaos/core";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useState } from "react";

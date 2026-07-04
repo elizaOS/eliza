@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the popover primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./button";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";

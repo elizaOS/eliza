@@ -1,0 +1,28 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-02T23:01:29.997Z",
+  "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run",
+  "trajectoriesDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/run/trajectories",
+  "jsonlPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/native.jsonl",
+  "manifestPath": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest/scenario/packages_scenario-runner_test_scenarios/cloud-apps-read-core/native.manifest.json",
+  "counts": {
+    "trajectoryFiles": 1,
+    "parsedTrajectories": 1,
+    "skippedFiles": 0,
+    "rows": 1,
+    "passedRows": 0,
+    "failedRows": 1,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "409f71b9-cec1-4de1-8fbf-21a7c5115912"
+  ],
+  "scenarioIds": [
+    "cloud-apps-read-core"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ]
+}

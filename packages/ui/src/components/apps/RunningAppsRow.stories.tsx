@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `RunningAppsRow` across multiple runs, a single healthy
+ * run, and the stop-button-enabled variant.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";

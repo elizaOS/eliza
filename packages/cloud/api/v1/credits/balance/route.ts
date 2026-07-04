@@ -13,7 +13,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
-import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -51,7 +51,12 @@ async function resolveCreditOrganizationId(
     const user = await requireUserOrApiKeyWithOrg(c);
     return user.organization_id;
   }
-  await validateServiceKey(c);
+  // Resolving an ARBITRARY agent's org from a caller-supplied agent_id is a
+  // service-to-service capability (the Waifu bridge). Require the service key —
+  // `validateServiceKey` merely returned null on a missing/invalid key, which
+  // was discarded, letting any authenticated user read a sibling org's balance
+  // by passing that org's sandbox id. `requireServiceKey` throws instead.
+  await requireServiceKey(c);
 
   const [sandbox] = await dbRead
     .select({ organizationId: agentSandboxes.organization_id })

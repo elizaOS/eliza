@@ -1,3 +1,9 @@
+/**
+ * Token-info param parsing turns loose agent options + free text into a typed
+ * query. Param readers coerce/trim and reject junk; subaction normalization
+ * canonicalizes labels; and intent inference routes a message to the right
+ * read-only lookup.
+ */
 import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,13 +14,6 @@ import {
   readParams,
   readStringParam,
 } from "./params.js";
-
-/**
- * Token-info param parsing turns loose agent options + free text into a typed
- * query. Param readers coerce/trim and reject junk; subaction normalization
- * canonicalizes labels; and intent inference routes a message to the right
- * read-only lookup.
- */
 
 const msg = (text: string): Memory =>
   ({ content: { text } }) as unknown as Memory;

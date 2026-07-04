@@ -27,13 +27,14 @@ mock.module("../../pricing", () => ({
   calculateCost: mock(async () => ({ inputCost: 0.1, outputCost: 0.2, totalCost: 0.3 })),
 }));
 
-// Active affiliate code (10% markup) owned by AFFILIATE_USER.
+// Active affiliate code (10% markup) owned by AFFILIATE_USER by default.
 const AFFILIATE_USER = "00000000-0000-4000-8000-00000000aff1";
+let affiliateUserId = AFFILIATE_USER;
 mock.module("../../../db/repositories/affiliates", () => ({
   affiliatesRepository: {
     getAffiliateCodeByCode: mock(async () => ({
       id: "aff-code-1",
-      user_id: AFFILIATE_USER,
+      user_id: affiliateUserId,
       markup_percent: "10",
       is_active: true,
     })),
@@ -46,6 +47,17 @@ mock.module("../redeemable-earnings", () => ({
   redeemableEarningsService: { addEarnings },
 }));
 
+const reserve = mock(async (params: unknown) => ({
+  reservedAmount: 0,
+  reservationTransactionId: "reservation-1",
+  reconcile: mock(async () => undefined),
+  params,
+}));
+mock.module("../credits", () => ({
+  creditsService: { reserve },
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+}));
+
 // Side-effect writers billUsage calls — stub so the test needs no DB rows.
 mock.module("../usage", () => ({
   usageService: { recordUsage: mock(async () => undefined), record: mock(async () => undefined) },
@@ -54,7 +66,7 @@ mock.module("../generations", () => ({
   generationsService: { record: mock(async () => undefined), create: mock(async () => undefined) },
 }));
 
-const { billUsage } = await import("../ai-billing");
+const { billFlatUsage, billUsage, reserveCredits } = await import("../ai-billing");
 
 const USAGE = { promptTokens: 1000, completionTokens: 500, totalTokens: 1500 };
 const BASE = {
@@ -65,7 +77,9 @@ const BASE = {
 };
 
 beforeEach(() => {
+  affiliateUserId = AFFILIATE_USER;
   addEarnings.mockClear();
+  reserve.mockClear();
 });
 
 describe("billUsage affiliate earnings guard (#10853)", () => {
@@ -78,7 +92,7 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     expect(result.totalCost).toBeCloseTo(0.3, 6);
   });
 
-  test("a real paying org with the same affiliate code STILL credits the affiliate (regression)", async () => {
+  test("a real paying org with collected settlement STILL credits the affiliate (regression)", async () => {
     const result = await billUsage(
       { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
       USAGE,
@@ -95,6 +109,91 @@ describe("billUsage affiliate earnings guard (#10853)", () => {
     expect(arg.amount).toBeCloseTo(0.3 * 0.1, 6); // 10% of the $0.30 cost
     // Affiliate markup was layered onto the charged cost for the paying org.
     expect(result.totalCost).toBeCloseTo(0.3 + 0.03, 6);
+  });
+
+  test("paying org self-referral via request affiliate code is ignored", async () => {
+    affiliateUserId = BASE.userId;
+
+    const result = await billUsage(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      USAGE,
+    );
+
+    expect(addEarnings).not.toHaveBeenCalled();
+    expect(result.totalCost).toBeCloseTo(0.3, 6);
+  });
+
+  test("uncollectable overage does not mint affiliate earnings", async () => {
+    const reconcile = mock(async (actualCost: number) => ({
+      reservedAmount: 0.3,
+      actualCost,
+      reservationTransactionId: "reservation-1",
+      settlementTransactionIds: [],
+      adjustmentType: "uncollected_overage" as const,
+    }));
+
+    const result = await billUsage(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      USAGE,
+      {
+        reservedAmount: 0.3,
+        reservationTransactionId: "reservation-1",
+        reconcile,
+      },
+    );
+
+    expect(result.totalCost).toBeCloseTo(0.33, 6);
+    expect(reconcile).toHaveBeenCalledWith(result.totalCost);
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("flat billing uncollectable overage does not mint affiliate earnings", async () => {
+    const reconcile = mock(async (actualCost: number) => ({
+      reservedAmount: 1,
+      actualCost,
+      reservationTransactionId: "reservation-flat-1",
+      settlementTransactionIds: [],
+      adjustmentType: "uncollected_overage" as const,
+    }));
+
+    const result = await billFlatUsage(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      { totalCost: 1, baseTotalCost: 1 / 1.2, platformMarkup: 1 - 1 / 1.2 },
+      {
+        reservedAmount: 1,
+        reservationTransactionId: "reservation-flat-1",
+        reconcile,
+      },
+    );
+
+    expect(result.totalCost).toBeCloseTo(1.1, 6);
+    expect(reconcile).toHaveBeenCalledWith(result.totalCost);
+    expect(addEarnings).not.toHaveBeenCalled();
+  });
+
+  test("pre-request reservation includes affiliate markup so payout is backed upfront", async () => {
+    await reserveCredits(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      1000,
+      500,
+    );
+
+    expect(reserve).toHaveBeenCalledTimes(1);
+    const arg = reserve.mock.calls[0][0] as { estimatedCostMultiplier?: number };
+    expect(arg.estimatedCostMultiplier).toBeCloseTo(1.1, 6);
+  });
+
+  test("self-referral does not inflate the pre-request reservation", async () => {
+    affiliateUserId = BASE.userId;
+
+    await reserveCredits(
+      { ...BASE, organizationId: "00000000-0000-4000-8000-0000000000org" },
+      1000,
+      500,
+    );
+
+    const arg = reserve.mock.calls[0][0] as { estimatedCostMultiplier?: number };
+    expect(arg.estimatedCostMultiplier).toBeUndefined();
   });
 
   test("paying org affiliate earnings use deterministic request sourceId for dedupe", async () => {

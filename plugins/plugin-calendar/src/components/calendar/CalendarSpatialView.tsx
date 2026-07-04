@@ -30,6 +30,9 @@ import {
 /** Which range the calendar surface is currently showing. */
 export type CalendarMode = "day" | "week" | "month";
 
+/** Meeting-join affordance state for a row with a recognized conference link. */
+export type CalendarRowMeetingState = "available" | "requesting" | "live";
+
 /** One presentational agenda row (already formatted for display). */
 export interface CalendarEventRow {
   id: string;
@@ -39,6 +42,12 @@ export interface CalendarEventRow {
   /** Optional secondary line (location / source calendar). */
   detail?: string;
   selected?: boolean;
+  /**
+   * Present only when the event has a Meet/Teams/Zoom link the agent can
+   * join: `available` renders a "Send agent" control (action `join:<id>`),
+   * `requesting` a disabled in-flight label, `live` an "In meeting" badge.
+   */
+  meeting?: CalendarRowMeetingState;
 }
 
 export interface CalendarSnapshot {
@@ -187,6 +196,26 @@ function CalendarAgendaBody({
               {event.detail ? `${event.when} · ${event.detail}` : event.when}
             </Text>
           </VStack>
+          {event.meeting === "live" ? (
+            <Text style="caption" bold wrap={false}>
+              ● In meeting
+            </Text>
+          ) : null}
+          {event.meeting === "requesting" ? (
+            <Text style="caption" tone="muted" wrap={false}>
+              Sending…
+            </Text>
+          ) : null}
+          {event.meeting === "available" ? (
+            <Button
+              variant="outline"
+              tone="default"
+              agent={`join:${event.id}`}
+              onPress={dispatch(`join:${event.id}`)}
+            >
+              Send agent
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             tone="default"

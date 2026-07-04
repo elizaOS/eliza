@@ -1,3 +1,10 @@
+/**
+ * The Settings view (`/settings`): a sectioned settings surface that adapts
+ * between a two-pane rail+detail layout on wide/landscape viewports and a
+ * single-column hub on narrow ones. Section content is lazy-loaded and gated by
+ * `isViewVisible`; `initialSection` deep-links a specific pane. Also reusable in
+ * modal form (`inModal`).
+ */
 import { isViewVisible } from "@elizaos/core";
 import { ArrowLeft } from "lucide-react";
 import type * as React from "react";
@@ -26,6 +33,8 @@ import {
   settingsSectionLabel,
   settingsSectionTitle,
 } from "../settings/settings-sections";
+import { ViewHeader } from "../shared/ViewHeader";
+import { Button } from "../ui/button";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
@@ -36,6 +45,19 @@ type GroupedSections = {
   label: string;
   items: SettingsSectionDef[];
 }[];
+
+function isCloudThemedSettingsSection(section: SettingsSectionDef): boolean {
+  // The id-prefix intentionally also covers cloud-owned panes registered under
+  // non-cloud groups (cloud-security / cloud-plugin-grants under "security",
+  // cloud-connectors under "agent"): their bodies hardcode light-on-dark
+  // styling (text-white, white/10 borders, bg-black/40) and need the dark
+  // theme-cloud island to stay readable.
+  return (
+    section.id.startsWith("cloud-") ||
+    section.group === "cloud" ||
+    section.group === "developer"
+  );
+}
 
 /**
  * Group sections for display. Built-in groups keep their pinned order + labels;
@@ -142,13 +164,14 @@ function SettingsNavItem({
   }
 
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={() => onSelect(section.id)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+        "h-auto w-full justify-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
         active ? "font-medium text-accent" : "text-txt hover:bg-surface",
       )}
       {...agentProps}
@@ -162,7 +185,7 @@ function SettingsNavItem({
       />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {chip ? <Chip>{chip}</Chip> : null}
-    </button>
+    </Button>
   );
 }
 
@@ -175,16 +198,17 @@ function SectionBackButton({ onBack }: { onBack: () => void }) {
     onActivate: onBack,
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       onClick={onBack}
-      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
+      className="h-9 gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors hover:bg-surface hover:text-accent"
       {...agentProps}
     >
       <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
       Settings
-    </button>
+    </Button>
   );
 }
 
@@ -215,8 +239,15 @@ function SettingsSectionContent({
   const Component = section.Component;
   const Icon = section.icon;
   const title = settingsSectionTitle(section, t);
+  const cloudThemed = isCloudThemedSettingsSection(section);
   return (
-    <div id={section.id}>
+    <div
+      id={section.id}
+      className={cn(
+        cloudThemed &&
+          "theme-cloud min-h-[calc(100dvh-8rem)] bg-black px-3 py-4 text-white sm:px-5 sm:py-5",
+      )}
+    >
       {onBack ? (
         <div className="mb-1.5">
           <SectionBackButton onBack={onBack} />
@@ -284,13 +315,14 @@ function SettingsSectionFallback({
       <p className="text-xs-tight text-muted max-w-prose break-words">
         {error.message}
       </p>
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={onRetry}
-        className="mt-1 inline-flex h-9 items-center rounded-md border border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -308,9 +340,14 @@ function MobileHub({
 }) {
   return (
     <div className="w-full pb-32">
-      <h1 className="mb-4 min-h-10 pl-14 text-2xl font-semibold tracking-tight text-txt-strong">
-        {t("nav.settings", { defaultValue: "Settings" })}
-      </h1>
+      {/* Top-level view header: centered "Settings" title with a launcher back
+          arrow on mobile (iOS-style nav bar). Only the single-column hub renders
+          it — the desktop split already owns its own "Settings" H1 in the rail,
+          and the per-section view keeps its own SectionBackButton (section→hub). */}
+      <ViewHeader
+        title={t("nav.settings", { defaultValue: "Settings" })}
+        className="mb-2"
+      />
       <SettingsStack>
         {grouped.map(({ group, label, items }) => (
           <SettingsGroup key={group} title={label}>

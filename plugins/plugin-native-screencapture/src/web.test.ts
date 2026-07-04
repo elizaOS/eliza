@@ -1,3 +1,7 @@
+/**
+ * Unit tests for ScreenCaptureWeb using fake MediaRecorder, track, and
+ * getDisplayMedia doubles — no real browser capture APIs.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ScreenCaptureWeb } from "./web";

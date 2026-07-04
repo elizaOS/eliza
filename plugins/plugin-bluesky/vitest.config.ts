@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the plugin. Aliases provider SDK imports to shared shims so
+ * unit tests run without the real `@atproto/api` SDK, and excludes the
+ * `.live.test.ts` / `.e2e.test.ts` lanes from the default run.
+ */
 import { defineConfig } from "vitest/config";
 import {
 	providerSdkAliases,

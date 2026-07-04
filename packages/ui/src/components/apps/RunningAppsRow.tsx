@@ -1,6 +1,15 @@
+/**
+ * Horizontal strip of currently-running app runs: each entry shows the app's
+ * hero, a health-tone status dot, any attention reasons from
+ * `getRunAttentionReasons`, and a stop button. Opening or stopping a run is
+ * delegated to `onOpenRun`/`onStopRun`; `busyRunId`/`stoppingRunId` disable the
+ * affected entry while an action is in flight.
+ */
+
 import { AlertTriangle, Square } from "lucide-react";
 import { type MouseEvent, memo, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
+import { Button } from "../ui/button";
 import { AppHero, type AppIdentitySource } from "./app-identity";
 import { getRunAttentionReasons } from "./run-attention";
 
@@ -52,11 +61,11 @@ const RunningAppCard = memo(function RunningAppCard({
       data-testid={`running-app-card-${run.runId}`}
       className="group relative overflow-hidden rounded-lg border border-accent/40 bg-card transition-colors hover:border-accent/60"
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         aria-label={`Open ${run.displayName}`}
         aria-busy={isBusy || undefined}
-        className="block w-full text-left transition-transform active:scale-[0.99] motion-reduce:transition-none"
+        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent transition-transform active:scale-[0.99] motion-reduce:transition-none"
         onClick={() => onOpenRun(run)}
       >
         <AppHero
@@ -70,7 +79,7 @@ const RunningAppCard = memo(function RunningAppCard({
             </div>
           </div>
         </div>
-      </button>
+      </Button>
 
       <span
         title={needsAttention ? attentionReasons[0] : run.health.state}
@@ -87,12 +96,13 @@ const RunningAppCard = memo(function RunningAppCard({
       ) : null}
 
       {onStopRun ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           data-testid={`running-app-stop-${run.runId}`}
           aria-label={`Stop ${run.displayName}`}
           disabled={isStopping}
-          className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-scrim text-white transition-colors hover:bg-danger disabled:cursor-not-allowed disabled:opacity-50"
+          className="absolute bottom-3 right-3 h-8 w-8 rounded-full bg-scrim p-0 text-white transition-colors hover:bg-danger disabled:cursor-not-allowed disabled:opacity-50"
           onClick={(event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
             onStopRun(run);
@@ -103,7 +113,7 @@ const RunningAppCard = memo(function RunningAppCard({
           ) : (
             <Square className="h-3.5 w-3.5" aria-hidden />
           )}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

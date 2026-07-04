@@ -1,3 +1,13 @@
+/**
+ * `InstagramService` — lifecycle manager for one or more Instagram accounts and
+ * the boundary between the runtime and the Instagram API backend. On start it
+ * resolves each account's config, validates credentials, and registers both the
+ * DM `MessageConnector` (source `"instagram"`) and the feed `PostConnector` with
+ * the runtime. Handles inbound DM/comment ingestion into memory and outbound
+ * sending, comment posting/replies, likes, and follow/unfollow. Degrades
+ * gracefully when credentials are absent. Also exports `splitMessage`, the
+ * length-aware chunker used for DM and comment limits.
+ */
 import {
   ChannelType,
   type Content,

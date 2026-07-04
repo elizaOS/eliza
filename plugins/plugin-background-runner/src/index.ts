@@ -1,3 +1,4 @@
+/** Plugin entry: registers BgTaskSchedulerService and re-exports the scheduler types and implementations. */
 import { elizaLogger, type Plugin } from '@elizaos/core';
 import { BgTaskSchedulerService } from './services/BgTaskSchedulerService.js';
 

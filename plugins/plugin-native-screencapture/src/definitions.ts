@@ -1,3 +1,8 @@
+/**
+ * TypeScript contract for the ScreenCapture Capacitor plugin: the option,
+ * result, state, and permission interfaces plus the `ScreenCapturePlugin`
+ * method surface shared by the web, iOS, and Android implementations.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export interface ScreenshotOptions {

@@ -1,3 +1,4 @@
+/** Unit tests for `collectLifecycleLoadRunChecks`, the model load/run lifecycle preflight checks. Deterministic. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { collectLifecycleLoadRunChecks } from "./lifecycle-loadrun";

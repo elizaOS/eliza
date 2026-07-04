@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers AdvancedToggle + useAdvancedSettingsEnabled: localStorage-backed
+ * persistence, the onChange callback, and the module-level listener cascade that
+ * keeps multiple toggles/subscribers in sync. jsdom render against real
+ * localStorage.
+ */
+
 import {
   act,
   cleanup,

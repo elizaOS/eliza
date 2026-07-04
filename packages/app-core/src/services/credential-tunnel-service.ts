@@ -43,6 +43,7 @@ import {
   type DispatchSensitiveRequest,
   type IAgentRuntime,
   logger,
+  SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
   type SensitiveRequest,
   type SensitiveRequestActorPolicy,
   type SensitiveRequestDeliveryMode,
@@ -733,7 +734,7 @@ export function registerSubAgentCredentialBridgeAdapter(
   const dispatch =
     options?.dispatch ??
     (runtime as { getService?: (name: string) => unknown }).getService?.(
-      "SensitiveRequestDispatchRegistry",
+      SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,
     );
   if (!isDispatchRegistry(dispatch)) {
     logger.debug(

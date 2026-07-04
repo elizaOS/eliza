@@ -41,6 +41,7 @@ export const REQUIRED_SETTINGS_SECTION_IDS = [
   "connectors",
   "runtime",
   "appearance",
+  "background",
   "remote-plugins",
   "wallet-rpc",
   "updates",

@@ -1,12 +1,10 @@
+/**
+ * Unit tests for `WriteBackService`'s queue, retry, batching, and flush
+ * logic — with `fetch` mocked via `vi.spyOn`, no real PGlite WASM or network
+ * calls involved.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WriteBackService } from "../../write-back";
-
-/**
- * Unit tests for WriteBackService.
- *
- * These tests validate the queue, debounce, retry, and flush logic
- * without requiring PGlite WASM or Docker containers.
- */
 
 describe("WriteBackService", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -51,7 +49,6 @@ describe("WriteBackService", () => {
       );
 
     wb.enqueue("memories", "insert", { id: "m-1", content: "hello" });
-    // Flush synchronously
     return wb.flush().then(() => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const url = fetchSpy.mock.calls[0]?.[0] as string;
@@ -124,7 +121,6 @@ describe("WriteBackService", () => {
 
     wb.enqueue("memories", "insert", { id: "m-1" });
 
-    // First flush: fails, re-queues. We flush again.
     await wb.flush(); // fails, re-queues
     await wb.flush(); // fails again
     await wb.flush(); // succeeds

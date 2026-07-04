@@ -1,3 +1,9 @@
+/**
+ * Vite build configuration for the static homepage application.
+ *
+ * The aliases keep workspace UI imports pointed at source files so the homepage
+ * bundle avoids unrelated package barrels.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";

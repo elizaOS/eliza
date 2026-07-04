@@ -1,3 +1,4 @@
+/** Tests the final-check dispatcher `runFinalCheck` (final-checks/index.ts): routing to the right handler by check `type` and the unknown-type/error behavior, against a synthetic context. */
 import type {
   ScenarioContext,
   ScenarioFinalCheck,

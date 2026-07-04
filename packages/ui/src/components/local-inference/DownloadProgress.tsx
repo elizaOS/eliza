@@ -1,3 +1,8 @@
+/**
+ * Progress bar for one model-download job: percent, bytes received/total,
+ * throughput, and ETA. Shared by the download queue and the per-model cards.
+ */
+
 import type { DownloadJob } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { formatBytes, formatEta, progressPercent } from "./hub-utils";

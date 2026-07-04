@@ -1,3 +1,10 @@
+/**
+ * Persistence backends for OAuth 2.0 PKCE token sets, keyed per `accountId`. The
+ * `TokenStore` interface has two implementations: `RuntimeCacheTokenStore` (runtime
+ * cache under `twitter/oauth2/tokens/<agentId>/<accountId>`) and
+ * `ConnectorAccountTokenStore` (the connector credential store). Used by
+ * `OAuth2PKCEAuthProvider` to load/save tokens across restarts.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   loadConnectorOAuthTokenSet,

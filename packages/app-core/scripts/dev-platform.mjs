@@ -60,6 +60,7 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  realpathSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -102,11 +103,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // between them by detecting which layout exists.
 const _elizaRoot = path.resolve(here, "../../..");
 const _wrapperRoot = path.resolve(here, "../../../..");
+// Wrapper layout only counts when the wrapper's `eliza/` checkout IS this
+// checkout. A sibling clone/worktree that merely lives inside a wrapper repo
+// directory (e.g. `<wrapper>/some-worktree` next to `<wrapper>/eliza`) must
+// resolve as standalone — otherwise dev:desktop silently boots the wrapper's
+// other eliza checkout (different branch/code) instead of the one running
+// this script.
+const _wrapperEliza = path.join(_wrapperRoot, "eliza");
 const isElizaMonorepo =
   existsSync(path.join(_wrapperRoot, "package.json")) &&
   existsSync(
-    path.join(_wrapperRoot, "eliza", "packages", "app-core", "package.json"),
-  );
+    path.join(_wrapperEliza, "packages", "app-core", "package.json"),
+  ) &&
+  realpathSync(_wrapperEliza) === realpathSync(_elizaRoot);
 // Standalone eliza checkout — _elizaRoot IS the repo and there's no
 // outer wrapper. dev-platform.mjs originally only handled the wrapper
 // layout; this branch keeps the standalone (and our Windows monorepo

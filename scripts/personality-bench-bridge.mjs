@@ -1,3 +1,10 @@
+/**
+ * Translation tables and turn-index helpers bridging personality-bench scenario
+ * keys to the runtime's style / trait / scope-mode configuration. Maps each
+ * scenario's style key, trait key, and scope-variant name onto the concrete
+ * style names, trait options, and enforcement modes the bench applies and then
+ * scores against assistant turns.
+ */
 export const STYLE_KEY_TO_STYLE = Object.freeze({
   no_hedging: "no-hedging",
   haiku: "haiku",

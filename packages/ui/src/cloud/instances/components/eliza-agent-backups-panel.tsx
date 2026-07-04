@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Backups panel for a cloud agent instance: lists snapshots with sizes/ages and
+ * restore actions.
+ */
 import { formatByteSize } from "@elizaos/shared/utils/format";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui/cloud-ui";
 import { formatDistanceToNowStrict } from "date-fns";

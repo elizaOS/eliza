@@ -1,0 +1,139 @@
+{
+  "issue": 11373,
+  "label": "pixel6a-double-talk",
+  "input": "/home/shaw/eliza-worktrees/11373-aec-android/.github/issue-evidence/11373-aec-android/aec-loop-result-double-talk.json",
+  "sourceUsed": "agent aec-capture snapshot (production session buffers)",
+  "sampleRateHz": 16000,
+  "frameSamples": 320,
+  "nearSeconds": 22.08,
+  "nearRms": 0.09432228187789413,
+  "farRms": 0.10078963518590955,
+  "tag": "double-talk",
+  "deviceStatusBefore": {
+    "ready": false,
+    "libs": {
+      "fusedInference": "/data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 1113,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": true,
+      "playbackFramesReceived": 1109,
+      "playbackSamplesReceived": 354880,
+      "lastPlaybackFrameAt": 1783079489447,
+      "echoDelaySamples": 5479,
+      "echoDelayConfidence": 0.3436021371970383
+    },
+    "recentTurns": [],
+    "error": "[ffi-bindings] Failed to open libelizainference at /data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so: Failed to open library \"/data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so\": Error relocating /data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so: __register_atfork: symbol not found"
+  },
+  "deviceStatusAfter": {
+    "ready": false,
+    "libs": {
+      "fusedInference": "/data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so"
+    },
+    "models": {
+      "dir": "/data/data/ai.elizaos.app/files/.eliza/models/voice"
+    },
+    "framesReceived": 2217,
+    "framesDropped": 0,
+    "turnsObserved": 0,
+    "aec": {
+      "echoReferenceWired": true,
+      "playbackFramesReceived": 2222,
+      "playbackSamplesReceived": 711040,
+      "lastPlaybackFrameAt": 1783079514381,
+      "echoDelaySamples": 5479,
+      "echoDelayConfidence": 0.3436021371970383
+    },
+    "recentTurns": [],
+    "error": "[ffi-bindings] Failed to open libelizainference at /data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so: Failed to open library \"/data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so\": Error relocating /data/app/~~jrtdexNoYTIpfY3yJnYRQg==/ai.elizaos.app-eQV6ZuwaYiXFYWlebxt-Ag==/lib/arm64/libelizainference.so: __register_atfork: symbol not found"
+  },
+  "deviceTrackSettings": {
+    "autoGainControl": false,
+    "channelCount": 1,
+    "deviceId": "default",
+    "echoCancellation": false,
+    "groupId": "eca0ed9970f3bf3b2054b32fb89519e7cfdc4a8414afe9bbbef507ee9d0eb4ad",
+    "latency": 0.02,
+    "noiseSuppression": false,
+    "sampleRate": 48000,
+    "sampleSize": 16,
+    "voiceIsolation": false
+  },
+  "deviceContextSampleRate": 48000,
+  "offlineDelayEstimate": {
+    "lagSamples": 6235,
+    "lagMs": 389.6875,
+    "confidence": 0.209903952071416
+  },
+  "deviceDelaySelfCalibration": {
+    "echoDelaySamples": 5479,
+    "echoDelayConfidence": 0.3436021371970383,
+    "echoDelayCalibrated": true
+  },
+  "delaySamplesUsed": 5479,
+  "erle": {
+    "aecOffBaselineDb": 0,
+    "linear": {
+      "erleOverallDb": -20.828842067444935,
+      "erleConvergedHalfDb": -14.47942277439751,
+      "perSecondErleDb": [
+        0,
+        0,
+        -26.429297917595708,
+        -26.013955695363876,
+        -28.460404258927685,
+        -17.68671329954334,
+        -22.791620994382875,
+        -19.091515205138272,
+        -19.224577965752328,
+        -19.82194105984442,
+        -16.103743694259883,
+        -14.246197964600915,
+        -17.223855303639922,
+        -14.259051220423217,
+        -12.125638276243658,
+        -18.585478559647598,
+        -15.14884482189914,
+        -10.480289389126762,
+        -11.733155552834907,
+        -15.983053845427776,
+        -13.49450447440212
+      ],
+      "framesCancelled": 814,
+      "framesPassthrough": 290
+    },
+    "residualSuppression": {
+      "erleOverallDb": -20.271732721051453,
+      "erleConvergedHalfDb": -14.189600660215778,
+      "perSecondErleDb": [
+        0,
+        0,
+        -24.41618890400868,
+        -25.63330734484964,
+        -28.40436914145153,
+        -17.202400160897557,
+        -22.70577761268166,
+        -18.84993007479443,
+        -18.970811121668227,
+        -19.604579005696337,
+        -15.533901027182974,
+        -13.884329102593531,
+        -17.09726443533996,
+        -14.066760063247727,
+        -11.594785262671458,
+        -18.488758210271538,
+        -14.608375295331758,
+        -9.951158260929873,
+        -11.209143655489704,
+        -15.73002005596333,
+        -13.154941138157085
+      ]
+    }
+  }
+}

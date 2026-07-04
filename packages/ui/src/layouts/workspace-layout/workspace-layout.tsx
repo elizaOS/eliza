@@ -1,3 +1,7 @@
+/**
+ * WorkspaceLayout: the base two-pane shell (sidebar + content) with inside/
+ * outside header placement and a mobile drawer.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

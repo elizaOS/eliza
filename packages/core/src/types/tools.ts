@@ -15,58 +15,141 @@ import type { ToolPolicyConfig, ToolProfileId } from "./channel-config";
  * Predefined tool groups for easier policy configuration.
  * Use "group:<name>" syntax in policy configs (e.g., "group:fs").
  */
-export const TOOL_GROUPS: Record<string, string[]> = {
-	// Memory tools.
-	"group:memory": ["read_attachment"],
-	// Web tools
-	"group:web": ["web_search", "web_fetch"],
-	// Basic workspace/file tools
-	"group:fs": ["read", "read_file", "write", "edit", "apply_patch"],
-	// Host/runtime execution tools
-	"group:runtime": ["exec", "process"],
-	// Session management tools
-	"group:sessions": [
-		"sessions_list",
-		"sessions_history",
-		"sessions_send",
-		"sessions_spawn",
-		"session_status",
-	],
-	// UI helpers
-	"group:ui": ["browser", "canvas"],
-	// Automation + infra
-	"group:automation": ["cron", "gateway"],
-	// Messaging surface
-	"group:messaging": ["message"],
-	// Nodes + device tools
-	"group:nodes": ["nodes"],
-	// All native tools (excludes provider plugins)
-	"group:all": [
-		"browser",
-		"canvas",
-		"nodes",
-		"cron",
-		"message",
-		"gateway",
-		"agents_list",
-		"sessions_list",
-		"sessions_history",
-		"sessions_send",
-		"sessions_spawn",
-		"session_status",
-		"read_attachment",
-		"read_file",
-		"web_search",
-		"web_fetch",
-		"image",
-		"read",
-		"write",
-		"edit",
-		"apply_patch",
-		"exec",
-		"process",
-	],
+export type ToolRiskTag =
+	| "read_only"
+	| "memory_access"
+	| "network_access"
+	| "workspace_write"
+	| "host_execution"
+	| "session_control"
+	| "ui_control"
+	| "scheduled_execution"
+	| "external_side_effect"
+	| "messaging_side_effect"
+	| "device_control"
+	| "aggregate";
+
+export interface ToolGroupDefinition {
+	/** Tool names included by this group. */
+	tools: string[];
+	/** Explicit risk tags for policy/audit decisions. */
+	riskTags: ToolRiskTag[];
+	/** Short operator-facing reason this group exists. */
+	description: string;
+}
+
+export const TOOL_GROUP_DEFINITIONS: Record<string, ToolGroupDefinition> = {
+	"group:memory": {
+		tools: ["read_attachment"],
+		riskTags: ["read_only", "memory_access"],
+		description: "Read attachment and memory-adjacent context.",
+	},
+	"group:web": {
+		tools: ["web_search", "web_fetch"],
+		riskTags: ["read_only", "network_access"],
+		description: "Fetch or search external web content.",
+	},
+	"group:fs": {
+		tools: ["read", "read_file", "write", "edit", "apply_patch"],
+		riskTags: ["read_only", "workspace_write"],
+		description: "Read and mutate workspace files.",
+	},
+	"group:runtime": {
+		tools: ["exec", "process"],
+		riskTags: ["host_execution", "external_side_effect"],
+		description: "Run commands or inspect host runtime processes.",
+	},
+	"group:sessions": {
+		tools: [
+			"sessions_list",
+			"sessions_history",
+			"sessions_send",
+			"sessions_spawn",
+			"session_status",
+		],
+		riskTags: ["session_control", "external_side_effect"],
+		description: "Inspect, spawn, or send input to interactive sessions.",
+	},
+	"group:ui": {
+		tools: ["browser", "canvas"],
+		riskTags: ["ui_control", "external_side_effect"],
+		description: "Control browser or canvas UI surfaces.",
+	},
+	"group:automation": {
+		tools: ["cron", "gateway"],
+		riskTags: ["scheduled_execution", "external_side_effect"],
+		description: "Create scheduled or gateway-triggered automation.",
+	},
+	"group:messaging": {
+		tools: ["message"],
+		riskTags: ["messaging_side_effect", "external_side_effect"],
+		description: "Send messages through connected messaging surfaces.",
+	},
+	"group:nodes": {
+		tools: ["nodes"],
+		riskTags: ["device_control", "external_side_effect"],
+		description: "Interact with node or device-level controls.",
+	},
+	"group:all": {
+		tools: [
+			"browser",
+			"canvas",
+			"nodes",
+			"cron",
+			"message",
+			"gateway",
+			"agents_list",
+			"sessions_list",
+			"sessions_history",
+			"sessions_send",
+			"sessions_spawn",
+			"session_status",
+			"read_attachment",
+			"read_file",
+			"web_search",
+			"web_fetch",
+			"image",
+			"read",
+			"write",
+			"edit",
+			"apply_patch",
+			"exec",
+			"process",
+		],
+		riskTags: [
+			"aggregate",
+			"read_only",
+			"memory_access",
+			"network_access",
+			"workspace_write",
+			"host_execution",
+			"session_control",
+			"ui_control",
+			"scheduled_execution",
+			"external_side_effect",
+			"messaging_side_effect",
+			"device_control",
+		],
+		description: "All native core tools, excluding provider plugin tools.",
+	},
 };
+
+export const TOOL_GROUPS: Record<string, string[]> = Object.fromEntries(
+	Object.entries(TOOL_GROUP_DEFINITIONS).map(([group, definition]) => [
+		group,
+		definition.tools,
+	]),
+) as Record<string, string[]>;
+
+export function getToolGroupDefinition(
+	groupName: string,
+): ToolGroupDefinition | undefined {
+	return TOOL_GROUP_DEFINITIONS[normalizeToolName(groupName)];
+}
+
+export function getToolGroupRiskTags(groupName: string): ToolRiskTag[] {
+	return [...(getToolGroupDefinition(groupName)?.riskTags ?? [])];
+}
 
 /**
  * Predefined tool profiles with default allow/deny policies.

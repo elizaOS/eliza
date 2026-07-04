@@ -1,3 +1,6 @@
+/**
+ * Barrel for the cloud-ui component set (@elizaos/ui/cloud-ui): re-exports primitives plus cloud-only skins and compositions.
+ */
 export {
   Tabs,
   TabsContent,
@@ -5,17 +8,6 @@ export {
   TabsTrigger,
 } from "../components/ui/tabs";
 export * from "../hooks/useRenderGuard";
-export type {
-  ElizaAvatarProps,
-  MemoizedChatMessageMessage,
-  MemoizedChatMessageProps,
-} from "./components/ai-elements";
-export {
-  ElizaAvatar,
-  MemoizedChatMessage,
-  useReasoningTypewriter,
-  useTypewriterText,
-} from "./components/ai-elements";
 export {
   type AnalyticsExportFormat,
   type AnalyticsExportType,

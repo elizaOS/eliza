@@ -1,3 +1,7 @@
+/**
+ * Triggers the `register-routes.ts` side effect and re-exports the wallet UI
+ * components, chain config, and hooks for component-level consumption.
+ */
 import "./register-routes.ts";
 
 export { useWalletState } from "@elizaos/ui/state";

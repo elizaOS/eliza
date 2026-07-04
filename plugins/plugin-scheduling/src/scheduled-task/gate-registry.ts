@@ -8,8 +8,6 @@
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
  */
 
-import { logger } from "@elizaos/core";
-
 import type {
   GateDecision,
   GateEvaluationContext,
@@ -257,43 +255,90 @@ const duringTravelGate: TaskGateContribution = {
   },
 };
 
-/**
- * `circadian_state_in` and `no_recent_user_message_in` are referenced by
- * plugin-health default packs but the concrete data readers (circadian state,
- * recent-user-message lookup) are not wired into the runner today. Until a
- * caller registers a real contribution (overwriting these), the gate falls
- * through to `allow` and logs a warning once per process so the operator can
- * see that the gate isn't doing what its name suggests. Loud > silent.
- */
-function makeWarnOnceFallthroughGate(
-  kind: string,
-  remediation: string,
-): TaskGateContribution {
-  let warned = false;
-  return {
-    kind,
-    evaluate(): GateDecision {
-      if (!warned) {
-        warned = true;
-        logger.warn(
-          { src: "lifeops:scheduled-task:gate-registry", gateKind: kind },
-          `Gate "${kind}" has no production reader registered; falling through to allow. ${remediation}`,
-        );
-      }
-      return { kind: "allow" };
-    },
-  };
+interface CircadianStateInParams {
+  /** Circadian states the task may fire in. Default `["awake"]`. */
+  states?: Array<"awake" | "asleep">;
 }
 
-const circadianStateInGate = makeWarnOnceFallthroughGate(
-  "circadian_state_in",
-  "Register a circadian-state-aware contribution via TaskGateRegistry.register before plugin-health default packs load, or remove this gate from those packs.",
-);
+/**
+ * `circadian_state_in` — generic built-in fallback. The circadian state
+ * (awake/asleep) is observed from the user's activity/health rhythm, which
+ * lives in `plugin-personal-assistant`'s `ActivityProfile`. That reader is
+ * registered by PA's runner wiring and, because `registerBuiltInGates` is
+ * first-wins, takes precedence over this fallback.
+ *
+ * Standalone (no PA profile reader) there is no evidence the user is asleep, so
+ * the honest default for the common `states: ["awake"]` packs is `allow`.
+ * Packs that only want to fire while asleep get `deny`.
+ */
+const circadianStateInGate: TaskGateContribution = {
+  kind: "circadian_state_in",
+  evaluate(_task, context): GateDecision {
+    const params = (context.task.shouldFire?.gates.find(
+      (g) => g.kind === "circadian_state_in",
+    )?.params ?? {}) as CircadianStateInParams;
+    const states =
+      Array.isArray(params.states) && params.states.length > 0
+        ? params.states
+        : (["awake"] as const);
+    // No profile reader here → assume awake (no evidence of sleep).
+    if (states.includes("awake")) {
+      return { kind: "allow" };
+    }
+    return {
+      kind: "deny",
+      reason: `circadian_state_in: observed "awake" not in [${states.join(",")}]`,
+    };
+  },
+};
 
-const noRecentUserMessageInGate = makeWarnOnceFallthroughGate(
-  "no_recent_user_message_in",
-  "Register a message-activity-aware contribution via TaskGateRegistry.register, or remove this gate from default packs.",
-);
+interface NoRecentUserMessageInParams {
+  /** Suppress when the user was active within this many minutes. Default 30. */
+  minutes?: number;
+}
+
+/**
+ * `no_recent_user_message_in` — real generic reader over the activity bus.
+ * When a `message_activity_event` occurred within `params.minutes`, the user is
+ * active, so the proactive poke is DEFERRED (delayed), not denied — dropping it
+ * would silently lose the poke. Without a `lastSeenAt` heartbeat this built-in
+ * can't know exactly when the user last spoke, so it delays by the full
+ * suppression window. PA's runner wiring registers a richer reader that reads
+ * `ActivityProfile.lastSeenAt` and defers by the precise remaining time;
+ * first-wins keeps that one when present.
+ */
+const noRecentUserMessageInGate: TaskGateContribution = {
+  kind: "no_recent_user_message_in",
+  async evaluate(_task, context): Promise<GateDecision> {
+    const params = (context.task.shouldFire?.gates.find(
+      (g) => g.kind === "no_recent_user_message_in",
+    )?.params ?? {}) as NoRecentUserMessageInParams;
+    const minutes =
+      typeof params.minutes === "number" &&
+      Number.isFinite(params.minutes) &&
+      params.minutes > 0
+        ? params.minutes
+        : 30;
+    const nowMs = Date.parse(context.nowIso);
+    if (!Number.isFinite(nowMs)) {
+      return { kind: "allow" };
+    }
+    const sinceIso = new Date(nowMs - minutes * 60_000).toISOString();
+    const active =
+      (await context.activity.hasSignalSince({
+        signalKind: "message_activity_event",
+        sinceIso,
+      })) === true;
+    if (!active) {
+      return { kind: "allow" };
+    }
+    return {
+      kind: "defer",
+      until: { offsetMinutes: minutes },
+      reason: `no_recent_user_message_in: user active within ${minutes}m; deferring ${minutes}m`,
+    };
+  },
+};
 
 interface PersonalBaselineSufficientParams {
   minSamples?: number;
@@ -361,14 +406,28 @@ export function createTaskGateRegistry(): TaskGateRegistry {
   return reg;
 }
 
+/**
+ * Register the built-in gates. First-wins: a caller (e.g. plugin-personal-
+ * assistant's runner wiring) may register a richer, production reader for a
+ * kind BEFORE this runs; the built-in is then skipped so the caller's reader
+ * takes precedence. This is how `circadian_state_in` /
+ * `no_recent_user_message_in` get their ActivityProfile-backed readers.
+ */
 export function registerBuiltInGates(reg: TaskGateRegistry): void {
-  reg.register(weekendSkipGate);
-  reg.register(weekendOnlyGate);
-  reg.register(weekdayOnlyGate);
-  reg.register(lateEveningSkipGate);
-  reg.register(quietHoursGate);
-  reg.register(duringTravelGate);
-  reg.register(circadianStateInGate);
-  reg.register(noRecentUserMessageInGate);
-  reg.register(personalBaselineSufficientGate);
+  const builtins: TaskGateContribution[] = [
+    weekendSkipGate,
+    weekendOnlyGate,
+    weekdayOnlyGate,
+    lateEveningSkipGate,
+    quietHoursGate,
+    duringTravelGate,
+    circadianStateInGate,
+    noRecentUserMessageInGate,
+    personalBaselineSufficientGate,
+  ];
+  for (const gate of builtins) {
+    if (!reg.get(gate.kind)) {
+      reg.register(gate);
+    }
+  }
 }

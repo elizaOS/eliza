@@ -26,6 +26,7 @@ import {
 } from "@/lib/services/eliza-agent-config";
 import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
 import {
+  AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService,
 } from "@/lib/services/eliza-sandbox";
@@ -421,6 +422,20 @@ app.post("/", async (c) => {
         currentAgents: error.count,
         maxAgents: error.max,
       });
+    }
+    if (error instanceof AgentImageNotAllowedError) {
+      logger.warn("[agent-api] Agent creation blocked: image not allowed", {
+        orgId: user.organization_id,
+        image: error.image,
+        reason: error.reason,
+      });
+      throw new ApiError(
+        403,
+        error.reason === "not_digest_pinned"
+          ? "agent_image_not_digest_pinned"
+          : "agent_image_not_allowed",
+        error.message,
+      );
     }
     throw error;
   }

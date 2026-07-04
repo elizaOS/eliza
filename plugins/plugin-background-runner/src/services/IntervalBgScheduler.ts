@@ -1,6 +1,3 @@
-import { elizaLogger } from '@elizaos/core';
-import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../types';
-
 /**
  * Pure setInterval fallback. Used when Capacitor is unavailable AND the host
  * has explicitly opted into the background runner anyway (server/desktop dev
@@ -10,6 +7,9 @@ import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../type
  * this fallback exists so the same plugin can be loaded uniformly without
  * having to special-case mobile.
  */
+import { elizaLogger } from '@elizaos/core';
+import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../types';
+
 export class IntervalBgScheduler implements IBgTaskScheduler {
   readonly kind: BgSchedulerKind = 'interval';
 

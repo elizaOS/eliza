@@ -85,7 +85,7 @@ pytest tests/ -v
 - Requires a VM provider: Docker (with KVM), VMware, or VirtualBox. No API
   keys are needed for the benchmark itself, but the agent model needs an LLM key.
 - The elizaOS bridge routes all decisions through the TypeScript benchmark
-  server (`packages/app-core/src/benchmark/server.ts`). Set `ELIZA_BENCH_URL`
+  server (`packages/lifeops-bench/src/server.ts`). Set `ELIZA_BENCH_URL`
   to skip auto-starting it and point at an already-running instance.
 - Results write to `./results/eliza/` by default (gitignored). The orchestrator
   writes to its own `output_dir` and locates `osworld-eliza-results-*.json`.

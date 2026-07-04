@@ -1,3 +1,8 @@
+/**
+ * Keyless coverage of the plugin-gitpathologist GIT_PATHOLOGY action, exercising
+ * its `list` op against an isolated empty cache. Runs on the pr-deterministic lane
+ * under the LLM proxy.
+ */
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

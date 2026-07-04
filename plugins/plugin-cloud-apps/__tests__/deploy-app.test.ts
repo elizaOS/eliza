@@ -1,3 +1,6 @@
+/**
+ * DEPLOY_APP action tests: the completion gate (poll to READY, then reachability-probe the production_url before claiming live). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real. The reachability probe is injected.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   captureCallback,

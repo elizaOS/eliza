@@ -1,9 +1,12 @@
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
   type GetLifeOpsGmailTriageRequest,
+  type LifeOpsConnectorDegradation,
   type LifeOpsGmailTriageFeed,
   type LifeOpsGoogleConnectorStatus,
+  type LifeOpsInboxSourceStatus,
   type LifeOpsXConnectorStatus,
   type LifeOpsXDm,
   normalizeConnectorSource,
@@ -45,6 +48,238 @@ export interface XDmInboxSource {
   getXConnectorStatus(): Promise<LifeOpsXConnectorStatus>;
   syncXDms(opts?: { limit?: number }): Promise<{ synced: number }>;
   getXDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+}
+
+/** Messages from one connector-backed source plus that source's health. */
+export interface InboxSourceFetchResult {
+  messages: InboundMessage[];
+  status: LifeOpsInboxSourceStatus;
+}
+
+function degradation(
+  axis: LifeOpsConnectorDegradation["axis"],
+  code: string,
+  message: string,
+  retryable: boolean,
+): LifeOpsConnectorDegradation {
+  return { axis, code, message, retryable };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Project a Google connector status onto the inbox source-health surface.
+ * Returns `ok` only when the connector is connected, holds the Gmail triage
+ * capability, and reports no degradations of its own.
+ */
+export function gmailSourceStatusFromConnector(
+  status: LifeOpsGoogleConnectorStatus,
+): LifeOpsInboxSourceStatus {
+  const reported = status.degradations ?? [];
+  if (!status.connected) {
+    const authExpired =
+      status.reason === "needs_reauth" || status.reason === "token_missing";
+    if (authExpired) {
+      return {
+        source: "gmail",
+        state: "degraded",
+        degradations: [
+          ...reported,
+          degradation(
+            "auth-expired",
+            `gmail_${status.reason}`,
+            "Gmail authorization has expired — reconnect Google to resume inbox sync.",
+            false,
+          ),
+        ],
+      };
+    }
+    return {
+      source: "gmail",
+      state: "disconnected",
+      degradations: [
+        ...reported,
+        degradation(
+          "disconnected",
+          `gmail_${status.reason}`,
+          "Gmail is not connected.",
+          false,
+        ),
+      ],
+    };
+  }
+  if (!status.grantedCapabilities.includes("google.gmail.triage")) {
+    return {
+      source: "gmail",
+      state: "degraded",
+      degradations: [
+        ...reported,
+        degradation(
+          "missing-scope",
+          "gmail_triage_scope_missing",
+          "Gmail is connected but the triage capability was not granted — reconnect Google with Gmail access.",
+          false,
+        ),
+      ],
+    };
+  }
+  return {
+    source: "gmail",
+    state: reported.length > 0 ? "degraded" : "ok",
+    degradations: reported,
+  };
+}
+
+/**
+ * Project an X connector status onto the inbox source-health surface.
+ * Returns `ok` only when connected with DM read and no reported degradations.
+ */
+export function xDmSourceStatusFromConnector(
+  status: LifeOpsXConnectorStatus,
+): LifeOpsInboxSourceStatus {
+  const reported = status.degradations ?? [];
+  if (!status.connected) {
+    if (status.reason === "needs_reauth") {
+      return {
+        source: "x_dm",
+        state: "degraded",
+        degradations: [
+          ...reported,
+          degradation(
+            "auth-expired",
+            "x_dm_needs_reauth",
+            "X authorization has expired — reconnect X to resume DM sync.",
+            false,
+          ),
+        ],
+      };
+    }
+    return {
+      source: "x_dm",
+      state: "disconnected",
+      degradations: [
+        ...reported,
+        degradation(
+          "disconnected",
+          `x_dm_${status.reason ?? "disconnected"}`,
+          "X is not connected.",
+          false,
+        ),
+      ],
+    };
+  }
+  if (!status.dmRead) {
+    return {
+      source: "x_dm",
+      state: "degraded",
+      degradations: [
+        ...reported,
+        degradation(
+          "missing-scope",
+          "x_dm_read_scope_missing",
+          "X is connected but DM read access was not granted — reconnect X with DM permissions.",
+          false,
+        ),
+      ],
+    };
+  }
+  return {
+    source: "x_dm",
+    state: reported.length > 0 ? "degraded" : "ok",
+    degradations: reported,
+  };
+}
+
+function fetchFailedStatus(
+  source: LifeOpsInboxSourceStatus["source"],
+  error: unknown,
+): LifeOpsInboxSourceStatus {
+  return {
+    source,
+    state: "degraded",
+    degradations: [
+      degradation(
+        "transport-offline",
+        `${source === "chat" ? "chat" : source}_inbox_fetch_failed`,
+        errorMessage(error),
+        true,
+      ),
+    ],
+  };
+}
+
+/**
+ * Probe connector health without pulling messages. Used by the cached inbox
+ * read paths so a response served from cache still reports real source health
+ * (an expired Gmail token must surface even on a cache hit).
+ */
+export async function probeSourceStatuses(opts: {
+  includeChat: boolean;
+  gmailSource?: GmailInboxSource;
+  includeGmail: boolean;
+  xDmSource?: XDmInboxSource;
+  includeXDm: boolean;
+}): Promise<LifeOpsInboxSourceStatus[]> {
+  const statuses: LifeOpsInboxSourceStatus[] = [];
+  if (opts.includeChat) {
+    statuses.push({ source: "chat", state: "ok", degradations: [] });
+  }
+  if (opts.includeGmail) {
+    if (!opts.gmailSource) {
+      statuses.push(sourceNotWiredStatus("gmail"));
+    } else {
+      try {
+        statuses.push(
+          gmailSourceStatusFromConnector(
+            await opts.gmailSource.getGoogleConnectorStatus(INTERNAL_URL),
+          ),
+        );
+      } catch (error) {
+        logger.warn(
+          `[InboxMessageFetcher] gmail status probe failed: ${errorMessage(error)}`,
+        );
+        statuses.push(fetchFailedStatus("gmail", error));
+      }
+    }
+  }
+  if (opts.includeXDm) {
+    if (!opts.xDmSource) {
+      statuses.push(sourceNotWiredStatus("x_dm"));
+    } else {
+      try {
+        statuses.push(
+          xDmSourceStatusFromConnector(
+            await opts.xDmSource.getXConnectorStatus(),
+          ),
+        );
+      } catch (error) {
+        logger.warn(
+          `[InboxMessageFetcher] x_dm status probe failed: ${errorMessage(error)}`,
+        );
+        statuses.push(fetchFailedStatus("x_dm", error));
+      }
+    }
+  }
+  return statuses;
+}
+
+function sourceNotWiredStatus(
+  source: "gmail" | "x_dm",
+): LifeOpsInboxSourceStatus {
+  return {
+    source,
+    state: "disconnected",
+    degradations: [
+      degradation(
+        "disconnected",
+        `${source}_source_unavailable`,
+        `The ${source === "gmail" ? "Gmail" : "X DM"} inbox source is not wired into this host.`,
+        false,
+      ),
+    ],
+  };
 }
 
 export async function fetchChatMessages(
@@ -285,11 +520,26 @@ export async function fetchGmailMessages(
     /** Filter to a single Gmail account by Google grant id. */
     grantId?: string;
   },
-): Promise<InboundMessage[]> {
-  const status = await source.getGoogleConnectorStatus(INTERNAL_URL);
-  if (!status.connected) return [];
-  const capabilities = status.grantedCapabilities;
-  if (!capabilities.includes("google.gmail.triage")) return [];
+): Promise<InboxSourceFetchResult> {
+  let connectorStatus: LifeOpsGoogleConnectorStatus;
+  try {
+    connectorStatus = await source.getGoogleConnectorStatus(INTERNAL_URL);
+  } catch (error) {
+    logger.warn(
+      `[InboxMessageFetcher] gmail status probe failed: ${errorMessage(error)}`,
+    );
+    return { messages: [], status: fetchFailedStatus("gmail", error) };
+  }
+  const sourceStatus = gmailSourceStatusFromConnector(connectorStatus);
+  // Only pull when the connector can actually serve triage. A connector that
+  // merely *reports* degradations is still worth pulling from — the degraded
+  // status rides along with whatever messages come back.
+  if (
+    !connectorStatus.connected ||
+    !connectorStatus.grantedCapabilities.includes("google.gmail.triage")
+  ) {
+    return { messages: [], status: sourceStatus };
+  }
 
   const limit = opts.limit ?? 50;
 
@@ -297,13 +547,20 @@ export async function fetchGmailMessages(
   // aggregates across every Google grant and tags each summary with grantId
   // and accountEmail. We forward those onto the InboundMessage so the inbox
   // mixin can group by account and render account chips.
-  const triageFeed = await source.getGmailTriage(
-    INTERNAL_URL,
-    opts.grantId
-      ? { grantId: opts.grantId, maxResults: limit }
-      : { maxResults: limit },
-  );
-  if (triageFeed.messages.length === 0) return [];
+  let triageFeed: LifeOpsGmailTriageFeed;
+  try {
+    triageFeed = await source.getGmailTriage(
+      INTERNAL_URL,
+      opts.grantId
+        ? { grantId: opts.grantId, maxResults: limit }
+        : { maxResults: limit },
+    );
+  } catch (error) {
+    logger.warn(
+      `[InboxMessageFetcher] gmail triage fetch failed: ${errorMessage(error)}`,
+    );
+    return { messages: [], status: fetchFailedStatus("gmail", error) };
+  }
 
   const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
@@ -347,7 +604,7 @@ export async function fetchGmailMessages(
     });
   }
 
-  return results;
+  return { messages: results, status: sourceStatus };
 }
 
 export async function fetchXDmMessages(
@@ -356,13 +613,32 @@ export async function fetchXDmMessages(
     sinceIso?: string;
     limit?: number;
   },
-): Promise<InboundMessage[]> {
-  const status = await source.getXConnectorStatus();
-  if (!status.connected || !status.dmRead) return [];
+): Promise<InboxSourceFetchResult> {
+  let connectorStatus: LifeOpsXConnectorStatus;
+  try {
+    connectorStatus = await source.getXConnectorStatus();
+  } catch (error) {
+    logger.warn(
+      `[InboxMessageFetcher] x_dm status probe failed: ${errorMessage(error)}`,
+    );
+    return { messages: [], status: fetchFailedStatus("x_dm", error) };
+  }
+  const sourceStatus = xDmSourceStatusFromConnector(connectorStatus);
+  if (!connectorStatus.connected || !connectorStatus.dmRead) {
+    return { messages: [], status: sourceStatus };
+  }
 
   const limit = opts.limit ?? 50;
-  await source.syncXDms({ limit });
-  const dms = await source.getXDms({ limit });
+  let dms: LifeOpsXDm[];
+  try {
+    await source.syncXDms({ limit });
+    dms = await source.getXDms({ limit });
+  } catch (error) {
+    logger.warn(
+      `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
+    );
+    return { messages: [], status: fetchFailedStatus("x_dm", error) };
+  }
   const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
   const results: InboundMessage[] = [];
 
@@ -406,7 +682,14 @@ export async function fetchXDmMessages(
     });
   }
 
-  return results;
+  return { messages: results, status: sourceStatus };
+}
+
+/** The merged cross-source pull plus per-source health for that pull. */
+export interface InboxFetchResult {
+  messages: InboundMessage[];
+  /** Health of every source the request selected, in chat/gmail/x_dm order. */
+  sources: LifeOpsInboxSourceStatus[];
 }
 
 export async function fetchAllMessages(
@@ -421,55 +704,77 @@ export async function fetchAllMessages(
     /** Filter Gmail to a single account by Google grant id. */
     gmailGrantId?: string;
   },
-): Promise<InboundMessage[]> {
+): Promise<InboxFetchResult> {
   const requestedSources = opts.sources
     ? buildSourceFilter(opts.sources)
     : null;
   const includeGmail =
     opts.includeGmail !== false &&
     sourceMatchesFilter("gmail", requestedSources);
-  const gmailMessagesPromise = includeGmail
-    ? opts.gmailSource
+  if (includeGmail && !opts.gmailSource) {
+    throw new Error(
+      "fetchAllMessages requires gmailSource when Gmail is included",
+    );
+  }
+  const includeXDm = sourceMatchesFilter("x_dm", requestedSources);
+  const gmailResultPromise =
+    includeGmail && opts.gmailSource
       ? fetchGmailMessages(opts.gmailSource, {
           sinceIso: opts.sinceIso,
           limit: opts.limit,
           grantId: opts.gmailGrantId,
         })
-      : Promise.reject(
-          new Error(
-            "fetchAllMessages requires gmailSource when Gmail is included",
-          ),
-        )
-    : Promise.resolve([]);
-  const xDmMessagesPromise =
-    opts.xDmSource && sourceMatchesFilter("x_dm", requestedSources)
+      : Promise.resolve<InboxSourceFetchResult | null>(null);
+  const xDmResultPromise = includeXDm
+    ? opts.xDmSource
       ? fetchXDmMessages(opts.xDmSource, {
           sinceIso: opts.sinceIso,
           limit: opts.limit,
         })
-      : Promise.resolve([]);
+      : Promise.resolve<InboxSourceFetchResult>({
+          messages: [],
+          status: sourceNotWiredStatus("x_dm"),
+        })
+    : Promise.resolve<InboxSourceFetchResult | null>(null);
   const chatSources = opts.sources?.filter((source) => {
     const normalized = normalizeConnectorSource(source);
     return normalized !== "gmail" && normalized !== "x_dm";
   });
-  const chatMessagesPromise =
-    chatSources && chatSources.length === 0
-      ? Promise.resolve([])
-      : fetchChatMessages(runtime, {
-          sources: chatSources,
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
-        });
+  const includeChat = !chatSources || chatSources.length > 0;
+  const chatResultPromise: Promise<InboxSourceFetchResult | null> = includeChat
+    ? fetchChatMessages(runtime, {
+        sources: chatSources,
+        sinceIso: opts.sinceIso,
+        limit: opts.limit,
+      }).then(
+        (messages): InboxSourceFetchResult => ({
+          messages,
+          status: { source: "chat", state: "ok", degradations: [] },
+        }),
+        (error): InboxSourceFetchResult => {
+          logger.warn(
+            `[InboxMessageFetcher] chat fetch failed: ${errorMessage(error)}`,
+          );
+          return { messages: [], status: fetchFailedStatus("chat", error) };
+        },
+      )
+    : Promise.resolve(null);
 
-  const [chatMessages, gmailMessages, xDmMessages] = await Promise.all([
-    chatMessagesPromise,
-    gmailMessagesPromise,
-    xDmMessagesPromise,
+  const [chatResult, gmailResult, xDmResult] = await Promise.all([
+    chatResultPromise,
+    gmailResultPromise,
+    xDmResultPromise,
   ]);
 
-  const combined = [...chatMessages, ...gmailMessages, ...xDmMessages];
+  const results = [chatResult, gmailResult, xDmResult].filter(
+    (result): result is InboxSourceFetchResult => result !== null,
+  );
+  const combined = results.flatMap((result) => result.messages);
   combined.sort((a, b) => b.timestamp - a.timestamp);
-  return opts.limit ? combined.slice(0, opts.limit) : combined;
+  return {
+    messages: opts.limit ? combined.slice(0, opts.limit) : combined,
+    sources: results.map((result) => result.status),
+  };
 }
 
 function parseOptionalTimestamp(

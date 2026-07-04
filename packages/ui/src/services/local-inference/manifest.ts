@@ -1,3 +1,7 @@
+/**
+ * Types for the Eliza-1 model manifest: tiers, backends, and device caps used to
+ * pick the right bundle for the detected hardware.
+ */
 import type { CpuFeatureProbe } from "@elizaos/shared";
 
 export type Eliza1Tier = "2b" | "4b" | "9b" | "27b" | "27b-256k";

@@ -1,12 +1,16 @@
+/**
+ * Compatibility shims for the model-hub search callers. Consumer local inference
+ * uses only the curated Eliza-1 bundles in the catalog, so these return empty.
+ */
 import type { CatalogModel } from "./types";
 
 export const CUSTOM_MODEL_SEARCH_DISABLED_MESSAGE =
   "Custom model search is disabled; local inference uses curated Eliza-1 bundles only.";
 
 /**
- * Compatibility shim for older callers. Consumer local inference no longer
- * searches third-party hubs; setup is managed through the curated Eliza-1
- * bundles registered in the catalog.
+ * Compatibility shim for the hub-search callers. Consumer local inference does
+ * not search third-party hubs; setup runs through the curated Eliza-1 bundles
+ * registered in the catalog.
  */
 export async function searchHuggingFaceGguf(
   query: string,

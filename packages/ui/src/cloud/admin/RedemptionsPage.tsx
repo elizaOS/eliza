@@ -562,14 +562,15 @@ export default function RedemptionsPage(): React.JSX.Element {
                     {formatDate(r.created_at)}
                   </TableCell>
                   <TableCell>
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => copyToClipboard(r.user_id)}
                       className="text-xs text-muted-foreground hover:text-txt-strong flex items-center gap-1"
                     >
                       {truncateAddress(r.user_id)}
                       <Copy className="h-3 w-3 opacity-50" />
-                    </button>
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -583,14 +584,15 @@ export default function RedemptionsPage(): React.JSX.Element {
                   </TableCell>
                   <TableCell className="capitalize">{r.network}</TableCell>
                   <TableCell>
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => copyToClipboard(r.payout_address)}
                       className="text-xs text-muted-foreground hover:text-txt-strong flex items-center gap-1"
                     >
                       {truncateAddress(r.payout_address)}
                       <Copy className="h-3 w-3 opacity-50" />
-                    </button>
+                    </Button>
                   </TableCell>
                   <TableCell>
                     <Badge

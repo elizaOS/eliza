@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+/**
+ * Behaviour test for ErrorBoundary: passes children through when they render
+ * cleanly, catches a throwing child and shows the default fallback with the
+ * error message + retry, and honours a custom fallback. Real component in
+ * jsdom (no mocks); console.error is spied so the expected React logging is
+ * silenced.
+ */
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useState } from "react";

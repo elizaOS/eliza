@@ -1,3 +1,4 @@
+/** Maps a stored document `Memory` into the display-card shape the documents view renders — provenance kind, title, and derived metadata. */
 import type { Memory } from "@elizaos/core";
 import type { DocumentVisibilityScope } from "./service-loader.js";
 

@@ -1,3 +1,11 @@
+/**
+ * Hook backing the DesktopWorkspaceSection window controls: show/hide/focus,
+ * minimize/maximize toggles, and a test notification. Each action goes through
+ * the desktop bridge (`invokeDesktopBridgeRequest`, Electrobun RPC + IPC
+ * fallback); the minimize/maximize toggles read the current window state from
+ * the passed snapshot to pick the RPC method.
+ */
+
 import { useMemo } from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import type { TranslateFn } from "../../types";

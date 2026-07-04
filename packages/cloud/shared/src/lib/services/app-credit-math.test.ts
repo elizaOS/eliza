@@ -4,6 +4,7 @@ import {
   computeInferenceCharge,
   computePurchaseSplit,
   computeReconciliation,
+  isAppMonetizationActive,
 } from "./app-credit-math";
 
 /**
@@ -86,5 +87,40 @@ describe("computeReconciliation", () => {
     expect(recon.markupPercentage).toBe(0);
     expect(recon.totalCostDifference).toBe(50);
     expect(recon.creatorMarkupDifference).toBe(0);
+  });
+});
+
+describe("isAppMonetizationActive", () => {
+  test("true for enabled + approved", () => {
+    expect(isAppMonetizationActive({ monetization_enabled: true, review_status: "approved" })).toBe(
+      true,
+    );
+  });
+
+  test("a review REJECTION revokes earnings even while the flag is still true", () => {
+    // Rows persisted rejected+enabled before runAppReview started flipping the
+    // flag off must earn nothing — this predicate is the earnings-path gate.
+    expect(isAppMonetizationActive({ monetization_enabled: true, review_status: "rejected" })).toBe(
+      false,
+    );
+  });
+
+  test("draft re-gate (re-review pending) deliberately keeps accruing", () => {
+    // Explicit product DECISION at api/v1/apps/[id]/route.ts: a metadata edit
+    // must not freeze a creator's live revenue; only a rejection cuts it off.
+    expect(isAppMonetizationActive({ monetization_enabled: true, review_status: "draft" })).toBe(
+      true,
+    );
+  });
+
+  test("flag off → inactive regardless of review status", () => {
+    expect(
+      isAppMonetizationActive({ monetization_enabled: false, review_status: "approved" }),
+    ).toBe(false);
+  });
+
+  test("absent review_status (synthetic accounting apps) falls back to the flag", () => {
+    expect(isAppMonetizationActive({ monetization_enabled: true })).toBe(true);
+    expect(isAppMonetizationActive({ monetization_enabled: true, review_status: null })).toBe(true);
   });
 });

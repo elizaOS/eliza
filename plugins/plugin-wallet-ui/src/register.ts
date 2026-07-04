@@ -1,10 +1,13 @@
+/**
+ * Side-effect entry point: registers the wallet shell page/widgets and, in a
+ * DOM-less terminal host, the terminal inventory view. Also re-exports the
+ * chain/address constants that consumers import from the package root, since
+ * the app build aliases `@elizaos/plugin-wallet-ui` to this module rather than
+ * the full barrel.
+ */
 import "./register-routes.ts";
 
 export { getExplorerTokenUrl } from "./inventory/chainConfig.ts";
-// Re-export the chain/address constants consumers import from the package root.
-// The app build aliases `@elizaos/plugin-wallet-ui` to THIS module (side-effect
-// entry, not the full barrel), so wallet-consuming plugins
-// (`import { isBscChainName } from "@elizaos/plugin-wallet-ui"`) resolve here.
 export {
   BSC_GAS_READY_THRESHOLD,
   HEX_ADDRESS_RE,

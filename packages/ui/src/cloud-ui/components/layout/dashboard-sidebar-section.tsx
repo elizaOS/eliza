@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * A collapsible titled group of sidebar nav items.
+ */
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -8,6 +11,7 @@ import {
   CollapsibleTrigger,
 } from "../../../components/ui/collapsible";
 import { cn } from "../../lib/utils";
+import type { AdminRole } from "../../types/cloud-api";
 import { DashboardSidebarNavigationItem } from "./dashboard-sidebar-item";
 import type {
   DashboardSidebarItem,
@@ -20,7 +24,8 @@ export interface DashboardSidebarNavigationSectionProps {
   activePath: string;
   authenticated: boolean;
   isAdmin?: boolean;
-  adminRole?: string | null;
+  /** The resolved admin tier, or null when the user is not an admin. */
+  adminRole?: AdminRole | null;
   isCollapsed?: boolean;
   isFeatureEnabled?: (featureFlag: string) => boolean;
   renderLink?: DashboardSidebarLinkRenderer;

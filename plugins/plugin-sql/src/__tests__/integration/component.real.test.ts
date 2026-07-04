@@ -1,3 +1,8 @@
+/**
+ * Verifies component CRUD against a real isolated adapter: create/read,
+ * update, JSON-patch operations (set/increment/push/remove on nested paths),
+ * and delete, scoped to a seeded entity/room/world.
+ */
 import {
   type AgentRuntime,
   ChannelType,

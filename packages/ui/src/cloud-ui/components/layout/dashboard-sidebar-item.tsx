@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * A single cloud dashboard sidebar nav item, with a lock affordance for gated routes.
+ */
 import { Lock } from "lucide-react";
 import type { CSSProperties } from "react";
 import {

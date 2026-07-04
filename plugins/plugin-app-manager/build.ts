@@ -3,10 +3,10 @@
  * Build script for @elizaos/plugin-app-manager (Node). Orchestration lives in the
  * shared driver (plugins/plugin-build.ts); this lists only what differs.
  *
- * Declarations are emitted via tsconfig.build.json, which bakes in the
- * noEmit:false / rootDir:src / declarationDir overrides the hand-rolled build
- * previously passed on the tsc CLI (the base tsconfig has noEmit:true because
- * allowImportingTsExtensions forces it).
+ * Declarations are emitted via tsconfig.build.json, which supplies the
+ * noEmit:false / rootDir:src / declarationDir overrides needed for declaration
+ * output (the base tsconfig sets noEmit:true because allowImportingTsExtensions
+ * forces it).
  */
 import { buildPlugin } from "../plugin-build";
 

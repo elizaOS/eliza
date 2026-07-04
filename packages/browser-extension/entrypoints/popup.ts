@@ -1,3 +1,8 @@
+/**
+ * Popup UI controller: renders the status model from derivePopupStatusModel,
+ * drives the settings form (agent API URL, companion id, tracking mode), and
+ * triggers auto-pair or manual sync by messaging the background worker.
+ */
 import { derivePopupStatusModel } from "../src/popup-model";
 import type {
   BackgroundState,

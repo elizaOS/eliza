@@ -1,0 +1,126 @@
+diff --git a/packages/ui/src/testing/launcher-loop/cdp-gestures.ts b/packages/ui/src/testing/launcher-loop/cdp-gestures.ts
+index 0635c5ce17c..97934f41e05 100644
+--- a/packages/ui/src/testing/launcher-loop/cdp-gestures.ts
++++ b/packages/ui/src/testing/launcher-loop/cdp-gestures.ts
+@@ -261,7 +261,7 @@ export class CdpTouchDriver implements Driver {
+     private readonly page: Page,
+     options: CdpTouchDriverOptions = {},
+   ) {
+-    this.commitDistance = options.commitDistance ?? 220;
++    this.commitDistance = options.commitDistance ?? 280;
+     this.rejectDistance = options.rejectDistance ?? 24;
+     this.pullDistance = options.pullDistance ?? 140;
+     this.pullRejectDistance = options.pullRejectDistance ?? 20;
+@@ -271,15 +271,67 @@ export class CdpTouchDriver implements Driver {
+     direction: "left" | "right",
+     committed: boolean,
+   ): Promise<void> {
+-    const magnitude = committed ? this.commitDistance : this.rejectDistance;
+-    const dx = direction === "left" ? -magnitude : magnitude;
+-    const stepDelayMs = committed ? 2 : 12;
++    // Swipe on the currently-visible half with the proven rail-swipe recipe from
++    // run-home-screen-e2e (10 steps, 16ms/step). The original engine used
++    // stepDelayMs 2 for committed swipes; at that rate Chromium coalesces the
++    // touchMove burst into one composited frame, the pager's velocity tracker
++    // sees a single tiny jump, and the flick is dropped — the rail never
++    // navigates (transformX stays parked). A CDP touch can also be dropped by the
++    // compositor under load (a delivery artifact no finger reproduces), so a
++    // committing navigation that fails to land is re-dispatched, bounded. Rejects
++    // and edge-of-rail swipes leave the page unchanged, so they match on the
++    // first pass and never retry; a genuine model/driver divergence still lands
++    // on the wrong page and is caught by the invariant check.
++    // The model treats a committed rail swipe as navigating AND closing any open
++    // notification center (advanceModel → commitPage). A real open notification
++    // is a modal overlay that intercepts the swipe (it hits the backdrop, closes
++    // the sheet, and the rail never moves), so dismiss it first — then the swipe
++    // reaches the rail and reality matches the model.
++    if (await this.notificationIsOpen()) await this.dismissNotification();
++
++    const before = await this.readDataPage();
++    const canNavigate =
++      (direction === "left" && before === "home") ||
++      (direction === "right" && before === "launcher");
++    const expected =
++      committed && canNavigate
++        ? before === "home"
++          ? "launcher"
++          : "home"
++        : before;
++
+     const target =
+       direction === "left"
+         ? LAUNCHER_SELECTORS.homePage
+         : LAUNCHER_SELECTORS.launcherPage;
+-    await touchSwipe(this.page, target, dx, 0, { steps: 10, stepDelayMs });
+-    await this.settle();
++    const dx = committed ? this.commitDistance : this.rejectDistance;
++    const signedDx = direction === "left" ? -dx : dx;
++
++    for (let attempt = 1; attempt <= 3; attempt += 1) {
++      await touchSwipe(this.page, target, signedDx, 0, {
++        steps: 10,
++        stepDelayMs: 16,
++      });
++      await this.settle();
++      if ((await this.readDataPage()) === expected) return;
++    }
++  }
++
++  private async readDataPage(): Promise<string | null> {
++    return this.page
++      .locator(LAUNCHER_SELECTORS.surface)
++      .first()
++      .getAttribute("data-page");
++  }
++
++  private async notificationIsOpen(): Promise<boolean> {
++    return this.page.evaluate(() =>
++      Boolean(
++        document.querySelector(
++          '[data-notification-open="true"], [data-testid="notification-center"][data-open="true"], [data-testid="notification-sheet"][data-open]',
++        ),
++      ),
++    );
+   }
+ 
+   async railEdgeButton(direction: "prev" | "next"): Promise<void> {
+@@ -348,6 +400,39 @@ export class CdpTouchDriver implements Driver {
+   }
+ 
+   private async settle(): Promise<void> {
++    // Wait for the rail to actually come to REST before the caller observes it:
++    // every rail animation finished AND the transform parked at a page boundary
++    // (0 or a whole -width multiple). A bare double-rAF returns mid-commit under
++    // load — the observation then reads a transitioning rail and the invariant
++    // sees `data-page` lagging the model (#12179). Page-agnostic, so it stays a
++    // driver concern and does not duplicate the model's page tracking.
++    await this.page
++      .waitForFunction(
++        () => {
++          const rail = document.querySelector(
++            '[data-testid="home-launcher-rail"]',
++          );
++          const surface = document.querySelector(
++            '[data-testid="home-launcher-surface"]',
++          );
++          if (!(rail instanceof HTMLElement) || !(surface instanceof HTMLElement)) {
++            return false;
++          }
++          const animating = rail
++            .getAnimations({ subtree: true })
++            .some((a) => a.playState === "running");
++          if (animating) return false;
++          const railLeft = rail.getBoundingClientRect().left;
++          const surfaceLeft = surface.getBoundingClientRect().left;
++          const width = surface.getBoundingClientRect().width || 1;
++          const offset = railLeft - surfaceLeft;
++          // Parked when the offset is within 1.5px of a whole page boundary.
++          return Math.abs(offset - Math.round(offset / width) * width) < 1.5;
++        },
++        undefined,
++        { timeout: 4000 },
++      )
++      .catch(() => undefined);
+     await this.page.evaluate(
+       () =>
+         new Promise<void>((resolve) => {

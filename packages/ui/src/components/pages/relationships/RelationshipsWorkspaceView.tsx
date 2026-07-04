@@ -1,3 +1,11 @@
+/**
+ * Top-level workspace for the Relationships page: a master/detail layout with a
+ * searchable people sidebar, the force-directed graph panel, and the selected
+ * person's detail panels. Owns people/graph data loading, selection state, and
+ * group filtering; delegates rendering to RelationshipsSidebar,
+ * RelationshipsGraphPanel, and the person panels. Mounted by RelationshipsView.
+ */
+
 import { Filter, Network } from "lucide-react";
 import {
   type ReactNode,
@@ -19,6 +27,13 @@ import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
 import { PagePanel } from "../../composites/page-panel";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../ui/select";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
 import { RelationshipsActivityFeed } from "./RelationshipsActivityFeed";
 import { RelationshipsCandidateMergesPanel } from "./RelationshipsCandidateMergesPanel";
@@ -186,7 +201,7 @@ export function RelationshipsWorkspaceView({
     void loadGraph(buildRelationshipsGraphQuery(deferredSearch, platform));
   };
 
-  const platformAgent = useAgentElement<HTMLSelectElement>({
+  const platformAgent = useAgentElement<HTMLButtonElement>({
     id: "relationships-platform",
     role: "select",
     label: t("relationships.platformFilter", {
@@ -214,26 +229,29 @@ export function RelationshipsWorkspaceView({
             })}
           </label>
           <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <select
-            ref={platformAgent.ref}
-            id="relationships-platform"
-            value={platform}
-            onChange={(event) => setPlatform(event.target.value)}
-            aria-label={t("relationships.platformFilter", {
-              defaultValue: "Platform filter",
-            })}
-            className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition "
-            {...platformAgent.agentProps}
-          >
-            <option value="all">
-              {t("relationships.platformAll", { defaultValue: "All" })}
-            </option>
-            {platforms.map((entry) => (
-              <option key={entry} value={entry}>
-                {entry}
-              </option>
-            ))}
-          </select>
+          <Select value={platform} onValueChange={setPlatform}>
+            <SelectTrigger
+              ref={platformAgent.ref}
+              id="relationships-platform"
+              aria-label={t("relationships.platformFilter", {
+                defaultValue: "Platform filter",
+              })}
+              className="h-9 w-full rounded-sm border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt"
+              {...platformAgent.agentProps}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">
+                {t("relationships.platformAll", { defaultValue: "All" })}
+              </SelectItem>
+              {platforms.map((entry) => (
+                <SelectItem key={entry} value={entry}>
+                  {entry}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </div>
@@ -422,6 +440,7 @@ export function RelationshipsWorkspaceView({
           graph={graph}
           selectedPersonId={selectedPersonId}
           onSelectPersonId={setSelectedPersonId}
+          mobileTitle={t("relationships.people", { defaultValue: "People" })}
         />
       }
       contentHeader={contentHeader}

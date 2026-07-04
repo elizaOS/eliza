@@ -1,0 +1,19 @@
+# Gradle configuration blocker (worktree provisioning gap, NOT a code issue)
+
+$ ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1 ./gradlew :app:compileDebugJavaWithJavac --offline --no-daemon
+
+FAILURE: Build failed with an exception.
+* What went wrong:
+Configuring project ':capacitor-push-notifications' without an existing directory is not allowed.
+The configured projectDirectory '.../agent-aa23d2c0aa332e01d/node_modules/.bun/@capacitor+push-notifications@8.0.3+.../@capacitor/push-notifications/android' does not exist.
+BUILD FAILED in 17s
+
+Root cause: this git worktree has no installed node_modules, and the parent
+eliza checkout's node_modules is empty (total 0). The generated
+capacitor.settings.gradle includes ~30 capacitor subprojects at
+node_modules/.bun/@capacitor+*@8.x paths that are absent. Gradle fails at
+settings evaluation, BEFORE any :app Java compilation. This is a workspace
+provisioning gap (needs 'bun install' + 'npx cap sync android' at the eliza
+root), not a defect in the #12453 change. The change is compile-verified
+instead via full-class javac against the real android-36 SDK (see
+javac-fullclass.txt).

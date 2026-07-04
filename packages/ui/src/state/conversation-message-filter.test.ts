@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the transcript render filter (which assistant turns show).
+ * Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "../api";
 import { shouldKeepConversationMessage } from "./conversation-message-filter";

@@ -12,6 +12,8 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 import { type CSSProperties, useCallback } from "react";
 import {
   type HyperliquidSnapshot,
@@ -22,11 +24,7 @@ import { useHyperliquidState } from "./useHyperliquidState.ts";
 /** Return to the apps/home surface via the navigation bus. */
 function navigateHome(): void {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "home", viewPath: "/" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "home", viewPath: "/" });
 }
 
 const AGENT_TOOLBAR_STYLE: CSSProperties = {
@@ -136,7 +134,8 @@ export function HyperliquidView() {
         aria-label="Hyperliquid controls"
         style={AGENT_TOOLBAR_STYLE}
       >
-        <button
+        <Button
+          unstyled
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
           type="button"
@@ -149,8 +148,9 @@ export function HyperliquidView() {
           }}
         >
           {loading ? "Refreshing…" : "Refresh"}
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           ref={homeControl.ref}
           {...homeControl.agentProps}
           type="button"
@@ -158,7 +158,7 @@ export function HyperliquidView() {
           style={AGENT_BUTTON_OUTLINE_STYLE}
         >
           Home
-        </button>
+        </Button>
       </div>
       <HyperliquidSpatialView snapshot={snapshot} onAction={onAction} />
     </>

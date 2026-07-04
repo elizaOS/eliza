@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the RevenueFlowDiagram.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { RevenueFlowDiagram } from "./revenue-flow-diagram";
 

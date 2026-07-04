@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the transcript-session accumulator over PCM16 WAV frames.
+ * Pure function, no mic.
+ */
 import { describe, expect, it } from "vitest";
 import { TranscriptSessionAccumulator } from "./transcript-session";
 

@@ -139,6 +139,10 @@ async function fetchGeneratedRegistry(
               developerOnly?: boolean;
               visibleInAppStore?: boolean;
               mainTab?: boolean;
+              catalogSection?: string;
+              featured?: boolean;
+              defaultHidden?: boolean;
+              scope?: string;
             };
           }
         >;
@@ -207,6 +211,10 @@ async function fetchGeneratedRegistry(
             developerOnly: e.app.developerOnly,
             visibleInAppStore: e.app.visibleInAppStore,
             mainTab: e.app.mainTab,
+            catalogSection: e.app.catalogSection,
+            featured: e.app.featured,
+            defaultHidden: e.app.defaultHidden,
+            scope: e.app.scope,
           };
         }
 

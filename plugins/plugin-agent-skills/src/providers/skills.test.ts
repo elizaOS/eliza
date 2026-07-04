@@ -1,7 +1,11 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { SkillCatalogEntry } from "../types";
-import { catalogAwarenessProvider } from "./skills";
+import {
+	catalogAwarenessProvider,
+	skillInstructionsProvider,
+	skillsSummaryProvider,
+} from "./skills";
 
 function message(text: string): Memory {
 	return {
@@ -40,6 +44,12 @@ function skill(
 }
 
 describe("agent_skills_catalog provider", () => {
+	it("opts heavyweight skill providers out of default plugin registration", () => {
+		expect(skillsSummaryProvider.registerByDefault).toBe(false);
+		expect(skillInstructionsProvider.registerByDefault).toBe(false);
+		expect(catalogAwarenessProvider.registerByDefault).toBe(false);
+	});
+
 	it("does not gate selected catalog context on English capability keywords", async () => {
 		const result = await catalogAwarenessProvider.get(
 			runtimeWithCatalog([

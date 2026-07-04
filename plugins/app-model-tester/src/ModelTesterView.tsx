@@ -17,6 +17,7 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { dispatchNavigateViewEvent } from "@elizaos/ui/events";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -228,11 +229,7 @@ export function ModelTesterView({
       return;
     }
     if (typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId: "apps", viewPath: "/apps" },
-      }),
-    );
+    dispatchNavigateViewEvent({ viewId: "apps", viewPath: "/apps" });
   }, [exitToApps]);
 
   const onAction = useCallback(

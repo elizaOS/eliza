@@ -1,3 +1,9 @@
+/**
+ * Token-usage accounting for the Ollama handlers: normalizes the provider's varied `usage` shapes
+ * into `{ promptTokens, completionTokens, totalTokens }`, estimates counts (~4 chars/token) when the
+ * provider omits them, and emits the `MODEL_USED` runtime event that feeds billing and trajectory
+ * telemetry.
+ */
 import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 

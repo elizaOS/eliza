@@ -1,3 +1,11 @@
+/**
+ * Generic QR-code pairing overlay shared by the phone-linking connectors
+ * (WhatsApp, Signal). Given a pairing status, QR data URL, and lifecycle
+ * callbacks, it renders the step instructions plus the QR/connected/error
+ * states; connector-specific overlays (`WhatsAppQrOverlay`, `SignalQrOverlay`)
+ * wrap it with their own pairing hook and copy.
+ */
+
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { useAppSelector } from "../../state";

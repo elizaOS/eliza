@@ -1,3 +1,10 @@
+/**
+ * Vitest config for the plugin. Aliases React and the `@elizaos/*` workspace
+ * subpaths (capacitor-messages/-system, ui, shared, plugin-health signal setup)
+ * to their source, so tests exercise the real native-bridge and view sources
+ * without built dist bundles.
+ */
+
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +65,18 @@ export default defineConfig({
           repoRoot,
           "packages/ui/src/components/permissions/PermissionRecoveryCallout.tsx",
         ),
+      },
+      {
+        find: /^@elizaos\/ui\/app-navigate-view$/,
+        replacement: path.join(repoRoot, "packages/ui/src/app-navigate-view.ts"),
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/shared/src/$1"),
       },
     ],
   },

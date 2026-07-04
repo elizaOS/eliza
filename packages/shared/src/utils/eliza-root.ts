@@ -1,3 +1,8 @@
+/**
+ * Locates the elizaOS package root on disk by walking up from a start directory
+ * until it finds the `eliza` package.json. Node-only (uses `node:fs`); async and
+ * sync variants exist for boot paths that cannot await. Not barrel-safe for browser.
+ */
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";

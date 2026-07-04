@@ -311,14 +311,21 @@ export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
 ];
+// Extension targets stripped for personal-team builds: personal-team
+// entitlements are emptied (no App Groups), so every extension whose
+// entitlements reference the app group — including the ElizaWidgets
+// widget/controls extension — must drop out of the build to keep automatic
+// signing viable.
 const IOS_PRIVILEGED_EXTENSION_LIST_ENTRY_IDS = [
   "WBCB00010000000000000201",
   "WBCB00010000000000000702",
   "DAMON000100000000000702",
   "DAREP000100000000000702",
+  "EWDG00010000000000000702",
   "WBCB00010000000000000401",
   "DAMON000100000000000401",
   "DAREP000100000000000401",
+  "EWDG00010000000000000401",
 ];
 const IOS_PERSONAL_TEAM_ENTITLEMENTS = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -799,6 +806,8 @@ export function applyIosAppIdentity({
   appName = APP.appName,
   appGroup = `group.${appId}`,
   developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ?? null,
+  versionName = process.env.ELIZAOS_VERSION_NAME?.trim() || null,
+  versionCode = process.env.ELIZAOS_VERSION_CODE?.trim() || null,
   log = console.log,
 } = {}) {
   const iosAppRoot = path.join(appDirValue, "ios", "App");
@@ -813,6 +822,7 @@ export function applyIosAppIdentity({
       "WebsiteBlockerContentExtension",
       "DeviceActivityMonitorExtension",
       "DeviceActivityReportExtension",
+      "ElizaWidgets",
     ];
     for (const suffix of extensionBundleSuffixes) {
       project = project.replace(
@@ -846,6 +856,35 @@ export function applyIosAppIdentity({
           "m",
         ),
         `$1$2${displayNameSetting}\n$2PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+      );
+    }
+    // Thread the real release version into every target (app + all extension
+    // targets) so the PR-evidence "confirm the running build is yours
+    // (versionName)" check is possible on iOS. Mirrors the Android contract
+    // (ELIZAOS_VERSION_CODE/ELIZAOS_VERSION_NAME in
+    // platforms/android/app/build.gradle). Must run after the
+    // ELIZA_DISPLAY_NAME insertion above, which anchors on the template's
+    // literal `MARKETING_VERSION = 1.0;` line.
+    if (versionName) {
+      if (!/^\d+(\.\d+){0,2}$/.test(versionName)) {
+        throw new Error(
+          `ELIZAOS_VERSION_NAME must be 1-3 dot-separated integers (CFBundleShortVersionString), got ${versionName}`,
+        );
+      }
+      project = project.replace(
+        /MARKETING_VERSION = [^;]+;/g,
+        `MARKETING_VERSION = ${versionName};`,
+      );
+    }
+    if (versionCode) {
+      if (!/^\d+(\.\d+){0,2}$/.test(versionCode)) {
+        throw new Error(
+          `ELIZAOS_VERSION_CODE must be 1-3 dot-separated integers (CFBundleVersion), got ${versionCode}`,
+        );
+      }
+      project = project.replace(
+        /CURRENT_PROJECT_VERSION = [^;]+;/g,
+        `CURRENT_PROJECT_VERSION = ${versionCode};`,
       );
     }
     if (developmentTeam) {
@@ -897,6 +936,7 @@ export function applyIosAppIdentity({
       "DeviceActivityReportExtension",
       "DeviceActivityReportExtension.entitlements",
     ),
+    path.join("App", "ElizaWidgets", "ElizaWidgets.entitlements"),
   ]) {
     const filePath = path.join(iosAppRoot, relPath);
     if (
@@ -911,6 +951,7 @@ export function applyIosAppIdentity({
     `${appId}.WebsiteBlockerContentExtension`,
     `${appId}.DeviceActivityMonitorExtension`,
     `${appId}.DeviceActivityReportExtension`,
+    `${appId}.ElizaWidgets`,
   ].join(",");
   const fastlaneReplacements = [
     [
@@ -4120,6 +4161,10 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaAgentService",
     "ElizaDialActivity",
     "ElizaAssistActivity",
+    "ElizaVoiceInteractionService",
+    "ElizaVoiceInteractionSessionService",
+    "ElizaRecognitionService",
+    "ElizaVoiceInputMethodService",
     "ElizaQuickActionsWidgetProvider",
     "ElizaShareActivity",
     "ElizaVoiceTileService",
@@ -5122,6 +5167,12 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaAgentService",
   "ElizaDialActivity",
   "ElizaAssistActivity",
+  "ElizaVoiceInteractionService",
+  "ElizaVoiceInteractionSessionService",
+  "ElizaRecognitionService",
+  // Voice-input IME: its transcription depends on the on-device engine's
+  // loopback ASR, which the cloud thin-client does not ship, so strip it here.
+  "ElizaVoiceInputMethodService",
   "ElizaAccessibilityService",
   "ElizaInCallService",
   "ElizaNotificationListenerService",
@@ -5196,6 +5247,11 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaAgentWatchdogPolicy.java",
   "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
+  "ElizaVoiceInteractionService.java",
+  "ElizaVoiceInteractionSessionService.java",
+  "ElizaVoiceInteractionSession.java",
+  "ElizaRecognitionService.java",
+  "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -6030,6 +6086,19 @@ function auditAndroidSystemSource(
       "ElizaAssistActivity",
       "android.intent.action.ASSIST",
       "android.intent.action.VOICE_COMMAND",
+      "ElizaVoiceInteractionService",
+      "ElizaVoiceInteractionSessionService",
+      "ElizaRecognitionService",
+      "android.permission.BIND_VOICE_INTERACTION",
+      "android.service.voice.VoiceInteractionService",
+      "@xml/eliza_voice_interaction_service",
+      "android.speech.RecognitionService",
+      "android.speech",
+      "@xml/eliza_recognition_service",
+      "ElizaVoiceInputMethodService",
+      "android.permission.BIND_INPUT_METHOD",
+      "android.view.InputMethod",
+      "@xml/method",
       "ElizaAccessibilityService",
       "android.permission.BIND_ACCESSIBILITY_SERVICE",
       "android.accessibilityservice.AccessibilityService",

@@ -17,7 +17,7 @@
  * - No powerMonitor — power state via `pmset` (macOS), sysfs (Linux), or WinForms power line (Windows)
  * - No nativeImage — tray icons use file paths directly
  * - No setOpacity on BrowserWindow — no-op
- * - No hide() on BrowserWindow — uses minimize() as fallback
+ * - hideWindow uses macOS orderOut (removes from Cmd+Tab); non-mac falls back to minimize()
  * - No app.setLoginItemSettings — stubbed
  */
 
@@ -44,6 +44,11 @@ import Electrobun, {
 } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
+import {
+  computeBottomBarFrame,
+  type ScreenWorkArea,
+  shouldReanchorBottomBar,
+} from "../desktop-bottom-bar-config";
 import {
   createElectrobunBrowserWindow,
   type ElectrobunBrowserWindowOptions,
@@ -73,6 +78,7 @@ import type {
   WindowBounds,
   WindowOptions,
 } from "../rpc-schema";
+import { computeTrayPopoverFrame, type Rect } from "../tray-popover-position";
 import type { SendToWebview } from "../types.js";
 import { resolveDesktopUpdateAvailability } from "../update-availability";
 import {
@@ -309,10 +315,17 @@ export class DesktopManager {
   private tray: Tray | null = null;
   private releaseNotesWindow: BrowserWindow | null = null;
   private releaseNotesView: BrowserView | null = null;
-  // Tray popover (#9953 Phase 4): a frameless, transparent, always-on-top
-  // app renderer window anchored at the tray that renders the widget surface.
+  // Tray popover (#9953 Phase 4 / #12184): a frameless, transparent,
+  // always-on-top app renderer window anchored at the tray icon. The window is
+  // created once and reused (hidden/shown) across toggles so re-opening is
+  // instant and preserves renderer state.
   private trayPopoverWindow: BrowserWindow | null = null;
   private trayPopoverConfig: TrayPopoverConfig | null = null;
+  private trayPopoverVisible = false;
+  // Deferred blur-to-dismiss: blur schedules a hide ~200ms out; a tray-icon
+  // re-click (which fires blur then tray-clicked) cancels the pending hide and
+  // toggles closed instead, so a click on the icon never double-fires.
+  private trayPopoverBlurHideTimer: ReturnType<typeof setTimeout> | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
   private notificationCounter = 0;
   private sendToWebview: SendToWebview | null = null;
@@ -320,6 +333,13 @@ export class DesktopManager {
   private _windowHidden = false;
   private _focusPoller: ReturnType<typeof setInterval> | null = null;
   private _appActive = false;
+  // Bottom-bar (pill) re-anchoring: the bar frame is derived from the primary
+  // display's work area, computed once at window creation. A display
+  // plug/unplug or resolution change strands it, so when the main window is the
+  // pill we re-derive + setFrame on every showWindow() and on a cheap 5s poll.
+  private bottomBarReanchorEnabled = false;
+  private bottomBarWorkArea: ScreenWorkArea | null = null;
+  private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -355,8 +375,17 @@ export class DesktopManager {
     | null = null;
   private requestQuitCallback: (() => void | Promise<void>) | null = null;
   private restoreMainWindowCallback: (() => void | Promise<void>) | null = null;
-  /** Tray-first mode: Dock icon follows main-window presence (macOS). */
+  /**
+   * Dockless (tray-first) mode: the Dock icon reflects the presence of FULL
+   * windows only (dashboard / surface / settings / app windows), never the
+   * chromeless pill. macOS-only; the Dock icon is hidden while just the pill
+   * exists and revealed the moment a full window opens.
+   */
   private trayFirstMode = false;
+  /** Keys of full/managed windows currently present (pill excluded). */
+  private readonly fullWindowKeys = new Set<string>();
+  /** Whether the attached main window counts as a full window (not the pill). */
+  private mainWindowIsFullWindow = false;
 
   // Track menu items for context-menu-clicked matching
   private trayMenuItems: Map<string, TrayMenuItem> = new Map();
@@ -477,7 +506,8 @@ export class DesktopManager {
     if (!window || this.mainWindow === window) {
       this.teardownWindowEvents(this.mainWindow);
       this.mainWindow = null;
-      this.syncTrayFirstDock(false);
+      this.mainWindowIsFullWindow = false;
+      this.refreshMainWindowPresence();
     }
   }
 
@@ -1187,6 +1217,9 @@ X-GNOME-Autostart-enabled=true
       if (!win) return;
       this.showMainWindow(win);
     }
+    // Re-anchor the pill to the current work area on every summon — the display
+    // may have changed (or the bar been stranded) while it was hidden.
+    this.reanchorBottomBarIfNeeded();
   }
 
   async hideWindow(): Promise<void> {
@@ -1201,7 +1234,7 @@ X-GNOME-Autostart-enabled=true
       win.minimize();
     }
     this._windowHidden = true;
-    this.syncTrayFirstDock(false);
+    this.refreshMainWindowPresence();
   }
 
   async focusWindow(): Promise<void> {
@@ -1251,7 +1284,7 @@ X-GNOME-Autostart-enabled=true
       win.focus();
     }
     this._windowHidden = false;
-    this.syncTrayFirstDock(true);
+    this.refreshMainWindowPresence();
   }
 
   private setupWindowEvents(): void {
@@ -1321,6 +1354,57 @@ X-GNOME-Autostart-enabled=true
     this.removeEventHandler(window, "resize", this.windowEventHandlers.resize);
     this.removeEventHandler(window, "move", this.windowEventHandlers.move);
     this.windowEventHandlers = {};
+  }
+
+  /**
+   * Mark the main window as the chromeless bottom bar (pill) and start keeping
+   * it anchored to the primary display's bottom edge. Called once from
+   * `createMainWindow()` for the bottom-bar branch. Records the current work
+   * area as the baseline and polls every 5s while the bar is visible so a
+   * display plug/unplug or resolution change re-anchors within one interval.
+   */
+  enableBottomBarReanchor(): void {
+    this.bottomBarReanchorEnabled = true;
+    this.bottomBarWorkArea = this.readPrimaryWorkArea();
+    if (this.bottomBarPoller) return;
+    this.bottomBarPoller = setInterval(() => {
+      if (this._windowHidden) return;
+      this.reanchorBottomBarIfNeeded();
+    }, 5_000);
+  }
+
+  private readPrimaryWorkArea(): ScreenWorkArea | null {
+    try {
+      const display = Screen.getPrimaryDisplay();
+      return display?.workArea ?? null;
+    } catch (err) {
+      logger.warn(
+        `[Desktop] bottom-bar Screen.getPrimaryDisplay() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Re-derive the bottom-bar frame from the current work area and `setFrame`
+   * the main window when the work area moved/resized since we last anchored.
+   * No-op unless the main window is the pill.
+   */
+  private reanchorBottomBarIfNeeded(): void {
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const nextWorkArea = this.readPrimaryWorkArea();
+    if (!nextWorkArea) return;
+    if (
+      this.bottomBarWorkArea &&
+      !shouldReanchorBottomBar(this.bottomBarWorkArea, nextWorkArea)
+    ) {
+      return;
+    }
+    const frame = computeBottomBarFrame(nextWorkArea);
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.bottomBarWorkArea = nextWorkArea;
   }
 
   private _startFocusPoller(): void {
@@ -1705,37 +1789,79 @@ X-GNOME-Autostart-enabled=true
   }
 
   /**
-   * Enable tray-first mode: the Dock icon is hidden until a main window is
-   * shown, then follows window presence (hidden when the window is hidden or
-   * closed). Call once at startup. No-op off macOS (setDockIconVisibility
-   * guards the native call).
+   * Enable dockless (tray-first) mode: the Dock icon is hidden until at least
+   * one FULL window (dashboard / surface / settings / app) exists, then tracks
+   * that set — the chromeless pill never counts. Call once at startup. No-op
+   * off macOS (setDockIconVisibility guards the native call).
    */
   setTrayFirstMode(enabled: boolean): void {
     this.trayFirstMode = enabled;
-    if (enabled) {
-      void this.setDockIconVisibility({ visible: false }).catch(() => {});
+    // Start from the current full-window set (empty at boot → Dock hidden).
+    this.syncTrayFirstDock();
+  }
+
+  /**
+   * Declare whether the attached main window counts as a full window (the
+   * dashboard/kiosk) or is the chromeless pill (which never reveals the Dock).
+   * Called from attachMainWindow() with the resolved shell presentation.
+   */
+  setMainWindowFullWindow(isFull: boolean): void {
+    this.mainWindowIsFullWindow = isFull;
+    this.refreshMainWindowPresence();
+  }
+
+  /**
+   * Report whether any managed surface/settings/app windows are currently open.
+   * Wired to SurfaceWindowManager.onRegistryChanged so opening the dashboard
+   * (or any view window) reveals the Dock icon and closing the last one hides
+   * it again.
+   */
+  setManagedWindowsPresent(present: boolean): void {
+    this.setFullWindowPresence("managed", present);
+  }
+
+  /**
+   * Signal that the main window has been attached/shown. Reveals the Dock icon
+   * in dockless mode only when the main window is a full window (not the pill),
+   * regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
+   * a direct restoreWindow() from a deep link).
+   */
+  markMainWindowShown(): void {
+    this.refreshMainWindowPresence();
+  }
+
+  private refreshMainWindowPresence(): void {
+    this.setFullWindowPresence(
+      "main",
+      this.mainWindowIsFullWindow && !this._windowHidden,
+    );
+  }
+
+  /**
+   * Track whether a class of full/managed window is present. In dockless mode
+   * the Dock icon is visible iff the tracked set is non-empty. The pill is
+   * never reported here, so it never reveals the Dock.
+   */
+  private setFullWindowPresence(key: string, present: boolean): void {
+    const changed = present
+      ? !this.fullWindowKeys.has(key)
+      : this.fullWindowKeys.has(key);
+    if (present) {
+      this.fullWindowKeys.add(key);
+    } else {
+      this.fullWindowKeys.delete(key);
+    }
+    if (changed) {
+      this.syncTrayFirstDock();
     }
   }
 
-  /**
-   * Signal that a main window has been attached/shown. Reveals the Dock icon in
-   * tray-first mode regardless of how the window was opened — including
-   * createMainWindow()/attachMainWindow() paths (boot, restoreWindow() from a
-   * deep link) that bypass showWindow()/showMainWindow(). No-op outside
-   * tray-first.
-   */
-  markMainWindowShown(): void {
-    this.syncTrayFirstDock(true);
-  }
-
-  /**
-   * Toggle the Dock icon to match window presence, only in tray-first mode.
-   * Routed through every show/hide path so reopen-from-tray (which bypasses
-   * the window create path) keeps the Dock icon correct.
-   */
-  private syncTrayFirstDock(visible: boolean): void {
+  /** Match the Dock icon to full-window presence; only in dockless mode. */
+  private syncTrayFirstDock(): void {
     if (!this.trayFirstMode) return;
-    void this.setDockIconVisibility({ visible }).catch(() => {});
+    void this.setDockIconVisibility({
+      visible: this.fullWindowKeys.size > 0,
+    }).catch(() => {});
   }
 
   async showSelectionContextMenu(options: {
@@ -1924,39 +2050,87 @@ X-GNOME-Autostart-enabled=true
     }
   }
 
-  /** Whether the tray popover window is currently open. */
+  /** Whether the tray popover is currently visible. */
   isTrayPopoverOpen(): boolean {
-    return this.trayPopoverWindow !== null;
+    return this.trayPopoverVisible;
+  }
+
+  /** Read the tray icon's screen bounds; zero-rect on any failure or no tray. */
+  private readTrayBounds(): Rect {
+    const zero: Rect = { x: 0, y: 0, width: 0, height: 0 };
+    if (!this.tray) return zero;
+    try {
+      return this.tray.getBounds() ?? zero;
+    } catch (err) {
+      logger.warn(
+        `[Desktop] tray popover Tray.getBounds() failed; anchoring top-right: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return zero;
+    }
   }
 
   /**
-   * Toggle the tray popover: close it if open, otherwise open a frameless,
-   * transparent, always-on-top app renderer window anchored at the top-right of
-   * the primary display's work area (under the macOS menu-bar tray).
+   * Toggle the tray popover: hide it if visible, otherwise show it anchored at
+   * the real tray icon. The window is created once and reused across toggles.
    */
   async toggleTrayPopover(): Promise<void> {
-    const config = this.trayPopoverConfig;
-    if (!config) return;
-
-    if (this.trayPopoverWindow) {
-      this.closeTrayPopover();
+    if (!this.trayPopoverConfig) return;
+    if (this.trayPopoverVisible) {
+      this.hideTrayPopover();
       return;
     }
+    await this.showTrayPopover();
+  }
 
-    const POPOVER_WIDTH = 360;
-    const POPOVER_HEIGHT = 480;
-    const MARGIN = 8;
-    let anchor = { x: 1920, y: 0, width: 1920, height: 1080 };
+  private static readonly POPOVER_SIZE = { w: 360, h: 480, margin: 8 } as const;
+
+  /**
+   * Resolve the popover frame from the tray icon bounds + primary display work
+   * area. Falls back to top-right of the work area when the tray reports a
+   * zero-rect (Windows/Linux) or the Screen API is unavailable.
+   */
+  private resolveTrayPopoverFrame(): Rect {
+    const size = DesktopManager.POPOVER_SIZE;
+    let workArea: Rect = { x: 1920, y: 0, width: 1920, height: 1080 };
+    let primaryHeight = 1080;
     try {
       const display = Screen.getPrimaryDisplay();
-      if (display?.workArea) anchor = display.workArea;
+      if (display?.workArea) workArea = display.workArea;
+      primaryHeight = display?.bounds?.height ?? workArea.y + workArea.height;
     } catch (err) {
       logger.warn(
         `[Desktop] tray popover Screen.getPrimaryDisplay() failed; using default anchor: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    const x = anchor.x + anchor.width - POPOVER_WIDTH - MARGIN;
-    const y = anchor.y + MARGIN;
+    return computeTrayPopoverFrame(
+      this.readTrayBounds(),
+      workArea,
+      size,
+      primaryHeight,
+    );
+  }
+
+  /**
+   * Show the tray popover, creating the frameless/transparent/always-on-top
+   * window on first use and reusing it afterwards. Re-anchors under the tray
+   * icon on every open.
+   */
+  private async showTrayPopover(): Promise<void> {
+    const config = this.trayPopoverConfig;
+    if (!config) return;
+
+    this.clearTrayPopoverBlurTimer();
+    const frame = this.resolveTrayPopoverFrame();
+
+    if (this.trayPopoverWindow) {
+      const win = this.trayPopoverWindow;
+      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      win.show();
+      this.trayPopoverVisible = true;
+      config.onWindowFocused?.(win);
+      win.focus();
+      return;
+    }
 
     const buildConfig = await BuildConfig.get();
     const renderer = this.resolvePreferredBrowserRenderer(buildConfig);
@@ -1964,7 +2138,7 @@ X-GNOME-Autostart-enabled=true
       title: `${getBrandConfig().appName}`,
       url: config.url,
       preload: config.preload,
-      frame: { x, y, width: POPOVER_WIDTH, height: POPOVER_HEIGHT },
+      frame,
       renderer,
       transparent: true,
       titleBarStyle: "hidden",
@@ -1985,17 +2159,54 @@ X-GNOME-Autostart-enabled=true
       // Non-fatal: popover still opens, just not pinned above other windows.
     }
 
+    // Dismiss on blur (click outside) — a resting tray flyout, unlike the pill.
+    // Deferred so a tray-icon re-click can cancel it and toggle closed instead.
+    win.on("blur", () => {
+      if (!this.trayPopoverVisible) return;
+      if (this.trayPopoverBlurHideTimer) return;
+      this.trayPopoverBlurHideTimer = setTimeout(() => {
+        this.trayPopoverBlurHideTimer = null;
+        this.hideTrayPopover();
+      }, 200);
+    });
+
     win.on("close", () => {
       this.trayPopoverWindow = null;
+      this.trayPopoverVisible = false;
+      this.clearTrayPopoverBlurTimer();
     });
 
     this.trayPopoverWindow = win;
+    this.trayPopoverVisible = true;
     config.onWindowFocused?.(win);
     win.focus();
   }
 
-  /** Close the tray popover window if open. */
+  /** Hide the tray popover (kept alive for instant reuse). */
+  hideTrayPopover(): void {
+    this.clearTrayPopoverBlurTimer();
+    if (!this.trayPopoverWindow || !this.trayPopoverVisible) return;
+    try {
+      this.trayPopoverWindow.hide();
+    } catch (err) {
+      logger.warn(
+        `[Desktop] Failed to hide tray popover: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    this.trayPopoverVisible = false;
+  }
+
+  private clearTrayPopoverBlurTimer(): void {
+    if (this.trayPopoverBlurHideTimer) {
+      clearTimeout(this.trayPopoverBlurHideTimer);
+      this.trayPopoverBlurHideTimer = null;
+    }
+  }
+
+  /** Close and discard the tray popover window (teardown path). */
   closeTrayPopover(): void {
+    this.clearTrayPopoverBlurTimer();
+    this.trayPopoverVisible = false;
     if (!this.trayPopoverWindow) return;
     try {
       this.trayPopoverWindow.close();
@@ -2480,6 +2691,11 @@ X-GNOME-Autostart-enabled=true
       clearInterval(this._focusPoller);
       this._focusPoller = null;
     }
+    if (this.bottomBarPoller) {
+      clearInterval(this.bottomBarPoller);
+      this.bottomBarPoller = null;
+    }
+    this.closeTrayPopover();
     this.teardownWindowEvents(this.mainWindow);
     this.mainWindow = null;
     this.releaseNotesView?.remove();

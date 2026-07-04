@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers assistant launch payloads: reading text/source/action/id out of a
+ * `#chat?…` hash route, building launch metadata, and the claim/consume/clear
+ * single-use lifecycle keyed on the hash. Reads/writes window.history under jsdom.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetAssistantLaunchPayloadClaimsForTests,

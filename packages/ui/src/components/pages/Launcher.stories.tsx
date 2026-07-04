@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `Launcher` — the presentational tile grid. Drives it
+ * with hand-built `ViewEntry` fixtures (no data hooks), covering the populated
+ * grid and the launch interaction.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { assert } from "../../storybook/home-widget-decorator";
@@ -51,29 +56,21 @@ export default meta;
 type Story = StoryObj<typeof Launcher>;
 
 export const Default: Story = {
-  args: {
-    entries: VIEWS,
-    pageGroups: [VIEWS.map((v) => v.id)],
-  },
+  args: { entries: VIEWS },
 };
 
-/** Multiple curated pages — each group renders as its own launcher page. */
-export const ManyPages: Story = {
-  args: (() => {
-    const entries = Array.from({ length: 28 }, (_, i) =>
+/** A full catalog — a grid taller than the viewport scrolls vertically. */
+export const ManyViews: Story = {
+  args: {
+    entries: Array.from({ length: 28 }, (_, i) =>
       entry(`view-${i}`, `View ${i + 1}`, "LayoutGrid"),
-    );
-    const ids = entries.map((v) => v.id);
-    return {
-      entries,
-      pageGroups: [ids.slice(0, 14), ids.slice(14)],
-    };
-  })(),
+    ),
+  },
 };
 
 /** Loading skeleton — the placeholder grid shown while the catalog resolves. */
 export const Loading: Story = {
-  args: { entries: [], pageGroups: [], loading: true },
+  args: { entries: [], loading: true },
 };
 
 /**
@@ -83,7 +80,6 @@ export const Loading: Story = {
 export const TileLaunch: Story = {
   args: {
     entries: VIEWS,
-    pageGroups: [VIEWS.map((v) => v.id)],
     onLaunch: (e) => {
       launchedId = e.id;
     },

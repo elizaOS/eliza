@@ -12,6 +12,9 @@ export {
 	skillRefinementEvaluator,
 } from "./skill-items.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -31,9 +34,7 @@ import {
 	skillRefinementEvaluator as _bs_9_skillRefinementEvaluator,
 } from "./skill-items.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ = [
+anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX", [
 	_bs_1_factMemoryEvaluator,
 	_bs_2_identityEvaluator,
 	_bs_3_reflectionItems,
@@ -43,8 +44,4 @@ const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ = [
 	_bs_7_skillItems,
 	_bs_8_skillProposalEvaluator,
 	_bs_9_skillRefinementEvaluator,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__ =
-	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EVALUATORS_INDEX__;
+]);

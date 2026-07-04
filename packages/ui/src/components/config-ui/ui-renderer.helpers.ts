@@ -1,3 +1,10 @@
+/**
+ * Pure evaluation helpers for `UiRenderer`: resolves a spec's visibility
+ * conditions and validation checks against state/auth, sanitizes link hrefs
+ * against a protocol denylist (blocks javascript/data/vbscript/file to prevent
+ * XSS from agent-authored specs), and enumerates the supported component types.
+ * No React — logic only, so it can be unit-tested in isolation.
+ */
 import { getByPath } from "../../config/config-catalog";
 import type {
   AuthState,

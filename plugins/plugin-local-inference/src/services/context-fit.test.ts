@@ -1,3 +1,4 @@
+/** Unit tests for `computeRuntimeContextFit`: context-window sizing under RAM budgets and the opt-in f16-KV precision upgrade. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { computeRuntimeContextFit } from "./context-fit";
 

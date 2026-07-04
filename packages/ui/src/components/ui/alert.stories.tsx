@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Alert primitive variants; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Alert, AlertDescription, AlertTitle } from "./alert";
 

@@ -1,3 +1,17 @@
+/**
+ * Security guards that stand between untrusted message/channel content and
+ * on-chain financial writes. `assertWalletFinancialActionAllowed` blocks
+ * transfer/swap/bridge/pump_fun_buy subactions when core has flagged the
+ * inbound message as suspected prompt injection (GHSA-gh63-5vpj-39qp).
+ * `assertEvmTransferRecipientAuthorized` and `messageAuthorizesEvmRecipient`
+ * enforce that an EVM transfer recipient was explicitly stated by the user
+ * (in message text or structured action parameters) rather than inferred from
+ * token metadata, prior session context, or other embedded addresses
+ * (GHSA-7qxr-x6cg-r9cc). `sanitizeWalletDisplayLabel` strips embedded
+ * addresses and routing-hint phrases before untrusted labels are ever shown
+ * back to the user. These are load-bearing security checks — do not weaken or
+ * bypass them from calling code.
+ */
 import type { Memory } from "@elizaos/core";
 
 /** GHSA-7qxr-x6cg-r9cc — embedded addresses in token metadata must not become transfer recipients. */

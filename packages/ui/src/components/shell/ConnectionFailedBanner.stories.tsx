@@ -46,6 +46,38 @@ export const ReconnectingLate: Story = {
   ],
 };
 
+/**
+ * The reconnecting indicator floats over page content as an overlay pill — it
+ * does NOT push the content down. Regression guard for the layout shift the old
+ * in-flow bar caused each time the socket blipped. The placeholder header/body
+ * behind it stays exactly where it is whether or not the pill is present.
+ */
+export const ReconnectingOverContent: Story = {
+  decorators: [
+    (StoryFn) => (
+      <div className="relative h-64 w-full overflow-hidden bg-bg">
+        <div className="p-4 text-fg">
+          <div className="mb-2 text-base font-semibold">Chat</div>
+          <p className="text-sm text-fg-muted">
+            This content does not move when the reconnecting pill appears — the
+            pill is an absolutely-positioned overlay, not an in-flow bar.
+          </p>
+        </div>
+        <StoryFn />
+      </div>
+    ),
+    mockApp({
+      backendConnection: {
+        state: "reconnecting",
+        reconnectAttempt: 4,
+        maxReconnectAttempts: 15,
+        showDisconnectedUI: false,
+      },
+      backendDisconnectedBannerDismissed: false,
+    }),
+  ],
+};
+
 /** All retries exhausted — alert banner with dismiss + retry actions. */
 export const Failed: Story = {
   decorators: [

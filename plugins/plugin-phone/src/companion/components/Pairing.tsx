@@ -1,8 +1,19 @@
+/**
+ * Pairing view of the Phone Companion: scans (or accepts a pasted) QR code
+ * carrying the base64 pairing payload, decodes it via `decodePairingPayload`,
+ * and hands the resulting {@link PairingPayload} back to the app shell.
+ *
+ * Camera scan requires the iOS native runtime; on web/dev it surfaces a
+ * paste-the-code fallback rather than pretending the scanner is available.
+ */
+
 import {
   CapacitorBarcodeScanner,
   CapacitorBarcodeScannerTypeHint,
 } from "@capacitor/barcode-scanner";
 import { Capacitor } from "@capacitor/core";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import type React from "react";
 import { useCallback, useState } from "react";
 import {
@@ -106,9 +117,9 @@ export function Pairing({
   return (
     <main style={styles.root}>
       <header style={styles.header}>
-        <button type="button" onClick={onBack} style={styles.back}>
+        <Button unstyled type="button" onClick={onBack} style={styles.back}>
           Back
-        </button>
+        </Button>
         <h1 style={styles.title}>Pair with Eliza</h1>
       </header>
 
@@ -117,14 +128,15 @@ export function Pairing({
           Scan the QR code shown in the Eliza desktop app, or paste its pairing
           payload manually.
         </p>
-        <button
+        <Button
+          unstyled
           type="button"
           onClick={scan}
           disabled={status.kind === "scanning"}
           style={styles.primary}
         >
           {status.kind === "scanning" ? "Scanning..." : "Scan QR code"}
-        </button>
+        </Button>
       </section>
 
       <section style={styles.section}>
@@ -132,7 +144,7 @@ export function Pairing({
           <label htmlFor="pairing-code" style={styles.label}>
             Or paste payload
           </label>
-          <input
+          <Input
             id="pairing-code"
             value={code}
             onChange={(event) => setCode(event.target.value)}
@@ -141,9 +153,9 @@ export function Pairing({
             placeholder="base64 pairing payload"
             style={styles.input}
           />
-          <button type="submit" style={styles.secondary}>
+          <Button unstyled type="submit" style={styles.secondary}>
             Pair device
-          </button>
+          </Button>
         </form>
       </section>
 

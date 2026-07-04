@@ -1,3 +1,8 @@
+/**
+ * Unit tests for setting resolution — base URL normalization, api key trimming,
+ * per-tier model fallbacks, and auto-detect parsing. Pure, no network.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import {

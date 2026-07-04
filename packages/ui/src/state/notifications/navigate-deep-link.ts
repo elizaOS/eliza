@@ -21,6 +21,8 @@
  * and the OS/web notification click handler so the two cannot diverge.
  */
 
+import { dispatchNavigateViewEvent } from "../../events";
+
 /** Whether a deep link is a safe navigation target (see module doc). */
 export function isSafeDeepLink(deepLink: string): boolean {
   if (typeof deepLink !== "string") return false;
@@ -38,11 +40,7 @@ export function navigateDeepLink(deepLink: string): void {
   }
   if (deepLink.startsWith("/") && !deepLink.startsWith("//")) {
     const viewId = deepLink.slice(1).split("/")[0] || undefined;
-    window.dispatchEvent(
-      new CustomEvent("eliza:navigate:view", {
-        detail: { viewId, viewPath: deepLink },
-      }),
-    );
+    dispatchNavigateViewEvent({ viewId, viewPath: deepLink });
   }
   // Any other scheme (javascript:, data:, custom foo://, scheme-relative //) is
   // intentionally dropped — no navigation.

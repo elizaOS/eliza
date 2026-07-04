@@ -1,10 +1,10 @@
 /**
  * API-key plaintext encryption helpers (D-1).
  *
- * The plaintext API key itself is sensitive (it grants access). We continue
- * to store a SHA-256 `key_hash` for fast lookup during auth, but the raw
- * plaintext is now encrypted at rest under the org's DEK so a DB-only
- * compromise cannot exfiltrate live keys.
+ * The plaintext API key itself is sensitive (it grants access). A SHA-256
+ * `key_hash` is stored for fast lookup during auth, while the raw plaintext is
+ * encrypted at rest under the org's DEK so a DB-only compromise cannot
+ * exfiltrate live keys.
  *
  * The one-time reveal flow on creation works by decrypting in-memory right
  * after insert — the plaintext never persists outside the encrypted columns.

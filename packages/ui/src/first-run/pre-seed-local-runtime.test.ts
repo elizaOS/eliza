@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+/**
+ * Unit coverage for the decision matrix in `preSeedAndroidLocalRuntimeIfFresh`:
+ * it seeds the on-device local agent only when the device IS the local agent
+ * and nothing has already chosen a server/runtime. Capacitor + platform mocked,
+ * no real device.
+ */
 
-// Decision matrix for `preSeedAndroidLocalRuntimeIfFresh`: it should seed the
-// on-device local agent only when the device IS the local agent and nothing
-// has already chosen a server/runtime.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   capacitorPlatform: "web" as string,

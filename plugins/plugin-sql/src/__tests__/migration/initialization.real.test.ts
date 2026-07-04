@@ -1,6 +1,14 @@
+/**
+ * End-to-end `RuntimeMigrator` tests against a real isolated database:
+ * verifies `initialize()` creates the `migrations` schema and its
+ * `_migrations` / `_journal` / `_snapshots` tables with the expected
+ * columns, that a first `migrate()` of the core schema creates every core
+ * table and records a migration/journal/snapshot row, and that
+ * `getStatus()` reports correctly for both a migrated and a never-seen
+ * plugin name.
+ */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Helper types for database query result rows
 interface MigrationRow {
   plugin_name: string;
   hash: string;
@@ -54,7 +62,7 @@ describe("Runtime Migrator - Initialization Tests", () => {
     _testAgentId = testSetup.testAgentId;
     db = testSetup.db;
 
-    // Create a new migrator for testing (don't initialize yet as tests will do that)
+    // Left uninitialized here; the "Migration Infrastructure Setup" tests call initialize().
     migrator = new RuntimeMigrator(db);
   });
 
@@ -66,10 +74,8 @@ describe("Runtime Migrator - Initialization Tests", () => {
 
   describe("Migration Infrastructure Setup", () => {
     it("should initialize migration schema and tables", async () => {
-      // Initialize the migrator - this creates the migration infrastructure
       await migrator.initialize();
 
-      // Check migrations schema exists
       const schemaResult = await db.execute(
         sql.raw(`SELECT EXISTS (
           SELECT 1 FROM information_schema.schemata 
@@ -99,7 +105,6 @@ describe("Runtime Migrator - Initialization Tests", () => {
     });
 
     it("should create migration tables with correct structure", async () => {
-      // Check _migrations table structure
       const migrationsColumns = await db.execute(
         sql.raw(`SELECT column_name, data_type, is_nullable
                  FROM information_schema.columns
@@ -114,7 +119,6 @@ describe("Runtime Migrator - Initialization Tests", () => {
       expect(columnNames).toContain("hash");
       expect(columnNames).toContain("created_at");
 
-      // Check _journal table structure
       const journalColumns = await db.execute(
         sql.raw(`SELECT column_name, data_type
                  FROM information_schema.columns
@@ -126,7 +130,6 @@ describe("Runtime Migrator - Initialization Tests", () => {
       expect(journalColumnNames).toContain("plugin_name");
       expect(journalColumnNames).toContain("entries");
 
-      // Check _snapshots table structure
       const snapshotColumns = await db.execute(
         sql.raw(`SELECT column_name, data_type
                  FROM information_schema.columns
@@ -147,7 +150,6 @@ describe("Runtime Migrator - Initialization Tests", () => {
         verbose: true,
       });
 
-      // Verify tables were created
       const tablesResult = await db.execute(
         sql.raw(`SELECT tablename FROM pg_tables 
                  WHERE schemaname = 'public' 

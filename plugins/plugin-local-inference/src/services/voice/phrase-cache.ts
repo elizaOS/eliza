@@ -1,3 +1,9 @@
+/**
+ * Holds pre-synthesized PCM for the assistant's most common short utterances
+ * (openers, fillers, acknowledgements) so the scheduler can emit first audio
+ * without waiting on a TTS forward pass. The seed list below is the canonical
+ * source of truth shared byte-for-byte with the preset generator.
+ */
 export interface CachedPhraseAudio {
 	text: string;
 	pcm: Float32Array;

@@ -1,7 +1,12 @@
 "use client";
 
+/**
+ * Wallet section of the cloud agent-instance detail: balance and wallet actions,
+ * polled while the document is visible.
+ */
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
 import { useCopyFeedback } from "../../lib/use-copy-feedback";
 import { useT } from "../lib/i18n";
@@ -71,7 +76,8 @@ function CopyButton({ text }: { text: string }) {
     }
   }, [text, markCopied]);
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       onClick={handleCopy}
       title={t("cloud.elizaWallet.copy", { defaultValue: "Copy" })}
@@ -82,7 +88,7 @@ function CopyButton({ text }: { text: string }) {
       ) : (
         <Copy className="w-3 h-3" strokeWidth={2} aria-hidden="true" />
       )}
-    </button>
+    </Button>
   );
 }
 

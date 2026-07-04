@@ -25,8 +25,10 @@ interface ScorerOptions {
   /**
    * Per-example comparator. Defaults to Jaccard token overlap.
    * Returning 1.0 means a perfect match, 0.0 means no credit.
+   * May be async: the judge-based comparator for the prose LifeOps tasks
+   * (`createLifeOpsJudgeCompare`, #11384) grades with a live model.
    */
-  compare?: (actual: string, expected: string) => number;
+  compare?: (actual: string, expected: string) => number | Promise<number>;
 }
 
 /**
@@ -60,7 +62,7 @@ export function createPromptScorer(
         temperature,
         maxTokens,
       });
-      total += compare(completion, example.expectedOutput);
+      total += await compare(completion, example.expectedOutput);
     }
     return total / limited.length;
   };
@@ -136,7 +138,10 @@ export function extractPlannerAction(text: string): string | null {
     const first = parsed.toolCalls[0];
     if (first && typeof first === "object") {
       const record = first as Record<string, unknown>;
-      const name = record.name ?? record.action ?? record.actionName;
+      // `toolName` is the shape emitted by harvested gpt-5.5 trajectories'
+      // native-export rows; keep the older name/action/actionName aliases too.
+      const name =
+        record.toolName ?? record.name ?? record.action ?? record.actionName;
       if (typeof name === "string" && name.trim().length > 0) {
         return name.trim().toUpperCase();
       }

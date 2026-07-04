@@ -150,6 +150,67 @@ emotion: none`;
 	});
 });
 
+describe("reply that QUOTES a field transcript — diagnosis workflow (follow-up to #11712)", () => {
+	// Live regression: a user pastes a leaked `shouldRespond:/replyText:`
+	// transcript into discord and asks the bot to diagnose it (this repo's own
+	// daily workflow). Stage 1 answers correctly in the canonical JSON envelope;
+	// the replyText is diagnostic prose that QUOTES the transcript. The
+	// send-boundary guard used to fire on the quoted `replyText:` line and
+	// silently replace the whole diagnosis with only the text after the QUOTED
+	// marker — the actual answer was destroyed with just a logger.warn.
+	const DIAGNOSIS = `the bug is in your parser — when the model emits:
+
+shouldRespond: RESPOND
+
+replyText: it works
+
+the blank line inside the value is where naive blank-line segmentation breaks. terminate values only at the next known-field line.`;
+
+	it("routes the canonical JSON envelope to final_reply and the guard leaves the quoting diagnosis intact", () => {
+		const envelope = JSON.stringify({
+			shouldRespond: "RESPOND",
+			replyText: DIAGNOSIS,
+			contexts: ["simple"],
+		});
+		const parsed = parseMessageHandlerOutput(envelope);
+		expect(parsed).not.toBeNull();
+		if (parsed === null) throw new Error("expected a parsed envelope");
+		const route = routeMessageHandlerOutput(parsed);
+		expect(route.type).toBe("final_reply");
+		if (route.type !== "final_reply") throw new Error("expected final_reply");
+		expect(route.reply).toBe(DIAGNOSIS);
+		// The exact send-boundary predicate: false ⇒ the reply ships as-is
+		// instead of being rewritten to extractReplyTextFromTranscript output.
+		expect(looksLikeRawFieldTranscript(route.reply)).toBe(false);
+		// And the rewrite the old guard performed would have destroyed the answer:
+		expect(extractReplyTextFromTranscript(DIAGNOSIS)).not.toContain(
+			"the bug is in your parser",
+		);
+	});
+
+	it("does not claim bare quoting prose on the text-mode path (preamble survives)", () => {
+		// Same diagnosis arriving as PLAIN TEXT (no JSON envelope): the transcript
+		// parser must NOT claim it — claiming discards every preamble line and
+		// ships only the quote's tail ("it works…"). Null falls through to the
+		// tolerant plain-text reply synthesizer, which now also declines to treat
+		// quoting prose as a raw transcript, so the full diagnosis ships.
+		expect(parseMessageHandlerOutput(DIAGNOSIS)).toBeNull();
+		expect(looksLikeRawFieldTranscript(DIAGNOSIS)).toBe(false);
+	});
+
+	it("still blocks and recovers the GENUINE leak at the send boundary (fail-closed preserved)", () => {
+		const leak = `shouldRespond: RESPOND
+
+replyText: it's live https://example.test/apps/aurora/
+
+contexts: simple`;
+		expect(looksLikeRawFieldTranscript(leak)).toBe(true);
+		expect(extractReplyTextFromTranscript(leak)).toBe(
+			"it's live https://example.test/apps/aurora/",
+		);
+	});
+});
+
 describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () => {
 	// Live regression: the Stage-1 model sometimes answers in plain prose instead
 	// of the structured field envelope. That path (synthesizeSimpleReplyFromPlainText)
@@ -455,6 +516,45 @@ describe("live routing regressions", () => {
 				"what is the current bitcoin price",
 			),
 		).toEqual(["WEB_SEARCH"]);
+	});
+
+	it("fast-paths a direct shell ask to TERMINAL_SHELL in a lean-chat runtime (follow-up to #12021)", () => {
+		// PR #12021 renamed the terminal action SHELL -> TERMINAL_SHELL. In a
+		// lean-chat deployment (no plugin-coding-tools) TERMINAL_SHELL is the only
+		// shell action, so the SHELL_DIRECT_ACTIONS / WEAK_DIRECT_REPLY_OVERRIDE
+		// allowlists must recognise it — otherwise "run df -h on this VPS" silently
+		// falls through to the general planner instead of the direct shell path.
+		const leanChatActions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{
+				name: "TERMINAL_SHELL",
+				similes: [
+					"RUN_IN_TERMINAL",
+					"EXECUTE_COMMAND",
+					"TERMINAL",
+					"RUN_SHELL",
+				],
+			},
+			{ name: "REPLY", similes: ["RESPOND"] },
+		];
+		const shellText = "run df -h on this VPS";
+
+		// Inference resolves the renamed terminal action (by canonical name — no
+		// coding-tools SHELL present to win on priority).
+		const directCandidateActions = inferDirectCurrentRequestCandidateActions(
+			leanChatActions,
+			shellText,
+		);
+		expect(directCandidateActions).toEqual(["TERMINAL_SHELL"]);
+
+		// And the preference gate promotes it: without TERMINAL_SHELL in the
+		// allowlists this returned false and the turn fell through to planning.
+		expect(
+			shouldPreferDirectCurrentCandidateActions({
+				candidateActions: ["REPLY", "TERMINAL_SHELL"],
+				currentMessageText: shellText,
+				directCandidateActions,
+			}),
+		).toBe(true);
 	});
 
 	it("promotes explicit reply to direct shell/search action aliases", () => {

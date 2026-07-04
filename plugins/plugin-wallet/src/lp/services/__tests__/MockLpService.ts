@@ -1,3 +1,9 @@
+/**
+ * In-memory `ILpService` test double: serves a fixed SOL/USDC pool and
+ * tracks positions in a local `Map` instead of calling any real DEX. Used by
+ * `LpManagementService.test.ts` and other LP tests to exercise routing logic
+ * without a live Solana RPC or DEX program.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import type {
   AddLiquidityConfig,

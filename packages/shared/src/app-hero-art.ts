@@ -1,3 +1,8 @@
+/**
+ * Deterministically derives hero artwork (theme + gradient) for an app from its
+ * name/category so every app gets stable, distinct placeholder art without a
+ * stored asset. Hashing the name keeps the choice stable across renders.
+ */
 import { hashString } from "./utils/string-hash.js";
 
 export interface AppHeroArtworkSource {

@@ -1,3 +1,4 @@
+/** Tests for the embedding handlers against a mocked fetch: request shape, dimension validation, and batch handling (no live endpoint). */
 import type { IAgentRuntime } from "@elizaos/core";
 import { VECTOR_DIMS } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";

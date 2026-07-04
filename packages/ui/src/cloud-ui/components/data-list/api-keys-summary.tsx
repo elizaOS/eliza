@@ -1,3 +1,6 @@
+/**
+ * Key-metrics summary strip for the API keys surface (counts, last used).
+ */
 import { CalendarClock, KeyRound, ShieldCheck, Signal } from "lucide-react";
 
 import { type KeyMetric, KeyMetricsGrid } from "../brand/key-metrics-grid";

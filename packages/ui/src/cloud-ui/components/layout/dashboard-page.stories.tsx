@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the dashboard page container/stack.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   DashboardPageContainer,

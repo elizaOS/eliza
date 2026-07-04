@@ -1,3 +1,15 @@
+/**
+ * HTTP route for on-device speech-to-text — `POST /api/asr/local-inference`
+ * plus its `…/status` readiness probe.
+ *
+ * Accepts raw audio bytes or a base64 `audioBase64` JSON body and transcribes
+ * through the registered TRANSCRIPTION model handler via `transcribeWavWithWords`
+ * (fused Gemma ASR runtime). Status reports ready only when both a TRANSCRIPTION
+ * handler is registered and the active Eliza-1 bundle can transcribe locally.
+ * Request/response `close` events abort the in-flight decode so a disconnecting
+ * client frees the model promptly.
+ */
+
 import type http from "node:http";
 import { ModelType } from "@elizaos/core";
 import { localInferenceEngine } from "../services/engine";

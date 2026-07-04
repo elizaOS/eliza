@@ -1,3 +1,10 @@
+/**
+ * `createTwitterPostCallback` — the `HandlerCallback` the post loop hands the agent
+ * for publishing a generated tweet: it normalizes text to the X length limit,
+ * suppresses duplicate generations, honors `TWITTER_DRY_RUN`, publishes via the
+ * client, and records the resulting memory (returning it even when the post-publish
+ * persistence step fails).
+ */
 import {
   ChannelType,
   type Content,

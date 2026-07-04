@@ -1,8 +1,15 @@
+/**
+ * Setup panel for the Telegram user-account (MTProto) connector, as opposed to
+ * the bot connector. Drives the phone-number/login-code pairing flow against
+ * the API client and shows the linked account's handle/name once connected.
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 type TelegramAccountStatus = Awaited<
   ReturnType<typeof client.getTelegramAccountStatus>
@@ -212,7 +219,7 @@ export function TelegramAccountConnectorPanel() {
         {status?.detail.status === "idle" ||
         status?.detail.status === "error" ? (
           <div className="space-y-2">
-            <input
+            <Input
               type="tel"
               value={phone}
               onChange={(event) => {
@@ -244,7 +251,7 @@ export function TelegramAccountConnectorPanel() {
           <div className="space-y-2">
             <div className="text-muted">{prompt.label}</div>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 type={prompt.field === "password" ? "password" : "text"}
                 value={inputValue}
                 onChange={(event) => {

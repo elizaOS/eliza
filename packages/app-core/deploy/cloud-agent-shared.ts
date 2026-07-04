@@ -8,6 +8,11 @@
 
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
+  type: "json",
+};
+
+const CLOUD_AGENT_RESTART_EXIT_CODE = restartExitCodeDefinition.restartExitCode;
 
 // ─── Logger ─────────────────────────────────────────────────────────────
 //
@@ -817,7 +822,6 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   // uncaught exception exits non-zero so the orchestrator (Docker
   // `--restart unless-stopped` / K8s `restartPolicy: Always`) relaunches a clean
   // container. Exit code matches @elizaos/shared RESTART_EXIT_CODE.
-  const CLOUD_AGENT_RESTART_EXIT_CODE = 75;
   process.on("unhandledRejection", (reason) => {
     logger.error("Unhandled promise rejection (non-fatal)", {
       err:

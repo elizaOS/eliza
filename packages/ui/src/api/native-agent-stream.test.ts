@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the native streaming-response helper and its capability
+ * probe. In-process, no real bridge.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

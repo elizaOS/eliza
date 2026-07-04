@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for the detail-extension surface primitives — section,
+ * badge tones, card grid, empty state, and a mixed composition.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   SurfaceBadge,

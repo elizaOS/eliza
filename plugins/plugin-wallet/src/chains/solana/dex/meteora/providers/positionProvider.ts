@@ -1,3 +1,9 @@
+/**
+ * Meteora DLMM position provider: injects the agent wallet's current Meteora
+ * LP positions (pool, in-range status, bin distance/range) into planner
+ * context. Scans a fixed seed pool list rather than a live pool discovery
+ * API; extend `POOL_ADDRESSES` in `fetchPositions` to track more pools.
+ */
 import {
   elizaLogger,
   type IAgentRuntime,
@@ -104,7 +110,6 @@ export const meteoraPositionProvider: Provider = {
       } else {
         positionText = `Found ${positionCount} Meteora LP position${positionCount > 1 ? "s" : ""}. ${inRangeCount} ${inRangeCount === 1 ? "is" : "are"} currently in range.`;
 
-        // Add details for each position
         positions.forEach((pos, index) => {
           positionText += `\n\nPosition ${index + 1}:`;
           positionText += `\n- Pool: ${pos.poolAddress.slice(0, 8)}...`;

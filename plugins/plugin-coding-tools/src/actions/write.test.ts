@@ -1,3 +1,4 @@
+/** Tests for the FILE `write` handler over the real filesystem, including the writability guard and secret detection. */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {

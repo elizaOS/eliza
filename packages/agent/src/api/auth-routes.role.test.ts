@@ -8,6 +8,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./server-helpers-auth.ts", () => ({
   isAuthorized: mocks.isAuthorized,
   isTrustedLocalRequest: mocks.isTrustedLocalRequest,
+  // #12087 Item 13: auth-routes now derives the response role from the single
+  // resolveBoundaryRole helper. Mirror its real one-line impl (authorized →
+  // OWNER, else GUEST) off the mocked isAuthorized so these assertions still
+  // exercise the true boundary-role mapping.
+  resolveBoundaryRole: (req: unknown) =>
+    mocks.isAuthorized(req) ? "OWNER" : "GUEST",
 }));
 
 import { type AuthRouteContext, handleAuthRoutes } from "./auth-routes.ts";

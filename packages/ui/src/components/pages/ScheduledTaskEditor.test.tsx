@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * jsdom tests for `ScheduledTaskEditor` over a mocked `applyScheduledTask` client:
+ * verifies verb routing (run-now / acknowledge / snooze / complete / dismiss),
+ * the correct label per task kind, and error surfacing when a verb fails.
+ */
 import {
   cleanup,
   fireEvent,
@@ -146,7 +152,9 @@ describe("ScheduledTaskEditor", () => {
 
   it("renders an unavailable state when the raw record is missing", () => {
     render(<ScheduledTaskEditor item={item(undefined)} />);
-    expect(screen.getByText("This task is no longer available.")).toBeTruthy();
+    expect(
+      screen.getByText("This scheduled item is no longer available."),
+    ).toBeTruthy();
     expect(applyScheduledTaskMock).not.toHaveBeenCalled();
   });
 });

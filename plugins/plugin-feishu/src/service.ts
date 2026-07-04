@@ -1,3 +1,14 @@
+/**
+ * FeishuService — the connector's long-lived service. Opens and maintains the
+ * Lark Open Platform WebSocket event subscription (exponential-backoff retry),
+ * hands inbound events to the MessageManager, and emits the FeishuEventTypes
+ * lifecycle and message events.
+ *
+ * On start it registers a MESSAGE connector (send_message / send_card /
+ * send_image / send_file) plus the target-resolution, room-listing, and
+ * history/search hooks the runtime uses to address and read Feishu chats. Wraps
+ * the Lark SDK client; the domain flag selects Feishu (China) vs Lark (global).
+ */
 import {
 	ChannelType,
 	type Content,

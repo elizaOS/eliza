@@ -1,3 +1,9 @@
+/**
+ * Standalone stdio MCP server used as a fixture by the MCP scenarios: exposes a
+ * deterministic echo tool and a fixed resource over the Model Context Protocol
+ * stdio transport. Spawned as a child process so plugin-mcp connects to a real
+ * server rather than a mock.
+ */
 const sdkRoot = new URL(
   "../../../../plugins/plugin-mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/",
   import.meta.url,

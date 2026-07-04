@@ -1,17 +1,11 @@
 /**
- * FULL-CHAIN integration e2e for #10351 on a real desktop.
- *
- * Runs the REAL desktop producer (`FusedWakeManager`, electrobun main module:
- * real `libwakeword` + `DesktopMicSource` fed the real "hey eliza" clip + the
- * real `OpenWakeWordDetector`) in this Bun process, bridges its
- * `sendToWebview('voice:fusedWake', …)` into a headless-Chromium page running the
- * REAL renderer transport (`registerDesktopFusedWake`) + the REAL shell
- * (`useWakeController`/`useWakeListenWindow`/HomePill/ChatSurface), and asserts
- * the bottom bar activates + a converse capture starts.
- *
- * The ONLY mocked element is the electrobun IPC pipe (a `window` RPC shim) — not
- * the producer, not the consumer. So this exercises the entire
- * producer→transport→renderer→bar chain end to end with the real native model.
+ * FULL-CHAIN integration e2e for #10351 on a real desktop. Runs the REAL desktop
+ * producer (FusedWakeManager: real libwakeword + DesktopMicSource fed the real
+ * "hey eliza" clip + the real OpenWakeWordDetector) in this Bun process, bridges
+ * its sendToWebview into a headless-Chromium page running the REAL renderer
+ * transport + shell, and asserts the bottom bar activates + a converse capture
+ * starts. The only mocked element is the electrobun IPC pipe (a window RPC shim).
+ * Fixture bundling + theme compile + assert/snap come from the shared e2e-runner.
  *
  * Run: bun run --cwd packages/ui test:fused-wake-integration-e2e
  * Needs the prebuilt libwakeword + the 3 hey-eliza GGUFs staged (see
@@ -19,21 +13,25 @@
  */
 
 import { existsSync } from "node:fs";
-import { builtinModules } from "node:module";
+import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { plugin } from "bun";
-import { build } from "esbuild";
+import {
+  compileTailwindTheme,
+  createAssertGate,
+  createSnapper,
+  finishRun,
+  renameRecordedVideo,
+  stubElizaCore,
+  stubNodeBuiltins,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 import { chromium } from "playwright";
-import postcss from "postcss";
-import tailwind from "@tailwindcss/postcss";
-import { mkdir, writeFile } from "node:fs/promises";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../..");
 const repoRoot = resolve(uiRoot, "../..");
-const stylesDir = join(uiRoot, "src/styles");
-const toUrl = (p) => p.replace(/\\/g, "/");
 
 // Resolve the `@elizaos/plugin-local-inference/voice-wake` subpath to the in-tree
 // barrel so we can import the REAL FusedWakeManager in this worktree (its
@@ -41,15 +39,9 @@ const toUrl = (p) => p.replace(/\\/g, "/");
 plugin({
   name: "voice-wake-subpath-alias",
   setup(b) {
-    b.onResolve(
-      { filter: /^@elizaos\/plugin-local-inference\/voice-wake$/ },
-      () => ({
-        path: join(
-          repoRoot,
-          "plugins/plugin-local-inference/src/voice-wake.ts",
-        ),
-      }),
-    );
+    b.onResolve({ filter: /^@elizaos\/plugin-local-inference\/voice-wake$/ }, () => ({
+      path: join(repoRoot, "plugins/plugin-local-inference/src/voice-wake.ts"),
+    }));
   },
 });
 
@@ -59,10 +51,7 @@ const CLIP = join(
 );
 const LIB_CANDIDATES = [
   process.env.ELIZA_WAKEWORD_LIB,
-  join(
-    repoRoot,
-    "packages/native/plugins/wakeword-cpp/build/libwakeword.dylib",
-  ),
+  join(repoRoot, "packages/native/plugins/wakeword-cpp/build/libwakeword.dylib"),
   join(repoRoot, "packages/native/plugins/wakeword-cpp/build/libwakeword.so"),
 ].filter(Boolean);
 const LIB = LIB_CANDIDATES.find((p) => existsSync(p));
@@ -89,106 +78,33 @@ process.env.ELIZA_FUSED_WAKE_MIC_ARGV = [
 
 // Import the REAL desktop producer (resolves through the alias above).
 const { FusedWakeManager } = await import(
-  join(
-    repoRoot,
-    "packages/app-core/platforms/electrobun/src/native/fused-wake.ts",
-  )
+  join(repoRoot, "packages/app-core/platforms/electrobun/src/native/fused-wake.ts")
 );
 
 const outDir = join(here, "output-fused-wake-integration");
-await mkdir(outDir, { recursive: true });
+const videoDir = join(outDir, "video");
+await mkdir(videoDir, { recursive: true });
 
-async function compileTheme() {
-  const input = `@import "tailwindcss" source(none);
-@import "${toUrl(join(stylesDir, "base.css"))}";
-@import "${toUrl(join(stylesDir, "theme.css"))}";
-@import "${toUrl(join(stylesDir, "tailwind-theme.css"))}";
-@source "${toUrl(join(uiRoot, "src/components/shell"))}";
-@source "${toUrl(here)}";
-`;
-  const res = await postcss([tailwind()]).process(input, {
-    from: toUrl(join(stylesDir, "styles.css")),
-  });
-  return res.css;
-}
-
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy(
-          { isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [] },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );`,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      )
-        return { path: args.path, namespace: "node-stub" };
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
-const result = await build({
-  entryPoints: [join(here, "fused-wake-integration-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubElizaCore, stubNodeBuiltins],
-  write: false,
+const viewport = { width: 1440, height: 900 };
+const themeCss = await compileTailwindTheme({
+  uiRoot,
+  sources: [join(uiRoot, "src/components/shell"), here],
 });
-const js = result.outputFiles[0].text;
-const themeCss = await compileTheme();
-const html = `<!doctype html><html class="dark"><head><meta charset="utf-8"><title>fused wake integration e2e</title>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-<style>${themeCss}</style><style>html,body{margin:0;height:100%;background:#08080d}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "fused-wake-integration.html");
-await writeFile(htmlPath, html);
+const url = await writeFixturePage({
+  entry: join(here, "fused-wake-integration-fixture.tsx"),
+  outDir,
+  htmlName: "fused-wake-integration.html",
+  title: "fused wake integration e2e",
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
+  processShim: true,
+  htmlClass: "dark",
+  tailwind: { css: themeCss },
+  background: "#08080d",
+});
 
-let failures = 0;
-function assert(cond, msg) {
-  console.log(`${cond ? "✓" : "✗"} ${msg}`);
-  if (!cond) failures += 1;
-}
-let shot = 0;
-async function snap(p, name) {
-  shot += 1;
-  const file = `${String(shot).padStart(2, "0")}-${name}.png`;
-  await p.screenshot({ path: join(outDir, file) });
-  console.log(`  📸 ${file}`);
-}
+const gate = createAssertGate();
+const snap = createSnapper({ outDir });
+const { assert } = gate;
 
 const manager = new FusedWakeManager();
 const browser = await chromium.launch({
@@ -197,9 +113,9 @@ const browser = await chromium.launch({
 const sink = { logs: [], errors: [] };
 try {
   const ctx = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    viewport,
     deviceScaleFactor: 2,
-    recordVideo: { dir: outDir, size: { width: 1440, height: 900 } },
+    recordVideo: { dir: videoDir, size: viewport },
   });
   const p = await ctx.newPage();
   p.on("console", (m) => sink.logs.push(`[${m.type()}] ${m.text()}`));
@@ -209,8 +125,7 @@ try {
   // the page's mock electrobun RPC (the only mocked hop).
   manager.setSendToWebview((message, payload) => {
     void p.evaluate(
-      ({ message, payload }) =>
-        window.__deliverElectrobunMessage?.(message, payload),
+      ({ message, payload }) => window.__deliverElectrobunMessage?.(message, payload),
       { message, payload },
     );
   });
@@ -227,7 +142,7 @@ try {
     return undefined;
   });
 
-  await p.goto(`file://${htmlPath}`);
+  await p.goto(url);
   await p.waitForSelector('[data-testid="shell-home-pill"]', { timeout: 20000 });
   await p.waitForTimeout(600);
 
@@ -235,10 +150,7 @@ try {
     (await p.getByTestId("shell-home-pill").count()) === 1,
     "RESTING: chromeless HomePill bar before wake",
   );
-  assert(
-    (await p.getByTestId("shell-chat-surface").count()) === 0,
-    "RESTING: no composer before wake",
-  );
+  assert((await p.getByTestId("shell-chat-surface").count()) === 0, "RESTING: no composer before wake");
   assert(
     await p.evaluate(() => window.__ELIZA_FUSED_WAKE__ === true),
     "registerDesktopFusedWake set the capability flag",
@@ -247,9 +159,7 @@ try {
 
   // The real native detector is now streaming the real clip; wait for the head
   // to fire → voice:fusedWake → bar activation (the bar surfaces ChatSurface).
-  await p.waitForSelector('[data-testid="shell-chat-surface"]', {
-    timeout: 20000,
-  });
+  await p.waitForSelector('[data-testid="shell-chat-surface"]', { timeout: 20000 });
   await p.waitForTimeout(700);
 
   assert(
@@ -257,32 +167,25 @@ try {
     "WAKE: real libwakeword fire → voice:fusedWake → bar activates (ChatSurface)",
   );
   assert(
-    sink.logs.some((l) =>
-      l.includes("wake -> onOpen: startCapture('converse')"),
-    ),
+    sink.logs.some((l) => l.includes("wake -> onOpen: startCapture('converse')")),
     "WAKE: the real wake opened the listening window + started a converse capture",
   );
   await snap(p, "wake-bar-active");
 
-  assert(
-    sink.errors.length === 0,
-    `NO PAGE ERRORS (${JSON.stringify(sink.errors.slice(0, 4))})`,
-  );
+  assert(sink.errors.length === 0, `NO PAGE ERRORS (${JSON.stringify(sink.errors.slice(0, 4))})`);
 
-  const videoObj = p.video();
   await manager.stop();
   await p.close();
-  if (videoObj) {
-    const vp = await videoObj.path().catch(() => null);
-    if (vp) console.log(`  🎥 video: ${vp}`);
-  }
   await ctx.close();
 } finally {
   await browser.close();
   await manager.stop().catch(() => {});
 }
 
-console.log(
-  `\n${failures === 0 ? "PASS" : `FAIL (${failures})`} — artifacts in ${outDir}`,
-);
-process.exit(failures === 0 ? 0 : 1);
+await renameRecordedVideo({ videoDir, outDir, name: "fused-wake-integration.webm" });
+
+finishRun({
+  failures: gate.failures,
+  passMessage: `\nPASS — artifacts in ${outDir}`,
+  failMessage: `\nFAIL (${gate.failures}) — artifacts in ${outDir}`,
+});

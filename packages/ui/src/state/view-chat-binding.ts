@@ -1,3 +1,8 @@
+/**
+ * Binding that lets the active view take over the one floating chat composer —
+ * override its placeholder and receive live draft text. Module-level store
+ * shared via globalThis + useSyncExternalStore.
+ */
 import * as React from "react";
 
 /**

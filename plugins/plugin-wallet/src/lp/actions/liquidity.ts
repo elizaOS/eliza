@@ -1,3 +1,11 @@
+/**
+ * Defines `liquidityAction`, the LP management action promoted into
+ * subactions (list pools, open/close/reposition a position, list positions)
+ * dispatched against `LpManagementService`'s registered DEX providers. Formats
+ * pool and position results into human-readable summaries and resolves
+ * finance/crypto/wallet-context gating the same way the top-level wallet
+ * action does.
+ */
 import type {
   Action,
   ActionExample,

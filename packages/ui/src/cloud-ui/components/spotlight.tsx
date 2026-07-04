@@ -1,3 +1,6 @@
+/**
+ * Decorative radial spotlight background element for cloud hero sections.
+ */
 import { cn } from "../lib/utils";
 
 type SpotlightProps = {

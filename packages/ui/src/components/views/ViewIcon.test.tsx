@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// ViewIcon resolution paths: image sources render an <img>; known lucide names
+// render the named glyph with the passed className; unknown/absent icons fall
+// through to keyword inference and finally the grid glyph. Locks the #5
+// regression where distinct system views collapsed onto the same placeholder.
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { ViewIcon } from "./ViewIcon";

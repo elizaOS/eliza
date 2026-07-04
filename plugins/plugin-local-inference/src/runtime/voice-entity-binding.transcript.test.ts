@@ -1,3 +1,9 @@
+/**
+ * Tests that `handleLiveVoiceAttribution` emits `VOICE_TURN_OBSERVED` carrying
+ * the turn transcript for the merge engine. Uses a fake runtime event sink; no
+ * real attribution pipeline or model runs.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

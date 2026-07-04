@@ -1,3 +1,9 @@
+/**
+ * Delivers sensitive/approval requests to a Discord user as a DM, implementing
+ * `SensitiveRequestDeliveryAdapter` so the runtime's approval flow can target
+ * the `discord` source. Availability depends on the `DiscordService` being
+ * registered.
+ */
 import {
 	type DeliveryResult,
 	type DispatchSensitiveRequest,

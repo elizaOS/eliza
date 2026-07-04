@@ -8,6 +8,7 @@
 import { BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { InvoiceDto } from "../types";
 
@@ -47,7 +48,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
     <div className="flex flex-col gap-6 max-w-6xl mx-auto p-6">
       {/* Back Navigation */}
       <div className="border-b border-border pb-4">
-        <button
+        <Button
+          variant="ghost"
           type="button"
           onClick={() => navigate("/settings#cloud-billing")}
           className="group flex min-h-touch items-center gap-2 font-mono text-sm text-muted hover:text-txt-strong transition-colors"
@@ -60,7 +62,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
               defaultValue: "Back to Billing",
             })}
           </span>
-        </button>
+        </Button>
       </div>
 
       {/* Invoice Header Card */}
@@ -79,7 +81,8 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
             <div className="flex items-center gap-3">
               {invoice.invoice_pdf && (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() =>
                     invoice.invoice_pdf &&
@@ -91,10 +94,11 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   {t("cloud.invoiceDetail.downloadPdf", {
                     defaultValue: "Download PDF",
                   })}
-                </button>
+                </Button>
               )}
               {invoice.hosted_invoice_url && (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() =>
                     invoice.hosted_invoice_url &&
@@ -106,7 +110,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   {t("cloud.invoiceDetail.viewInStripe", {
                     defaultValue: "View in Stripe",
                   })}
-                </button>
+                </Button>
               )}
             </div>
           </div>

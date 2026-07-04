@@ -135,8 +135,8 @@ export interface HandleLiveVoiceAttributionOptions {
 	 * The ASR transcript for this turn, joined from the streaming-ASR path. When
 	 * provided it rides on `VOICE_TURN_OBSERVED` (and the turn signal) so the
 	 * merge engine's name/partner extraction (`VoiceObserver.ingestTurn`) runs
-	 * from LIVE audio — previously this was hardcoded `""`, so live recognition
-	 * could identify *who* spoke but never *what* they said (#8786). Diarization-
+	 * from LIVE audio, so live recognition identifies both *who* spoke and
+	 * *what* they said (#8786). Diarization-
 	 * only callers (audio-frame path) leave it unset; the in-process voice engine
 	 * (which has both ASR + diarization) passes the real transcript.
 	 */

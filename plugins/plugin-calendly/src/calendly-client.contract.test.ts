@@ -1,11 +1,12 @@
-// Keyless contract test for the Calendly v2 mock: replays recorded real-shaped
-// Calendly responses (__fixtures__/calendly-v2.recorded.json — the documented v2
-// envelopes `{resource}` / `{collection,pagination}` with the real field names)
-// through the actual client normalizers and asserts the produced DTOs. This is
-// what makes the Calendly mock "match the real API": the parser is exercised
-// against the real wire shape (scheduling_url, start_time, event_memberships,
-// invitees collection) with no network. calendly-client.real.test.ts re-fetches
-// the live API (with a token) to catch drift from this recording.
+/**
+ * Keyless contract test for the Calendly v2 client: replays recorded real-shaped
+ * responses (`__fixtures__/calendly-v2.recorded.json` — the documented v2
+ * `{resource}` / `{collection,pagination}` envelopes with real field names) through
+ * the client normalizers and asserts the produced DTOs, exercising the parser
+ * against the real wire shape (scheduling_url, start_time, invitees collection)
+ * with no network. `calendly-client.real.test.ts` re-fetches the live API to catch
+ * drift from this recording.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

@@ -1,3 +1,8 @@
+/**
+ * Numeric parsing helpers with optional fallback, flooring, and min/max clamping
+ * for positive integers/floats. Used to coerce env vars and config values into
+ * bounded numbers without scattering ad-hoc `Number()` + guard logic.
+ */
 export interface ParsePositiveNumberOptions {
   fallback?: number;
   floor?: boolean;

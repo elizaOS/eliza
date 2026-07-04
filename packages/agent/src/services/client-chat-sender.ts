@@ -13,6 +13,7 @@ import {
   type Content,
   createMessageMemory,
   type IAgentRuntime,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
@@ -52,7 +53,7 @@ import type { ConversationMeta, ServerState } from "../api/server-types.ts";
  * {@link installDashboardFallbackSend}.
  */
 const RELAY_SOURCES = [
-  "client_chat",
+  MESSAGE_SOURCE_CLIENT_CHAT,
   "agent_message_api",
   "compat_openai",
   "compat_anthropic",
@@ -67,7 +68,7 @@ const RELAY_SOURCES = [
  * this ambient fallback — an async sub-agent result for an API caller would
  * otherwise land in an unrelated recent conversation. See {@link resolveConversation}.
  */
-const AMBIENT_FALLBACK_SOURCES = new Set<string>(["client_chat"]);
+const AMBIENT_FALLBACK_SOURCES = new Set<string>([MESSAGE_SOURCE_CLIENT_CHAT]);
 
 /**
  * Resolve the best conversation for a given roomId by scanning the
@@ -184,7 +185,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
         content: {
           ...content,
           text: content.text ?? "",
-          source: "client_chat",
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
       try {
@@ -204,7 +205,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           role: "assistant",
           text: content.text ?? "",
           timestamp: Date.now(),
-          source: "client_chat",
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
       delivery.reservation.commit();

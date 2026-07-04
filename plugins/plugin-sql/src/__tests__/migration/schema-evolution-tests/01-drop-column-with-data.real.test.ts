@@ -1,3 +1,11 @@
+/**
+ * Schema-evolution test against the real elizaOS production schemas: proves
+ * `RuntimeMigrator` detects a column drop (removing `agents.username`) as
+ * data-losing, blocks it in both development and production without
+ * `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS`, allows it via that env var or the
+ * `force`/`allowDataLoss` migrate options, and that unrelated tables/rows
+ * survive the drop.
+ */
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
@@ -23,13 +31,6 @@ import { worldTable } from "../../../schema/world";
 import { createIsolatedTestDatabaseForSchemaEvolutionTests } from "../../test-helpers";
 
 type CountRow = { count: number };
-
-/**
- * Schema Evolution Test 1: Dropping Columns from Production Schema
- *
- * This test uses the ACTUAL elizaOS production schemas to verify
- * that schema evolution properly handles column drops with real data.
- */
 
 describe("Schema Evolution Test: Drop Column with Production Schema", () => {
   let db: DrizzleDB;
@@ -75,16 +76,13 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
   });
 
   it("should handle dropping username column from agents table with production data", async () => {
-    // Apply the full production schema
     const schemaV1 = getFullSchemaV1();
 
     console.log("🚀 Migrating full production schema V1...");
     await migrator.migrate("@elizaos/production-schema-v1", schemaV1);
 
-    // Insert production-like data into multiple related tables
     console.log("\n📝 Inserting production data...");
 
-    // Insert agents with username field
     await db.insert(agentTable).values([
       {
         id: "550e8400-e29b-41d4-a716-446655440001",
@@ -120,7 +118,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       },
     ]);
 
-    // Insert related entities
     await db.insert(entityTable).values([
       {
         id: "660e8400-e29b-41d4-a716-446655440001",
@@ -136,7 +133,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       },
     ]);
 
-    // Insert memories linked to agents
     await db.insert(memoryTable).values([
       {
         id: "770e8400-e29b-41d4-a716-446655440001",
@@ -161,7 +157,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       },
     ]);
 
-    // Verify data was inserted
     const agentsBeforeCount = await db.execute(sql`SELECT COUNT(*) as count FROM agents`);
     const memoriesBeforeCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 
@@ -169,7 +164,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     console.log(`  - Agents: ${(agentsBeforeCount.rows[0] as unknown as CountRow).count}`);
     console.log(`  - Memories: ${(memoriesBeforeCount.rows[0] as unknown as CountRow).count}`);
 
-    // Check usernames exist
     const usernameCheck = await db.execute(
       sql`SELECT name, username FROM agents WHERE username IS NOT NULL`
     );
@@ -179,8 +173,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       console.log(`    • ${typedRow.name}: @${typedRow.username}`);
     });
 
-    // Now create V2 schema WITHOUT username column (destructive change!)
-    // We need to recreate the agent table definition without username
+    // V2 redefines the agents table without `username` — a destructive change.
     const { pgTable, text, uuid, boolean, timestamp, jsonb, unique } = await import(
       "drizzle-orm/pg-core"
     );
@@ -193,7 +186,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
         createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`).notNull(),
         updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
         name: text("name").notNull(),
-        // username: text('username'), // REMOVED - destructive change!
+        // No `username` field — its absence relative to V1 is the destructive change under test.
         system: text("system").default(""),
         bio: jsonb("bio").$type<string | string[]>().default(sql`'[]'::jsonb`),
         messageExamples: jsonb("message_examples").default(sql`'[]'::jsonb`).notNull(),
@@ -215,7 +208,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       agents: agentTableV2, // Replace with version without username
     };
 
-    // Test 1: Check migration for data loss warnings
     console.log("\n🔍 Checking migration for data loss...");
     const dataLossCheck = await migrator.checkMigration("@elizaos/production-schema-v1", schemaV2);
 
@@ -232,7 +224,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
       });
     }
 
-    // Test 2: Attempt migration without environment variable (should fail even in development)
+    // Must be blocked even in development, absent the override env var.
     process.env.NODE_ENV = "development";
     delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
 
@@ -249,7 +241,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     expect(blockedError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
     console.log(`  ✅ Migration blocked: ${blockedError?.message}`);
 
-    // Test 3: Production mode should also block (even with more warnings)
+    // Production mode blocks too, with a stricter/longer error message.
     process.env.NODE_ENV = "production";
 
     console.log("\n🛡️  Testing production protection...");
@@ -265,7 +257,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     expect(productionError?.message).toContain("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS");
     console.log(`  ✅ Production blocked: ${productionError?.message?.substring(0, 80) || ""}...`);
 
-    // Test 4: Allow migration with environment variable
     process.env.NODE_ENV = "development";
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
 
@@ -276,7 +267,7 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     // Reset for next test
     await migrator.migrate("@elizaos/production-schema-v1", schemaV1);
 
-    // Test 5: Force migration with options (alternative method)
+    // The force/allowDataLoss migrate() options are an alternative to the env var above.
     delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
 
     console.log("\n⚠️  Testing with force option...");
@@ -286,7 +277,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     });
     console.log("  ✅ Migration allowed with force option");
 
-    // Verify column was dropped
     const columnsAfter = await db.execute(
       sql`SELECT column_name FROM information_schema.columns 
           WHERE table_name = 'agents' AND table_schema = 'public'`
@@ -299,7 +289,6 @@ describe("Schema Evolution Test: Drop Column with Production Schema", () => {
     console.log(`  ✅ Agent table columns: ${columnNames.length}`);
     console.log("  ❌ Username column has been dropped");
 
-    // Verify related data is intact
     const agentsAfterCount = await db.execute(sql`SELECT COUNT(*) as count FROM agents`);
     const memoriesAfterCount = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
 

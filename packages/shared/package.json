@@ -103,6 +103,26 @@
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js"
     },
+    "./restart": {
+      "types": "./dist/restart.d.ts",
+      "eliza-source": {
+        "types": "./src/restart.ts",
+        "import": "./src/restart.ts",
+        "default": "./src/restart.ts"
+      },
+      "import": "./dist/restart.js",
+      "default": "./dist/restart.js"
+    },
+    "./sandbox-registry": {
+      "types": "./dist/sandbox-registry.d.ts",
+      "eliza-source": {
+        "types": "./src/sandbox-registry.ts",
+        "import": "./src/sandbox-registry.ts",
+        "default": "./src/sandbox-registry.ts"
+      },
+      "import": "./dist/sandbox-registry.js",
+      "default": "./dist/sandbox-registry.js"
+    },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "import": "./dist/brand/index.js",
@@ -127,6 +147,16 @@
       },
       "import": "./dist/events/index.js",
       "default": "./dist/events/index.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/index.ts",
+        "import": "./src/contracts/index.ts",
+        "default": "./src/contracts/index.ts"
+      },
+      "import": "./dist/contracts/index.js",
+      "default": "./dist/contracts/index.js"
     },
     "./utils/permission-deep-links": {
       "types": "./dist/utils/permission-deep-links.d.ts",
@@ -177,6 +207,16 @@
       },
       "import": "./dist/contracts/apps.js",
       "default": "./dist/contracts/apps.js"
+    },
+    "./views/view-interact-protocol": {
+      "types": "./dist/views/view-interact-protocol.d.ts",
+      "eliza-source": {
+        "types": "./src/views/view-interact-protocol.ts",
+        "import": "./src/views/view-interact-protocol.ts",
+        "default": "./src/views/view-interact-protocol.ts"
+      },
+      "import": "./dist/views/view-interact-protocol.js",
+      "default": "./dist/views/view-interact-protocol.js"
     },
     "./voice-wer": {
       "types": "./dist/voice-wer.d.ts",

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the cloud-ui brand/provider icons.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AppleMessagesIcon,

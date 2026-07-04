@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Covers CapabilitiesSection's proactive-suggestions control: it reflects the
+ * persisted `ELIZA_PROACTIVE_INTERACTIONS` config value and persists the picked
+ * level via `updateConfig`. jsdom render with the app store and API client
+ * mocked.
+ */
+
 import {
   cleanup,
   render,

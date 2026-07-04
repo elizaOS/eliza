@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `ConnectorAccountPurposeSelector` across the account
+ * roles, including the owner-role confirmation flow.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { ConnectorAccountRole } from "../../api/client-agent";

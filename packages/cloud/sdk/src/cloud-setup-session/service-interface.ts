@@ -1,3 +1,10 @@
+/**
+ * `CloudSetupSessionService` interface: the five operations
+ * (startSession / sendMessage / getStatus / finalizeHandoff / cancel) a guided
+ * cloud-setup backend must implement. `MockCloudSetupSessionService` is the
+ * reference implementation; production backends implement this contract.
+ */
+
 import type {
   ContainerHandoffEnvelope,
   SetupExtractedFact,

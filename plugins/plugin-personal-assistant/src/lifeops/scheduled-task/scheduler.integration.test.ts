@@ -717,7 +717,7 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(transitions).toContain("fired");
   });
 
-  it("times out an unanswered approval into skip and spawns the pipeline.onSkip followup", async () => {
+  it("times out an unanswered approval through no-reply expiry without spawning pipeline.onSkip", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
@@ -729,8 +729,8 @@ describe("processDueScheduledTasks — production wiring", () => {
     // followup. (When `pipeline.onSkip` is set the approval-default rule does
     // NOT backfill `followupAfterMinutes`, so it must be provided.) On the
     // first tick the approval fires; once the timeout elapses a later tick
-    // runs the completion-timeout pass, which applies `skip` and propagates
-    // the onSkip child.
+    // runs the completion-timeout pass. No-reply expiry is not a user skip, so
+    // it must not propagate the onSkip child.
     const seed = await seedScheduledTask(runtime, {
       kind: "approval",
       promptInstructions: "Approve the wire transfer?",
@@ -758,6 +758,9 @@ describe("processDueScheduledTasks — production wiring", () => {
           },
         ],
       },
+      metadata: {
+        noReplyState: { retryCount: 2 },
+      },
     });
 
     const firstResult = await processDueScheduledTasks({
@@ -774,7 +777,7 @@ describe("processDueScheduledTasks — production wiring", () => {
     expect(afterFire?.state.status).toBe("fired");
 
     // Advance past `firedAt + followupAfterMinutes` (30m). The completion
-    // timeout pass now fires `skip`.
+    // timeout pass now expires the approval.
     const timeoutTick = new Date("2026-05-09T12:40:00.000Z");
     const timeoutResult = await processDueScheduledTasks({
       runtime,
@@ -786,11 +789,11 @@ describe("processDueScheduledTasks — production wiring", () => {
     const timedOut = timeoutResult.completionTimeouts.find(
       (t) => t.taskId === seed.taskId,
     );
-    expect(timedOut?.status).toBe("skipped");
-    expect(timedOut?.reason).toBe("completion_timeout_due");
+    expect(timedOut?.status).toBe("expired");
+    expect(timedOut?.reason).toBe("no_reply_approval_expired");
 
     const persisted = await repo.getScheduledTask(runtime.agentId, seed.taskId);
-    expect(persisted?.state.status).toBe("skipped");
+    expect(persisted?.state.status).toBe("expired");
 
     const transitions = (
       await repo.listScheduledTaskLog({
@@ -798,15 +801,14 @@ describe("processDueScheduledTasks — production wiring", () => {
         taskId: seed.taskId,
       })
     ).map((entry) => entry.transition);
-    expect(transitions).toContain("skipped");
+    expect(transitions).toContain("expired");
 
-    // The onSkip followup child is created and linked to the parent.
+    // Expiry is not skip, so the onSkip followup child is not created.
     const all = await repo.listScheduledTasks(runtime.agentId, {
       kind: "followup",
     });
     const child = all.find((t) => t.state.pipelineParentId === seed.taskId);
-    expect(child).toBeDefined();
-    expect(child?.kind).toBe("followup");
+    expect(child).toBeUndefined();
   });
 
   it("circadian_state_in gate falls through to allow and the task fires with a warn-once fallback", async () => {

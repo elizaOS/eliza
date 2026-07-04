@@ -1,3 +1,9 @@
+/**
+ * Base container element every page-panel part builds on, mapping the `variant`
+ * prop (surface/workspace/section/padded/shell) to layout classes over a shared
+ * transparent surface. Polymorphic via `as`; the rest of the panel chrome
+ * composes on top of it.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

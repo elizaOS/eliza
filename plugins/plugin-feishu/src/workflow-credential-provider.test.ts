@@ -1,3 +1,7 @@
+/**
+ * Tests FeishuWorkflowCredentialProvider — that it returns trimmed HTTP-header
+ * credentials when app credentials are configured — against a mocked runtime.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FeishuWorkflowCredentialProvider } from "./workflow-credential-provider";

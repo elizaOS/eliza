@@ -189,11 +189,11 @@ async function expectNormalBannerPadding(banner: Locator): Promise<void> {
   const padding = await getPaddingInlineStart(banner);
   expect(
     padding,
-    "Non-mac banners should keep their normal px-4 left padding",
+    "The reconnect pill should keep its normal px-4 left padding",
   ).toBeGreaterThanOrEqual(15);
   expect(
     padding,
-    "Non-mac banners must not reserve macOS traffic-light space",
+    "The reconnect pill must not reserve macOS traffic-light space",
   ).toBeLessThanOrEqual(20);
 }
 
@@ -220,7 +220,7 @@ test.describe("macOS desktop titlebar", () => {
     });
   });
 
-  test("desktop reconnecting banner reserves macOS traffic-light inset", async ({
+  test("desktop reconnecting pill floats out of flow and keeps the window draggable", async ({
     page,
   }, testInfo) => {
     await prepareApp(page);
@@ -229,12 +229,30 @@ test.describe("macOS desktop titlebar", () => {
 
     await expectMacTitlebarClasses(page);
 
-    // The reconnect banner reserves the macOS traffic-light gutter via its own
-    // `data-window-titlebar-banner` stylesheet rule, independent of any Header.
+    // The reconnecting state renders as a floating overlay pill (see
+    // ConnectionFailedBanner.tsx): absolutely positioned and click-through, so
+    // it consumes no layout height and carries no
+    // `data-window-titlebar-banner` — it clears the macOS traffic lights by
+    // being centered, not by reserving a padding gutter.
     const banner = await getReconnectBanner(page);
+    await expectNormalBannerPadding(banner);
+
+    const wrapper = banner.locator("..");
     await expect
-      .poll(() => getPaddingInlineStart(banner))
-      .toBeGreaterThanOrEqual(78);
+      .poll(() => wrapper.evaluate((el) => getComputedStyle(el).position))
+      .toBe("absolute");
+    await expect
+      .poll(() => wrapper.evaluate((el) => getComputedStyle(el).pointerEvents))
+      .toBe("none");
+
+    // With no titlebar-banner attribute in play, the headerless whole-body
+    // drag fallback stays active while the pill is visible.
+    await expect.poll(() => getAppRegion(page.locator("body"))).toBe("drag");
+
+    // The centered pill starts well right of the traffic-light zone (~78px).
+    const box = await banner.boundingBox();
+    if (!box) throw new Error("reconnect pill has no bounding box");
+    expect(box.x).toBeGreaterThan(90);
 
     await attachVisibleScreenshot(page, testInfo, "mac-titlebar-with-banner");
   });

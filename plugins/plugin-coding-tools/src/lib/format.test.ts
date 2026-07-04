@@ -1,3 +1,4 @@
+/** Unit tests for the action-result and parameter-reader helpers. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { FAILURE_TEXT_PREFIX, type ToolFailure } from "../types.js";

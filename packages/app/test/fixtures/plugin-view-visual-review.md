@@ -9,6 +9,8 @@ Review rubric:
 
 | View | Type | Path | Likes | Concerns | Next proof |
 | --- | --- | --- | --- | --- | --- |
+| `birdclaw` | `gui` | `/birdclaw` | Archived-timeline tabs (home/likes/bookmarks/inbox), sync trigger, and a clear zero-key setup state when birdclaw.sh is absent. | Needs visual pass for tweet-row density, the needs-reply inbox nudge, and sync-failure banner placement. | Verify tab switching, sync button states, setup/error/retry states, and inbox triage rows against a seeded archive. |
+| `birdclaw` | `tui` | `/birdclaw` | Collapsed spatial view exposes the same archive browsing surface in terminal form. | Needs command-output review for compact tweet/inbox listings. | Confirm every terminal command returns command-specific output and no pending states. |
 | `contacts` | `gui` | `/contacts` | Familiar contact-list workflow and clear account/contact actions. | Needs visual pass for list density and empty/error states. | Verify create/import/search controls, contact rows, and avatar/initial indicators. |
 | `contacts` | `tui` | `/contacts` | Terminal view has list/create/import command surface. | Needs proof that command output remains compact and structured. | Click every terminal command and verify semantic output. |
 | `hyperliquid` | `gui` | `/hyperliquid` | Market/trading domain has strong metric-card potential. | Needs screenshot review for chart/table density and risk/status indicators. | Verify market, execution, and account panels render without broken assets. |

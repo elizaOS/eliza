@@ -15,7 +15,11 @@
  * to these keys by the compile-time test in
  * `packages/cloud/sdk/src/client.test.ts`.
  */
+
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { findReservedEnvKeys } from "@/lib/services/reserved-env-keys";
 import {
   CreateContainerSchema,
   PatchContainerSchema,
@@ -86,6 +90,77 @@ describe("POST /api/v1/containers — create contract (casing bug fix)", () => {
   test("rejects a body missing the required image (server is the source of truth)", () => {
     const parsed = CreateContainerSchema.safeParse({ name: "no-image" });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("edad README Option-B deploy body ↔ CreateContainerSchema (#11929)", () => {
+  // The orchestrator's app-deploy guidance tells coding sub-agents to follow
+  // the edad README's `POST /api/v1/containers` example VERBATIM, so this test
+  // pins the doc to the real schema: the exact JSON body in the README must
+  // round-trip with the sign-in + billing env keys intact. The pre-fix README
+  // posted snake_case keys that zod silently stripped — every deploy built
+  // from it shipped a container with NO env vars (dead sign-in + billing).
+  const readmePath = fileURLToPath(
+    new URL("../../../examples/cloud/edad/README.md", import.meta.url),
+  );
+  const readme = readFileSync(readmePath, "utf8");
+
+  function extractCurlBody(markdown: string): Record<string, unknown> {
+    // The single `curl … -d '{…}'` example in the Option-B deploy block.
+    const match = markdown.match(/-d '(\{[\s\S]*?\})'/);
+    if (!match) throw new Error("README curl -d body not found");
+    return JSON.parse(match[1]) as Record<string, unknown>;
+  }
+
+  test("the README body parses with every posted key recognized (nothing silently stripped)", () => {
+    const wire = extractCurlBody(readme);
+
+    const parsed = CreateContainerSchema.safeParse(wire);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    // zod strips unknown keys silently — equality of the key sets proves the
+    // doc posts ONLY keys the schema actually accepts.
+    expect(Object.keys(parsed.data).sort()).toEqual(Object.keys(wire).sort());
+  });
+
+  test("the sign-in + billing env keys survive to the container env", () => {
+    const wire = extractCurlBody(readme);
+    const parsed = CreateContainerSchema.safeParse(wire);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+
+    const env = parsed.data.environmentVars;
+    expect(env).toBeDefined();
+    if (!env) return;
+    // Sign-in: the OAuth session exchange needs the app id; billing: the
+    // owner cloud key funds `/api/v1/messages` forwards. server.ts reads
+    // `ELIZAOS_CLOUD_API_KEY ?? ELIZA_CLOUD_API_KEY` — the container path must
+    // use the second name (see the reserved-keys test below).
+    expect(env.ELIZA_APP_ID).toBeTruthy();
+    expect(env.ELIZA_CLOUD_API_KEY).toBeTruthy();
+    expect(env.ELIZA_AFFILIATE_CODE).toBeTruthy();
+    expect(env.ELIZA_CLOUD_URL).toBeTruthy();
+  });
+
+  test("the README env block carries no platform-reserved keys (route would 400)", () => {
+    // POST /api/v1/containers rejects reserved keys (#9853) — a README body
+    // using ELIZAOS_CLOUD_API_KEY would fail loudly with RESERVED_ENV_KEYS.
+    const wire = extractCurlBody(readme);
+    const env = (wire.environmentVars ?? {}) as Record<string, string>;
+    expect(findReservedEnvKeys(Object.keys(env))).toEqual([]);
+  });
+
+  test("REGRESSION: the README no longer posts the legacy snake_case keys", () => {
+    const wire = extractCurlBody(readme);
+    for (const legacyKey of [
+      "project_name",
+      "environment_vars",
+      "health_check_path",
+      "memory",
+    ]) {
+      expect(wire).not.toHaveProperty(legacyKey);
+    }
   });
 });
 

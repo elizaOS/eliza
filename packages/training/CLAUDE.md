@@ -14,8 +14,10 @@ applies to everything under `packages/training/`.
 - **TESTING HARNESS:** Nebius (OpenAI-compatible inference endpoint
   used for rollouts during RL — `NEBIUS_BASE_URL`, `NEBIUS_API_KEY`).
 - **Continuous RL data:** on-disk JSONL exports under
-  `${ELIZA_STATE_DIR:-~/.eliza/state}/trajectories/`, written by the
-  eliza native trajectory recorder. No database dependency.
+  `${ELIZA_STATE_DIR}/trajectories/`, written by the eliza native trajectory
+  recorder. The state dir resolves (see `packages/core/src/utils/state-dir.ts`)
+  as `ELIZA_STATE_DIR` → `$XDG_STATE_HOME/eliza` → `~/.local/state/eliza` — NOT
+  `~/.eliza/state`. No database dependency.
 
 Do not edit configs to point at non-Gemma base names or OpenAI judges —
 the lock above is the product contract.
@@ -81,24 +83,32 @@ is published.
 ## 3. Quantization (mandatory recipes)
 
 Quantization is not optional for Eliza-1. Every published bundle MUST
-flow through every applicable recipe.
+flow through every recipe that is actually applicable to the tier and
+runtime. The active Gemma 4 release path uses stock llama.cpp GGUF
+weight quantization (`llama-quantize` Q4_K_M today) for the shipped
+text GGUF unless a recipe below is explicitly applied and verified for
+that tier. Sidecar presence is not proof that a recipe touched the
+bytes.
 
 Pipeline order (binding):
 
 ```
 fp16/bf16 checkpoint
    │
-   ├── TurboQuant Q3 or Q4 (text + drafter weights)
+   ├── Stock GGUF weight quantization (shipping Gemma path today)
+   │     convert_hf_to_gguf.py → llama-quantize Q4_K_M
+   │
+   ├── TurboQuant Q3 or Q4 KV-cache compression (V-cache)
    │     scripts/quantization/turboquant_apply.py
    │     scripts/quantization/fused_turboquant_apply.py
    │
    ├── QJL projection matrices baked into KV-cache layout
    │     scripts/quantization/qjl_apply.py
    │
-   ├── PolarQuant centroids + sign vectors baked into KV-cache layout
+   ├── PolarQuant weight quantization (linear weights)
    │     scripts/quantization/polarquant_apply.py
    │
-   └── (long-context-only) Trellis-coded TCQ on the largest variant
+   └── (long-context-only) Trellis-coded TCQ KV K-type
          scripts/quantization/turboquant_apply.py --trellis
 ```
 
@@ -113,9 +123,13 @@ Hard rules:
   preconditions (wrong layer count, wrong dtype, missing rotation), it
   MUST fail loudly. No silent passes, no skip-and-continue.
 
-Gemma note: QJL/PolarQuant are low-ROI on Gemma 4's already-minimal KV
-(MQA + windowed-SWA + shared-KV), so TurboQuant weight-quant remains the
-primary recipe; the KV-cache QJL/Polar passes are optional for Gemma tiers.
+Gemma note: Gemma 4's KV cache is already minimal (MQA + windowed-SWA +
+shared-KV), and its dual head dims do not match the older head_dim=128
+QJL/Polar KV assumptions. QJL and TurboQuant KV passes are optional for
+Gemma tiers until revalidated per tier. PolarQuant is a weight recipe,
+not a KV-cache recipe. The shipping Gemma text GGUF currently uses stock
+Q4_K_M weight quantization; if PolarQuant is enabled for a tier, the
+produced GGUF and manifest must prove those bytes are PolarQuant bytes.
 
 The reference implementations and on-device kernels live in
 `packages/native/plugins/{qjl-cpu,polarquant-cpu}`. The Python recipes here

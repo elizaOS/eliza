@@ -1,3 +1,7 @@
+/**
+ * Scroll/flex column that wraps a sidebar's header + content between the shell
+ * frame and the resize edge, carrying the expand/collapse crossfade transition.
+ */
 import * as React from "react";
 import { cn } from "../../../lib/utils";
 import type { SidebarBodyProps } from "./sidebar-types";

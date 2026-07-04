@@ -267,11 +267,20 @@ describe("embeddings — success settles to actual usage exactly once", () => {
     const ACTUAL = 0.003;
     reserveCredits.mockResolvedValue(ledger.reservation);
     embed.mockResolvedValue({ embedding: [0.1, 0.2], usage: { tokens: 5 } });
-    // #10557: billUsage is now called WITHOUT the reservation, so it does NOT
-    // reconcile internally (mirrors the real adapter's `if (reservation)`
-    // guard). The route reconciles via the single first-call-wins settler.
+    // #10557 + #12017: billUsage receives a settler-BACKED view of the
+    // reservation — NEVER the raw reservation — so its internal reconcile
+    // (which the affiliate collected-earnings clamp depends on) routes through
+    // the SAME first-call-wins settler the route owns. Even though billUsage
+    // reconciles internally AND the route then runs its safety-net settle,
+    // the ledger must reconcile exactly ONCE.
     billUsage.mockImplementation(async (_ctx, _usage, reservationArg) => {
-      expect(reservationArg).toBeUndefined();
+      expect(reservationArg).toBeDefined();
+      expect(reservationArg).not.toBe(ledger.reservation);
+      expect(reservationArg.reservedAmount).toBe(
+        ledger.reservation.reservedAmount,
+      );
+      // Mirror the real billUsage: reconcile via the handed-in reservation.
+      await reservationArg.reconcile(ACTUAL);
       return makeBilling(ACTUAL);
     });
 

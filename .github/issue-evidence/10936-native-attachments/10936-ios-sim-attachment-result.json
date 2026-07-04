@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "phase": "complete",
+  "finishedAt": "2026-07-04T01:40:26.572Z",
+  "apiBase": "http://127.0.0.1:31338",
+  "mediaUrl": "/api/media/4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844.png",
+  "mediaFetchUrl": "http://127.0.0.1:31338/api/media/4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844.png",
+  "expectedSha256": "4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844",
+  "servedSha256": "4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844",
+  "readBackSha256": "4b5c5c92cec3b23e6a294fc0eea43234ef5126c5a64f4c6c531ac8430ab0b844",
+  "byteLength": 68,
+  "fileUri": "file:///Users/shawwalters/Library/Developer/CoreSimulator/Devices/F165C3A3-5069-4174-A40C-89F0BCC4B9FB/data/Containers/Data/Application/0C3C1379-83BA-4966-B8CC-1C662D9F00DB/Library/Caches/eliza-ios-attachment-smoke.png",
+  "plugins": {
+    "filesystem": true,
+    "filesystemReadFile": true,
+    "share": true
+  },
+  "share": {
+    "attempted": true,
+    "timedOutWithSheetLikelyOpen": true
+  },
+  "updatedAt": "2026-07-04T01:40:26.572Z",
+  "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-13/packages/app/test-results/ios-attachment-smoke/attachment-result.png",
+  "video": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/wf_f7a1641e-e50-13/packages/app/test-results/ios-attachment-smoke/attachment-smoke.mp4"
+}

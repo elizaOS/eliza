@@ -28,6 +28,7 @@ import platform
 import shutil
 import subprocess
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -126,8 +127,84 @@ def _gpu_info() -> dict[str, Any]:
     return info
 
 
-def log_environment(out_dir: Path | str, *, run_meta: dict[str, Any] | None = None) -> Path:
-    """Write a one-shot env snapshot for the training run."""
+def _sha256_file(path: Path, *, chunk: int = 1 << 20) -> str:
+    """Stream a file through sha256. Raises if the path is not a real file."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fp:
+        while True:
+            block = fp.read(chunk)
+            if not block:
+                break
+            h.update(block)
+    return h.hexdigest()
+
+
+def _hash_paths(paths: Iterable[Path | str] | None) -> dict[str, str]:
+    """sha256 every path that resolves to a local file. Directories are hashed
+    by combining their files' hashes (sorted by relative path) so a tokenizer or
+    checkpoint directory gets one stable digest. Paths that don't exist locally
+    (e.g. a bare HuggingFace repo id) are skipped — reproducibility hashing only
+    covers artifacts actually present on disk for this run."""
+    import hashlib
+
+    out: dict[str, str] = {}
+    for raw in paths or ():
+        p = Path(raw)
+        if p.is_file():
+            out[str(p)] = f"sha256:{_sha256_file(p)}"
+        elif p.is_dir():
+            combined = hashlib.sha256()
+            files = sorted(f for f in p.rglob("*") if f.is_file())
+            for f in files:
+                combined.update(f.relative_to(p).as_posix().encode("utf-8"))
+                combined.update(_sha256_file(f).encode("ascii"))
+            out[str(p)] = f"sha256:{combined.hexdigest()}"
+    return out
+
+
+def _git_head() -> dict[str, Any]:
+    """Capture the training commit for the reproducibility manifest.
+
+    Best-effort: outside a git checkout (or with git absent) the head is
+    reported as a structured field, not an exception.
+    """
+    if not shutil.which("git"):
+        return {"available": False, "reason": "git not on PATH"}
+    out = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
+    if out.returncode != 0:
+        return {"available": False, "reason": out.stderr.strip() or f"exit={out.returncode}"}
+    head = out.stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
+    return {
+        "available": True,
+        "head": head,
+        "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
+    }
+
+
+def log_environment(
+    out_dir: Path | str,
+    *,
+    run_meta: dict[str, Any] | None = None,
+    dataset_files: Iterable[Path | str] | None = None,
+    tokenizer_path: Path | str | None = None,
+    base_checkpoint: Path | str | None = None,
+) -> Path:
+    """Write a one-shot env snapshot for the training run.
+
+    Beyond platform/GPU/torch, this records the AGENTS.md §9 reproducibility
+    manifest: sha256 of every dataset file, the tokenizer artifact hash, the
+    base-checkpoint hash, and the training git commit — so a run can be tied
+    back to the exact inputs that produced it. Hashes only cover artifacts on
+    local disk (a bare HF repo id for the base is skipped, not faked)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     env_path = out / "environment.json"
@@ -137,6 +214,16 @@ def log_environment(out_dir: Path | str, *, run_meta: dict[str, Any] | None = No
         "cwd": os.getcwd(),
         "gpu": _gpu_info(),
         "run_meta": run_meta or {},
+        "reproducibility": {
+            "git": _git_head(),
+            "dataset_hashes": _hash_paths(dataset_files),
+            "tokenizer_hashes": _hash_paths(
+                [tokenizer_path] if tokenizer_path is not None else None
+            ),
+            "base_checkpoint_hashes": _hash_paths(
+                [base_checkpoint] if base_checkpoint is not None else None
+            ),
+        },
         "timestamp": time.time(),
     }
     env_path.write_text(json.dumps(payload, indent=2))
@@ -253,10 +340,17 @@ class InstrumentationCallback:
 
 def make_hf_callback(cfg: InstrumentationConfig):
     """Factory returning a TrainerCallback subclass at call time so this
-    module stays importable when transformers is missing."""
+    module stays importable when transformers is missing.
+
+    ``InstrumentationCallback`` comes FIRST in the base list so its
+    ``on_step_end`` / ``on_train_begin`` / ``on_train_end`` win the MRO.
+    ``TrainerCallback`` defines those as real (no-op) methods, so listing the
+    base first shadowed the instrumentation hooks entirely — the memory-budget
+    breach guard and the tokens/sec trace never fired.
+    """
     from transformers import TrainerCallback
 
-    class _Cb(TrainerCallback, InstrumentationCallback):  # type: ignore[misc]
+    class _Cb(InstrumentationCallback, TrainerCallback):  # type: ignore[misc]
         def __init__(self, cfg: InstrumentationConfig):
             TrainerCallback.__init__(self)
             InstrumentationCallback.__init__(self, cfg)
@@ -264,13 +358,219 @@ def make_hf_callback(cfg: InstrumentationConfig):
     return _Cb(cfg)
 
 
+def assert_finite_step(model: Any, *, step: int, max_reported: int = 5) -> None:
+    """Raise ``RuntimeError`` if any trainable parameter holds a non-finite value.
+
+    Walks ``model.named_parameters()``, checks ``torch.isfinite(p).all()`` on
+    every parameter with ``requires_grad``, and raises naming the first
+    ``max_reported`` offending tensors. This is architecture-agnostic: it fires
+    on the *first* NaN/Inf regardless of root cause (a fused kernel that doesn't
+    model an arch's layer layout, a bad LR, an overflowing fp16 activation),
+    which is exactly the failure mode that let the gemma4_unified 12B run report
+    "complete" while saving an all-NaN checkpoint.
+
+    Cheap by design: one ``isfinite().all()`` reduction per parameter, no host
+    sync of the full tensor. Callers gate the frequency (every ``logging_steps``)
+    so a divergent run dies within one save interval instead of writing a dead
+    checkpoint.
+    """
+    import torch
+
+    offenders: list[str] = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if not torch.isfinite(param).all():
+            offenders.append(name)
+            if len(offenders) >= max_reported:
+                break
+    if offenders:
+        raise RuntimeError(
+            f"non-finite (NaN/Inf) trainable weights at step {step}: "
+            f"{', '.join(offenders)}"
+            + (" …" if len(offenders) >= max_reported else "")
+            + ". Training diverged — aborting before a dead checkpoint is saved."
+        )
+
+
+def assert_finite_loss(loss: Any, *, context: str = "training loss") -> None:
+    """Raise ``RuntimeError`` if a trainer loss tensor is NaN or Inf.
+
+    This guard sits at the loss boundary, before optimizer state or checkpoint
+    bytes can be polluted. It complements :func:`assert_finite_step`, which
+    catches any non-finite trainable weight that appears after a step.
+    """
+    import torch
+
+    if not torch.is_tensor(loss):
+        return
+    if torch.isfinite(loss).all():
+        return
+    detached = loss.detach()
+    if detached.numel() == 1:
+        observed = str(detached.item())
+    else:
+        finite = torch.isfinite(detached)
+        bad_count = int((~finite).sum().item())
+        observed = f"{bad_count}/{detached.numel()} non-finite element(s)"
+    raise RuntimeError(
+        f"non-finite (NaN/Inf) {context}: {observed}. "
+        "Training diverged — aborting before optimizer step or checkpoint save."
+    )
+
+
+def _checkpoint_tensor_files(checkpoint_dir: Path) -> list[Path]:
+    patterns = ("*.safetensors", "*.bin", "*.pt", "*.pth")
+    return sorted(
+        path
+        for pattern in patterns
+        for path in checkpoint_dir.rglob(pattern)
+        if path.is_file()
+    )
+
+
+def _load_checkpoint_tensors(path: Path) -> dict[str, Any]:
+    if path.suffix == ".safetensors":
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:
+            raise RuntimeError(
+                f"cannot scan {path}: safetensors is not installed"
+            ) from exc
+        return load_file(str(path), device="cpu")
+
+    import torch
+
+    try:
+        loaded = torch.load(path, map_location="cpu", weights_only=True)
+    except TypeError:
+        loaded = torch.load(path, map_location="cpu")
+    if isinstance(loaded, dict):
+        return loaded
+    return {"<root>": loaded}
+
+
+def assert_finite_checkpoint(
+    checkpoint_dir: Path | str,
+    *,
+    max_reported: int = 10,
+) -> dict[str, Any]:
+    """Scan a saved checkpoint directory and fail on any non-finite tensor.
+
+    This is the publish-blocking post-train gate for ``run_pipeline.py``:
+    even if a trainer process exits zero, a NaN/Inf tensor in the saved HF
+    checkpoint aborts before benchmark, quantization, or publish stages.
+    """
+    import torch
+
+    root = Path(checkpoint_dir)
+    if not root.is_dir():
+        raise RuntimeError(f"checkpoint finite scan target is not a directory: {root}")
+
+    files = _checkpoint_tensor_files(root)
+    if not files:
+        raise RuntimeError(
+            f"checkpoint finite scan found no tensor shards under {root}"
+        )
+
+    scanned_tensors = 0
+    offenders: list[str] = []
+    for file_path in files:
+        state = _load_checkpoint_tensors(file_path)
+        for name, tensor in state.items():
+            if not torch.is_tensor(tensor):
+                continue
+            scanned_tensors += 1
+            if torch.isfinite(tensor).all():
+                continue
+            finite = torch.isfinite(tensor)
+            bad_count = int((~finite).sum().item())
+            offenders.append(
+                f"{file_path.relative_to(root)}:{name} "
+                f"({bad_count}/{tensor.numel()} non-finite)"
+            )
+            if len(offenders) >= max_reported:
+                break
+        if len(offenders) >= max_reported:
+            break
+
+    if offenders:
+        raise RuntimeError(
+            "non-finite (NaN/Inf) checkpoint tensor(s): "
+            + "; ".join(offenders)
+            + (" …" if len(offenders) >= max_reported else "")
+            + ". Training diverged — aborting before benchmark, quantize, or publish."
+        )
+
+    return {
+        "checkpoint": str(root),
+        "tensor_files": len(files),
+        "tensors": scanned_tensors,
+        "passed": True,
+    }
+
+
+class FiniteWeightsCallback:
+    """HF Trainer callback that hard-fails a divergent run.
+
+    Runs :func:`assert_finite_step` across trainable parameters every
+    ``check_every_steps`` (default: aligned with ``logging_steps``). A run whose
+    weights NaN out dies within one logging interval with an explicit error
+    naming the offending tensors, rather than completing and silently persisting
+    an all-NaN checkpoint. Registered unconditionally — this guard is not gated
+    on the optional memory-budget instrumentation.
+
+    Base-class-free like :class:`InstrumentationCallback`; the concrete
+    ``TrainerCallback`` subclass is built by :func:`make_finite_weights_callback`
+    so this module stays importable without transformers.
+    """
+
+    def __init__(self, check_every_steps: int = 10):
+        self.check_every_steps = max(1, int(check_every_steps))
+        self._last_step = -1
+
+    def on_step_end(self, args, state, control, model=None, **kwargs):
+        step = int(state.global_step)
+        if step == self._last_step:
+            return
+        if step % self.check_every_steps != 0:
+            return
+        self._last_step = step
+        if model is None:
+            return
+        assert_finite_step(model, step=step)
+
+
+def make_finite_weights_callback(check_every_steps: int = 10):
+    """Factory returning a TrainerCallback subclass at call time so this module
+    stays importable when transformers is missing.
+
+    ``FiniteWeightsCallback`` comes FIRST in the base list so its ``on_step_end``
+    wins the MRO — ``TrainerCallback.on_step_end`` is a real (no-op) override, so
+    listing the base first would shadow the guard and it would never fire.
+    """
+    from transformers import TrainerCallback
+
+    class _Cb(FiniteWeightsCallback, TrainerCallback):  # type: ignore[misc]
+        def __init__(self, check_every_steps: int):
+            TrainerCallback.__init__(self)
+            FiniteWeightsCallback.__init__(self, check_every_steps)
+
+    return _Cb(check_every_steps)
+
+
 __all__ = [
+    "FiniteWeightsCallback",
     "GpuMemoryTracker",
     "InstrumentationCallback",
     "InstrumentationConfig",
     "MemorySnapshot",
+    "assert_finite_loss",
+    "assert_finite_checkpoint",
+    "assert_finite_step",
     "gpu_memory",
     "log_environment",
+    "make_finite_weights_callback",
     "make_hf_callback",
     "reset_peak_memory",
 ]

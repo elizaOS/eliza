@@ -1,3 +1,9 @@
+/**
+ * Property tests (fast-check) for `decodePairingPayload`: fuzzes base64/JSON
+ * inputs to confirm it accepts only well-formed pairing payloads and rejects
+ * everything else.
+ */
+
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { decodePairingPayload, type PairingPayload } from "./session-client";

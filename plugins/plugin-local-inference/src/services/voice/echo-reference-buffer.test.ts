@@ -1,3 +1,4 @@
+/** Covers the AEC far-end reference buffer (#9583). Deterministic. */
 import { describe, expect, it } from "vitest";
 import { EchoReferenceBuffer } from "./echo-reference-buffer.ts";
 

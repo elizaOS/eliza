@@ -11,10 +11,9 @@
  *   - mark the turn as interrupted  → mode: "interrupt"
  *   - drop an empty assistant turn  → mode: "drop"
  *
- * Every one of those used to be a hand-rolled `setMessages(prev => prev.map(...))`
- * with subtly different equality checks scattered across `useChatSend.ts`
- * and `useChatCallbacks.ts`. This primitive collapses them into a single
- * map pass that:
+ * This primitive is the single map pass for all six, so `useChatSend.ts` and
+ * `useChatCallbacks.ts` share one equality check instead of each hand-rolling
+ * `setMessages(prev => prev.map(...))`. The map pass:
  *
  *   - matches the target message by id,
  *   - returns the previous array unchanged when the modification produces

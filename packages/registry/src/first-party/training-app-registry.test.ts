@@ -1,3 +1,7 @@
+/**
+ * Verifies the fine-tuning dashboard is exposed as a static app-catalog entry
+ * and resolvable through the first-party registry accessors.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearRegistryCacheForTests,
@@ -47,6 +51,13 @@ describe("training app registry entry", () => {
         routePlugin: {
           specifier: "@elizaos/plugin-training/setup-routes",
           exportName: "trainingPlugin",
+        },
+        // Self-declared runtime-hook: the host drains this through the generic
+        // runtime-hook channel instead of hard-wiring the training specifier in
+        // the boot tail.
+        runtimeHook: {
+          specifier: "@elizaos/plugin-training",
+          exportName: "registerTrainingRuntimeHooks",
         },
       },
     });

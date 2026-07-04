@@ -1,3 +1,7 @@
+/**
+ * Unit tests for Discord text formatting helpers — `escapeDiscordMarkdown`,
+ * `stripDiscordFormatting`, and mention round-tripping. Pure-function assertions.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildMessageLink,

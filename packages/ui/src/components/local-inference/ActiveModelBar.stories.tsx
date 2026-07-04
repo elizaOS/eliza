@@ -1,3 +1,5 @@
+/** Storybook stories for ActiveModelBar — ready, loading, error, busy, and unknown-model states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   ActiveModelState,

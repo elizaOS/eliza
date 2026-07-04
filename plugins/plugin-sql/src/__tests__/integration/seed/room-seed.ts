@@ -1,3 +1,4 @@
+/** Fixture agent/entity/world/room records for the room-store integration tests. */
 import {
   type Agent,
   ChannelType,
@@ -8,14 +9,12 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-// Test IDs
 export const roomTestAgentId = uuidv4() as UUID;
 export const roomTestEntityId = uuidv4() as UUID;
 export const roomTestWorldId = uuidv4() as UUID;
 export const roomTestRoomId = uuidv4() as UUID;
 export const roomTestRoom2Id = uuidv4() as UUID;
 
-// Test data for room integration tests
 export const roomTestAgent: Agent = {
   id: roomTestAgentId,
   name: "Room Test Agent",
@@ -48,7 +47,6 @@ export const roomTestWorld: World = {
   metadata: {},
 };
 
-// Basic room test objects
 export const roomTestRooms: Room[] = [
   {
     id: roomTestRoomId,
@@ -90,7 +88,6 @@ export const roomTestRooms: Room[] = [
   },
 ];
 
-// Helper function to create a modified room for update tests
 export const createModifiedRoom = (room: Room): Room => {
   return {
     ...room,

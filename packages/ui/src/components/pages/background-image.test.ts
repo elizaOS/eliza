@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Unit tests for `fileToBackgroundDataUrl` — the image-to-data-URL conversion
+ * behind the background picker. jsdom decodes no images and has no canvas, so
+ * the harness stubs `Image` (see `FakeImage`) and asserts the pass-through path.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BackgroundImageError,

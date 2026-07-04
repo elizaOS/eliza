@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the command-registration helpers: that the universal command
+ * catalog maps to a well-formed `setMyCommands` payload, one Telegraf handler
+ * per command (never clobbering `eliza_pair`), and role-gated dispatch. Runtime
+ * and `hasRoleAccess` are mocked.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

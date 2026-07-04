@@ -1,3 +1,7 @@
+/**
+ * Inset panel surface for grouped sidebar content, with default/mobile/game-modal
+ * skins. Sits inside the sidebar body to visually bracket a section of items.
+ */
 import { cva } from "class-variance-authority";
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";

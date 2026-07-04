@@ -1,3 +1,11 @@
+/**
+ * Deterministic coverage for the iOS App Store runtime-policy helpers.
+ *
+ * The tests feed synthetic `nm` and string output through the policy parser so
+ * forbidden import families and remediation text stay stable without requiring
+ * a real framework binary.
+ */
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import {

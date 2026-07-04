@@ -74,6 +74,11 @@ import {
 } from "./actions/influencer.js";
 import { listAppDomainsAction } from "./actions/list-app-domains.js";
 import { listCloudAppsAction } from "./actions/list-cloud-apps.js";
+import {
+  draftPressReleaseAction,
+  listPressReleasesAction,
+  submitPressReleaseAction,
+} from "./actions/press-releases.js";
 import { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 import {
   listFrontendDeploymentsAction,
@@ -110,6 +115,11 @@ export {
 } from "./actions/influencer.js";
 export { listAppDomainsAction } from "./actions/list-app-domains.js";
 export { listCloudAppsAction } from "./actions/list-cloud-apps.js";
+export {
+  draftPressReleaseAction,
+  listPressReleasesAction,
+  submitPressReleaseAction,
+} from "./actions/press-releases.js";
 export { regenerateAppApiKeyAction } from "./actions/regenerate-app-api-key.js";
 export {
   listFrontendDeploymentsAction,
@@ -155,6 +165,9 @@ export const cloudAppsPlugin: Plugin = {
     createInfluencerProfileAction,
     listInfluencersAction,
     bookInfluencerAction,
+    draftPressReleaseAction,
+    listPressReleasesAction,
+    submitPressReleaseAction,
     backupAppAction,
     checkAppDomainAction,
     buyAppDomainAction,

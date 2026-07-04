@@ -47,7 +47,9 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 	contextGate: { anyOf: ["connectors", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	// Local plugin runtime state is owner context — preserves the tier the former
+	// name-keyed override map enforced (#12094 item 3).
+	roleGate: { minRole: "OWNER" },
 
 	async get(
 		runtime: IAgentRuntime,

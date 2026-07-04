@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+//
+// HomePill rendering + phase→interaction wiring (label, mark, open/close on
+// click). Deterministic jsdom render via testing-library — no runtime, no model.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

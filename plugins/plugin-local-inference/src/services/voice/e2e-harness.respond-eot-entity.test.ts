@@ -1,3 +1,4 @@
+/** Covers the voice E2E harness EOT / respond / entity-extraction scoring (#9147). Deterministic, fixture inputs. */
 import { describe, expect, it } from "vitest";
 import {
 	type EotDecisionSample,

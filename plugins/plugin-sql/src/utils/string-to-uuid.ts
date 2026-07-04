@@ -1,3 +1,9 @@
+/**
+ * Deterministically derives a v4-shaped UUID from an arbitrary string (or
+ * passes an already-valid UUID through unchanged), so the same input always
+ * maps to the same synthetic ID — e.g. for deriving stable room/world IDs
+ * from a natural key.
+ */
 import type { UUID } from "@elizaos/core";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

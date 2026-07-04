@@ -1,3 +1,9 @@
+/**
+ * Defines and registers the `github_pull_requests` search category so the
+ * runtime's generic search surface can query PRs (by repo, state, author, and
+ * acting identity) through the GitHubService.
+ */
+
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const GITHUB_PULL_REQUESTS_SEARCH_CATEGORY: SearchCategoryRegistration =

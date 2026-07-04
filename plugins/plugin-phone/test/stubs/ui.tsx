@@ -1,3 +1,10 @@
+/**
+ * Test stub for `@elizaos/ui`: minimal stand-ins for the app-shell primitives
+ * the phone components import (Button, host detection, agent-surface, page/app
+ * registration, navigate-view payload) so component tests run without the real
+ * UI package and can seed a navigate-view payload.
+ */
+
 import React from "react";
 
 export type OverlayAppContext = Record<string, unknown>;
@@ -32,17 +39,18 @@ export function registerOverlayApp(): void {}
 
 export function registerAppShellPage(): void {}
 
-// Cross-view phone-number handoff (mirrors @elizaos/ui/app-navigate-view). The
-// phone view consumes a pending number on mount; the tests drive the dialer
-// directly, so the stub simply returns null (no pending handoff).
-export function consumePendingPhoneNumber(): string | null {
-  return null;
+const pendingNavigateViewPayloads = new Map<string, unknown>();
+
+export function __setNavigateViewPayloadForTests(
+  viewId: string,
+  payload: unknown,
+): void {
+  pendingNavigateViewPayloads.set(viewId, payload);
 }
 
-export function consumePendingMessageRecipient(): string | null {
-  return null;
+export function consumeNavigateViewPayload(viewId: string): unknown | null {
+  if (!pendingNavigateViewPayloads.has(viewId)) return null;
+  const payload = pendingNavigateViewPayloads.get(viewId);
+  pendingNavigateViewPayloads.delete(viewId);
+  return payload;
 }
-
-export function navigateToPhoneWithNumber(): void {}
-
-export function navigateToMessagesWithNumber(): void {}

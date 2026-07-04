@@ -1,3 +1,7 @@
+/**
+ * Unit coverage asserting registerAllCloudSurfaces wires every expected cloud
+ * route into the registry. In-memory registry, no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import { registerAllCloudSurfaces } from "./register-all";
 import { listCloudRoutes } from "./shell/cloud-route-registry";

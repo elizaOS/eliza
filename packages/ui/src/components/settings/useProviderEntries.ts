@@ -1,3 +1,10 @@
+/**
+ * Builds the ordered provider list ProviderSwitcher renders — merging enabled
+ * AI-provider plugins, account-managed direct providers, and subscription
+ * selections into a deduped, sorted set of entries with icons and categories.
+ * Also exports the plugin-id normalizer, sorter, and available-id computation.
+ */
+
 import type { SubscriptionProviderStatus } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import { type ComponentType, useCallback, useMemo } from "react";

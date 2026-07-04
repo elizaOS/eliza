@@ -1,3 +1,4 @@
+/** Re-exports common Drizzle query helpers so consumers avoid a direct drizzle-orm version dependency. */
 export {
   and,
   asc,

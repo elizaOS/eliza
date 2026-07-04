@@ -1,3 +1,4 @@
+/** Storybook states for PermissionIcon, one per known icon key plus the unknown-key fallback. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { PermissionIcon } from "./PermissionIcon";
 

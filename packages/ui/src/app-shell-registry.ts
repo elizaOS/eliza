@@ -1,5 +1,10 @@
+/**
+ * Runtime registry of app-shell nav pages: registerAppShellPage / listAppShellPages.
+ * Plugins and the host contribute nav tabs; the shell renders the snapshot.
+ */
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { ComponentType } from "react";
+import { getUiRegistryStore } from "./registry-host";
 
 export type AppShellPageLoader = () => Promise<{
   default: ComponentType<Record<string, unknown>>;
@@ -22,6 +27,11 @@ export interface AppShellPageRegistration {
   icon?: string;
   /** Route path the tab links to. */
   path: string;
+  /**
+   * Optional shell tab id this route activates. Defaults to `id`; use this for
+   * plugin pages that are mounted under an existing built-in tab.
+   */
+  tabAffinity?: string;
   /** Sort priority within the nav (lower = first). Default 100. */
   order?: number;
   /**
@@ -59,25 +69,14 @@ interface AppShellPageRegistryStore {
   version: number;
 }
 
-function appShellPageRegistryKey(): symbol {
-  return Symbol.for("elizaos.app-core.app-shell-page-registry");
-}
+const APP_SHELL_PAGE_REGISTRY_STORE = "app-shell-pages";
 
 function getRegistryStore(): AppShellPageRegistryStore {
-  const globalObject = globalThis as Record<PropertyKey, unknown>;
-  const registryKey = appShellPageRegistryKey();
-  const existing = globalObject[registryKey] as
-    | AppShellPageRegistryStore
-    | null
-    | undefined;
-  if (existing) return existing;
-  const created: AppShellPageRegistryStore = {
+  return getUiRegistryStore(APP_SHELL_PAGE_REGISTRY_STORE, () => ({
     entries: new Map<string, AppShellPageRegistration>(),
-    listeners: new Set(),
+    listeners: new Set<() => void>(),
     version: 0,
-  };
-  globalObject[registryKey] = created;
-  return created;
+  }));
 }
 
 export function registerAppShellPage(
@@ -103,4 +102,56 @@ export function subscribeAppShellPages(listener: () => void): () => void {
 
 export function getAppShellPageRegistrySnapshot(): number {
   return getRegistryStore().version;
+}
+
+/**
+ * A thunk that resolves a host-provided module for view bundles. View bundles
+ * are built with `@elizaos/ui`, `react`, etc. left external; at runtime the
+ * shell resolves each external specifier to the host's own singleton through
+ * this importer so the view shares the host realm.
+ */
+export type HostExternalImporter = () => Promise<Record<string, unknown>>;
+
+function hostExternalImporterRegistryKey(): symbol {
+  return Symbol.for("elizaos.app-core.host-external-importer-registry");
+}
+
+function getHostExternalImporterStore(): Map<string, HostExternalImporter> {
+  const globalObject = globalThis as Record<PropertyKey, unknown>;
+  const registryKey = hostExternalImporterRegistryKey();
+  const existing = globalObject[registryKey] as
+    | Map<string, HostExternalImporter>
+    | undefined;
+  if (existing) return existing;
+  const created = new Map<string, HostExternalImporter>();
+  globalObject[registryKey] = created;
+  return created;
+}
+
+/**
+ * Contribute a host-external importer for a view-bundle specifier the framework
+ * trunk map in `DynamicViewLoader` does not own. This is the extension point
+ * that keeps plugin-specific specifiers (e.g. `@elizaos/plugin-browser`) out of
+ * the shared UI trunk: a plugin app-shell bundle or a build-variant entrypoint
+ * registers its own specifiers, and `DynamicViewLoader` consults this registry
+ * after its framework map. Backed by a global-symbol store so a single registry
+ * is shared even if `@elizaos/ui` is instantiated in more than one chunk.
+ */
+export function registerHostExternalImporter(
+  specifier: string,
+  importer: HostExternalImporter,
+): void {
+  getHostExternalImporterStore().set(specifier, importer);
+}
+
+/** Resolve a registered host-external importer, or `undefined` if none. */
+export function resolveRegisteredHostExternalImporter(
+  specifier: string,
+): HostExternalImporter | undefined {
+  return getHostExternalImporterStore().get(specifier);
+}
+
+/** The specifiers contributed through {@link registerHostExternalImporter}. */
+export function registeredHostExternalSpecifiers(): string[] {
+  return [...getHostExternalImporterStore().keys()];
 }

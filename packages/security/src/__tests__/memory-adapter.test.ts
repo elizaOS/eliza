@@ -1,3 +1,7 @@
+/**
+ * Tests the in-memory KMS adapter's AEAD, HMAC, signing, and rotation contracts.
+ */
+
 import { describe, expect, it } from "vitest";
 import { orgKey, systemKey } from "../kms/key-namespace.js";
 import { MemoryKmsAdapter } from "../kms/memory-adapter.js";

@@ -1,3 +1,9 @@
+/**
+ * Modal confirmation dialog for destructive/irreversible actions, wrapping the
+ * Radix alert-dialog primitives (overlay, content, header/footer, action,
+ * cancel) with the kit's tokens. Unlike the plain Dialog, focus is trapped and
+ * dismissal requires an explicit choice — action styling reuses buttonVariants.
+ */
 "use client";
 
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";

@@ -187,6 +187,62 @@ export interface DesktopHttpRequestResult {
   body?: string | null;
 }
 
+/**
+ * A buffered local-agent request routed over Electrobun RPC (#12180 / #12355).
+ *
+ * `path` is agent-relative (`/api/health`, `/api/messaging/...`), NOT an
+ * absolute URL: local-agent IPC mode has no HTTP origin — the main process
+ * joins the path to the in-process route kernel and never opens a socket. The
+ * renderer's `desktop-local-agent-transport` derives `path` from the
+ * `eliza-local-agent://ipc` api base.
+ */
+export interface LocalAgentRequestOptions {
+  path: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+  timeoutMs?: number;
+}
+
+export interface LocalAgentRequestResult {
+  status: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+}
+
+/**
+ * A streaming local-agent request (chat token SSE) routed over Electrobun RPC.
+ * The main process opens the response with `LocalAgentStreamOpen`, pushes body
+ * chunks as `localAgentStreamChunk` events keyed by `streamId`, and terminates
+ * with a `localAgentStreamEnd` event. Mirrors the mobile native streaming
+ * contract (`createNativeStreamingResponse`) so one renderer streaming adapter
+ * serves every platform.
+ */
+export interface LocalAgentStreamRequestOptions {
+  path: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+}
+
+export interface LocalAgentStreamOpen {
+  streamId: string;
+  status: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+}
+
+export interface LocalAgentStreamChunkEvent {
+  streamId: string;
+  chunk: string;
+}
+
+export interface LocalAgentStreamEndEvent {
+  streamId: string;
+  error?: string;
+}
+
 export interface WindowBounds {
   x: number;
   y: number;
@@ -1600,6 +1656,14 @@ export type ElizaDesktopRPCSchema = {
         params: DesktopHttpRequestOptions;
         response: DesktopHttpRequestResult;
       };
+      localAgentRequest: {
+        params: LocalAgentRequestOptions;
+        response: LocalAgentRequestResult;
+      };
+      localAgentStreamRequest: {
+        params: LocalAgentStreamRequestOptions;
+        response: LocalAgentStreamOpen;
+      };
       desktopOpenLogsFolder: { params: undefined; response: undefined };
       desktopCreateBugReportBundle: {
         params: {
@@ -2349,6 +2413,12 @@ export type ElizaDesktopRPCSchema = {
         token?: string;
         externalApiBase?: string | null;
       };
+
+      // Local-agent IPC streaming push events (#12180 / #12355): a
+      // localAgentStreamRequest response is delivered as an ordered sequence of
+      // chunk events terminated by an end event, all keyed by `streamId`.
+      localAgentStreamChunk: LocalAgentStreamChunkEvent;
+      localAgentStreamEnd: LocalAgentStreamEndEvent;
 
       // Share target
       shareTargetReceived: { url: string; text?: string };

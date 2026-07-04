@@ -1,13 +1,9 @@
 /**
- * Fetches available views from GET /api/views.
+ * Fetches the available views from `GET /api/views` — the primary data source
+ * for Launcher, returning the `ViewRegistryEntry` list.
  *
- * This hook is the primary data source for Launcher. When the
- * /api/views endpoint is live, it will return the full ViewRegistryEntry list.
- * Until then it returns an empty list so Launcher renders gracefully.
- *
- * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
- * Polling can be replaced with a WebSocket subscription when
- * plugins are installed or uninstalled at runtime.
+ * Polls every 30s (the endpoint is a cheap in-memory registry list). An
+ * unreachable endpoint degrades to an empty list so Launcher still renders.
  */
 
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
@@ -72,6 +68,8 @@ export interface ViewRegistryEntry {
   tags?: string[];
   /** Sort priority for launcher/nav surfaces (lower = earlier). */
   order?: number;
+  /** Optional named group shared with app-shell page registrations. */
+  group?: string;
   /**
    * When true, the view only appears when Developer Mode is enabled.
    * Equivalent to `viewKind: "developer"`.
@@ -85,6 +83,12 @@ export interface ViewRegistryEntry {
   viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
+  /**
+   * When true, this view is an internal-tool app the homescreen launcher may
+   * pin. Declared on the owning `ViewDeclaration`; the launcher builds its
+   * pinnable list from this flag instead of a hardcoded package-name table.
+   */
+  pinnable?: boolean;
   /** Named capabilities the view exposes (informational). */
   capabilities?: Array<{ id: string; description: string }>;
   /**
@@ -94,6 +98,12 @@ export interface ViewRegistryEntry {
   builtin?: boolean;
   /** When true, the view can be pinned as a native desktop tab in the Electrobun shell. */
   desktopTabEnabled?: boolean;
+  /**
+   * True when this view is a native device-OS surface that only exists on the
+   * AOSP ElizaOS fork (phone/messages/contacts/camera). Stripped from the view
+   * set on every non-AOSP build. Declared on the owning `ViewDeclaration`.
+   */
+  nativeOs?: boolean;
 }
 
 interface UseAvailableViewsResult {
@@ -113,18 +123,6 @@ interface UseAvailableViewsOptions {
 }
 
 const POLL_INTERVAL_MS = 30_000;
-
-/**
- * Native device-OS surfaces that only exist on the AOSP ElizaOS fork. They are
- * stripped from the routable view set on every other build (web, desktop, iOS,
- * stock Play-Store Android).
- */
-const NATIVE_OS_VIEW_IDS: ReadonlySet<string> = new Set([
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-]);
 
 async function fetchViewList(
   viewType?: "gui" | "tui" | "xr",
@@ -146,6 +144,20 @@ async function fetchViewList(
   const { views } = data as { views: unknown };
   if (!Array.isArray(views)) return [];
   return views as ViewRegistryEntry[];
+}
+
+/**
+ * One-shot fetch of the `/api/views` registry for non-React consumers (the apps
+ * catalog loaders) that need to overlay live plugin ViewDeclaration metadata
+ * onto the internal-tool catalog. Returns an empty list if the endpoint is
+ * unavailable — callers fall back to the static internal-tool declarations.
+ */
+export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
+  try {
+    return await fetchViews();
+  } catch {
+    return [];
+  }
 }
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {
@@ -192,10 +204,8 @@ const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
 // Per-tab Lucide glyph names for the builtin shell views, so each launcher
 // tile renders a DISTINCT icon instead of collapsing onto the generic
-// LayoutGrid fallback (every builtin entry previously shipped no `icon`, so
-// Settings/Files/Tasks all rendered the same 4-square placeholder). Names must
-// exist in ViewIcon's ICONS map; an id with no entry here falls through to the
-// keyword guesser, then LayoutGrid.
+// LayoutGrid fallback. Names must exist in ViewIcon's ICONS map; an id with no
+// entry here falls through to the keyword guesser, then LayoutGrid.
 const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   chat: "MessageSquare",
   phone: "Phone",
@@ -221,6 +231,8 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   trajectories: "Activity",
   transcripts: "FileText",
   relationships: "Network",
+  experience: "GraduationCap",
+  "character-skills": "Sparkles",
   memories: "BrainCircuit",
   rolodex: "UsersRound",
   runtime: "Terminal",
@@ -301,6 +313,7 @@ function appShellPageToViewEntry(
     developerOnly: page.developerOnly,
     viewKind: page.viewKind,
     order: page.order,
+    group: page.group,
     backgroundPolicy: page.backgroundPolicy,
     visibleInManager: true,
     builtin: false,
@@ -415,12 +428,13 @@ export function useAvailableViews(
     resource.status === "success" ? resource.data : EMPTY_VIEWS;
   const views = useMemo(() => {
     const merged = mergeWithAppShellViews(networkViews, appShellViews);
-    // Phone, messages, contacts, and camera are AOSP-ElizaOS-fork-only surfaces
-    // (native device apps). Strip them from the view manager + router everywhere
-    // else — web, desktop, iOS, and stock Play-Store Android — matching the
+    // Native device-OS surfaces (phone, messages, contacts, camera) exist only
+    // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its
+    // `ViewDeclaration`; strip them from the view manager + router on every
+    // non-AOSP build (web, desktop, iOS, stock Play-Store Android), matching the
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
-    return merged.filter((view) => !NATIVE_OS_VIEW_IDS.has(view.id));
+    return merged.filter((view) => !view.nativeOs);
   }, [networkViews, appShellViews]);
 
   return {

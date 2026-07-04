@@ -1,3 +1,9 @@
+/**
+ * Serves the built app SPA (packages/app/dist) with a minimal mock agent API so
+ * the renderer boots to the shell without a live backend. The view-audit
+ * crawlers hit this server to screenshot every view; mocked endpoints return
+ * empty/skeleton data, which is sufficient for layout and spacing review.
+ */
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,10 @@
+/**
+ * The single composite LINEAR action fronting every Linear sub-operation.
+ * Selects a route from an explicit `action` op or a regex match on the message
+ * text, dispatches to the matching sub-action handler, and stamps the result
+ * `data` with the resolved op and routed action name. Promoted to top-level
+ * actions in the plugin entry so each op is also directly callable.
+ */
 import type {
   Action,
   ActionResult,

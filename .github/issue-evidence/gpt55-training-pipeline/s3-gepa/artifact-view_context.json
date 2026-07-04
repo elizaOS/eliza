@@ -1,0 +1,115 @@
+{
+  "task": "view_context",
+  "optimizer": "gepa",
+  "baseline": "You help decide which single app view would be most useful to open for the user. The available views are: calendar, inbox, wallet, finances, todos, goals, health, documents, relationships, focus, none. Read the user's message and tell them which view is most relevant and why.",
+  "prompt": "Select the most relevant view from: calendar, inbox, wallet, finances, todos, goals, health, documents, relationships, focus, none. Return only a JSON object with keys \"viewId\" and \"reason\". No conversational text or markdown.",
+  "baselineScore": 0,
+  "score": 1,
+  "datasetSize": 12,
+  "datasetId": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/s3-gepa/smoke-dataset-view_context.jsonl",
+  "generatedAt": "2026-07-02T23:27:25.806Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is providing descriptive, verbatim summaries of the user's request instead of concise, intent-b…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0,
+      "notes": "seed-compress | tokens=41"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 1,
+      "notes": "seed-feedback | The model is providing overly descriptive, verbatim reasons instead of the concise, summary-style reasons expected. Upd…"
+    },
+    {
+      "round": 0,
+      "variant": 4,
+      "score": 0,
+      "notes": "seed-compress | tokens=37"
+    },
+    {
+      "round": 0,
+      "variant": 5,
+      "score": 1,
+      "notes": "seed-feedback | Failure mode: The model is providing overly literal, descriptive reasons based on the user's phrasing rather than conci…"
+    },
+    {
+      "round": 1,
+      "variant": 3,
+      "score": 1,
+      "notes": "feedback-mut | The model is strictly following the prompt's instruction to use short lowercase phrases, while the expected outputs req…"
+    },
+    {
+      "round": 1,
+      "variant": 4,
+      "score": 1,
+      "notes": "compress-mut | tokens=42"
+    },
+    {
+      "round": 1,
+      "variant": 5,
+      "score": 1,
+      "notes": "feedback-mut | The model is being too literal with the user's phrasing in the reason field instead of generalizing the intent. Update …"
+    },
+    {
+      "round": 2,
+      "variant": 2,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Change the p…"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 0,
+      "notes": "compress-mut | tokens=36"
+    },
+    {
+      "round": 2,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | The failure mode is a lack of specific guidance on the semantic content and phrasing of the reason field. To fix this, …"
+    },
+    {
+      "round": 2,
+      "variant": 5,
+      "score": 1,
+      "notes": "compress-mut | tokens=41"
+    },
+    {
+      "round": 3,
+      "variant": 2,
+      "score": 1,
+      "notes": "feedback-mut | Failure mode: The model is wrapping the JSON in Markdown code blocks and providing overly verbose reasons. Fix: Explici…"
+    },
+    {
+      "round": 3,
+      "variant": 3,
+      "score": 0,
+      "notes": "compress-mut | tokens=36"
+    },
+    {
+      "round": 3,
+      "variant": 4,
+      "score": 1,
+      "notes": "feedback-mut | The model is following the prompt's negative constraint to avoid mentioning the user, but the expected output requires …"
+    },
+    {
+      "round": 3,
+      "variant": 5,
+      "score": 1,
+      "notes": "compress-mut | tokens=41"
+    }
+  ]
+}

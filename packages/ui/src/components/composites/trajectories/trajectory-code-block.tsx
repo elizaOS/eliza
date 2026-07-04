@@ -1,3 +1,8 @@
+/**
+ * Labelled, copyable code block used across the trajectory viewer for prompt
+ * and response payloads. Collapses to a preview past 20 lines with an
+ * expand/collapse toggle and a copy-to-clipboard button.
+ */
 import * as React from "react";
 
 import { Button } from "../../ui/button";

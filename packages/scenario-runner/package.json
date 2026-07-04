@@ -101,7 +101,8 @@
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-xr": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
     "@elizaos/test-harness": "workspace:*",

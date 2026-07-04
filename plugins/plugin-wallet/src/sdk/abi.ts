@@ -1,3 +1,10 @@
+/**
+ * Contract ABIs for the ERC-6551 agent-wallet SDK: `AgentAccountV2Abi` (the
+ * per-agent smart-account implementation — spend policy, operator
+ * authorization, execute/queue/approve, health/activity read functions) and
+ * `AgentAccountFactoryV2Abi` (deploys/looks up an account's address for a
+ * given NFT).
+ */
 export const AgentAccountV2Abi = [
   // ─── Owner Functions ───
   {
@@ -132,7 +139,7 @@ export const AgentAccountV2Abi = [
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
-  // [MAX-ADDED] ABI entries for wallet health check & activity history
+  // ABI entries for wallet health check & activity history
   {
     name: "tokenContract",
     type: "function",

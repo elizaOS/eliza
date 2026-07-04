@@ -451,7 +451,8 @@ function AllDayBandCell({
         const color = paletteFor(event);
         const selected = event.id === selectedEventId;
         return (
-          <button
+          <Button
+            unstyled
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -467,7 +468,7 @@ function AllDayBandCell({
             aria-pressed={selected}
           >
             {event.title}
-          </button>
+          </Button>
         );
       })}
     </fieldset>
@@ -562,7 +563,8 @@ function DayColumnGrid({
         const color = paletteFor(event);
         const isSelected = event.id === selectedEventId;
         return (
-          <button
+          <Button
+            unstyled
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
@@ -595,7 +597,7 @@ function DayColumnGrid({
                 </>
               ) : null}
             </div>
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -802,7 +804,8 @@ function MonthGrid({
                   const color = paletteFor(event);
                   const isSelected = event.id === selectedEventId;
                   return (
-                    <button
+                    <Button
+                      unstyled
                       key={event.id}
                       type="button"
                       onClick={() => onSelectEvent(event)}
@@ -826,18 +829,19 @@ function MonthGrid({
                       <span className="min-w-0 flex-1 truncate">
                         {event.title}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
                 {dayEvents.length > 3 ? (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <button
+                      <Button
+                        unstyled
                         type="button"
                         className="px-1 text-left text-[10px] font-medium text-muted hover:text-txt"
                       >
                         +{dayEvents.length - 3} more
-                      </button>
+                      </Button>
                     </PopoverTrigger>
                     <PopoverContent
                       align="start"
@@ -851,7 +855,8 @@ function MonthGrid({
                         {dayEvents.map((event) => {
                           const overflowColor = paletteFor(event);
                           return (
-                            <button
+                            <Button
+                              unstyled
                               key={`overflow-${event.id}`}
                               type="button"
                               onClick={() => onSelectEvent(event)}
@@ -872,7 +877,7 @@ function MonthGrid({
                                     : formatTimeOfDay(event.startAt)}
                                 </span>
                               </span>
-                            </button>
+                            </Button>
                           );
                         })}
                       </div>
@@ -907,7 +912,8 @@ function AgendaEventButton({
     description: `Open the event ${event.title}`,
   });
   return (
-    <button
+    <Button
+      unstyled
       ref={ref}
       type="button"
       onClick={() => onSelectEvent(event)}
@@ -934,7 +940,7 @@ function AgendaEventButton({
           {formatAgendaEventMeta(event)}
         </span>
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -1161,7 +1167,8 @@ export function CalendarSection({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex overflow-hidden">
-              <button
+              <Button
+                unstyled
                 ref={prevNav.ref}
                 type="button"
                 className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
@@ -1172,8 +1179,9 @@ export function CalendarSection({
                 {...prevNav.agentProps}
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden />
-              </button>
-              <button
+              </Button>
+              <Button
+                unstyled
                 ref={todayNav.ref}
                 type="button"
                 className="h-8 px-2.5 text-xs font-medium text-txt hover:text-accent"
@@ -1181,8 +1189,9 @@ export function CalendarSection({
                 {...todayNav.agentProps}
               >
                 {t("lifeopsCalendar.today", { defaultValue: "Today" })}
-              </button>
-              <button
+              </Button>
+              <Button
+                unstyled
                 ref={nextNav.ref}
                 type="button"
                 className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
@@ -1193,7 +1202,7 @@ export function CalendarSection({
                 {...nextNav.agentProps}
               >
                 <ChevronRight className="h-4 w-4" aria-hidden />
-              </button>
+              </Button>
             </div>
             <h2 className="min-w-0 text-sm font-semibold text-txt sm:text-base">
               {rangeLabel}

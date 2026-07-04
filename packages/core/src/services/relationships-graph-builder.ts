@@ -1,3 +1,4 @@
+import { getCloudAuthService } from "../cloud-auth-service";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -7,6 +8,7 @@ import type {
 	Room,
 	UUID,
 } from "../types/index";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source";
 import { asRecord } from "../utils/type-guards.ts";
 
 /** Aligns with `MergeCandidateEvidence` in `relationships.ts` (kept here to avoid a circular import). */
@@ -381,7 +383,7 @@ function normalizePlatform(platform: string): string {
 function normalizeProfileSource(source: string): string {
 	const normalized = source.trim().toLowerCase();
 	if (normalized === "clientchat") {
-		return "client_chat";
+		return MESSAGE_SOURCE_CLIENT_CHAT;
 	}
 	if (normalized === "eliza-cloud") {
 		return "elizacloud";
@@ -1248,7 +1250,7 @@ function buildSummaries(
 		if (isOwner && ownerInfo.ownerEntityId) {
 			upsertProfile(profiles, {
 				entityId: ownerInfo.ownerEntityId,
-				source: "client_chat",
+				source: MESSAGE_SOURCE_CLIENT_CHAT,
 				userId: ownerInfo.ownerEntityId,
 				displayName,
 				canonical: true,
@@ -2140,9 +2142,7 @@ async function buildGraphModel(
 	const ownerEntityId = (await resolvers
 		.resolveOwnerEntityId(runtime)
 		.catch(() => null)) as UUID | null;
-	const cloudAuth = runtime.getService("CLOUD_AUTH") as {
-		getUserId?: () => string | undefined;
-	} | null;
+	const cloudAuth = getCloudAuthService(runtime);
 	const cloudUserId = asString(cloudAuth?.getUserId?.()) ?? null;
 	const configuredOwnerName = await resolvers
 		.fetchConfiguredOwnerName()

@@ -1,3 +1,10 @@
+/**
+ * Catalog and confirmation rules for connector-account attributes: the privacy
+ * levels, purposes/roles, and plugin-managed mode metadata rendered by the
+ * account selectors, plus the single source of truth for when a privacy
+ * escalation or owner-role promotion requires typed/explicit confirmation.
+ */
+
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountPrivacy,
@@ -86,6 +93,24 @@ export const CONNECTOR_PRIVACY_TYPED_CONFIRMATION = "SHARE";
 export const CONNECTOR_PRIVACY_PUBLIC_CONFIRMATION = "PUBLIC";
 export const CONNECTOR_OWNER_ROLE_CONFIRMATION = "OWNER";
 
+/**
+ * Static fallback catalog of plugin-managed connector account options (#12087
+ * Item 10).
+ *
+ * @deprecated This hardcodes each connector's `defaultRole` / `defaultPurpose` /
+ * `supportsOAuth` in the client. The authoritative home for that metadata is the
+ * server connector catalog, but `GET /api/connectors` currently returns only the
+ * configured-connector records (`listVisibleConnectors` in
+ * `packages/agent/src/api/connector-routes.ts`) — it does NOT yet expose
+ * `defaultRole` / `defaultPurpose` / `supportsOAuth`. Until the catalog carries
+ * those fields, this typed constant is the documented single fallback the UI
+ * reads through {@link getConnectorPluginManagedAccountOption}.
+ *
+ * TODO(#12087 Item 10): extend the server connector catalog to project
+ * `defaultRole` / `defaultPurpose` / `supportsOAuth` per connector, have the UI
+ * read that catalog, and collapse this map to a last-resort default for
+ * connectors the catalog has not yet described.
+ */
 export const CONNECTOR_PLUGIN_MANAGED_ACCOUNT_OPTIONS: readonly ConnectorPluginManagedAccountOption[] =
   [
     {

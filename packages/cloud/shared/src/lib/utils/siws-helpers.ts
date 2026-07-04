@@ -41,16 +41,62 @@ export interface SiwsMessage {
   notBefore?: Date;
 }
 
+/**
+ * The `uri` + `chainId` the server issued alongside a SIWS nonce, bound at
+ * issuance and re-checked at verify (EIP-4361 completeness — see siwe-helpers).
+ * SIWS `chainId` is a string (e.g. `solana:mainnet`), not a number.
+ */
+export interface SiwsNonceBinding {
+  uri: string;
+  chainId: string;
+}
+
 function randomNonceHex(): string {
   const arr = new Uint8Array(NONCE_BYTES);
   crypto.getRandomValues(arr);
   return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function issueSiwsNonce(redis: CompatibleRedis): Promise<string> {
+export async function issueSiwsNonce(
+  redis: CompatibleRedis,
+  binding: SiwsNonceBinding,
+): Promise<string> {
   const nonce = randomNonceHex();
-  await redis.setex(CacheKeys.siws.nonce(nonce), CacheTTL.siws.nonce, "1");
+  await redis.setex(CacheKeys.siws.nonce(nonce), CacheTTL.siws.nonce, JSON.stringify(binding));
   return nonce;
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Non-destructively read the `uri`/`chainId` bound to a SIWS nonce. Returns null
+ * for absent or legacy (binding-less) nonces, which then skip the uri/chainId
+ * assertions — preserving prior behavior for in-flight nonces after a deploy.
+ */
+export async function readSiwsNonceBinding(
+  redis: CompatibleRedis,
+  nonce: string,
+): Promise<SiwsNonceBinding | null> {
+  const value = await redis.get<string>(CacheKeys.siws.nonce(nonce));
+  if (value === null || value === undefined) return null;
+  const parsed: unknown = typeof value === "string" ? safeJsonParse(value) : value;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "uri" in parsed &&
+    "chainId" in parsed &&
+    typeof (parsed as SiwsNonceBinding).uri === "string" &&
+    typeof (parsed as SiwsNonceBinding).chainId === "string"
+  ) {
+    return { uri: (parsed as SiwsNonceBinding).uri, chainId: (parsed as SiwsNonceBinding).chainId };
+  }
+  return null;
 }
 
 async function consumeSiwsNonce(redis: CompatibleRedis, nonce: string): Promise<boolean> {
@@ -170,12 +216,27 @@ export function validateSIWSMessage(
   message: string,
   signatureBase58: string,
   expectedHost: string,
+  expected?: SiwsNonceBinding | null,
 ): { address: string; parsed: SiwsMessage } {
   const parsed = parseSiwsMessage(message);
   if (parsed.domain !== expectedHost) {
     throw new Error(
       `SIWS domain does not match app host: got ${parsed.domain}, expected ${expectedHost}`,
     );
+  }
+  // EIP-4361 completeness: signed uri/chainId must match the server-issued
+  // values bound to the nonce (see siwe-helpers for rationale).
+  if (expected) {
+    if (parsed.uri !== expected.uri) {
+      throw new Error(
+        `SIWS uri does not match the server-issued uri: got ${parsed.uri}, expected ${expected.uri}`,
+      );
+    }
+    if (parsed.chainId !== expected.chainId) {
+      throw new Error(
+        `SIWS chainId does not match the server-issued chainId: got ${parsed.chainId}, expected ${expected.chainId}`,
+      );
+    }
   }
   const now = Date.now();
   if (parsed.expirationTime && parsed.expirationTime.getTime() <= now) {
@@ -207,7 +268,11 @@ export async function validateAndConsumeSIWS(
   signatureBase58: string,
   expectedHost: string,
 ): Promise<{ address: string; parsed: SiwsMessage }> {
-  const result = validateSIWSMessage(message, signatureBase58, expectedHost);
+  // Peek the nonce binding before validation; consume (getdel) only after full
+  // validation so an invalid request does not burn the nonce.
+  const nonceFromMessage = parseSiwsMessage(message).nonce;
+  const binding = nonceFromMessage ? await readSiwsNonceBinding(redis, nonceFromMessage) : null;
+  const result = validateSIWSMessage(message, signatureBase58, expectedHost, binding);
   const consumed = await consumeSiwsNonce(redis, result.parsed.nonce);
   if (!consumed) {
     throw new Error("SIWS nonce invalid or already used");

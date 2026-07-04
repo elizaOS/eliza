@@ -1,3 +1,7 @@
+/**
+ * Validation and limits for chat image/media attachments: mime allowlist, base64/
+ * raw size caps, name length, and attachment count.
+ */
 import {
   CHAT_IMAGE_MIME_TYPE_SET,
   CHAT_UPLOAD_MIME_TYPE_SET,

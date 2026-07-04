@@ -1,3 +1,6 @@
+/**
+ * Browser shim for fast-redact so the stories app can bundle a redaction call without the Node build.
+ */
 type FastRedactOptions = {
   paths?: string[];
   serialize?: false | ((value: unknown) => string);

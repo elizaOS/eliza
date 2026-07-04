@@ -1,14 +1,7 @@
-import type {
-  CodingAgentTaskEventRecord,
-  CodingAgentTaskMessageRecord,
-} from "@elizaos/ui";
+import { Button } from "@elizaos/ui/components/ui/button";
 import {
   Check,
   ChevronRight,
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  CircleStop,
   CircleX,
   FilePen,
   FilePlus,
@@ -16,7 +9,6 @@ import {
   Globe,
   Loader,
   type LucideIcon,
-  OctagonX,
   Search,
   Terminal,
   Wrench,
@@ -260,7 +252,8 @@ function ToolCallCard({
       className="rounded-md border border-border/50 bg-card/50"
       data-testid="orchestrator-tool-call"
     >
-      <button
+      <Button
+        unstyled
         type="button"
         disabled={!hasBody}
         onClick={() => {
@@ -306,7 +299,7 @@ function ToolCallCard({
             {meta.join(" · ")}
           </span>
         ) : null}
-      </button>
+      </Button>
       {open ? (
         <div className="px-2.5 pb-2">{<ToolBody tool={tool} />}</div>
       ) : null}

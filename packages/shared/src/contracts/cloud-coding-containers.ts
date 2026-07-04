@@ -1,4 +1,11 @@
+/**
+ * API contract for Cloud coding-container requests: the container service type
+ * and the schema of coding agents a request may select (claude/codex/opencode/
+ * elizaos). Shared so the Cloud API and its callers validate the same enum.
+ */
 import z from "zod";
+
+export const CLOUD_CONTAINER_SERVICE_TYPE = "CLOUD_CONTAINER";
 
 // `elizaos` = the elizaOS-owned coding sub-agent (eliza-code, runtime +
 // plugin-coding-tools + orchestrator). It resolves to the `eliza-code-acp` bin
@@ -235,4 +242,17 @@ export interface SyncCloudCodingContainerResponse {
   success: boolean;
   data: CloudCodingSyncResult;
   message?: string;
+}
+
+export interface CloudCodingContainerService {
+  promoteVfsToCloudContainer(
+    request: PromoteVfsToCloudContainerRequest,
+  ): Promise<PromoteVfsToCloudContainerResponse>;
+  requestCodingAgentContainer(
+    request: RequestCodingAgentContainerRequest,
+  ): Promise<RequestCodingAgentContainerResponse>;
+  syncCodingContainerChanges(
+    containerId: string,
+    request: SyncCloudCodingContainerRequest,
+  ): Promise<SyncCloudCodingContainerResponse>;
 }

@@ -1,4 +1,8 @@
 import { logger } from "./logger";
+// Type-only (erased at runtime, so no cycle with roles.ts, which imports
+// createUniqueUuid from this module). The role-resolution values are pulled via a
+// dynamic import at call time in resolveTrustedComponentSourceIds.
+import type { RolesWorldMetadata } from "./roles";
 import {
 	type Entity,
 	type IAgentRuntime,
@@ -17,6 +21,51 @@ type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
 	name?: string;
 	data: string;
 };
+
+/**
+ * #12087 Item 16: component-visibility filtering used to trust the raw
+ * `world.metadata.roles[sourceEntityId]` literal (OWNER/ADMIN → visible). That
+ * bypassed resolveEntityRole's demotion rules — a stored OWNER grant is demoted
+ * to GUEST under a configured canonical owner, and connector-admin roles can be
+ * revoked — so a stale OWNER grant kept another entity's components trusted.
+ * Batch-resolve each source entity's effective role once (resolveEntityRole is
+ * async) before the synchronous component filter, and trust only resolved
+ * ADMIN-or-higher. Returns the set of source entity ids whose components are
+ * trusted for this world.
+ */
+export async function resolveTrustedComponentSourceIds(
+	runtime: IAgentRuntime,
+	world: World | null,
+	components: NonNullable<Entity["components"]>,
+): Promise<Set<string>> {
+	const trusted = new Set<string>();
+	if (!world) return trusted;
+
+	const sourceIds = new Set<string>();
+	for (const component of components) {
+		if (component.sourceEntityId) {
+			sourceIds.add(component.sourceEntityId);
+		}
+	}
+	if (sourceIds.size === 0) return trusted;
+
+	const { resolveEntityRole, isAdminRank } = await import("./roles");
+	const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+	await Promise.all(
+		[...sourceIds].map(async (sourceEntityId) => {
+			const role = await resolveEntityRole(
+				runtime,
+				world,
+				metadata,
+				sourceEntityId,
+			);
+			if (isAdminRank(role)) {
+				trusted.add(sourceEntityId);
+			}
+		}),
+	);
+	return trusted;
+}
 
 const MAX_ENTITY_DISPLAY_NAMES = 8;
 const MAX_ENTITY_DISPLAY_COUNT = 10;
@@ -249,19 +298,21 @@ export async function findEntityByName(
 		entitiesInRoom.map(async (entity) => {
 			if (!entity.components) return entity;
 
-			const worldMetadata = world?.metadata;
-			const worldRoles = worldMetadata?.roles || {};
+			const trustedSourceIds = await resolveTrustedComponentSourceIds(
+				runtime,
+				world,
+				entity.components,
+			);
 
 			entity.components = entity.components.filter((component) => {
 				if (component.sourceEntityId === message.entityId) return true;
-
-				if (world && component.sourceEntityId) {
-					const sourceRole = worldRoles[component.sourceEntityId];
-					if (sourceRole === "OWNER" || sourceRole === "ADMIN") return true;
+				if (
+					component.sourceEntityId &&
+					trustedSourceIds.has(component.sourceEntityId)
+				) {
+					return true;
 				}
-
 				if (component.sourceEntityId === runtime.agentId) return true;
-
 				return false;
 			});
 
@@ -331,13 +382,18 @@ export async function findEntityByName(
 		const entity = await runtime.getEntityById(resolution.entityId as UUID);
 		if (entity) {
 			if (entity.components) {
-				const worldMetadata = world?.metadata;
-				const worldRoles = worldMetadata?.roles || {};
+				const trustedSourceIds = await resolveTrustedComponentSourceIds(
+					runtime,
+					world,
+					entity.components,
+				);
 				entity.components = entity.components.filter((component) => {
 					if (component.sourceEntityId === message.entityId) return true;
-					if (world && component.sourceEntityId) {
-						const sourceRole = worldRoles[component.sourceEntityId];
-						if (sourceRole === "OWNER" || sourceRole === "ADMIN") return true;
+					if (
+						component.sourceEntityId &&
+						trustedSourceIds.has(component.sourceEntityId)
+					) {
+						return true;
 					}
 					if (component.sourceEntityId === runtime.agentId) return true;
 					return false;

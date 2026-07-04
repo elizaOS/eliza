@@ -1,3 +1,9 @@
+/**
+ * Master `ElizaConfig` shape — the top-level configuration object (~47 named
+ * sections: agents, gateway, models, memory, TTS, auth, deployment, …) that the
+ * whole stack reads. Composes the per-domain sub-type modules in this directory;
+ * `zod-schema.*` validate instances of this shape at runtime boundaries.
+ */
 import type {
   RolesConfig,
   SessionConfig,

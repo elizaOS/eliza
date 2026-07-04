@@ -1,8 +1,6 @@
 /**
- * view-event-types.ts
- *
- * Standard event type string constants for the view event bus.
- * Import these instead of using raw strings to avoid typos and aid refactors.
+ * Standard event-type string constants for the view event bus. Import these
+ * instead of raw strings so event names stay typo-proof and greppable.
  */
 
 export const VIEW_EVENTS = {

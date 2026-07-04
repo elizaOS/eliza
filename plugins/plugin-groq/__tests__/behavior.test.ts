@@ -1,3 +1,8 @@
+/**
+ * Behavior tests for the Groq plugin: init key requirement, model-handler
+ * registration, and retry classification, against a stubbed runtime and mocked
+ * globals (no live Groq API).
+ */
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import groqPlugin, { classifyRetryError } from "../index";

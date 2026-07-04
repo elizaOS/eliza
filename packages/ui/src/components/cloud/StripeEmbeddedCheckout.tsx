@@ -1,3 +1,10 @@
+/**
+ * Mounts Stripe's Embedded Checkout for a given publishable key + client secret.
+ * Lazily loads `https://js.stripe.com/v3/` once (deduped via a module-level
+ * promise and a marker script tag), initializes the embedded checkout, and
+ * mounts it into a container ref. Surfaces load/init failures inline and tears
+ * the checkout down on unmount.
+ */
 import { useEffect, useRef, useState } from "react";
 
 interface StripeEmbeddedCheckoutProps {

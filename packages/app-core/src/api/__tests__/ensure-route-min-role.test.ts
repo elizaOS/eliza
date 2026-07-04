@@ -1,7 +1,7 @@
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ensureRouteMinRole } from "../auth.js";
+import { ensureRouteAuthorized, ensureRouteMinRole } from "../auth.js";
 
 const mocks = vi.hoisted(() => {
   vi.resetModules();
@@ -186,6 +186,23 @@ describe("ensureRouteMinRole", () => {
     expect(res.status()).toBe(200);
   });
 
+  it("uses the same resolver for plain authenticated route gates", async () => {
+    mocks.findActiveSession.mockResolvedValue(
+      makeSession({ id: "machine-session", kind: "machine" }),
+    );
+    mocks.findIdentity.mockResolvedValue(makeIdentity("machine"));
+    const req = makeReq({
+      headers: { authorization: "Bearer machine-session" },
+    });
+    const res = fakeRes();
+
+    await expect(
+      ensureRouteAuthorized(req, res.res, STATE_WITH_DB),
+    ).resolves.toBe(true);
+    expect(res.status()).toBe(200);
+    expect(mocks.findIdentity).toHaveBeenCalledWith("identity-id");
+  });
+
   it("preserves CSRF rejection before role checks on cookie writes", async () => {
     mocks.findActiveSession.mockResolvedValue(makeSession());
     mocks.verifyCsrfToken.mockReturnValue(false);
@@ -201,6 +218,22 @@ describe("ensureRouteMinRole", () => {
     expect(res.status()).toBe(403);
     expect(res.json()).toEqual({ error: "csrf_required" });
     expect(mocks.findIdentity).not.toHaveBeenCalled();
+  });
+
+  it("preserves CSRF rejection for plain authenticated route gates", async () => {
+    mocks.findActiveSession.mockResolvedValue(makeSession());
+    mocks.verifyCsrfToken.mockReturnValue(false);
+    const req = makeReq({
+      method: "POST",
+      headers: { cookie: "eliza_session=owner-session" },
+    });
+    const res = fakeRes();
+
+    await expect(
+      ensureRouteAuthorized(req, res.res, STATE_WITH_DB),
+    ).resolves.toBe(false);
+    expect(res.status()).toBe(403);
+    expect(res.json()).toEqual({ error: "csrf_required" });
   });
 
   it("keeps Android local-auth API token compatibility as OWNER", async () => {

@@ -1,4 +1,8 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import {
+	replaceIndexedNameTokens,
+	replaceNameTokens,
+} from "../../../name-tokens.ts";
 import { buildCanonicalSystemPrompt } from "../../../runtime/system-prompt.ts";
 import { getTrajectoryContext } from "../../../trajectory-context.ts";
 import type {
@@ -24,18 +28,10 @@ function resolveCharacterPlaceholders(
 	agentName: string,
 	exampleNames: string[] = [],
 ): string {
-	let resolved = (text ?? "")
-		.replaceAll("{{agentName}}", agentName)
-		.replaceAll("{{name}}", agentName);
-
-	exampleNames.forEach((name, index) => {
-		const slot = index + 1;
-		resolved = resolved
-			.replaceAll(`{{name${slot}}}`, name)
-			.replaceAll(`{{user${slot}}}`, name);
-	});
-
-	return resolved;
+	return replaceIndexedNameTokens(
+		replaceNameTokens(text ?? "", agentName),
+		exampleNames,
+	);
 }
 
 function resolveCharacterList(
@@ -120,16 +116,23 @@ export const characterProvider: Provider = {
 		// Write a post that is {{Spartan is dirty}} about {{Spartan is currently}}
 		const topic = topicString || "";
 
-		// Format topics list
-		const topics =
+		// Format topics list. Sample the OTHER topics first — when the picked
+		// topicString is the only topic, the filtered list is empty and the
+		// sentence must be omitted entirely instead of rendering the dangling
+		// fragment "X is also interested in ".
+		const otherTopics =
 			character.topics && character.topics.length > 0
-				? `${agentName} is also interested in ${deterministicSample(
+				? deterministicSample(
 						resolveCharacterList(character.topics, agentName).filter(
 							(topic: string) => topic !== topicString,
 						),
 						5,
 						buildDeterministicSeed(characterSeed, "topics"),
 					)
+				: [];
+		const topics =
+			otherTopics.length > 0
+				? `${agentName} is also interested in ${otherTopics
 						.map((topic, index, array) => {
 							if (index === array.length - 2) {
 								return `${topic} and `;

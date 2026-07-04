@@ -1,3 +1,15 @@
+/**
+ * Three related tables backing entity identity resolution and fact refinement.
+ * `entityIdentityTable` holds a strengthened (platform, handle) claim attached
+ * to an entity; re-observations of the same pair bump confidence and append to
+ * `evidenceMessageIds` rather than producing duplicate rows, enforced by a
+ * unique constraint on (entityId, platform, handle, agentId).
+ * `entityMergeCandidateTable` holds proposed merges between two entities
+ * pending accept/reject. `factCandidateTable` holds pending fact
+ * contradiction/merge proposals surfaced by the FactRefinementEvaluator; the
+ * Facts tab in the UI lets users accept or reject these. All three cascade
+ * delete with their referenced entity/agent rows.
+ */
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -14,11 +26,6 @@ import {
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 
-/**
- * Strengthened (platform, handle) claim attached to an entity. Re-observations
- * of the same pair bump confidence and append to evidence_message_ids rather
- * than producing duplicate rows.
- */
 export const entityIdentityTable = pgTable(
   "entity_identities",
   {

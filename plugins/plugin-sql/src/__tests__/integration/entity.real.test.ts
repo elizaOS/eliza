@@ -1,3 +1,8 @@
+/**
+ * Integration tests for entity create/get/update against a real isolated
+ * PGlite/Postgres adapter (`createIsolatedTestDatabase`), covering
+ * multi-entity batches, multi-name aliasing, and default metadata.
+ */
 import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";

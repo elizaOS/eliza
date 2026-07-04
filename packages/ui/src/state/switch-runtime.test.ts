@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Non-destructive runtime switching (`switch-runtime`): repointing the client
+ * base URL / token, updating the active agent profile, and clearing composer
+ * drafts on switch. jsdom with the API client, profile registry, and platform
+ * probes mocked — no live agent.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentProfile } from "./agent-profile-types";

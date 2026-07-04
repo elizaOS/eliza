@@ -1,3 +1,4 @@
+/** Verifies `resolveLocalInferenceLoadArgs` sizes the context window to the hardware probe's RAM across model sizes. Deterministic, synthetic probes. */
 import { describe, expect, it } from "vitest";
 import { resolveLocalInferenceLoadArgs } from "./active-model";
 import type { HardwareProbe, InstalledModel } from "./types";

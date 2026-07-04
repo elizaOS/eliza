@@ -88,6 +88,15 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(actions[0]?.name).toBe("TASKS");
   });
 
+  it("declares its TTS plugin dependency instead of relying on host name-pair injection", {
+    timeout: SLOW,
+  }, async () => {
+    const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
+    expect(agentOrchestratorPlugin.dependencies).toContain(
+      "@elizaos/plugin-edge-tts",
+    );
+  });
+
   it("registers completion and failure response evaluators under supported direct builds", {
     timeout: SLOW,
   }, async () => {

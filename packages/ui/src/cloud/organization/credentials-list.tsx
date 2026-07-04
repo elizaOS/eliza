@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
   Switch,
 } from "../../cloud-ui";
+import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   POOLED_PROVIDER_LABELS,
@@ -213,7 +214,8 @@ export function CredentialsList({
                 {canDelete && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <button
+                      <Button
+                        variant="ghost"
                         type="button"
                         aria-label={t("cloud.credentialsList.removeLabel", {
                           label: credential.label,
@@ -222,7 +224,7 @@ export function CredentialsList({
                         className="p-2 hover:bg-white/5 transition-colors border border-white/10"
                       >
                         <Trash2 className="h-4 w-4 text-[#EB4335]" />
-                      </button>
+                      </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
                       <AlertDialogHeader>

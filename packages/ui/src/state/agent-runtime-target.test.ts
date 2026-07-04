@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for runtime-target inference from a persisted active-server
+ * record and the local-API-base predicate. Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   inferAgentRuntimeTarget,

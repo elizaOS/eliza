@@ -43,7 +43,7 @@
     ]
   },
   "limits": {
-    "asUnknownAs": 75,
+    "asUnknownAs": 73,
     "asAny": 0,
     "explicitAny": 124,
     "tsSuppress": 0,

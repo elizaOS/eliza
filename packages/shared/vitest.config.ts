@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/shared, extending the repo default config rooted at this package. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

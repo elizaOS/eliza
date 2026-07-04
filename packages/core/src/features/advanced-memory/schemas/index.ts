@@ -9,6 +9,9 @@ export { longTermMemories } from "./long-term-memories";
 export { memoryAccessLogs } from "./memory-access-logs";
 export { sessionSummaries } from "./session-summaries";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -18,14 +21,8 @@ import { longTermMemories as _bs_1_longTermMemories } from "./long-term-memories
 import { memoryAccessLogs as _bs_2_memoryAccessLogs } from "./memory-access-logs";
 import { sessionSummaries as _bs_3_sessionSummaries } from "./session-summaries";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__ = [
+anchorBundleSafety("FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX", [
 	_bs_1_longTermMemories,
 	_bs_2_memoryAccessLogs,
 	_bs_3_sessionSummaries,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__ =
-	__bundle_safety_FEATURES_ADVANCED_MEMORY_SCHEMAS_INDEX__;
+]);

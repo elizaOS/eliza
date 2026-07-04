@@ -1,3 +1,7 @@
+/**
+ * Live-lane scenario: a real LLM answers "what apps do I have?" against the
+ * Eliza Cloud Apps read surface. Needs live model credentials (live-only lane).
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 

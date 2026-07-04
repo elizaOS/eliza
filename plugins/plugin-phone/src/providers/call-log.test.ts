@@ -1,3 +1,9 @@
+/**
+ * Tests the phoneCallLog provider over a mocked `@elizaos/capacitor-phone`
+ * bridge: asserts the projected `{ count, items }` result and the empty-log
+ * case, without touching the native call log.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const phoneBridge = vi.hoisted(() => ({

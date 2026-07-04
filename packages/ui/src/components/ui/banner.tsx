@@ -1,3 +1,9 @@
+/**
+ * Full-width inline notification strip with a leading severity icon and an
+ * optional dismiss button. cva variants (error/warning/info) map to the
+ * destructive/warn/accent tokens; unlike the modal Alert dialog this is a
+ * non-blocking banner rendered inside page flow.
+ */
 import { cva, type VariantProps } from "class-variance-authority";
 import { AlertTriangle, Info, type LucideIcon, X, XCircle } from "lucide-react";
 import * as React from "react";

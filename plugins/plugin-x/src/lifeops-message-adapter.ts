@@ -1,3 +1,10 @@
+/**
+ * `XDmAdapter` — a LifeOps `BaseMessageAdapter` over the X connector's direct
+ * messages, letting LifeOps list, draft, and send X DMs through `XService`. Maps
+ * plugin-x DM memories to the LifeOps `MessageRef` shape and surfaces send failures
+ * rather than fabricating success. Built into `dist` as its own tsup entry so
+ * LifeOps can import it without the full plugin runtime.
+ */
 import {
   BaseMessageAdapter,
   type DraftRequest,

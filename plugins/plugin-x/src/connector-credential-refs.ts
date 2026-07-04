@@ -1,3 +1,9 @@
+/**
+ * Reads and writes X OAuth token sets against the core ConnectorAccountManager's
+ * credential store, so OAuth 2.0 tokens survive restarts alongside the connector
+ * account record. The persistence backend behind `ConnectorAccountTokenStore`
+ * (`client/auth-providers/token-store.ts`).
+ */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccount,
@@ -465,7 +471,11 @@ function resolveVaultWriters(
         await secrets.set?.(
           vaultRef,
           credential.value,
-          { level: "global", agentId: runtime.agentId },
+          {
+            level: "global",
+            agentId: runtime.agentId,
+            requesterId: runtime.agentId,
+          },
           { sensitive: true },
         );
         return vaultRef;
@@ -513,6 +523,7 @@ async function readSecret(
     return candidate.get(vaultRef, {
       level: "global",
       agentId: runtime.agentId,
+      requesterId: runtime.agentId,
     });
   }
   return candidate.get(vaultRef, { reveal: true, caller });

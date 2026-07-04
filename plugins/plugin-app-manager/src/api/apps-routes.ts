@@ -1,3 +1,14 @@
+/**
+ * HTTP route dispatcher for the agent's `/api/apps/*` surface: app discovery
+ * and search, launch/stop/relaunch, run and favorite state, per-app permission
+ * views, hero-image streaming, and registry plugin queries. `handleAppsRoutes`
+ * returns true when it matched and handled a route, false to let the caller
+ * keep routing.
+ *
+ * Consumed by @elizaos/agent's API server. The AppManager service, plugin
+ * manager, favorites store, and runtime arrive through AppsRouteContext so
+ * tests can substitute mocks (see apps-routes.test.ts).
+ */
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
 import type http from "node:http";

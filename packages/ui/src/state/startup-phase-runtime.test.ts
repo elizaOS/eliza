@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the `starting` runtime phase: launch/boot progress polling
+ * against a mocked client, no live agent.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runStartingRuntime } from "./startup-phase-runtime";
 

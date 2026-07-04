@@ -1,3 +1,5 @@
+/** Storybook stories for DownloadQueue — single-downloading, empty, queued-and-downloading, failed-job, and unknown-model states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   CatalogModel,

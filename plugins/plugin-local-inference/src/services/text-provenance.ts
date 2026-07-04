@@ -1,3 +1,10 @@
+/**
+ * Reads the `general.architecture` value out of a text GGUF's header bytes to
+ * confirm a bundle actually ships a Gemma-4 text model, not a pre-cutover Qwen
+ * stand-in. The GGUF header is authoritative where the operator-authored
+ * manifest `lineage.text` can drift; this is the byte-level half of the
+ * strict-release gate whose manifest half is `asr-provenance.ts`.
+ */
 import { closeSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import path from "node:path";
 import { QWEN_PROVENANCE_RE } from "./asr-provenance";

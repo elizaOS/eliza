@@ -1,3 +1,4 @@
+/** Emits the `MODEL_USED` runtime event with per-call token usage after each model call. */
 import type { EventPayload, IAgentRuntime, ModelTypeName } from "@elizaos/core";
 
 const MODEL_USED_EVENT = "MODEL_USED";

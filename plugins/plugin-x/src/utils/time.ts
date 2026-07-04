@@ -1,3 +1,8 @@
+/**
+ * Normalizes X/Twitter timestamps to epoch milliseconds, inferring the source
+ * unit (seconds / millis / micros) from digit count so tweet times from
+ * different API surfaces compare correctly.
+ */
 export function getEpochMs(ts: number | undefined): number {
   if (!ts) return Date.now();
   // Possible formats:

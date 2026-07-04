@@ -1,3 +1,12 @@
+/**
+ * Approval prompt for pending computer-use (agent screen-control) actions,
+ * mounted in the shell overlay stack (ShellOverlays). Subscribes to the
+ * `/api/computer-use/approvals/stream` SSE feed (with a 1.5s polling fallback
+ * on native IPC bases where EventSource cannot reach) and lets the user approve
+ * or deny each request. Dormant until the shared auth snapshot reports
+ * authenticated — the shell mounts it before the auth probe resolves, so
+ * without that gate every unauthenticated tab would fire 401s (#11084).
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supportsFullAppShellRoutes } from "../../api/app-shell-capabilities";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
@@ -7,6 +16,7 @@ import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt  sm:px-6";
@@ -342,14 +352,14 @@ export function ComputerUseApprovalOverlay() {
                             defaultValue: "Deny reason",
                           })}
                         </label>
-                        <textarea
+                        <Textarea
                           id="computer-use-deny-reason"
                           value={denyReason}
                           onChange={(event) =>
                             setDenyReason(event.target.value)
                           }
                           rows={4}
-                          className="w-full rounded-sm border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
+                          className="min-h-[96px] border-border/60 bg-bg/50 text-txt"
                           placeholder={t(
                             "computeruseapprovaloverlay.DenyReasonPlaceholder",
                             {

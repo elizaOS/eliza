@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Renders an OpenAPI spec as a browsable, syntax-highlighted view.
+ */
 import { cn } from "../../lib/utils";
 import { CodeDisplay } from "../code";
 

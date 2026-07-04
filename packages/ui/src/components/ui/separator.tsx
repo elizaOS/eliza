@@ -1,3 +1,7 @@
+/**
+ * Horizontal/vertical divider over Radix `@radix-ui/react-separator`. Derived
+ * from shadcn/ui `separator` (https://ui.shadcn.com/docs/components/separator).
+ */
 import * as SeparatorPrimitive from "@radix-ui/react-separator";
 import * as React from "react";
 

@@ -20,7 +20,6 @@ import {
   getBackendStartupTimeoutMs,
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
-  scanProviderCredentials,
 } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
 import {
@@ -42,7 +41,6 @@ import {
   isIOS,
   isNative,
 } from "../platform";
-import type { ExistingElizaInstallInfo } from "../types";
 import {
   buildCloudSharedAgentApiBase,
   isElizaCloudControlPlaneAgentlessBase,
@@ -52,6 +50,7 @@ import { getElizaApiBase } from "../utils/eliza-globals";
 import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
 import {
   clearPersistedActiveServer,
+  hydratePersistedFirstRunCompleteFromNativeStore,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
   type PersistedActiveServer,
@@ -166,14 +165,9 @@ export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
   setAuthRequired: (v: boolean) => void;
   setConnected: (v: boolean) => void;
-  setFirstRunExistingInstallDetected: (v: boolean) => void;
   setFirstRunOptions: (v: FirstRunOptions) => void;
   setFirstRunComplete: (v: boolean) => void;
   setFirstRunLoading: (v: boolean) => void;
-  applyDetectedProviders: (
-    detected: Awaited<ReturnType<typeof scanProviderCredentials>>,
-  ) => void;
-  forceLocalBootstrapRef: React.MutableRefObject<boolean>;
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
@@ -338,16 +332,6 @@ function restoredLocalApiBase(): string | null {
   return getElizaApiBase() ?? null;
 }
 
-async function inspectExistingElizaInstallForStartup(): Promise<ExistingElizaInstallInfo | null> {
-  const result =
-    await invokeDesktopBridgeRequestWithTimeout<ExistingElizaInstallInfo>({
-      rpcMethod: "agentInspectExistingInstall",
-      ipcChannel: "agent:inspectExistingInstall",
-      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
-    });
-  return result.status === "ok" ? result.value : null;
-}
-
 async function getDesktopRuntimeModeForStartup(): Promise<{
   mode?: string;
 } | null> {
@@ -374,12 +358,12 @@ async function requestDesktopAgentStartForStartup(): Promise<void> {
  * the same-origin cookie path (the HttpOnly `steward-refresh-token` cookie
  * travels automatically), so we return `undefined` to let
  * {@link refreshCloudStewardSession} fall back to its same-origin default.
- * Native (`capacitor://localhost`) has no same-origin cookie, so refresh against
- * the configured Cloud API base (Bearer-refresh). Mirrors
+ * Native/Electrobun has no same-origin cookie, so refresh against the configured
+ * Cloud API base (Bearer-refresh). Mirrors
  * `resolveStewardRefreshEndpoint` in `state/useCloudState.ts`.
  */
 function resolveRestoreStewardRefreshEndpoint(): string | undefined {
-  if (!isNative) return undefined;
+  if (!isNative && !isElectrobunRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() ||
     RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
@@ -547,7 +531,6 @@ function activeServerToTarget(
 export function canRestoreActiveServer(args: {
   server: PersistedActiveServer;
   clientApiAvailable: boolean;
-  forceLocal: boolean;
   isDesktop: boolean;
 }): boolean {
   if (args.server.apiBase) {
@@ -574,7 +557,7 @@ export function canRestoreActiveServer(args: {
   }
 
   if (args.server.kind === "local") {
-    return args.forceLocal || args.isDesktop || args.clientApiAvailable;
+    return args.isDesktop || args.clientApiAvailable;
   }
 
   if (args.server.kind === "cloud") {
@@ -624,10 +607,14 @@ export async function runRestoringSession(
   deps.setStartupError(null);
   deps.setAuthRequired(false);
   deps.setConnected(false);
-  deps.setFirstRunExistingInstallDetected(false);
 
-  const forceLocal = deps.forceLocalBootstrapRef.current;
-  deps.forceLocalBootstrapRef.current = false;
+  // Restore the onboarding-complete flag from the durable native store when a
+  // WebView-storage wipe dropped it from localStorage (issue #11506), BEFORE
+  // reading `hadPrior` below — so an already set-up mobile install is not
+  // re-onboarded on the boot after the wipe. No-op on web/desktop and whenever
+  // localStorage still carries the flag.
+  await hydratePersistedFirstRunCompleteFromNativeStore();
+  if (cancelled.current) return;
   let persistedActiveServer = loadPersistedActiveServer();
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();
@@ -650,14 +637,7 @@ export async function runRestoringSession(
   }
   if (cancelled.current) return;
 
-  const desktopInstall =
-    !forceFreshFirstRun && !persistedActiveServer && isElectrobunRuntime()
-      ? await inspectExistingElizaInstallForStartup().catch(() => null)
-      : null;
-  if (cancelled.current) return;
-
-  const isDesktop = forceLocal || isElectrobunRuntime();
-  const _hasExistingEvidence = hadPrior || Boolean(desktopInstall?.detected);
+  const isDesktop = isElectrobunRuntime();
 
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
@@ -701,7 +681,6 @@ export async function runRestoringSession(
     !canRestoreActiveServer({
       server: restoredActiveServer,
       clientApiAvailable: client.apiAvailable,
-      forceLocal,
       isDesktop,
     })
   ) {
@@ -717,29 +696,9 @@ export async function runRestoringSession(
   const preserveCompleted =
     hadPrior && !deps.firstRunCompletionCommittedRef.current;
 
-  deps.setFirstRunExistingInstallDetected(
-    forceFreshFirstRun
-      ? false
-      : Boolean(
-          hadPrior ||
-            desktopInstall?.detected ||
-            probed?.detectedExistingInstall,
-        ),
-  );
-
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.
     deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
-    if (!forceFreshFirstRun) {
-      try {
-        const det = await scanProviderCredentials();
-        if (!cancelled.current && det.length > 0) {
-          deps.applyDetectedProviders(det);
-        }
-      } catch {
-        // keychain scan is best-effort; proceed with fresh firstRun
-      }
-    }
     deps.setFirstRunComplete(false);
     deps.setFirstRunLoading(false);
     dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });

@@ -1,3 +1,8 @@
+/**
+ * CacheRedisClient adapter backed by a Cloudflare KV namespace binding, for
+ * Worker environments where a KV store stands in for Redis.
+ */
+
 import type { CacheRedisClient } from "./types";
 
 /**

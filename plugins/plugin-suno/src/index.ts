@@ -1,3 +1,10 @@
+/**
+ * Suno music-generation plugin: contributes the Suno client and a status
+ * provider to the shared MUSIC umbrella action (generation is dispatched as
+ * action=generate|extend|custom_generate elsewhere, not registered here).
+ * Auto-enables when SUNO_API_KEY is set or media.audio is configured for the
+ * suno own-key provider.
+ */
 import type { Plugin } from '@elizaos/core';
 import { sunoGenerateMusicHandler, type SunoMusicSubaction } from './actions/musicGeneration';
 import { SunoProvider, sunoStatusProvider } from './providers/suno';

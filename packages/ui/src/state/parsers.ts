@@ -1,3 +1,8 @@
+/**
+ * Pure parsers that turn untrusted stream/WS payloads into the typed shapes the
+ * chat reducer consumes (agent status, startup diagnostics, conversation
+ * messages, custom-action params, slash-command input). No React, no I/O.
+ */
 import type {
   AgentStartupDiagnostics,
   AgentStatus,
@@ -296,7 +301,6 @@ export function shouldApplyFinalStreamText(
   );
 }
 
-// Function previously local to chat-commands but used here
 function normalizeSlashCommandName(name: string): string {
   if (!name.startsWith("/")) name = `/${name}`;
   return name.trim().toLowerCase();

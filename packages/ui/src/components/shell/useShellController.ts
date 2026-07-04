@@ -1,3 +1,18 @@
+/**
+ * The single stateful engine behind the shell's chat + voice surface, exposed as
+ * the `ShellController` returned by `useShellController`. It drives the shell
+ * phase (booting → summoned → listening → responding), the rendered message
+ * list, send + vision-capture, and the whole voice stack: mic capture (via the
+ * voice-capture factory), wake-word listening, end-of-turn aggregation,
+ * hands-free conversation looping, transcription-mode long-form recording, and
+ * spoken assistant output (through useShellVoiceOutput). Conversation switching
+ * and horizontal swipe navigation resolve through conversation-nav.
+ *
+ * ChatSurface / AssistantOverlay / ContinuousChatOverlay and the home surfaces
+ * are the consumers; they read the controller and render, holding no chat/voice
+ * state of their own. ShellControllerContext provides one instance so the pill
+ * and the overlay stay in lock-step without double-mounting this hook.
+ */
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import type {
@@ -22,6 +37,7 @@ import {
   loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
+import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
 import { TurnAggregator } from "../../voice/end-of-turn";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
@@ -47,7 +63,6 @@ import {
   type ConversationNavDirection,
   resolveAdjacentConversationId,
 } from "./conversation-nav";
-import { dispatchHomeLauncherNavigation } from "./home-launcher-events";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
@@ -181,8 +196,6 @@ export interface ShellController {
   openSettings: () => void;
   /** Return to the combined Home/Launcher surface and select Home. */
   navigateHome?: () => void;
-  /** Open the combined Home/Launcher surface and select Launcher. */
-  navigateToViews?: () => void;
   /** The active app tab. */
   currentTab?: string;
   /** Stop an in-flight reply stream (the composer's stop control). */
@@ -192,6 +205,12 @@ export interface ShellController {
   /** True while a conversation switch or clear is fetching messages. The overlay
    *  only renders the spinner when the visible thread is empty. */
   conversationLoading?: boolean;
+  /** True once the server has told us (via a `no_provider` assistant turn) that
+   *  no LLM/model provider is configured. Distinct from a transient warm-up: the
+   *  agent's `canRespond` stays false forever, so the overlay uses this to stop
+   *  showing the "Waking …" boot indicator and to explain the real cause instead.
+   *  The controller also auto-navigates to Settings on its rising edge. */
+  noProviderConfigured?: boolean;
 }
 
 /**
@@ -311,16 +330,12 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the combined Home/Launcher route and reset its internal page.
-  // If the route is not mounted yet, the next mount starts on Home; if it is
-  // already mounted on Launcher, this event flips it without a remount.
+  // Return to the combined Home/Launcher route and select Home. If the route is
+  // not mounted yet, the next mount starts on Home; if it is already mounted on
+  // Launcher, this flips it via the shell-surface store without a remount.
   const navigateHome = React.useCallback(() => {
     setTab("chat");
-    dispatchHomeLauncherNavigation("home");
-  }, [setTab]);
-  const navigateToViews = React.useCallback(() => {
-    setTab("chat");
-    dispatchHomeLauncherNavigation("launcher");
+    goHome();
   }, [setTab]);
 
   // True while a clear or conversation switch is fetching the next thread, so
@@ -610,6 +625,9 @@ export function useShellController(): ShellController {
         role: message.role,
         content: message.text,
         createdAt: message.timestamp,
+        // Invariant per id (like role/createdAt), so the cache compare above
+        // can omit it. Drives the suggestion affordance (#8792).
+        ...(message.source ? { source: message.source } : {}),
         failureKind: message.failureKind,
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.attachments?.length
@@ -1044,6 +1062,55 @@ export function useShellController(): ShellController {
           ? "idle"
           : "summoned";
 
+  // History half of the "no LLM/model provider configured" signal. The server
+  // stamps an assistant turn with `failureKind: "no_provider"` when it tried to
+  // answer but no provider plugin is wired. Derived from the LATEST assistant
+  // turn so a later successful reply (provider added in Settings) clears it
+  // automatically.
+  const latestAssistantNoProvider = React.useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message?.role === "assistant") {
+        return message.failureKind === "no_provider";
+      }
+    }
+    return false;
+  }, [messages]);
+
+  // AUTHORITATIVE "no provider configured" signal = history stamp AND live
+  // server truth. The stamp is persisted in conversation history, so on its own
+  // a stale no_provider turn would hijack every later app launch / conversation
+  // switch into Settings even after a provider IS configured. Require the
+  // current status to agree: `canRespond === false` exactly — the server's
+  // `computeCanRespond` requires a registered TEXT handler, so with no provider
+  // it stays false FOREVER (not a transient warm-up), while a null/undefined
+  // early status is "unknown yet" and must NOT trigger. This matters because
+  // `ready` (`deriveAgentReady`) keys off `canRespond`: without this signal the
+  // shell would sit in the `booting` phase indefinitely — the "Waking …" banner
+  // + "waking up…" composer placeholder never clear, reading as an infinite
+  // spinner even though the send already came back with the actionable
+  // no-provider gate.
+  const noProviderConfigured =
+    latestAssistantNoProvider && agentStatus?.canRespond === false;
+
+  // On the false→true edge, route the user straight to Settings — where the
+  // model provider is configured — instead of leaving them staring at a chat
+  // that can never answer. The in-transcript no-provider gate remains the error
+  // surface (with its own "Open Settings" CTA); this just makes the hop
+  // automatic. Ref-guarded so it fires once per occurrence, not on every render,
+  // and re-arms once the condition clears (provider wired → a later miss routes
+  // again).
+  const noProviderNavigatedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!noProviderConfigured) {
+      noProviderNavigatedRef.current = false;
+      return;
+    }
+    if (noProviderNavigatedRef.current) return;
+    noProviderNavigatedRef.current = true;
+    openSettings();
+  }, [noProviderConfigured, openSettings]);
+
   // Live mirror of whether the agent is speaking, for the converse commit
   // closure's echo guard (it reads at send time, after this render).
   const speakingRef = React.useRef(false);
@@ -1351,7 +1418,6 @@ export function useShellController(): ShellController {
     clearConversation,
     openSettings,
     navigateHome,
-    navigateToViews,
     currentTab: tab,
     stop: stopTurn,
     conversationNav,
@@ -1364,5 +1430,6 @@ export function useShellController(): ShellController {
     // pinned a perpetual loading spinner and let the grabber/pill open the sheet
     // into a never-resolving loader.
     conversationLoading,
+    noProviderConfigured,
   };
 }

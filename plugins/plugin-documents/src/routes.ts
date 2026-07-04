@@ -1,3 +1,10 @@
+/**
+ * REST route handlers for the document store: list, stats, semantic/keyword
+ * search, single fetch, fragment listing, single + bulk upload, URL/YouTube
+ * ingestion, and delete. Persistence and search are delegated to the runtime
+ * document service (resolved from `@elizaos/agent/api/documents-service-loader`);
+ * this module handles HTTP shaping and access-control scoping only.
+ */
 import type {
   AgentRuntime,
   IFileStorageService,

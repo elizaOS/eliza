@@ -320,15 +320,17 @@ export const Eliza1FilesSchema = z.object({
 	// `packages/training/scripts/turn_detector/configs/turn_detector_eliza1_drafter.yaml`.
 	eotLoraAdapter: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled acoustic-prosody emotion classifier
-	// (Wav2Small student, GGUF). Optional — when omitted, the runtime falls
-	// back to the lexicon + audio-prosody heuristic path inside
-	// `attributeVoiceEmotion()` (no acoustic-model evidence row). When present,
-	// the runtime loads the GGUF via `VoiceEmotionClassifier`, runs it on
-	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
-	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
-	// All tiers ship the same Wav2Small student (the on-device budget is
-	// dominated by the LM, not this small head); a 2b entry bundle may still
-	// choose to omit it to save the cold-start cost.
+	// (Wav2Small student, GGUF). Optional — the runtime uses the lexicon +
+	// audio-prosody heuristic path inside `attributeVoiceEmotion()` (no
+	// acoustic-model evidence row). NOTE: the acoustic runtime is DEAD today —
+	// the ONNX classifier was deleted and the native GGUF read is NOT wired
+	// (native/AGENTS.md §11 K1); nothing loads a `files.emotion` artifact at
+	// runtime, so this slot is currently unused-if-shipped. Wiring the native
+	// read + running it on `isFinal` transcript snapshots and fusing via the
+	// single `emotion-attribution.ts` point is a tracked follow-up
+	// (.github/issue-evidence/12216-runtime-status.md). All tiers would ship the
+	// same Wav2Small student (the on-device budget is dominated by the LM, not
+	// this small head); a 2b entry bundle may still choose to omit it.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
 	// Fused libelizainference native-lib SET, per platform target (#9105 /
 	// local-inference bundle delivery). Optional — when present the downloader

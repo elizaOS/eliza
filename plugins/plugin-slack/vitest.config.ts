@@ -1,3 +1,7 @@
+/**
+ * Vitest config for the Slack plugin: aliases `@slack/*` SDKs to the shared
+ * provider-SDK shims so unit tests run offline without a live workspace.
+ */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

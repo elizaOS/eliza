@@ -1,3 +1,9 @@
+/**
+ * `TestSuite` that exercises the LP manager against real token addresses on
+ * Solana mainnet (ai16z, degenai, SOL) through the live `DexInteractionService`
+ * and `YieldOptimizationService` — pool discovery and yield comparison hit
+ * actual DEX protocols, not mocks.
+ */
 import { strict as assert } from "node:assert";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import type { DexInteractionService } from "../services/DexInteractionService.ts";

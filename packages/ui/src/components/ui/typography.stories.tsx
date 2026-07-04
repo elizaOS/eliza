@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the typography primitives (Heading and Text).
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Heading, Text } from "./typography";
 

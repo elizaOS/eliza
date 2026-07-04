@@ -1,3 +1,11 @@
+/**
+ * Manifest schema and writers for Feed training artifacts — trajectory exports
+ * and parallel-generation runs. Each writer stamps a versioned, tagged sidecar
+ * JSON next to the produced data so downstream training/scoring tools can
+ * discover and validate a run's provenance. Consumed by the `train` and
+ * `train-parallel` CLI commands.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 

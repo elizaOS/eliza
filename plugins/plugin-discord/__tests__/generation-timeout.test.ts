@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `resolveGenerationTimeoutMs` — precedence of
+ * `DISCORD_GENERATION_TIMEOUT_MS` / `MESSAGE_TIMEOUT_MS` / defaults.
+ * Pure-function assertions.
+ */
 import { describe, expect, it } from "vitest";
 import { resolveGenerationTimeoutMs } from "../messages.ts";
 

@@ -1,3 +1,6 @@
+/**
+ * Unit coverage for the conversation-handoff runner. Deps injected, no live cloud.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationHandoffDeps,

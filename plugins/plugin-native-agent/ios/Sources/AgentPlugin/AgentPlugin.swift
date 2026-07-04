@@ -434,7 +434,7 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
 
         let source = """
-        const handler = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
+        const handler = window.__ELIZA_BRIDGE__?.iosLocalAgentRequest;
         if (typeof handler !== "function") {
           return {
             status: 503,

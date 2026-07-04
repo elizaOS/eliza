@@ -1,3 +1,4 @@
+/** Storybook stories for the coding cockpit view (deck + spawn form). */
 import type { Meta, StoryObj } from "@storybook/react";
 
 import type { OrchestratorRoomRosterOverview } from "../../api/client-types-cloud";

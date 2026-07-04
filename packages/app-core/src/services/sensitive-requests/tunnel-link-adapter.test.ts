@@ -179,6 +179,7 @@ describe("tunnelLinkSensitiveRequestAdapter", () => {
       getService: (name: string) => {
         if (name !== "tunnel") return null;
         return {
+          startTunnel: async () => "https://from-runtime.example",
           getStatus: () => ({
             active: true,
             url: "https://from-runtime.example",

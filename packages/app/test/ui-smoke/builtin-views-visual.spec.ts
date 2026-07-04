@@ -47,6 +47,8 @@ const BUILTIN_VIEW_CASES: Array<{ id: string; path: string }> = [
   { id: "trajectories", path: "/apps/trajectories" },
   { id: "transcripts", path: "/apps/transcripts" },
   { id: "relationships", path: "/apps/relationships" },
+  { id: "experience", path: "/character/experience" },
+  { id: "character-skills", path: "/character/skills" },
   { id: "memories", path: "/apps/memories" },
   { id: "rolodex", path: "/rolodex" },
   { id: "voice", path: "/settings/voice" },

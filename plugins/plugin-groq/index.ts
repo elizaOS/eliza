@@ -1,3 +1,11 @@
+/**
+ * Groq plugin: registers the text-generation ModelType handlers (nano through
+ * mega, plus RESPONSE_HANDLER and ACTION_PLANNER) as well as TRANSCRIPTION and
+ * TEXT_TO_SPEECH, all via the Vercel AI SDK's @ai-sdk/groq provider. Init
+ * requires GROQ_API_KEY. Calls go through a shared retry loop that classifies
+ * failures (classifyRetryError) into rate-limit / transient / fatal and backs
+ * off on the first two.
+ */
 import { createGroq } from "@ai-sdk/groq";
 import type {
   EventPayload,

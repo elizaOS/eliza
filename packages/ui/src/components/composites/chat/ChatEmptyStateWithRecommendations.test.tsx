@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * Renders ChatEmptyStateWithRecommendations in jsdom and asserts that tapping a
+ * recommendation prefills the composer (via CHAT_PREFILL_EVENT) and that the
+ * primary setup action fires. React Testing Library, no live model.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

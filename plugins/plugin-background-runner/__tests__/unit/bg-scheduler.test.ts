@@ -1,3 +1,8 @@
+/**
+ * Unit tests for BgTaskSchedulerService and both scheduler implementations,
+ * using a fake BackgroundRunner and in-memory runtime (bun:test) — no native
+ * Capacitor bridge or real OS scheduler.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import {
   BACKGROUND_RUNNER_SERVICE_TYPE,

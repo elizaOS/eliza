@@ -12,6 +12,7 @@
 
 import { client, selectLatestRunForApp, useAppSelector } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { Button } from "@elizaos/ui/components/ui/button";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -341,7 +342,8 @@ export function ScreenshareView() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
-        <button
+        <Button
+          unstyled
           type="button"
           ref={sessionToggle.ref}
           {...sessionToggle.agentProps}
@@ -351,8 +353,9 @@ export function ScreenshareView() {
           className={`${CONTROL_BTN}${isActive ? " border-accent/50 text-accent" : ""}`}
         >
           {isActive ? "Stop host session" : "Start host session"}
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           type="button"
           ref={refreshControl.ref}
           {...refreshControl.agentProps}
@@ -362,7 +365,7 @@ export function ScreenshareView() {
           className={CONTROL_BTN}
         >
           {loading ? "Refreshing…" : "Refresh"}
-        </button>
+        </Button>
       </div>
       <ScreenshareSpatialView snapshot={snapshot} onAction={onAction} />
     </div>

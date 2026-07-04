@@ -1,3 +1,4 @@
+/** Unit tests for the deterministic structured-output repair against skeleton/schema. Deterministic. */
 import type { JSONSchema, ResponseSkeleton } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

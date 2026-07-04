@@ -1,3 +1,9 @@
+/**
+ * Browser build entry point (the `browser` export condition). Re-exports the
+ * domain types and a stub `farcasterPlugin` whose `init` only warns: the real
+ * Neynar-backed integration needs server-side credentials, so browsers must call
+ * it through a server proxy.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

@@ -1,3 +1,8 @@
+/**
+ * Wraps Baileys' multi-file auth state for a single account: loads and persists
+ * credentials under a given directory so a paired personal WhatsApp session can
+ * reconnect across restarts. Owned by BaileysConnection / BaileysClient.
+ */
 import type { AuthenticationState } from "@whiskeysockets/baileys";
 import { useMultiFileAuthState } from "@whiskeysockets/baileys";
 

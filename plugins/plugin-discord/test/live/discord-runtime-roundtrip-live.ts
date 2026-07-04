@@ -1,3 +1,9 @@
+/**
+ * Live end-to-end round-trip: spawns a real agent process, resolves a Discord
+ * context, and drives an inbound-message → agent → outbound-reply conversation
+ * over the HTTP API against the live Discord gateway. Requires real
+ * credentials; exercises the full runtime path, not a mocked connector.
+ */
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

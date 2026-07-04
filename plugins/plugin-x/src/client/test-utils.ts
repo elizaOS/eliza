@@ -1,9 +1,12 @@
+/**
+ * Test helper that constructs an authenticated `Client` from `.env` OAuth 1.0a
+ * credentials, for the client-layer tests that hit the real API.
+ */
 import dotenv from "dotenv";
 import { TwitterAuth } from "./auth";
 import { EnvAuthProvider } from "./auth-providers/env";
 import { Client } from "./client";
 
-// Configure dotenv to read the .env file
 dotenv.config();
 
 /**

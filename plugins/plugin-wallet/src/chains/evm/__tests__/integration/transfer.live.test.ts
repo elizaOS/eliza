@@ -1,3 +1,9 @@
+/**
+ * Live-network EVM transfer tests: exercises `TransferAction`/`WalletProvider`
+ * against real mainnet/base/bsc RPC endpoints (Eliza Cloud RPC when
+ * `ELIZAOS_CLOUD_API_KEY` is set, else public fallback RPCs) with a
+ * generated or env-supplied unfunded key — no mocked chain state.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { Account } from "viem";
 import { formatEther, parseEther } from "viem";

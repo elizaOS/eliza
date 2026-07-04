@@ -31,7 +31,7 @@ import {
 const FINE_TUNING_SECTION_CLASS = "";
 const FINE_TUNING_PANEL_CLASS = "";
 
-const FILTER_INPUT_CLASS = "h-10 text-sm text-txt";
+const FILTER_INPUT_CLASS = "h-11 text-sm text-txt";
 
 /* ── Agent-surface helpers ─────────────────────────────────────────── */
 
@@ -225,15 +225,24 @@ const DatasetRadioItem = memo(function DatasetRadioItem({
     status: checked ? "active" : "inactive",
     onActivate: () => setSelectedDatasetId(dataset.id),
   });
+  const inputId = `dataset-select-input-${dataset.id.replace(
+    /[^a-zA-Z0-9_-]/g,
+    "-",
+  )}`;
   return (
-    <label className="flex min-h-touch cursor-pointer items-center gap-3 px-3 py-3 text-sm transition-colors hover:bg-bg/35">
-      <input
+    <label
+      htmlFor={inputId}
+      className="flex min-h-touch cursor-pointer items-center gap-3 px-3 py-3 text-sm transition-colors hover:bg-bg/35"
+    >
+      <Input
+        id={inputId}
         ref={ref}
         type="radio"
         name="dataset-select"
         checked={checked}
         onChange={() => setSelectedDatasetId(dataset.id)}
         aria-current={checked ? "true" : undefined}
+        className="h-4 w-4 p-0"
         {...agentProps}
       />
       <div className="min-w-0 flex-1">

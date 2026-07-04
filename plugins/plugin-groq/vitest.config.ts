@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the Groq plugin unit tests. `*.harness.test.ts` files are
+ * excluded here (they need a real PGLite runtime + workspace aliases) and run
+ * separately via vitest.harness.config.ts.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

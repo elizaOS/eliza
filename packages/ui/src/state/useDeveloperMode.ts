@@ -1,3 +1,8 @@
+/**
+ * Developer-mode toggle store (localStorage-backed): gates developer-only apps,
+ * widgets, tabs, and settings. Off by default on every build; the user's choice
+ * wins.
+ */
 import { useSyncExternalStore } from "react";
 
 /**

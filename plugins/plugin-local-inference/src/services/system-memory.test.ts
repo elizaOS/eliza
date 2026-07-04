@@ -1,3 +1,4 @@
+/** Unit tests for `readSystemMemory` host-RAM sampling. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { readSystemMemory } from "./system-memory.js";
 

@@ -1,3 +1,7 @@
+/**
+ * Runtime type guards narrowing untrusted DB/external strings to the
+ * NotificationDigestFrequency and NotificationDeliveryChannel unions.
+ */
 import type {
   NotificationDeliveryChannel,
   NotificationDigestFrequency,

@@ -3,3 +3,4 @@ export declare function resolveRepoRoot(
   importMetaUrl: string,
   depth?: number,
 ): string;
+export declare function findWorkspaceRoot(startDir: string): string;

@@ -1,3 +1,9 @@
+/**
+ * Test-support helpers for consumer suites: env-var sandboxing, plugin-module
+ * shape checks, and workspace/optional-dependency import resolution (Discord,
+ * Telegram, Lens, Farcaster, Nostr, …). Lets tests probe whether an optional
+ * connector plugin is installed without hard-failing when it is absent.
+ */
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import type http from "node:http";

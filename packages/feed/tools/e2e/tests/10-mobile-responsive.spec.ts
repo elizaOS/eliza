@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Asserts core pages have no horizontal overflow at the mobile viewport.
+ */
 import { expect, test } from "./fixtures";
 import { clickTab, pageContainsText } from "./helpers/interaction-helpers";
 import {

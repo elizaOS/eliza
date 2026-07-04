@@ -5,9 +5,7 @@
  * Owns auth-header construction, URL building, and JSON decoding for the
  * Calendly endpoints we consume. Does not cache, retry, or interpret business
  * meaning — that lives in CalendlyService and the actions that sit above it.
- *
- * Migrated from app-lifeops (`lifeops/calendly-client.ts`) so plugin-calendly
- * is the single source of truth for Calendly integration.
+ * This module is the single source of truth for Calendly integration.
  */
 
 import { logger } from "@elizaos/core";

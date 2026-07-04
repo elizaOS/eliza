@@ -1,3 +1,8 @@
+/**
+ * Elevated-permission helpers — the set of moderation/admin permissions worth
+ * auditing, plus predicates (`hasElevatedPermissions`, `isElevatedRole`) used
+ * when diffing Discord permission changes into the connector's audit events.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
 	AuditLogEvent,

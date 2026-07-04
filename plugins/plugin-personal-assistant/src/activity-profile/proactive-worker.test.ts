@@ -170,10 +170,25 @@ function createTripwireRuntime(): {
     },
   };
 
+  // In-memory cache so the rhythm-window learner (run at the end of the tick)
+  // can read/write the OwnerFactStore. A real runtime always provides these.
+  const cache = new Map<string, unknown>();
+
   const runtime = {
     agentId: "agent-0000-0000-0000-000000000001" as UUID,
     character: { name: "TripwireAgent" },
     logger: console,
+    async getCache<T>(key: string): Promise<T | null> {
+      const value = cache.get(key);
+      return value === undefined ? null : (value as T);
+    },
+    async setCache<T>(key: string, value: T): Promise<boolean> {
+      cache.set(key, value);
+      return true;
+    },
+    async deleteCache(key: string): Promise<boolean> {
+      return cache.delete(key);
+    },
     // No useModel → the WS5 planner throws BackgroundPlannerError, which the
     // tick catches and logs; nothing else may depend on a model.
     getService: (type: string) =>
@@ -231,5 +246,42 @@ describe("proactive-worker behavioral tripwire", () => {
     expect(metadata.activityProfile).toBeDefined();
     expect(metadata.firedActionsLog).toBeUndefined();
     expect(metadata.proactiveAgent).toMatchObject({ kind: "runtime_runner" });
+  });
+
+  it("the tick INVOKES the rhythm learner, patching OwnerFacts with the derived window (B1 end-to-end)", async () => {
+    const { runtime } = createTripwireRuntime();
+    const {
+      readProfileFromMetadata,
+      buildActivityProfile,
+      refreshCurrentState,
+    } = await import("./service.js");
+    // Give the profile a real observed rhythm so the learner has something to
+    // fold into owner facts: 07:00 wake / 23:00 sleep.
+    const rhythmProfile = {
+      ...gmFavorableProfile,
+      typicalWakeHour: 7,
+      typicalSleepHour: 23,
+    } as unknown as ActivityProfile;
+    vi.mocked(readProfileFromMetadata).mockReturnValueOnce(rhythmProfile);
+    vi.mocked(buildActivityProfile).mockResolvedValueOnce(rhythmProfile);
+    vi.mocked(refreshCurrentState).mockResolvedValueOnce(rhythmProfile);
+
+    await executeProactiveTask(runtime, { now: GM_FAVORABLE_NOW });
+
+    // Read the REAL OwnerFactStore back: the learner must have written the
+    // derived morning/evening windows with agent_inferred provenance.
+    const { resolveOwnerFactStore } = await import(
+      "../lifeops/owner/fact-store.js"
+    );
+    const facts = await resolveOwnerFactStore(runtime).read();
+    expect(facts.morningWindow?.value).toEqual({
+      startLocal: "07:00",
+      endLocal: "10:00",
+    });
+    expect(facts.morningWindow?.provenance.source).toBe("agent_inferred");
+    expect(facts.eveningWindow?.value).toEqual({
+      startLocal: "21:00",
+      endLocal: "23:00",
+    });
   });
 });

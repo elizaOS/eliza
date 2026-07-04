@@ -59,7 +59,7 @@ pytest packages/benchmarks/orchestrator_lifecycle/tests/ -v
   `orchestrator-lifecycle-<timestamp>.json` (gitignored).
 - Scored by `_score_from_orchestrator_lifecycle_json` in `registry/scores.py`.
 - Bridge mode (default for LLM providers) forwards each turn to the elizaOS TS
-  bench server (`packages/app-core/src/benchmark/server.ts`) via
+  bench server (`packages/lifeops-bench/src/server.ts`) via
   `ElizaClient.send_message`. Set `ELIZA_BENCH_URL` to reuse a running server.
 - Simulate mode is kept only for offline CI smoke-testing; it does not measure
   the real agent.

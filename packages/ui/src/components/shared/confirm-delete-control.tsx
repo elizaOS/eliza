@@ -1,3 +1,12 @@
+/**
+ * Inline two-step delete confirmation: a trigger button that, once clicked,
+ * swaps in place for a prompt + Confirm/Cancel pair (no modal). Each of the
+ * three buttons registers as an agent element via `useAgentElement` so the
+ * agent can drive the flow; labels fall back to the i18n `common.*` /
+ * `conversations.deleteConfirm` keys. Class names for each button are supplied
+ * by the caller so it inherits the host surface's styling.
+ */
+
 import { type ReactNode, useId, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelector } from "../../state";

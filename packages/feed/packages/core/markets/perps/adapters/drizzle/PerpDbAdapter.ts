@@ -1,3 +1,10 @@
+/**
+ * Drizzle-backed implementation of `PerpDbPort` — the concrete persistence adapter that
+ * maps perp market snapshots and positions between DB rows and domain records for
+ * `PerpMarketService`. Uses `PerpMarketSnapshot` as the single source of market-level
+ * stats, mints snowflake IDs when none are supplied, and accepts a transaction client via
+ * constructor injection so callers can compose reads/writes atomically.
+ */
 import {
   type PerpPosition as DbPerpPosition,
   db as defaultDb,

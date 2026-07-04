@@ -1,3 +1,9 @@
+/**
+ * Transport-level DTO types shared between the wallet HTTP routes and their
+ * consumers: export request/rejection shapes, and the market-overview
+ * response (price snapshots, movers, Polymarket predictions) served by
+ * `wallet-market-overview-route.ts`.
+ */
 export interface WalletExportRequestBody {
   confirm?: boolean;
   exportToken?: string;

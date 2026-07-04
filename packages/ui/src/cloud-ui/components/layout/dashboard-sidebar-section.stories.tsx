@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for a collapsible dashboard sidebar section.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   BarChart3,

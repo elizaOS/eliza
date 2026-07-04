@@ -51,7 +51,8 @@ export type CloudAppConfirmationAction =
   | "DELETE_APP"
   | "REGENERATE_APP_API_KEY"
   | "WITHDRAW_APP_EARNINGS"
-  | "BOOK_INFLUENCER";
+  | "BOOK_INFLUENCER"
+  | "SUBMIT_PRESS_RELEASE";
 
 export const CLOUD_APP_CONFIRM_TAG = "cloud-apps-confirm";
 

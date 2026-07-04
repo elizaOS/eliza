@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for KeyMetricsGrid.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   Activity,

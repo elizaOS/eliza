@@ -1,3 +1,10 @@
+/**
+ * One row/tile in `PluginsView`: shows a plugin's visual, name, and description,
+ * an enable/disable toggle (agent-controllable via `useAgentElement`), an
+ * expandable settings section (`PluginConfigForm`), and drag handles for
+ * reordering. Pure presentation — all state and mutation callbacks are owned by
+ * `PluginsView` and passed in as props.
+ */
 import { memo } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { PluginInfo, PluginParamDef } from "../../api";
@@ -187,7 +194,7 @@ export const PluginCard = memo(function PluginCard({
           variant="outline"
           size="sm"
           data-plugin-toggle={p.id}
-          className={`h-auto shrink-0 rounded-full border px-3 py-[3px] text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
+          className={`min-h-11 shrink-0 rounded-full border px-3 py-2 text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
             toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
           }`}
           title={toggleTitle}

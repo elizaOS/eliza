@@ -1,3 +1,9 @@
+/**
+ * react-hook-form field primitives — `Form` provider plus `FormField` /
+ * `FormItem` / `FormLabel` / `FormControl` / `FormMessage` — that wire field
+ * state, ids, and aria wiring through context. Derived from shadcn/ui `form`
+ * (https://ui.shadcn.com/docs/components/form).
+ */
 "use client";
 
 import type * as LabelPrimitive from "@radix-ui/react-label";

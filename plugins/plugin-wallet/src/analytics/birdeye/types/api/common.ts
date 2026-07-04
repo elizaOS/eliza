@@ -1,3 +1,10 @@
+/**
+ * Cross-cutting Birdeye API types: `BirdeyeApiParams`, the union of every
+ * endpoint's request params (used to type the shared fetch/cache helpers),
+ * the generic response wrapper, the shared `TimeInterval` enum, and the
+ * verbose `TokenTradeData` shape (per-window trade/volume/wallet stats at
+ * 30m/1h/2h/4h/8h/24h granularity, mirroring Birdeye's flat field naming).
+ */
 import type {
   BaseQuoteParams,
   DefiHistoryPriceParams,

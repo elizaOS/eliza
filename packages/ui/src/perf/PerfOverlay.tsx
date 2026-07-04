@@ -1,3 +1,6 @@
+/**
+ * Dev perf overlay rendering live frame-budget samples from the FrameBudgetSampler.
+ */
 import { useEffect, useRef, useState } from "react";
 import {
   FrameBudgetSampler,

@@ -1,3 +1,9 @@
+/**
+ * Tests that the `train-parallel` command wires its agent/runtime/coordinator
+ * dependencies correctly. Uses `mock.module` stubs for `@feed/agents` and
+ * `@feed/db`, so no real agents or database are touched.
+ */
+
 import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const configureTrainingDependencies = mock(() => {});

@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `EmailCallbackPage` mounts the magic-link callback inside `StewardAuthProvider`
+ * so the verify actually runs instead of dead-ending on "unavailable". The
+ * Steward provider, i18n provider, page-title hook, session helper, and
+ * authorize-return/brand-button are doubled to isolate the mount.
+ */
+
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -14,11 +21,11 @@ const { verifyEmailCallback } = vi.hoisted(() => ({
 }));
 
 // Stub StewardAuthProvider with a marker that ALSO supplies the Steward context
-// — what the real provider does once its runtime mounts. This lets us assert
-// both halves of the fix: (a) the callback renders INSIDE the self-mounted
-// provider, and (b) the context reaches it so the magic-link verify runs,
-// instead of the "Sign-in is unavailable" dead-end a first-time visitor hit
-// when this public route had no provider at all (#9881-class).
+// — what the real provider does once its runtime mounts. This lets the test
+// assert both halves: (a) the callback renders INSIDE the self-mounted
+// provider, and (b) the context reaches it so the magic-link verify runs rather
+// than hitting the "Sign-in is unavailable" dead-end that a provider-less
+// public route produces (#9881-class).
 vi.mock("../../../shell/StewardProvider", async () => {
   const { createContext } = await import("react");
   const LocalStewardAuthContext = createContext<unknown>(null);

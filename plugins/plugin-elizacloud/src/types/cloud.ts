@@ -6,6 +6,7 @@
  */
 
 export type {
+  CloudCodingContainerService,
   CloudCodingAgent,
   CloudCodingContainerSession,
   CloudCodingContainerStatus,

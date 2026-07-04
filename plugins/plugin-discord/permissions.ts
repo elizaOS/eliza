@@ -1,3 +1,8 @@
+/**
+ * Discord permission tiers and invite-URL construction — maps named permission
+ * sets to their bitfield values (`getPermissionValues`) and builds tiered bot
+ * invite URLs (`generateInviteUrl`) used by the startup banner.
+ */
 const Permissions = {
 	AddReactions: 1n << 6n,
 	PrioritySpeaker: 1n << 8n,

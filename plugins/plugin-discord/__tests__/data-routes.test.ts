@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `discordDataRoutes` (guilds / channels / subscriptions) —
+ * drives the route handlers against a mocked runtime and service.
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { discordDataRoutes } from "../data-routes";

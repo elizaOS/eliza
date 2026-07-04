@@ -1,3 +1,10 @@
+/**
+ * Real-PGlite integration test for the built-in advanced-memory plugin running
+ * on top of plugin-sql storage: boots a full AgentRuntime with a migrated
+ * PGlite adapter, then verifies long-term memories are stored/retrieved
+ * (including across confirmed entity-identity links) and session summaries
+ * are persisted and read back for real conversation rooms.
+ */
 import { PGlite } from "@electric-sql/pglite";
 import {
   AgentRuntime,

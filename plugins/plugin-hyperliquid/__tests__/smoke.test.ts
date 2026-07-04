@@ -1,3 +1,10 @@
+/**
+ * Smoke tests for `handleHyperliquidRoute` and `createHyperliquidInfoClient`:
+ * markets/funding/status/positions/orders route payloads, non-GET 501
+ * execution-disabled responses, and position/order normalization math
+ * (mark price, distance-to-liquidation, effective leverage). Fetch is mocked
+ * against fixed responses — no live Hyperliquid API calls.
+ */
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {

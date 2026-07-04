@@ -1,3 +1,4 @@
+/** Storybook + story-gate visual states for the BrowserLaunchWidget. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { BrowserLaunchWidget } from "./browser-launch-widget";
 

@@ -1,3 +1,4 @@
+/** Covers the GPU autotune config table and llama-server flag mapping, reading the real `native/configs/gpu` JSON profiles off disk. Deterministic. */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

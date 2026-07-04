@@ -38,7 +38,9 @@ export const secretsStatusProvider: Provider = {
 	contextGate: { anyOf: ["secrets", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "OWNER" },
+	// Secret presence/values are operator context — admin+ (preserves the tier
+	// the former name-keyed override map enforced; #12094 item 3).
+	roleGate: { minRole: "ADMIN" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -56,6 +58,7 @@ export const secretsStatusProvider: Provider = {
 			const globalSecrets = await secretsService.list({
 				level: "global",
 				agentId: runtime.agentId,
+				requesterId: runtime.agentId,
 			});
 
 			const secretKeys = Object.keys(globalSecrets);
@@ -175,7 +178,9 @@ export const secretsInfoProvider: Provider = {
 	contextGate: { anyOf: ["secrets", "settings"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "OWNER" },
+	// Secret presence/values are operator context — admin+ (preserves the tier
+	// the former name-keyed override map enforced; #12094 item 3).
+	roleGate: { minRole: "ADMIN" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -192,6 +197,7 @@ export const secretsInfoProvider: Provider = {
 			const globalSecrets = await secretsService.list({
 				level: "global",
 				agentId: runtime.agentId,
+				requesterId: runtime.agentId,
 			});
 
 			const secretCount = Object.keys(globalSecrets).length;

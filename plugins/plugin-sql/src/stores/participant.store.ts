@@ -1,3 +1,8 @@
+/**
+ * Store for the `participants` join table: room membership per entity,
+ * scoped to the current agent, plus a per-(room, entity) follow/mute state
+ * (`roomState`).
+ */
 import { logger, type UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";
 import { participantTable, roomTable } from "../schema/index";

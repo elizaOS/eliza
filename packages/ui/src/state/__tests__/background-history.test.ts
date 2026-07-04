@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the pure background undo/redo/set reducer and its history
+ * cap. In-memory, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   applyBackgroundRedo,

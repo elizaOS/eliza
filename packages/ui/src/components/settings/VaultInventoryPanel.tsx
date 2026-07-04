@@ -985,14 +985,14 @@ const ProfileRow = memo(
       <li
         className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? " " : ""}`}
       >
-        <input
+        <Input
           ref={activateRef}
           {...activateAgentProps}
           type="radio"
           name={`active-${entryKey}`}
           checked={active}
           onChange={onActivate}
-          className="h-3 w-3 cursor-pointer accent-accent"
+          className="h-3 w-3 cursor-pointer border-border p-0 accent-accent"
           aria-current={active ? "true" : undefined}
           aria-label={t("vaultinventory.profiles.makeActive", {
             label: profileLabel,

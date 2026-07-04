@@ -20,7 +20,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
-import { validateServiceKey } from "@/lib/auth/service-key-hono-worker";
+import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -213,7 +213,10 @@ async function resolveCreditUser(
   agentId?: string,
 ): ReturnType<typeof requireUserOrApiKeyWithOrg> {
   if (!agentId) return requireUserOrApiKeyWithOrg(c);
-  await validateServiceKey(c);
+  // S2S agent-billing branch: enforce a valid service key (validateServiceKey
+  // returns null on a bad key, so awaiting-and-discarding it left this path
+  // triggerable unauthenticated — see #11981 class).
+  await requireServiceKey(c);
 
   const [sandbox] = await dbRead
     .select({

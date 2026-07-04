@@ -1,3 +1,9 @@
+/**
+ * Store for the `logs` table: append-only event records (actions, evaluators,
+ * model calls, embedding events) plus `getAgentRunSummaries`, which
+ * reconstructs per-run status/timing/counts by aggregating `run_event` and
+ * related log rows rather than reading from a dedicated runs table.
+ */
 import type {
   AgentRunCounts,
   AgentRunSummary,
@@ -78,10 +84,14 @@ export class LogStore implements Store {
     entityId?: UUID;
     roomId?: UUID;
     type?: string;
+    limit?: number;
     count?: number;
     offset?: number;
   }): Promise<Log[]> {
-    const { entityId, roomId, type, count, offset } = params;
+    const { entityId, roomId, type, offset } = params;
+    // Honor `limit` (the IDatabaseAdapter contract param) with `count` as a
+    // legacy alias, matching BaseDrizzleAdapter.getLogs.
+    const effectiveLimit = params.limit ?? params.count ?? 10;
 
     return this.ctx.withIsolationContext(entityId ?? null, async (tx) => {
       const result = await tx
@@ -94,7 +104,7 @@ export class LogStore implements Store {
           )
         )
         .orderBy(desc(logTable.createdAt))
-        .limit(count ?? 10)
+        .limit(effectiveLimit)
         .offset(offset ?? 0);
 
       return result.map((log) => ({

@@ -85,7 +85,8 @@ export interface NormalizedTriggerDraft {
   eventKind?: string;
   maxRuns?: number;
   kind: TriggerKind;
-  workflowId: string;
+  // Present only for `kind === "workflow"`.
+  workflowId?: string;
   workflowName?: string;
 }
 
@@ -172,7 +173,7 @@ function trim(value: string): string {
 }
 
 function parseTriggerKind(value: unknown): TriggerKind | undefined {
-  if (value === 'workflow') return value;
+  if (value === 'workflow' || value === 'prompt') return value;
   return undefined;
 }
 
@@ -180,8 +181,8 @@ type ParsedTriggerKind = { ok: true; kind: TriggerKind } | { ok: false; error: s
 
 function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
   if (value === undefined) return undefined;
-  if (value === 'workflow') return { ok: true, kind: value };
-  return { ok: false, error: "kind must be 'workflow'" };
+  if (value === 'workflow' || value === 'prompt') return { ok: true, kind: value };
+  return { ok: false, error: "kind must be 'workflow' or 'prompt'" };
 }
 
 function parseNonEmptyString(value: unknown): string | undefined {
@@ -194,28 +195,6 @@ function parseEventPayload(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function normalizeTriggerPath(pathname: string): {
-  normalizedPathname: string;
-  usingHeartbeatsAlias: boolean;
-} {
-  if (pathname === '/api/heartbeats') {
-    return {
-      normalizedPathname: '/api/triggers',
-      usingHeartbeatsAlias: true,
-    };
-  }
-  if (pathname.startsWith('/api/heartbeats/')) {
-    return {
-      normalizedPathname: pathname.replace('/api/heartbeats', '/api/triggers'),
-      usingHeartbeatsAlias: true,
-    };
-  }
-  return {
-    normalizedPathname: pathname,
-    usingHeartbeatsAlias: false,
-  };
 }
 
 async function findTask(
@@ -259,35 +238,29 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     TRIGGER_TASK_TAGS,
   } = ctx;
 
-  const { normalizedPathname, usingHeartbeatsAlias } = normalizeTriggerPath(pathname);
   const listResponse = (triggers: TriggerSummary[], status = 200): void => {
-    json(res, usingHeartbeatsAlias ? { triggers, heartbeats: triggers } : { triggers }, status);
+    json(res, { triggers }, status);
   };
   const itemResponse = (summary: TriggerSummary, status = 200): void => {
-    json(
-      res,
-      usingHeartbeatsAlias ? { trigger: summary, heartbeat: summary } : { trigger: summary },
-      status
-    );
+    json(res, { trigger: summary }, status);
   };
 
-  if (!normalizedPathname.startsWith('/api/triggers') && !pathname.startsWith('/api/heartbeats'))
-    return false;
+  if (!pathname.startsWith('/api/triggers')) return false;
   if (!runtime) {
     error(res, 'Agent is not running', 503);
     return true;
   }
-  if (!triggersFeatureEnabled(runtime) && normalizedPathname !== '/api/triggers/health') {
+  if (!triggersFeatureEnabled(runtime) && pathname !== '/api/triggers/health') {
     error(res, 'Triggers are disabled by configuration', 503);
     return true;
   }
 
-  if (method === 'GET' && normalizedPathname === '/api/triggers/health') {
+  if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
   }
 
-  if (method === 'GET' && normalizedPathname === '/api/triggers') {
+  if (method === 'GET' && pathname === '/api/triggers') {
     const tasks = await listTriggerTasks(runtime);
     const triggers = tasks
       .map(taskToTriggerSummary)
@@ -297,7 +270,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
 
-  if (method === 'POST' && normalizedPathname === '/api/triggers') {
+  if (method === 'POST' && pathname === '/api/triggers') {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
@@ -308,10 +281,16 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const requestedKind: TriggerKind = kindParsed?.ok ? kindParsed.kind : 'workflow';
-    const workflowId = parseNonEmptyString(body.workflowId);
-    const workflowName = parseNonEmptyString(body.workflowName);
-    if (!workflowId) {
+    const workflowId =
+      requestedKind === 'workflow' ? parseNonEmptyString(body.workflowId) : undefined;
+    const workflowName =
+      requestedKind === 'workflow' ? parseNonEmptyString(body.workflowName) : undefined;
+    if (requestedKind === 'workflow' && !workflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
+      return true;
+    }
+    if (requestedKind === 'prompt' && !parseNonEmptyString(body.instructions)) {
+      error(res, "instructions is required when kind is 'prompt'", 400);
       return true;
     }
 
@@ -417,7 +396,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
 
-  const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(normalizedPathname);
+  const runsMatch = /^\/api\/triggers\/([^/]+)\/runs$/.exec(pathname);
   if (method === 'GET' && runsMatch) {
     const task = await findTask(
       runtime,
@@ -433,7 +412,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
 
-  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(normalizedPathname);
+  const execMatch = /^\/api\/triggers\/([^/]+)\/execute$/.exec(pathname);
   if (method === 'POST' && execMatch) {
     const task = await findTask(
       runtime,
@@ -451,16 +430,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     });
     const refreshed = task.id ? await runtime.getTask(task.id) : null;
     const summary = refreshed ? taskToTriggerSummary(refreshed) : (result.trigger ?? null);
-    json(
-      res,
-      usingHeartbeatsAlias
-        ? { ok: true, result, trigger: summary, heartbeat: summary }
-        : { ok: true, result, trigger: summary }
-    );
+    json(res, { ok: true, result, trigger: summary });
     return true;
   }
 
-  const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(normalizedPathname);
+  const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(pathname);
   if (method === 'POST' && eventMatch) {
     const eventKind = decodeURIComponent(eventMatch[1] ?? '').trim();
     if (!eventKind) {
@@ -506,7 +480,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     return true;
   }
 
-  const itemMatch = /^\/api\/triggers\/([^/]+)$/.exec(normalizedPathname);
+  const itemMatch = /^\/api\/triggers\/([^/]+)$/.exec(pathname);
   if (!itemMatch) return false;
   const triggerId = decodeURIComponent(itemMatch[1]);
 
@@ -558,10 +532,30 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     }
     const parsedKind: TriggerKind | undefined = kindParsed?.ok ? kindParsed.kind : undefined;
     const nextKind: TriggerKind = parsedKind ?? parseTriggerKind(current.kind) ?? 'workflow';
-    const nextWorkflowId = parseNonEmptyString(body.workflowId) ?? current.workflowId;
-    const nextWorkflowName = parseNonEmptyString(body.workflowName) ?? current.workflowName;
+    const currentWorkflowId = current.kind === 'workflow' ? current.workflowId : undefined;
+    const currentWorkflowName = current.kind === 'workflow' ? current.workflowName : undefined;
+    const nextWorkflowId =
+      nextKind === 'workflow'
+        ? (parseNonEmptyString(body.workflowId) ?? currentWorkflowId)
+        : undefined;
+    const nextWorkflowName =
+      nextKind === 'workflow'
+        ? (parseNonEmptyString(body.workflowName) ?? currentWorkflowName)
+        : undefined;
     if (nextKind === 'workflow' && !nextWorkflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
+      return true;
+    }
+    // Switching TO prompt kind must supply fresh instructions — otherwise the
+    // update would silently reuse the old workflow trigger's synthesized
+    // "Run workflow <name>" text as the prompt. A same-kind prompt→prompt update
+    // may legitimately fall back to its own current.instructions.
+    if (
+      nextKind === 'prompt' &&
+      current.kind !== 'prompt' &&
+      !parseNonEmptyString(body.instructions)
+    ) {
+      error(res, "instructions is required when kind is 'prompt'", 400);
       return true;
     }
 

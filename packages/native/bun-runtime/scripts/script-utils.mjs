@@ -1,3 +1,11 @@
+/**
+ * Small command-line helpers shared by the Bun iOS runtime scripts.
+ *
+ * They keep argument parsing, checked subprocess execution, captured output,
+ * and `[bun-ios-runtime]` failure formatting consistent across the build,
+ * smoke, and verification entry points.
+ */
+
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 

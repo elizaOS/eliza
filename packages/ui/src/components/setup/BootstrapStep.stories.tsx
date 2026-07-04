@@ -1,3 +1,5 @@
+/** Storybook stories for BootstrapStep — default, invalid-token, rate-limited, server-not-ready, and verifying states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { BootstrapExchangeResult } from "../../api/client-agent";

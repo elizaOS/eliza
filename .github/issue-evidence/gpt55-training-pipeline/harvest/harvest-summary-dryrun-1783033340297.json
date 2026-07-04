@@ -1,0 +1,31 @@
+{
+  "startedAt": "2026-07-02T23:02:19.595Z",
+  "manifest": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/scripts/training-harvest/manifest.json",
+  "harvestRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/.github/issue-evidence/gpt55-training-pipeline/harvest",
+  "family": "scenario",
+  "providerSource": "deterministic-proxy",
+  "providerEnvKeys": [
+    "SCENARIO_USE_LLM_PROXY"
+  ],
+  "dryRun": true,
+  "limit": 3,
+  "items": [
+    {
+      "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
+      "id": "orchestrator-device-modality-reach",
+      "planned": true
+    },
+    {
+      "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
+      "id": "orchestrator-evidence-bundle",
+      "planned": true
+    },
+    {
+      "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
+      "id": "orchestrator-grilling-happy-path",
+      "planned": true
+    }
+  ],
+  "finishedAt": "2026-07-02T23:02:20.297Z",
+  "count": 3
+}

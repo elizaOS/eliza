@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Export dropdown button for analytics data (CSV/JSON download).
+ */
 import { ChevronDown, Download, Upload } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {

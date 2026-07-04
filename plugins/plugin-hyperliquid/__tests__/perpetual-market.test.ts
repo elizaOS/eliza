@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `PERPETUAL_MARKET` action and `PerpetualMarketService`:
+ * validation gating, the read/place_order discriminator, and response shapes.
+ * Runtime and fetch are mocked (no live model, no real Hyperliquid API calls).
+ */
 import type {
   HandlerCallback,
   IAgentRuntime,

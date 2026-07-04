@@ -1,3 +1,19 @@
+/**
+ * The chat surface's left rail: a unified, source-scoped list of conversations.
+ * It merges three streams into one flat, time-bucketed model — dashboard
+ * conversations, connector inbox chats (Discord, Telegram, …, polled every few
+ * seconds), and Terminal PTY sessions — each carrying a namespaced id
+ * (`inbox:` / `terminal:`) so selection stays unambiguous against dashboard
+ * UUIDs. A source/world scope dropdown filters the list; the keyword-search
+ * panel (`MessageSearchPanel`) can jump to a message, loading a window centered
+ * on an out-of-view hit before scrolling to it.
+ *
+ * List shaping (sections, scope options, bucket ranks) lives in
+ * `conversation-sidebar-model.ts`; this component owns fetching, polling,
+ * selection, rename/delete, collapsed/expanded rail rendering, and the mobile
+ * drawer. Barrel-exported and mounted inside the chat panel layout.
+ */
+
 import {
   MessagesSquare,
   Plus,
@@ -31,6 +47,7 @@ import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import { Button } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -882,17 +899,17 @@ export function ConversationsSidebar({
                   />
                 </div>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   data-testid="conversations-search-messages"
                   onClick={() => setMessageSearchOpen(true)}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border/60 px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  className="h-auto w-full justify-start gap-2 rounded-lg border-border/60 px-2.5 py-1.5 text-sm font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                 >
                   <Search className="h-3.5 w-3.5" />
                   {t("conversations.searchMessages", {
                     defaultValue: "Search messages",
                   })}
-                </button>
+                </Button>
               )}
               <CollapsibleChannelSection
                 sectionKey={messagesSection.key}

@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 
+/**
+ * `useAdminGate` session resolution. The Steward SDK context keeps its session
+ * in MemoryStorage — empty on every full page load — so the gate must resolve
+ * from the persisted localStorage JWT like the rest of the console, or a fully
+ * signed-in user is locked out with "Sign in required" after a reload. These
+ * tests exercise the gate with ONLY the persisted token present (no Steward
+ * provider mounted), which is the reload reality.
+ */
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// The admin gate must resolve the session the same way the rest of the console
-// does. The Steward SDK context keeps its session in MemoryStorage — empty on
-// every full page load — so gating on the raw context locked fully signed-in
-// users out with "Sign in required" while billing/org rendered fine off the
-// localStorage JWT. These tests exercise the gate with ONLY the persisted
-// token present (no Steward provider mounted), which is the reload reality.
 
 import { useAdminGate } from "./use-admin-gate";
 

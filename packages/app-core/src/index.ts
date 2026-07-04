@@ -13,7 +13,6 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./api/workbench-compat-routes";
 export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";
 export * from "./first-run/first-run-config";
@@ -35,7 +34,6 @@ export * from "./registry";
 // and avoids ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
-export * from "./runtime/app-core-runtime-hooks";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";

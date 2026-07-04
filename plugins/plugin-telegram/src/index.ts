@@ -1,3 +1,10 @@
+/**
+ * Plugin entry: assembles the Telegram `Plugin` object — the `TelegramService`
+ * and `TelegramOwnerPairingServiceImpl` (in that order), the bot- and
+ * user-account setup routes, and the live test suite — and, on `init`, wires the
+ * ConnectorAccountManager provider, the DM sensitive-request adapter, and the
+ * cross-connector triage adapter. Auto-enables on the `telegram` connector key.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import {
@@ -16,10 +23,19 @@ import { registerTelegramDmSensitiveRequestAdapter } from "./sensitive-request-a
 import { TelegramService } from "./service";
 import { telegramSetupRoutes } from "./setup-routes";
 import { TelegramTestSuite } from "./tests";
+import { registerTelegramTriageAdapter } from "./triage-adapter";
 
 const telegramPlugin: Plugin = {
   name: TELEGRAM_SERVICE_NAME,
   description: "Telegram client plugin",
+  connectorSources: [
+    {
+      source: "telegram",
+      aliases: ["telegram", "telegram-account", "telegramaccount"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   // TelegramService must come before TelegramOwnerPairingServiceImpl so the
   // bot instance exists when the pairing service registers its command.
   services: [TelegramService, TelegramOwnerPairingServiceImpl],
@@ -54,6 +70,9 @@ const telegramPlugin: Plugin = {
     // Deliver secret / OAuth requests as a DM link-out (the value never transits
     // the chat transport). Mirrors the Discord DM adapter.
     registerTelegramDmSensitiveRequestAdapter(runtime);
+
+    // Register the cross-connector triage adapter for the "telegram" source.
+    registerTelegramTriageAdapter();
   },
   async dispose(runtime: IAgentRuntime) {
     await TelegramService.stop(runtime);

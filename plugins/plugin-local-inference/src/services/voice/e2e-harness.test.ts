@@ -1,9 +1,13 @@
+/** Covers the voice E2E harness core scoring: WER, artifact validation, and barge-in. Deterministic, fixture inputs. */
 import { describe, expect, it } from "vitest";
 import {
 	assertRequiredVoiceArtifacts,
+	scoreBargeInGating,
 	scoreBargeInInterruption,
+	scoreErle,
 	scoreFirstResponseLatency,
 	scoreOptimisticRollbackRestart,
+	scorePartialMonotonicity,
 	scorePauseContinuation,
 	scoreTtsAsrRoundTrip,
 	summarizeVoiceE2e,
@@ -178,5 +182,102 @@ describe("voice E2E harness latency summary", () => {
 		]);
 		expect(summary.passed).toBe(true);
 		expect(summary.cases).toHaveLength(2);
+	});
+});
+
+describe("scoreBargeInGating — speaker-gated barge-in", () => {
+	it("passes when the wake-word cancels in-budget and echo/bystander hold", () => {
+		const result = scoreBargeInGating([
+			{ expectCancel: true, cancelMs: 120 },
+			{ expectCancel: false, cancelMs: null },
+			{ expectCancel: false, cancelMs: null },
+		]);
+		expect(result.passed).toBe(true);
+		expect(result.gatingAccuracy).toBe(1);
+		expect(result.worstCancelMs).toBe(120);
+		expect(result.wrongCancels).toBe(0);
+		expect(result.missedCancels).toBe(0);
+	});
+
+	it("fails hard when the agent's echo hard-stops the agent (wrong cancel)", () => {
+		const result = scoreBargeInGating([
+			{ expectCancel: true, cancelMs: 100 },
+			{ expectCancel: false, cancelMs: 40 }, // echo cancelled — must not
+		]);
+		expect(result.passed).toBe(false);
+		expect(result.wrongCancels).toBe(1);
+	});
+
+	it("fails when a legitimate barge-in cancels past the budget", () => {
+		const result = scoreBargeInGating([{ expectCancel: true, cancelMs: 400 }]);
+		expect(result.passed).toBe(false);
+		expect(result.missedCancels).toBe(1);
+	});
+
+	it("fails when a legitimate barge-in is never actioned", () => {
+		const result = scoreBargeInGating([{ expectCancel: true, cancelMs: null }]);
+		expect(result.passed).toBe(false);
+		expect(result.missedCancels).toBe(1);
+		expect(result.worstCancelMs).toBeNull();
+	});
+});
+
+describe("scoreErle — echo-return-loss floor", () => {
+	it("passes when the worst turn clears the floor", () => {
+		const result = scoreErle([{ erleDb: 22 }, { erleDb: 19.5 }], {
+			minErleDb: 18,
+		});
+		expect(result.passed).toBe(true);
+		expect(result.worstErleDb).toBe(19.5);
+	});
+
+	it("fails on the worst turn, not the mean (one weak burst)", () => {
+		const result = scoreErle([{ erleDb: 30 }, { erleDb: 12 }], {
+			minErleDb: 18,
+		});
+		expect(result.passed).toBe(false);
+		expect(result.worstErleDb).toBe(12);
+	});
+
+	it("treats an empty measurement set as unscored, never a pass", () => {
+		const result = scoreErle([], { minErleDb: 18 });
+		expect(result.passed).toBe(false);
+		expect(result.total).toBe(0);
+	});
+
+	it("counts +Infinity (silent residual) as clearing the floor", () => {
+		const result = scoreErle([{ erleDb: Number.POSITIVE_INFINITY }], {
+			minErleDb: 18,
+		});
+		expect(result.passed).toBe(true);
+	});
+});
+
+describe("scorePartialMonotonicity — committed prefix never retracts", () => {
+	it("passes a strictly growing partial stream", () => {
+		const result = scorePartialMonotonicity([
+			"what",
+			"what is",
+			"what is the",
+			"what is the time",
+		]);
+		expect(result.passed).toBe(true);
+		expect(result.retractions).toBe(0);
+		expect(result.total).toBe(3);
+	});
+
+	it("flags a retraction when a later partial rewrites the committed prefix", () => {
+		const result = scorePartialMonotonicity([
+			"set a timer",
+			"set a timer for",
+			"set the timer for", // "a" → "the": retraction
+		]);
+		expect(result.passed).toBe(false);
+		expect(result.retractions).toBe(1);
+	});
+
+	it("does not pass a single-element stream (nothing to prove)", () => {
+		expect(scorePartialMonotonicity(["hello"]).passed).toBe(false);
+		expect(scorePartialMonotonicity([]).passed).toBe(false);
 	});
 });

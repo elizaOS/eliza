@@ -1,3 +1,8 @@
+/**
+ * Verifies memories can be created with embeddings and read back with the vector
+ * dimension preserved, including a database-wide dimension change (384 to 768).
+ * Runs against a real Postgres or PGlite backend via `createIsolatedTestDatabase`.
+ */
 import {
   ChannelType,
   type Entity,

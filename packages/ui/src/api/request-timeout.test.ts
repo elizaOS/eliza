@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the per-request fetch-timeout budgets (including the long
+ * local-inference TTS/ASR budgets). Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 

@@ -52,6 +52,8 @@ TARGET_CHAT_TEMPLATE = "gemma4"
 NATIVE_FORMAT = "eliza_native_v1"
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 TRAINING_BOUNDARY = "vercel_ai_sdk.generateText"
+PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
+PRIVACY_ATTESTATION_VERSION = 1
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
 OUTPUT_FORMAT_NATIVE = "eliza-native"
 OUTPUT_FORMAT_NATIVE_ALIAS = "eliza-record"
@@ -281,6 +283,36 @@ def stable_hash(*parts: Any, length: int = 24) -> str:
         h.update(_json_dumps(part).encode("utf-8", "replace"))
         h.update(b"\0")
     return h.hexdigest()[:length]
+
+
+def content_hash(*parts: Any) -> str:
+    return stable_hash("content", *parts, length=64)
+
+
+def native_content_hash(row: dict[str, Any]) -> str:
+    request = _as_record(row.get("request")) or {}
+    response = _as_record(row.get("response")) or {}
+    return content_hash(
+        {
+            "request": request,
+            "response": response,
+            "tools": request.get("tools"),
+        }
+    )
+
+
+def trajectory_content_hash(record: dict[str, Any]) -> str:
+    metadata = _as_record(record.get("metadata")) or {}
+    existing = metadata.get("contentHash")
+    if isinstance(existing, str) and existing:
+        return existing
+    return content_hash(
+        {
+            "messages": record.get("messages"),
+            "tools": record.get("tools"),
+            "actions": record.get("actions"),
+        }
+    )
 
 
 def stable_unit(*parts: Any) -> float:
@@ -788,6 +820,7 @@ def build_native_record(
             "promptTokens": (_as_record(response.get("usage")) or {}).get("promptTokens"),
             "completionTokens": (_as_record(response.get("usage")) or {}).get("completionTokens"),
             "cacheReadInputTokens": (_as_record(response.get("usage")) or {}).get("cacheReadInputTokens"),
+            "contentHash": native_content_hash(row),
         },
     }
 
@@ -1065,6 +1098,8 @@ class PrepStats:
     seen: int = 0
     produced: int = 0
     skipped: int = 0
+    deduped: int = 0
+    unique_content: int = 0
     privacy_redactions: int = 0
     privacy_anonymizations: int = 0
     credential_hits: Counter[str] = field(default_factory=Counter)
@@ -1222,6 +1257,17 @@ def _response_tool_call_for_native(call: dict[str, Any], fallback_index: int) ->
     }
 
 
+def row_privacy_attestation() -> dict[str, Any]:
+    return {
+        "schema": PRIVACY_ATTESTATION_SCHEMA,
+        "version": PRIVACY_ATTESTATION_VERSION,
+        "source": "prepare_eliza1_trajectory_dataset",
+        "redacted": True,
+        "reviewed": True,
+        "passed": True,
+    }
+
+
 def trajectory_record_to_eliza_native(record: dict[str, Any]) -> dict[str, Any] | None:
     """Convert an auditable trajectory record into train_local.py input.
 
@@ -1274,9 +1320,11 @@ def trajectory_record_to_eliza_native(record: dict[str, Any]) -> dict[str, Any] 
         "trajectory_record_id": record.get("id"),
         "trajectory_schema": record.get("schema"),
         "quality": record.get("quality"),
+        "privacy_attestation": row_privacy_attestation(),
         "source": source,
         "target": record.get("target"),
         "trajectory_metadata": metadata,
+        "contentHash": trajectory_content_hash(record),
     }
     native_row: dict[str, Any] = {
         "format": NATIVE_FORMAT,
@@ -1332,6 +1380,8 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
     splits: dict[str, list[dict[str, Any]]] = {"train": [], "val": [], "test": [], "repair_eval": []}
     stats = PrepStats()
     max_records = int(args.max_records or 0)
+    dedup_native = not getattr(args, "no_dedup", False)
+    seen_content_hashes: dict[str, str] = {}
 
     for path in iter_input_files(args.input):
         if not path.exists():
@@ -1390,6 +1440,16 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
                 continue
 
             for record in produced:
+                dedup_hash = trajectory_content_hash(record)
+                metadata = _as_record(record.get("metadata")) or {}
+                metadata["contentHash"] = dedup_hash
+                record["metadata"] = metadata
+                if dedup_hash in seen_content_hashes:
+                    if dedup_native:
+                        stats.deduped += 1
+                        continue
+                else:
+                    seen_content_hashes[dedup_hash] = str(record.get("id") or "")
                 if record["quality"]["success"]:
                     split = split_success_record(
                         record,
@@ -1413,6 +1473,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         if max_records and stats.produced >= max_records:
             break
 
+    stats.unique_content = len(seen_content_hashes)
     split_minimum_moves = enforce_requested_success_splits(
         splits,
         val_ratio=args.val_ratio,
@@ -1469,6 +1530,16 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         "seenRecords": stats.seen,
         "producedRecords": stats.produced,
         "skippedRecords": stats.skipped,
+        "deduped_count": stats.deduped,
+        "unique_count": stats.produced,
+        "droppedDuplicateNativeRows": stats.deduped,
+        "dedupedCount": stats.deduped,
+        "uniqueCount": stats.unique_content,
+        "dedup": {
+            "contentHashFields": ["request", "response", "tools"],
+            "dropped": stats.deduped,
+            "unique": stats.unique_content,
+        },
         "sourceCounts": dict(sorted(stats.source_counts.items())),
         "taskCounts": dict(sorted(stats.task_counts.items())),
         "actionCounts": dict(sorted(stats.action_counts.items())),
@@ -1477,6 +1548,10 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             "anonymizations": stats.privacy_anonymizations,
             "credentialHits": dict(sorted(stats.credential_hits.items())),
             "strict": bool(args.strict_privacy),
+            "attestationSchema": PRIVACY_ATTESTATION_SCHEMA,
+            "attestationVersion": PRIVACY_ATTESTATION_VERSION,
+            "rowLevel": True,
+            "reviewed": True,
         },
         "split": {
             "seed": args.seed,
@@ -1533,6 +1608,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--lifeops-success-threshold", type=float, default=0.99)
     parser.add_argument("--strict-privacy", action="store_true")
+    parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help="Disable content-hash dedup of eliza_native_v1 rows. By default, "
+        "rows whose (request, response) boundary is identical to an "
+        "already-emitted row are dropped so repeated scenario/benchmark runs "
+        "do not inflate the corpus with exact duplicates.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     return parser
 

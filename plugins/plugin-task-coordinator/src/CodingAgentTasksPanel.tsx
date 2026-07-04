@@ -10,6 +10,7 @@ import {
   useAppSelectorShallow,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { ViewBackButton } from "@elizaos/ui/components";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
   type ReactNode,
@@ -591,7 +592,11 @@ function ThreadDetailPane({
   );
 }
 
-export function CodingAgentTasksPanel() {
+export function CodingAgentTasksPanel({
+  fullPage,
+}: {
+  fullPage?: boolean;
+} = {}) {
   const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
     t: s.t,
     uiLanguage: s.uiLanguage,
@@ -867,6 +872,7 @@ export function CodingAgentTasksPanel() {
       data-testid="task-coordinator-panel"
     >
       <TaskListHeader
+        leading={fullPage ? <ViewBackButton /> : null}
         icon={<ListChecks className="h-5 w-5" />}
         title={t("taskseventspanel.Tasks", { defaultValue: "Coding Tasks" })}
         counts={
@@ -897,7 +903,8 @@ export function CodingAgentTasksPanel() {
             inputRef={searchRef}
             agentProps={searchAgentProps}
           />
-          <button
+          <Button
+            unstyled
             ref={archivedRef}
             type="button"
             onClick={() => setShowArchived((value) => !value)}
@@ -912,7 +919,7 @@ export function CodingAgentTasksPanel() {
           >
             <Archive className="h-3.5 w-3.5" />
             {showArchivedLabel}
-          </button>
+          </Button>
         </div>
       ) : null}
 

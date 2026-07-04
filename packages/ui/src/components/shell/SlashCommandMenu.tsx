@@ -13,6 +13,7 @@ import {
 } from "../../chat/slash-menu";
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 
 const FLOAT_SHADOW = "[text-shadow:0_1px_4px_rgba(0,0,0,0.7)]";
 
@@ -260,8 +261,7 @@ export function SlashCommandMenu({
         {state.headerLabel}
       </div>
       {state.items.map((item, index) => (
-        <button
-          type="button"
+        <Button
           key={item.id}
           id={`slash-option-${item.id}`}
           role="option"
@@ -282,8 +282,9 @@ export function SlashCommandMenu({
             if (e.pointerType !== "touch") e.preventDefault();
           }}
           onClick={() => onPick(index)}
+          variant="ghost"
           className={cn(
-            "flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors",
+            "flex h-auto w-full items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-2 text-left font-normal transition-colors hover:bg-white/8",
             index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8",
           )}
         >
@@ -315,7 +316,7 @@ export function SlashCommandMenu({
               ⇥
             </span>
           ) : null}
-        </button>
+        </Button>
       ))}
     </div>
   );

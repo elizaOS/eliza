@@ -87,6 +87,80 @@ describe("formatMessages", () => {
 		expect(rendered).not.toContain("reacted-to message in full");
 	});
 
+	it("tags a bot sender's name with (bot) so the model knows the participant is a bot", () => {
+		// Bot-ness surfaced as plain transcript context — what the agent KNOWS about
+		// a participant — not a behavioral branch. A message stamped fromBot at
+		// ingestion renders the speaker as "Name (bot)".
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000031" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: { text: "hey AgentC, can you deploy the site" },
+					metadata: { fromBot: true },
+				} as Memory,
+			],
+			entities: [
+				{
+					id: "00000000-0000-0000-0000-000000000003" as UUID,
+					names: ["OtherBot"],
+				} as never,
+			],
+		});
+
+		expect(rendered).toContain("OtherBot (bot):");
+	});
+
+	it("also reads fromBot from content.metadata (connector stamps either shape)", () => {
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000033" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000005" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: {
+						text: "status: queue drained",
+						metadata: { fromBot: true },
+					},
+				} as Memory,
+			],
+			entities: [
+				{
+					id: "00000000-0000-0000-0000-000000000005" as UUID,
+					names: ["RelayBot"],
+				} as never,
+			],
+		});
+
+		expect(rendered).toContain("RelayBot (bot):");
+	});
+
+	it("does NOT tag a human sender's name with (bot)", () => {
+		const rendered = formatMessages({
+			messages: [
+				{
+					id: "00000000-0000-0000-0000-000000000032" as UUID,
+					entityId: "00000000-0000-0000-0000-000000000004" as UUID,
+					roomId,
+					createdAt: 1765381653000,
+					content: { text: "can you deploy the site" },
+				} as Memory,
+			],
+			entities: [
+				{
+					id: "00000000-0000-0000-0000-000000000004" as UUID,
+					names: ["Alice"],
+				} as never,
+			],
+		});
+
+		expect(rendered).toContain("Alice:");
+		expect(rendered).not.toContain("(bot)");
+	});
+
 	it("advertises a stored-content read when readable text is stored", () => {
 		const rendered = formatMessages({
 			messages: [

@@ -3,6 +3,7 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
+  type DispatchSensitiveRequest,
   logger,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
@@ -42,6 +43,24 @@ function isOwnerAppOAuthRuntime(value: unknown): value is OwnerAppOAuthRuntime {
     "sendMessageToTarget" in value &&
     typeof (value as { sendMessageToTarget: unknown }).sendMessageToTarget ===
       "function"
+  );
+}
+
+function isPolicySensitiveRequest(
+  value: DispatchSensitiveRequest,
+): value is DispatchSensitiveRequest & SensitiveRequest {
+  const record = value as Record<string, unknown>;
+  const target = record.target;
+  const delivery = record.delivery;
+  return (
+    typeof record.status === "string" &&
+    typeof record.agentId === "string" &&
+    target !== null &&
+    typeof target === "object" &&
+    typeof (target as { kind?: unknown }).kind === "string" &&
+    delivery !== null &&
+    typeof delivery === "object" &&
+    typeof (delivery as { mode?: unknown }).mode === "string"
   );
 }
 
@@ -187,7 +206,14 @@ export const ownerAppOAuthSensitiveRequestAdapter: SensitiveRequestDeliveryAdapt
       channelId,
       runtime,
     }): Promise<DeliveryResult> {
-      const request = rawRequest as unknown as SensitiveRequest;
+      if (!isPolicySensitiveRequest(rawRequest)) {
+        return {
+          delivered: false,
+          target: "owner_app_oauth",
+          error: "invalid sensitive request payload",
+        };
+      }
+      const request = rawRequest;
 
       if (!isOwnerAppOAuthRuntime(runtime)) {
         return {

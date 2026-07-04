@@ -162,14 +162,15 @@ export function GitHubConnectionCard() {
             Paste a personal access token so coding sub-agents can clone private
             repos, push commits, and open pull requests.
           </p>
-          <button
+          <Button
+            unstyled
             type="button"
-            className="inline-flex w-fit items-center gap-1 text-xs text-blue-500 hover:underline"
+            className="inline-flex w-fit items-center gap-1 text-xs text-accent hover:underline"
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
           >
             <ExternalLink className="h-3 w-3" aria-hidden />
             Generate a token on github.com (scopes: repo, read:user)
-          </button>
+          </Button>
           <div className="flex items-center gap-2">
             <SettingsControls.Input
               className="w-full"

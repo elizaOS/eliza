@@ -26,34 +26,6 @@ interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
   };
 }
 
-const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking";
-
-type SelfControlApi = {
-  getSelfControlPermissionState: () => Promise<PermissionState>;
-  requestSelfControlPermission: () => Promise<PermissionState>;
-  openSelfControlPermissionLocation: () => Promise<boolean>;
-};
-
-const SELFCONTROL_MODULE: string = "@elizaos/plugin-personal-assistant";
-
-async function loadSelfControlApi(): Promise<SelfControlApi | null> {
-  try {
-    const loaded = (await import(
-      /* @vite-ignore */ SELFCONTROL_MODULE
-    )) as Partial<SelfControlApi>;
-    if (
-      typeof loaded.getSelfControlPermissionState !== "function" ||
-      typeof loaded.requestSelfControlPermission !== "function" ||
-      typeof loaded.openSelfControlPermissionLocation !== "function"
-    ) {
-      return null;
-    }
-    return loaded as SelfControlApi;
-  } catch {
-    return null;
-  }
-}
-
 function currentPlatform(): "darwin" | "win32" | "linux" {
   const p = process.platform;
   return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
@@ -67,7 +39,8 @@ function isPermissionsRegistry(
     service !== null &&
     "get" in service &&
     "check" in service &&
-    "request" in service
+    "request" in service &&
+    "openSettings" in service
   );
 }
 
@@ -76,17 +49,6 @@ function getPermissionRegistry(
 ): IPermissionsRegistry | null {
   const service = runtime?.getService(PERMISSIONS_REGISTRY_SERVICE);
   return isPermissionsRegistry(service) ? service : null;
-}
-
-function unavailableWebsiteBlockingPermission(): PermissionState {
-  return {
-    id: WEBSITE_BLOCKING_PERMISSION_ID,
-    status: "not-applicable",
-    lastChecked: Date.now(),
-    canRequest: false,
-    platform: currentPlatform(),
-    reason: "Website blocking is available when the LifeOps app is installed.",
-  };
 }
 
 function unavailableSystemPermission(id: PermissionId): PermissionState {
@@ -267,7 +229,6 @@ async function openSystemPermissionSettings(
 
 async function buildPermissionsPayload(
   state: PermissionRouteState,
-  websiteBlockingPermission: PermissionState,
   refresh = false,
 ): Promise<
   Record<PermissionId, PermissionState> & {
@@ -282,11 +243,6 @@ async function buildPermissionsPayload(
 
   await Promise.all(
     PERMISSION_IDS.map(async (id) => {
-      if (id === WEBSITE_BLOCKING_PERMISSION_ID) {
-        permissions[id] = websiteBlockingPermission;
-        return;
-      }
-
       const persisted = permissionStates[id];
       if (!refresh && persisted) {
         permissions[id] = persisted;
@@ -317,20 +273,11 @@ async function buildPermissionsPayload(
     status: shellEnabled ? "granted" : "denied",
     canRequest: false,
   };
-  permissions[WEBSITE_BLOCKING_PERMISSION_ID] = websiteBlockingPermission;
-
   return {
     ...permissions,
     _platform: process.platform,
     _shellEnabled: shellEnabled,
   };
-}
-
-async function getWebsiteBlockingPermissionState(): Promise<PermissionState> {
-  const selfControl = await loadSelfControlApi();
-  return selfControl
-    ? await selfControl.getSelfControlPermissionState()
-    : unavailableWebsiteBlockingPermission();
 }
 
 export interface PermissionRouteState {
@@ -365,8 +312,7 @@ export async function handlePermissionRoutes(
   if (!pathname.startsWith("/api/permissions")) return false;
 
   if (method === "GET" && pathname === "/api/permissions") {
-    const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
-    json(res, await buildPermissionsPayload(state, websiteBlockingPermission));
+    json(res, await buildPermissionsPayload(state));
     return true;
   }
 
@@ -399,10 +345,6 @@ export async function handlePermissionRoutes(
       error(res, "Invalid permission ID", 400);
       return true;
     }
-    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
-      json(res, await getWebsiteBlockingPermissionState());
-      return true;
-    }
     const permState = state.permissionStates?.[permId];
     if (permState) {
       json(res, permState);
@@ -422,11 +364,7 @@ export async function handlePermissionRoutes(
   }
 
   if (method === "POST" && pathname === "/api/permissions/refresh") {
-    const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
-    json(
-      res,
-      await buildPermissionsPayload(state, websiteBlockingPermission, true),
-    );
+    json(res, await buildPermissionsPayload(state, true));
     return true;
   }
 
@@ -437,16 +375,6 @@ export async function handlePermissionRoutes(
     const permId = pathname.split("/")[3];
     if (!isPermissionId(permId)) {
       error(res, "Invalid permission ID", 400);
-      return true;
-    }
-    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
-      const selfControl = await loadSelfControlApi();
-      json(
-        res,
-        selfControl
-          ? await selfControl.requestSelfControlPermission()
-          : unavailableWebsiteBlockingPermission(),
-      );
       return true;
     }
     const registry = getPermissionRegistry(state.runtime);
@@ -477,29 +405,18 @@ export async function handlePermissionRoutes(
       error(res, "Invalid permission ID", 400);
       return true;
     }
-    if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
+    const registry = getPermissionRegistry(state.runtime);
+    let opened = false;
+    if (registry) {
       try {
-        const selfControl = await loadSelfControlApi();
-        const opened = selfControl
-          ? await selfControl.openSelfControlPermissionLocation()
-          : false;
-        json(res, {
-          opened,
-          id: WEBSITE_BLOCKING_PERMISSION_ID,
-          permission: await getWebsiteBlockingPermissionState(),
-        });
-      } catch (openError) {
-        error(
-          res,
-          openError instanceof Error
-            ? openError.message
-            : "Failed to open the hosts file location.",
-          500,
-        );
+        opened = await registry.openSettings(permId);
+      } catch {
+        opened = false;
       }
-      return true;
     }
-    const opened = await openSystemPermissionSettings(permId);
+    if (!opened) {
+      opened = await openSystemPermissionSettings(permId);
+    }
     json(res, {
       opened,
       id: permId,

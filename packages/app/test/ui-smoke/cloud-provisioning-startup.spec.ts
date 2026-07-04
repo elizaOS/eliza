@@ -426,8 +426,7 @@ for (const viewport of VIEWPORTS) {
         localStorage.clear();
         sessionStorage.clear();
         localStorage.setItem(voicePrefixDoneKey, "1");
-        (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-          cloudAuthToken;
+        localStorage.setItem("steward_session_token", cloudAuthToken);
       },
       {
         cloudAuthToken: CLOUD_AUTH_TOKEN,
@@ -754,8 +753,7 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem(voicePrefixDoneKey, "1");
-      (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-        cloudAuthToken;
+      localStorage.setItem("steward_session_token", cloudAuthToken);
     },
     {
       cloudAuthToken: CLOUD_AUTH_TOKEN,

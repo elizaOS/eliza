@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders OwnerBadge in jsdom (real component, no model/network) to assert the
+ * crown shows only when isOwner, the inline/overlay/card variants, tooltip, and
+ * test-id passthrough.
+ */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

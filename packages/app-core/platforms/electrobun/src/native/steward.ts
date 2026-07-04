@@ -143,7 +143,7 @@ async function configureStewardEnvFromCredentials(): Promise<void> {
 
     try {
       const { saveStewardCredentials } = await loadStewardCredentialsModule();
-      saveStewardCredentials({
+      await saveStewardCredentials({
         apiUrl: apiBase,
         tenantId: credentials.tenantId,
         agentId: credentials.agentId,

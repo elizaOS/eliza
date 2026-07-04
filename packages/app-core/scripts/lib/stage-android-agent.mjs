@@ -238,9 +238,11 @@ const LAUNCH_SCRIPT = `#!/system/bin/sh
 # Required env vars:
 #   DEVICE_DIR  Absolute path on the device that holds bun + musl.
 #   LD_NAME     Per-ABI musl loader filename (ld-musl-{x86_64,aarch64}.so.1).
-#   PORT        Loopback port for Bun.serve() to bind 127.0.0.1 on.
 #
 # Optional:
+#   PORT        Loopback port for the HTTP listener. Unset by default — the agent
+#               is port-free (requests ride the abstract UDS); ElizaAgentService
+#               only exports PORT when ELIZA_API_EXPOSE_PORT re-opens the port.
 #   AGENT_ROOT         Directory that holds agent-bundle.js; defaults DEVICE_DIR.
 #   RUNTIME_DIR        Directory that holds bun + runtime libs; defaults DEVICE_DIR.
 #   BUN_PATH           Absolute bun executable path; defaults RUNTIME_DIR/bun.
@@ -254,7 +256,6 @@ DEVICE_DIR=\${DEVICE_DIR:-/data/local/tmp}
 RUNTIME_DIR=\${RUNTIME_DIR:-\${DEVICE_DIR}}
 AGENT_ROOT=\${AGENT_ROOT:-\${DEVICE_DIR}}
 LD_NAME=\${LD_NAME:-ld-musl-x86_64.so.1}
-PORT=\${PORT:-31337}
 AGENT_BUNDLE=\${AGENT_BUNDLE:-agent-bundle.js}
 BUN_PATH=\${BUN_PATH:-\${RUNTIME_DIR}/bun}
 LD_PATH=\${LD_PATH:-\${RUNTIME_DIR}/\${LD_NAME}}
@@ -275,7 +276,7 @@ else
 fi
 
 (
-  setsid sh -c 'log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; shift 4; exec </dev/null >"$log_file" 2>&1; cd "$agent_root" || exit 1; LD_LIBRARY_PATH="$runtime_ld" PORT="$port" exec "$@"' sh "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT}" "$@" &
+  setsid sh -c 'log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; shift 4; exec </dev/null >"$log_file" 2>&1; cd "$agent_root" || exit 1; if [ -n "$port" ]; then export PORT="$port"; fi; LD_LIBRARY_PATH="$runtime_ld" exec "$@"' sh "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "$@" &
 ) &
 disown 2>/dev/null || true
 exit 0

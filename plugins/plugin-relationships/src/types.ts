@@ -3,11 +3,11 @@
  *
  * These mirror the canonical LifeOps shapes in
  * `plugins/plugin-personal-assistant/src/lifeops/entities/types.ts` and
- * `plugins/plugin-personal-assistant/src/lifeops/relationships/types.ts`. The richer
- * lifeops shapes (identities array, attributes map, retired status, sentiment
- * trend, type registries) will be ported here in a follow-up pass; for now we
- * expose the minimal Entity / Relationship surface that matches the DB schema
- * in `db/schema.ts`.
+ * `plugins/plugin-personal-assistant/src/lifeops/relationships/types.ts`. This
+ * module exposes the minimal Entity / Relationship surface that matches the DB
+ * schema in `db/schema.ts`; the richer lifeops shapes (identities array,
+ * attributes map, retired status, sentiment trend, type registries) live only
+ * in plugin-personal-assistant and are not mirrored here.
  */
 
 export const RELATIONSHIPS_LOG_PREFIX = "[Relationships]";

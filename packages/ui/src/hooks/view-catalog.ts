@@ -85,6 +85,8 @@ export interface ViewEntry {
   viewKind?: ViewKind;
   /** Sort priority for launcher/nav surfaces (lower = earlier). */
   order?: number;
+  /** Optional named group shared with app-shell page registrations. */
+  group?: string;
   /** Source records (one is set depending on `kind`). */
   view?: ViewRegistryEntry;
   app?: RegistryAppInfo;
@@ -125,6 +127,7 @@ export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
     developerOnly: view.developerOnly,
     viewKind: view.viewKind,
     order: view.order,
+    group: view.group,
     view,
   };
 }

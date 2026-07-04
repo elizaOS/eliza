@@ -1,3 +1,5 @@
+/** Unit tests for `DEFAULT_SETUP_POLICY` and `isActionAllowed`: the allowed setup action types and the reject path for anything outside the allow-list. */
+
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETUP_POLICY, isActionAllowed } from "../policy.js";
 import type { SetupActionPolicy } from "../types.js";

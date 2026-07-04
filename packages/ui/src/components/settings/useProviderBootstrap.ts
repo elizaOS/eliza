@@ -1,3 +1,10 @@
+/**
+ * Boot hook for ProviderSwitcher: on mount it loads subscription status,
+ * first-run model options, and the saved LLM-text routing, then seeds the
+ * selection + cloud-model hooks. Fetches are best-effort — a failure leaves the
+ * panel on empty/default state rather than blocking render.
+ */
+
 import {
   resolveServiceRoutingInConfig,
   type SubscriptionProviderStatus,

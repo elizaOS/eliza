@@ -1,3 +1,9 @@
+/**
+ * In-memory registry of per-user LP profiles: vault linkage, auto-rebalance
+ * preferences, and tracked LP positions. State is not persisted across
+ * restarts — this is the source of truth for "which vault/config does this
+ * user have" while the process is running.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import type {
   IUserLpProfileService,

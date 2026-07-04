@@ -14,9 +14,9 @@ The plugin handles three deployment shapes automatically:
 | Platform | Mechanism |
 |---|---|
 | iOS remote/cloud | HTTP to a configured API endpoint (reads `ELIZA_IOS_API_BASE` or equivalent) |
-| iOS local / sideload | WebView ITTP bridge (`window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__`) |
+| iOS local / sideload | WebView ITTP bridge (`window.__ELIZA_BRIDGE__?.iosLocalAgentRequest`) |
 | Android local | Reflection call into `ElizaAgentService` in the host app |
-| Web / Electrobun | HTTP fetch to `window.__ELIZA_API_BASE__` or relative URLs |
+| Web / Electrobun | HTTP fetch to the boot-config `apiBase` or relative URLs |
 
 ## Capacitor methods
 
@@ -89,7 +89,7 @@ Example `capacitor.config.json` fragment:
 
 ### Web / Electrobun
 
-- `window.__ELIZA_API_BASE__` — API server base URL; falls back to relative URLs on `http:`/`https:` origins.
+- boot-config `apiBase` (`window.__ELIZAOS_APP_BOOT_CONFIG__`) — API server base URL; falls back to relative URLs on `http:`/`https:` origins.
 - `window.__ELIZA_API_TOKEN__` — bearer token; falls back to `sessionStorage.eliza_api_token`.
 
 ## Exported types
@@ -140,6 +140,6 @@ bun run --cwd plugins/plugin-native-agent watch   # tsc --watch
 
 - `Agent.request` only accepts path-only URLs (must start with `/`). Absolute URLs are rejected by all implementations.
 - Request and response bodies are capped at 10 MB.
-- iOS local mode (`Agent.chat` / `Agent.request` via ITTP) requires `window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__` to be installed by the host WebView. If it is absent, a 503 is returned.
+- iOS local mode (`Agent.chat` / `Agent.request` via ITTP) requires `window.__ELIZA_BRIDGE__?.iosLocalAgentRequest` to be installed by the host WebView. If it is absent, a 503 is returned.
 - The Android bridge uses reflection; renaming or unregistering `ElizaAgentService` breaks all Android calls silently at runtime.
 - The `chat` method maintains one conversation per session (lazily created via `POST /api/conversations`). The conversation ID is not persisted across app restarts.

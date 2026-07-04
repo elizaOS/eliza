@@ -1,3 +1,8 @@
+/**
+ * Renderer→main RPC for the Electrobun desktop shell: request/message plumbing
+ * and the typed bridge-request helpers other modules call. The seam between the
+ * web renderer and the native host.
+ */
 import type { ExistingElizaInstallInfo } from "../types/index.js";
 
 export type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;

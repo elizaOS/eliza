@@ -1,3 +1,7 @@
+/**
+ * Opens an external URL on the current platform: desktop bridge, Capacitor
+ * in-app browser, or a new tab, so links leave the app shell safely.
+ */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   getElectrobunRendererRpc,

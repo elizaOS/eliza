@@ -3,9 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DESKTOP_LOCAL_AGENT_IPC_BASE,
   type PersistedDeployment,
   resolveCloudHostedAgentApiBase,
   resolveDesktopRuntimeModeWithDeployment,
+  resolveInitialApiBase,
+  resolveLocalAgentIpcMode,
+  resolveRendererFacingApiBase,
 } from "./api-base";
 import { readPersistedDeployment } from "./persisted-deployment";
 
@@ -243,5 +247,95 @@ describe("end-to-end: persisted cloud target → external mode", () => {
     expect(resolution.externalApi.base).toBe(CLOUD_AGENT_URL);
 
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("resolveLocalAgentIpcMode — desktop IPC transport gate (#12355)", () => {
+  it("is off by default (no flag set)", () => {
+    expect(resolveLocalAgentIpcMode({})).toBe(false);
+  });
+
+  it("is on when ELIZA_DESKTOP_LOCAL_AGENT_IPC is a truthy flag", () => {
+    for (const value of ["1", "true", "yes", "on", "TRUE", "On"]) {
+      expect(
+        resolveLocalAgentIpcMode({ ELIZA_DESKTOP_LOCAL_AGENT_IPC: value }),
+      ).toBe(true);
+    }
+  });
+
+  it("is off for a falsy/unknown flag value", () => {
+    for (const value of ["0", "false", "no", "off", "", "maybe"]) {
+      expect(
+        resolveLocalAgentIpcMode({ ELIZA_DESKTOP_LOCAL_AGENT_IPC: value }),
+      ).toBe(false);
+    }
+  });
+
+  it("ELIZA_API_EXPOSE_PORT=1 wins — keeps the loopback HTTP path even if IPC is requested", () => {
+    expect(
+      resolveLocalAgentIpcMode({
+        ELIZA_DESKTOP_LOCAL_AGENT_IPC: "1",
+        ELIZA_API_EXPOSE_PORT: "1",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveInitialApiBase — IPC scheme vs loopback (#12355)", () => {
+  it("default local mode keeps the loopback HTTP base (byte-for-byte identical to today)", () => {
+    expect(resolveInitialApiBase({})).toBe("http://127.0.0.1:31337");
+  });
+
+  it("local-agent IPC mode returns the eliza-local-agent://ipc scheme", () => {
+    expect(resolveInitialApiBase({ ELIZA_DESKTOP_LOCAL_AGENT_IPC: "1" })).toBe(
+      DESKTOP_LOCAL_AGENT_IPC_BASE,
+    );
+  });
+
+  it("external mode (ELIZA_DESKTOP_API_BASE) wins over IPC mode", () => {
+    expect(
+      resolveInitialApiBase({
+        ELIZA_DESKTOP_LOCAL_AGENT_IPC: "1",
+        ELIZA_DESKTOP_API_BASE: "http://10.0.0.9:31337",
+      }),
+    ).toBe("http://10.0.0.9:31337");
+  });
+
+  it("ELIZA_API_EXPOSE_PORT=1 keeps the loopback base even with IPC requested", () => {
+    expect(
+      resolveInitialApiBase({
+        ELIZA_DESKTOP_LOCAL_AGENT_IPC: "1",
+        ELIZA_API_EXPOSE_PORT: "1",
+      }),
+    ).toBe("http://127.0.0.1:31337");
+  });
+});
+
+describe("resolveRendererFacingApiBase — IPC scheme vs dev-server/loopback (#12355)", () => {
+  it("IPC mode returns the IPC scheme even when a dev-server URL is set (no port to proxy)", () => {
+    expect(
+      resolveRendererFacingApiBase(
+        {
+          ELIZA_DESKTOP_LOCAL_AGENT_IPC: "1",
+          ELIZA_RENDERER_URL: "http://127.0.0.1:2138",
+        },
+        31337,
+      ),
+    ).toBe(DESKTOP_LOCAL_AGENT_IPC_BASE);
+  });
+
+  it("default mode prefers the loopback dev-server origin (unchanged)", () => {
+    expect(
+      resolveRendererFacingApiBase(
+        { ELIZA_RENDERER_URL: "http://127.0.0.1:2138" },
+        31337,
+      ),
+    ).toBe("http://127.0.0.1:2138");
+  });
+
+  it("default mode with no dev server returns the loopback API port (unchanged)", () => {
+    expect(resolveRendererFacingApiBase({}, 31337)).toBe(
+      "http://127.0.0.1:31337",
+    );
   });
 });

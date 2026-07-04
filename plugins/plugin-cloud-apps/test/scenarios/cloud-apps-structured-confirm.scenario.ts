@@ -1,3 +1,10 @@
+/**
+ * Proves the two-phase confirm end to end on the pr-deterministic scenario lane:
+ * the real gated actions run through the real @elizaos/cloud-sdk client against a
+ * loopback cloud API (node:http mock), so the confirm state machine, frozen-target
+ * snapshot, and idempotent server outcomes are exercised over a real transport
+ * rather than the SDK boundary being faked (as in __tests__).
+ */
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type {

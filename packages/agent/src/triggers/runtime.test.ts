@@ -32,9 +32,16 @@ interface WorkflowDispatchCall {
   options?: { idempotencyKey?: string };
 }
 
+interface PromptMessageCall {
+  text: string;
+  roomId: UUID;
+  entityId: UUID;
+}
+
 interface MockRuntimeHandle {
   runtime: IAgentRuntime;
   dispatchCalls: WorkflowDispatchCall[];
+  promptMessages: PromptMessageCall[];
   deletedTaskIds: UUID[];
   updatedTasks: Array<{ id: UUID; patch: Partial<Task> }>;
   warnings: unknown[][];
@@ -47,10 +54,29 @@ interface MockRuntimeHandle {
 
 function makeRuntime(): MockRuntimeHandle {
   const dispatchCalls: WorkflowDispatchCall[] = [];
+  const promptMessages: PromptMessageCall[] = [];
   const deletedTaskIds: UUID[] = [];
   const updatedTasks: Array<{ id: UUID; patch: Partial<Task> }> = [];
   const warnings: unknown[][] = [];
   const notifyCalls: Array<Record<string, unknown>> = [];
+
+  const messageService = {
+    async handleMessage(
+      _runtime: IAgentRuntime,
+      message: {
+        content: { text: string };
+        roomId: UUID;
+        entityId: UUID;
+      },
+    ) {
+      promptMessages.push({
+        text: message.content.text,
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {};
+    },
+  };
 
   const notificationService = {
     async notify(input: Record<string, unknown>) {
@@ -78,6 +104,7 @@ function makeRuntime(): MockRuntimeHandle {
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "trigger-test" },
+    messageService,
     logger: {
       info: vi.fn(),
       warn: vi.fn((...args: unknown[]) => {
@@ -103,6 +130,7 @@ function makeRuntime(): MockRuntimeHandle {
   return {
     runtime,
     dispatchCalls,
+    promptMessages,
     deletedTaskIds,
     updatedTasks,
     warnings,
@@ -142,7 +170,7 @@ function makeTriggerTask(
     enabled?: boolean;
     runCount?: number;
     maxRuns?: number;
-    kindOverride?: "workflow";
+    kindOverride?: "workflow" | "prompt";
   } = {},
 ): Task {
   const draft = makeDraft(draftOverrides);
@@ -267,6 +295,30 @@ describe("executeTriggerTask", () => {
     expect(typeof persisted?.nextRunAtMs).toBe("number");
   });
 
+  it("surfaces the re-armed updateInterval in the result so the worker hands it back as nextInterval (#12030)", async () => {
+    // A cron trigger re-arms with a per-fire interval (ms until the next fire),
+    // which varies. executeTriggerTask persists it — and must ALSO return it, so
+    // the task worker can pass it to the scheduler as `nextInterval`. Without
+    // this the worker returned undefined and the scheduler's success path
+    // clobbered the cadence with a frozen `baseInterval`, drifting to wrong days.
+    const task = makeTriggerTask({
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+    });
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.taskDeleted).toBe(false);
+    const persistedInterval = (
+      handle.updatedTasks[0]?.patch.metadata as { updateInterval?: number }
+    )?.updateInterval;
+    expect(typeof persistedInterval).toBe("number");
+    // The result carries the SAME interval that was persisted (not undefined).
+    expect(result.updateInterval).toBe(persistedInterval);
+  });
+
   it("dispatches an event trigger when the event-source eventKind matches", async () => {
     const task = makeTriggerTask({
       triggerType: "event",
@@ -336,10 +388,10 @@ describe("executeTriggerTask", () => {
     expect(handle.dispatchCalls).toHaveLength(1);
   });
 
-  it("warns and skips a non-workflow-kind trigger", async () => {
+  it("warns and skips a trigger whose kind is neither workflow nor prompt", async () => {
     const task = makeTriggerTask({ triggerType: "interval" });
-    // Force a non-workflow kind onto the persisted trigger config to exercise
-    // the documented guard (the public draft schema only allows "workflow").
+    // Force an unknown kind onto the persisted trigger config to exercise the
+    // guard (the public schema only allows "workflow" | "prompt").
     const meta = task.metadata as Record<string, unknown>;
     const trigger = meta.trigger as Record<string, unknown>;
     trigger.kind = "text";
@@ -351,10 +403,44 @@ describe("executeTriggerTask", () => {
     expect(result.status).toBe("skipped");
     expect(result.taskDeleted).toBe(false);
     expect(handle.dispatchCalls).toHaveLength(0);
-    const warnedNonWorkflow = handle.warnings.some((args) =>
-      JSON.stringify(args).includes("not workflow-kind"),
+    expect(handle.promptMessages).toHaveLength(0);
+    const warned = handle.warnings.some((args) =>
+      JSON.stringify(args).includes("not workflow or prompt"),
     );
-    expect(warnedNonWorkflow).toBe(true);
+    expect(warned).toBe(true);
+  });
+
+  it("dispatches a prompt-kind trigger via the message service", async () => {
+    const task = makeTriggerTask(
+      {
+        triggerType: "interval",
+        kind: "prompt",
+        instructions: "Summarize today's calendar",
+        // A prompt trigger carries no workflow target.
+        workflowId: undefined,
+        workflowName: undefined,
+      },
+      { kindOverride: "prompt" },
+    );
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.taskDeleted).toBe(false);
+    // No workflow dispatch — the prompt path runs instead.
+    expect(handle.dispatchCalls).toHaveLength(0);
+    expect(handle.promptMessages).toHaveLength(1);
+    expect(handle.promptMessages[0]?.text).toBe("Summarize today's calendar");
+
+    // A TriggerRunRecord is appended and runCount incremented, same as workflow.
+    const persisted = readTriggerConfig({
+      ...task,
+      metadata: handle.updatedTasks[0]?.patch.metadata,
+    } as Task);
+    expect(persisted?.runCount).toBe(1);
+    expect(persisted?.kind).toBe("prompt");
   });
 
   it("deletes the task when maxRuns is already reached (before dispatch)", async () => {

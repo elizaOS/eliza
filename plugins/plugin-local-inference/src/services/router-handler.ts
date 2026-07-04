@@ -7,9 +7,9 @@
  *
  *   1. Read the user's per-slot policy + preferred-provider choice from
  *      `routing-preferences.ts`.
- *   2. Ask the `policyEngine` to pick a provider from the handler
- *      registry's current set (excluding ourselves).
- *   3. Invoke that provider's original handler directly — bypassing
+ *   2. Ask the `policyEngine` to pick a provider from the runtime's live
+ *      model registry (excluding ourselves).
+ *   3. Invoke that provider's registered handler directly — bypassing
  *      `runtime.useModel` which would recurse into us.
  *   4. Record the observed latency so later "fastest" picks have data.
  *   5. On handler failure: retry the next eligible provider in priority
@@ -70,11 +70,10 @@ import {
 import { readEffectiveAssignments } from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
-import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
 import { probeHardware } from "./hardware";
 import { type LiveDeviceSignals, readLiveDeviceSignals } from "./live-signals";
-import { policyEngine } from "./routing-policy";
+import { assessVoiceModality, policyEngine } from "./routing-policy";
 import {
 	DEFAULT_ROUTING_POLICY,
 	type RoutingPolicy,
@@ -102,7 +101,15 @@ const DEVICE_TIER_TTL_MS = 30_000;
 let cachedDeviceTier: { at: number; assessment: DeviceTierAssessment } | null =
 	null;
 
-async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
+/**
+ * Guards the once-per-boot warn emitted when a voice slot is routed to cloud
+ * because the device tier cannot run the local voice stack. The demotion is a
+ * legitimate configuration-by-hardware decision, but it must be announced so it
+ * can never masquerade as (or mask) a Kokoro artifact failure.
+ */
+let warnedVoiceModalityUnviable = false;
+
+export async function resolveDeviceTier(): Promise<DeviceTierAssessment | null> {
 	const now = Date.now();
 	if (cachedDeviceTier && now - cachedDeviceTier.at < DEVICE_TIER_TTL_MS) {
 		return cachedDeviceTier.assessment;
@@ -131,6 +138,20 @@ type AnyHandler = (
 	runtime: IAgentRuntime,
 	params: Record<string, unknown>,
 ) => Promise<unknown>;
+
+/**
+ * A dispatchable candidate: registration metadata plus the live handler read
+ * from the runtime's model registry at dispatch time. The router selects a
+ * provider by policy and invokes its handler directly — bypassing
+ * `runtime.useModel`, which would re-enter the router and double-apply
+ * per-call processing (model-settings merge, streaming setup, PII swap).
+ */
+interface RoutableCandidate {
+	modelType: string;
+	provider: string;
+	priority: number;
+	handler: AnyHandler;
+}
 
 function slotToModelType(slot: AgentModelSlot): string | undefined {
 	switch (slot) {
@@ -165,10 +186,17 @@ function shouldForceLocalInference(
 	return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
+/**
+ * Read the live model registry off the runtime and return the dispatchable
+ * candidates (with handlers) for a model type, excluding the router itself.
+ * This is the router's dispatch source: `getModelRegistrations()` exposes the
+ * registry as handler-free metadata, but the router must invoke the picked
+ * provider's handler directly, so it reads the one live handler it needs here.
+ */
 function getRuntimeModelCandidates(
 	runtime: IAgentRuntime,
 	modelType: string,
-): HandlerRegistration[] {
+): RoutableCandidate[] {
 	const models = (runtime as { models?: unknown }).models;
 	if (!(models instanceof Map)) return [];
 	const registrations = models.get(modelType);
@@ -180,7 +208,7 @@ function getRuntimeModelCandidates(
 			): entry is {
 				provider: string;
 				priority?: number;
-				handler: HandlerRegistration["handler"];
+				handler: AnyHandler;
 			} =>
 				entry &&
 				typeof entry === "object" &&
@@ -192,17 +220,16 @@ function getRuntimeModelCandidates(
 			modelType,
 			provider: entry.provider,
 			priority: typeof entry.priority === "number" ? entry.priority : 0,
-			registeredAt: "runtime-introspection",
 			handler: entry.handler,
 		}))
 		.sort((a, b) => b.priority - a.priority);
 }
 
 export function filterUnavailableLocalInferenceCandidates(
-	candidates: HandlerRegistration[],
+	candidates: RoutableCandidate[],
 	localInferenceAvailable: boolean,
 	forceLocalInference: boolean,
-): HandlerRegistration[] {
+): RoutableCandidate[] {
 	if (forceLocalInference || localInferenceAvailable) {
 		return candidates;
 	}
@@ -216,8 +243,8 @@ export async function filterUnavailableLocalInference(
 	slot: AgentModelSlot,
 	policy: string,
 	preferredProvider: string | null,
-	candidates: HandlerRegistration[],
-): Promise<HandlerRegistration[]> {
+	candidates: RoutableCandidate[],
+): Promise<RoutableCandidate[]> {
 	// TTS is self-sufficient: its handler calls ensureActiveBundleVoiceReady()
 	// internally and can use the Kokoro-only bridge on demand.
 	if (slot === "TEXT_TO_SPEECH") {
@@ -269,17 +296,13 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		// policies, honor the documented fallback behaviour: if the selected
 		// provider throws, try the next eligible provider instead of surfacing a
 		// local/model-specific failure while cloud providers are available.
-		const registeredCandidates = handlerRegistry.getForTypeExcluding(
-			modelType,
-			ROUTER_PROVIDER,
-		);
+		// Candidates (with live handlers) come straight from the runtime's model
+		// registry, excluding the router itself.
 		const candidates = await filterUnavailableLocalInference(
 			slot,
 			policy,
 			preferred,
-			registeredCandidates.length > 0
-				? registeredCandidates
-				: getRuntimeModelCandidates(runtime, modelType),
+			getRuntimeModelCandidates(runtime, modelType),
 		);
 
 		// Only the capability-aware policies need the hardware assessment + live
@@ -291,6 +314,30 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 		}
 		if (policy === "auto") {
 			liveSignals = readLiveDeviceSignals();
+		}
+
+		// Voice-modality visibility (#12253): when a prefer-local/auto policy will
+		// route a voice slot to cloud because the device tier can't run the local
+		// voice stack, announce it once per boot. This is a configuration-by-
+		// hardware decision (kept), not error recovery — surfacing it keeps a
+		// genuine Kokoro artifact failure from hiding behind a "tier unviable" swap.
+		if (
+			(policy === "prefer-local" || policy === "auto") &&
+			(slot === "TEXT_TO_SPEECH" || slot === "TRANSCRIPTION")
+		) {
+			const voiceModality = assessVoiceModality(deviceTier);
+			if (!voiceModality.viable && !warnedVoiceModalityUnviable) {
+				warnedVoiceModalityUnviable = true;
+				logger.warn(
+					{
+						slot,
+						policy,
+						reason: voiceModality.reason,
+						tier: deviceTier?.tier ?? null,
+					},
+					`[LocalInferenceRouter] Local voice stack unviable on this device tier; ${slot} routes to a cloud voice by configuration (not error recovery)`,
+				);
+			}
 		}
 
 		const failedProviders = new Set<string>();
@@ -346,7 +393,34 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				const hasAlternative = remaining.some(
 					(candidate) => candidate.provider !== pick.provider,
 				);
-				if (manualPreferred || !hasAlternative) {
+
+				// TTS fails closed (#12253): a configured voice may fail, but it must
+				// never be silently swapped for a different engine. Rotating providers
+				// on failure IS a silent voice swap (Kokoro → elizacloud → elevenlabs
+				// → … → edge-tts), so every automatic policy re-throws the structured
+				// error and lets the caller surface it (HTTP 502 / UI error state). The
+				// only legitimate multi-provider TTS chain is one the user explicitly
+				// configured via `manual` policy. Non-TTS slots keep transient failover.
+				const ttsFailsClosed = slot === "TEXT_TO_SPEECH" && policy !== "manual";
+
+				if (manualPreferred || !hasAlternative || ttsFailsClosed) {
+					if (ttsFailsClosed && hasAlternative) {
+						const rawCode =
+							err instanceof Error
+								? (err as { code?: unknown }).code
+								: undefined;
+						logger.error(
+							{
+								provider: pick.provider,
+								slot,
+								policy,
+								error: err instanceof Error ? err.message : String(err),
+								errorCode: typeof rawCode === "string" ? rawCode : undefined,
+								alternativesRefused: remaining.length - 1,
+							},
+							`[LocalInferenceRouter] ${pick.provider} failed for TEXT_TO_SPEECH; failing closed — refusing to swap to another voice engine`,
+						);
+					}
 					throw err;
 				}
 

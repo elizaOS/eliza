@@ -1,3 +1,15 @@
+/**
+ * `STEER_LIQUIDITY_SERVICE`: client for Steer Finance vaults and staking
+ * pools across the chains in `SUPPORTED_CHAIN_IDS`, backed by
+ * `@steerprotocol/sdk` (per-chain `VaultClient`/`StakingClient`) with a
+ * GraphQL subgraph as the preferred, richer data source (`getVaultDetails`
+ * tries GraphQL first, falls back to the SDK). Vault records are enriched
+ * in multiple passes — SDK data, then GraphQL (`enrichVaultWithGraphQLData`),
+ * then optional pool/price lookups — and TVL is either read from the
+ * subgraph or estimated from raw token balances at an assumed $1/token
+ * (`calculateTvlFromBalances` — a rough approximation, not a priced TVL).
+ * `getTokenPrices` currently has no wired price feed and always returns null.
+ */
 import type { IAgentRuntime, JsonValue } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import type { StakingPool } from "@steerprotocol/sdk";
@@ -8,7 +20,6 @@ import {
   VaultClient,
 } from "@steerprotocol/sdk";
 import { createPublicClient, createWalletClient, http } from "viem";
-// Import Viem for proper chain and transport configuration
 import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 
 import type {
@@ -75,14 +86,11 @@ interface RawSteerVault {
   merklApr?: number;
 }
 
-// Supported chain IDs
 const SUPPORTED_CHAIN_IDS = [1, 137, 42161, 10, 8453]; // mainnet, polygon, arbitrum, optimism, base
 
-// GraphQL endpoint for Steer Protocol
 const STEER_GRAPHQL_ENDPOINT =
   "https://api.subgraph.ormilabs.com/api/public/803c8c8c-be12-4188-8523-b9853e23051d/subgraphs/steer-protocol-base/prod/gn";
 
-// Interfaces for type safety
 interface TokenLiquidityStats {
   tokenIdentifier: string;
   normalizedToken: string;
@@ -105,7 +113,6 @@ interface ConnectionTestResult {
   error?: string;
 }
 
-// GraphQL Vault Data Interface
 interface GraphQLVaultData {
   id: string;
   name: string;
@@ -290,10 +297,6 @@ function hasGraphQLMeta(response: unknown): boolean {
   );
 }
 
-/**
- * Steer Finance Liquidity Protocol Service
- * Handles interactions with Steer Finance protocol using the official SDK
- */
 export class SteerLiquidityService extends Service {
   private isRunning = false;
   private supportedChains: number[];
@@ -311,12 +314,11 @@ export class SteerLiquidityService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
-    // Initialize supported chains
     this.supportedChains = SUPPORTED_CHAIN_IDS;
 
-    // Initialize Steer SDK client
+    // A throwaway mainnet SteerClient just to fail fast if the SDK itself is
+    // misconfigured, before setting up the real per-chain clients below.
     try {
-      // Create a proper Viem client configuration for each chain
       const viemClient = createPublicClient({
         chain: mainnet,
         transport: http(),
@@ -335,7 +337,6 @@ export class SteerLiquidityService extends Service {
       throw new Error("Steer SDK initialization failed");
     }
 
-    // Initialize vault and staking clients for each supported chain
     this.initializeChainClients();
 
     logger.log("SteerLiquidityService initialized with multi-chain support");
@@ -344,7 +345,6 @@ export class SteerLiquidityService extends Service {
       "SteerLiquidityService ready to handle requests using official SDK",
     );
 
-    // Verify runtime has required methods
     if (!runtime?.getService) {
       logger.warn("Runtime missing getService method");
     }
@@ -352,13 +352,9 @@ export class SteerLiquidityService extends Service {
       logger.warn("Runtime missing getCache method");
     }
 
-    // Log successful initialization
     logger.log("SteerLiquidityService constructor completed successfully");
   }
 
-  /**
-   * Get the appropriate Viem chain object for a given chain ID
-   */
   private getViemChain(chainId: number) {
     switch (chainId) {
       case 1:
@@ -376,16 +372,11 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Initialize vault and staking clients for each supported chain
-   */
   private initializeChainClients(): void {
     try {
       for (const chainId of this.supportedChains) {
-        // Get the appropriate Viem chain object
         const viemChain = this.getViemChain(chainId);
 
-        // Create Viem clients for this chain
         const publicClient = createPublicClient({
           chain: viemChain,
           transport: http(),
@@ -396,7 +387,6 @@ export class SteerLiquidityService extends Service {
           transport: http(),
         });
 
-        // Initialize vault client for this chain
         const vaultClient = new VaultClient(
           publicClient as unknown as VaultClientCtor[0],
           walletClient as VaultClientCtor[1],
@@ -404,7 +394,6 @@ export class SteerLiquidityService extends Service {
         );
         this.vaultClients.set(chainId, vaultClient);
 
-        // Initialize staking client for this chain
         const stakingClient = new StakingClient(
           walletClient as unknown as StakingClientCtor[0],
         );
@@ -421,9 +410,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get token liquidity information from Steer Finance across all supported chains or a specific chain
-   */
   async getTokenLiquidityStats(
     tokenIdentifier: string,
     targetChainId?: number | null,
@@ -436,17 +422,14 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Normalize token identifier
       const normalizedToken = this.normalizeTokenIdentifier(tokenIdentifier);
       const tokenName = this.getTokenName(normalizedToken);
 
       const allVaults: SteerVaultDetailInput[] = [];
       const allStakingPools: SteerStakingPoolDetailInput[] = [];
 
-      // Determine which chains to search
       let chainsToSearch: number[];
       if (targetChainId) {
-        // Validate that the target chain is supported
         if (!this.supportedChains.includes(targetChainId)) {
           throw new Error(
             `Chain ${targetChainId} is not supported. Supported chains: ${this.supportedChains.join(", ")}`,
@@ -463,7 +446,6 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Check if this is a token address for targeted search
       const isTokenAddress =
         tokenIdentifier.startsWith("0x") && tokenIdentifier.length === 42;
 
@@ -472,7 +454,6 @@ export class SteerLiquidityService extends Service {
           `Token address detected, searching for specific vaults containing ${tokenIdentifier}`,
         );
 
-        // Search for vaults containing the specific token using SDK
         for (const chainId of chainsToSearch) {
           try {
             logger.log(
@@ -508,16 +489,15 @@ export class SteerLiquidityService extends Service {
         }
       }
 
-      // If no specific token vaults found or this is a general search, get all vaults
+      // Token-specific search found nothing (or wasn't attempted): fall back
+      // to fetching every vault on the searched chains.
       if (allVaults.length === 0) {
         logger.log(`Fetching all vault data from Steer Finance using SDK...`);
 
-        // Fetch data from specified chains using the SDK
         for (const chainId of chainsToSearch) {
           try {
             logger.log(`Fetching data for chain ${chainId}...`);
 
-            // Get vaults for this chain using SDK
             const chainVaults = await this.getAllVaultsForChain(chainId);
             allVaults.push(...chainVaults);
 
@@ -537,7 +517,6 @@ export class SteerLiquidityService extends Service {
         `Total vaults processed across ${chainsToSearch.length} chain(s): ${allVaults.length}`,
       );
 
-      // Calculate aggregate statistics
       const totalTvl = allVaults.reduce(
         (sum, vault) => sum + (vault.tvl || 0),
         0,
@@ -554,7 +533,6 @@ export class SteerLiquidityService extends Service {
         max: apyValues.length > 0 ? Math.max(...apyValues) : 0,
       };
 
-      // Log summary of what was found
       logger.log(`=== STEER LIQUIDITY STATS SUMMARY ===`);
       logger.log(`Total vaults found: ${allVaults.length}`);
       logger.log(`Total staking pools found: ${allStakingPools.length}`);
@@ -564,7 +542,6 @@ export class SteerLiquidityService extends Service {
         `APY Range: ${apyRange.min.toFixed(2)}% - ${apyRange.max.toFixed(2)}%`,
       );
 
-      // Log breakdown by chain
       const vaultsByChain = allVaults.reduce(
         (acc, vault) => {
           acc[vault.chainId] = (acc[vault.chainId] || 0) + 1;
@@ -608,9 +585,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get all vaults for a specific chain using the SDK
-   */
   private async getAllVaultsForChain(
     chainId: number,
   ): Promise<SteerVaultDetailInput[]> {
@@ -637,26 +611,24 @@ export class SteerLiquidityService extends Service {
         logger.warn(
           `Failed to get vaults for chain ${chainId}: ${sdkError || "Unknown error"}`,
         );
-        // If it's a server error, log it but continue with other chains
+        // A server-side error here is chain-specific; skip this chain rather
+        // than aborting the whole multi-chain search.
         if (sdkError?.includes("INTERNAL_SERVER_ERROR")) {
           logger.warn(`Chain ${chainId} has server issues, skipping for now`);
         }
         return [];
       }
 
-      // Debug: Log the response structure
       logger.log(
         getResponseDebug(vaultsResponse),
         `Vault response structure for chain ${chainId}`,
       );
 
-      // Extract vaults from the paginated response structure
       const vaults = getRawVaultNodes(vaultsResponse);
       logger.log(
         `Retrieved ${vaults.length} vaults from SDK for chain ${chainId}`,
       );
 
-      // Process and enrich vault data
       const processedVaults = await Promise.all(
         vaults.map(async (vault) => {
           try {
@@ -684,9 +656,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get vaults for a specific token on a specific chain using SDK
-   */
   private async getVaultsForToken(
     chainId: number,
     tokenAddress: string,
@@ -716,13 +685,11 @@ export class SteerLiquidityService extends Service {
         return [];
       }
 
-      // Extract vaults from the paginated response structure
       const allVaults = getRawVaultNodes(vaultsResponse);
       logger.log(
         `Searching ${allVaults.length} vaults for token ${tokenAddress} on chain ${chainId}`,
       );
 
-      // Debug: Log first vault structure to understand the data format
       if (allVaults.length > 0) {
         logger.log(
           {
@@ -740,16 +707,13 @@ export class SteerLiquidityService extends Service {
 
       const matchingVaults: SteerVaultDetailInput[] = [];
 
-      // Filter vaults that contain the target token
       for (const vault of allVaults) {
         try {
-          // Check if the vault contains the target token
           if (this.vaultContainsToken(vault, tokenAddress)) {
             logger.log(
               `Found matching vault ${vault.vaultAddress || vault.address} for token ${tokenAddress}`,
             );
 
-            // Process the vault data
             const processedVault = await this.processVaultData(vault, chainId);
             if (processedVault) {
               matchingVaults.push(processedVault);
@@ -776,16 +740,14 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Check if a vault contains a specific token
-   */
   private vaultContainsToken(
     vault: RawSteerVault,
     tokenAddress: string,
   ): boolean {
     const targetAddress = tokenAddress.toLowerCase();
 
-    // Check token0 and token1 - handle both string and object formats
+    // token0/token1 can come back as either a bare address string or an
+    // object with an `address` field, depending on the SDK response shape.
     const token0Address =
       typeof vault.token0 === "string" ? vault.token0 : vault.token0?.address;
     const token1Address =
@@ -798,7 +760,8 @@ export class SteerLiquidityService extends Service {
       return true;
     }
 
-    // Check pool address if available
+    // NOTE: any vault with a pool address matches here regardless of the
+    // target token — this does not actually check the pool for the token.
     if (vault.poolAddress) {
       return true;
     }
@@ -806,15 +769,11 @@ export class SteerLiquidityService extends Service {
     return false;
   }
 
-  /**
-   * Process vault data from SDK response
-   */
   private async processVaultData(
     vault: RawSteerVault,
     chainId: number,
   ): Promise<SteerVaultDetailInput | null> {
     try {
-      // Extract basic vault information
       const vaultAddress = vault.vaultAddress || vault.address || "";
       const poolAddress = vault.pool?.poolAddress || vault.poolAddress;
       const rawFeeTier = vault.pool?.feeTier ?? vault.fee ?? 0.3;
@@ -823,7 +782,6 @@ export class SteerLiquidityService extends Service {
           ? rawFeeTier
           : Number.parseFloat(rawFeeTier) || 0.3;
 
-      // Extract APY data from various sources
       const apyData = vault.aprData || {};
       const apy =
         vault.apy ||
@@ -874,7 +832,6 @@ export class SteerLiquidityService extends Service {
         merklApr: vault.merklApr,
       };
 
-      // Try to get additional data from SDK if available
       try {
         const gqlPeek = await this.getVaultDataFromGraphQL(vaultAddress);
         if (gqlPeek) {
@@ -891,11 +848,9 @@ export class SteerLiquidityService extends Service {
           }
         }
 
-        // Try to get pool-specific data if we have a pool address
         if (poolAddress) {
           const poolData = await this.getPoolData(poolAddress, chainId);
           if (poolData) {
-            // Update with pool data
             if (poolData.tvl) processedVault.tvl = poolData.tvl;
             if (poolData.volume24h)
               processedVault.volume24h = poolData.volume24h;
@@ -903,7 +858,8 @@ export class SteerLiquidityService extends Service {
           }
         }
 
-        // Try to get token price data for better TVL calculation
+        // getTokenPrices currently has no wired price feed (always null), so
+        // this branch is a no-op today pending a real price source.
         try {
           const token0Address =
             typeof vault.token0 === "string"
@@ -920,7 +876,6 @@ export class SteerLiquidityService extends Service {
               chainId,
             );
             if (priceData && processedVault.tvl === 0) {
-              // If we don't have TVL but have price data, we could calculate it
               logger.log(
                 `Price data available for vault ${vaultAddress}: Token0: $${priceData[token0Address]}, Token1: $${priceData[token1Address]}`,
               );
@@ -938,7 +893,6 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Enrich vault data with GraphQL information
       try {
         const enrichedVault = await this.enrichVaultWithGraphQLData(
           processedVault,
@@ -961,15 +915,11 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get vault details by address using GraphQL (preferred) or SDK fallback
-   */
   async getVaultDetails(
     vaultAddress: string,
     chainId: number,
   ): Promise<SteerVaultDetailInput | null> {
     try {
-      // First try to get data from GraphQL
       const graphqlData = await this.getVaultDataFromGraphQL(vaultAddress);
       if (graphqlData) {
         logger.log(`Found vault ${vaultAddress} via GraphQL`);
@@ -997,7 +947,6 @@ export class SteerLiquidityService extends Service {
           strategyType: "graphql",
           fee: feeTierBp / 10000,
           createdAt: Date.now(),
-          // Calculate basic metrics
           tvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
@@ -1009,7 +958,6 @@ export class SteerLiquidityService extends Service {
         };
       }
 
-      // Fallback to SDK if GraphQL fails
       logger.log(
         `GraphQL data not available for ${vaultAddress}, falling back to SDK`,
       );
@@ -1024,9 +972,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get vault details by address using SDK (fallback method)
-   */
   private async getVaultDetailsFromSDK(
     vaultAddress: string,
     chainId: number,
@@ -1038,7 +983,8 @@ export class SteerLiquidityService extends Service {
         return null;
       }
 
-      // Get vault details using SDK - use getVaults and filter
+      // The SDK has no single-vault lookup; fetch the chain's vault list and
+      // find the matching address.
       const vaultResponse: unknown = await vaultClient.getVaults(
         { chainId },
         100,
@@ -1052,7 +998,6 @@ export class SteerLiquidityService extends Service {
         return null;
       }
 
-      // Extract vaults from the paginated response structure
       const vaults = getRawVaultNodes(vaultResponse);
       const normalizedVaultAddress = vaultAddress.toLowerCase();
       return (
@@ -1071,9 +1016,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get token prices for TVL calculation
-   */
   async getTokenPrices(
     _tokenAddresses: string[],
     chainId: number,
@@ -1091,9 +1033,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get pool data including TVL, volume, and fee information
-   */
   async getPoolData(
     poolAddress: string,
     chainId: number,
@@ -1110,7 +1049,6 @@ export class SteerLiquidityService extends Service {
         return null;
       }
 
-      // Try to get pool information using the SDK
       try {
         const poolsResponse = await vaultClient.getPools(
           { chainId, protocol: "uniswap-v3" },
@@ -1147,7 +1085,7 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Fallback: return basic pool data
+      // No matching pool found via the SDK: return zeroed placeholder data.
       return {
         tvl: 0,
         volume24h: 0,
@@ -1163,9 +1101,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get staking pool details by address using SDK
-   */
   async getStakingPoolDetails(
     poolAddress: string,
     chainId: number,
@@ -1177,7 +1112,6 @@ export class SteerLiquidityService extends Service {
         return null;
       }
 
-      // Get staking pool details using SDK
       const poolResponse = await stakingClient.getStakingPools({ chainId });
 
       if (!poolResponse.success || !poolResponse.data) {
@@ -1198,9 +1132,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Test GraphQL connection specifically
-   */
   async testGraphQLConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       logger.log("Testing GraphQL connection to Steer Protocol subgraph...");
@@ -1247,9 +1178,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Test GraphQL vault query with a specific vault address
-   */
   async testGraphQLVaultQuery(
     vaultAddress: string,
   ): Promise<{ success: boolean; data?: GraphQLVaultData; error?: string }> {
@@ -1277,9 +1205,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Test connection to Steer Finance services using SDK
-   */
   async testConnection(): Promise<ConnectionTestResult> {
     try {
       logger.log("Testing Steer Finance connection using SDK...");
@@ -1288,12 +1213,10 @@ export class SteerLiquidityService extends Service {
       let totalStakingPoolCount = 0;
       const connectionErrors: string[] = [];
 
-      // Test SDK connection for each chain
       for (const chainId of this.supportedChains) {
         try {
           logger.log(`Testing connection for chain ${chainId}...`);
 
-          // Test vault client
           const vaultClient = this.vaultClients.get(chainId);
           if (vaultClient) {
             const vaultsResponse = await vaultClient.getVaults(
@@ -1313,7 +1236,6 @@ export class SteerLiquidityService extends Service {
             }
           }
 
-          // Test staking client
           const stakingClient = this.stakingClients.get(chainId);
           if (stakingClient) {
             const poolsResponse = await stakingClient.getStakingPools({
@@ -1362,49 +1284,35 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Normalize token identifier (handle different formats)
-   */
   private normalizeTokenIdentifier(tokenIdentifier: string): string {
-    // Remove common prefixes and normalize
     const normalized = tokenIdentifier.trim();
 
-    // Handle Solana-style addresses (base58)
+    // Base58, 44 chars: likely a Solana address, which Steer (EVM-only) can't use.
     if (
       normalized.length === 44 &&
       /^[1-9A-HJ-NP-Za-km-z]+$/.test(normalized)
     ) {
-      // This is likely a Solana address, but Steer is EVM-based
       logger.warn(
         `Token ${normalized} appears to be a Solana address, but Steer Finance is EVM-based`,
       );
     }
 
-    // Handle Ethereum-style addresses (0x...)
     if (normalized.startsWith("0x")) {
       return normalized.toLowerCase();
     }
 
-    // For symbol-based lookups, return as-is (no hardcoded mapping)
+    // Symbol-based lookups (no hardcoded symbol-to-address mapping) pass through as-is.
     return normalized;
   }
 
-  /**
-   * Get token name from identifier
-   */
   private getTokenName(tokenIdentifier: string): string {
-    // For token addresses, return a formatted version
     if (tokenIdentifier.startsWith("0x")) {
       return `Token ${tokenIdentifier.slice(0, 8)}...${tokenIdentifier.slice(-6)}`;
     }
 
-    // For symbols or other identifiers, return as-is
     return tokenIdentifier;
   }
 
-  /**
-   * Get chain name from chain ID
-   */
   private getChainName(chainId: number): string {
     const chainNames: { [key: number]: string } = {
       1: "Ethereum Mainnet",
@@ -1416,9 +1324,6 @@ export class SteerLiquidityService extends Service {
     return chainNames[chainId] || `Chain ${chainId}`;
   }
 
-  /**
-   * Clear expired cache entries
-   */
   private clearExpiredCache(): void {
     const now = Date.now();
     for (const [key, value] of this.cache.entries()) {
@@ -1456,7 +1361,6 @@ export class SteerLiquidityService extends Service {
     }
 
     try {
-      // Clear any expired cache entries
       this.clearExpiredCache();
 
       this.isRunning = true;
@@ -1492,9 +1396,6 @@ export class SteerLiquidityService extends Service {
     return this.isRunning;
   }
 
-  /**
-   * Preview single-asset deposit for a vault using SDK
-   */
   async previewSingleAssetDeposit(
     vaultAddress: string,
     chainId: number,
@@ -1509,7 +1410,6 @@ export class SteerLiquidityService extends Service {
         throw new Error(`No vault client available for chain ${chainId}`);
       }
 
-      // Get vault details to get the pool address and single asset deposit contract
       const vault = await this.getVaultDetails(vaultAddress, chainId);
       if (!vault) {
         throw new Error(`Vault ${vaultAddress} not found on chain ${chainId}`);
@@ -1526,7 +1426,6 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Preview the single-asset deposit using SDK
       const preview = await vaultClient.previewSingleAssetDeposit(
         {
           assets,
@@ -1552,9 +1451,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Execute single-asset deposit for a vault using SDK
-   */
   async executeSingleAssetDeposit(
     vaultAddress: string,
     chainId: number,
@@ -1570,7 +1466,6 @@ export class SteerLiquidityService extends Service {
         throw new Error(`No vault client available for chain ${chainId}`);
       }
 
-      // Get vault details to get the single asset deposit contract
       const vault = await this.getVaultDetails(vaultAddress, chainId);
       if (!vault) {
         throw new Error(`Vault ${vaultAddress} not found on chain ${chainId}`);
@@ -1587,7 +1482,6 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      // Execute the single-asset deposit using SDK
       const result = await vaultClient.singleAssetDeposit({
         assets,
         receiver,
@@ -1609,9 +1503,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get earned rewards for a staking pool using SDK
-   */
   async getEarnedRewards(
     poolAddress: string,
     accountAddress: string,
@@ -1637,9 +1528,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get total supply of a staking pool using SDK
-   */
   async getStakingPoolTotalSupply(
     poolAddress: string,
     chainId: number,
@@ -1663,9 +1551,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Get balance of a user in a staking pool using SDK
-   */
   async getStakingPoolBalance(
     poolAddress: string,
     accountAddress: string,
@@ -1691,9 +1576,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Fetch detailed vault data from Steer Protocol GraphQL subgraph
-   */
   async getVaultDataFromGraphQL(
     vaultAddress: string,
   ): Promise<GraphQLVaultData | null> {
@@ -1791,9 +1673,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Enrich vault data with GraphQL information
-   */
   async enrichVaultWithGraphQLData(
     vault: SteerVaultDetailInput,
     _chainId: number,
@@ -1806,14 +1685,11 @@ export class SteerLiquidityService extends Service {
       }
       logger.log(`Enriching vault ${vaultAddress} with GraphQL data...`);
 
-      // Fetch GraphQL data
       const graphqlData = await this.getVaultDataFromGraphQL(vaultAddress);
 
       if (graphqlData) {
-        // Merge GraphQL data with existing vault data
         const enrichedVault = {
           ...vault,
-          // GraphQL specific fields
           graphqlData: {
             weeklyFeeAPR: parseFloat(graphqlData.weeklyFeeAPR) || 0,
             token0Symbol: graphqlData.token0Symbol,
@@ -1831,12 +1707,10 @@ export class SteerLiquidityService extends Service {
             payloadIpfs: graphqlData.payloadIpfs,
             deployer: graphqlData.deployer,
           },
-          // Update existing fields with GraphQL data if available
           name: graphqlData.name || vault.name,
           token0: graphqlData.token0 || vault.token0,
           token1: graphqlData.token1 || vault.token1,
           poolAddress: graphqlData.pool || vault.poolAddress,
-          // Update TVL with GraphQL data if available
           tvl:
             vault.tvl ||
             this.calculateTvlFromBalances(
@@ -1845,7 +1719,6 @@ export class SteerLiquidityService extends Service {
               parseInt(graphqlData.token0Decimals, 10) || 18,
               parseInt(graphqlData.token1Decimals, 10) || 18,
             ),
-          // Calculate TVL from token balances if not available
           calculatedTvl: this.calculateTvlFromBalances(
             graphqlData.token0Balance,
             graphqlData.token1Balance,
@@ -1873,9 +1746,6 @@ export class SteerLiquidityService extends Service {
     }
   }
 
-  /**
-   * Calculate TVL from token balances using LP tokens as proxy
-   */
   private calculateTvlFromBalances(
     token0Balance: string,
     token1Balance: string,
@@ -1883,7 +1753,6 @@ export class SteerLiquidityService extends Service {
     token1Decimals: number,
   ): number {
     try {
-      // Convert string balances to numbers with proper decimals
       const token0Amount = parseFloat(token0Balance) / 10 ** token0Decimals;
       const token1Amount = parseFloat(token1Balance) / 10 ** token1Decimals;
 
@@ -1891,8 +1760,8 @@ export class SteerLiquidityService extends Service {
         `Token balances - Token0: ${token0Amount}, Token1: ${token1Amount}`,
       );
 
-      // Use a simple estimation: assume average token price of $1
-      // This is a rough approximation - in production you'd fetch real prices
+      // Rough approximation assuming $1/token; no real price feed is wired
+      // in (see getTokenPrices).
       const estimatedTvl = (token0Amount + token1Amount) * 1;
 
       logger.log(`Estimated TVL: $${estimatedTvl.toLocaleString()}`);

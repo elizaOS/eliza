@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+//
+// Renders the real Launcher over deterministic mock ViewEntry catalogs to prove
+// it is a single scrolling page of tiles (no dock, no page dots) in caller
+// order, that tap emits exactly one launch telemetry event, that the tile set
+// tracks catalog changes on re-render, and that image tiles fall back to a
+// glyph (never probing API heroes) for dedicated cloud agents.
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { runAnimationFramesImmediately } from "../../testing/run-animation-frames-immediately";
+import { readViewInteractions } from "../../view-telemetry";
 import { Launcher } from "./Launcher";
 
 function entry(id: string, label: string): ViewEntry {
@@ -30,91 +30,56 @@ function imageEntry(id: string, label: string, imageUrl: string): ViewEntry {
   return { ...entry(id, label), imageUrl };
 }
 
-/** A single curated page holding every entry, in entry order. */
-function singlePage(entries: ViewEntry[]): string[][] {
-  return [entries.map((e) => e.id)];
+function tileIds(): (string | undefined)[] {
+  return Array.from(
+    screen
+      .getByTestId("launcher-page-window")
+      .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
+  ).map((node) =>
+    node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
+  );
 }
 
 const FEW = [entry("chat", "Chat"), entry("settings", "Settings")];
 
+function clearTelemetry() {
+  (
+    globalThis as { __ELIZA_VIEW_INTERACTION_TELEMETRY__?: unknown[] }
+  ).__ELIZA_VIEW_INTERACTION_TELEMETRY__ = [];
+}
+
+beforeEach(() => clearTelemetry());
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
 
 describe("Launcher", () => {
-  it("renders every curated view as a page tile (no dock)", () => {
-    render(
-      <Launcher
-        entries={FEW}
-        pageGroups={singlePage(FEW)}
-        onLaunch={() => {}}
-      />,
-    );
-    // The featured-views dock was removed: every view lives on the pages.
+  it("renders every entry as a page tile (no dock)", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    // The featured-views dock was removed: every view lives on the single page.
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
-    const page = within(screen.getByTestId("launcher-page-0"));
-    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     // Label text is present (names below icons), no descriptions.
     expect(screen.getByText("Chat")).toBeTruthy();
   });
 
-  it("renders all curated ids on the page in group order", () => {
-    const entries = [
-      entry("chat", "Chat"),
-      entry("settings", "Settings"),
-      entry("wallet", "Wallet"),
-    ];
+  it("renders tiles in the exact order the caller supplies", () => {
     render(
       <Launcher
-        entries={entries}
-        pageGroups={[["chat", "settings", "wallet"]]}
+        entries={[entry("beta", "Beta"), entry("alpha", "Alpha")]}
         onLaunch={() => {}}
       />,
     );
-
-    expect(screen.queryByTestId("launcher-dock")).toBeNull();
-    const page = screen.getByTestId("launcher-page-0");
-    const tileIds = Array.from(
-      page.querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
-    ).map((node) =>
-      node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
-    );
-    // Tiles render in the exact pageGroups order.
-    expect(tileIds).toEqual(["chat", "settings", "wallet"]);
+    expect(tileIds()).toEqual(["beta", "alpha"]);
   });
 
-  it("renders tiles in the curated group order the caller supplies", () => {
-    render(
-      <Launcher
-        entries={[entry("alpha", "Alpha"), entry("beta", "Beta")]}
-        pageGroups={[["beta", "alpha"]]}
-        onLaunch={() => {}}
-      />,
-    );
-
-    const tileIds = Array.from(
-      screen
-        .getByTestId("launcher-page-0")
-        .querySelectorAll<HTMLElement>('[data-testid^="launcher-tile-"]'),
-    ).map((node) =>
-      node.getAttribute("data-testid")?.replace("launcher-tile-", ""),
-    );
-    expect(tileIds).toEqual(["beta", "alpha"]);
-  });
-
-  it("drops curated ids with no live entry", () => {
-    render(
-      <Launcher
-        entries={[entry("chat", "Chat")]}
-        // "notes" is curated but no live entry exists for it.
-        pageGroups={[["chat", "notes"]]}
-        onLaunch={() => {}}
-      />,
-    );
-    expect(screen.getByTestId("launcher-tile-chat")).toBeTruthy();
-    expect(screen.queryByTestId("launcher-tile-notes")).toBeNull();
+  it("renders no page dots — the launcher is a single scrolling page", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Page 2" })).toBeNull();
+    expect(document.querySelectorAll('[aria-label^="Page "]').length).toBe(0);
   });
 
   it("marks preview and developer tiles without changing release tiles", () => {
@@ -123,13 +88,7 @@ describe("Launcher", () => {
       { ...entry("alpha", "Alpha"), viewKind: "preview" } as ViewEntry,
       { ...entry("trace", "Trace"), viewKind: "developer" } as ViewEntry,
     ];
-    render(
-      <Launcher
-        entries={entries}
-        pageGroups={[["settings", "alpha", "trace"]]}
-        onLaunch={() => {}}
-      />,
-    );
+    render(<Launcher entries={entries} onLaunch={() => {}} />);
 
     expect(screen.queryByTestId("launcher-kind-settings")).toBeNull();
     expect(screen.getByTestId("launcher-kind-alpha").textContent).toBe(
@@ -138,191 +97,47 @@ describe("Launcher", () => {
     expect(screen.getByTestId("launcher-kind-trace").textContent).toBe("Dev");
   });
 
-  it("launches a view on tap", () => {
+  it("launches a view on tap and emits a single launch telemetry event", () => {
     const onLaunch = vi.fn();
-    render(
-      <Launcher
-        entries={FEW}
-        pageGroups={singlePage(FEW)}
-        onLaunch={onLaunch}
-      />,
-    );
+    render(<Launcher entries={FEW} onLaunch={onLaunch} />);
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
     expect(onLaunch.mock.calls[0][0].id).toBe("chat");
+
+    const launches = readViewInteractions().filter(
+      (e) => e.action === "launch",
+    );
+    expect(launches).toHaveLength(1);
+    expect(launches[0].viewId).toBe("chat");
   });
 
-  it("shows page dots when there is more than one page", () => {
-    const entries = [entry("a", "A"), entry("b", "B"), entry("c", "C")];
-    render(
-      <Launcher
-        entries={entries}
-        pageGroups={[["a", "b"], ["c"]]}
-        onLaunch={() => {}}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "Page 1" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Page 2" })).toBeTruthy();
-  });
-
-  it("renders no page dots for a single curated page", () => {
-    render(
-      <Launcher
-        entries={FEW}
-        pageGroups={singlePage(FEW)}
-        onLaunch={() => {}}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "Page 1" })).toBeNull();
-  });
-
-  it("navigates pages via the page dots", () => {
-    const entries = [entry("a", "A"), entry("b", "B"), entry("c", "C")];
-    render(
-      <Launcher
-        entries={entries}
-        pageGroups={[["a", "b"], ["c"]]}
-        onLaunch={() => {}}
-      />,
-    );
-    // Page 1 shows the first page's views, not page 2's tile.
-    expect(
-      within(screen.getByTestId("launcher-page-0")).queryByTestId(
-        "launcher-tile-c",
-      ),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
-    const secondPage = screen.getByTestId("launcher-page-1");
-    expect(secondPage.getAttribute("aria-hidden")).toBe("false");
-    expect(within(secondPage).getByTestId("launcher-tile-c")).toBeTruthy();
-  });
-
-  it("slides adjacent pages with the finger before committing a page swipe", () => {
-    runAnimationFramesImmediately();
-    // Two curated pages so a forward swipe on page 0 has somewhere to go.
-    render(
-      <Launcher
-        entries={[entry("a", "A"), entry("b", "B")]}
-        pageGroups={[["a"], ["b"]]}
-        onLaunch={() => {}}
-      />,
-    );
-
-    const pageWindow = screen.getByTestId("launcher-page-window");
-    Object.defineProperty(pageWindow, "clientWidth", {
-      configurable: true,
-      value: 390,
-    });
-    const rail = screen.getByTestId("launcher-page-rail");
-    fireEvent.pointerDown(pageWindow, {
-      isPrimary: true,
-      pointerId: 3,
-      clientX: 320,
-      clientY: 300,
-    });
-    fireEvent.pointerMove(pageWindow, {
-      isPrimary: true,
-      pointerId: 3,
-      clientX: 220,
-      clientY: 304,
-    });
-
-    expect(rail.style.transform).toContain("-100px");
-    expect(rail.style.transition).toBe("none");
-
-    fireEvent.pointerUp(pageWindow, {
-      isPrimary: true,
-      pointerId: 3,
-      clientX: 170,
-      clientY: 304,
-    });
-
+  it("renders the loading skeleton while the catalog is empty", () => {
+    render(<Launcher entries={[]} loading onLaunch={() => {}} />);
+    // No real tiles while loading with an empty catalog.
     expect(
       screen
-        .getByRole("button", { name: "Page 2" })
-        .getAttribute("aria-current"),
-    ).toBe("true");
-    expect(rail.style.transform).toContain("translate3d(-390px,0,0)");
+        .getByTestId("launcher-page-window")
+        .querySelectorAll('[data-testid^="launcher-tile-"]').length,
+    ).toBe(0);
   });
 
-  it("rubber-bands at the last page edge instead of dead-stopping", () => {
-    runAnimationFramesImmediately();
-    // Three curated pages; page index 2 is the last, so a forward swipe there
-    // rubber-bands back rather than advancing.
-    render(
-      <Launcher
-        entries={[entry("a", "A"), entry("b", "B"), entry("c", "C")]}
-        pageGroups={[["a"], ["b"], ["c"]]}
-        onLaunch={() => {}}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Page 3" }));
-    const pageWindow = screen.getByTestId("launcher-page-window");
-    Object.defineProperty(pageWindow, "clientWidth", {
-      configurable: true,
-      value: 390,
-    });
-    const rail = screen.getByTestId("launcher-page-rail");
-
-    fireEvent.pointerDown(pageWindow, {
-      isPrimary: true,
-      pointerId: 4,
-      clientX: 120,
-      clientY: 300,
-    });
-    fireEvent.pointerMove(pageWindow, {
-      isPrimary: true,
-      pointerId: 4,
-      clientX: 20,
-      clientY: 304,
-    });
-
-    expect(rail.style.transform).toContain("-815px");
-    expect(rail.style.transition).toBe("none");
-
-    fireEvent.pointerUp(pageWindow, {
-      isPrimary: true,
-      pointerId: 4,
-      clientX: 20,
-      clientY: 304,
-    });
-
-    expect(rail.style.transform).toContain("translate3d(-780px,0,0)");
-  });
-
-  it("drops views that are no longer available on re-render", () => {
-    const { rerender } = render(
-      <Launcher
-        entries={FEW}
-        pageGroups={singlePage(FEW)}
-        onLaunch={() => {}}
-      />,
-    );
+  it("drops a tile when its entry is removed on re-render", () => {
+    const { rerender } = render(<Launcher entries={FEW} onLaunch={() => {}} />);
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     rerender(
-      <Launcher
-        entries={[entry("chat", "Chat")]}
-        pageGroups={[["chat", "settings"]]}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-tile-settings")).toBeNull();
   });
 
-  it("renders a newly-available view as a tile on re-render", () => {
+  it("renders a newly-available entry as a tile on re-render", () => {
     const { rerender } = render(
-      <Launcher
-        entries={[entry("chat", "Chat")]}
-        pageGroups={[["chat", "notes"]]}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={[entry("chat", "Chat")]} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-tile-notes")).toBeNull();
     rerender(
       <Launcher
         entries={[entry("chat", "Chat"), entry("notes", "Notes")]}
-        pageGroups={[["chat", "notes"]]}
         onLaunch={() => {}}
       />,
     );
@@ -334,11 +149,7 @@ describe("Launcher image tiles", () => {
   it("renders a compact image icon over a glyph fallback when imageUrl is set", () => {
     const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
-      <Launcher
-        entries={entries}
-        pageGroups={singlePage(entries)}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={entries} onLaunch={() => {}} />,
     );
     const image = screen.getByTestId("launcher-image-notes");
     expect(image.getAttribute("src")).toBe("/api/views/notes/hero");
@@ -355,11 +166,7 @@ describe("Launcher image tiles", () => {
   it("renders the icon glyph when imageUrl is absent", () => {
     const entries = [entry("notes", "Notes")];
     const { container } = render(
-      <Launcher
-        entries={entries}
-        pageGroups={singlePage(entries)}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={entries} onLaunch={() => {}} />,
     );
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
     expect(container.querySelector("svg")).toBeTruthy();
@@ -372,11 +179,7 @@ describe("Launcher image tiles", () => {
 
     const entries = [imageEntry("notes", "Notes", "/api/views/notes/hero")];
     const { container } = render(
-      <Launcher
-        entries={entries}
-        pageGroups={singlePage(entries)}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={entries} onLaunch={() => {}} />,
     );
 
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();
@@ -395,11 +198,7 @@ describe("Launcher image tiles", () => {
       ),
     ];
     const { container } = render(
-      <Launcher
-        entries={entries}
-        pageGroups={singlePage(entries)}
-        onLaunch={() => {}}
-      />,
+      <Launcher entries={entries} onLaunch={() => {}} />,
     );
 
     expect(screen.queryByTestId("launcher-image-notes")).toBeNull();

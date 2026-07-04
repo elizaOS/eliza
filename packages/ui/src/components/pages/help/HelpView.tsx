@@ -1,10 +1,19 @@
+/**
+ * Help — a knowledge base searched through the floating chat. There's no search
+ * box of its own: while Help is open it takes over the chat composer (placeholder
+ * "Ask a question about Eliza…") and receives the live draft, pulling up the best
+ * matching answer here as you type. You can also browse the common questions and
+ * deep-link straight to the relevant screen.
+ */
 import { LifeBuoy } from "lucide-react";
 import * as React from "react";
 
 import { useAgentElement } from "../../../agent-surface";
+import { dispatchNavigateViewEvent } from "../../../events";
 import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
 import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
+import { ViewHeader } from "../../shared/ViewHeader";
 import { Button } from "../../ui/button";
 import { ShellViewAgentSurface } from "../../views/ShellViewAgentSurface";
 import { startTutorial } from "../tutorial/tutorial-controller";
@@ -13,14 +22,6 @@ import {
   type HelpDeepLink,
   type HelpEntry,
 } from "./help-content";
-
-/**
- * Help — a knowledge base searched through the floating chat. There's no search
- * box of its own: while Help is open it takes over the chat composer (placeholder
- * "Ask a question about Eliza…") and receives the live draft, pulling up the best
- * matching answer here as you type. You can also browse the common questions and
- * deep-link straight to the relevant screen.
- */
 
 function scoreEntry(entry: HelpEntry, q: string): number {
   if (!q) return 1;
@@ -40,7 +41,12 @@ function scoreEntry(entry: HelpEntry, q: string): number {
 export function HelpView(): React.ReactElement {
   return (
     <ShellViewAgentSurface viewId="help">
-      <HelpViewBody />
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <ViewHeader title="Help" />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <HelpViewBody />
+        </div>
+      </div>
     </ShellViewAgentSurface>
   );
 }
@@ -98,13 +104,13 @@ function HelpEntryItem({
 
   return (
     <li data-testid={`help-entry-${entry.id}`}>
-      <button
+      <Button
         ref={ref}
         {...agentProps}
-        type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-txt/[0.04]"
+        variant="ghost"
+        className="flex h-auto w-full items-center justify-between gap-3 whitespace-normal rounded-lg px-4 py-3 text-left font-normal transition-colors hover:bg-txt/[0.04]"
       >
         <span className="text-[14px] font-medium text-txt-strong">
           {entry.question}
@@ -116,7 +122,7 @@ function HelpEntryItem({
         >
           ›
         </span>
-      </button>
+      </Button>
       {open && (
         <div className="px-4 pb-4">
           <p className="text-[13px] leading-relaxed text-txt/75">
@@ -176,12 +182,20 @@ function HelpViewBody(): React.ReactElement {
         return;
       }
       if (link.settingsSection) {
-        try {
-          window.location.hash = link.settingsSection;
-        } catch {
-          /* ignore */
+        // Deep-link the target section through the `eliza:navigate:view`
+        // `subview` channel — the same path the agent + slash-command flows use
+        // (App.tsx routes it into SettingsView's `initialSection`). Setting
+        // `window.location.hash` before `setTab` never survived: setTab pushes
+        // the bare `/settings` path, which clears the fragment BEFORE
+        // SettingsView mounts and reads it — so the user landed on the generic
+        // Settings hub instead of the promised section.
+        if (typeof window !== "undefined") {
+          dispatchNavigateViewEvent({
+            viewId: "settings",
+            viewPath: "/settings",
+            subview: link.settingsSection,
+          });
         }
-        setTab("settings");
         return;
       }
       if (link.tab) setTab(link.tab);

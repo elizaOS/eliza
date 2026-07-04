@@ -1,3 +1,11 @@
+/**
+ * The character/persona editor mounted as the top-level "Character" view in the
+ * dashboard shell (App.tsx). Renders the roster picker plus the identity, style,
+ * examples, and voice panels, and writes edits back through the API client;
+ * greeting animation and voice config are resolved from the selected roster
+ * entry. Kept statically imported in App.tsx (not lazy) so first-run onboarding
+ * can land here without a chunk fetch.
+ */
 import { getStylePresets } from "@elizaos/shared";
 import { useAgentElement } from "../../agent-surface";
 import type { CharacterData } from "../../api/client";
@@ -95,6 +103,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Input } from "../ui/input";
 
 /* ── Shared accent styles ────────────────────────────────────────── */
 const accentGradientStyle = {
@@ -186,23 +195,24 @@ function CharacterPageTabButton({
     onActivate: () => onSelect(page),
   });
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="sm"
       id={`character-editor-tab-${page}`}
       role="tab"
       aria-selected={isActive}
       aria-current={isActive ? "page" : undefined}
       aria-controls={`character-editor-panel-${page}`}
       tabIndex={isActive ? 0 : -1}
-      className={className}
+      className={`h-auto ${className ?? ""}`}
       style={style}
       onClick={() => onSelect(page)}
       onKeyDown={onKeyDown}
       {...agentProps}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -1493,11 +1503,11 @@ export function CharacterEditor({
             )}
 
             <div className="flex min-h-9 items-center justify-end">
-              <input
+              <Input
                 type="file"
                 id="ce-vrm-upload"
                 accept=".vrm"
-                className="hidden"
+                className="hidden border-0 bg-transparent p-0"
                 style={{ display: "none" }}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   const file = e.target.files?.[0];

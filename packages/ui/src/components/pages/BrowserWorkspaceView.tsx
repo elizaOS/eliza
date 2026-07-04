@@ -1,3 +1,12 @@
+/**
+ * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
+ * with a collapsible sidebar for tab management and companion-bridge status.
+ *
+ * Tabs, navigation, and snapshots flow through the `client` browser API; on
+ * native the tabs render via a registered renderer impl
+ * (`browser-tabs-renderer-registry`), while desktop/web fall back to the
+ * companion bridge. Mounted in `App.tsx` under the `browser` route key.
+ */
 import { Capacitor } from "@capacitor/core";
 import {
   ExternalLink,
@@ -456,7 +465,9 @@ function BrowserAddressInput({
     getValue,
     onFill,
   });
-  return <Input ref={ref} {...agentProps} {...inputProps} />;
+  return (
+    <Input ref={ref} aria-label={agentLabel} {...agentProps} {...inputProps} />
+  );
 }
 
 function BrowserTabRow({
@@ -505,16 +516,16 @@ function BrowserTabRow({
 
   return (
     <div className="group relative">
-      <button
+      <Button
         ref={activateRef}
         {...activateAgentProps}
-        type="button"
         role="tab"
         aria-selected={active}
         aria-current={active ? "page" : undefined}
         title={tab.url}
         onClick={onActivate}
-        className={`flex w-full min-w-0 items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors ${
+        variant="ghost"
+        className={`flex h-auto w-full min-w-0 items-start justify-start gap-1.5 whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal transition-colors ${
           tabIsInternal ? "pr-1.5" : "pr-7"
         } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
       >
@@ -538,15 +549,16 @@ function BrowserTabRow({
             {description}
           </span>
         </span>
-      </button>
+      </Button>
       {tabIsInternal ? null : (
-        <button
+        <Button
           ref={closeRef}
           {...closeAgentProps}
-          type="button"
           aria-label={`${closeTabLabel} ${label}`}
           title={`${closeTabLabel}: ${label}`}
-          className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger ${
+          variant="ghost"
+          size="icon-sm"
+          className={`absolute right-0 top-1/2 h-5 w-5 -translate-y-1/2 rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger ${
             active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
           }`}
           onClick={(event) => {
@@ -556,7 +568,7 @@ function BrowserTabRow({
           }}
         >
           <X className="h-3 w-3" />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -2359,7 +2371,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         onActivate={() => setTabsSidebarCollapsed((current) => !current)}
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-11 w-11 shrink-0"
         aria-label={
           tabsSidebarCollapsed
             ? t("browserworkspace.ExpandTabs", {
@@ -2393,7 +2405,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-11 w-11 shrink-0"
         aria-label={newTabLabel}
         disabled={busyAction !== null}
         onClick={() =>
@@ -2420,7 +2432,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-11 w-11"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2445,7 +2457,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-8 w-8"
+        className="h-11 w-11"
         aria-label={t("browserworkspace.CloseAllTabs", {
           defaultValue: "Close all tabs",
         })}
@@ -2494,7 +2506,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-8 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="h-11 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <BrowserNavButton
         agentId="go"
@@ -2508,7 +2520,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="outline"
         size="sm"
-        className="h-8 shrink-0 px-3"
+        className="h-11 shrink-0 px-3"
         aria-label={goLabel}
         disabled={
           busyAction !== null ||
@@ -2600,9 +2612,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex h-full flex-col items-center justify-center pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+2rem)]">
+          <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]">
             <ChatEmptyStateWithRecommendations
               icon={Globe}
+              className="flex-none gap-2 py-1 sm:gap-3 sm:py-2"
               recommendations={[
                 {
                   label: t("browserworkspace.RecOpenDocs", {
@@ -2642,7 +2655,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="-mt-4 grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
+              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:-mt-10 sm:grid-cols-3">
                 <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
                   {browserBridgeConnected
                     ? t("browserworkspace.BrowserBridgeConnected", {
@@ -2662,7 +2675,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="outline"
                   disabled={busyAction !== null}
                   onClick={() => void installBrowserBridgeExtension()}
-                  className="sm:col-span-3"
+                  className="min-h-11 sm:col-span-3"
                 >
                   {t("browserworkspace.InstallBrowserBridge", {
                     defaultValue: "Install Agent Browser Bridge",
@@ -2676,7 +2689,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                     !browserBridgePackageStatus?.chromeBuildPath
                   }
                   onClick={() => void revealBrowserBridgeFolder()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <FolderOpen className="h-4 w-4" />
                   <span className="truncate">
@@ -2690,7 +2703,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="ghost"
                   disabled={busyAction !== null}
                   onClick={() => void openBrowserBridgeChromeExtensions()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <span className="truncate">
                     {t("browserworkspace.OpenChromeExtensions", {
@@ -2703,7 +2716,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                   variant="ghost"
                   disabled={browserBridgeLoading || busyAction !== null}
                   onClick={() => void refreshBrowserBridgeConnection()}
-                  className="min-w-0"
+                  className="min-h-11 min-w-0"
                 >
                   <RefreshCw className="h-4 w-4" />
                   <span className="truncate">
@@ -2844,9 +2857,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               </span>
             ) : null}
             {selectedTabLiveViewUrl ? (
-              <button
-                type="button"
-                className="rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -2859,7 +2873,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                 {t("browserworkspace.OpenLiveSession", {
                   defaultValue: "Open live session",
                 })}
-              </button>
+              </Button>
             ) : null}
           </div>
 

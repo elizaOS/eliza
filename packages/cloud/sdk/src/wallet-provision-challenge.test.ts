@@ -1,3 +1,5 @@
+/** Golden-bytes test for `buildWalletProvisionChallenge`: pins the exact client↔server wire string so the signing/recovery contract cannot drift. */
+
 import { describe, expect, test } from "bun:test";
 import {
   buildWalletProvisionChallenge,

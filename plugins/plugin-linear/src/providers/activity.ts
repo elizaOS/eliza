@@ -1,3 +1,8 @@
+/**
+ * LINEAR_ACTIVITY context provider: injects the last 10 entries of
+ * LinearService's in-memory activity log into the prompt. Gated to the
+ * automation/connectors contexts and ADMIN role, cached per turn.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { LinearService } from "../services/linear";
 import type { LinearActivityItem } from "../types";

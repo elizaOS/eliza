@@ -28,6 +28,7 @@ import type {
 	RunEventPayload,
 } from "../types/events.ts";
 import type { IAgentRuntime } from "../types/index.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source.ts";
 import type { NotificationInput } from "../types/notification.ts";
 import type { JsonValue } from "../types/primitives.ts";
 import { ServiceType } from "../types/service.ts";
@@ -269,7 +270,7 @@ function shouldNotifyForInboundMessage(
 	const metadata = messageMetadata(payload);
 	const normalizedSource = source.toLowerCase();
 	if (
-		normalizedSource === "client_chat" ||
+		normalizedSource === MESSAGE_SOURCE_CLIENT_CHAT ||
 		normalizedSource === "api" ||
 		normalizedSource === "web" ||
 		normalizedSource === "message" ||

@@ -1,38 +1,34 @@
 import type {
   DeliveryResult,
+  IAgentRuntime,
   DispatchSensitiveRequest as SensitiveRequest,
   SensitiveRequestDeliveryAdapter,
+  TunnelStatus,
 } from "@elizaos/core";
+import { getTunnelService } from "@elizaos/core";
 
-export interface TunnelStatus {
-  active: boolean;
-  url?: string | null;
-}
+type TunnelLinkStatus = Pick<TunnelStatus, "active" | "url">;
 
 export interface TunnelLinkAdapterDeps {
   /**
    * Resolves the active tunnel base URL. Mirrors the helper used by
-   * `packages/app-core/src/api/sensitive-request-routes.ts` which queries
-   * `runtime.getService("tunnel")` for `getStatus()` / `isActive()` /
-   * `getUrl()`. Returns `null` when no tunnel is active.
+   * the core tunnel-service contract. Returns `null` when no tunnel is active.
    */
-  getTunnelStatus?: (runtime: unknown) => TunnelStatus | null;
+  getTunnelStatus?: (runtime: unknown) => TunnelLinkStatus | null;
 }
 
-interface TunnelService {
-  getStatus?: () => { active?: boolean; url?: string | null } | undefined;
-  isActive?: () => boolean;
-  getUrl?: () => string | null;
+type RuntimeWithService = Pick<IAgentRuntime, "getService">;
+
+function isRuntimeWithService(value: unknown): value is RuntimeWithService {
+  return (
+    typeof (value as { getService?: unknown } | null | undefined)
+      ?.getService === "function"
+  );
 }
 
-interface RuntimeWithService {
-  getService?: (name: string) => unknown;
-}
-
-function defaultGetTunnelStatus(runtime: unknown): TunnelStatus | null {
-  const service = (
-    runtime as RuntimeWithService | null | undefined
-  )?.getService?.("tunnel") as TunnelService | null | undefined;
+function defaultGetTunnelStatus(runtime: unknown): TunnelLinkStatus | null {
+  if (!isRuntimeWithService(runtime)) return null;
+  const service = getTunnelService(runtime);
   if (!service) return null;
   const status = service.getStatus?.();
   const active = Boolean(status?.active ?? service.isActive?.());

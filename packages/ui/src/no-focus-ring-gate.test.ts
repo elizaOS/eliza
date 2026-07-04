@@ -1,3 +1,7 @@
+/**
+ * Source-scanning gate banning stray focus-ring styles that violate the design
+ * system. Reads the src tree, no runtime.
+ */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

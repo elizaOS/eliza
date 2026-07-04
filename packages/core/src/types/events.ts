@@ -1,8 +1,14 @@
+/**
+ * Runtime event system: the `EventType` enum and the per-event payload shapes an
+ * agent emits and plugins subscribe to (world/entity/room/message/voice/model/
+ * pipeline events). The typed contract that decouples event producers from
+ * consumers across the runtime and plugins.
+ */
 import type { HandlerCallback } from "./components";
 import type { Entity, Room, World } from "./environment";
 import type { Memory } from "./memory";
 import type { ControlMessage } from "./messaging";
-import type { ModelTypeName } from "./model";
+import type { ModelRegistrationMetadata, ModelTypeName } from "./model";
 import type { PipelineHookPhase } from "./pipeline-hooks";
 import type { Content, JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -67,11 +73,18 @@ export enum EventType {
 
 	// Model events
 	MODEL_USED = "MODEL_USED",
+	MODEL_REGISTERED = "MODEL_REGISTERED",
 
 	// Embedding events
 	EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
 	EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
 	EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
+
+	// Error reporting (#12263) — the general-purpose failure event emitted by
+	// `runtime.reportError` for failures outside the action path (providers,
+	// services, background jobs, event handlers). Surfaced to the agent via the
+	// RECENT_ERRORS provider and used to drive the owner-escalation threshold.
+	ERROR_REPORTED = "ERROR_REPORTED",
 
 	// Control events
 	CONTROL_MESSAGE = "CONTROL_MESSAGE",
@@ -241,6 +254,24 @@ export interface ModelEventPayload extends EventPayload {
 }
 
 /**
+ * Payload for {@link EventType.MODEL_REGISTERED}, emitted by
+ * `AgentRuntime.registerModel` whenever a plugin registers a model handler.
+ * Carries registration metadata only — never the handler function — so
+ * observers (e.g. the local-inference routing table) can mirror the runtime's
+ * model registry without capturing handlers or patching the prototype.
+ */
+export interface ModelRegisteredEventPayload extends EventPayload {
+	/** The model type key the handler was registered for (e.g. `TEXT_LARGE`). */
+	modelType: string;
+	/** The provider (plugin) name that registered the handler. */
+	provider: string;
+	/** Selection priority (higher wins); defaults to 0 when unspecified. */
+	priority: number;
+	/** Optional provider-declared metadata. Never includes handler functions. */
+	metadata?: ModelRegistrationMetadata;
+}
+
+/**
  * Payload for embedding generation events
  */
 export interface EmbeddingGenerationPayload extends EventPayload {
@@ -258,6 +289,22 @@ export interface EmbeddingGenerationPayload extends EventPayload {
  */
 export interface ControlMessagePayload extends EventPayload {
 	message: ControlMessage;
+}
+
+/**
+ * Payload for {@link EventType.ERROR_REPORTED} — a structured failure surfaced
+ * by `runtime.reportError`. `scope` is the reporting subsystem (used as the
+ * `[scope]` log prefix), `code` is the machine-classifiable key (from
+ * `ElizaError.code` when available, else a normalized fallback like
+ * `UNCLASSIFIED`), and `context` carries serializable diagnostic detail.
+ */
+export interface ErrorReportedPayload extends EventPayload {
+	scope: string;
+	code: string;
+	message: string;
+	context?: Record<string, unknown>;
+	runId?: UUID;
+	roomId?: UUID;
 }
 
 /**
@@ -562,9 +609,11 @@ export interface EventPayloadMap {
 	[EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
 	[EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
 	[EventType.MODEL_USED]: ModelEventPayload;
+	[EventType.MODEL_REGISTERED]: ModelRegisteredEventPayload;
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
+	[EventType.ERROR_REPORTED]: ErrorReportedPayload;
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;

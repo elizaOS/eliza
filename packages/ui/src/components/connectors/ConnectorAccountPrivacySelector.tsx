@@ -1,3 +1,10 @@
+/**
+ * Privacy-level selector for a connector account (owner-only through public).
+ * Escalating to a broader level opens a confirmation dialog whose requirement
+ * (typed phrase vs. public acknowledgement) comes from
+ * `connector-account-options`, so the escalation guard lives in one place.
+ */
+
 import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountPrivacy } from "../../api/client-agent";
 import { useTranslation } from "../../state/TranslationContext.hooks";

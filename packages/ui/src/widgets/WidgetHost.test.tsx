@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Renders WidgetHost against mocked app state + a stubbed widget resolver to
+ * verify it mounts the resolved widgets for a slot and forwards widget UI
+ * actions via the WIDGET_UI_ACTION_EVENT. jsdom render (no real backend).
+ */
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WidgetHost } from "./WidgetHost";
@@ -50,6 +56,8 @@ vi.mock("../state/useDeveloperMode", () => ({
 
 vi.mock("./registry", () => ({
   resolveWidgetsForSlot: resolveWidgetsForSlotMock,
+  subscribeWidgetRegistry: () => () => {},
+  getWidgetRegistryVersion: () => 0,
 }));
 
 beforeEach(() => {

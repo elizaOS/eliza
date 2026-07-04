@@ -1,3 +1,8 @@
+/**
+ * WORKTREE `enter` handler: creates/attaches a git worktree, registers its root
+ * with SandboxService, and pushes it onto the SessionCwdService stack so
+ * subsequent glob/grep/ls/shell operations run inside it.
+ */
 import * as crypto from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";

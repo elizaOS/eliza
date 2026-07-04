@@ -1,3 +1,8 @@
+/**
+ * Resolves a route's `x402` declaration (boolean shorthand or partial
+ * config) against `character.settings.x402` defaults, plus the event names
+ * emitted around payment negotiation.
+ */
 import type {
   AgentRuntime,
   Character,

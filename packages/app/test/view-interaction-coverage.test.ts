@@ -49,6 +49,27 @@ const DECOMPOSED_PA_SPEC =
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
+  birdclaw: [
+    {
+      spec: "plugins/plugin-birdclaw/src/plugin.test.ts",
+      proves:
+        "Locks the collapsed Birdclaw view manifest (path, bundle, component export, gui/xr/tui modalities) and manager visibility contract.",
+      signals: [
+        "declares the birdclaw view exactly as the bundle build emits it",
+        "BirdclawView",
+      ],
+    },
+    {
+      spec: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.test.tsx",
+      proves:
+        "Exercises tab switching (home/likes/bookmarks/inbox), the sync trigger with in-place reload, sync-failure surfacing, and the setup/error/retry states through the injected fetcher seam.",
+      signals: [
+        "switches tabs: likes uses the liked filter, inbox hits the inbox route",
+        "syncs the active tab's collection and reloads in place",
+        "renders the error state and recovers on retry",
+      ],
+    },
+  ],
   calendar: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -217,14 +238,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
   "views-manager": [
     // The standalone 'Dynamic view management' form (and its
     // view-manager-actual-flow spec) left with the springboard->launcher
-    // curation; view management now lives in the launcher's long-press edit
-    // mode and the registered plugin-view lifecycle. Residual gap: an e2e for
-    // CREATING a dynamic view through the current product flow.
+    // curation, and #11523 then made the launcher a read-only single page
+    // (no edit mode, no drag-to-reorder, no pin/delete affordances). View
+    // management now lives in the registered plugin-view lifecycle. Residual
+    // gap: an e2e for CREATING a dynamic view through the current product flow.
     {
       spec: "packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
       proves:
-        "Long-press edit mode plus real drag-to-reorder with persistence and telemetry on the launcher — the surface that replaced the dynamic-view manager form.",
-      signals: ["enters edit mode", "reorder"],
+        "The read-only launcher (the surface that replaced the dynamic-view manager form): real tap-launch with telemetry, a stationary long-press that must NOT enter any edit mode, and the swipe-home rail gesture.",
+      signals: [
+        "a long-press never enters edit mode",
+        "telemetry ring recorded the tap launch",
+      ],
     },
     {
       spec: "packages/app/test/ui-smoke/plugin-views-lifecycle.spec.ts",
@@ -399,7 +424,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(55);
+    expect(visualCases.length).toBe(57);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

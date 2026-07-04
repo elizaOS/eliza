@@ -1,3 +1,15 @@
+/**
+ * `WalletBackend` implementation backed by Steward, the cloud/mobile
+ * multi-tenant signing service — used when `ELIZA_WALLET_BACKEND=steward` or
+ * (in `auto` mode) when the agent is cloud-provisioned. Dynamically imports
+ * `@elizaos/app-steward` at construction time (avoiding a devDependency
+ * cycle) to init the EVM account and fetch vault chain addresses; throws
+ * `StewardUnavailableError` if the module can't be loaded or Steward env
+ * config (`STEWARD_API_URL`/`STEWARD_AGENT_TOKEN`/`STEWARD_AGENT_ID`) is
+ * missing. Solana addresses may be exposed when Steward's vault endpoint
+ * returns them, but Solana transaction signing is not yet wired here —
+ * `getSolanaSigner()` always throws.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { PublicKey } from "@solana/web3.js";
 import type { Account, Hex, TypedDataDefinition } from "viem";

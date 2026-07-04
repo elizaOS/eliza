@@ -25,12 +25,13 @@ import {
   type VoiceModelId,
   type VoiceModelVersion,
 } from "@elizaos/shared";
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -305,17 +306,18 @@ function ToggleRow({
   hint,
   onChange,
 }: ToggleRowProps) {
+  const id = useId();
   return (
-    <label className="flex items-center gap-2">
-      <input
-        type="checkbox"
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id={id}
         checked={checked}
         disabled={disabled}
-        onChange={(e) => onChange(e.currentTarget.checked)}
+        onCheckedChange={(value) => onChange(value === true)}
       />
-      <span>{label}</span>
+      <label htmlFor={id}>{label}</label>
       {hint ? <span className="text-muted-foreground">({hint})</span> : null}
-    </label>
+    </div>
   );
 }
 

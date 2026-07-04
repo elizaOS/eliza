@@ -19,6 +19,12 @@ feel like real system citizens rather than a WebView with a chat box.
   New Task as direct deep links.
 - iOS App Intents/App Shortcuts for Ask Eliza, Voice, Daily Brief, New Task,
   and Smart Reply.
+- iOS `ElizaWidgets` widget extension: home-screen (small/medium) and Lock
+  Screen (circular/rectangular) quick-action widgets for Ask, Voice, Daily
+  Brief, New Task, and Smart Reply, plus iOS 18 controls "Ask Eliza" and
+  "Eliza Voice" for Control Center, the Lock Screen, and the Action button.
+  All entries route `elizaos://` deep links tagged `source=ios-widget` /
+  `source=ios-control`.
 - iOS local notifications, BGTaskScheduler, APNs silent-push wake plumbing,
   Screen Time extensions, ReplayKit broadcast target, Safari content blocker,
   and local-agent/Bun smoke harness.
@@ -47,13 +53,32 @@ feel like real system citizens rather than a WebView with a chat box.
 | Daily brief | App Shortcut opens LifeOps overview | Static shortcut + App Actions inline inventory | P0 |
 | Create task/reminder | App Shortcut with text parameter routes to LifeOps planner | Static shortcut + App Actions feature open, then planner confirmation | P0 |
 | Smart reply | App Shortcut accepts dictated/copied context and opens chat with `action=smart-reply` | Share Sheet + selected-text `PROCESS_TEXT` route to chat with `action=smart-reply`; keyboard/notification chips next | P1 |
-| Home-screen widgets | WidgetKit small/medium: Ask, Voice, Camera, Daily Brief | App Widget: Ask, Voice, Daily Brief, New Task implemented; Camera next | P1 |
-| Lock Screen / Action Button | App Shortcuts automatically available to Action Button and Spotlight | Quick Settings voice tile, launcher shortcuts | P1 |
+| Home-screen widgets | WidgetKit `ElizaWidgets` extension: Ask, Voice, Daily Brief, New Task, Smart Reply implemented; Camera next | App Widget: Ask, Voice, Daily Brief, New Task implemented; Camera next | P1 |
+| Lock Screen / Action Button | App Shortcuts available to Action Button and Spotlight; iOS 18 controls "Ask Eliza" + "Eliza Voice" for Control Center / Lock Screen / Action button implemented | Quick Settings voice tile, launcher shortcuts | P1 |
 | Share target | Share Sheet extension for text, URLs, images, files | Android Sharesheet target for text and selected text; images/files preserve URI grants for follow-up handling | P1 |
 | Keyboard smart reply | iOS custom keyboard extension with explicit network/local-mode disclosure | Android IME with inline smart reply chips | P2 |
 | Notification actions | Reply, summarize, snooze, create task | Direct reply, summarize, snooze, create task | P2 |
 | Car mode | CarPlay voice-only template, if entitlement/product fit | Android Auto media/assistant-safe voice surfaces, if policy fit | P3 |
 | Apple Intelligence schemas | Adopt App Entities, IndexedEntity, IntentValueQuery, onscreen awareness when stable | Use App Actions/dynamic shortcuts; Gemini Nano is model API, not assistant API | P3 |
+
+## Action Button Setup (iOS)
+
+Apple provides no API to assign the Action button programmatically, so users
+wire it up once in Settings. Two supported lanes (both live today):
+
+1. **Control (iOS 18+, recommended):** Settings → Action Button → swipe to
+   **Controls** → choose **Eliza Voice** (or **Ask Eliza**). Pressing the
+   Action button then foregrounds Eliza straight into voice chat
+   (`elizaos://voice?...&source=ios-control` — the microphone requires a
+   foreground app, per Apple's rules for controls).
+2. **Shortcut (iOS 17+):** Settings → Action Button → **Shortcut** → pick any
+   Eliza App Shortcut ("Start Voice Chat", "Ask Eliza", …).
+
+The same "Eliza Voice"/"Ask Eliza" controls are addable to Control Center
+(long-press → Add a Control → search "Eliza") and to the Lock Screen bottom
+controls (Customize → Lock Screen). An in-app "Set up the Action Button"
+education card belongs to the Phase 1 SiriTip-style education work below —
+there is no in-app setup-guide surface to slot it into yet.
 
 ## Native Feel Checklist
 
@@ -108,7 +133,8 @@ Use a platform router, not a single runtime everywhere.
 
 ### Phase 1: First-Class User Surfaces
 
-- Add WidgetKit extension with Ask, Voice, Camera, Daily Brief, and New Task.
+- WidgetKit extension with Ask, Voice, Daily Brief, New Task, and Smart Reply
+  shipped (`ElizaWidgets`); add Camera next.
 - Extend Android app widget with Camera and dynamic/pinned-agent variants.
 - Extend Android share handling from text/selection into full image, PDF, and
   arbitrary-file ingestion; add the iOS Share Sheet extension.

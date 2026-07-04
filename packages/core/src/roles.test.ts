@@ -3,12 +3,15 @@ import {
 	CANONICAL_ROLE_RANK,
 	canModifyRole,
 	getEntityRole,
+	hasAtLeastRole,
 	hasRoleAccess,
+	isAdminRank,
 	isAgentSelf,
 	matchEntityToConnectorAdminWhitelist,
 	normalizeRole,
 	ROLE_RANK,
 	recordOwnerGrant,
+	recordRoleGrant,
 } from "./roles.ts";
 import {
 	roleRank as gateRoleRank,
@@ -31,6 +34,52 @@ describe("normalizeRole", () => {
 		expect(normalizeRole("USER")).toBe("USER");
 		expect(normalizeRole("superuser")).toBe("GUEST");
 		expect(normalizeRole(null)).toBe("GUEST");
+	});
+
+	// #12087 Item 6: MEMBER is the USER-tier alias, not GUEST. Folding it to GUEST
+	// (the prior bug) demoted a stored MEMBER world role below a minRole:USER gate
+	// that the context-gate path grants — the two paths must agree on MEMBER.
+	it("resolves the MEMBER alias to its canonical USER tier (not GUEST)", () => {
+		expect(normalizeRole("MEMBER")).toBe("USER");
+		expect(normalizeRole("member")).toBe("USER");
+		expect(ROLE_RANK[normalizeRole("MEMBER")]).toBe(CANONICAL_ROLE_RANK.USER);
+	});
+
+	it("a stored MEMBER role clears a minRole:USER gate via both role paths", () => {
+		// getEntityRole (checkSenderRole path) must resolve MEMBER to a USER-rank
+		// role that satisfies a USER gate — matching satisfiesRoleGate (context path).
+		const stored = getEntityRole(
+			{ roles: { "entity-1": "MEMBER" as never } },
+			"entity-1",
+		);
+		expect(ROLE_RANK[stored]).toBeGreaterThanOrEqual(CANONICAL_ROLE_RANK.USER);
+		expect(satisfiesRoleGate(["MEMBER"], { minRole: "USER" })).toBe(true);
+		expect(gateRoleRank("MEMBER")).toBe(gateRoleRank("USER"));
+	});
+});
+
+describe("hasAtLeastRole / isAdminRank (#12087 Item 31)", () => {
+	it("ranks roles by CANONICAL_ROLE_RANK, not string identity", () => {
+		expect(hasAtLeastRole("OWNER", "ADMIN")).toBe(true);
+		expect(hasAtLeastRole("ADMIN", "ADMIN")).toBe(true);
+		expect(hasAtLeastRole("USER", "ADMIN")).toBe(false);
+		expect(hasAtLeastRole("MEMBER", "USER")).toBe(true); // alias resolves
+		expect(hasAtLeastRole("GUEST", "USER")).toBe(false);
+	});
+
+	it("fails closed for unknown/empty roles", () => {
+		expect(hasAtLeastRole(undefined, "ADMIN")).toBe(false);
+		expect(hasAtLeastRole(null, "USER")).toBe(false);
+		expect(hasAtLeastRole("superuser", "ADMIN")).toBe(false);
+	});
+
+	it("isAdminRank is true only for ADMIN and OWNER (case-insensitive)", () => {
+		expect(isAdminRank("owner")).toBe(true);
+		expect(isAdminRank("ADMIN")).toBe(true);
+		expect(isAdminRank("USER")).toBe(false);
+		expect(isAdminRank("member")).toBe(false);
+		expect(isAdminRank("GUEST")).toBe(false);
+		expect(isAdminRank(undefined)).toBe(false);
 	});
 });
 
@@ -155,6 +204,17 @@ describe("matchEntityToConnectorAdminWhitelist", () => {
 		).toBeNull();
 		expect(matchEntityToConnectorAdminWhitelist(null, whitelist)).toBeNull();
 	});
+
+	it("does not match mutable username fields against the whitelist", () => {
+		const whitelist = { discord: ["alice"] };
+
+		expect(
+			matchEntityToConnectorAdminWhitelist(
+				{ discord: { username: "alice", userName: "alice" } },
+				whitelist,
+			),
+		).toBeNull();
+	});
 });
 
 describe("canonical role rank (#9948)", () => {
@@ -203,6 +263,44 @@ describe("role gate rejects unknown tiers (#9948)", () => {
 			satisfiesRoleGate(["SUPERUSER" as never], { minRole: "GUEST" }),
 		).toBe(false);
 		expect(satisfiesRoleGate(["OWNER"], { minRole: "GUEST" })).toBe(true);
+	});
+});
+
+describe("recordRoleGrant (#12087 Item 11 generic auditable grant)", () => {
+	it("pairs a non-owner role with its grant source", () => {
+		const metadata: {
+			roles?: Record<string, string>;
+			roleSources?: Record<string, string>;
+		} = {};
+		const changed = recordRoleGrant(
+			metadata as never,
+			"user-1",
+			"USER",
+			"connector_admin",
+		);
+		expect(changed).toBe(true);
+		expect(metadata.roles?.["user-1"]).toBe("USER");
+		expect(metadata.roleSources?.["user-1"]).toBe("connector_admin");
+	});
+
+	it("clears the grant source for a GUEST role (mirrors setEntityRole)", () => {
+		const metadata = {
+			roles: { "u-1": "USER" },
+			roleSources: { "u-1": "connector_admin" },
+		} as never;
+		expect(recordRoleGrant(metadata, "u-1", "GUEST")).toBe(true);
+		const md = metadata as {
+			roles: Record<string, string>;
+			roleSources: Record<string, string>;
+		};
+		expect(md.roles["u-1"]).toBe("GUEST");
+		expect(md.roleSources["u-1"]).toBeUndefined();
+	});
+
+	it("is idempotent", () => {
+		const metadata = {} as never;
+		recordRoleGrant(metadata, "user-1", "USER", "manual");
+		expect(recordRoleGrant(metadata, "user-1", "USER", "manual")).toBe(false);
 	});
 });
 

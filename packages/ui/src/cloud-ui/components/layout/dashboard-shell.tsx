@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * The cloud dashboard shell layout: fixed sidebar plus the scrollable content region.
+ */
 import type { ReactNode } from "react";
 
 export interface DashboardShellLayoutProps {

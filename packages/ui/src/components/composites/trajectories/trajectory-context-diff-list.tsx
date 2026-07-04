@@ -1,3 +1,8 @@
+/**
+ * Trajectory-viewer panel summarizing per-step context diffs (items added,
+ * removed, changed, and token delta) across an agent run. Presentational; shows
+ * an empty-state when the trajectory carries no diff data.
+ */
 import {
   Activity,
   type LucideIcon,

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	_resetActionRolePolicyCacheForTests,
+	getActionRolePolicyWarnings,
 	isActionAllowedByRolePolicy,
 	readActionRolePolicy,
 	resolveActionRolePolicyRole,
@@ -66,14 +67,12 @@ describe("resolveActionRolePolicyRole", () => {
 		expect(resolveActionRolePolicyRole("UNLISTED")).toBeUndefined();
 	});
 
-	it("resolves an object action by name, then falls back to a simile", () => {
+	it("resolves an object action by exact name only", () => {
 		setPolicy(JSON.stringify({ RUN_SHELL: "MEMBER" }));
 		expect(resolveActionRolePolicyRole({ name: "RUN_SHELL" })).toBe("MEMBER");
-		// name not in policy, but a simile is
 		expect(
 			resolveActionRolePolicyRole({ name: "EXEC", similes: ["RUN_SHELL"] }),
-		).toBe("MEMBER");
-		// nothing matches
+		).toBeUndefined();
 		expect(
 			resolveActionRolePolicyRole({ name: "EXEC", similes: ["NOPE"] }),
 		).toBeUndefined();
@@ -95,5 +94,42 @@ describe("isActionAllowedByRolePolicy (authorization)", () => {
 		setPolicy(JSON.stringify({ SHELL: "ADMIN" }));
 		expect(isActionAllowedByRolePolicy("SHELL", ["GUEST"])).toBe(false);
 		expect(isActionAllowedByRolePolicy("SHELL", undefined)).toBe(false);
+	});
+});
+
+describe("getActionRolePolicyWarnings", () => {
+	it("warns on unmatched exact action names", () => {
+		setPolicy(JSON.stringify({ BASH: "GUEST" }));
+		expect(getActionRolePolicyWarnings([{ name: "SHELL" }])).toEqual([
+			{ type: "unmatched", actionName: "BASH", policyRole: "GUEST" },
+		]);
+	});
+
+	it("warns when a policy entry loosens a declared gate", () => {
+		setPolicy(JSON.stringify({ SHELL: "GUEST" }));
+		expect(
+			getActionRolePolicyWarnings([
+				{ name: "SHELL", roleGate: { minRole: "OWNER" } },
+			]),
+		).toEqual([
+			{
+				type: "loosens",
+				actionName: "SHELL",
+				policyRole: "GUEST",
+				declaredRole: "OWNER",
+			},
+		]);
+	});
+
+	it("does not warn when a policy entry keeps or tightens the declared gate", () => {
+		setPolicy(JSON.stringify({ SHELL: "OWNER" }));
+		expect(
+			getActionRolePolicyWarnings([
+				{
+					name: "SHELL",
+					contextGate: { roleGate: { minRole: "ADMIN" } },
+				},
+			]),
+		).toEqual([]);
 	});
 });

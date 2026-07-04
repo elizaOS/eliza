@@ -15,6 +15,7 @@ import { useAgentElement } from "../../agent-surface";
 // authed runtimes (e.g. the Android local agent).
 import { client } from "../../api/client";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { SettingsInput } from "../ui/settings-controls";
@@ -60,7 +61,21 @@ function entryDisplayLabel(meta: VaultEntryMeta): string {
   return meta.key;
 }
 
+/**
+ * Wallet private keys are an OWNER-tier surface (#12087 Item 24): only the
+ * workspace owner may view or manage them. The gate is applied at the surface
+ * boundary via the canonical {@link RoleGate}, so the whole body — including its
+ * loading/error branches — is owner-gated in one place.
+ */
 export function WalletKeysSection() {
+  return (
+    <RoleGate minRole="OWNER" fallback={<OwnerOnlyNotice />}>
+      <WalletKeysSectionBody />
+    </RoleGate>
+  );
+}
+
+function WalletKeysSectionBody() {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
   const [error, setError] = useState<string | null>(null);

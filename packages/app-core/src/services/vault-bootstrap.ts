@@ -16,38 +16,17 @@
  * failures are isolated; if every write fails the function throws.
  */
 
-import type {
-  persistConfigEnv as PersistConfigEnvFn,
-  readConfigEnv as ReadConfigEnvFn,
-} from "@elizaos/agent/api/config-env";
-import type {
-  loadElizaConfig as LoadElizaConfigFn,
-  saveElizaConfig as SaveElizaConfigFn,
-} from "@elizaos/agent/config/config";
-import type { resolveStateDir as ResolveStateDirFn } from "@elizaos/agent/config/paths";
-// IMPORTANT — circular-import hardening
-//
-// `@elizaos/agent` depends on `@elizaos/app-core` (via plugin loading, server
-// routes, runtime hooks), so re-importing agent from any module under app-core
-// closes a cycle. On Bun's strict ESM evaluator, that cycle causes app-core
-// modules to be re-entered mid-evaluation: their top-level `let`/`const`
-// declarations are still in TDZ when functions defined later in the same
-// module are invoked, throwing "Cannot access 'X' before initialization"
-// at boot.
-//
-// Surfaced as the elizaOS-live-USB symptom: `runVaultBootstrap` failed with
-// TDZ on `cachedManager` / `WALLET_VAULT_KEYS` / `cache` (registry loader's
-// memoization slot), the agent process died before binding port 31337, and
-// the Electrobun shell stayed stuck on "Backend Timeout".
-//
-// Fix: keep agent imports type-only (erased at compile time, no runtime
-// edge), and load the runtime helpers lazily from narrow agent subpaths inside
-// `agentBridge()`. That keeps this module off the agent barrel and defers any
-// runtime edge until after both modules have fully evaluated.
+// `@elizaos/app-core` is the host layer ABOVE `@elizaos/agent`, so importing
+// agent here is the legal downward edge. Agent no longer imports app-core (the
+// former cycle is broken — see runtime/host-bridge.ts), so these are plain
+// static imports: no re-entrant ESM evaluation, no TDZ, no dynamic-import dodge.
+import { persistConfigEnv, readConfigEnv } from "@elizaos/agent/api/config-env";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
 import type { ElizaConfig } from "@elizaos/agent/config/types.eliza";
-import type {
-  formatVaultRef as FormatVaultRefFn,
-  isVaultRef as IsVaultRefFn,
+import {
+  formatVaultRef,
+  isVaultRef,
 } from "@elizaos/agent/runtime/operations/vault-bridge";
 import { logger } from "@elizaos/core";
 import type { Vault } from "@elizaos/vault";
@@ -56,38 +35,27 @@ import { loadRegistry } from "../registry";
 import { sharedVault } from "./vault-mirror";
 
 interface AgentBridge {
-  formatVaultRef: typeof FormatVaultRefFn;
-  isVaultRef: typeof IsVaultRefFn;
-  loadElizaConfig: typeof LoadElizaConfigFn;
-  persistConfigEnv: typeof PersistConfigEnvFn;
-  readConfigEnv: typeof ReadConfigEnvFn;
-  resolveStateDir: typeof ResolveStateDirFn;
-  saveElizaConfig: typeof SaveElizaConfigFn;
+  formatVaultRef: typeof formatVaultRef;
+  isVaultRef: typeof isVaultRef;
+  loadElizaConfig: typeof loadElizaConfig;
+  persistConfigEnv: typeof persistConfigEnv;
+  readConfigEnv: typeof readConfigEnv;
+  resolveStateDir: typeof resolveStateDir;
+  saveElizaConfig: typeof saveElizaConfig;
 }
 
-var bridgeCache: AgentBridge | null = null;
+const agentBridgeImpl: AgentBridge = {
+  formatVaultRef,
+  isVaultRef,
+  loadElizaConfig,
+  persistConfigEnv,
+  readConfigEnv,
+  resolveStateDir,
+  saveElizaConfig,
+};
 
-async function agentBridge(): Promise<AgentBridge> {
-  if (bridgeCache) return bridgeCache;
-  // Dynamic import defers the agent ↔ app-core edge until after both
-  // modules have fully evaluated. By the time this runs the runVaultBootstrap
-  // call site is already inside an async function body.
-  const [vaultBridge, configEnv, config, paths] = await Promise.all([
-    import("@elizaos/agent/runtime/operations/vault-bridge"),
-    import("@elizaos/agent/api/config-env"),
-    import("@elizaos/agent/config/config"),
-    import("@elizaos/agent/config/paths"),
-  ]);
-  bridgeCache = {
-    formatVaultRef: vaultBridge.formatVaultRef,
-    isVaultRef: vaultBridge.isVaultRef,
-    loadElizaConfig: config.loadElizaConfig,
-    persistConfigEnv: configEnv.persistConfigEnv,
-    readConfigEnv: configEnv.readConfigEnv,
-    resolveStateDir: paths.resolveStateDir,
-    saveElizaConfig: config.saveElizaConfig,
-  };
-  return bridgeCache;
+function agentBridge(): AgentBridge {
+  return agentBridgeImpl;
 }
 
 export interface VaultBootstrapResult {
@@ -294,7 +262,7 @@ export async function runVaultBootstrap(
   // Resolve the lazy agent bridge ONCE here; everything downstream gets it
   // injected. Single resolution point also keeps the cycle-breaking dynamic
   // import a single network/syscall hop instead of one per helper.
-  const bridge = await agentBridge();
+  const bridge = agentBridge();
 
   const stateDir = opts.stateDir ?? bridge.resolveStateDir();
   const vault = opts.vault ?? sharedVault();

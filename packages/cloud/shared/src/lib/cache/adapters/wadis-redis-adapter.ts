@@ -1,3 +1,9 @@
+/**
+ * CacheRedisClient adapter over Wadis, the in-process WASM Redis used as the
+ * local-dev default (no Docker) in non-Worker environments. WadisClientLike is
+ * the structural subset this adapter depends on, avoiding a hard `wadis` import.
+ */
+
 import type { CacheRedisClient } from "./types";
 
 export interface WadisClientLike {

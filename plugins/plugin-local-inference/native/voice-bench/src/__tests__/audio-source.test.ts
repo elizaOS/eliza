@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the voice-bench audio source: WAV encode/decode round-trip
+ * fidelity and SyntheticAudioSource frame generation over fixture utterances,
+ * silence, and barge-in overlays. Pure DSP, no audio device.
+ */
 import { describe, it, expect } from "bun:test";
 import {
   SyntheticAudioSource,

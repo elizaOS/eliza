@@ -1,3 +1,11 @@
+/**
+ * Core service for the perpetuals market: opening and closing leveraged long/short
+ * positions, applying synthetic-microstructure execution prices, batch price updates,
+ * and liquidations. Depends only on the injected `PerpServiceDeps` ports (DB, wallet,
+ * fees, clock, broadcast) so the domain logic stays free of concrete infrastructure;
+ * quote-state upkeep is delegated to `PerpQuoteStateService`. Enforces the
+ * `MAX_PERP_USER_EXPOSURE` cap and position-integrity invariants from `./utils`.
+ */
 import {
   calculateTradeImpact,
   getInitialReserves,

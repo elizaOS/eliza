@@ -1,3 +1,10 @@
+/**
+ * CRUD + vector-search store for the `memories` table. Reads join against
+ * `embeddingTable` on the runtime's configured embedding dimension
+ * (`ctx.getEmbeddingDimension()`); `searchByEmbedding` ranks by cosine
+ * distance. `tableName` partitions memories by logical type (facts,
+ * messages, long-term memories, etc.) within the same physical table.
+ */
 import { randomUUID } from "node:crypto";
 import { logger, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";

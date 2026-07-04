@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the one-time app API-key store/consume flow. In-memory, no
+ * network.
+ */
 import { describe, expect, it } from "vitest";
 import {
   consumeOneTimeAppApiKey,

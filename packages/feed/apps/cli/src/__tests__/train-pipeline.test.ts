@@ -1,3 +1,9 @@
+/**
+ * Tests that the `train pipeline` command forwards flags to the underlying
+ * Python training pipeline. Spawns the real CLI entrypoint in dry-run mode and
+ * asserts on the composed command, without running actual training.
+ */
+
 import { describe, expect, test } from "bun:test";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "bun";

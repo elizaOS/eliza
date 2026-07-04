@@ -1,3 +1,9 @@
+/**
+ * Maintains persisted bid/ask/spread/depth quote state for perp markets, evolving it over
+ * time so spreads and depth relax during quiet periods when the canonical price barely
+ * moves. Deliberately narrow: it touches only the DB port and clock, with no wallet, fee,
+ * or trade-execution wiring (those live in `PerpMarketService`).
+ */
 import type { ClockPort } from "../shared/common";
 import {
   evolveSyntheticPerpQuoteState,

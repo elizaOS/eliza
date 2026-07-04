@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL as BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,
@@ -7,10 +8,6 @@ import {
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "../../src/services/coding-account-selection.js";
-
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
 
 function clearBridge() {
   delete (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL];

@@ -56,6 +56,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
     emitEvent: vi.fn(async () => undefined),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
+    drainChatPreHandlers: vi.fn(async () => null),
     ...overrides,
   } satisfies Partial<AgentRuntime>;
 

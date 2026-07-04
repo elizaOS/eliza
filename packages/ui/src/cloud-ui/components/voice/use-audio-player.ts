@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Hook wrapping HTMLAudioElement playback state for the voice surface (play/pause/seek).
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface UseAudioPlayerReturn {

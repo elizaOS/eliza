@@ -1,3 +1,9 @@
+/**
+ * capturePageContext() — snapshots the live DOM (title, visible text, headings,
+ * links, forms) so the agent can read the current page. Runs in the
+ * content-script context; every field is whitespace-normalized and length-capped
+ * so a large page cannot bloat the sync payload.
+ */
 import type { PageContextSnapshot } from "./protocol";
 
 function normalizeText(

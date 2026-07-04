@@ -1,3 +1,13 @@
+/**
+ * The `Plugin` object definition — the plugin's sole surface. It registers a
+ * model handler per `ModelType` (text nano/small/medium/large/mega, response
+ * handler, action planner, image description, image generation, embedding,
+ * transcription), delegating each to the `models/*` implementations; declares
+ * the auto-enable env key and the full `config` map of `OPENROUTER_*` and
+ * generic-fallback settings; and carries the in-runtime `tests` that exercise
+ * text, structured-output, and embedding handlers against the live provider.
+ * No actions, providers, services, evaluators, or routes.
+ */
 import {
   type GenerateTextParams,
   type IAgentRuntime,

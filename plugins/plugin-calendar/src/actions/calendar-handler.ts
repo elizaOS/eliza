@@ -16,6 +16,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
 } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import {
@@ -34,6 +35,12 @@ import {
   formatCalendarFeed,
   formatNextEventContext,
 } from "../internal/format.js";
+import {
+  describeRecurrence,
+  normalizeRecurrenceScope,
+  recurrenceLinesFrom,
+  recurringEventIdFrom,
+} from "../internal/recurrence.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -255,6 +262,23 @@ const CALENDAR_DETAIL_ALIASES = {
   newTitle: ["newtitle", "new_title", "renameto", "rename_to"],
   description: ["desc", "summary", "body"],
   location: ["place", "venue"],
+  recurrence: [
+    "rrule",
+    "recurrencerule",
+    "recurrence_rule",
+    "repeat",
+    "repeats",
+    "repeatrule",
+    "repeat_rule",
+  ],
+  recurrenceScope: [
+    "recurrencescope",
+    "recurrence_scope",
+    "applyto",
+    "apply_to",
+    "editscope",
+    "edit_scope",
+  ],
   travelOriginAddress: [
     "traveloriginaddress",
     "travel_origin_address",
@@ -268,6 +292,75 @@ const CALENDAR_DETAIL_ALIASES = {
     "from_address",
   ],
 } as const;
+
+/** Deterministic "just this occurrence" phrasing across mutation requests. */
+const RECURRENCE_SCOPE_INSTANCE_PATTERN =
+  /\b(?:just|only)\s+(?:this|that)(?:\s+(?:one|time|occurrence|instance|event|meeting|week))?\b|\bthis\s+(?:one|occurrence|instance)\s+only\b|\bsingle\s+occurrence\b/i;
+
+/** Deterministic "the whole series" phrasing across mutation requests. */
+const RECURRENCE_SCOPE_SERIES_PATTERN =
+  /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them|future\s+(?:events|occurrences|instances))\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
+
+/**
+ * Structural resolution of instance-vs-series intent for a recurring-event
+ * mutation: explicit `recurrenceScope` detail first, then unambiguous message
+ * phrasing. Returns null when the intent stays ambiguous — the caller must ask
+ * instead of mutating.
+ */
+function resolveRecurrenceScopeIntent(args: {
+  details: Record<string, unknown> | undefined;
+  text: string;
+}): LifeOpsCalendarRecurrenceScope | null {
+  const explicit = normalizeRecurrenceScope(
+    detailString(args.details, "recurrenceScope"),
+  );
+  if (explicit) {
+    return explicit;
+  }
+  const matchesInstance = RECURRENCE_SCOPE_INSTANCE_PATTERN.test(args.text);
+  const matchesSeries = RECURRENCE_SCOPE_SERIES_PATTERN.test(args.text);
+  if (matchesInstance === matchesSeries) {
+    return null;
+  }
+  return matchesInstance ? "instance" : "series";
+}
+
+function isRecurringCalendarEvent(event: LifeOpsCalendarEvent | null): boolean {
+  return Boolean(recurringEventIdFrom(event) || recurrenceLinesFrom(event));
+}
+
+function detailRecurrenceLines(
+  details: Record<string, unknown> | undefined,
+  key = "recurrence",
+): string[] | undefined {
+  if (!details) {
+    return undefined;
+  }
+  const value = details[key];
+  if (typeof value === "string" && value.trim().length > 0) {
+    return [value.trim()];
+  }
+  if (Array.isArray(value)) {
+    const lines = value
+      .filter(
+        (line): line is string =>
+          typeof line === "string" && line.trim().length > 0,
+      )
+      .map((line) => line.trim());
+    return lines.length > 0 ? lines : undefined;
+  }
+  return undefined;
+}
+
+function buildRecurrenceScopeClarification(args: {
+  action: "update" | "delete";
+  event: LifeOpsCalendarEvent;
+}): string {
+  const description =
+    describeRecurrence(recurrenceLinesFrom(args.event)) ?? "on a repeating schedule";
+  const verb = args.action === "update" ? "change" : "delete";
+  return `"${args.event.title}" repeats ${description}. should i ${verb} just this occurrence or the whole series?`;
+}
 
 function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
   if (typeof value !== "string") {
@@ -2420,6 +2513,16 @@ function buildCreateEventRequest(
       extractedDetails: args.extractedDetails,
     }) ?? null;
 
+  const explicitRecurrence = detailRecurrenceLines(args.details);
+  const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
+  const recurrence = args.preferExtractedDetails
+    ? (extractedRecurrence ??
+      explicitRecurrence ??
+      args.fallbackRequest?.recurrence)
+    : (explicitRecurrence ??
+      extractedRecurrence ??
+      args.fallbackRequest?.recurrence);
+
   return {
     title,
     resolvedStartAt,
@@ -2460,6 +2563,7 @@ function buildCreateEventRequest(
       attendees:
         normalizeCalendarAttendees(args.details) ??
         args.fallbackRequest?.attendees,
+      recurrence,
     },
   };
 }
@@ -2485,6 +2589,7 @@ function createEventRequestFingerprint(
     side: request.side ?? null,
     mode: request.mode ?? null,
     grantId: grantId ?? null,
+    recurrence: request.recurrence ?? null,
   });
 }
 
@@ -2503,6 +2608,7 @@ function formatUpdateEventTargetContext(
     .map((attendee) => attendee.displayName ?? attendee.email ?? "")
     .filter((value) => value.length > 0)
     .join(", ");
+  const recurring = isRecurringCalendarEvent(event);
   return [
     `title: ${event.title}`,
     `startAt: ${event.startAt}`,
@@ -2514,6 +2620,14 @@ function formatUpdateEventTargetContext(
     `location: ${event.location}`,
     `description: ${event.description}`,
     `attendees: ${attendees}`,
+    `recurring: ${recurring ? "yes" : "no"}`,
+    ...(recurring
+      ? [
+          `recurrenceDescription: ${
+            describeRecurrence(recurrenceLinesFrom(event)) ?? "(unknown rule)"
+          }`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -2579,6 +2693,7 @@ async function inferCreateEventDetails(
     "Only use windowPreset for explicit 'tomorrow morning|afternoon|evening' phrasing — never as a fallback for arbitrary dates.",
     "If the user asks for travel time, commute time, or a buffer from a place, capture the origin separately as travelOriginAddress.",
     "Leave travelOriginAddress empty unless the request explicitly names the origin or departure place.",
+    "When the user asks for a repeating event (every day, every week, every two weeks, weekdays, every month, etc.), emit the matching RFC 5545 RRULE in recurrence. Use BYDAY for weekly day selection, INTERVAL for every-N spacing, and COUNT or UNTIL only when the user bounds the repetition. Leave recurrence empty for one-off events.",
     "",
     "title: event title",
     "description: optional description",
@@ -2588,6 +2703,7 @@ async function inferCreateEventDetails(
     "durationMinutes: number if implied",
     "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
+    "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO or RRULE:FREQ=DAILY;COUNT=10, only for repeating events",
     "travelOriginAddress: optional origin address for travel-time calculation",
     "isShortPreparation: true|false",
     "",
@@ -2640,6 +2756,8 @@ async function inferUpdateEventDetails(
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, leave startAt, endAt, location, description, and timeZone empty.",
+    "When the current event is part of a recurring series, set recurrenceScope to instance when the user clearly targets only this occurrence, series when they clearly target every occurrence, and leave it empty when they do not say.",
+    "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
     "Return JSON only as a single object. No prose.",
     "",
     "title: new event title if changed",
@@ -2648,6 +2766,8 @@ async function inferUpdateEventDetails(
     "startAt: updated ISO datetime if changed",
     "endAt: updated ISO datetime if changed",
     "timeZone: IANA timezone if changed or needed to interpret the update",
+    "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
+    "recurrenceScope: instance|series only when the current event is recurring and the user says which",
     "",
     `Current timezone: ${timeZone}`,
     `Current local datetime: ${nowReadable}`,
@@ -2710,6 +2830,7 @@ async function repairCreateEventDetails(
     "durationMinutes: number if implied",
     "windowPreset: tomorrow_morning|tomorrow_afternoon|tomorrow_evening",
     "timeZone: IANA timezone if stated",
+    "recurrence: RFC 5545 RRULE string, e.g. RRULE:FREQ=WEEKLY;BYDAY=MO, only for repeating events",
     "travelOriginAddress: optional origin address for travel-time calculation",
     "",
     `Current timezone: ${timeZone}`,
@@ -3564,36 +3685,44 @@ const calendarAction: CalendarHandlerAction = {
               travelTimeErrorMessage: travelTimeUnavailable.message,
             }
           : null;
+        const createdRecurrence =
+          recurrenceLinesFrom(event) ?? requestToCreate.recurrence ?? null;
+        const recurrenceDescription = describeRecurrence(createdRecurrence);
+        const recurrenceSuffix = recurrenceDescription
+          ? ` It repeats ${recurrenceDescription}.`
+          : "";
         const fallback = travelBuffer
           ? `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
               event,
               {
                 includeTimeZoneName: true,
               },
-            )} with a ${travelBuffer.bufferMinutes}-minute travel buffer.`
+            )} with a ${travelBuffer.bufferMinutes}-minute travel buffer.${recurrenceSuffix}`
           : travelTimeUnavailable
             ? `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
                 event,
                 {
                   includeTimeZoneName: true,
                 },
-              )}. Travel buffer was not added: ${travelTimeUnavailable.message}`
+              )}.${recurrenceSuffix} Travel buffer was not added: ${travelTimeUnavailable.message}`
             : `Created calendar event "${event.title}" for ${formatCalendarEventDateTime(
                 event,
                 {
                   includeTimeZoneName: true,
                 },
-              )}.`;
+              )}.${recurrenceSuffix}`;
         return respond({
           success: true,
           text: await renderReply("created_event", fallback, {
             event,
             request: requestToCreate,
+            ...(recurrenceDescription ? { recurrenceDescription } : {}),
             ...(travelContext ?? {}),
             ...(travelErrorContext ?? {}),
           }),
           data: toActionData({
             ...event,
+            ...(recurrenceDescription ? { recurrenceDescription } : {}),
             ...(travelContext ?? {}),
             ...(travelErrorContext ?? {}),
             request: requestToCreate,
@@ -3736,6 +3865,57 @@ const calendarAction: CalendarHandlerAction = {
           typeof extractedForUpdate.timeZone === "string"
             ? extractedForUpdate.timeZone.trim()
             : undefined;
+        const recurrenceUpdate =
+          detailRecurrenceLines(details) ??
+          detailRecurrenceLines(extractedForUpdate);
+        let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
+          details,
+          text: `${messageText(message)} ${intent}`,
+        });
+        if (!recurrenceScopeForUpdate) {
+          recurrenceScopeForUpdate =
+            normalizeRecurrenceScope(
+              typeof extractedForUpdate.recurrenceScope === "string"
+                ? extractedForUpdate.recurrenceScope
+                : undefined,
+            ) ?? null;
+        }
+        // A recurrence-rule change is inherently a series edit.
+        if (recurrenceUpdate && !recurrenceScopeForUpdate) {
+          recurrenceScopeForUpdate = "series";
+        }
+        // Mutating a recurring event without explicit instance-vs-series
+        // intent is ambiguous: ask instead of guessing.
+        if (
+          targetEvent &&
+          isRecurringCalendarEvent(targetEvent) &&
+          !recurrenceScopeForUpdate
+        ) {
+          const fallback = buildRecurrenceScopeClarification({
+            action: "update",
+            event: targetEvent,
+          });
+          return respond({
+            success: false,
+            text: await renderReply(
+              "clarify_update_event_recurrence_scope",
+              fallback,
+              {
+                event: targetEvent,
+                recurrenceDescription: describeRecurrence(
+                  recurrenceLinesFrom(targetEvent),
+                ),
+              },
+            ),
+            data: {
+              actionName: "CALENDAR",
+              subaction: "update_event",
+              requiresInput: true,
+              missing: ["recurrenceScope"],
+              eventId: resolvedEventId,
+            },
+          });
+        }
 
         const event = await service.updateCalendarEvent(INTERNAL_URL, {
           mode: detailString(details, "mode") as
@@ -3758,8 +3938,16 @@ const calendarAction: CalendarHandlerAction = {
             extractedTimeZoneForUpdate ??
             targetEvent?.timezone ??
             undefined,
+          recurrence: recurrenceUpdate,
+          recurrenceScope: recurrenceScopeForUpdate ?? undefined,
         });
-        const fallback = `updated "${event.title}" — ${formatCalendarEventDateTime(
+        const scopeSuffix =
+          recurrenceScopeForUpdate === "series"
+            ? " (whole series)"
+            : recurrenceScopeForUpdate === "instance"
+              ? " (this occurrence only)"
+              : "";
+        const fallback = `updated "${event.title}"${scopeSuffix} — ${formatCalendarEventDateTime(
           event,
           {
             includeTimeZoneName: true,
@@ -3770,6 +3958,9 @@ const calendarAction: CalendarHandlerAction = {
           text: await renderReply("updated_event", fallback, {
             event,
             targetEvent,
+            ...(recurrenceScopeForUpdate
+              ? { recurrenceScope: recurrenceScopeForUpdate }
+              : {}),
           }),
           data: toActionData(event),
         });
@@ -3855,6 +4046,41 @@ const calendarAction: CalendarHandlerAction = {
           }
 
           const targets = candidates.slice(0, 1);
+          const recurrenceScopeForDelete = resolveRecurrenceScopeIntent({
+            details,
+            text: `${messageText(message)} ${intent}`,
+          });
+          const recurringTarget = targets.find((target) =>
+            isRecurringCalendarEvent(target),
+          );
+          // Deleting a recurring event without explicit instance-vs-series
+          // intent is ambiguous: ask instead of guessing.
+          if (recurringTarget && !recurrenceScopeForDelete) {
+            const fallback = buildRecurrenceScopeClarification({
+              action: "delete",
+              event: recurringTarget,
+            });
+            return respond({
+              success: false,
+              text: await renderReply(
+                "clarify_delete_event_recurrence_scope",
+                fallback,
+                {
+                  event: recurringTarget,
+                  recurrenceDescription: describeRecurrence(
+                    recurrenceLinesFrom(recurringTarget),
+                  ),
+                },
+              ),
+              data: {
+                actionName: "CALENDAR",
+                subaction: "delete_event",
+                requiresInput: true,
+                missing: ["recurrenceScope"],
+                eventId: recurringTarget.externalId,
+              },
+            });
+          }
           const deleteResults: Array<{
             title: string;
             ok: boolean;
@@ -3875,6 +4101,9 @@ const calendarAction: CalendarHandlerAction = {
                 grantId: detailString(details, "grantId") ?? target.grantId,
                 calendarId: target.calendarId,
                 eventId: target.externalId,
+                recurrenceScope: isRecurringCalendarEvent(target)
+                  ? (recurrenceScopeForDelete ?? undefined)
+                  : undefined,
               });
               deleteResults.push({ title: target.title, ok: true });
             } catch (err) {
@@ -3934,6 +4163,9 @@ const calendarAction: CalendarHandlerAction = {
           grantId: detailString(details, "grantId"),
           calendarId: resolvedCalendarId,
           eventId: resolvedEventId,
+          recurrenceScope: normalizeRecurrenceScope(
+            detailString(details, "recurrenceScope"),
+          ),
         });
         const fallback = resolvedEventTitle
           ? `deleted "${resolvedEventTitle}".`
@@ -4291,7 +4523,9 @@ const calendarAction: CalendarHandlerAction = {
     {
       name: "details",
       description:
-        "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+        "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
+        'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
+        '("instance" to mutate one occurrence of a recurring event, "series" for the whole series).',
       required: false,
       schema: { type: "object" as const },
     },

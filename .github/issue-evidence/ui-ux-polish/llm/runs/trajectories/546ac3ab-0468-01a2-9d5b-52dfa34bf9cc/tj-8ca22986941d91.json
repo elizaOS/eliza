@@ -1,0 +1,30 @@
+{
+  "trajectoryId": "tj-8ca22986941d91",
+  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+  "roomId": "28da0c59-3023-05bf-b669-a8f322aa66f0",
+  "runId": "3536979f-2535-4f33-828f-367fdbf311be",
+  "scenarioId": "cross.multi-turn.memory-across-turns",
+  "rootMessage": {
+    "id": "e3c98563-37a3-44ae-8a6d-d3876644f350",
+    "text": "A moment ago I told you my favorite color. Which one was it? Please reply with that color's name in Spanish.",
+    "sender": "d6465aab-4d0b-0018-a9e7-b43291283359"
+  },
+  "startedAt": 1783108510249,
+  "status": "errored",
+  "stages": [],
+  "metrics": {
+    "totalLatencyMs": 0,
+    "totalPromptTokens": 0,
+    "totalCompletionTokens": 0,
+    "totalCacheReadTokens": 0,
+    "totalCacheCreationTokens": 0,
+    "totalCostUsd": 0,
+    "plannerIterations": 0,
+    "toolCallsExecuted": 0,
+    "toolCallFailures": 0,
+    "toolSearchCount": 0,
+    "evaluatorFailures": 0,
+    "finalDecision": "error"
+  },
+  "endedAt": 1783108510302
+}

@@ -1,3 +1,6 @@
+/**
+ * Registry of the voice-orb concepts, exported as the CONCEPTS list the gallery iterates.
+ */
 import type { ConceptDescriptor } from "../orb-kit.ts";
 import { concept as aurora } from "./aurora.ts";
 import { concept as datacore } from "./datacore.ts";

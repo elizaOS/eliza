@@ -1,3 +1,9 @@
+/**
+ * Pure derivations for `ToolCallEventLog`: maps a `NativeToolCallEvent` to its
+ * running/success/failure display state and resolves a human-readable tool name
+ * from whichever of the event's name/id fields is populated. Kept
+ * component-free so the mapping can be unit-tested without a DOM.
+ */
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 import type { ToolCallEventDisplayState } from "./ToolCallEventLog";
 

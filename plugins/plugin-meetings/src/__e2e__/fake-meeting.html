@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<!--
+  Fake meeting page for the headless capture->pipeline->transcript e2e.
+
+  Renders two participant tiles, each with its OWN <audio> element whose
+  srcObject is a live MediaStream sourced from a WebAudio oscillator routed
+  through a MediaStreamDestination. This is a faithful stand-in for what Google
+  Meet delivers: one media element per participant, each carrying a live
+  MediaStream with an enabled audio track — exactly what
+  audio-capture.ts's liveAudioElements() discovers.
+
+  window.__startTones(freqHz) starts both tones and toggles a `.speaking` DOM
+  class on the tiles so a DOM watcher / this test can observe speaking state.
+  Kept dependency-free so it loads over file:// with no bundler.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fake Meeting (e2e)</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; background: #202124; color: #fff; }
+      .grid { display: flex; gap: 16px; padding: 24px; }
+      .tile {
+        width: 320px; height: 200px; border-radius: 12px; background: #3c4043;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; position: relative; outline: 3px solid transparent;
+        transition: outline-color 120ms;
+      }
+      .tile.speaking { outline-color: #8ab4f8; }
+      .name { position: absolute; left: 12px; bottom: 8px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <div class="tile" id="tile-0" data-participant="Jill">
+        <span class="name">Jill</span>
+        <audio id="audio-0" data-participant="Jill"></audio>
+      </div>
+      <div class="tile" id="tile-1" data-participant="Bob">
+        <span class="name">Bob</span>
+        <audio id="audio-1" data-participant="Bob"></audio>
+      </div>
+    </div>
+    <script>
+      // Build one live MediaStream per participant, sourced from an oscillator.
+      // We keep the AudioContext suspended until __startTones() so the streams
+      // exist (elements are pingable) but carry silence until we choose to play.
+      const ac = new AudioContext();
+      const streams = [];
+
+      function buildParticipant(index, freq) {
+        const osc = ac.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        // Gain starts at 0 (silence) so the capture peak-gate drops it until we
+        // ramp it up in __startTones — this mirrors a muted->speaking transition.
+        const gain = ac.createGain();
+        gain.gain.value = 0;
+        const dest = ac.createMediaStreamDestination();
+        osc.connect(gain);
+        gain.connect(dest);
+        osc.start();
+        const el = document.getElementById("audio-" + index);
+        el.srcObject = dest.stream;
+        el.muted = true; // never actually play out loud
+        el.play().catch(() => {});
+        return { osc, gain, dest, el, index };
+      }
+
+      // Distinct tones so the two per-participant streams are clearly separate.
+      streams.push(buildParticipant(0, 220)); // Jill
+      streams.push(buildParticipant(1, 440)); // Bob
+
+      window.__meetingReady = true;
+
+      // Start both tones (ramp gain up) and mark the tiles as speaking. Returns
+      // the participant->element map the test asserts against.
+      window.__startTones = async function () {
+        if (ac.state === "suspended") await ac.resume();
+        for (const p of streams) {
+          p.gain.gain.setValueAtTime(0.6, ac.currentTime);
+          document.getElementById("tile-" + p.index).classList.add("speaking");
+        }
+        return streams.map((p) => ({
+          index: p.index,
+          participant: p.el.dataset.participant,
+          streamId: p.dest.stream.id,
+          tracks: p.dest.stream.getAudioTracks().length,
+        }));
+      };
+
+      window.__stopTones = function () {
+        for (const p of streams) {
+          p.gain.gain.setValueAtTime(0, ac.currentTime);
+          document.getElementById("tile-" + p.index).classList.remove("speaking");
+        }
+      };
+
+      // Report how many live audio elements are discoverable (mirrors the
+      // capture module's own liveAudioElements filter) — a page-side sanity read.
+      window.__liveElementCount = function () {
+        return Array.from(document.querySelectorAll("audio, video")).filter((el) => {
+          const src = el.srcObject;
+          if (!(src instanceof MediaStream)) return false;
+          if (el.paused) return false;
+          const tracks = src.getAudioTracks();
+          return tracks.length > 0 && tracks.some((t) => t.enabled);
+        }).length;
+      };
+    </script>
+  </body>
+</html>

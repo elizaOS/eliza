@@ -33,8 +33,8 @@
  * processes that emit speech. Blob writes go through a temp file + atomic
  * rename so partials never reach the index.
  *
- * SQLite resolution mirrors `packages/app-core/src/api/training-benchmarks.ts`:
- * try `node:sqlite` (Node ≥22.5), then `bun:sqlite` (Bun). Neither runtime
+ * SQLite resolution tries `node:sqlite` (Node ≥22.5), then `bun:sqlite`
+ * (Bun). Neither runtime
  * ships both. When neither is present the cache silently no-ops (`get` returns
  * null, `put` returns false) — the caller's fallback path (synthesize fresh)
  * still works.
@@ -159,7 +159,7 @@ CREATE INDEX IF NOT EXISTS ix_tfl_provider_voice
 `;
 
 // ---------------------------------------------------------------------------
-// node:sqlite lazy resolver — mirrors training-benchmarks.ts
+// node:sqlite lazy resolver
 // ---------------------------------------------------------------------------
 
 type SqliteRow = Record<string, unknown>;

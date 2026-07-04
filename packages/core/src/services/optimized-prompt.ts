@@ -786,7 +786,9 @@ async function listCompleteVersionNumbers(dir: string): Promise<number[]> {
 			const payload = await readFile(path, "utf-8");
 			const macHex = (await readFile(macPathFor(path), "utf-8")).trim();
 			if (verifyArtifactMac(payload, macHex)) versions.push(n);
-		} catch {}
+		} catch {
+			// error-policy:J3 an absent or unverifiable artifact version is simply not available to the scan
+		}
 	}
 	versions.sort((a, b) => a - b);
 	return versions;

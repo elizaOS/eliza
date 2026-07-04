@@ -1,3 +1,7 @@
+// Unit coverage for buildPairingCodeCommandInfo — the pure builder that turns a
+// backend URL into the pairing-code fetch command (SSH-wrapped for remote hosts,
+// bare for loopback, with the local agent port defaulted). Pure string math, no
+// harness.
 import { describe, expect, it } from "vitest";
 import { buildPairingCodeCommandInfo } from "./pairing-command";
 

@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Render test for TopicGroupedTranscript: empty state, per-group header with
+// message count, expand/collapse of a group's preview lines, and the
+// collapsed-state toggle callback. jsdom + Testing Library over fixture groups.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

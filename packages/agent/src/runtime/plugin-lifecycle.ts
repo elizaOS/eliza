@@ -15,6 +15,7 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
+import { applyPluginRoleGating } from "./plugin-role-gating.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
@@ -683,6 +684,15 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
   runtime.registerPlugin = (async (plugin: Plugin) => {
     await baseRegisterPlugin(plugin);
     try {
+      // #12087 Item 1: gate this plugin's sensitive providers (SECRETS_STATUS,
+      // walletPortfolio, shellHistory, …) at the moment it registers, not via a
+      // one-shot boot pass. Plugins hot-installed after boot (plugin manager, VFS)
+      // went through registerPlugin but never the boot gating pass, so their
+      // owner-tier providers were exposed to any sender. This runs inside the try,
+      // so a gating failure fails closed — the plugin is unloaded, not left with
+      // ungated providers. provider gating is idempotent, so boot plugins already
+      // covered by the boot pass are unaffected.
+      applyPluginRoleGating([plugin]);
       await migratePluginSchemasIfReady(runtime, plugin);
       await registerPluginViews(plugin);
     } catch (error) {
@@ -707,6 +717,9 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
     runtime.reloadPlugin = async (plugin: Plugin) => {
       unregisterPluginViews(plugin.name);
       await baseReloadPlugin(plugin);
+      // #12087 Item 1: re-gate providers on reload (a reloaded plugin object has
+      // fresh, un-wrapped provider.get functions).
+      applyPluginRoleGating([plugin]);
       await registerPluginViews(plugin);
     };
   }

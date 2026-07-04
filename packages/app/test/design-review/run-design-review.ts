@@ -496,7 +496,11 @@ async function createPage(
           window.localStorage.setItem("eliza:first-run-complete", "");
         }
         window.sessionStorage.setItem("eliza_api_base", init.apiBaseUrl);
-        window.__ELIZA_API_BASE__ = init.apiBaseUrl;
+        (
+          window as unknown as {
+            __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
+          }
+        ).__ELIZAOS_APP_BOOT_CONFIG__ = { apiBase: init.apiBaseUrl };
       } catch {
         // Ignore storage setup failures on intermediate documents.
       }

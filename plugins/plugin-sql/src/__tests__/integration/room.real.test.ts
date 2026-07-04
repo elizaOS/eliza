@@ -1,3 +1,7 @@
+/**
+ * Room-store CRUD tests against a real PGlite (or Postgres, if `POSTGRES_URL`
+ * is set) adapter via `createIsolatedTestDatabase` — no mocks.
+ */
 import { type AgentRuntime, ChannelType, type Room, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -20,7 +24,6 @@ describe("Room Integration Tests", () => {
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
-    // Create a test world
     testWorldId = uuidv4() as UUID;
     await adapter.createWorld({
       id: testWorldId,

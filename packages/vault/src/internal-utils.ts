@@ -1,3 +1,7 @@
+/**
+ * Internal runtime validation helpers shared by vault implementations.
+ */
+
 import type { SetOptions } from "./vault-types.js";
 
 export function assertKey(key: string): void {

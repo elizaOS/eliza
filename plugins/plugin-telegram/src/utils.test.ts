@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the text/button helpers: `convertMarkdownToTelegram` (bold /
+ * strikethrough rewriting, MarkdownV2 escaping, link and nested-token handling)
+ * and `convertToTelegramButtons`. Pure functions, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import type { Button } from "./types";
 import {
@@ -30,6 +35,16 @@ describe("convertMarkdownToTelegram", () => {
     expect(convertMarkdownToTelegram("[docs](http://x.com)")).toBe(
       "[docs](http://x.com)",
     );
+  });
+
+  it("resolves nested tokens (inline code inside bold/header) without leaking NUL sentinels", () => {
+    const bold = convertMarkdownToTelegram("**bold `code`**");
+    expect(bold).toBe("*bold `code`*");
+    expect(bold).not.toContain("\u0000");
+
+    const header = convertMarkdownToTelegram("# Header with `code`");
+    expect(header).toBe("*Header with `code`*");
+    expect(header).not.toContain("\u0000");
   });
 });
 

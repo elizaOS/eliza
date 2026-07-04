@@ -14,7 +14,6 @@ import {
   isAutomationConversationMetadata,
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.ts";
-import { hasAdminAccess } from "../security/access.ts";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -42,17 +41,16 @@ export const recentConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // #12087 Item 14: enforced by applyPluginRoleGating (declared roleGate is
+  // short-circuited at execution). Previously declared USER but the body enforced
+  // ADMIN via hasAdminAccess — the declaration was decorative and wrong.
+  roleGate: { minRole: "ADMIN" },
 
   async get(
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasAdminAccess(runtime, message))) {
-      return { text: "", values: {}, data: {} };
-    }
-
     const entityId = message.entityId as UUID | undefined;
     if (!entityId) {
       return { text: "", values: {}, data: {} };

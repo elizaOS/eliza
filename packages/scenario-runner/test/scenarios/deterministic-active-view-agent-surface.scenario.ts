@@ -1,3 +1,8 @@
+/**
+ * Keyless scenario asserting the agent-addressable surface of an active view:
+ * the agent reaches a scenario ledger view's registered controls and produces a
+ * trajectory over them. Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import {
   registerPluginViews,
   unregisterPluginViews,

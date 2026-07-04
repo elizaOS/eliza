@@ -1,3 +1,9 @@
+/**
+ * Vitest config for the plugin. Applies the repo's shared provider-SDK
+ * aliases/shims (via `providerSdkShimPlugin`) and runs the plugin's `src`
+ * test files in a node environment.
+ */
+
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 import {

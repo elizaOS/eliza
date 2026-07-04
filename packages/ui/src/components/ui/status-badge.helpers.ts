@@ -1,3 +1,10 @@
+/**
+ * Pure mappers from raw status strings to StatusBadge tone + display label,
+ * split out from the component so they can be unit-tested and reused without a
+ * React render. `statusToneForState` classifies success/warning/danger/muted;
+ * `agentLifecycleLabel` maps the cloud-agent lifecycle enum to friendlier
+ * first-run copy while `statusLabelForState` stays a generic title-caser.
+ */
 import type { StatusVariant } from "./status-badge";
 
 export function statusToneForBoolean(

@@ -1,14 +1,10 @@
 /**
- * Organization Cache Layer
+ * Read-through cache for organization records fetched during MCP tool calls.
  *
- * Provides caching for organization data to reduce database load in MCP operations.
- * Each MCP tool call previously hit the database to fetch organization data.
- * With this cache, we reduce DB queries by ~90% for organization lookups.
- *
- * Performance Impact:
- * - Before: 20+ DB queries per MCP request
- * - After: 0-2 DB queries per MCP request (depending on cache state)
- * - Cache hit latency: ~5ms (vs 50-100ms DB query)
+ * MCP requests resolve organization data repeatedly; caching collapses the
+ * per-request DB lookups (20+ down to 0-2 depending on cache state) and serves
+ * hits at ~5ms versus a 50-100ms query. Backed by the shared Redis cache
+ * client and sourced from organizationsService.
  */
 
 import type { Organization } from "../../db/repositories";

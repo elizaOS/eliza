@@ -1,3 +1,5 @@
+/** Storybook stories for ToolCallEventLog — success, running, failure, long-args-and-result, and minimal-fields states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 import { ToolCallEventLog } from "./ToolCallEventLog";

@@ -1,0 +1,30 @@
+[
+ {
+  "role": "assistant",
+  "text": "hey, how are you?"
+ },
+ {
+  "role": "user",
+  "text": "Desktop verification lane: please reply with exactly one short sentence confirming you received this message."
+ },
+ {
+  "role": "assistant",
+  "text": "Something went wrong on my end. Please try again."
+ },
+ {
+  "role": "user",
+  "text": "Desktop verification lane: reply with exactly one short sentence confirming you received this."
+ },
+ {
+  "role": "assistant",
+  "text": "I have received your message."
+ },
+ {
+  "role": "user",
+  "text": "Reply with only this exact code and nothing else: ZQ7X-VERIFY-4821"
+ },
+ {
+  "role": "assistant",
+  "text": "ZQ7X-VERIFY-4821"
+ }
+]

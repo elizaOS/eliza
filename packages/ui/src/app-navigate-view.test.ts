@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the navigate-view helpers: payload consume, path
+ * derivation, direct-tab resolution, and the handler that opens registered
+ * views or desktop tabs. Pure functions + injected bridge, no runtime.
+ */
+
+import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  consumeNavigateViewPayload,
   createNavigateViewHandler,
   type DesktopBridgeRequest,
   directTabForNavigateView,
@@ -59,7 +67,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
 }
 
 function navigateEvent(detail: Record<string, unknown>): CustomEvent {
-  return new CustomEvent("eliza:navigate:view", { detail });
+  return createNavigateViewEvent(detail);
 }
 
 describe("App navigate-view shell handler", () => {
@@ -388,19 +396,20 @@ describe("App navigate-view shell handler", () => {
     });
   });
 
-  it("records agent-navigated views in the recent views list", () => {
-    const localNotes = view({
-      id: "local-notes",
-      label: "Local Notes",
-      path: "/apps/local-notes",
-    });
-    const fixture = createHandlerFixture([localNotes]);
+  it("stores generic one-shot payloads for target views", () => {
+    const fixture = createHandlerFixture();
 
-    fixture.handler(navigateEvent({ viewId: "local-notes" }));
+    fixture.handler(
+      navigateEvent({
+        viewId: "remote-ledger",
+        payload: { rowId: "row-7" },
+      }),
+    );
 
     expect(
-      JSON.parse(window.localStorage.getItem("elizaos.views.recent") ?? "[]"),
-    ).toEqual(["local-notes"]);
+      consumeNavigateViewPayload<{ rowId: string }>("remote-ledger"),
+    ).toEqual({ rowId: "row-7" });
+    expect(consumeNavigateViewPayload("remote-ledger")).toBeNull();
   });
 
   it("navigates browser history for normal view navigation", () => {

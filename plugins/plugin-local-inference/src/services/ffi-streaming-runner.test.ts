@@ -1,3 +1,4 @@
+/** Covers the FFI streaming runner's per-step token loop and `maxTokensPerStep` resolution against a fake streaming binding. Deterministic, no native lib. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	FfiStreamingRunner,

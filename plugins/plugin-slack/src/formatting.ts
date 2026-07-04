@@ -1,3 +1,13 @@
+/**
+ * Slack mrkdwn formatting utilities. Converts agent markdown to Slack's
+ * `*bold*` / `_italic_` / `~strike~` mrkdwn and chunks it under the message
+ * length limit (`markdownToSlackMrkdwn`, `chunkSlackText`), escapes user text so
+ * it can't forge Slack control sequences while preserving legitimate
+ * angle-bracket mention/link tokens (`escapeSlackMrkdwn`), builds and parses the
+ * `<@U…>` / `<#C…>` / `<url|label>` tokens and message permalinks, and derives
+ * channel-type / display-name helpers. Used by `service.ts` on the send/receive
+ * paths and re-exported from `index.ts`.
+ */
 import type { SlackChannel, SlackUser } from "./types";
 
 /**
@@ -205,27 +215,30 @@ export function chunkSlackText(
       break;
     }
 
-    // Find a good break point
-    let breakPoint = maxChars;
-
-    // Check if we're in a code block
-    const codeBlockCount = (remaining.slice(0, maxChars).match(/```/g) || [])
-      .length;
-    inCodeBlock = codeBlockCount % 2 !== 0;
+    // Find a good break point. Reserve room for the closing "\n```" fence so
+    // a chunk that splits inside a code block never exceeds maxChars.
+    const hardLimit = Math.max(maxChars - 4, 1);
+    let breakPoint = hardLimit;
 
     // Try to break at a newline
-    const newlineIndex = remaining.lastIndexOf("\n", maxChars);
+    const newlineIndex = remaining.lastIndexOf("\n", hardLimit);
     if (newlineIndex > maxChars * 0.5) {
       breakPoint = newlineIndex + 1;
     } else {
       // Try to break at a space
-      const spaceIndex = remaining.lastIndexOf(" ", maxChars);
+      const spaceIndex = remaining.lastIndexOf(" ", hardLimit);
       if (spaceIndex > maxChars * 0.5) {
         breakPoint = spaceIndex + 1;
       }
     }
 
     let chunk = remaining.slice(0, breakPoint);
+
+    // Check if this chunk ends inside a code block — count fences in the
+    // actual emitted chunk, not the max-size window, so a fence that sits
+    // between the break point and maxChars doesn't flip the state.
+    const codeBlockCount = (chunk.match(/```/g) || []).length;
+    inCodeBlock = codeBlockCount % 2 !== 0;
 
     // If we're breaking inside a code block, close it
     if (inCodeBlock) {
@@ -435,8 +448,8 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<#[CGD][A-Z0-9]+(?:\|[^>]*)?>/gi, "") // Channel mentions
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
-    .replace(/<(https?:\/\/[^|>]+)(?:\|([^>]*))?>/, "$2") // Links with text
-    .replace(/<(https?:\/\/[^>]+)>/, "$1") // Plain links
+    .replace(/<(https?:\/\/[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
+    .replace(/<(https?:\/\/[^>]+)>/g, "$1") // Plain links → URL
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

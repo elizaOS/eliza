@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-
+/**
+ * Renders ChatVoiceStatusBar in jsdom (real component, no live voice pipeline)
+ * to assert visibility gating, status dot/label, interim transcript, the OWNER
+ * crown on matching entityId, and the traffic-light latency badge tones.
+ */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

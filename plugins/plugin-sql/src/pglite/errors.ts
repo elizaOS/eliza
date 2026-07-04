@@ -1,3 +1,9 @@
+/**
+ * Typed error codes and helpers for fatal PGlite storage failures (data dir
+ * locked by another process, corrupted data, or a state requiring manual
+ * reset). `getPgliteErrorCode` walks an error's `cause` chain to find one of
+ * these codes even when it's wrapped by intermediate errors.
+ */
 export const PGLITE_ERROR_CODES = {
   ACTIVE_LOCK: "ELIZA_PGLITE_DATA_DIR_IN_USE",
   CORRUPT_DATA: "ELIZA_PGLITE_CORRUPT_DATA",

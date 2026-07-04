@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for projecting scheduled-task views into automation-feed rows
+ * (title, schedule label, merge). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import type { ScheduledTaskView } from "../api/client-types-core";
 import { mergeUnifiedTasks } from "./merge-unified-tasks";

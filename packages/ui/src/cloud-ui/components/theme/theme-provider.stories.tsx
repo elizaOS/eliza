@@ -1,3 +1,6 @@
+/**
+ * Storybook stories demonstrating the cloud ThemeProvider.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ThemeProvider } from "./theme-provider";
 import { useTheme } from "./theme-provider.hooks";

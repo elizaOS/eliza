@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the channel debouncer's recent-unaddressed-context buffer and
+ * human multi-message cadence (#11118), driven with fake timers.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createChannelDebouncer } from "../debouncer";
 

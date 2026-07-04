@@ -254,6 +254,7 @@ interface PublicRouteSpec {
   path: string;
   public: true;
   name: string;
+  publicReason: string;
 }
 
 type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
@@ -384,12 +385,16 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
     path: "/api/lifeops/connectors/health/:provider/callback",
     public: true,
     name: "lifeops.health.callback",
+    publicReason:
+      "Health connector OAuth callbacks must accept provider redirects.",
   },
   {
     type: "GET",
     path: "/api/lifeops/connectors/health/:provider/success",
     public: true,
     name: "lifeops.health.success",
+    publicReason:
+      "Health connector OAuth success landing must render after provider redirects.",
   },
   // /api/lifeops/money/sources/:sourceId
   { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },
@@ -485,12 +490,15 @@ const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
     path: "/api/connectors/google/oauth/callback",
     public: true,
     name: "connectors.google.oauth.callback",
+    publicReason: "Google OAuth callback must accept provider redirects.",
   },
   {
     type: "POST",
     path: "/api/connectors/google/oauth/callback",
     public: true,
     name: "connectors.google.oauth.callback.post",
+    publicReason:
+      "Google OAuth callback POST must accept provider redirect exchanges.",
   },
   { type: "GET", path: "/api/connectors/google/audit/events" },
 ];
@@ -540,6 +548,7 @@ function buildRawRoutes(
         rawPath: true,
         public: true,
         name: spec.name,
+        publicReason: spec.publicReason,
         handler,
       };
     }
@@ -710,6 +719,7 @@ function googleConnectorAccountRouteHandler(): LegacyRouteHandler {
       json,
       error,
       readJsonBody: httpReadJsonBody,
+      authorize: async () => true,
     });
     if (!handled) {
       error(httpRes, "Connector account route not found", 404);

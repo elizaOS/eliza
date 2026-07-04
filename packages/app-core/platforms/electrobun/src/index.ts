@@ -91,7 +91,7 @@ import {
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
-  enableVibrancy,
+  enableBackForwardNavigationGestures,
   ensureShadow,
   setNativeDragRegion,
   setTrafficLightsPosition,
@@ -105,6 +105,7 @@ import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
+  shouldProxyToApiBase,
 } from "./renderer-api-proxy";
 import {
   getRendererAssetContentType,
@@ -121,6 +122,7 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
+import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
@@ -404,9 +406,14 @@ const MAC_NATIVE_DRAG_REGION_X = 92;
 const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
 
 /**
- * Vibrancy, shadow, traffic lights, and native chrome layout. Re-calls native
- * layout whenever the window or webview subtree may have reordered so the drag
- * view stays above WKWebView.
+ * Shadow, traffic lights, drag region, and native chrome layout. Re-calls
+ * native layout whenever the window or webview subtree may have reordered so
+ * the drag view stays above WKWebView.
+ *
+ * Deliberately applies NO vibrancy (#12184): a vibrancy NSVisualEffectView
+ * behind a transparent window renders as a full-window frosted-glass sheet over
+ * the desktop. Only the chromeless pill and the tray popover are transparent,
+ * and each paints its own surface — the dashboard is a normal opaque window.
  */
 function applyMacOSWindowEffects(win: BrowserWindow): void {
   if (process.platform !== "darwin") return;
@@ -417,12 +424,9 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
     return;
   }
 
-  const vibrancyEnabled = enableVibrancy(
-    ptr as Parameters<typeof enableVibrancy>[0],
-  );
   const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
   updateCurrentMainWindowEffectsState({
-    vibrancyEnabled,
+    vibrancyEnabled: false,
     shadowEnabled,
   });
 
@@ -438,10 +442,19 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
       MAC_NATIVE_DRAG_REGION_X,
       MAC_NATIVE_DRAG_REGION_HEIGHT,
     );
+  // WKWebView defaults allowsBackForwardNavigationGestures to NO and
+  // Electrobun never sets it, so the macOS two-finger swipe-back gesture is
+  // dead without this. The webview is often inserted after the first pass, so
+  // the call rides the same restack cadence as the drag region (idempotent).
+  const enableSwipeBackGesture = () =>
+    enableBackForwardNavigationGestures(
+      ptr as Parameters<typeof enableBackForwardNavigationGestures>[0],
+    );
 
   const alignChrome = () => {
     alignButtons();
     alignDragRegion();
+    enableSwipeBackGesture();
   };
 
   alignChrome();
@@ -832,7 +845,7 @@ async function startRendererServer(): Promise<string> {
       // or this static server (non-watch dev:desktop). Without this, every
       // /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
       const apiBase = apiBaseOwner.getCurrent().base ?? initialApiBase;
-      if (apiBase && isRendererApiProxyPath(pathname)) {
+      if (shouldProxyToApiBase(apiBase) && isRendererApiProxyPath(pathname)) {
         const target = new URL(pathname + url.search, apiBase);
         try {
           const upstreamRequest = createRendererApiProxyRequestInit(
@@ -1048,10 +1061,15 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         y: state.y,
       };
   const titleBarStyle = presentation.titleBarStyle;
-  // Bottom bar wants a transparent surface so the desktop shows through the
-  // empty region above the bar; on darwin it pairs with vibrancy. Win/Linux
+  // Only the chromeless bottom bar is transparent (macOS), so the desktop shows
+  // through the empty region above the pill. The full dashboard stays opaque —
+  // transparency there reads as a frosted-glass sheet (#12184). Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
   const transparent = presentation.transparent;
+  // The pill spans the full work-area width but only the small bar is visible;
+  // OS-level click-through (passthrough) lets clicks on the transparent region
+  // land on the app underneath instead of being eaten by the invisible window.
+  const passthrough = bottomBar;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -1084,6 +1102,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       renderer: resolveBootstrapShellRenderer(buildInfo),
       titleBarStyle,
       transparent,
+      passthrough,
     });
     win.webview.remove();
     const mainView = new BrowserView({
@@ -1101,6 +1120,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       },
       windowId: win.id,
       rpc,
+      // Mirror the window's click-through onto the hosted view so the isolated
+      // (CEF) main-view path passes clicks through its transparent region too.
+      startPassthrough: passthrough,
     });
     win.webviewId = mainView.id;
     if (forceMainWindowCef) {
@@ -1117,6 +1139,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       frame: windowFrame,
       titleBarStyle,
       transparent,
+      passthrough,
       rpc,
       ...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
     });
@@ -1136,7 +1159,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     return win;
   }
 
-  // Bottom-bar shell: pin always-on-top and (on darwin) apply vibrancy. The bar
+  // Bottom-bar shell: pin always-on-top and apply the macOS chrome (shadow,
+  // drag region — no vibrancy, so the pill is the only painted surface). The bar
   // has fixed, display-derived geometry, so skip bounds persistence + the
   // first-launch maximize entirely.
   if (bottomBar) {
@@ -1149,7 +1173,26 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         `[main-window] bottom-bar setAlwaysOnTop() failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // Join the pill to every Space/desktop (macOS) so it follows the user
+    // across Space switches instead of stranding on the Space it was created
+    // on. No-op on Windows/Linux (the pill is per-desktop there — fork gap G4).
+    if (process.platform === "darwin") {
+      try {
+        (
+          win as typeof win & {
+            setVisibleOnAllWorkspaces?: (flag: boolean) => void;
+          }
+        ).setVisibleOnAllWorkspaces?.(true);
+      } catch (err) {
+        logger.warn(
+          `[main-window] bottom-bar setVisibleOnAllWorkspaces() failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     applyMacOSWindowEffects(win);
+    // Keep the bar pinned to the primary display's bottom edge across display
+    // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
+    getDesktopManager().enableBottomBarReanchor();
     return win;
   }
 
@@ -1192,10 +1235,13 @@ function attachMainWindow(
     transparent: presentation.transparent,
   });
   trackFocusedWindow(win);
-  // Reveal the Dock icon in tray-first mode whenever a main window is attached,
+  // Dockless mode: only a FULL main window (dashboard/kiosk) reveals the Dock
+  // icon — the chromeless bottom-bar pill never does. Declare which this is,
   // regardless of how it was opened (boot, tray "Show Window", Dock reopen, or
   // a direct restoreWindow() from a deep link that bypasses showWindow()).
-  getDesktopManager().markMainWindowShown();
+  getDesktopManager().setMainWindowFullWindow(
+    presentation.mode !== "bottom-bar",
+  );
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
@@ -2487,6 +2533,18 @@ async function main(): Promise<void> {
     const stop = await browserWorkspaceBridgeStop;
     await stop?.();
   });
+  try {
+    const stopScreenCaptureBridgeServer =
+      await startScreenCaptureBridgeServer();
+    recordStartupPhase("screen_capture_bridge_ready", {
+      pid: process.pid,
+    });
+    cleanupFns.push(stopScreenCaptureBridgeServer);
+  } catch (err) {
+    logger.warn(
+      `[Main] Screen-capture bridge startup failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const stopDesktopTestBridgeServer = await startDesktopTestBridgeServer();
   recordStartupPhase("desktop_test_bridge_ready", {
     pid: process.pid,
@@ -2497,7 +2555,7 @@ async function main(): Promise<void> {
 
   // WHY push API base on every status tick with a port: embedded startup can
   // settle on a different loopback port than env/static HTML (allocation + stdout).
-  // Detached surfaces must not keep a stale __ELIZA_API_BASE__ while the main
+  // Detached surfaces must not keep a stale boot-config apiBase while the main
   // window was already updated—menu reset, chat, and settings each own a webview.
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
@@ -2521,33 +2579,31 @@ async function main(): Promise<void> {
   // Create window first — on Windows (CEF) the UI message loop must be
   // running before any synchronous FFI calls like setApplicationMenu().
   // Calling setupApplicationMenu() before createMainWindow() deadlocks.
-  const trayFirst = shouldStartTrayFirst();
-  let mainWin: BrowserWindow | null = null;
-  if (trayFirst) {
-    // Tray-first (macOS, opt-in): no window at launch. The tray icon is the
-    // only surface; the main window is created lazily via restoreWindow() /
-    // DesktopManager.showWindow() on tray "Show Window", Dock reopen, or a
-    // deep link. setTrayFirstMode hides the Dock icon until a window is shown.
-    logger.info("[Main] Tray-first startup — deferring main window creation");
-    getDesktopManager().setTrayFirstMode(true);
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
-  } else {
-    recordStartupPhase("creating_window", {
-      pid: process.pid,
-    });
-    const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
-      createDesktopRpc("main");
-    mainWin = attachMainWindow(
-      await createMainWindow(mainRpc),
-      mainRpc,
-      mainSendToWebview,
+  // Dockless (tray-first) mode is the macOS default (#12184): the resting
+  // experience is the pill + menu-bar icon with NO Dock icon. Unlike the old
+  // tray-first behavior we STILL create the pill window at boot — the pill is
+  // not a "full window" for Dock purposes, so setTrayFirstMode keeps the Dock
+  // icon hidden until a full window (dashboard/surface/settings/app) opens.
+  const dockless = shouldStartTrayFirst();
+  if (dockless) {
+    logger.info(
+      "[Main] Dockless startup — pill only, Dock icon hidden at rest",
     );
-    recordStartupPhase("window_ready", {
-      pid: process.pid,
-    });
+    getDesktopManager().setTrayFirstMode(true);
   }
+  recordStartupPhase("creating_window", {
+    pid: process.pid,
+  });
+  const { rpc: mainRpc, sendToWebview: mainSendToWebview } =
+    createDesktopRpc("main");
+  const mainWin: BrowserWindow | null = attachMainWindow(
+    await createMainWindow(mainRpc),
+    mainRpc,
+    mainSendToWebview,
+  );
+  recordStartupPhase("window_ready", {
+    pid: process.pid,
+  });
   seedFirstPartyRemotePluginsForStartup();
 
   // Per-window RPC tracking: surface windows each get their own typed
@@ -2585,6 +2641,11 @@ async function main(): Promise<void> {
     onRegistryChanged: () => {
       sendManagedWindowsChanged();
       setupApplicationMenu();
+      // Dockless mode: any open managed window (dashboard/surface/settings/app)
+      // reveals the Dock icon; closing the last one hides it again.
+      getDesktopManager().setManagedWindowsPresent(
+        (surfaceWindowManager?.listWindows().length ?? 0) > 0,
+      );
     },
     boundsStore: createAppWindowBoundsStore(),
   });
@@ -2737,7 +2798,7 @@ async function main(): Promise<void> {
   // Agent startup: in external mode, push the API base via the
   // api-base-owner (the agent is already running externally). In local
   // mode, start the embedded agent first — apiBaseOwner.injectIntoHtml()
-  // already set the initial window.__ELIZA_API_BASE__ from the seed value
+  // already seeded the initial boot-config apiBase from the seed value
   // in main(), but _startAgent will push the actual port once the agent
   // reports it.
   const rt = resolveDesktopRuntime();

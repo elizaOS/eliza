@@ -9,10 +9,9 @@ import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
 import { imessageDataRoutes } from "./data-routes.js";
-// The former iMessage-specific send action duplicated the MessageConnector
-// path. The connector registered by IMessageService.registerSendHandlers is
-// now the canonical delivery path through MESSAGE operation=send. This plugin
-// no longer registers its own send action.
+// No send action is registered here: outbound delivery is the MessageConnector
+// registered by IMessageService.registerSendHandlers, driven via MESSAGE
+// operation=send.
 import {
   chatDbMessageToPublicShape,
   IMessageService,
@@ -20,6 +19,7 @@ import {
   parseMessagesFromAppleScript,
 } from "./service.js";
 import { imessageSetupRoutes } from "./setup-routes.js";
+import { registerIMessageTriageAdapter } from "./triage-adapter.js";
 
 // Account management exports
 export {
@@ -102,6 +102,14 @@ export {
 const imessagePlugin: Plugin = {
   name: "imessage",
   description: "iMessage plugin for Eliza agents (macOS only)",
+  connectorSources: [
+    {
+      source: "imessage",
+      aliases: ["imessage", "bluebubbles"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
 
   services: [IMessageService],
   actions: [],
@@ -134,6 +142,9 @@ const imessagePlugin: Plugin = {
         "Failed to register iMessage provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "imessage" source.
+    registerIMessageTriageAdapter();
 
     const isMacOS = platform() === "darwin";
 

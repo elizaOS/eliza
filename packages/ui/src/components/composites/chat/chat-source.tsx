@@ -1,3 +1,8 @@
+/**
+ * Small connector-source glyph (iMessage, Telegram, Discord, voice, owner…)
+ * shown on a chat line, plus voice-speaker labelling. Source metadata and key
+ * normalization come from chat-source.helpers so icon and bubble outline agree.
+ */
 import { Crown, Mic } from "lucide-react";
 
 import { cn } from "../../../lib/utils";

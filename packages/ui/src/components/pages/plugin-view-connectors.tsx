@@ -1,3 +1,12 @@
+/**
+ * Connector cards for the Plugins view: renders each connector plugin (Discord,
+ * Telegram, Signal, cloud OAuth connections, …) as an expandable card that
+ * co-renders its config form and its setup/account-management panel — including
+ * the case where a mode delegates its setup panel to a *different* plugin id.
+ * `ConnectorPluginGroups` groups the visible connectors and lays them out flat
+ * (no card chrome; group labels + whitespace do the separation).
+ */
+
 import {
   AlertCircle,
   Bot,
@@ -35,7 +44,7 @@ import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,
 } from "./cloud-dashboard-utils";
-import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
+import { PluginConfigForm } from "./PluginConfigForm";
 import {
   getPluginResourceLinks,
   pluginResourceLinkLabel,
@@ -1173,19 +1182,11 @@ function ConnectorPluginCard({
 
         {showPluginConfig ? (
           <div className="space-y-4">
-            {plugin.id === "telegram" ? (
-              <TelegramPluginConfig
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={handleParamChange}
-              />
-            ) : (
-              <PluginConfigForm
-                plugin={plugin}
-                pluginConfigs={pluginConfigs}
-                onParamChange={handleParamChange}
-              />
-            )}
+            <PluginConfigForm
+              plugin={plugin}
+              pluginConfigs={pluginConfigs}
+              onParamChange={handleParamChange}
+            />
             {connectorSetupPanel}
           </div>
         ) : supportsConnectorSetupPanel ? (

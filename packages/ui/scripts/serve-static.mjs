@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Simple multi-threaded static file server for storybook-static/.
-// Python's http.server is single-threaded and chokes when Playwright
-// loads ~1300 stories in sequence; this stays responsive.
+/**
+ * Multi-threaded static file server for storybook-static/. Python's http.server
+ * is single-threaded and chokes when Playwright loads ~1300 stories in
+ * sequence; this stays responsive.
+ */
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve } from "node:path";

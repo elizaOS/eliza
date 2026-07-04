@@ -1,8 +1,8 @@
 /**
- * Discord message history / spidering — extracted from service.ts
- *
- * Contains fetchChannelHistory(), getSpiderState(), saveSpiderState(),
- * buildMemoryFromMessage(), ensureConnectionsForMessages().
+ * Channel history backfill ("spidering") for DiscordService. Paginates a
+ * channel's past messages, builds Memory records from them, ensures the
+ * entity/room connections exist, and persists spider cursor state so backfill
+ * resumes where it left off.
  */
 import {
 	ChannelType,

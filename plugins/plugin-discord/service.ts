@@ -1,3 +1,14 @@
+/**
+ * `DiscordService` — the connector's main gateway service. Wraps a discord.js
+ * `Client`, logs in with the configured bot token(s), and drives inbound and
+ * outbound messages, voice, slash-command and interaction handling, reactions,
+ * channel-history backfill, and profile sync.
+ *
+ * It emits `DiscordEventTypes.*` on the runtime and composes most of the other
+ * files in this plugin (messages, messaging, debouncer, history, events,
+ * interactions, reactions, voice, identity, allowlist) as helpers. This is the
+ * service registered from `index.ts` under the `"discord"` type key.
+ */
 import {
 	ChannelType,
 	type Character,
@@ -58,7 +69,9 @@ import {
  *    to use the generic emitEvent overload.
  */
 import {
+	ActivityType,
 	type AttachmentBuilder,
+	type BaseGuildVoiceChannel,
 	type Channel,
 	type Collection,
 	ChannelType as DiscordChannelType,
@@ -92,9 +105,11 @@ import {
 	type ResolvedDiscordAccount,
 	resolveDefaultDiscordAccountId,
 } from "./accounts";
+import type { IDiscordAudioSink } from "./audio-sink";
 import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer } from "./debouncer";
+import { DiscordVoiceTargetAudioSink } from "./discord-audio-sink";
 import {
 	handleGuildCreate as handleGuildCreateExtracted,
 	isGuildOnlyCommand,
@@ -143,6 +158,11 @@ import {
 	splitMessage,
 } from "./utils";
 import { VoiceManager } from "./voice";
+import {
+	type DiscordVoiceTarget,
+	type DiscordVoiceTargetRegistration,
+	DiscordVoiceTargetRegistry,
+} from "./voice-target-registry";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 type MessageConnectorRegistration = Parameters<
@@ -164,6 +184,13 @@ type DiscordAccountServiceFacade = IDiscordService &
 		addAllowedChannel(channelId: string): boolean;
 		removeAllowedChannel(channelId: string): boolean;
 		getAllowedChannels(): string[];
+		registerVoiceTarget(target: DiscordVoiceTargetRegistration): void;
+		unregisterVoiceTarget(
+			accountId: string,
+			guildId: string,
+			channelId: string,
+		): void;
+		isVoiceChannelClaimed(guildId: string, channelId: string): boolean;
 	};
 
 // Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
@@ -478,6 +505,8 @@ export class DiscordService extends Service implements IDiscordService {
 	public accountId: string = DEFAULT_ACCOUNT_ID;
 	private defaultAccountId = DEFAULT_ACCOUNT_ID;
 	private readonly accountPool = new DiscordAccountClientPool();
+	private readonly voiceTargets = new DiscordVoiceTargetRegistry();
+	private readonly audioSinks = new Map<string, IDiscordAudioSink>();
 	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
@@ -1004,6 +1033,194 @@ export class DiscordService extends Service implements IDiscordService {
 		return requested === defaultAccountId ? (this.client ?? null) : null;
 	}
 
+	public getVoiceTargets(query?: {
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}): DiscordVoiceTarget[] {
+		const targets = this.voiceTargets.list();
+		if (!query) {
+			return targets;
+		}
+		return targets.filter((target) => {
+			if (
+				query.accountId &&
+				target.accountId !== normalizeAccountId(query.accountId)
+			) {
+				return false;
+			}
+			if (query.guildId && target.guildId !== query.guildId) {
+				return false;
+			}
+			if (query.channelId && target.channelId !== query.channelId) {
+				return false;
+			}
+			return true;
+		});
+	}
+
+	public getVoiceTarget(query: {
+		targetId?: string | null;
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}): DiscordVoiceTarget | null {
+		if (query.targetId) {
+			return this.voiceTargets.get(query.targetId);
+		}
+		return this.voiceTargets.find({
+			accountId: query.accountId
+				? normalizeAccountId(query.accountId)
+				: undefined,
+			guildId: query.guildId,
+			channelId: query.channelId,
+		});
+	}
+
+	public getAudioSink(query: {
+		targetId?: string | null;
+		accountId?: string | null;
+		guildId?: string | null;
+		channelId?: string | null;
+	}): IDiscordAudioSink | null {
+		const target = this.getVoiceTarget(query);
+		if (!target) {
+			return null;
+		}
+		const existing = this.audioSinks.get(target.id);
+		if (existing) {
+			return existing;
+		}
+		const sink = new DiscordVoiceTargetAudioSink(target);
+		this.audioSinks.set(target.id, sink);
+		return sink;
+	}
+
+	public async setListeningActivity(
+		activity: string,
+		options?: { accountId?: string | null; url?: string },
+	): Promise<boolean> {
+		const accountId = normalizeAccountId(
+			options?.accountId ?? this.defaultAccountId,
+		);
+		const client = this.getClient(accountId);
+		if (!client?.isReady() || !client.user) {
+			this.runtime.logger.warn(
+				{ src: "plugin:discord", agentId: this.runtime.agentId, accountId },
+				"Cannot set Discord listening activity before client is ready",
+			);
+			return false;
+		}
+		await client.user.setActivity(activity, {
+			type: ActivityType.Listening,
+			url: options?.url,
+		});
+		return true;
+	}
+
+	public async clearActivity(options?: {
+		accountId?: string | null;
+	}): Promise<boolean> {
+		const accountId = normalizeAccountId(
+			options?.accountId ?? this.defaultAccountId,
+		);
+		const client = this.getClient(accountId);
+		if (!client?.isReady() || !client.user) {
+			this.runtime.logger.warn(
+				{ src: "plugin:discord", agentId: this.runtime.agentId, accountId },
+				"Cannot clear Discord activity before client is ready",
+			);
+			return false;
+		}
+		client.user.setPresence({ activities: [] });
+		return true;
+	}
+
+	public async setVoiceChannelStatus(
+		channelId: string,
+		status: string,
+		options?: { accountId?: string | null },
+	): Promise<boolean> {
+		const accountId = normalizeAccountId(
+			options?.accountId ?? this.defaultAccountId,
+		);
+		const client = this.getClient(accountId);
+		if (!client?.isReady()) {
+			this.runtime.logger.warn(
+				{ src: "plugin:discord", agentId: this.runtime.agentId, accountId },
+				"Cannot set Discord voice channel status before client is ready",
+			);
+			return false;
+		}
+
+		const channel = await client.channels.fetch(channelId);
+		if (!channel?.isVoiceBased?.()) {
+			this.runtime.logger.warn(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					accountId,
+					channelId,
+				},
+				"Discord channel is not a voice channel",
+			);
+			return false;
+		}
+
+		const voiceChannel = channel as BaseGuildVoiceChannel;
+		const normalizedStatus = status.trim().slice(0, 500);
+		await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
+			body: {
+				status: normalizedStatus || null,
+			},
+		});
+		return true;
+	}
+
+	private registerVoiceTarget(target: DiscordVoiceTargetRegistration): void {
+		this.voiceTargets.register({
+			...target,
+			accountId: normalizeAccountId(target.accountId),
+		});
+		this.runtime.logger.debug(
+			{
+				src: "plugin:discord",
+				agentId: this.runtime.agentId,
+				accountId: target.accountId,
+				guildId: target.channel.guild.id,
+				channelId: target.channel.id,
+			},
+			"Registered Discord voice target",
+		);
+	}
+
+	private unregisterVoiceTarget(
+		accountId: string,
+		guildId: string,
+		channelId: string,
+	): void {
+		const normalizedAccountId = normalizeAccountId(accountId);
+		const target = this.voiceTargets.find({
+			accountId: normalizedAccountId,
+			guildId,
+			channelId,
+		});
+		if (target) {
+			this.audioSinks.get(target.id)?.destroy();
+			this.audioSinks.delete(target.id);
+		}
+		this.voiceTargets.unregister(normalizedAccountId, guildId, channelId);
+	}
+
+	private isVoiceChannelClaimed(guildId: string, channelId: string): boolean {
+		return this.voiceTargets
+			.list()
+			.some(
+				(target) =>
+					target.guildId === guildId && target.channelId === channelId,
+			);
+	}
+
 	public getAccountLabel(accountId?: string | null): string {
 		const state = this.getAccountState(accountId);
 		return state?.account.name ?? state?.accountId ?? this.defaultAccountId;
@@ -1137,6 +1354,15 @@ export class DiscordService extends Service implements IDiscordService {
 			removeAllowedChannel: (channelId: string) =>
 				parent.removeAllowedChannel(channelId, state?.accountId),
 			getAllowedChannels: () => parent.getAllowedChannels(state?.accountId),
+			registerVoiceTarget: (target: DiscordVoiceTargetRegistration) =>
+				parent.registerVoiceTarget(target),
+			unregisterVoiceTarget: (
+				targetAccountId: string,
+				guildId: string,
+				channelId: string,
+			) => parent.unregisterVoiceTarget(targetAccountId, guildId, channelId),
+			isVoiceChannelClaimed: (guildId: string, channelId: string) =>
+				parent.isVoiceChannelClaimed(guildId, channelId),
 			resolveDiscordEntityId: (userId: string) =>
 				parent.resolveDiscordEntityId(userId),
 			getChannelType: (channel: Channel) => parent.getChannelType(channel),
@@ -2654,10 +2880,20 @@ export class DiscordService extends Service implements IDiscordService {
 		readyClient: DiscordJsClient<true>,
 	) {
 		const state = this.requireAccountState(accountId);
-		return onReadyExtracted(
-			this.createAccountServiceFacade(state),
-			readyClient,
-		);
+		await onReadyExtracted(this.createAccountServiceFacade(state), readyClient);
+		const voiceChannelIds = String(
+			this.runtime.getSetting("DISCORD_VOICE_CHANNEL_ID") ?? "",
+		)
+			.split(",")
+			.map((id) => id.trim())
+			.filter(Boolean);
+		if (voiceChannelIds.length > 0 && state.voiceManager) {
+			const guilds = await readyClient.guilds.fetch();
+			for (const [, guild] of guilds) {
+				const fullGuild = await guild.fetch();
+				await state.voiceManager.scanGuild(fullGuild);
+			}
+		}
 	}
 
 	/**
@@ -3333,6 +3569,7 @@ export class DiscordService extends Service implements IDiscordService {
 		for (const state of states) {
 			try {
 				state.voiceManager?.stop();
+				this.voiceTargets.unregisterAccount(state.accountId);
 			} catch (error) {
 				this.runtime.logger.warn(
 					`Discord voice cleanup failed: ${
@@ -3362,6 +3599,12 @@ export class DiscordService extends Service implements IDiscordService {
 				state.client = null;
 			}
 		}
+
+		for (const sink of this.audioSinks.values()) {
+			sink.destroy();
+		}
+		this.audioSinks.clear();
+		this.voiceTargets.clear();
 
 		this.accountPool.clear();
 		this.clientReadyPromise = null;

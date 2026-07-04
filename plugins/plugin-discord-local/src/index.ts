@@ -1,3 +1,23 @@
+/**
+ * The entire @elizaos/plugin-discord-local surface in one module: the
+ * `DiscordLocalService`, the setup/browse HTTP routes, and the `discordLocalPlugin`
+ * export. Connects an Eliza agent to the Discord desktop app on the same machine
+ * over its local RPC/IPC socket rather than the Bot API.
+ *
+ * The service owns the IPC connection: it performs the OAuth authorization-code +
+ * refresh flow, persists the session to `<stateDir>/discord-local/session.json`,
+ * subscribes to `MESSAGE_CREATE`/`NOTIFICATION_CREATE` events, and ingests each
+ * inbound payload into runtime memory via `createMessageMemory`. Outbound replies
+ * go through a registered send handler that drives the Discord UI with AppleScript
+ * (`osascript` + a `discord://` deep-link) — so the send path is macOS only and
+ * `requireConfig()` refuses non-darwin platforms. The plugin stays dormant until
+ * `DISCORD_LOCAL_CLIENT_ID` and `DISCORD_LOCAL_CLIENT_SECRET` are set.
+ *
+ * The `Route[]` handlers (all `rawPath: true`) back a setup UI: authorize/status/
+ * cancel plus guild/channel browse and subscription updates; when a
+ * `connector-setup` service is present, subscription changes are written back to
+ * the connector config.
+ */
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -1484,6 +1504,14 @@ const discordLocalPlugin: Plugin = {
   name: DISCORD_LOCAL_PLUGIN_NAME,
   description:
     "Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
+  connectorSources: [
+    {
+      source: "discord",
+      aliases: ["discord", "discord-local"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   services: [DiscordLocalService],
   routes: discordLocalSetupRoutes,
 };

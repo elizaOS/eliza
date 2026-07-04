@@ -1,3 +1,4 @@
+/** Covers building and running the voice workbench and writing its result. Deterministic. */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

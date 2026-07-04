@@ -1,3 +1,9 @@
+/**
+ * HTTPS client for the third-party WeChat proxy service (not the official WeChat
+ * API): login/status polling and outbound text/image sends over the proxy's API
+ * key. Maps the proxy's numeric result codes — success `1000`, login-needed
+ * `1001` (surfaced as `LoginExpiredError`) — into typed results the channel acts on.
+ */
 import type {
   AccountStatus,
   ProxyApiResponse,

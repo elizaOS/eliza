@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * jsdom tests for the workflow action-handoff helpers: `findWorkflowIdForActionHandoff`
+ * (resolving the target workflow from a chat action result) and
+ * `dispatchWorkflowActionHandoff` (emitting the handoff event).
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChatActionResultSummary } from "../../api/client-types-chat";
 import {

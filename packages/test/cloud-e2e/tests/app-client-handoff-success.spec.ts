@@ -25,6 +25,11 @@
  *     again, nothing re-inserted).
  */
 
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { authedClient } from "../src/helpers/monetization";
@@ -34,8 +39,6 @@ import {
 } from "../src/helpers/provisioning";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { expect, test } from "../src/helpers/test-fixtures";
-
-const CLOUD_TOKEN_GLOBAL = "__ELIZA_CLOUD_AUTH_TOKEN__";
 
 // Context-echo mock LLM so the shared turns produce a deterministic, real
 // transcript (reply derived from replayed history) — there must be something to
@@ -56,11 +59,9 @@ test.describe("app onboarding handoff — success switch", () => {
     const c = authedClient(cloudApiBase, authToken);
 
     const prevBoot = getBootConfig();
-    const prevToken = (globalThis as Record<string, unknown>)[
-      CLOUD_TOKEN_GLOBAL
-    ];
+    const prevToken = readStoredStewardToken();
     setBootConfig({ ...prevBoot, cloudApiBase });
-    (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = authToken;
+    writeStoredStewardToken(authToken);
 
     // Price the shared turn's model so the in-Worker billing path can settle a
     // real debit (no live BitRouter key). `openai/<model>` resolves billingSource
@@ -249,10 +250,10 @@ test.describe("app onboarding handoff — success switch", () => {
       ).toBe(4);
     } finally {
       setBootConfig(prevBoot);
-      if (prevToken === undefined) {
-        delete (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL];
+      if (prevToken === null) {
+        clearStoredStewardToken();
       } else {
-        (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = prevToken;
+        writeStoredStewardToken(prevToken);
       }
     }
   });

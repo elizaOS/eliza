@@ -1,3 +1,8 @@
+/**
+ * Renders `PolymarketSpatialView` through all three modalities — TUI line
+ * layout (width-constrained), GUI/XR static DOM markup, and the terminal
+ * view registry — from fixture snapshots only (no live API or runtime).
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

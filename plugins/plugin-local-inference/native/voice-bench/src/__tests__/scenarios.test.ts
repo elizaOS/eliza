@@ -1,3 +1,8 @@
+/**
+ * End-to-end coverage of the voice-bench harness wiring — scenario build, runner,
+ * metrics, and gate evaluation/aggregation — driven by the deterministic
+ * MockPipelineDriver rather than a real voice pipeline.
+ */
 import { describe, it, expect } from "bun:test";
 import { buildScenarios, SCENARIO_IDS } from "../scenarios.ts";
 import { MockPipelineDriver } from "../mock-driver.ts";

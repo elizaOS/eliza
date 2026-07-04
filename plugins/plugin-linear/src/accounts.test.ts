@@ -1,3 +1,4 @@
+/** Unit tests for Linear account resolution: legacy-key default, multi-account precedence, and malformed-record filtering (deterministic, no live API). */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,11 @@
+/**
+ * Plugin entry for the WeChat connector: resolves account config (from
+ * `character.settings.connectors.wechat` or env), starts a `WechatChannel` per
+ * account, and registers a `MessageConnector` (source `"wechat"`) plus a
+ * `ConnectorAccountProvider` with the runtime. The connector resolves contacts,
+ * lists rooms, fetches history, and sends text/images; inbound messages arrive
+ * via the channel's webhook and flow through `deliverIncomingWechatMessage`.
+ */
 import {
   type Content,
   getConnectorAccountManager,
@@ -357,6 +365,14 @@ function registerWechatMessageConnector(
 const wechatPlugin: Plugin = {
   name: "wechat",
   description: "WeChat messaging via proxy API",
+  connectorSources: [
+    {
+      source: "wechat",
+      aliases: ["wechat"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
 
   // Self-declared auto-enable: activate when the "wechat" connector is
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map

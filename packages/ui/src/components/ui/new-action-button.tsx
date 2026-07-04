@@ -1,3 +1,8 @@
+/**
+ * Full-width "new item" Button with a leading plus icon — the create affordance
+ * at the top of list/panel views. Strips a leading "+ " from string children so
+ * the icon is not doubled.
+ */
 import { Plus } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";

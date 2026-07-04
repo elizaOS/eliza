@@ -1,3 +1,7 @@
+/**
+ * Tests HKDF-SHA256 output against an independent RFC 5869 reference implementation.
+ */
+
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { hkdfSha256 } from "./hkdf.js";

@@ -1,3 +1,8 @@
+/**
+ * Outbound message creation and send logic used by `DiscordService` — builds
+ * and dispatches replies to Discord (content, attachments, chunking, pairing
+ * gate) and maps interaction URLs into the outgoing payload.
+ */
 import { createHash } from "node:crypto";
 import {
 	buildInteractionUrlResolver,
@@ -573,13 +578,14 @@ export class MessageManager {
 		let messageServerId: string | undefined;
 
 		if (message.guild) {
-			// Use the gateway-cached guild directly. The old `await message.guild.fetch()`
-			// issued a REST GET /guilds/{id} on EVERY message; in a large, busy guild
-			// (thousands of members) that per-message fetch storm saturates discord.js's
-			// REST queue and starves message handling — the bot goes silent in big
-			// servers while staying fine in small ones (rate-limits are queued, not
-			// thrown, so nothing shows in the logs). `guild.id` (all that's used below)
-			// is already on the cached object.
+			// Use the gateway-cached guild directly; do NOT call
+			// `await message.guild.fetch()`. That issues a REST GET /guilds/{id} on
+			// EVERY message; in a large, busy guild (thousands of members) the
+			// per-message fetch storm saturates discord.js's REST queue and starves
+			// message handling — the bot goes silent in big servers while staying
+			// fine in small ones (rate-limits are queued, not thrown, so nothing
+			// shows in the logs). `guild.id` (all that's used below) is already on
+			// the cached object.
 			const guild = message.guild;
 			type = await this.getChannelType(message.channel as Channel);
 			if (type === null) {

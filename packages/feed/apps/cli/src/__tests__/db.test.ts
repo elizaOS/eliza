@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `db` command's Docker-compose startup recovery predicate.
+ * Pure string classification, no real Docker or DB.
+ */
+
 import { describe, expect, test } from "bun:test";
 
 import { isRecoverableComposeStartError } from "../commands/db.js";

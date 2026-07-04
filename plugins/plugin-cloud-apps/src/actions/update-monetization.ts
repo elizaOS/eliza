@@ -30,6 +30,7 @@ import {
   resolveApp,
   resolveCloudApiKey,
 } from "../client.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 
 /** Server-enforced bounds (mirror `UpdateMonetizationSchema` in cloud-api). */
 export const MARKUP_MIN = 0;
@@ -375,6 +376,9 @@ export const updateMonetizationAction: Action = {
         target.id,
         intent.settings,
       );
+      // Monetization state changed — evict the provider cache so the next
+      // turn doesn't serve a stale enabled/markup/share for ~60s.
+      invalidateAppsCache(runtime);
       const reply = formatSettings(target.name, monetization);
       await callback?.({ text: reply, actions: ["UPDATE_MONETIZATION"] });
       return {

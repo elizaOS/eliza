@@ -50,6 +50,22 @@ export const schedulingPlugin: Plugin = {
     "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, and default-pack seed registry. Persistence and owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
   services: [ScheduledTaskRunnerService],
   routes: buildSchedulingRoutes(),
+  views: [
+    {
+      id: "lifeops-live-test",
+      label: "LifeOps Live Test",
+      description:
+        "Connect your model and accounts, then run a real LifeOps validation and watch it fire.",
+      icon: "FlaskConical",
+      path: "/lifeops-live-test",
+      modalities: ["gui", "xr", "tui"],
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "LifeOpsLiveTestView",
+      tags: ["lifeops", "scheduling", "test", "hitl"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     // Seed registered default-task packs once init has finished so the runner
     // service (and any consumer's injected deps + packs) are registered before

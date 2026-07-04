@@ -1,3 +1,7 @@
+/**
+ * Generic "nothing here yet" state for a page panel: wraps the primitive
+ * EmptyState in a PagePanelRoot so the placeholder inherits panel spacing.
+ */
 import { cn } from "../../../lib/utils";
 import { EmptyState } from "../../ui/empty-state";
 import { PagePanelRoot } from "./page-panel-root";

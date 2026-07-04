@@ -1,3 +1,11 @@
+/**
+ * Message protocol + wallet-state model shared by the browser-workspace host
+ * and the wallet bridge hook. Defines the postMessage request/response/ready
+ * message types, the supported EVM chain ids, and the
+ * BrowserWorkspaceWalletState shape (EVM + Solana address/connected/signing
+ * capability flags) that embedded iframes read to talk to the host wallet.
+ */
+
 import type { WalletAddresses, WalletConfigStatus } from "@elizaos/shared";
 import type {
   StewardSignResponse,

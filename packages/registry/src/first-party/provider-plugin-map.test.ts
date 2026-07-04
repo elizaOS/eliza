@@ -1,3 +1,8 @@
+/**
+ * Guards the generated provider→plugin env-key map: the contract is preserved in
+ * the built artifact, keys are derived only from explicit config markers, and
+ * duplicate env-key claims across plugins are rejected.
+ */
 import { describe, expect, it } from "vitest";
 import { collectProviderPluginMap } from "./generate";
 import providerPluginMap from "./provider-plugin-map.json" with {

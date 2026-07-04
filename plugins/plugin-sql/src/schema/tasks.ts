@@ -1,12 +1,13 @@
+/**
+ * Drizzle schema for `tasks` — the persistence backing for the runtime's
+ * `Task` model (deferred/queued work items scoped to a room, world, entity,
+ * and/or agent), with free-form `tags` and `metadata` for scheduler-specific
+ * state.
+ */
 import { sql } from "drizzle-orm";
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
-/**
- * Represents a table schema for tasks in the database.
- *
- * @type {PgTable}
- */
 export const taskTable = pgTable("tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),

@@ -1,3 +1,10 @@
+/**
+ * Browser plugin entry: `BrowserLocalStorage` implements `IStorage` on top of
+ * `window.localStorage` (JSON-serialized, flushed on every write), wrapped by
+ * `InMemoryDatabaseAdapter` for a persistent-across-reloads `IDatabaseAdapter`.
+ * The `init` hook is opt-in — it leaves any adapter already registered on the
+ * runtime in place.
+ */
 import type {
   IAgentRuntime,
   IDatabaseAdapter,

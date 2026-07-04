@@ -1,3 +1,10 @@
+/**
+ * AES-256-GCM envelope helpers for vault secret values.
+ *
+ * The vault key is bound as authenticated data so encrypted blobs cannot be
+ * moved between key slots without failing decryption.
+ */
+
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 /**

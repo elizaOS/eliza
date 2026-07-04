@@ -100,13 +100,13 @@
         "@ai-sdk/openai": "^3.0.58",
         "@clack/prompts": "^1.0.0",
         "@electric-sql/pglite": "^0.4.0",
+        "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-aosp-local-inference": "workspace:*",
         "@elizaos/plugin-app-control": "workspace:*",
-        "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-birdclaw": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -156,7 +156,6 @@
         "crc-32": "^1.2.0",
         "diff3": "0.0.4",
         "drizzle-orm": "0.45.2",
-        "e2b": "^2.20.1",
         "esbuild": "^0.28.0",
         "ethers": "^6.16.0",
         "git-workspace-service": "0.4.5",
@@ -193,12 +192,6 @@
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
       },
-      "peerDependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
-      "optionalPeers": [
-        "@elizaos/app-core",
-      ],
     },
     "packages/app": {
       "name": "@elizaos/app",
@@ -243,6 +236,7 @@
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
         "@elizaos/capacitor-wifi": "workspace:*",
+        "@elizaos/cloud-ui": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
@@ -313,6 +307,8 @@
         "@capacitor/push-notifications": "^8.0.0",
         "@clack/prompts": "^1.0.0",
         "@elizaos/agent": "workspace:*",
+        "@elizaos/auth": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -340,7 +336,6 @@
         "ethers": "^6.16.0",
         "jose": "^6.2.2",
         "json5": "^2.2.3",
-        "telegraf": "^4.16.3",
         "undici": "8.5.0",
         "ws": "^8.19.0",
         "zod": "^4.4.3",
@@ -422,6 +417,19 @@
         "rcedit": "5.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+      },
+    },
+    "packages/auth": {
+      "name": "@elizaos/auth",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "packages/benchmarks/eliza-1": {
@@ -513,6 +521,19 @@
       "devDependencies": {
         "jsdom": "^29.1.1",
         "vitest": "^4.0.17",
+      },
+    },
+    "packages/cloud-ui": {
+      "name": "@elizaos/cloud-ui",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/ui": "workspace:*",
+        "@tanstack/react-query": "^5.90.20",
+        "lucide-react": "^1.0.0",
+      },
+      "peerDependencies": {
+        "react": ">=19",
+        "react-dom": ">=19",
       },
     },
     "packages/cloud/api": {
@@ -806,6 +827,7 @@
         "@ai-sdk/provider": "3.0.10",
         "@ai-sdk/provider-utils": "4.0.26",
         "@bufbuild/protobuf": "^2.12.0",
+        "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/prompts": "workspace:*",
@@ -2266,6 +2288,30 @@
         "vite": "^8.0.0",
       },
     },
+    "packages/import-conversations": {
+      "name": "@elizaos/import-conversations",
+      "version": "2.0.4",
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+      },
+    },
+    "packages/lifeops-bench": {
+      "name": "@elizaos/lifeops-bench",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/agent": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "dotenv": "^17.2.3",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "25.6.2",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.18",
+      },
+    },
     "packages/logger": {
       "name": "@elizaos/logger",
       "version": "2.0.3-beta.7",
@@ -2467,6 +2513,7 @@
       },
       "dependencies": {
         "@elizaos/agent": "workspace:*",
+        "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
@@ -2744,9 +2791,19 @@
         "@elizaos/capacitor-camera": "workspace:*",
       },
       "peerDependencies": {
+        "@capacitor/app": "^8.0.0",
+        "@elizaos/capacitor-agent": "workspace:*",
+        "@elizaos/capacitor-llama": "workspace:*",
+        "llama-cpp-capacitor": "^0.1.5",
         "react": "19.2.5",
         "react-dom": "19.2.5",
       },
+      "optionalPeers": [
+        "@capacitor/app",
+        "@elizaos/capacitor-agent",
+        "@elizaos/capacitor-llama",
+        "llama-cpp-capacitor",
+      ],
     },
     "packages/vault": {
       "name": "@elizaos/vault",
@@ -2783,6 +2840,7 @@
       "name": "@elizaos/plugin-agent-orchestrator",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@octokit/rest": "^22.0.0",
         "coding-agent-adapters": "0.16.3",
         "drizzle-orm": "^0.45.1",
@@ -2899,6 +2957,7 @@
         "@elizaos/logger": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
+        "elizaos": "workspace:*",
         "lucide-react": "^1.16.0",
         "react": "^19.0.0",
       },
@@ -2922,6 +2981,7 @@
       "name": "@elizaos/plugin-app-manager",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -3088,6 +3148,7 @@
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.2",
@@ -3170,6 +3231,7 @@
         "vitest": "^4.0.0",
       },
       "optionalDependencies": {
+        "@anthropic-ai/claude-agent-sdk": "0.3.200",
         "@openai/codex-sdk": "0.80.0",
       },
       "peerDependencies": {
@@ -3299,6 +3361,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/plugin-meetings": "workspace:*",
         "@sapphire/snowflake": "3.5.5",
         "discord-api-types": "^0.38.0",
         "discord.js": "^14.26.4",
@@ -3362,6 +3425,21 @@
       "peerDependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+      },
+    },
+    "plugins/plugin-e2b-sandbox": {
+      "name": "@elizaos/plugin-e2b-sandbox",
+      "version": "1.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "e2b": "^2.20.1",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.2",
+        "@types/node": "^25.0.3",
+        "bun-types": "^1.2.25",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
       },
     },
     "plugins/plugin-edge-tts": {
@@ -3974,6 +4052,24 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-meetings": {
+      "name": "@elizaos/plugin-meetings",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "playwright-core": "^1.56.0",
+      },
+      "devDependencies": {
+        "@types/node": "24.12.2",
+        "tsup": "8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "4.1.9",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-messages": {
       "name": "@elizaos/plugin-messages",
       "version": "2.0.3-beta.7",
@@ -4577,6 +4673,7 @@
         "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/macosreminders": "workspace:*",
         "@elizaos/native-activity-tracker": "workspace:*",
@@ -4796,21 +4893,30 @@
       "name": "@elizaos/plugin-scheduling",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "zod": "^4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.2",
         "@types/node": "^25.0.6",
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
         "fast-check": "^4.8.0",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
+        "vite": "^8.0.0",
         "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
       },
     },
     "plugins/plugin-screenshare": {
@@ -5067,6 +5173,7 @@
       "name": "@elizaos/plugin-tee",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@phala/dstack-sdk": "^0.5.7",
         "@solana/web3.js": "1.98.4",
@@ -5099,6 +5206,22 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
+      },
+    },
+    "plugins/plugin-telegram-standalone": {
+      "name": "@elizaos/plugin-telegram-standalone",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "telegraf": "4.16.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.2",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
       },
     },
     "plugins/plugin-todos": {
@@ -5164,6 +5287,7 @@
       "dependencies": {
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
       },
@@ -5277,6 +5401,7 @@
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "@lifi/sdk": "^3.7.9",
         "@meteora-ag/dlmm": "^1.9.7",
         "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
@@ -5299,9 +5424,13 @@
         "vitest": "^4.0.18",
       },
       "peerDependencies": {
+        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
       },
+      "optionalPeers": [
+        "@elizaos/app-core",
+      ],
     },
     "plugins/plugin-wallet-ui": {
       "name": "@elizaos/plugin-wallet-ui",
@@ -5402,6 +5531,7 @@
       "name": "@elizaos/plugin-workflow",
       "version": "2.0.3-beta.7",
       "dependencies": {
+        "@elizaos/shared": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "^3.21.1",
         "quickjs-emscripten": "0.32.0",
@@ -5411,6 +5541,7 @@
         "@biomejs/biome": "2.5.2",
         "@electric-sql/pglite": "^0.2.17",
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "@types/bun": "^1.3.8",
         "@types/node": "^25.1.0",
         "bun-types": "^1.3.8",
@@ -5418,6 +5549,7 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
       },
     },
     "plugins/plugin-x": {
@@ -5515,70 +5647,70 @@
     },
   },
   "trustedDependencies": [
-    "@elizaos/plugin-starter",
-    "utf-8-validate",
-    "@swc/core",
-    "protobufjs",
-    "keccak",
-    "secp256k1",
-    "bufferutil",
-    "workerd",
-    "esbuild",
-    "sharp",
-    "@biomejs/biome",
-    "electron",
     "nx",
+    "esbuild",
+    "@swc/core",
+    "keccak",
+    "protobufjs",
+    "sharp",
+    "utf-8-validate",
     "bigint-buffer",
+    "bufferutil",
+    "secp256k1",
+    "@elizaos/plugin-starter",
+    "workerd",
+    "electron",
+    "@biomejs/biome",
   ],
   "patchedDependencies": {
-    "@solana/rpc-subscriptions-spec@5.5.1": "patches/@solana%2Frpc-subscriptions-spec@5.5.1.patch",
-    "@solana/rpc-transformers@5.5.1": "patches/@solana%2Frpc-transformers@5.5.1.patch",
-    "@solana/fast-stable-stringify@5.5.1": "patches/@solana%2Ffast-stable-stringify@5.5.1.patch",
-    "@solana/rpc-transport-http@5.5.1": "patches/@solana%2Frpc-transport-http@5.5.1.patch",
-    "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch",
-    "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
-    "@solana/transactions@5.5.1": "patches/@solana%2Ftransactions@5.5.1.patch",
-    "@solana/rpc-spec@5.5.1": "patches/@solana%2Frpc-spec@5.5.1.patch",
-    "@solana/codecs-data-structures@5.5.1": "patches/@solana%2Fcodecs-data-structures@5.5.1.patch",
-    "tsup@8.5.1": "patches/tsup@8.5.1.patch",
-    "@solana/codecs-core@5.5.1": "patches/@solana%2Fcodecs-core@5.5.1.patch",
-    "@solana/rpc-spec-types@5.5.1": "patches/@solana%2Frpc-spec-types@5.5.1.patch",
-    "@solana/functional@5.5.1": "patches/@solana%2Ffunctional@5.5.1.patch",
-    "@solana/codecs-numbers@5.5.1": "patches/@solana%2Fcodecs-numbers@5.5.1.patch",
-    "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
-    "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
-    "@solana/offchain-messages@5.5.1": "patches/@solana%2Foffchain-messages@5.5.1.patch",
-    "@capacitor/ios@8.4.1": "patches/@capacitor%2Fios@8.4.1.patch",
-    "@solana/rpc-parsed-types@5.5.1": "patches/@solana%2Frpc-parsed-types@5.5.1.patch",
-    "@solana/rpc-subscriptions@5.5.1": "patches/@solana%2Frpc-subscriptions@5.5.1.patch",
-    "@solana/keys@5.5.1": "patches/@solana%2Fkeys@5.5.1.patch",
-    "@solana/transaction-confirmation@5.5.1": "patches/@solana%2Ftransaction-confirmation@5.5.1.patch",
-    "@solana/addresses@5.5.1": "patches/@solana%2Faddresses@5.5.1.patch",
-    "@solana/transaction-messages@5.5.1": "patches/@solana%2Ftransaction-messages@5.5.1.patch",
-    "@solana/promises@5.5.1": "patches/@solana%2Fpromises@5.5.1.patch",
-    "@solana/errors@5.5.1": "patches/@solana%2Ferrors@5.5.1.patch",
-    "@solana/nominal-types@5.5.1": "patches/@solana%2Fnominal-types@5.5.1.patch",
-    "@solana/instructions@5.5.1": "patches/@solana%2Finstructions@5.5.1.patch",
-    "@solana/kit@5.5.1": "patches/@solana%2Fkit@5.5.1.patch",
-    "@solana/rpc-api@5.5.1": "patches/@solana%2Frpc-api@5.5.1.patch",
-    "@solana/rpc-types@5.5.1": "patches/@solana%2Frpc-types@5.5.1.patch",
-    "@solana/signers@5.5.1": "patches/@solana%2Fsigners@5.5.1.patch",
-    "@solana/codecs-strings@5.5.1": "patches/@solana%2Fcodecs-strings@5.5.1.patch",
-    "vitest@4.1.5": "patches/vitest@4.1.5.patch",
-    "@solana/programs@5.5.1": "patches/@solana%2Fprograms@5.5.1.patch",
     "@solana/rpc@5.5.1": "patches/@solana%2Frpc@5.5.1.patch",
-    "@solana/assertions@5.5.1": "patches/@solana%2Fassertions@5.5.1.patch",
-    "@solana/options@5.5.1": "patches/@solana%2Foptions@5.5.1.patch",
+    "@solana/sysvars@5.5.1": "patches/@solana%2Fsysvars@5.5.1.patch",
+    "@solana/rpc-spec@5.5.1": "patches/@solana%2Frpc-spec@5.5.1.patch",
+    "@solana/rpc-subscriptions@5.5.1": "patches/@solana%2Frpc-subscriptions@5.5.1.patch",
     "@farcaster/quick-auth@0.0.8": "patches/@farcaster%2Fquick-auth@0.0.8.patch",
-    "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
-    "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",
+    "@solana/rpc-subscriptions-spec@5.5.1": "patches/@solana%2Frpc-subscriptions-spec@5.5.1.patch",
+    "@solana/rpc-types@5.5.1": "patches/@solana%2Frpc-types@5.5.1.patch",
     "@solana/instruction-plans@5.5.1": "patches/@solana%2Finstruction-plans@5.5.1.patch",
-    "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
+    "@solana/codecs-strings@5.5.1": "patches/@solana%2Fcodecs-strings@5.5.1.patch",
+    "@solana/nominal-types@5.5.1": "patches/@solana%2Fnominal-types@5.5.1.patch",
+    "@solana/rpc-parsed-types@5.5.1": "patches/@solana%2Frpc-parsed-types@5.5.1.patch",
+    "@solana/fast-stable-stringify@5.5.1": "patches/@solana%2Ffast-stable-stringify@5.5.1.patch",
+    "@solana/rpc-spec-types@5.5.1": "patches/@solana%2Frpc-spec-types@5.5.1.patch",
+    "@solana/rpc-transformers@5.5.1": "patches/@solana%2Frpc-transformers@5.5.1.patch",
+    "@solana/codecs-numbers@5.5.1": "patches/@solana%2Fcodecs-numbers@5.5.1.patch",
+    "tsup@8.5.1": "patches/tsup@8.5.1.patch",
     "@vitest/mocker@4.1.5": "patches/@vitest%2Fmocker@4.1.5.patch",
+    "@solana/codecs-core@5.5.1": "patches/@solana%2Fcodecs-core@5.5.1.patch",
+    "@solana/errors@5.5.1": "patches/@solana%2Ferrors@5.5.1.patch",
+    "@solana/offchain-messages@5.5.1": "patches/@solana%2Foffchain-messages@5.5.1.patch",
+    "electrobun@1.18.1": "patches/electrobun@1.18.1.patch",
+    "@capacitor/ios@8.4.1": "patches/@capacitor%2Fios@8.4.1.patch",
     "@solana/codecs@5.5.1": "patches/@solana%2Fcodecs@5.5.1.patch",
+    "@solana/transactions@5.5.1": "patches/@solana%2Ftransactions@5.5.1.patch",
+    "vitest@4.1.5": "patches/vitest@4.1.5.patch",
     "@solana/plugin-core@5.5.1": "patches/@solana%2Fplugin-core@5.5.1.patch",
+    "@solana/rpc-transport-http@5.5.1": "patches/@solana%2Frpc-transport-http@5.5.1.patch",
     "@solana/rpc-subscriptions-api@5.5.1": "patches/@solana%2Frpc-subscriptions-api@5.5.1.patch",
+    "@solana/functional@5.5.1": "patches/@solana%2Ffunctional@5.5.1.patch",
+    "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
+    "@solana/addresses@5.5.1": "patches/@solana%2Faddresses@5.5.1.patch",
+    "telegraf@4.16.3": "patches/telegraf@4.16.3.patch",
+    "@solana/kit@5.5.1": "patches/@solana%2Fkit@5.5.1.patch",
+    "@solana/assertions@5.5.1": "patches/@solana%2Fassertions@5.5.1.patch",
+    "@solana/codecs-data-structures@5.5.1": "patches/@solana%2Fcodecs-data-structures@5.5.1.patch",
+    "@solana/promises@5.5.1": "patches/@solana%2Fpromises@5.5.1.patch",
+    "@solana/keys@5.5.1": "patches/@solana%2Fkeys@5.5.1.patch",
+    "@solana/transaction-messages@5.5.1": "patches/@solana%2Ftransaction-messages@5.5.1.patch",
     "@solana/rpc-subscriptions-channel-websocket@5.5.1": "patches/@solana%2Frpc-subscriptions-channel-websocket@5.5.1.patch",
+    "@solana/subscribable@5.5.1": "patches/@solana%2Fsubscribable@5.5.1.patch",
+    "@solana/rpc-api@5.5.1": "patches/@solana%2Frpc-api@5.5.1.patch",
+    "@solana/transaction-confirmation@5.5.1": "patches/@solana%2Ftransaction-confirmation@5.5.1.patch",
+    "@solana/options@5.5.1": "patches/@solana%2Foptions@5.5.1.patch",
+    "@solana/instructions@5.5.1": "patches/@solana%2Finstructions@5.5.1.patch",
+    "@solana/signers@5.5.1": "patches/@solana%2Fsigners@5.5.1.patch",
+    "@capacitor/barcode-scanner@3.0.2": "patches/@capacitor%2Fbarcode-scanner@3.0.2.patch",
+    "@solana/accounts@5.5.1": "patches/@solana%2Faccounts@5.5.1.patch",
+    "@solana/programs@5.5.1": "patches/@solana%2Fprograms@5.5.1.patch",
   },
   "overrides": {
     "@ai-sdk/gateway": "3.0.109",
@@ -5685,6 +5817,24 @@
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@antfu/install-pkg": ["@antfu/install-pkg@1.1.0", "", { "dependencies": { "package-manager-detector": "^1.3.0", "tinyexec": "^1.0.1" } }, "sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ=="],
+
+    "@anthropic-ai/claude-agent-sdk": ["@anthropic-ai/claude-agent-sdk@0.3.200", "", { "optionalDependencies": { "@anthropic-ai/claude-agent-sdk-darwin-arm64": "0.3.200", "@anthropic-ai/claude-agent-sdk-darwin-x64": "0.3.200", "@anthropic-ai/claude-agent-sdk-linux-arm64": "0.3.200", "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "0.3.200", "@anthropic-ai/claude-agent-sdk-linux-x64": "0.3.200", "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "0.3.200", "@anthropic-ai/claude-agent-sdk-win32-arm64": "0.3.200", "@anthropic-ai/claude-agent-sdk-win32-x64": "0.3.200" }, "peerDependencies": { "@anthropic-ai/sdk": ">=0.93.0", "@modelcontextprotocol/sdk": "^1.29.0", "zod": "^4.0.0" } }, "sha512-o13TM3boFIJE4oZdQDFw5TQfiev1sBoxwzKM2QGj/NPtxriGTP0PKNAQsGZvTsiEOIIH5rzPr/H81xVkkAw23g=="],
+
+    "@anthropic-ai/claude-agent-sdk-darwin-arm64": ["@anthropic-ai/claude-agent-sdk-darwin-arm64@0.3.200", "", { "os": "darwin", "cpu": "arm64" }, "sha512-8UzzInVdRPDNIOvrAxYbHHJD/u13WSBx9fvEeuZnsZ6rZh0qnSI1QwU8Due0V2+m+ZnT3cEonmXDvo2ee/icWg=="],
+
+    "@anthropic-ai/claude-agent-sdk-darwin-x64": ["@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.200", "", { "os": "darwin", "cpu": "x64" }, "sha512-DCwlQoO8HWGuFElE+Q5pYkiBTalXjjMATRAxXyc94fI6m1ZRqyba66dOea+zTmzHPpOb6zSoHYNLiXy7EjNpcg=="],
+
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": ["@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.200", "", { "os": "linux", "cpu": "arm64" }, "sha512-NAEonp086ZOsf+3o/9Y5JRclO6C4n4ceiSuCpSDV6SSUOLBmCRi7r/PJOoMsIWwMshC6fnnkDKZamTpHjr75eg=="],
+
+    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": ["@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.200", "", { "os": "linux", "cpu": "arm64" }, "sha512-ak0l+zpz3dKPjnBegUhOs1Y5xFveEQ1AVqmq6s8Q7qd3vO4SrDPiUOpxRkjkqWyGD8r8w+ezG+unf3U9IZ6DRg=="],
+
+    "@anthropic-ai/claude-agent-sdk-linux-x64": ["@anthropic-ai/claude-agent-sdk-linux-x64@0.3.200", "", { "os": "linux", "cpu": "x64" }, "sha512-0R/In8G4fZLFFEIA1SqXRRf9mzDGx7roHpMawNdTT1QlG4XftGTlKMxfukt/YcxwzsNPWg4hJSkEDxsb+3J6FA=="],
+
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": ["@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.200", "", { "os": "linux", "cpu": "x64" }, "sha512-Sf5TTCO3bc5ty7FX5F19WT3xbtU+f1biYD9+dDJ7YHyYFWuiPlWcnCJ8El8RSwCTuvz3OexJLwCqGHRWOC3eBg=="],
+
+    "@anthropic-ai/claude-agent-sdk-win32-arm64": ["@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.200", "", { "os": "win32", "cpu": "arm64" }, "sha512-iJx10bdrk3afa/Oq9QHRh2HaINT/xnsm5OrFNNLbix2CoOEY5lA7f0lk/s0OMiWnfXdv5vvtADpgZ5tvUoQykA=="],
+
+    "@anthropic-ai/claude-agent-sdk-win32-x64": ["@anthropic-ai/claude-agent-sdk-win32-x64@0.3.200", "", { "os": "win32", "cpu": "x64" }, "sha512-Mka8YDpDIiSJcbrdoBhzX3S0n9DYcoYaEjS7lxwX3GyPi5PvXV4UBuXzj++7ieV/KS4w32Sm3mHQRpeVwnJZ0A=="],
 
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.71.2", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-TGNDEUuEstk/DKu0/TflXAEt+p+p/WhTlFzEnoosvbaDU2LTjm42igSdlL0VijrKpWejtOKxX0b8A7uc+XiSAQ=="],
 
@@ -6148,6 +6298,8 @@
 
     "@elizaos/app-model-tester": ["@elizaos/app-model-tester@workspace:plugins/app-model-tester"],
 
+    "@elizaos/auth": ["@elizaos/auth@workspace:packages/auth"],
+
     "@elizaos/aws-examples": ["@elizaos/aws-examples@workspace:packages/examples/aws"],
 
     "@elizaos/bench-eliza-1": ["@elizaos/bench-eliza-1@workspace:packages/benchmarks/eliza-1"],
@@ -6221,6 +6373,8 @@
     "@elizaos/cloud-shared": ["@elizaos/cloud-shared@workspace:packages/cloud/shared"],
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/test/cloud-mocks"],
+
+    "@elizaos/cloud-ui": ["@elizaos/cloud-ui@workspace:packages/cloud-ui"],
 
     "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud/services/coding-remote-runner"],
 
@@ -6314,9 +6468,13 @@
 
     "@elizaos/gcp-examples": ["@elizaos/gcp-examples@workspace:packages/examples/gcp"],
 
+    "@elizaos/import-conversations": ["@elizaos/import-conversations@workspace:packages/import-conversations"],
+
     "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/interrupt-bench"],
 
     "@elizaos/ios-native-deps": ["@elizaos/ios-native-deps@workspace:packages/native/ios-deps"],
+
+    "@elizaos/lifeops-bench": ["@elizaos/lifeops-bench@workspace:packages/lifeops-bench"],
 
     "@elizaos/logger": ["@elizaos/logger@workspace:packages/logger"],
 
@@ -6396,6 +6554,8 @@
 
     "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
 
+    "@elizaos/plugin-e2b-sandbox": ["@elizaos/plugin-e2b-sandbox@workspace:plugins/plugin-e2b-sandbox"],
+
     "@elizaos/plugin-edge-tts": ["@elizaos/plugin-edge-tts@workspace:plugins/plugin-edge-tts"],
 
     "@elizaos/plugin-elevenlabs": ["@elizaos/plugin-elevenlabs@workspace:plugins/plugin-elevenlabs"],
@@ -6457,6 +6617,8 @@
     "@elizaos/plugin-matrix": ["@elizaos/plugin-matrix@workspace:plugins/plugin-matrix"],
 
     "@elizaos/plugin-mcp": ["@elizaos/plugin-mcp@workspace:plugins/plugin-mcp"],
+
+    "@elizaos/plugin-meetings": ["@elizaos/plugin-meetings@workspace:plugins/plugin-meetings"],
 
     "@elizaos/plugin-messages": ["@elizaos/plugin-messages@workspace:plugins/plugin-messages"],
 
@@ -6533,6 +6695,8 @@
     "@elizaos/plugin-tee": ["@elizaos/plugin-tee@workspace:plugins/plugin-tee"],
 
     "@elizaos/plugin-telegram": ["@elizaos/plugin-telegram@workspace:plugins/plugin-telegram"],
+
+    "@elizaos/plugin-telegram-standalone": ["@elizaos/plugin-telegram-standalone@workspace:plugins/plugin-telegram-standalone"],
 
     "@elizaos/plugin-todos": ["@elizaos/plugin-todos@workspace:plugins/plugin-todos"],
 
@@ -13847,6 +14011,8 @@
     "@achingbrain/nat-port-mapper/race-signal": ["race-signal@2.0.0", "", {}, "sha512-P31bLhE4ByBX/70QDXMutxnqgwrF1WUXea1O8DXuviAgkdbQ1iQMQotNgzJIBC9yUSn08u/acZrMUhgw7w6GpA=="],
 
     "@ai-sdk/provider-utils/eventsource-parser": ["eventsource-parser@3.1.0", "", {}, "sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg=="],
+
+    "@anthropic-ai/claude-agent-sdk/@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.103.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-1uG7RNgoHTUxzOXqSCODKt0UTVlxWiHk/2Tt2/uQJiPW7XzBeKVuJyd3Aw6T3LPyvZV/jDTnPLX7SaM70WLLjA=="],
 
     "@apidevtools/json-schema-ref-parser/js-yaml": ["js-yaml@4.3.0", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q=="],
 

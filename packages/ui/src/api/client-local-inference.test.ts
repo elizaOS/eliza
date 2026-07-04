@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for device-tier classification from a hardware probe. Pure
+ * function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";

@@ -1,3 +1,15 @@
+/**
+ * Durable, cross-restart replay guard for x402 payment credentials, backed
+ * by the runtime's `cache` table (or `runtime.getCache`/`setCache` when the
+ * SQL connection isn't reachable). Reservation is two-phase: `TryReserve`
+ * atomically claims a replay key as "inflight" with a TTL (via `INSERT ...
+ * ON CONFLICT DO NOTHING` when SQL is available, so concurrent requests for
+ * the same credential can't both proceed), then callers either
+ * `CommitReservation` on successful verification (marking the key
+ * permanently "consumed") or `AbortReservation` on failure (freeing it for
+ * retry). Expired inflight reservations can be stolen so a crashed request
+ * doesn't permanently block retries.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";

@@ -15,7 +15,7 @@ import {
   createHandlerRegistry,
   type RemoteServiceInstance,
   type WorkerPluginShape,
-} from "../../../plugin-worker-runtime/src/descriptor.ts";
+} from "../../../plugin-remote-manifest/src/worker-runtime/descriptor.ts";
 import { type BridgeChannel, RemotePluginBridge } from "./remote-plugin-bridge";
 
 class TestChannel implements BridgeChannel {
@@ -279,6 +279,7 @@ describe("RemotePluginBridge descriptor schema", () => {
           name: "route",
           path: "/route",
           public: true,
+          publicReason: "Remote bridge fixture public route.",
           isMultipart: false,
           routeHandler: () => new Response("ok"),
         },

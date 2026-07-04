@@ -1,4 +1,13 @@
 /**
+ * Converts agent markdown output into Feishu's Post (rich-text) element tree and
+ * splits long replies into platform-sized chunks. markdownToFeishuPost builds the
+ * `zh_cn` Post content (dropping unsafe link schemes), chunkFeishuText/
+ * markdownToFeishuChunks enforce FEISHU_TEXT_CHUNK_LIMIT, and the remaining
+ * helpers cover mentions, markdown detection/stripping, and chat-type checks.
+ * Consumed by the service when building outbound messages.
+ */
+
+/**
  * Feishu text chunk limit
  */
 export const FEISHU_TEXT_CHUNK_LIMIT = 4000;

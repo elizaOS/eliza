@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for normalizing native resource snapshots (thermal/power) from
+ * the device bridge. Pure function, no device.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeResourceSnapshot } from "./resource-snapshot-bridge";
 

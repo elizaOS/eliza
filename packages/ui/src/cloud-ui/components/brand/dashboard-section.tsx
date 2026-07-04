@@ -1,3 +1,6 @@
+/**
+ * A titled dashboard content section wrapper (cloud brand).
+ */
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 

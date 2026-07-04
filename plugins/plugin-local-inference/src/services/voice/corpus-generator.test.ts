@@ -1,3 +1,4 @@
+/** Covers voice-corpus generation on both the synthetic and real-TTS paths plus ground-truth read/write. Real-TTS path exercises a live backend when present. */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

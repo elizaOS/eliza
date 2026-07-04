@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the iOS in-renderer fetch kernel's route handling. In-process
+ * Request/Response, no real device.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 
@@ -106,6 +110,24 @@ describe("handleIosLocalAgentRequest", () => {
       isRemoteController: false,
       remoteApiBaseConfigured: false,
     });
+  });
+
+  it("serves POST /api/first-run so local onboarding finish does not 404-loop", async () => {
+    // Regression: the kernel implemented GET /api/first-run/status but not
+    // POST /api/first-run, so finishLocal's submitFirstRun hit the catch-all
+    // 404 ("Not found"), which the conductor turned into a re-offer of the
+    // runtime chooser (the on-device "local path → not found → pick again"
+    // loop). It must accept + ack the finish payload.
+    await expect(getJson("/api/first-run/status")).resolves.toMatchObject({
+      complete: true,
+    });
+    const res = await post("/api/first-run", {
+      runtime: "local",
+      localInference: "all-local",
+      agentName: "Eliza",
+    });
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true });
   });
 
   it("reports paired Cloud state and forwards chat through the Cloud bridge", async () => {
@@ -359,6 +381,225 @@ describe("handleIosLocalAgentRequest", () => {
         url: "https://docs.elizaos.ai/",
         visible: true,
       },
+    });
+  });
+
+  it("serves transcript CRUD from the local transcript store", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+
+    // Empty list before anything is recorded.
+    await expect(getJson("/api/transcripts")).resolves.toEqual({
+      transcripts: [],
+    });
+
+    // Invalid create: segments are required.
+    const invalid = await post("/api/transcripts", { segments: [] });
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toEqual({
+      error: "segments are required",
+    });
+
+    const createResponse = await post("/api/transcripts", {
+      title: "Standup",
+      roomId: "room-1",
+      segments: [
+        {
+          id: "seg-1",
+          speakerLabel: "Speaker 1",
+          startMs: 0,
+          endMs: 1500,
+          text: "hello from the meeting",
+          words: [],
+        },
+      ],
+      audioBase64: "AAAA",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = (await createResponse.json()) as {
+      transcript: {
+        id: string;
+        title: string;
+        durationMs: number;
+        speakerCount: number;
+        audioUrl?: string;
+      };
+    };
+    expect(created.transcript).toMatchObject({
+      title: "Standup",
+      durationMs: 1500,
+      speakerCount: 1,
+      status: "ready",
+      audioUrl: "data:audio/wav;base64,AAAA",
+      audioContentType: "audio/wav",
+    });
+    const id = created.transcript.id;
+
+    // List returns the summary projection; roomId filters.
+    await expect(getJson("/api/transcripts")).resolves.toMatchObject({
+      transcripts: [
+        {
+          id,
+          title: "Standup",
+          preview: "hello from the meeting",
+          hasAudio: true,
+          speakerCount: 1,
+        },
+      ],
+    });
+    await expect(
+      getJson("/api/transcripts?roomId=room-1"),
+    ).resolves.toMatchObject({
+      transcripts: [{ id }],
+    });
+    await expect(getJson("/api/transcripts?roomId=other")).resolves.toEqual({
+      transcripts: [],
+    });
+
+    // Get by id returns the full record; unknown ids are 404.
+    await expect(
+      getJson(`/api/transcripts/${encodeURIComponent(id)}`),
+    ).resolves.toMatchObject({
+      transcript: { id, segments: [expect.objectContaining({ id: "seg-1" })] },
+    });
+    const missing = await handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/transcripts/nope"),
+    );
+    expect(missing.status).toBe(404);
+
+    // Update validates its body and re-derives timing metadata.
+    const emptyPatch = await handleIosLocalAgentRequest(
+      new Request(`http://127.0.0.1:31337/api/transcripts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(emptyPatch.status).toBe(400);
+    const updateResponse = await handleIosLocalAgentRequest(
+      new Request(`http://127.0.0.1:31337/api/transcripts/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: "Renamed",
+          segments: [
+            { id: "seg-1", startMs: 0, endMs: 2500, text: "edited", words: [] },
+          ],
+        }),
+      }),
+    );
+    expect(updateResponse.status).toBe(200);
+    await expect(updateResponse.json()).resolves.toMatchObject({
+      transcript: { id, title: "Renamed", durationMs: 2500, speakerCount: 0 },
+    });
+
+    // Delete removes the record.
+    const deleteResponse = await handleIosLocalAgentRequest(
+      new Request(`http://127.0.0.1:31337/api/transcripts/${id}`, {
+        method: "DELETE",
+      }),
+    );
+    await expect(deleteResponse.json()).resolves.toEqual({ ok: true });
+    await expect(getJson("/api/transcripts")).resolves.toEqual({
+      transcripts: [],
+    });
+  });
+
+  it("serves the memory feed and browse routes from local conversations", async () => {
+    const localStorage = stubLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    localStorage.setItem(
+      "eliza:ios-local-agent:conversations:v1",
+      JSON.stringify({
+        conversations: [
+          {
+            id: "conv-1",
+            title: "First",
+            roomId: "room-1",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            messages: [
+              { id: "m1", role: "user", text: "hello eliza", timestamp: 100 },
+              { id: "m2", role: "assistant", text: "hi there", timestamp: 200 },
+              { id: "m3", role: "assistant", text: "   ", timestamp: 300 },
+            ],
+          },
+        ],
+      }),
+    );
+
+    // Feed: newest first, blank messages excluded, envelope matches the server.
+    await expect(getJson("/api/memories/feed")).resolves.toEqual({
+      memories: [
+        expect.objectContaining({
+          id: "m2",
+          type: "messages",
+          text: "hi there",
+          roomId: "room-1",
+          createdAt: 200,
+          entityId: null,
+        }),
+        expect.objectContaining({ id: "m1", createdAt: 100 }),
+      ],
+      count: 2,
+      limit: 50,
+      hasMore: false,
+    });
+
+    // Feed pagination + before cursor + clamped limit.
+    await expect(getJson("/api/memories/feed?limit=1")).resolves.toMatchObject({
+      memories: [expect.objectContaining({ id: "m2" })],
+      count: 1,
+      limit: 1,
+      hasMore: true,
+    });
+    await expect(
+      getJson("/api/memories/feed?before=200"),
+    ).resolves.toMatchObject({
+      memories: [expect.objectContaining({ id: "m1" })],
+      count: 1,
+    });
+    await expect(
+      getJson("/api/memories/feed?limit=junk"),
+    ).resolves.toMatchObject({ limit: 50 });
+    await expect(
+      getJson("/api/memories/feed?limit=100000"),
+    ).resolves.toMatchObject({ limit: 100 });
+
+    // A known non-message table filter yields no local rows.
+    await expect(getJson("/api/memories/feed?type=facts")).resolves.toEqual({
+      memories: [],
+      count: 0,
+      limit: 50,
+      hasMore: false,
+    });
+
+    // Browse: search + offset paging + entity filters (no local entity graph).
+    await expect(getJson("/api/memories/browse")).resolves.toMatchObject({
+      total: 2,
+      limit: 50,
+      offset: 0,
+    });
+    await expect(
+      getJson("/api/memories/browse?q=hello"),
+    ).resolves.toMatchObject({
+      memories: [expect.objectContaining({ id: "m1" })],
+      total: 1,
+    });
+    await expect(
+      getJson("/api/memories/browse?offset=1&limit=1"),
+    ).resolves.toMatchObject({
+      memories: [expect.objectContaining({ id: "m1" })],
+      total: 2,
+      offset: 1,
+    });
+    await expect(
+      getJson("/api/memories/browse?entityId=someone"),
+    ).resolves.toMatchObject({ memories: [], total: 0 });
+    await expect(
+      getJson("/api/memories/by-entity/someone"),
+    ).resolves.toMatchObject({
+      entityId: "someone",
+      memories: [],
+      total: 0,
     });
   });
 

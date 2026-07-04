@@ -27,6 +27,7 @@ import path from "node:path";
 import {
   type AgentRuntime,
   type IAgentRuntime,
+  type IScreenCaptureService,
   isStreamingDestinationConfigured,
   logger,
   NotificationService,
@@ -38,6 +39,7 @@ import {
   sendJson,
   sendJsonError,
   stringToUuid,
+  tryHandleTrajectoryReadRoutes,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -61,12 +63,11 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
-// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
-// imported via module-scope top-level await, which forced both plugins to
-// load (and pulled their transitive native deps) whenever anything imported
-// `@elizaos/agent`. That blocked container boot in cloud sandboxes. They are
-// now lazily loaded. X402 is loaded only when runtime routes need validation;
-// browser is loaded on first browser route hit so neither gates API bind.
+// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
+// when runtime routes need validation, browser on the first browser route hit,
+// so neither gates the API bind. A module-scope top-level await here would load
+// both plugins (and their transitive native deps) whenever anything imported
+// `@elizaos/agent`, which blocks container boot in cloud sandboxes.
 type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
 type X402PluginModule = typeof import("@elizaos/plugin-x402");
 
@@ -163,77 +164,22 @@ const optionalPluginImports = {
   workflow: () => importOptionalPlugin("@elizaos/plugin-workflow"),
 };
 
-type LocalInferenceServerApi = {
-  getLocalInferenceActiveModelId: () => string | undefined;
-  handleLocalInferenceRoutes: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ) => Promise<boolean>;
-  handleLocalInferenceTtsRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-  handleLocalInferenceAsrRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-  handleLiveDiarizationRoute?: (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    state: { current: AgentRuntime | null },
-  ) => Promise<boolean>;
-};
+type LocalInferenceServerApi = LocalInferenceRouteApi &
+  LocalInferenceVoiceRouteApi;
 
-let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
-  null;
-
-function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
-  // Import the route modules directly, NOT the package's bare entry: the mobile
-  // agent bundle stubs `@elizaos/plugin-local-inference` (the heavy Plugin entry)
-  // to a null module, so a bare import yields undefined handlers and every
-  // /api/local-inference/* route 404s on-device. The deep subpaths (the `./*`
-  // wildcard + `./routes` exports) aren't stubbed and carry the real impls on
-  // every platform.
-  localInferenceServerApiPromise ??=
-    (async (): Promise<LocalInferenceServerApi> => {
-      const [routes, ttsRoutes] = await Promise.all([
-        import(
-          /* @vite-ignore */ "@elizaos/plugin-local-inference/local-inference-routes"
-        ) as Promise<
-          Pick<
-            LocalInferenceServerApi,
-            "getLocalInferenceActiveModelId" | "handleLocalInferenceRoutes"
-          >
-        >,
-        import(
-          /* @vite-ignore */ "@elizaos/plugin-local-inference/routes"
-        ) as Promise<
-          Pick<
-            LocalInferenceServerApi,
-            | "handleLocalInferenceTtsRoute"
-            | "handleLocalInferenceAsrRoute"
-            | "handleLiveDiarizationRoute"
-          >
-        >,
-      ]);
-      return {
-        getLocalInferenceActiveModelId: routes.getLocalInferenceActiveModelId,
-        handleLocalInferenceRoutes: routes.handleLocalInferenceRoutes,
-        handleLocalInferenceTtsRoute: ttsRoutes.handleLocalInferenceTtsRoute,
-        handleLocalInferenceAsrRoute: ttsRoutes.handleLocalInferenceAsrRoute,
-        handleLiveDiarizationRoute: ttsRoutes.handleLiveDiarizationRoute,
-      };
-    })().catch((err: unknown) => {
-      // A cold-boot import failure must not poison the memoized promise: `??=`
-      // would otherwise cache the rejection and 404 EVERY /api/local-inference/*
-      // route for the lifetime of the process. Clear the memo so the next request
-      // retries once the deferred plugin closure is resolvable.
-      localInferenceServerApiPromise = null;
-      throw err;
-    });
-  return localInferenceServerApiPromise;
+/**
+ * Combine the route + voice surfaces from the single subpath-owning loader
+ * (`./local-inference-server-api.ts`). The loaders there own the stub/subpath
+ * knowledge and each clear their memo on reject, so a cold-boot import failure
+ * surfaces here and retries on the next request — the same semantics as before,
+ * without this file knowing the plugin's stub layout.
+ */
+async function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
+  const [routeApi, voiceApi] = await Promise.all([
+    loadLocalInferenceRouteApi(),
+    loadLocalInferenceVoiceRouteApi(),
+  ]);
+  return { ...routeApi, ...voiceApi };
 }
 
 async function getOptionalPluginApi<T>(
@@ -341,7 +287,7 @@ function getPluginRegistryApi(): Promise<
   return pluginRegistryApiPromise;
 }
 
-import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
+import { walletDiagnosticDescriptor } from "@elizaos/plugin-wallet/diagnostic";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -355,6 +301,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -428,8 +375,19 @@ import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { createDeliveryDedupeState } from "./delivery-dedupe.ts";
 import { computeCanRespond } from "./health-routes.ts";
+import {
+  type LocalInferenceRouteApi,
+  type LocalInferenceVoiceRouteApi,
+  loadLocalInferenceRouteApi,
+  loadLocalInferenceVoiceRouteApi,
+} from "./local-inference-server-api.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
+import {
+  buildPluginDiagnosticEntry,
+  resolveWalletDiagnosticStatus,
+} from "./plugin-diagnostic.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
+import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -488,7 +446,6 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
-import { tryHandleTrajectoryFallback } from "./trajectory-fallback-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -506,13 +463,6 @@ import {
   selectReplayEvents,
 } from "./ws-event-replay.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
-
-export {
-  executeFallbackParsedActions,
-  type FallbackParsedAction,
-  maybeHandleDirectBinanceSkillRequest,
-  parseFallbackActionBlocks,
-} from "./binance-skill-helpers.ts";
 
 type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
@@ -1551,63 +1501,18 @@ function persistAgentAutomationMode(
   };
 }
 
+/**
+ * Build the EVM wallet diagnostic card from the plugin-owned static descriptor
+ * (identity, config keys, tags, prerequisite labels) merged with the
+ * host-resolved runtime status. No plugin-specific literals live in the host.
+ */
 function buildPluginEvmDiagnosticEntry(
   state: Pick<ServerState, "config" | "runtime">,
 ): PluginEntry {
-  const capability = resolveWalletCapabilityStatus(state);
-  const enabled =
-    capability.pluginEvmLoaded ||
-    capability.pluginEvmRequired ||
-    (state.config.plugins?.allow ?? []).some((entry) => {
-      return (
-        entry === EVM_PLUGIN_PACKAGE || entry === "evm" || entry === "wallet"
-      );
-    });
-
-  const capabilityStatus = capability.pluginEvmLoaded
-    ? capability.pluginEvmRequired
-      ? "loaded"
-      : "auto-enabled"
-    : enabled
-      ? capability.evmAddress || capability.localSignerAvailable
-        ? "blocked"
-        : "missing-prerequisites"
-      : "disabled";
-
-  return {
-    id: "evm",
-    name: "Plugin EVM",
-    description:
-      "EVM wallet runtime for balance, transfer, and trade actions. Required for wallet execution in chat.",
-    tags: ["wallet", "evm", "bsc", "onchain"],
-    enabled,
-    configured: capability.pluginEvmRequired,
-    envKey: "EVM_PRIVATE_KEY",
-    category: "feature",
-    source: "bundled",
-    configKeys: [
-      "EVM_PRIVATE_KEY",
-      "BSC_RPC_URL",
-      "BSC_TESTNET_RPC_URL",
-      "ELIZA_WALLET_NETWORK",
-    ],
-    parameters: [],
-    validationErrors: [],
-    validationWarnings: [],
-    npmName: EVM_PLUGIN_PACKAGE,
-    isActive: capability.pluginEvmLoaded,
-    autoEnabled: capability.pluginEvmRequired && !capability.pluginEvmLoaded,
-    managementMode: "core-optional",
-    capabilityStatus,
-    capabilityReason: capability.executionReady
-      ? "Wallet execution is ready."
-      : capability.executionBlockedReason,
-    prerequisites: [
-      { label: "wallet present", met: Boolean(capability.evmAddress) },
-      { label: "rpc ready", met: capability.rpcReady },
-      { label: "plugin loaded", met: capability.pluginEvmLoaded },
-    ],
-  };
+  return buildPluginDiagnosticEntry(
+    walletDiagnosticDescriptor,
+    resolveWalletDiagnosticStatus(walletDiagnosticDescriptor, state),
+  );
 }
 
 import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.ts";
@@ -1720,6 +1625,7 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
+  resolveBoundaryRole as _resolveBoundaryRole,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
@@ -1743,6 +1649,7 @@ export {
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
 const isAuthorized = _isAuthorized;
+const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isWaifuChatAuthorized = _isWaifuChatAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
@@ -1937,32 +1844,6 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
-  // Webhook exemptions: handlers MUST authenticate callers (see plugin handlers).
-  // WhatsApp: X-Hub-Signature-256 HMAC (WHATSAPP_APP_SECRET).
-  // BlueBubbles: X-BlueBubbles-Webhook-Secret (BLUEBUBBLES_WEBHOOK_SECRET).
-  const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
-  let blueBubblesWebhookPath =
-    pathname === "/webhooks/bluebubbles" ? "/webhooks/bluebubbles" : null;
-  if (pathname.startsWith("/webhooks/")) {
-    const { resolveBlueBubblesWebhookPath } = await getOptionalPluginApi<{
-      resolveBlueBubblesWebhookPath: (args: unknown) => string;
-    }>("imessage");
-    blueBubblesWebhookPath =
-      typeof resolveBlueBubblesWebhookPath === "function"
-        ? resolveBlueBubblesWebhookPath({
-            runtime: state.runtime
-              ? {
-                  getService: (type: string) =>
-                    (
-                      state.runtime as { getService: (t: string) => unknown }
-                    ).getService(type),
-                }
-              : undefined,
-          })
-        : blueBubblesWebhookPath;
-  }
-  const isBlueBubblesWebhookEndpoint =
-    blueBubblesWebhookPath != null && pathname === blueBubblesWebhookPath;
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -2069,24 +1950,15 @@ async function handleRequest(
   // static-UI catch-all, otherwise the SPA index.html is served and the user
   // ends up on the password screen.
   //
-  // Guard the call: in the on-device mobile bundle this app-core export can
-  // come through as `undefined` (circular re-export init order under Bun.build),
-  // and an unguarded call throws on EVERY request — 500-ing /api/auth/status
-  // and wedging the dashboard at "Connecting to backend…". The route is a
-  // cloud-SSO handoff that a local on-device agent never legitimately serves,
-  // so skipping it when unavailable is safe.
-  // Dynamic import (matching the account-pool / vault-mirror seams in this
-  // package) so agent never *statically* imports @elizaos/app-core: the static
-  // import was what produced the circular re-export init-order `undefined`
-  // above, and it is the build-time edge that puts @elizaos/app-core <->
-  // @elizaos/agent in a Turbo dependency cycle (#9626). `.catch(() => null)`
-  // keeps the on-device path graceful when app-core isn't present at all.
-  const cloudPairMod = await import(
-    /* @vite-ignore */ "@elizaos/app-core/api/cloud-pair-route"
-  ).catch(() => null);
+  // The cloud-SSO handoff route is owned by the app-core host and injected
+  // downward through the agent host bridge (see ../runtime/host-bridge.ts) so
+  // agent never imports `@elizaos/app-core`. A local on-device agent never
+  // legitimately serves it, so the bridge omits the handler and the request
+  // falls through to the normal pipeline.
+  const handleCloudPairRoute = getAgentHostBridge().handleCloudPairRoute;
   if (
-    typeof cloudPairMod?.handleCloudPairRoute === "function" &&
-    (await cloudPairMod.handleCloudPairRoute(req, res))
+    typeof handleCloudPairRoute === "function" &&
+    (await handleCloudPairRoute(req, res))
   ) {
     return;
   }
@@ -2108,8 +1980,6 @@ async function handleRequest(
     !isAuthEndpoint &&
     !isHealthEndpoint &&
     !isCloudFirstRunStatusEndpoint &&
-    !isWhatsAppWebhookEndpoint &&
-    !isBlueBubblesWebhookEndpoint &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -2405,7 +2275,7 @@ async function handleRequest(
       error,
       saveConfig: saveElizaConfig,
       loadSubscriptionAuth: async () =>
-        (await import("../auth/index.ts")) as never,
+        (await import("@elizaos/auth")) as never,
     } as never)
   ) {
     return;
@@ -2512,10 +2382,7 @@ async function handleRequest(
     return;
   }
 
-  if (
-    pathname.startsWith("/api/triggers") ||
-    pathname.startsWith("/api/heartbeats")
-  ) {
+  if (pathname.startsWith("/api/triggers")) {
     const { handleTriggerRoutes } = await getOptionalPluginApi<{
       handleTriggerRoutes: (args: unknown) => Promise<boolean>;
     }>("workflow");
@@ -3053,9 +2920,9 @@ async function handleRequest(
               detectRuntimeModel,
             ),
           resolveProviderFromModel,
-          getGlobalAwarenessRegistry: coerce<
-            AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
-          >(getGlobalAwarenessRegistry),
+          getAwarenessRegistry: coerce<
+            AgentStatusRouteArg["deps"]["getAwarenessRegistry"]
+          >(() => state.runtime?.getService("AWARENESS_REGISTRY") ?? null),
           RegistryService,
         },
       });
@@ -3107,7 +2974,7 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
-  // ── BlueBubbles routes (/api/bluebubbles/*, /webhooks/bluebubbles) ──
+  // ── BlueBubbles routes ──────────────────────────────────────────────────
   // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
@@ -3384,9 +3251,8 @@ async function handleRequest(
     const appManager = ctx?.getAppManager
       ? await ctx.getAppManager()
       : (state.appManager as AppManagerLike);
-    const appActorRole: AppsRouteActorRole = isAuthorized(req)
-      ? "OWNER"
-      : "GUEST";
+    // #12087 Item 13: single boundary-role collapse (no inline OWNER/GUEST ternary).
+    const appActorRole: AppsRouteActorRole = resolveBoundaryRole(req);
     if (
       await handleAppsRoutes({
         req,
@@ -3539,6 +3405,21 @@ async function handleRequest(
       error,
       broadcastWs: state.broadcastWs ?? undefined,
       runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
+  if (
+    await handleRuntimeSwitchRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      broadcastWs: state.broadcastWs ?? undefined,
     })
   ) {
     return;
@@ -3699,13 +3580,13 @@ async function handleRequest(
     return;
   }
 
-  // ── Trajectory read fallback ────────────────────────────────────────────
+  // ── Trajectory read routes (owned by core TrajectoriesService) ──────────
   // Serves GET /api/trajectories[/:id|/stats] from the core TrajectoriesService
   // when no plugin owns the route (mobile / training disabled), so the realtime
   // trajectory viewer works without @elizaos/plugin-training. Runs AFTER the
   // plugin routes above, so plugin-training's richer route wins when present.
   if (
-    await tryHandleTrajectoryFallback({
+    await tryHandleTrajectoryReadRoutes({
       pathname,
       method,
       url,
@@ -3760,6 +3641,15 @@ export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
   skipDeferredStartupWork?: boolean;
+  /**
+   * Skip binding a TCP listener. The HTTP `server` object, all routes, and the
+   * in-process `dispatchRoute` kernel are still fully wired up — only
+   * `server.listen(...)` is not called, so the process opens no port. Used by
+   * local-agent IPC transports (stdio bridge / Capacitor / Electrobun RPC) that
+   * reach the route kernel without an HTTP socket. Unset/false → identical to
+   * the current listening behavior.
+   */
+  skipListen?: boolean;
   /** Initial state when starting without a runtime (e.g. embedded startup flow). */
   initialAgentState?: "not_started" | "starting" | "stopped" | "error";
   /**
@@ -4196,18 +4086,28 @@ export async function startApiServer(opts?: {
     isMobilePlatform() ||
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
   ) {
-    void getOptionalPluginApi<{
-      attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
-    }>("capacitor")
-      .then(({ attachMobileDeviceBridgeToServer }) =>
-        attachMobileDeviceBridgeToServer(server),
-      )
-      .catch((err: unknown) => {
-        logger.warn(
-          "[eliza-api] Failed to attach mobile device bridge:",
-          err instanceof Error ? err.message : String(err),
-        );
-      });
+    // Defer to a macrotask: resolving @elizaos/plugin-capacitor-bridge (and its
+    // device-bridge attach) measured ~15s of blocking on the mobile bundle and
+    // — because it sat on the synchronous pre-`server.listen` path — held the
+    // whole API bind (and the boot screen) hostage for that entire time (#11903).
+    // The bridge only needs to attach a WS upgrade handler to the server object,
+    // which works fine once the server is already listening.
+    setImmediate(() => {
+      void getOptionalPluginApi<{
+        attachMobileDeviceBridgeToServer: (
+          server: http.Server,
+        ) => Promise<void>;
+      }>("capacitor")
+        .then(({ attachMobileDeviceBridgeToServer }) =>
+          attachMobileDeviceBridgeToServer(server),
+        )
+        .catch((err: unknown) => {
+          logger.warn(
+            "[eliza-api] Failed to attach mobile device bridge:",
+            err instanceof Error ? err.message : String(err),
+          );
+        });
+    });
   }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
@@ -4492,18 +4392,13 @@ export async function startApiServer(opts?: {
             "[eliza-api] @elizaos/plugin-streaming did not export handleStreamRoute; skipping streaming route registration.",
           );
         }
-        // Screen capture manager is injected by the desktop host via globalThis
-        const screenCapture = (globalThis as Record<string, unknown>)
-          .__elizaScreenCapture as
-          | {
-              isFrameCaptureActive(): boolean;
-              startFrameCapture(opts: {
-                fps?: number;
-                quality?: number;
-                endpoint?: string;
-              }): Promise<void>;
-            }
-          | undefined;
+        // Desktop screen-capture bridge, resolved lazily from the current
+        // runtime. Desktop startup can bind streaming routes before the runtime
+        // service is registered, then updateRuntime hot-swaps state.runtime.
+        const resolveScreenCapture = (): IScreenCaptureService | undefined =>
+          state.runtime?.getService<IScreenCaptureService>(
+            ServiceType.SCREEN_CAPTURE,
+          ) ?? undefined;
 
         // Build destination registry — all configured destinations
         const _connectors = state.config.connectors ?? {};
@@ -4612,7 +4507,9 @@ export async function startApiServer(opts?: {
         const streamState = {
           streamManager,
           port,
-          screenCapture,
+          get screenCapture() {
+            return resolveScreenCapture();
+          },
           captureUrl: undefined as string | undefined,
           destinations,
           activeDestinationId,
@@ -5572,6 +5469,97 @@ export async function startApiServer(opts?: {
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
   await assertX402RoutesValid(state.runtime);
+
+  // Shared teardown for connectors/streams/websockets that runs regardless of
+  // whether a TCP listener was bound. Kept as a closure so the skip-listen path
+  // and the listening path perform identical cleanup minus the socket close.
+  const stopServerSideResources = (): void => {
+    clearInterval(statusInterval);
+    if (state.connectorHealthMonitor) {
+      state.connectorHealthMonitor.stop();
+      state.connectorHealthMonitor = null;
+    }
+    if (detachRuntimeStreams) {
+      detachRuntimeStreams();
+      detachRuntimeStreams = null;
+    }
+    if (detachTrainingStream) {
+      detachTrainingStream();
+      detachTrainingStream = null;
+    }
+    for (const ws of wsClients) {
+      if (ws.readyState === 1 || ws.readyState === 0) {
+        if ("terminate" in ws && typeof ws.terminate === "function") {
+          ws.terminate();
+        } else {
+          ws.close();
+        }
+      }
+    }
+    wsClients.clear();
+    if (state.whatsappPairingSessions) {
+      for (const s of state.whatsappPairingSessions.values()) {
+        try {
+          s.stop();
+        } catch {
+          /* non-fatal */
+        }
+      }
+      state.whatsappPairingSessions.clear();
+    }
+    if (state.signalPairingSessions) {
+      for (const s of state.signalPairingSessions.values()) {
+        try {
+          s.stop();
+        } catch {
+          /* non-fatal */
+        }
+      }
+      state.signalPairingSessions.clear();
+    }
+    if (state.telegramAccountAuthSession) {
+      void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
+        () => {
+          /* non-fatal */
+        },
+      );
+      state.telegramAccountAuthSession = null;
+    }
+    wss.close();
+  };
+
+  // Local-agent IPC mode: skip binding a TCP listener entirely. Routes and the
+  // in-process dispatchRoute kernel are already wired (server built above), so
+  // an IPC transport (stdio bridge / Capacitor / Electrobun RPC) can drive them
+  // without opening a port.
+  if (opts?.skipListen) {
+    apiLap("skipListen (no TCP bind)");
+    addLog(
+      "info",
+      "API server initialized without a TCP listener (skipListen)",
+      "system",
+      ["server", "system"],
+    );
+    logger.info(
+      "[eliza-api] Started without binding a TCP listener (skipListen; local-agent IPC mode)",
+    );
+    if (!opts?.skipDeferredStartupWork) {
+      void startDeferredStartupWork();
+    }
+    return {
+      port,
+      close: () =>
+        new Promise<void>((r) => {
+          void Promise.resolve().then(() => {
+            stopServerSideResources();
+            r();
+          });
+        }),
+      updateRuntime,
+      updateStartup,
+    };
+  }
+
   return new Promise((resolve, reject) => {
     let currentPort = port;
     const strictPortBinding = strictPortBindingEnabled();
@@ -5641,60 +5629,7 @@ export async function startApiServer(opts?: {
                 server as { closeIdleConnections?: () => void }
               ).closeIdleConnections;
 
-              clearInterval(statusInterval);
-              if (state.connectorHealthMonitor) {
-                state.connectorHealthMonitor.stop();
-                state.connectorHealthMonitor = null;
-              }
-              if (detachRuntimeStreams) {
-                detachRuntimeStreams();
-                detachRuntimeStreams = null;
-              }
-              if (detachTrainingStream) {
-                detachTrainingStream();
-                detachTrainingStream = null;
-              }
-              for (const ws of wsClients) {
-                if (ws.readyState === 1 || ws.readyState === 0) {
-                  if ("terminate" in ws && typeof ws.terminate === "function") {
-                    ws.terminate();
-                  } else {
-                    ws.close();
-                  }
-                }
-              }
-              wsClients.clear();
-              // Clean up WhatsApp pairing sessions
-              if (state.whatsappPairingSessions) {
-                for (const s of state.whatsappPairingSessions.values()) {
-                  try {
-                    s.stop();
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
-                state.whatsappPairingSessions.clear();
-              }
-              // Clean up Signal pairing sessions
-              if (state.signalPairingSessions) {
-                for (const s of state.signalPairingSessions.values()) {
-                  try {
-                    s.stop();
-                  } catch {
-                    /* non-fatal */
-                  }
-                }
-                state.signalPairingSessions.clear();
-              }
-              if (state.telegramAccountAuthSession) {
-                void Promise.resolve(
-                  state.telegramAccountAuthSession.stop(),
-                ).catch(() => {
-                  /* non-fatal */
-                });
-                state.telegramAccountAuthSession = null;
-              }
-              wss.close();
+              stopServerSideResources();
               const closeTimeout = setTimeout(() => r(), 5_000);
               const resolved = { done: false };
               const finalize = () => {

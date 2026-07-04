@@ -286,4 +286,33 @@ describe("mediaFileRoute", () => {
     } as never);
     expect(result?.status).toBe(404);
   });
+
+  it("forwards a Range header → 206 with the requested byte slice", async () => {
+    // The native scheme handlers (iOS/Android/Electrobun) dispatch media over
+    // this in-process route; a forwarded `Range` header is what lets an
+    // `<audio>`/`<video>` element seek. `dispatchRoute` lowercases request
+    // headers, so the handler reads `ctx.headers.range`.
+    const { fileName } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const result = await mediaFileRoute.routeHandler?.({
+      params: { filename: fileName },
+      method: "GET",
+      headers: { range: "bytes=3-6" },
+    } as never);
+    expect(result?.status).toBe(206);
+    expect(result?.headers?.["Content-Range"]).toBe("bytes 3-6/10");
+    expect(result?.headers?.["Accept-Ranges"]).toBe("bytes");
+    expect((result?.body as Buffer).equals(Buffer.from("3456"))).toBe(true);
+  });
+
+  it("serves the full 200 when no Range header is present", async () => {
+    const { fileName } = persistMediaBytes(Buffer.from("full-body"), "audio/mpeg");
+    const result = await mediaFileRoute.routeHandler?.({
+      params: { filename: fileName },
+      method: "GET",
+      headers: {},
+    } as never);
+    expect(result?.status).toBe(200);
+    expect(result?.headers?.["Accept-Ranges"]).toBe("bytes");
+    expect((result?.body as Buffer).equals(Buffer.from("full-body"))).toBe(true);
+  });
 });

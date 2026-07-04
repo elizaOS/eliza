@@ -35,6 +35,7 @@ import {
 } from "../../types.ts";
 import {
   type InboxChannelFilter,
+  type InboxDegradedSource,
   type InboxSnapshot,
   InboxSpatialView,
   type InboxStatus,
@@ -69,10 +70,25 @@ interface InboxChannelCountWire {
   unread: number;
 }
 
+interface InboxSourceDegradationWire {
+  axis: string;
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface InboxSourceStatusWire {
+  source: string;
+  state: string;
+  degradations: InboxSourceDegradationWire[];
+}
+
 interface InboxWire {
   messages: InboxMessageWire[];
   channelCounts: Record<string, InboxChannelCountWire>;
   fetchedAt: string;
+  /** Per-source connector health (`LifeOpsInboxSourceStatus` in shared). */
+  sources: InboxSourceStatusWire[];
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +163,36 @@ function connectedChannels(
   });
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  gmail: "Gmail",
+  x_dm: "X DMs",
+  chat: "Chat channels",
+};
+
+/**
+ * Map the server's per-source health onto banner rows. Only `degraded`
+ * sources render — `disconnected` sources are handled by the connect empty
+ * state, and `ok` sources need no chrome. The wire payload is validated at
+ * this boundary because it crosses a JSON edge.
+ */
+function mapDegradedSources(
+  sources: InboxSourceStatusWire[],
+): InboxDegradedSource[] {
+  const degraded: InboxDegradedSource[] = [];
+  for (const status of sources) {
+    if (status.state !== "degraded") continue;
+    const messages = status.degradations
+      .map((entry) => entry.message)
+      .filter((message) => typeof message === "string" && message.length > 0);
+    degraded.push({
+      source: status.source,
+      label: SOURCE_LABELS[status.source] ?? status.source,
+      message: messages[0] ?? "This connector is degraded.",
+    });
+  }
+  return degraded;
+}
+
 /**
  * Proactive one-liner (DESIGN LAW 10): the agent noticing unread threads that
  * still need a reply. Returns null when nothing is unread so the line is absent
@@ -173,6 +219,13 @@ function requestConnect(): void {
   sendChatPrompt("Connect a messaging channel so you can triage my inbox.");
 }
 
+function requestReconnect(source: InboxDegradedSource | undefined): void {
+  if (!source) return;
+  sendChatPrompt(
+    `Reconnect ${source.label} for my inbox — the connector is degraded: ${source.message}`,
+  );
+}
+
 function requestOpen(item: InboxItem | undefined): void {
   if (!item) return;
   const title = item.subject ?? item.sender;
@@ -189,6 +242,8 @@ interface InboxData {
   items: InboxItem[];
   /** Channels that reported at least one message in the payload. */
   connected: InboxChannel[];
+  /** Connector sources the server flagged as degraded for this payload. */
+  degradedSources: InboxDegradedSource[];
 }
 
 type LoadState =
@@ -224,7 +279,13 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
           .filter((item): item is InboxItem => item !== null);
         setState({
           kind: "ready",
-          data: { items, connected: connectedChannels(wire.channelCounts) },
+          data: {
+            items,
+            connected: connectedChannels(wire.channelCounts),
+            degradedSources: mapDegradedSources(
+              Array.isArray(wire.sources) ? wire.sources : [],
+            ),
+          },
         });
       })
       .catch((error: unknown) => {
@@ -281,6 +342,17 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
         requestOpen(items.find((item) => item.id === id));
         return;
       }
+      if (action.startsWith("reconnect:")) {
+        const source = action.slice("reconnect:".length);
+        requestReconnect(
+          state.kind === "ready"
+            ? state.data.degradedSources.find(
+                (entry) => entry.source === source,
+              )
+            : undefined,
+        );
+        return;
+      }
       switch (action) {
         case "retry":
           load(activeList);
@@ -290,7 +362,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
           return;
       }
     },
-    [items, load, activeList],
+    [items, load, activeList, state],
   );
 
   const filters: InboxChannelFilter[] = useMemo(() => {
@@ -325,6 +397,7 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
       activeFilterCount: activeChannels.size,
       hasConnectedChannels:
         state.kind === "ready" && state.data.connected.length > 0,
+      degradedSources: state.kind === "ready" ? state.data.degradedSources : [],
       nudge: unreadNudge(items),
       error: state.kind === "error" ? state.message : null,
     };

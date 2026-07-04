@@ -57,6 +57,18 @@ export interface RegistryAppMeta {
    * `getMainTabApp()` in `@elizaos/app-core` at boot.
    */
   mainTab?: boolean;
+  /**
+   * Declared catalog home section (`games` | `developerUtilities` | `finance`
+   * | `other`), sourced from `package.json` → `elizaos.app.catalogSection`.
+   * When absent the section is derived from `category`/keywords.
+   */
+  catalogSection?: string;
+  /** Promote the app into the Featured catalog section. */
+  featured?: boolean;
+  /** Hide the app from the catalog by default (see `scope` for wallet reveal). */
+  defaultHidden?: boolean;
+  /** Capability scope gating default visibility (`"wallet"`). */
+  scope?: string;
 }
 
 export interface RegistryPluginInfo {

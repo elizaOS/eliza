@@ -1,3 +1,7 @@
+/**
+ * Current-conditions weather for the home weather widget, sourced from Open-Meteo
+ * with permission-gated geolocation and all network/clock work in effects.
+ */
 import * as React from "react";
 
 /**

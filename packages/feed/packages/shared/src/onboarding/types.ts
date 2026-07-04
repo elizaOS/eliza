@@ -1,3 +1,7 @@
+/**
+ * Payload shape submitted when a new player completes the onboarding profile step —
+ * carries identity fields, optional imported social accounts, and legal acceptance flags.
+ */
 export interface OnboardingProfilePayload {
   username: string;
   displayName?: string;

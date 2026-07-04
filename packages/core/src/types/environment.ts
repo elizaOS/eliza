@@ -1,3 +1,9 @@
+/**
+ * Social-graph and world-model types: `Entity`, `Component`, `Room`, `World`,
+ * `Participant`, `Relationship`, and the `Role` enum for world-scoped access
+ * control. These model who and where an agent is interacting with; consumed
+ * throughout memory, messaging, and the trust/roles subsystems.
+ */
 import type { ChannelType, Metadata, UUID } from "./primitives";
 import type { WorldSettings } from "./settings";
 

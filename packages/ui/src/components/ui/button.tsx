@@ -1,3 +1,11 @@
+/**
+ * The kit's base button and its cva `buttonVariants` (default/destructive/
+ * outline/secondary/ghost/link × size). The canonical primitive in
+ * components/ui — other components (alert-dialog, banner, …) reuse
+ * `buttonVariants` rather than restyling their own buttons. `asChild` renders
+ * the styling onto a Radix Slot child so links can adopt button appearance.
+ * Accent-orange resting → darker-orange hover per the brand hover system.
+ */
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
@@ -42,11 +50,21 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
+  unstyled?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { className, variant, size, asChild = false, style, type, ...props },
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      style,
+      type,
+      unstyled = false,
+      ...props
+    },
     ref,
   ) => {
     const Comp = asChild ? Slot : "button";
@@ -57,7 +75,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const resolvedType = asChild ? type : (type ?? "button");
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={
+          unstyled
+            ? cn(className)
+            : cn(buttonVariants({ variant, size, className }))
+        }
         ref={ref}
         style={style}
         type={resolvedType}

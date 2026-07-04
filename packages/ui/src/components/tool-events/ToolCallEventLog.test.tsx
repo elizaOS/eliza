@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Behaviour coverage for ToolCallEventLog + its display-state helper: real render
+ * in jsdom (lucide icons stubbed) asserting the tool name, arg/result previews,
+ * and success/running/failure states.
+ */
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

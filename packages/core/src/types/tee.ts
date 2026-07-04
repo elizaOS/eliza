@@ -1,3 +1,11 @@
+/**
+ * Legacy plugin-tee attestation shapes (`TEEMode`, `TeeAgent`,
+ * `RemoteAttestationQuote`, …) modeling the original Phala/dstack deterministic
+ * key-derivation + TDX-quote surface. NOT the trust contract the agent boot path
+ * uses — the canonical, provider-neutral evidence + fail-closed policy lives in
+ * `packages/agent/src/services/tee-evidence.ts` and `tee-policy.ts`; add new
+ * confidential-compute fields there, not here.
+ */
 import type { JsonObject } from "./primitives";
 
 /**

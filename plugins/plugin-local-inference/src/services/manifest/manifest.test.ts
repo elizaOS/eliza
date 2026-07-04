@@ -1,3 +1,4 @@
+/** Validates the Eliza-1 bundle manifest schema constants and `validateManifest` accept/reject behavior. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	canSetAsDefault,

@@ -87,6 +87,10 @@ export interface CorpusTurnLabel {
 	isOwner?: boolean;
 	/** The agent's spoken reply to this turn (drives the echo gate downstream). */
 	agentReplyText?: string;
+	/** True when this turn arrives while the agent is mid-TTS (a barge-in). */
+	bargeIn?: boolean;
+	/** Ground truth: a {@link bargeIn} turn that MUST hard-stop the agent's TTS. */
+	expectBargeInCancel?: boolean;
 }
 
 /**
@@ -334,6 +338,10 @@ export async function generateVoiceCorpus(
 			...(turn.isAgentEcho ? { isAgentEcho: true } : {}),
 			...(participant?.isOwner ? { isOwner: true } : {}),
 			...(turn.agentReplyText ? { agentReplyText: turn.agentReplyText } : {}),
+			...(turn.bargeIn ? { bargeIn: true } : {}),
+			...(turn.expectBargeInCancel !== undefined
+				? { expectBargeInCancel: turn.expectBargeInCancel }
+				: {}),
 		});
 	}
 

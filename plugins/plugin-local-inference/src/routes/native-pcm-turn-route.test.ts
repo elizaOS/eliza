@@ -1,3 +1,8 @@
+/**
+ * Tests for the native-PCM voice-turn route: PCM/sample-rate validation and
+ * engine dispatch. `localInferenceEngine` is mocked, so no real voice turn runs.
+ */
+
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { logger } from "@elizaos/core";

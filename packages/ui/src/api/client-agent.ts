@@ -1919,25 +1919,29 @@ function connectorAccountOAuthPath(
   return `/api/connectors/${encodeURIComponent(provider)}/oauth/${action}`;
 }
 
+/**
+ * Server connector-account role → UI role mapping (#12087 Item 32). Keys are the
+ * uppercased server role strings; the value is the UI bucket. A server role NOT
+ * in this table is genuinely unknown and maps to `undefined` — it is NOT
+ * silently relabelled `OWNER` (the fail-open mislabel this replaced).
+ */
+export const CONNECTOR_SERVER_ROLE_TO_UI_ROLE: Readonly<
+  Record<string, ConnectorAccountRole>
+> = {
+  OWNER: "OWNER",
+  AGENT: "AGENT",
+  SERVICE: "AGENT",
+  TEAM: "TEAM",
+  ADMIN: "TEAM",
+  MEMBER: "TEAM",
+  VIEWER: "TEAM",
+};
+
 function normalizeConnectorAccountRole(
   value: unknown,
 ): ConnectorAccountRole | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
-  const normalized = value.trim().toUpperCase();
-  switch (normalized) {
-    case "OWNER":
-      return "OWNER";
-    case "AGENT":
-    case "SERVICE":
-      return "AGENT";
-    case "TEAM":
-    case "ADMIN":
-    case "MEMBER":
-    case "VIEWER":
-      return "TEAM";
-    default:
-      return undefined;
-  }
+  return CONNECTOR_SERVER_ROLE_TO_UI_ROLE[value.trim().toUpperCase()];
 }
 
 function normalizeConnectorStatus(value: unknown): ConnectorAccountStatus {
@@ -2014,16 +2018,19 @@ function connectorAccountMetadata(
     : undefined;
 }
 
-function normalizeConnectorAccountRecord(
+export function normalizeConnectorAccountRecord(
   provider: string,
   connectorId: string,
   raw: unknown,
 ): ConnectorAccountRecord {
   const record = recordFromUnknown(raw);
+  // #12087 Item 32: an unrecognized/missing server role stays `undefined` — it
+  // is NOT defaulted to OWNER. The UI renders such accounts outside the Owner
+  // section (ConnectorAccountList "UNKNOWN" bucket) rather than mislabelling
+  // them as the owner's own account.
   const role =
     normalizeConnectorAccountRole(record.role) ??
-    normalizeConnectorAccountRole(record.purpose) ??
-    "OWNER";
+    normalizeConnectorAccountRole(record.purpose);
   return {
     ...(record as Partial<ConnectorAccountRecord>),
     id: String(record.id ?? ""),

@@ -1,3 +1,7 @@
+/**
+ * Storybook config for the UI library: story globs, addons, and the Vite
+ * builder wiring.
+ */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, extname, resolve } from "node:path";

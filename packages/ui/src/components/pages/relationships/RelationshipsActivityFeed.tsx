@@ -1,3 +1,10 @@
+/**
+ * Paginated activity feed for the Relationships workspace: streams recent
+ * relationship events (new identities, links, tag changes) from the
+ * relationships API and renders them grouped by day with type icons. A sidebar
+ * panel within RelationshipsWorkspaceView.
+ */
+
 import { Fingerprint, Link2, Tags } from "lucide-react";
 import { type ComponentType, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";

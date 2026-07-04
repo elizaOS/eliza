@@ -1,0 +1,15 @@
+    143|   expect(prepared?.links[0]?.url).toBe("https://example.com/article");
+    144|   expect(prepared?.links[0]?.title).toBe("Example Domain & Friends");
+       |                                     ^
+    145|   expect(prepared?.links[0]?.summary).toContain("Example Domain");
+    146|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 307 passed (308)
+      Tests  1 failed | 2692 passed | 11 skipped (2704)
+   Start at  08:12:26
+   Duration  140.74s (transform 10.10s, setup 0ms, import 63.53s, tests 24.55s, environment 44ms)
+
+error: script "test" exited with code 1

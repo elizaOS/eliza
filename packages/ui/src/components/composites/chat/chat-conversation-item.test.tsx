@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Renders ChatConversationItem in jsdom and asserts row selection, the
+ * more-actions/right-click menus, the game-modal inline rename+delete, the
+ * delete-confirm flow, and mobile long-press (with trailing-click suppression).
+ * RTL, no live model.
+ */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

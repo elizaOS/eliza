@@ -134,6 +134,7 @@ describe("ContactsView — list -> detail", () => {
     expect(events[0]?.detail).toMatchObject({
       viewId: "phone",
       viewPath: "/phone",
+      payload: { number: "+15550200" },
     });
   });
 
@@ -155,6 +156,7 @@ describe("ContactsView — list -> detail", () => {
     expect(events[0]?.detail).toMatchObject({
       viewId: "messages",
       viewPath: "/messages",
+      payload: { recipient: "+15550200" },
     });
   });
 

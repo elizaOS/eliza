@@ -1,4 +1,12 @@
 // @vitest-environment jsdom
+//
+// SensitiveRequestBlock in MessageContent: public requests render status-only
+// (no input); owner-private ones render a secret form; success shows status
+// without leaking the submitted value; tunneled sub-agent credentials go through
+// the tunnel endpoint (not global secrets); image/file fields upload via
+// updateSecrets and enforce maxBytes; OAuth requests show a Connect button that
+// opens the auth URL in a popup and never prints the URL in chat. jsdom render
+// with the typed ElizaClient mocked (no backend).
 
 import type { PermissionState } from "@elizaos/shared";
 import {

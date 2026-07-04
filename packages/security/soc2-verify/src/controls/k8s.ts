@@ -1,3 +1,7 @@
+/**
+ * SOC2 checks for Kubernetes workload hardening and network policy coverage.
+ */
+
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";

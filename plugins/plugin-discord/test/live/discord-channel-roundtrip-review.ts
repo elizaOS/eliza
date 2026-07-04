@@ -1,3 +1,9 @@
+/**
+ * Live manual-review harness: reads a real Discord bot token from a character
+ * config and drives a channel send/receive round-trip against the live Discord
+ * API, printing a report (including the bot reply) for hand review. Requires
+ * real credentials; not a deterministic unit test.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

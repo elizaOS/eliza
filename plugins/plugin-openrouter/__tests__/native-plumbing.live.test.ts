@@ -1,3 +1,8 @@
+/**
+ * Live test (real OpenRouter API via `describeLive`, self-skips without a key):
+ * drives `handleTextSmall` with native messages and asserts it returns real text
+ * with populated token usage.
+ */
 import { expect, it } from "vitest";
 
 import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";

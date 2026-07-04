@@ -1,96 +1,89 @@
 /**
- * Real-browser screenshot pass for the /chat ambient background — no app server.
- * Bundles chat-ambient-fixture.tsx with esbuild, loads it in headless chromium,
- * and captures the gentle warm pulse at each phase (warm-white rim ↔ brand-orange
- * rim) by sampling the 30s CSS animation. Also verifies a reduced-motion load
- * holds a still orange field.
+ * Real-browser screenshot + video pass for the /chat ambient background — no app
+ * server. Bundles chat-ambient-fixture.tsx, loads it in headless Chromium, and
+ * captures the gentle warm pulse at each phase (warm-white rim ↔ brand-orange
+ * rim) by sampling the 30s CSS animation while recording a .webm; then verifies a
+ * reduced-motion load holds a still orange field. Mechanics come from the shared
+ * e2e-runner.
  *
  * Run: bun run --cwd packages/ui test:chat-ambient-e2e
  */
-import { mkdir, writeFile } from "node:fs/promises";
+
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { chromium } from "playwright";
+import {
+  createAssertGate,
+  createSnapper,
+  finishRun,
+  renameRecordedVideo,
+  withChromium,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
+const videoDir = join(outDir, "video");
 await mkdir(outDir, { recursive: true });
+await mkdir(videoDir, { recursive: true });
 
-let failures = 0;
-function assert(cond, msg) {
-  console.log(`${cond ? "✓" : "✗"} ${msg}`);
-  if (!cond) failures += 1;
-}
+const gate = createAssertGate();
+const snap = createSnapper({ outDir, prefix: "ambient-" });
+const errors = [];
 
-const result = await build({
-  entryPoints: [join(here, "chat-ambient-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  write: false,
+const url = await writeFixturePage({
+  entry: join(here, "chat-ambient-fixture.tsx"),
+  outDir,
+  htmlName: "chat-ambient.html",
+  title: "chat ambient e2e",
 });
-const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat ambient e2e</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>html,body{margin:0;height:100%}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "chat-ambient.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
 
-let shot = 0;
-async function snap(p, name) {
-  shot += 1;
-  const file = `ambient-${String(shot).padStart(2, "0")}-${name}.png`;
-  await p.screenshot({ path: join(outDir, file) });
-  console.log(`  📸 ${file}`);
-}
+const viewport = { width: 1180, height: 820 };
 
-const sink = { errors: [] };
-const browser = await chromium.launch();
-try {
-  const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
-  p.on("pageerror", (e) => sink.errors.push(String(e)));
-  await p.goto(url);
-  await p.waitForSelector('[data-testid="app-background-shader"]');
-  await p.waitForTimeout(400);
-  assert(
-    (await p.locator('[data-testid="app-background-shader"]').count()) === 1,
+await withChromium({}, async (browser) => {
+  // Phase page: record the 30s warm pulse across its named peaks.
+  const context = await browser.newContext({
+    viewport,
+    recordVideo: { dir: videoDir, size: viewport },
+  });
+  const phase = await context.newPage();
+  phase.on("pageerror", (e) => errors.push(String(e)));
+  await phase.goto(url);
+  await phase.waitForSelector('[data-testid="app-background-shader"]');
+  await phase.waitForTimeout(400);
+  gate.assert(
+    (await phase.locator('[data-testid="app-background-shader"]').count()) === 1,
     "ambient background mounts",
   );
 
   // 30s loop: warm-white rim peaks at 0%/100%, brand-orange rim peaks at 50%
   // (15s). Sample each phase by waiting real time between captures.
-  await snap(p, "phase-white-rim"); // ~t=0.4s, warm-white rim peak
-  await p.waitForTimeout(7600);
-  await snap(p, "phase-mid"); // ~t=8s, crossfade
-  await p.waitForTimeout(7000);
-  await snap(p, "phase-orange-rim"); // ~t=15s, brand-orange rim peak
-  await p.close();
+  await snap(phase, "phase-white-rim"); // ~t=0.4s, warm-white rim peak
+  await phase.waitForTimeout(7600);
+  await snap(phase, "phase-mid"); // ~t=8s, crossfade
+  await phase.waitForTimeout(7000);
+  await snap(phase, "phase-orange-rim"); // ~t=15s, brand-orange rim peak
+  await phase.close(); // flush the video
+  await context.close();
 
   // Reduced motion: a still orange field (no pulse).
-  const rm = await browser.newPage({ viewport: { width: 1180, height: 820 } });
-  rm.on("pageerror", (e) => sink.errors.push(String(e)));
+  const rm = await browser.newPage({ viewport });
+  rm.on("pageerror", (e) => errors.push(String(e)));
   await rm.emulateMedia({ reducedMotion: "reduce" });
   await rm.goto(url);
   await rm.waitForSelector('[data-testid="app-background-shader"]');
   await rm.waitForTimeout(500);
   await snap(rm, "reduced-motion-still");
   await rm.close();
-} finally {
-  await browser.close();
-}
+});
 
-assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length})`);
-if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
+await renameRecordedVideo({ videoDir, outDir, name: "chat-ambient-pulse.webm" });
 
-console.log(`\nScreenshots (${shot}) written to ${outDir}`);
-if (failures > 0) {
-  console.error(`\nCHAT-AMBIENT E2E FAILED (${failures} assertion(s))`);
-  process.exit(1);
-}
-console.log("\nCHAT-AMBIENT E2E PASSED");
+gate.assert(errors.length === 0, `no uncaught page errors (${errors.length})`);
+if (errors.length) for (const e of errors) console.error(`  ⚠ ${e}`);
+
+finishRun({
+  failures: gate.failures,
+  passMessage: "\nCHAT-AMBIENT E2E PASSED",
+  failMessage: `\nCHAT-AMBIENT E2E FAILED (${gate.failures} assertion(s))`,
+});

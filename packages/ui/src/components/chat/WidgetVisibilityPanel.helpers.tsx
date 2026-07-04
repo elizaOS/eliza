@@ -1,3 +1,9 @@
+/**
+ * Synthesizes the "Apps" section as a toggleable row in WidgetVisibilityPanel.
+ * The apps section is not a registered widget, so its visibility candidate is
+ * built here from `APPS_SECTION_VISIBILITY_KEY` and listed alongside the real
+ * widgets. Split from the panel so the JSX-carrying helper can be tested apart.
+ */
 import { LayoutGrid } from "lucide-react";
 import { APPS_SECTION_VISIBILITY_KEY } from "../../widgets/visibility";
 import type { WidgetVisibilityCandidate } from "./WidgetVisibilityPanel";

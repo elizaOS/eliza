@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the connector-dispatch capture in interceptor.ts, exercising
+ * `captureConnectorDispatchesFromAction` directly (no runtime) to pin down when
+ * a dispatch is marked delivered.
+ */
 import type { CapturedConnectorDispatch } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import { captureConnectorDispatchesFromAction } from "./interceptor.ts";
@@ -27,9 +32,10 @@ describe("captureConnectorDispatchesFromAction delivered default", () => {
   });
 
   it("defaults delivered to false when no boolean success is present", () => {
-    // Previously this defaulted to true, letting a "messageDelivered" final
-    // check pass on a handler that never reported success. The safe default
-    // mirrors the action-result success capture (undefined, never true).
+    // Absent an explicit boolean success, delivered stays false so a
+    // "messageDelivered" final check cannot pass on a handler that never
+    // reported success. Mirrors the action-result success capture (undefined,
+    // never true).
     const dispatches: CapturedConnectorDispatch[] = [];
     captureConnectorDispatchesFromAction(
       dispatches,

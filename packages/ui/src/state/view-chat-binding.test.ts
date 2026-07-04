@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * The view↔chat binding registry (`view-chat-binding`): the module-level
+ * current binding and the `useRegisterViewChatBinding` hook that sets it on
+ * mount and clears it on unmount. Real hook under jsdom.
+ */
 import { cleanup, render } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

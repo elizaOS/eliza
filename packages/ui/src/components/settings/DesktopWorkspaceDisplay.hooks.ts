@@ -1,3 +1,10 @@
+/**
+ * Formats a DesktopWorkspaceSnapshot into the multi-line diagnostics blob shown
+ * by DesktopWorkspaceDisplay — one line per display, plus power/idle, primary
+ * display, clipboard formats, and resolved paths. `useDesktopDiagnosticsText`
+ * memoizes the render.
+ */
+
 import { useMemo } from "react";
 import type { TranslateFn } from "../../types";
 import {

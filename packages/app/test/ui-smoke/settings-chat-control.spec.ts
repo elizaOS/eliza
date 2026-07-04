@@ -2,7 +2,7 @@
 // agent surface (the same path chat uses — view-interact → registry) must expose
 // the section's controls, and agent-fill / agent-click must actually mutate them.
 // Deterministic, keyless against the stub. No LLM — drives the registry directly
-// through window.__ELIZA_VIEW_INTERACT__ (the debug bridge over dispatchViewInteract).
+// through window.__ELIZA_BRIDGE__.viewInteract (the debug bridge over dispatchViewInteract).
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -31,12 +31,14 @@ interface AgentElement {
 
 declare global {
   interface Window {
-    __ELIZA_VIEW_INTERACT__?: (
-      viewId: string,
-      viewType: string,
-      capability: string,
-      params?: Record<string, unknown>,
-    ) => Promise<unknown>;
+    __ELIZA_BRIDGE__?: {
+      readonly viewInteract?: (
+        viewId: string,
+        viewType: string,
+        capability: string,
+        params?: Record<string, unknown>,
+      ) => Promise<unknown>;
+    };
   }
 }
 
@@ -47,7 +49,7 @@ async function interact(
 ): Promise<unknown> {
   return page.evaluate(
     async ({ capability, params }) => {
-      const bridge = window.__ELIZA_VIEW_INTERACT__;
+      const bridge = window.__ELIZA_BRIDGE__?.viewInteract;
       if (!bridge) throw new Error("view-interact bridge not installed");
       return bridge("settings", "gui", capability, params);
     },
@@ -80,7 +82,7 @@ test.describe("settings is fully chat-drivable", () => {
       .poll(
         () =>
           page.evaluate(
-            () => typeof window.__ELIZA_VIEW_INTERACT__ === "function",
+            () => typeof window.__ELIZA_BRIDGE__?.viewInteract === "function",
           ),
         { timeout: 30_000 },
       )

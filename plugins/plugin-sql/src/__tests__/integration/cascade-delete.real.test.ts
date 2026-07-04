@@ -1,3 +1,8 @@
+/**
+ * Verifies that deleting an agent cascades through world, room, entity,
+ * memory, task, and cache rows created for that agent, and that deleting an
+ * agent with no related data (or a non-existent agent) is handled cleanly.
+ */
 import { ChannelType, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -141,7 +146,6 @@ describe("Cascade Delete Tests", () => {
     const nonExistentId = uuidv4() as UUID;
     const result = await adapter.deleteAgent(nonExistentId);
 
-    // With the new simplified deleteAgent, it should return false for non-existent agents
     expect(result).toBe(false);
   });
 });

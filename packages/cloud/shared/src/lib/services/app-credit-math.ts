@@ -13,6 +13,28 @@
 // app has monetization enabled; otherwise everything collapses to base cost and
 // zero creator earnings.
 
+/**
+ * Whether the app currently earns creator money (inference markup + purchase
+ * share). `monetization_enabled` alone is NOT authoritative on the earnings
+ * path: a compliance-review REJECTION cuts all earnings off immediately (the
+ * invariant documented at `api/v1/apps/[id]/route.ts` — "a rejected re-review
+ * DOES cut everything off"). `runAppReview` now flips `monetization_enabled`
+ * off on rejection, but rows persisted rejected+enabled before that fix (and
+ * any future gap that re-enables without review) must not earn either — so
+ * every money-math config assembly derives its effective flag here.
+ *
+ * Deliberately narrower than `isAppMonetizationApproved`: a `draft` re-gate
+ * (listing changed, re-review pending) keeps accruing markup on existing usage
+ * — that grandfather behavior is an explicit product DECISION documented at
+ * `api/v1/apps/[id]/route.ts`. Only `rejected` revokes earnings.
+ */
+export function isAppMonetizationActive(app: {
+  monetization_enabled: boolean;
+  review_status?: string | null;
+}): boolean {
+  return app.monetization_enabled && app.review_status !== "rejected";
+}
+
 /** App monetization config read off the app row (already coerced to numbers). */
 export interface AppMonetizationConfig {
   monetizationEnabled: boolean;

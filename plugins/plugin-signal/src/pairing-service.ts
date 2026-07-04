@@ -1,9 +1,9 @@
 /**
  * Signal pairing service — manages device linking via QR code.
  *
- * Mirrors whatsapp-pairing.ts but uses @elizaos/signal-native instead of
- * Baileys. Signal linking produces a single provisioning URL (not a refresh
- * loop) — if it times out, restart the session.
+ * Links a new device through @elizaos/signal-native (or a `signal-cli link`
+ * subprocess). Signal linking produces a single provisioning URL (not a
+ * refresh loop) — if it times out, restart the session.
  */
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";

@@ -1,24 +1,21 @@
 // @vitest-environment jsdom
 //
-// Per-conversation composer draft handoff on switch (#FIX2).
+// Per-conversation composer draft handoff on switch (`useChatCallbacks`).
 //
 // Composer drafts are persisted per conversation (localStorage, keyed by id).
-// Switching conversations must repaint the composer for the TARGET: restore
-// the target's own saved draft, or CLEAR the composer when it has none.
+// Switching conversations must repaint the composer for the TARGET — restore
+// the target's own saved draft, or CLEAR the composer when it has none — so a
+// half-typed message can never leak into (and be sent to) the wrong
+// conversation. The handoff runs inside handleSelectConversation: persist the
+// leaving conversation's text under ITS key, then restore the target's draft or
+// clear the composer.
 //
-// The bug: switching to a conversation with NO saved draft left the PREVIOUS
-// conversation's composer text in place. The debounced per-conversation
-// persister then saved that leaked text under the TARGET's key — so a
-// half-typed message silently reappeared in, and would be sent to, the wrong
-// conversation. The fix does the draft handoff inside handleSelectConversation:
-// persist the leaving conversation's text under ITS key, then restore the
-// target's draft or clear the composer when the target has none.
-//
-// This drives the REAL handleSelectConversation composed with the REAL
+// Drives the REAL handleSelectConversation composed with the REAL
 // useDataLoaders.loadConversationMessages (like the sibling select-race suite),
 // with a real setChatInput that mirrors useChatState (syncs chatInputRef), and
 // the real localStorage-backed draft helpers.
 
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,7 +82,7 @@ function greetingMessage(): ConversationMessage {
     role: "assistant",
     text: "hey — what's on your mind?",
     timestamp: 1,
-    source: "agent_greeting",
+    source: MESSAGE_SOURCE_AGENT_GREETING,
   };
 }
 
@@ -290,25 +287,15 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     setFirstRunUiRevealNonce: vi.fn(),
     setFirstRunLoading: vi.fn(),
     setFirstRunComplete: vi.fn(),
-    setSetupStep: vi.fn(),
-    setFirstRunMode: vi.fn(),
-    setFirstRunActiveGuide: vi.fn(),
     setFirstRunDeferredTasks: vi.fn(),
     setPostFirstRunChecklistDismissed: vi.fn(),
     setFirstRunName: vi.fn(),
     setFirstRunStyle: vi.fn(),
     setFirstRunRuntimeTarget: vi.fn(),
     setFirstRunProvider: vi.fn(),
-    setFirstRunApiKey: vi.fn(),
-    setFirstRunVoiceProvider: vi.fn(),
-    setFirstRunVoiceApiKey: vi.fn(),
-    setFirstRunPrimaryModel: vi.fn(),
-    setFirstRunOpenRouterModel: vi.fn(),
     setFirstRunRemoteConnected: vi.fn(),
     setFirstRunRemoteApiBase: vi.fn(),
     setFirstRunRemoteToken: vi.fn(),
-    setFirstRunSmallModel: vi.fn(),
-    setFirstRunLargeModel: vi.fn(),
     setFirstRunOptions: vi.fn(),
     setSelectedVrmIndex: vi.fn(),
     setCustomVrmUrl: vi.fn(),

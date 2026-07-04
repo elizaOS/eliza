@@ -1,3 +1,4 @@
+/** Handles the delete_comment Linear op: deletes a comment by id via LinearService.deleteComment. */
 import {
   type Action,
   type ActionResult,

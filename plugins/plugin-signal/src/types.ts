@@ -1,3 +1,10 @@
+/**
+ * Shared Signal domain types: event payloads and the `SignalEventTypes` enum,
+ * message/contact/group shapes, the `ISignalService` contract, typed errors
+ * (`SignalPluginError` and subclasses), E.164/UUID/group-id validators, and
+ * size limits (`MAX_SIGNAL_MESSAGE_LENGTH`, `MAX_SIGNAL_ATTACHMENT_SIZE`).
+ * Imported across the plugin and re-exported from `index.ts` for callers.
+ */
 import type { Character, EventPayload, MessagePayload, WorldPayload } from "@elizaos/core";
 
 /**

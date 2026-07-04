@@ -1,0 +1,26 @@
+$ node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model
+[local-chat-smoke] Pre-seeded Android Local runtime preferences for ai.elizaos.app.
+[local-chat-smoke] Staged Android local-inference registry + assignments for eliza-1-2b: /data/data/ai.elizaos.app/files/.eliza/local-inference/models/eliza-1-2b-128k.gguf
+[local-chat-smoke] Staged Android smoke model eliza-1-2b: files/.eliza/local-inference/models/eliza-1-2b-128k.gguf
+[local-chat-smoke] Launching ai.elizaos.app on emulator-5584.
+[local-chat-smoke] Android smoke harness forwarded local-agent diagnostics to http://127.0.0.1:59180; the app remains preseeded with eliza-local-agent://ipc.
+[local-chat-smoke] Android agent not healthy/authenticated yet (10/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (20/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (30/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (40/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (50/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (60/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (70/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (80/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (90/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (100/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (110/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (120/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (130/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (140/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (150/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (160/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (170/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (180/240): fetch failed
+[local-chat-smoke] Android agent not healthy/authenticated yet (190/240): fetch failed
+error: script "test:sim:local-chat:android:live" was terminated by signal SIGTERM (Polite quit request)

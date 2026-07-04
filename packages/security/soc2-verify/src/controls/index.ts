@@ -1,3 +1,7 @@
+/**
+ * Ordered SOC2 check registry grouped by Trust Service Criteria category.
+ */
+
 import type { Check } from "../types.js";
 import { auditActionsComprehensive } from "./audit-actions.js";
 import {

@@ -19,6 +19,17 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		...actual,
 		annotateActiveTrajectoryStep: vi.fn(),
 		getTrajectoryContext: vi.fn(),
+		Service:
+			actual.Service ??
+			class {
+				constructor(public runtime?: IAgentRuntime) {}
+				static serviceType = "mock-service";
+				capabilityDescription = "mock service";
+				static async start() {
+					return new this();
+				}
+				async stop() {}
+			},
 		logger: {
 			...actual.logger,
 			info: vi.fn(),
@@ -31,7 +42,7 @@ import {
 	getTrajectoryContext,
 	logger,
 } from "@elizaos/core";
-import { useSkillAction } from "./use-skill";
+import { USE_SKILL_ACTION_NAME, useSkillAction } from "./use-skill";
 
 const mockedAnnotateActiveTrajectoryStep = vi.mocked(
 	annotateActiveTrajectoryStep,
@@ -46,6 +57,10 @@ beforeEach(() => {
 });
 
 describe("useSkillAction", () => {
+	it("uses the exported action-name contract", () => {
+		expect(useSkillAction.name).toBe(USE_SKILL_ACTION_NAME);
+	});
+
 	it("reads planned action arguments from handler parameters", async () => {
 		const skill = {
 			slug: "github",

@@ -1,3 +1,7 @@
+/**
+ * Tests inventory categorization, metadata profiles, and UI-safe listings.
+ */
+
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,9 +28,8 @@ describe("inventory — categorization heuristics", () => {
     expect(categorizeKey("GOOGLE_GENERATIVE_AI_API_KEY")).toBe("provider");
     expect(categorizeKey("GEMINI_API_KEY")).toBe("provider");
     expect(categorizeKey("PERPLEXITY_API_KEY")).toBe("provider");
-    // OpenAI-compatible + previously-unpatterned providers must also classify
-    // as first-party providers (regression guard: CEREBRAS/NEARAI were missing
-    // from the old pattern list and fell through to "plugin").
+    // OpenAI-compatible providers classify as first-party providers, including
+    // providers that do not share the original provider-name pattern.
     expect(categorizeKey("CEREBRAS_API_KEY")).toBe("provider");
     expect(categorizeKey("MOONSHOT_API_KEY")).toBe("provider");
     expect(categorizeKey("KIMI_API_KEY")).toBe("provider");

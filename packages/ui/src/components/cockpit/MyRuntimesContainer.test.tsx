@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for MyRuntimesContainer: the runtime switch/add flow with
+// the agent-profile registry and the non-destructive re-point mocked, covering
+// both the trusted switch and the untrusted-remote refusal. Deterministic
+// RTL/jsdom; the registry + re-point are vi mocks, not real state.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

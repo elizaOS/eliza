@@ -16,7 +16,7 @@ def test_find_blocked_processes_flags_model_and_benchmark_residents() -> None:
     ps_output = "\n".join(
         [
             "123 1 100 zsh zsh",
-            "124 1 120000 node node --import tsx packages/app-core/src/benchmark/server.ts",
+            "124 1 120000 node node --import tsx packages/lifeops-bench/src/server.ts",
             "125 1 1500000 llama /tmp/bin/llama-speculative-simple -m model.gguf",
         ]
     )
@@ -24,7 +24,7 @@ def test_find_blocked_processes_flags_model_and_benchmark_residents() -> None:
     blocked = find_blocked_processes(ps_output, current_pid=999)
 
     assert len(blocked) == 2
-    assert "benchmark/server.ts" in blocked[0]
+    assert "lifeops-bench/src/server.ts" in blocked[0]
     assert "llama-speculative-simple" in blocked[1]
 
 

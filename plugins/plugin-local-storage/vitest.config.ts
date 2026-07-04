@@ -1,3 +1,4 @@
+/** Vitest config for this plugin's unit tests (node environment; extended timeouts for real filesystem I/O). */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

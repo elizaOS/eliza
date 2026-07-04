@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the ConfirmDialog primitive variants (default/warn/danger); also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import * as React from "react";
 import { Button } from "./button";

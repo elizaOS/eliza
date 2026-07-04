@@ -1,3 +1,9 @@
+/**
+ * Behavior tests for SessionClient over a fake WebSocket: asserts the
+ * constructed ingress URL (with `?token=`), listener wiring, and how
+ * open/close/error/message events drive connection state and input relay.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import { type InputEvent, SessionClient } from "./session-client";
 

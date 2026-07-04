@@ -9,6 +9,7 @@
 
 import { Hono } from "hono";
 import { mintAgentToken } from "@/lib/auth/agent-token";
+import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -38,7 +39,8 @@ function hasServiceAccountAuth(c: AppContext): boolean {
     bearerToken(c) ??
     c.req.header("x-eliza-service-token") ??
     c.req.header("x-service-token");
-  return supplied === expected;
+  if (typeof supplied !== "string") return false;
+  return timingSafeEqualSecret(supplied, expected);
 }
 
 async function hasAdminAuth(c: AppContext): Promise<boolean> {

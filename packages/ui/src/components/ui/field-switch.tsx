@@ -1,3 +1,8 @@
+/**
+ * Controlled switch rendered as a labelled `<button role="switch">` — the toggle
+ * affordance used inside settings fields, where the whole row (label + control)
+ * is clickable.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

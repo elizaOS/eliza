@@ -1,30 +1,12 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
-  import type { AgentRuntime } from "@elizaos/core";
+  import type {
+    AgentRuntime,
+    MobileDeviceBridgeStatus,
+  } from "@elizaos/core";
 
-  export interface MobileDeviceBridgeStatus {
-    enabled: boolean;
-    connected: boolean;
-    devices: Array<{
-      deviceId: string;
-      capabilities: {
-        platform: "ios" | "android" | "web";
-        deviceModel: string;
-        totalRamGb: number;
-        cpuCores: number;
-        gpu: {
-          backend: "metal" | "vulkan" | "gpu-delegate";
-          available: boolean;
-        } | null;
-      };
-      loadedPath: string | null;
-      connectedSince: string;
-    }>;
-    primaryDeviceId: string | null;
-    pendingRequests: number;
-    modelPath: string | null;
-  }
+  export type { MobileDeviceBridgeStatus };
 
   export const mobileDeviceBridge: unknown;
   export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
@@ -164,6 +146,13 @@ declare module "telegram/sessions" {
 }
 declare module "@elizaos/plugin-elizacloud" {
   import type { IAgentRuntime, Service } from "@elizaos/core";
+  import type {
+    AgentCloudBillingRouteHandler,
+    AgentCloudCompatRouteHandler,
+    AgentCloudRelayRouteHandler,
+    AgentCloudRouteHandler,
+    AgentCloudStatusRouteHandler,
+  } from "./api/cloud-route-contracts.ts";
 
   export interface CloudConfigLike {
     apiKey?: string | null;
@@ -188,12 +177,6 @@ declare module "@elizaos/plugin-elizacloud" {
   }
 
   export class NullCloudSetupObserver implements CloudSetupObserver {
-    [key: string]: unknown;
-  }
-
-  export interface CloudRouteState {
-    config?: unknown;
-    runtime?: unknown;
     [key: string]: unknown;
   }
 
@@ -272,11 +255,11 @@ declare module "@elizaos/plugin-elizacloud" {
     ...args: unknown[]
   ): Promise<CloudSetupResult | null>;
 
-  export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudRelayRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudRoute(...args: unknown[]): Promise<boolean>;
-  export function handleCloudStatusRoutes(...args: unknown[]): Promise<boolean>;
+  export const handleCloudBillingRoute: AgentCloudBillingRouteHandler;
+  export const handleCloudCompatRoute: AgentCloudCompatRouteHandler;
+  export const handleCloudRelayRoute: AgentCloudRelayRouteHandler;
+  export const handleCloudRoute: AgentCloudRouteHandler;
+  export const handleCloudStatusRoutes: AgentCloudStatusRouteHandler;
   export function handleCloudTtsPreviewRoute(
     ...args: unknown[]
   ): Promise<boolean>;
@@ -740,6 +723,11 @@ declare module "@elizaos/plugin-wallet" {
   ): Promise<boolean>;
   export function _resetForTesting(): void;
   export function getWalletExportAuditLog(): unknown[];
+}
+
+declare module "@elizaos/plugin-wallet/diagnostic" {
+  import type { PluginDiagnosticDescriptor } from "@elizaos/core";
+  export const walletDiagnosticDescriptor: PluginDiagnosticDescriptor;
 }
 
 declare module "@elizaos/ui" {

@@ -1,3 +1,10 @@
+/**
+ * Compact row of active coding-agent sessions rendered above the chat thread:
+ * per-session status dot, label, and derived activity text, each clickable to
+ * open that session. Activity text for server-hydrated sessions is synthesized
+ * through the canonical `activityEventToPlaintext` serializer so this rail reads
+ * the same as the live WebSocket activity stream. Renders nothing when idle.
+ */
 import { activityEventToPlaintext } from "@elizaos/core";
 import type { CodingAgentSession } from "../../api/client-types-cloud";
 import {
@@ -5,6 +12,7 @@ import {
   STATUS_DOT,
 } from "../../chat/coding-agent-session-state";
 import { useAppSelector } from "../../state";
+import { Button } from "../ui/button";
 
 /** Session statuses the canonical pty serializer turns into useful text. */
 const SUMMARIZABLE_STATUSES = new Set<CodingAgentSession["status"]>([
@@ -57,11 +65,11 @@ export function AgentActivityBox({
   return (
     <div className="px-3 py-2 space-y-1 z-[1] mb-2 relative rounded-sm border border-border bg-card ">
       {sessions.map((s) => (
-        <button
+        <Button
           key={s.sessionId}
-          type="button"
           onClick={() => onSessionClick?.(s.sessionId)}
-          className="flex items-center gap-1.5 min-w-0 w-full text-left cursor-pointer hover:bg-bg-hover rounded-sm px-1 -mx-1 transition-colors"
+          variant="ghost"
+          className="-mx-1 flex h-auto min-w-0 w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-1 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
         >
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -100,7 +108,7 @@ export function AgentActivityBox({
           >
             <path d="M18 15l-6-6-6 6" />
           </svg>
-        </button>
+        </Button>
       ))}
     </div>
   );

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import type { HomeLauncherPage } from "../../state/shell-surface-store";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   HOME_WIDGET_MOCK_PLUGINS,
@@ -11,7 +12,6 @@ import {
 import { Launcher } from "../pages/Launcher";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
-import type { HomeLauncherPage } from "./home-launcher-events";
 
 // The consolidated /chat home (#9143): the REAL HomeScreen mounting the REAL
 // unified home-slot WidgetHost, paired with the Launcher as the two

@@ -7,6 +7,7 @@ const fileDir = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(fileDir, "../..");
 const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
+const authSrc = path.join(monorepoRoot, "packages/auth/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
@@ -93,6 +94,18 @@ const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
 );
+const pluginBirdclawSrc = path.join(monorepoRoot, "plugins/plugin-birdclaw/src");
+const pluginAppControlSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-app-control/src",
+);
+const pluginGitpathologistSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-gitpathologist/src",
+);
+const pluginGoogleSrc = path.join(monorepoRoot, "plugins/plugin-google/src");
+const pluginPtyRoot = path.join(monorepoRoot, "plugins/plugin-pty");
+const pluginVisionSrc = path.join(monorepoRoot, "plugins/plugin-vision/src");
 const pluginRemoteManifestSrc = path.join(
   monorepoRoot,
   "packages/plugin-remote-manifest/src",
@@ -208,6 +221,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(agentSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/auth$/,
+        replacement: path.join(authSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/auth\/(.+)$/,
+        replacement: path.join(authSrc, "$1"),
       },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
       {
@@ -458,6 +479,34 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-orchestrator$/,
         replacement: path.join(pluginAgentOrchestratorSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-birdclaw$/,
+        replacement: path.join(pluginBirdclawSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-birdclaw\/(.+)$/,
+        replacement: path.join(pluginBirdclawSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: path.join(pluginAppControlSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-gitpathologist$/,
+        replacement: path.join(pluginGitpathologistSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-google$/,
+        replacement: path.join(pluginGoogleSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-pty$/,
+        replacement: path.join(pluginPtyRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-vision$/,
+        replacement: path.join(pluginVisionSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,

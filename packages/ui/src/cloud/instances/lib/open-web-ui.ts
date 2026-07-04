@@ -7,7 +7,7 @@
  *    (202 + Retry-After while the agent boots).
  * 3. Redirects the popup to the agent's `/pair` page, which exchanges the token
  *    server-side and pins the agent's API key on the SPA's
- *    `window.__ELIZAOS_API_TOKEN__` before redirecting to `/`.
+ *    boot config before redirecting to `/`.
  */
 
 import { toast } from "sonner";

@@ -1,0 +1,325 @@
+{
+  "runId": "68abc7fb-647a-43ac-b30b-1ff4333bb9a2",
+  "startedAtIso": "2026-07-03T20:11:43.117Z",
+  "completedAtIso": "2026-07-03T20:11:54.801Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "background-live",
+      "title": "Real LLM drives BACKGROUND set/undo/redo/reset from chat",
+      "domain": "scenario-runner",
+      "tags": [
+        "live",
+        "real-llm",
+        "app-control",
+        "background"
+      ],
+      "status": "passed",
+      "durationMs": 8268,
+      "turns": [
+        {
+          "name": "set a dark blue background from natural phrasing",
+          "kind": "message",
+          "text": "Please make my background dark blue.",
+          "responseText": "I've set your background to dark blue.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "set",
+                  "color": "dark blue",
+                  "preset": "aurora",
+                  "prompt": "dark blue"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "set",
+                  "mode": "shader",
+                  "color": "#1e3a8a"
+                },
+                "text": "Set the background to dark blue.",
+                "raw": {
+                  "success": true,
+                  "text": "Set the background to dark blue.",
+                  "values": {
+                    "op": "set",
+                    "mode": "shader",
+                    "color": "#1e3a8a"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1918,
+          "failedAssertions": []
+        },
+        {
+          "name": "undo the background change",
+          "kind": "message",
+          "text": "Undo the background change.",
+          "responseText": "I've undone the background change for you.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "undo",
+                  "color": "#000000",
+                  "preset": "aurora"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "undo"
+                },
+                "text": "Reverted the background to the previous one.",
+                "raw": {
+                  "success": true,
+                  "text": "Reverted the background to the previous one.",
+                  "values": {
+                    "op": "undo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2523,
+          "failedAssertions": []
+        },
+        {
+          "name": "redo the background change",
+          "kind": "message",
+          "text": "Actually, redo the background change.",
+          "responseText": "Done! I've redone the background change for you.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "redo",
+                  "color": "#00008B",
+                  "preset": "aurora",
+                  "prompt": "#00008B"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "redo"
+                },
+                "text": "Re-applied the background you undid.",
+                "raw": {
+                  "success": true,
+                  "text": "Re-applied the background you undid.",
+                  "values": {
+                    "op": "redo"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 2083,
+          "failedAssertions": []
+        },
+        {
+          "name": "reset the background to default",
+          "kind": "message",
+          "text": "Reset the background to the default.",
+          "responseText": "I've reset the background to the default for you.",
+          "actionsCalled": [
+            {
+              "actionName": "BACKGROUND",
+              "parameters": {
+                "parameters": {
+                  "op": "reset"
+                },
+                "actionContext": {
+                  "previousResults": []
+                }
+              },
+              "result": {
+                "success": true,
+                "values": {
+                  "op": "reset"
+                },
+                "text": "Reset the background to the default.",
+                "raw": {
+                  "success": true,
+                  "text": "Reset the background to the default.",
+                  "values": {
+                    "op": "reset"
+                  }
+                }
+              }
+            }
+          ],
+          "durationMs": 1725,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "actionCalled",
+          "type": "actionCalled",
+          "status": "passed",
+          "detail": "BACKGROUND succeeded 4x (4 total call(s))"
+        },
+        {
+          "label": "background:apply broadcast ops are exact and ordered",
+          "type": "custom",
+          "status": "passed",
+          "detail": "predicate returned undefined"
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "set",
+              "color": "dark blue",
+              "preset": "aurora",
+              "prompt": "dark blue"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "set",
+              "mode": "shader",
+              "color": "#1e3a8a"
+            },
+            "text": "Set the background to dark blue.",
+            "raw": {
+              "success": true,
+              "text": "Set the background to dark blue.",
+              "values": {
+                "op": "set",
+                "mode": "shader",
+                "color": "#1e3a8a"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "undo",
+              "color": "#000000",
+              "preset": "aurora"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "undo"
+            },
+            "text": "Reverted the background to the previous one.",
+            "raw": {
+              "success": true,
+              "text": "Reverted the background to the previous one.",
+              "values": {
+                "op": "undo"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "redo",
+              "color": "#00008B",
+              "preset": "aurora",
+              "prompt": "#00008B"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "redo"
+            },
+            "text": "Re-applied the background you undid.",
+            "raw": {
+              "success": true,
+              "text": "Re-applied the background you undid.",
+              "values": {
+                "op": "redo"
+              }
+            }
+          }
+        },
+        {
+          "actionName": "BACKGROUND",
+          "parameters": {
+            "parameters": {
+              "op": "reset"
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "values": {
+              "op": "reset"
+            },
+            "text": "Reset the background to the default.",
+            "raw": {
+              "success": true,
+              "text": "Reset the background to the default.",
+              "values": {
+                "op": "reset"
+              }
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai"
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/ui-ux-develop/.github/issue-evidence/ui-ux-polish/llm/run",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/ui-ux-develop/.github/issue-evidence/ui-ux-polish/llm/run/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/ui-ux-develop/.github/issue-evidence/ui-ux-polish/llm/run/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/ui-ux-develop/.github/issue-evidence/ui-ux-polish/llm/run/viewer/data.js"
+  }
+}

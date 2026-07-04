@@ -1,34 +1,36 @@
 // @vitest-environment jsdom
-//
-// Fuzz test for the screen / background color invariant across view switching.
-//
-// The unified app background (`AppBackground`) is mounted ONCE at the shell root
-// and is driven purely by the persisted background config — so navigating
-// between views must NEVER change the screen color. Each route resolves a
-// background policy (`useActiveScreenBackgroundPolicy`) to exactly one painted
-// layer:
-//
-//   • `app-background-shader` / `app-background-image` / `app-background-glsl`
-//     — the persisted wallpaper shows through (policy "shared"). The screen
-//     color === the user's chosen background color.
-//   • `app-opaque-background` — an opaque `bg-bg` underlay covers the wallpaper
-//     (policy "opaque"). The screen color === the theme base.
-//
-// This file mounts the REAL <App/> (same harness as App.navigate-view-wiring)
-// and fuzzes randomized walks over EVERY builtin tab, returning to the launcher
-// (`/views`) between every view, asserting after every transition:
-//
-//   A. Exactly one background layer renders (shader/image/glsl XOR opaque) —
-//      the screen color is always defined; never blank, never two conflicting layers.
-//   B. When the wallpaper shows, its color === the seeded persisted color —
-//      switching views never mutates the user's background color.
-//   C. The known-shared surfaces (chat, background, settings, /views,
-//      /apps) always show the wallpaper — never the opaque underlay.
-//   D. Returning to the launcher (`/views`) always restores the wallpaper,
-//      regardless of which (possibly opaque) view preceded it.
-//
-// Runs the whole fuzz under shader, image, and programmable GLSL configs so
-// every wallpaper kind is proven to survive every transition.
+
+/**
+ * Fuzz test for the screen / background color invariant across view switching.
+ *
+ * The unified app background (`AppBackground`) is mounted ONCE at the shell root
+ * and is driven purely by the persisted background config — so navigating
+ * between views must NEVER change the screen color. Each route resolves a
+ * background policy (`useActiveScreenBackgroundPolicy`) to exactly one painted
+ * layer:
+ *
+ *   • `app-background-shader` / `app-background-image` / `app-background-glsl`
+ *     — the persisted wallpaper shows through (policy "shared"). The screen
+ *     color === the user's chosen background color.
+ *   • `app-opaque-background` — an opaque `bg-bg` underlay covers the wallpaper
+ *     (policy "opaque"). The screen color === the theme base.
+ *
+ * Mounts the REAL <App/> (same harness as App.navigate-view-wiring) and fuzzes
+ * randomized walks over EVERY builtin tab, returning to the launcher (`/views`)
+ * between every view, asserting after every transition:
+ *
+ *   A. Exactly one background layer renders (shader/image/glsl XOR opaque) —
+ *      the screen color is always defined; never blank, never two conflicting layers.
+ *   B. When the wallpaper shows, its color === the seeded persisted color —
+ *      switching views never mutates the user's background color.
+ *   C. The known-shared surfaces (chat, background, settings, /views,
+ *      /apps) always show the wallpaper — never the opaque underlay.
+ *   D. Returning to the launcher (`/views`) always restores the wallpaper,
+ *      regardless of which (possibly opaque) view preceded it.
+ *
+ * Runs the whole fuzz under shader, image, and programmable GLSL configs so
+ * every wallpaper kind is proven to survive every transition.
+ */
 
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
@@ -163,7 +165,12 @@ vi.mock("./hooks", () => ({
   useRenderGuard: vi.fn(),
   useIntervalWhenDocumentVisible: () => {},
 }));
-vi.mock("./state", () => {
+vi.mock("./state", async () => {
+  // Pure static constants pass through from the real leaf module (side-effect
+  // free by design) so the mock never drifts from product preset data.
+  const { ACCENT_PRESETS } = await vi.importActual<
+    typeof import("./state/ui-preferences")
+  >("./state/ui-preferences");
   const getAppValue = () => ({
     actionNotice: null,
     activeGameViewerUrl: null,
@@ -206,6 +213,7 @@ vi.mock("./state", () => {
     uiThemeMode: "system",
   });
   return {
+    ACCENT_PRESETS,
     useApp: () => getAppValue(),
     useAppSelector: <T,>(
       selector: (s: ReturnType<typeof getAppValue>) => T,
@@ -569,7 +577,6 @@ describe("App screen-background fuzz — color invariant across view switching",
       vi.fn(() => 1),
     );
     window.history.replaceState(null, "", "/views");
-    Reflect.deleteProperty(window, "__ELIZA_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
     window.addEventListener("unhandledrejection", swallow);
@@ -706,6 +713,12 @@ describe("App screen-background fuzz — color invariant across view switching",
   }, 120_000);
 
   it("preserves a GLSL preset wallpaper across view switching and background:apply churn", async () => {
+    // Pre-resolve the lazy programmable-shader chunk. AppBackground
+    // deliberately paints the plain ShaderBackground as the Suspense fallback
+    // while the chunk loads (same color — the seamless-swap design), so a
+    // strict `kind === "glsl"` assertion is only deterministic once the module
+    // is warm; a cold first import can outlast the act() microtask flushes.
+    await import("./backgrounds/ProgrammableShaderBackground");
     bgState.config = makeAuroraConfig("#059669");
     assertAuroraConfigClamped(bgState.config);
     await runFuzzWalk("glsl#13", 13, { churnGlsl: true });

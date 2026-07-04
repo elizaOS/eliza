@@ -1,3 +1,5 @@
+/** Storybook stories for ModelCard — default, won't-fit, downloading, failed, installed, active, and download-unavailable states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   ActiveModelState,

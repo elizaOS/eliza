@@ -114,3 +114,16 @@ describe("BrowserService target routing", () => {
     expect(workspace.execute).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BrowserService workspace snapshot seam (item #12091-14)", () => {
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it("exposes the live workspace snapshot so hosts read it via the runtime service, not a plugin import", async () => {
+    const service = new BrowserService();
+    const snapshot = await service.getWorkspaceSnapshot();
+    expect(typeof snapshot.mode).toBe("string");
+    expect(Array.isArray(snapshot.tabs)).toBe(true);
+  });
+});

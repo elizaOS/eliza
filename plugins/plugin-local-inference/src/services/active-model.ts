@@ -16,7 +16,7 @@ import {
 	join as pathJoin,
 	resolve as pathResolve,
 } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -73,7 +73,7 @@ import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
  * (v3.18.1-eliza.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
- * loaded the legacy node-llama-cpp NAPI prebuild (no longer used) binary — the elizaOS/llama.cpp
+ * loaded binary — the elizaOS/llama.cpp
  * prebuild ships the kernels; upstream's prebuild does not.
  *
  * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer
@@ -239,6 +239,22 @@ export interface LocalInferenceLoader {
 		 * Loaders without prefix caching can ignore the field.
 		 */
 		cacheKey?: string;
+		/**
+		 * Per-chunk streaming callback the runtime wires from the caller's
+		 * `onStreamChunk` (chat SSE / voice). Loaders with a server-push
+		 * transport (the bionic UDS host's op="generateStream") surface
+		 * chunks as they decode so TTFT decouples from full-turn latency
+		 * (#11913); loaders without streaming ignore it and resolve with
+		 * the full completion only.
+		 */
+		onTextChunk?: (chunk: string) => void | Promise<void>;
+		/**
+		 * Per-step token cap hint for streaming loaders — how many tokens
+		 * the backend may decode per step before flushing a chunk. The
+		 * bionic host clamps it to its JNI buffer (1..256) and defaults to
+		 * the #9174 user-visible streaming knee (8) when absent.
+		 */
+		maxTokensPerStep?: number;
 	}): Promise<string>;
 	/**
 	 * Optional embedding surface. When a loader implements this, the runtime
@@ -667,22 +683,32 @@ export async function resolveLocalInferenceLoadArgs(
 		// Two MTP shapes: embedded-draft-head MTP embeds the draft head in
 		// the text GGUF (no `drafterFile` in the catalog) and runs with no
 		// separate draft model; separate-drafter MTP declares a `drafterFile`
-		// and requires the bundled drafter GGUF to be present on disk.
+		// and needs the bundled drafter GGUF to be present on disk.
 		const sameFileMtp = !mtp.drafterFile;
 		const drafterPath = sameFileMtp
 			? undefined
 			: resolveMtpDrafterPath(installed, catalog, manifestLoader);
-		if (!sameFileMtp && installed.bundleRoot && !drafterPath) {
-			throw new Error(
-				`[local-inference] ${installed.id} declares a separate-drafter MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+		if (!sameFileMtp && !drafterPath) {
+			// Back-compat with pre-MTP-cutover installs (#11517): bundles
+			// downloaded before the tier's gemma4-assistant drafter was hosted
+			// (and single-file installs with no bundleRoot) have no
+			// `mtp/drafter-<tier>.gguf` on disk. The drafter is a perf-only
+			// speculative-decoding artifact — never brick an installed model
+			// over it. Load without MTP; re-downloading the bundle picks the
+			// drafter up.
+			console.warn(
+				`[local-inference] ${installed.id} declares a separate-drafter MTP but no drafter GGUF was found${
+					installed.bundleRoot ? ` under ${installed.bundleRoot}` : ""
+				}; loading without speculative decoding. Re-download the model to enable the MTP drafter.`,
 			);
+		} else {
+			args.useGpu = true;
+			args.draftModelPath = drafterPath;
+			args.draftMin = mtp.draftMin;
+			args.draftMax = mtp.draftMax;
+			args.speculativeSamples = mtp.draftMax;
+			args.mobileSpeculative = true;
 		}
-		args.useGpu = true;
-		args.draftModelPath = drafterPath;
-		args.draftMin = mtp.draftMin;
-		args.draftMax = mtp.draftMax;
-		args.speculativeSamples = mtp.draftMax;
-		args.mobileSpeculative = true;
 	}
 
 	mergeOverrides(args, overrides);
@@ -1067,7 +1093,7 @@ function logResolvedKernelSet(
 	}
 	const optional = OPTIONAL_KERNELS_BY_TIER[tier];
 	const backend = resolveComputeBackendLabel(probe);
-	console.info(
+	logger.info(
 		`[LocalInferenceEngine] kernel set: required=[${[...required].join(", ")}] optional=[${optional.join(", ")}] backend=${backend}`,
 	);
 }

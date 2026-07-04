@@ -1,12 +1,24 @@
+/**
+ * The `Plugin` contract itself: the object a plugin's `src/index.ts` exports,
+ * aggregating its actions, providers, evaluators, services, models, routes,
+ * events, and schema. The top-level unit the agent's plugin loader resolves,
+ * validates, and wires into the runtime.
+ */
 import type { AppPackageRouteContext } from "../api/route-helpers";
+import type { ConnectorSourceDefinition } from "../connectors";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import type { Character } from "./agent";
+import type { ChatPreHandler } from "./chat-pre-handler";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { RegisteredEvaluator } from "./evaluator";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
-import type { ModelParamsMap, PluginModelResult } from "./model";
+import type {
+	ModelParamsMap,
+	ModelRegistrationMetadata,
+	PluginModelResult,
+} from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -14,6 +26,8 @@ import type { Service } from "./service";
 import type { ShortcutDefinition } from "./shortcut";
 import type { TestSuite } from "./testing";
 import type { ViewKind } from "./view-kind";
+
+export type RouteRuntimeMode = "local" | "local-only" | "cloud" | "remote";
 
 /**
  * Type for a service class constructor.
@@ -24,6 +38,8 @@ import type { ViewKind } from "./view-kind";
 export interface ServiceClass {
 	/** The service type identifier */
 	serviceType: string;
+	/** True when multiple implementations may intentionally share this service type. */
+	allowsMultiple?: boolean;
 	/** Factory method to create and start the service */
 	start(runtime: IAgentRuntime): Promise<Service>;
 	/** Stop service for a runtime - optional as not all services implement this */
@@ -130,6 +146,13 @@ interface BaseRoute {
 	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
 	 */
 	rawPath?: boolean;
+	/**
+	 * Runtime modes where this route is visible. Hosts that support runtime modes
+	 * hide routes outside this list with 404 before handler logic runs.
+	 */
+	modes?: ReadonlyArray<RouteRuntimeMode>;
+	/** Free-form one-liner documenting why the route is scoped to those modes. */
+	modeReason?: string;
 	/** x402 micropayment gate: object, or `true` to use `character.settings.x402` defaults */
 	x402?: X402Config | true;
 	/** Runs before payment; invalid → 402 with accepts payload */
@@ -166,6 +189,12 @@ interface BaseRoute {
 interface PublicRoute extends BaseRoute {
 	public: true;
 	name: string; // Name is required for public routes
+	/**
+	 * Reviewed reason this route may bypass the central auth gate.
+	 * Public routes without this intent are rejected by route registration and
+	 * dispatchers.
+	 */
+	publicReason: string;
 }
 
 interface PrivateRoute extends BaseRoute {
@@ -174,6 +203,15 @@ interface PrivateRoute extends BaseRoute {
 }
 
 export type Route = PublicRoute | PrivateRoute;
+
+export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
+	if (route.public !== true) return;
+	const reason = (route as { publicReason?: unknown }).publicReason;
+	if (typeof reason === "string" && reason.trim().length > 0) return;
+	throw new Error(
+		`[RouteAuth] Public route ${source}:${route.type} ${route.path} must declare publicReason`,
+	);
+}
 
 /** Route that may include x402 payment fields (alias for authoring clarity) */
 export type PaymentEnabledRoute = Route;
@@ -305,6 +343,48 @@ export interface PluginAppLaunchDiagnostic {
 	message: string;
 }
 
+/**
+ * A single prerequisite a plugin declares for its diagnostic card. The host
+ * resolves runtime state and maps {@link key} to a satisfied boolean; the
+ * plugin owns the human-readable {@link label}.
+ */
+export interface PluginDiagnosticPrerequisite {
+	/** Stable key the host's status resolver maps to a satisfied boolean. */
+	key: string;
+	/** Human-readable label shown on the diagnostic card. */
+	label: string;
+}
+
+/**
+ * Static metadata a plugin contributes so the host can render its diagnostic
+ * card without hardcoding the plugin's identity, config keys, tags, or
+ * prerequisites. The host resolves the runtime-dynamic status (enabled,
+ * capability, prerequisite satisfaction) separately and merges it with this
+ * descriptor. Owning this here keeps a single source of truth: renaming a
+ * config key changes the descriptor, not the host.
+ */
+export interface PluginDiagnosticDescriptor {
+	id: string;
+	name: string;
+	description: string;
+	tags: string[];
+	envKey: string | null;
+	category:
+		| "ai-provider"
+		| "connector"
+		| "streaming"
+		| "database"
+		| "app"
+		| "feature";
+	source: "bundled" | "store";
+	configKeys: string[];
+	npmName: string;
+	managementMode: "standard" | "core-optional";
+	/** Config-allowlist entries that mean "this plugin is enabled". */
+	aliases: string[];
+	prerequisites: PluginDiagnosticPrerequisite[];
+}
+
 export interface PluginAppBridgeLaunchContext {
 	appName?: string;
 	launchUrl?: string | null;
@@ -385,6 +465,11 @@ export interface PluginAppNavTab {
 	icon?: string;
 	/** Route path the tab links to (e.g. "/inventory"). */
 	path: string;
+	/**
+	 * Optional shell tab id this route should activate when it is not the same
+	 * as `id` (for example, an app-shell page that lives inside a built-in tab).
+	 */
+	tabAffinity?: string;
 	/** Sort priority within the nav (lower = first). Default 100. */
 	order?: number;
 	/**
@@ -669,8 +754,20 @@ export interface ViewDeclaration {
 	path?: string;
 	/** Sort priority in the view manager — lower appears first. Default 100. */
 	order?: number;
+	/** Optional named group shared with app-shell page registrations. */
+	group?: string;
 	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
 	tags?: string[];
+	/**
+	 * Runtime action names especially relevant while this view is foreground.
+	 * Hosts use these as view-scoped affinity hints so plugins keep their own
+	 * view -> action relationship with the view declaration.
+	 */
+	relatedActions?: string[];
+	/**
+	 * Optional free-form planner hints for this view.
+	 */
+	contextHints?: string[];
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */
@@ -680,6 +777,15 @@ export interface ViewDeclaration {
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
 	 */
 	platforms?: ViewPlatform[];
+	/**
+	 * Native device-OS surface that only exists on the AOSP ElizaOS fork (e.g.
+	 * the phone dialer, messages, contacts, camera apps). When true the view is
+	 * stripped from the routable view set on every non-AOSP build (web, desktop,
+	 * iOS, stock Play-Store Android), matching the AOSP-gated home tiles. Hosts
+	 * read this declared flag instead of hardcoding native-OS view ids. Default
+	 * false.
+	 */
+	nativeOs?: boolean;
 	/**
 	 * Hidden unless developer mode is enabled. Default false. Equivalent to
 	 * `viewKind: "developer"`.
@@ -728,6 +834,13 @@ export interface ViewDeclaration {
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;
+	/**
+	 * When true, this view is an internal-tool app (plugin viewer, inspector,
+	 * fine-tuning, automations) that the homescreen launcher may pin. The
+	 * launcher builds its pinnable list from this declared flag instead of a
+	 * hardcoded UI package-name table. Default false.
+	 */
+	pinnable?: boolean;
 	/**
 	 * XR-specific panel behaviour. Only meaningful when viewType === "xr".
 	 * Omit to accept all defaults (1m-wide billboard panel at 1.5 m distance).
@@ -788,6 +901,7 @@ export interface PluginModelRegistration {
 		runtime: IAgentRuntime,
 		params: Record<string, JsonValue | object>,
 	) => Promise<JsonValue | object>;
+	metadata?: ModelRegistrationMetadata;
 	provider: string;
 }
 
@@ -1089,6 +1203,14 @@ export interface Plugin {
 	 * the first model call. Registered into the runtime's `ShortcutRegistry`.
 	 */
 	shortcuts?: ShortcutDefinition[];
+	/**
+	 * Chat pre-handlers: generic pre-action dispatch hooks drained at the top of
+	 * the chat loop, before normal action processing. A plugin owning a
+	 * deterministic direct-dispatch feature (e.g. a vendor skill family)
+	 * registers its trigger + dispatch here instead of the host hardcoding it.
+	 * Registered into the runtime's `ChatPreHandlerRegistry`.
+	 */
+	chatPreHandlers?: ChatPreHandler[];
 	evaluators?: RegisteredEvaluator[];
 	responseHandlerEvaluators?: ResponseHandlerEvaluator[];
 	/**
@@ -1111,8 +1233,21 @@ export interface Plugin {
 			params: ModelParamsMap[K],
 		) => Promise<PluginModelResult<K>>;
 	};
+	/**
+	 * Optional handler-free metadata for entries declared in `models`, keyed by
+	 * model type. Providers use this to publish display/routing facts without
+	 * core branching on provider names.
+	 */
+	modelMetadata?: Record<string, ModelRegistrationMetadata>;
 	events?: PluginEvents;
 	routes?: Route[];
+	/**
+	 * Connector source names and aliases owned by this plugin. The runtime
+	 * registers these during plugin registration so source normalization and
+	 * connector-source metadata live with the connector plugin instead of in
+	 * core/shared trunk maps.
+	 */
+	connectorSources?: ConnectorSourceDefinition[];
 	tests?: TestSuite[];
 
 	dependencies?: string[];

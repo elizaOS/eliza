@@ -1,7 +1,12 @@
 "use client";
 
+/**
+ * Transactions section of the cloud agent-instance detail: the agent's on-chain
+ * transaction history.
+ */
 import { ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
 
 interface TxRequest {
   to?: string;
@@ -167,7 +172,8 @@ export function ElizaTransactionsSection({
           FILTER:
         </span>
         {STATUS_FILTERS.map((f) => (
-          <button
+          <Button
+            variant="ghost"
             key={f.value}
             type="button"
             onClick={() => setStatusFilter(f.value)}
@@ -178,7 +184,7 @@ export function ElizaTransactionsSection({
             }`}
           >
             {f.label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -212,13 +218,14 @@ export function ElizaTransactionsSection({
         {!loading && error && (
           <div className="p-6 text-center space-y-2">
             <p className="font-mono text-xs text-destructive">{error}</p>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => fetchRecords(0, false)}
               className="min-h-touch font-mono text-xs-tight text-muted hover:text-txt transition-colors"
             >
               RETRY
-            </button>
+            </Button>
           </div>
         )}
 
@@ -307,7 +314,8 @@ export function ElizaTransactionsSection({
 
         {!loading && records.length < total && (
           <div className="p-3 bg-card border-t border-border text-center">
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={handleLoadMore}
               disabled={loadingMore}
@@ -332,7 +340,7 @@ export function ElizaTransactionsSection({
                   </span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
         )}
       </div>

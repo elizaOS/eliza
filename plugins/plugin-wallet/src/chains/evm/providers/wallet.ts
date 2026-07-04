@@ -1,3 +1,16 @@
+/**
+ * EVM wallet: `WalletProvider` wraps a viem account across the agent's
+ * configured chains, resolving RPC transport per chain (managed/Eliza-Cloud
+ * RPC with auto-fallback to the chain's default RPC on auth failure, or a
+ * direct custom/default URL) and bounding balance reads so a slow endpoint
+ * can never stall a reply turn. `LazyTeeWalletProvider` defers key
+ * derivation to the TEE service and proxies signing calls once ready.
+ * `initWalletProvider` is the entry point: it resolves TEE vs local-key mode
+ * and generates+persists a new `EVM_PRIVATE_KEY` if none is configured.
+ * `evmWalletProvider` is the planner-context provider that surfaces the
+ * address and per-chain balances, preferring `EVMService`'s cache and
+ * falling back to a direct fetch.
+ */
 import * as path from "node:path";
 import {
   type IAgentRuntime,
@@ -432,7 +445,6 @@ function genChainsFromRuntime(runtime: IAgentRuntime): {
 
   const chainsToUse = configuredChains.length > 0 ? configuredChains : [...DEFAULT_CHAINS];
 
-  // Validate RPC provider configuration
   const validation = validateRPCProviderConfig(runtime);
   for (const warning of validation.warnings) {
     logger.warn(warning);
@@ -441,7 +453,6 @@ function genChainsFromRuntime(runtime: IAgentRuntime): {
     logger.info(`EVM RPC providers available: ${validation.providers.join(", ")}`);
   }
 
-  // Initialize the multi-provider RPC manager
   const rpcManager = initRPCProviderManager(runtime);
 
   const chains: Record<string, Chain> = {};

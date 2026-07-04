@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the audit lane: a trimmed `@elizaos/*` alias set that runs
+ * only the co-located `src/**` `.test.ts` suites, skipping the `__tests__/**`
+ * legacy glob and the post-merge real-model lane.
+ */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 

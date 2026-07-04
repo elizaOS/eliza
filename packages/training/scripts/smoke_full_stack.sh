@@ -297,7 +297,7 @@ if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
         2>&1 | tee "$LOG_DIR/05-gguf.log"
     mark_pass "gguf"
 else
-    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the packages/inference/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
+    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the plugins/plugin-local-inference/native/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
     mark_skip_tooling "gguf"
 fi
 

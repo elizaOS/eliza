@@ -1,3 +1,8 @@
+/**
+ * Selects the transport client for a resolved config: a BaileysClient when the
+ * detected auth method is Baileys, otherwise the Cloud API WhatsAppClient. The
+ * single seam behind which the rest of the connector stays transport-agnostic.
+ */
 import { WhatsAppClient } from "../client";
 import type { BaileysConfig, CloudAPIConfig, WhatsAppConfig } from "../types";
 import { detectAuthMethod } from "../utils/config-detector";

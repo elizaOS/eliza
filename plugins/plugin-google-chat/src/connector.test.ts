@@ -1,3 +1,8 @@
+/**
+ * Verifies the Google Chat message connector registers with the runtime and
+ * routes outbound sends correctly, against a mocked runtime — no Google API
+ * calls.
+ */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";

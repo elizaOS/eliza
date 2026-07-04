@@ -106,7 +106,7 @@ const CONVERTED_SHELL_PAGES = [
   "pages/BrowserWorkspaceView",
   "pages/SecretsView",
   "pages/ReleaseCenterView",
-  "pages/HeartbeatsView",
+  "pages/TriggersView",
   "pages/DocumentsView",
   "pages/ConfigPageView",
 ] as const;
@@ -124,7 +124,7 @@ const CONVERTED_SUBCOMPONENTS = [
   "character/CharacterExperienceWorkspace",
   "character/CharacterLearnedSkillsSection",
   "pages/documents-upload",
-  "pages/HeartbeatForm",
+  "pages/TriggerForm",
   "pages/PluginCard",
   "pages/plugin-view-connectors",
   "pages/plugin-view-dialogs",

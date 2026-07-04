@@ -1,5 +1,9 @@
 /**
- * Root App component — routing shell.
+ * Root App component and the dashboard routing shell mounted by every elizaOS
+ * front-end. It resolves the shell mode from the URL (`?shellMode=` — `full`,
+ * `chat-overlay`, `voice-*`), gates boot/pairing behind `StartupScreen`, mounts
+ * the shared `AppBackground` and first-run conductor once, and renders either
+ * the floating chat-overlay surface or the full tabbed shell.
  */
 
 import {
@@ -8,11 +12,10 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core";
-import { ArrowLeft, X } from "lucide-react";
+import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
-  type CSSProperties,
   type LazyExoticComponent,
   lazy,
   type ReactNode,
@@ -33,6 +36,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
 import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
@@ -48,6 +52,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { TutorialOverlay } from "./components/pages/tutorial/TutorialOverlay";
+import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
 import { ActionBanner } from "./components/shell/ActionBanner";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -68,22 +73,28 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { TrayLauncher } from "./components/shell/TrayLauncher";
 import { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
+import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
   CONNECT_EVENT,
+  dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
+import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
@@ -105,7 +116,6 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
-import { goHome } from "./state/shell-surface-store";
 import { isShellPaintable } from "./state/startup-coordinator";
 import { firstRunOwnsLoginSurface } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
@@ -263,6 +273,18 @@ const PluginsPageView = lazyNamedView(
 const RelationshipsView = lazyNamedView(
   () => import("./components/pages/RelationshipsView"),
   "RelationshipsView",
+);
+const KnowledgeView = lazyNamedView(
+  () => import("./components/pages/KnowledgeView"),
+  "KnowledgeView",
+);
+const CharacterExperienceView = lazyNamedView(
+  () => import("./components/character/CharacterExperienceView"),
+  "CharacterExperienceView",
+);
+const CharacterSkillsView = lazyNamedView(
+  () => import("./components/character/CharacterSkillsView"),
+  "CharacterSkillsView",
 );
 const RuntimeView = lazyNamedView(
   () => import("./components/pages/RuntimeView"),
@@ -434,6 +456,26 @@ function ChatOverlayShell() {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
+  const controller = useShellControllerContext();
+  const overlayOpen = controller?.isOpen ?? false;
+  // Escape collapses the overlay first — while it is open, AssistantOverlay's
+  // own Escape handler closes it. Once already collapsed, Escape hides the
+  // desktop window entirely (#12184) so the pill dismisses to the background
+  // like a summoned panel. Desktop-only (web has no window to hide).
+  useEffect(() => {
+    if (typeof document === "undefined" || !isElectrobunRuntime()) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || overlayOpen) return;
+      void invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopHideWindow",
+        ipcChannel: "desktop:hideWindow",
+      });
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [overlayOpen]);
   return (
     <div
       data-testid="chat-overlay-shell"
@@ -445,18 +487,20 @@ function ChatOverlayShell() {
 }
 
 /**
- * Native tray popover surface (#9953 Phase 4). Renders ONLY the widget surface
- * (reusing the shell widget registry's "home" slot) inside the frameless,
- * transparent, always-on-top window the native tray anchors near its icon — no
- * app chrome. Each widget self-hides when it has nothing to show, so the popover
- * is a compact at-a-glance panel.
+ * Native tray popover surface (#9953 Phase 4 / #12184). Renders the compact
+ * launcher (the `DESKTOP_VIEW_WINDOWS` catalog + "Open Eliza", registered by
+ * the desktop host) above the shell widget registry's "home" slot inside the
+ * frameless, transparent, always-on-top window the native tray anchors near its
+ * icon — no app chrome. Each widget self-hides when it has nothing to show, so
+ * the popover is a compact at-a-glance panel + one-click launcher.
  */
 function TrayPopoverShell() {
   return (
     <div
       data-testid="tray-popover-shell"
-      className="fixed inset-0 overflow-y-auto bg-transparent p-3"
+      className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
+      <TrayLauncher />
       <WidgetHost slot="home" layout="stack" />
     </div>
   );
@@ -613,8 +657,8 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
  */
 /**
  * Props every app-shell page view receives, mirroring the OverlayAppContext that
- * `DynamicViewLoader` injects on web/desktop. Overlay-app views (polymarket,
- * …) read `t` / `exitToApps` from props and crash ("t is not a
+ * `DynamicViewLoader` injects on web/desktop. Overlay-app views can read
+ * `t` / `exitToApps` from props and crash ("t is not a
  * function") if mounted with none — which is exactly what happens on iOS/Android
  * where these views render through the in-process app-shell path instead of
  * DynamicViewLoader. Views that read translations from hooks ignore the extras.
@@ -873,6 +917,8 @@ const SHELL_RESERVED_PATHS = new Set([
   "/views",
   "/apps",
   "/character/documents",
+  "/character/experience",
+  "/character/skills",
   "/apps/plugins",
   "/apps/skills",
   "/apps/trajectories",
@@ -994,8 +1040,9 @@ function ViewLayoutSurface({
               {entries.length}
             </span>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="Close layout"
             title="Close layout"
             data-testid="view-layout-close"
@@ -1003,7 +1050,7 @@ function ViewLayoutSurface({
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition-colors hover:bg-border/35 hover:text-txt    "
           >
             <X className="h-4 w-4" aria-hidden />
-          </button>
+          </Button>
         </header>
         <div
           className={`grid min-h-0 flex-1 gap-2 overflow-auto p-2 ${viewLayoutGridClass(
@@ -1150,6 +1197,21 @@ function renderStaticViewRouterTab({
         <RelationshipsView />
       </TabContentView>
     ),
+    documents: (
+      <TabContentView>
+        <KnowledgeView />
+      </TabContentView>
+    ),
+    experience: (
+      <TabContentView>
+        <CharacterExperienceView />
+      </TabContentView>
+    ),
+    "character-skills": (
+      <TabContentView>
+        <CharacterSkillsView />
+      </TabContentView>
+    ),
     memories: (
       <TabContentView>
         <MemoryViewerView />
@@ -1204,16 +1266,10 @@ function renderStaticViewRouterTab({
     // background shows through behind the controls.
     return <BackgroundView />;
   }
-  if (
-    tab === "character" ||
-    tab === "character-select" ||
-    tab === "documents"
-  ) {
+  if (tab === "character" || tab === "character-select") {
     return (
       <TabContentView>
-        <CharacterEditor
-          initialPage={tab === "documents" ? "documents" : undefined}
-        />
+        <CharacterEditor />
       </TabContentView>
     );
   }
@@ -1269,8 +1325,8 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
-  // Hyperliquid + Polymarket are sub-views of Wallet: the wallet family of
-  // routes shares one sub-nav rendered in the workspace chrome nav slot.
+  // Wallet-family routes share one sub-nav rendered in the workspace chrome
+  // nav slot. Plugins join it by registering app-shell pages with group=wallet.
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
@@ -1412,32 +1468,6 @@ const APP_SHELL_CLASS =
 const APP_SHELL_CLASS_TRANSPARENT =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
 
-function ShellBackButton({ onBack }: { onBack: () => void }): ReactNode {
-  // 44px (`h-11 w-11`) button = the Apple-HIG minimum touch target enforced by
-  // the rendered-geometry gate (tap-target-geometry.spec.ts); the 36px visual
-  // circle sits centered inside, so the resting look is unchanged while the
-  // hit area is honest. Offsets keep the circle at the historical position
-  // (safe-area + 0.75rem). The shell wrappers that render this button set
-  // --shell-backnav-clearance (consumed by SpatialSurface as top padding) so
-  // the fixed z-[60] chrome never occludes a spatial view's first row (#11144);
-  // the clearance must cover the button's bottom edge (0.5rem + 2.75rem =
-  // 3.25rem) — guarded by spatial/dom.backnav-clearance.test.tsx.
-  return (
-    <button
-      type="button"
-      aria-label="Go back"
-      title="Go back"
-      data-testid="shell-back-button"
-      onClick={onBack}
-      className="group fixed left-[calc(var(--safe-area-left,0px)+0.5rem)] top-[calc(var(--safe-area-top,0px)+0.5rem)] z-[60] grid h-11 w-11 place-items-center bg-transparent"
-    >
-      <span className="grid h-9 w-9 place-items-center rounded-full border border-border/60 bg-bg/90 text-txt shadow-sm transition-colors group-hover:bg-muted/70">
-        <ArrowLeft className="h-4 w-4" aria-hidden />
-      </span>
-    </button>
-  );
-}
-
 type ShellContentProps = {
   actionNotice: ActionNotice | null;
   availableViewsForLayout: ViewRegistryEntry[];
@@ -1454,7 +1484,6 @@ type ShellContentProps = {
   uiShellMode: string;
   viewLayout: ActiveViewLayout | null;
   onClearViewLayout: () => void;
-  onNavigateBack: () => void;
 };
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
@@ -1513,26 +1542,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
       ? APP_SHELL_CLASS_TRANSPARENT
       : APP_SHELL_CLASS;
   return (
-    // --shell-backnav-clearance reserves top space for the fixed ShellBackButton
-    // so spatial views' first row (filter chips) clears it (#11144). The button
-    // bottom sits at safe-area-top + 3.25rem (0.5rem offset + 2.75rem hit target) in
-    // VIEWPORT coords, but this wrapper lives inside the root content column,
-    // which absorbs only max(safe-area-top - 1.25rem, 1.25rem) of the safe area
-    // — up to 1.25rem less than the button's full safe-area offset on notched
-    // devices. min(safe-area-top, 1.25rem) adds back exactly that deficit:
-    // 3.25rem at safe-area-top 0, tight at real notch insets (≥ 2.5rem).
-    // Consumed by SpatialSurface (spatial/dom.tsx); unset elsewhere → 0px.
-    <div
-      key={`tab-shell-${props.tab}`}
-      className={shellClass}
-      style={
-        {
-          "--shell-backnav-clearance":
-            "calc(3.25rem + min(var(--safe-area-top, 0px), 1.25rem))",
-        } as CSSProperties
-      }
-    >
-      <ShellBackButton onBack={props.onNavigateBack} />
+    <div key={`tab-shell-${props.tab}`} className={shellClass}>
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         {props.viewLayout ? (
@@ -1555,20 +1565,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
  */
 function FullBleedShellContent(props: ShellContentProps): ReactNode {
   return (
-    <div
-      key={`fullbleed-shell-${props.tab}`}
-      className={APP_SHELL_CLASS}
-      // Same clearance contract as RoutedShellContent (see the derivation
-      // there): 3.25rem button clearance + the ≤1.25rem safe-area deficit the
-      // root content column does not absorb (#11144).
-      style={
-        {
-          "--shell-backnav-clearance":
-            "calc(3.25rem + min(var(--safe-area-top, 0px), 1.25rem))",
-        } as CSSProperties
-      }
-    >
-      <ShellBackButton onBack={props.onNavigateBack} />
+    <div key={`fullbleed-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <ViewRouter />
       </main>
@@ -1670,7 +1667,15 @@ function ContinuousChatOverlayMount(): ReactNode {
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
     }));
-  const slash = useSlashCommandController();
+  // #12087 Item 20: derive the slash-command authority from the authoritative
+  // role instead of the fail-open defaults. Elevated (owner-only) commands
+  // require OWNER; authenticated commands require rank ≥ USER. A remote
+  // USER/GUEST no longer sees elevated commands.
+  const { isOwner, atLeast } = useRole();
+  const slash = useSlashCommandController({
+    isElevated: isOwner,
+    isAuthorized: atLeast("USER"),
+  });
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -1711,11 +1716,7 @@ function HomeScreenMount({
         // user-initiated tile navigation (#8792). Fire-and-forget.
         reportUserViewSwitch(target.tab);
       } else {
-        window.dispatchEvent(
-          new CustomEvent("eliza:navigate:view", {
-            detail: { viewPath: target.path },
-          }),
-        );
+        dispatchNavigateViewEvent({ viewPath: target.path });
         // The tile only carries a path; resolve the registered view id so the
         // decider keys off the same id the rest of the navigation bus uses
         // (#8792). Skip the report when no view is registered at that path.
@@ -2096,9 +2097,9 @@ export function App() {
       }
       baseHandler(event);
     };
-    window.addEventListener("eliza:navigate:view", handleNavigateView);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
     return () =>
-      window.removeEventListener("eliza:navigate:view", handleNavigateView);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,
@@ -2191,30 +2192,6 @@ export function App() {
     setViewLayout(null);
   }, []);
 
-  const handleShellBack = useCallback(() => {
-    setViewLayout(null);
-    setActiveDesktopTabId(null);
-
-    if (typeof window !== "undefined") {
-      const currentPath = getWindowNavigationPath();
-      if (!isRouteRootPath(currentPath) && window.history.length > 1) {
-        window.history.back();
-        return;
-      }
-
-      const chatPath = pathForTab("chat");
-      if (shouldUseHashNavigation()) {
-        window.location.hash = chatPath;
-      } else if (getWindowNavigationPath() !== chatPath) {
-        window.history.pushState(null, "", chatPath);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      }
-    }
-
-    setTab("chat");
-    goHome();
-  }, [setTab]);
-
   // desktopTabBar is computed here (after handlers) so the memo below can
   // reference a stable value. Rendered inside each shell variant, not at the
   // outer level, so Header + TabBar + content stack correctly per shell.
@@ -2270,7 +2247,6 @@ export function App() {
         uiShellMode={uiShellMode}
         viewLayout={viewLayout}
         onClearViewLayout={handleClearViewLayout}
-        onNavigateBack={handleShellBack}
       />
     ),
     [
@@ -2286,7 +2262,6 @@ export function App() {
       availableViewsForDesktopTabs,
       viewLayout,
       handleClearViewLayout,
-      handleShellBack,
     ],
   );
 
@@ -2331,6 +2306,7 @@ export function App() {
         <ShellControllerProvider>
           <ChatOverlayShell />
           <FirstRunConductorMount />
+          <ModelStatusConductorMount />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>
@@ -2543,11 +2519,22 @@ export function App() {
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
         <FirstRunConductorMount />
+        {/* In-chat model-status card (headless) — while the local text model is
+            downloading/loading/missing/errored it seeds ONE live status turn
+            with cancel / switch-to-cloud / retry controls. Renders null. */}
+        <ModelStatusConductorMount />
         {/* Interactive tutorial: a persistent spotlight overlay that survives
             navigation (it sends the user to Settings, back home, …). Renders
             only when the tutorial is active (launched from the home Tutorial
             tile or the Help view). */}
         <TutorialOverlay />
+        {/* Post-login permission priming: a one-time soft-ask modal that walks
+            the user through the platform's onboarding permission set (voice,
+            location, notifications) BEFORE any OS prompt. Self-gates on
+            authenticated + firstRunComplete !== false + no active tutorial, so
+            it never collides with the in-chat first-run conductor. Renders null
+            when not eligible; re-triggerable from Settings → Permissions. */}
+        <PermissionPrimingOverlay />
         {/* Notification center, headless for now: the visible bell is hidden,
             but this still self-boots the notification store (hydrate + live
             stream) and routes interrupt toasts through ActionNotice. Restore

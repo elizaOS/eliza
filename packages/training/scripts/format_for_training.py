@@ -17,20 +17,18 @@ Auxiliary repair/eval rows are intentionally rejected.
 
 Privacy contract
 ----------------
-Every record emitted from `format_record` is passed through the canonical
-Python port of the app-training privacy filter
-(`privacy_filter_trajectories.redact_value`) before it leaves this module.
-The filter is loaded at import time; if the import or pattern compile fails,
-the script errors out rather than silently writing unfiltered data. See
-`packages/training/AGENTS.md` and the repo-wide CLAUDE.md privacy clause —
-the database stores raw user data intentionally; redaction lives on the
-outbound (export / training / HF publish) path, and this module is one of
-the load-bearing barriers.
+Canonical native rows must carry a v1 privacy attestation from the export or
+prep path before they can train. Every record emitted from `format_record` is
+still passed through the canonical Python port of the app-training privacy
+filter (`privacy_filter_trajectories.redact_value`) as the last barrier before
+tokenization. Missing attestations fail closed unless the operator sets
+`ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON` with a non-empty reason.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -40,6 +38,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPT_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
 
 NATIVE_FORMAT = "eliza_native_v1"
+PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
+PRIVACY_ATTESTATION_VERSION = 1
 
 # Mandatory privacy filter — every record must pass through this before
 # JSONL write. Importing eagerly means a broken filter aborts the script;
@@ -147,6 +147,63 @@ def system_prompt_for(record: dict[str, Any]) -> str:
 
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _privacy_override_reason() -> str:
+    return os.environ.get("ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON", "").strip()
+
+
+def _privacy_attestation_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
+    metadata = _as_dict(record.get("metadata"))
+    candidates: list[dict[str, Any]] = []
+    for value in (
+        record.get("privacyAttestation"),
+        record.get("privacy_attestation"),
+        metadata.get("privacy_attestation"),
+        metadata.get("privacyAttestation"),
+        metadata.get("privacy"),
+        record.get("privacy"),
+    ):
+        if isinstance(value, dict):
+            candidates.append(value)
+    return candidates
+
+
+def _is_privacy_attested(record: dict[str, Any]) -> bool:
+    for attestation in _privacy_attestation_candidates(record):
+        schema = attestation.get("schema")
+        version = attestation.get("version")
+        passed = attestation.get("passed")
+        reviewed = attestation.get("reviewed")
+        redacted = attestation.get("redacted")
+        privacy = _as_dict(attestation.get("privacy"))
+        if (
+            schema == PRIVACY_ATTESTATION_SCHEMA
+            and version == PRIVACY_ATTESTATION_VERSION
+            and passed is True
+            and (
+                reviewed is True
+                or redacted is True
+                or privacy.get("reviewed") is True
+            )
+        ):
+            return True
+    return False
+
+
+def _require_native_privacy_attestation(record: dict[str, Any]) -> None:
+    if _is_privacy_attested(record):
+        return
+    override_reason = _privacy_override_reason()
+    if override_reason:
+        return
+    raise PrivacyFilterError(
+        "eliza_native_v1 row lacks privacy attestation; run the scenario "
+        "native exporter or prepare_eliza1_trajectory_dataset.py so rows carry "
+        f"{PRIVACY_ATTESTATION_SCHEMA} v{PRIVACY_ATTESTATION_VERSION}, or set "
+        "ELIZA_TRAINING_PRIVACY_OVERRIDE_REASON=<reason> for an explicit "
+        "operator override."
+    )
 
 
 def _clean_string(value: Any) -> str:
@@ -448,11 +505,11 @@ def format_record(record: dict[str, Any]) -> dict[str, Any] | None:
     if _is_auxiliary_record(record):
         return None
 
-    formatted = (
-        _format_native_record(record)
-        or _format_messages_record(record)
-        or _format_legacy_flat_record(record)
-    )
+    formatted = _format_native_record(record)
+    if formatted is not None:
+        _require_native_privacy_attestation(record)
+    else:
+        formatted = _format_messages_record(record) or _format_legacy_flat_record(record)
     if formatted is None:
         return None
     redacted = _redact_value(formatted)

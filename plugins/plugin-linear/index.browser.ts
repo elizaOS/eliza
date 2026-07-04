@@ -1,3 +1,8 @@
+/**
+ * Browser build entry for the Linear plugin: a stub that warns the plugin is
+ * unsupported in-browser and does nothing else. The Linear SDK requires a Node
+ * runtime, so browser bundles must reach Linear through a server proxy.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 

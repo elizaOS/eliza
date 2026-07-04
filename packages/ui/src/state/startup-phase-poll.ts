@@ -21,7 +21,7 @@ import {
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
-import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
+import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
@@ -43,21 +43,17 @@ import {
 } from "../utils/cloud-agent-base";
 import {
   asApiLikeError,
-  clearPersistedSetupStep,
   deriveFirstRunResumeFieldsFromConfig,
   formatStartupErrorDetail,
-  inferSetupResumeStep,
   type StartupErrorState,
 } from "./internal";
 import {
   clearPersistedActiveServer,
-  loadPersistedSetupStep,
   savePersistedActiveServer,
 } from "./persistence";
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
-import type { SetupStep } from "./types";
 
 function isCapacitorNative(): boolean {
   try {
@@ -256,25 +252,14 @@ export interface PollingBackendDeps {
   setFirstRunComplete: (v: boolean) => void;
   setFirstRunLoading: (v: boolean) => void;
   setFirstRunOptions: (v: FirstRunOptions) => void;
-  setSetupStep: (v: SetupStep) => void;
   setFirstRunRuntimeTarget: (v: FirstRunRuntimeTarget) => void;
-  setFirstRunCloudApiKey: (v: string) => void;
   setFirstRunProvider: (v: string) => void;
-  setFirstRunVoiceProvider: (v: string) => void;
-  setFirstRunApiKey: (v: string) => void;
-  setFirstRunPrimaryModel: (v: string) => void;
-  setFirstRunOpenRouterModel: (v: string) => void;
   setFirstRunRemoteConnected: (v: boolean) => void;
   setFirstRunRemoteApiBase: (v: string) => void;
   setFirstRunRemoteToken: (v: string) => void;
-  setFirstRunSmallModel: (v: string) => void;
-  setFirstRunLargeModel: (v: string) => void;
   setFirstRunCloudProvisionedContainer: (v: boolean) => void;
   setPairingEnabled: (v: boolean) => void;
   setPairingExpiresAt: (v: number | null) => void;
-  applyDetectedProviders: (
-    detected: Awaited<ReturnType<typeof scanProviderCredentials>>,
-  ) => void;
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
@@ -285,43 +270,17 @@ function applyFirstRunResumeFields(
   deps: Pick<
     PollingBackendDeps,
     | "setFirstRunRuntimeTarget"
-    | "setFirstRunCloudApiKey"
     | "setFirstRunProvider"
-    | "setFirstRunVoiceProvider"
-    | "setFirstRunApiKey"
-    | "setFirstRunPrimaryModel"
-    | "setFirstRunOpenRouterModel"
     | "setFirstRunRemoteConnected"
     | "setFirstRunRemoteApiBase"
     | "setFirstRunRemoteToken"
-    | "setFirstRunSmallModel"
-    | "setFirstRunLargeModel"
   >,
 ): void {
-  if (rf.firstRunRuntimeTarget !== undefined)
-    deps.setFirstRunRuntimeTarget(rf.firstRunRuntimeTarget);
-  if (rf.firstRunCloudApiKey !== undefined)
-    deps.setFirstRunCloudApiKey(rf.firstRunCloudApiKey);
-  if (rf.firstRunProvider !== undefined)
-    deps.setFirstRunProvider(rf.firstRunProvider);
-  if (rf.firstRunVoiceProvider !== undefined)
-    deps.setFirstRunVoiceProvider(rf.firstRunVoiceProvider);
-  if (rf.firstRunApiKey !== undefined)
-    deps.setFirstRunApiKey(rf.firstRunApiKey);
-  if (rf.firstRunPrimaryModel !== undefined)
-    deps.setFirstRunPrimaryModel(rf.firstRunPrimaryModel);
-  if (rf.firstRunOpenRouterModel !== undefined)
-    deps.setFirstRunOpenRouterModel(rf.firstRunOpenRouterModel);
-  if (rf.firstRunRemoteConnected !== undefined)
-    deps.setFirstRunRemoteConnected(rf.firstRunRemoteConnected);
-  if (rf.firstRunRemoteApiBase !== undefined)
-    deps.setFirstRunRemoteApiBase(rf.firstRunRemoteApiBase);
-  if (rf.firstRunRemoteToken !== undefined)
-    deps.setFirstRunRemoteToken(rf.firstRunRemoteToken);
-  if (rf.firstRunSmallModel !== undefined)
-    deps.setFirstRunSmallModel(rf.firstRunSmallModel);
-  if (rf.firstRunLargeModel !== undefined)
-    deps.setFirstRunLargeModel(rf.firstRunLargeModel);
+  deps.setFirstRunRuntimeTarget(rf.firstRunRuntimeTarget);
+  deps.setFirstRunProvider(rf.firstRunProvider);
+  deps.setFirstRunRemoteConnected(rf.firstRunRemoteConnected);
+  deps.setFirstRunRemoteApiBase(rf.firstRunRemoteApiBase);
+  deps.setFirstRunRemoteToken(rf.firstRunRemoteToken);
 }
 
 /**
@@ -728,9 +687,6 @@ export async function runPollingBackend(
         sessionComplete = false;
       }
 
-      if (complete && sessionComplete) {
-        clearPersistedSetupStep();
-      }
       if (
         sessionComplete &&
         !ctx?.persistedActiveServer &&
@@ -773,28 +729,7 @@ export async function runPollingBackend(
                   ? options.styles
                   : getStylePresets(deps.uiLanguage),
             });
-            if (!rf.firstRunProvider) {
-              try {
-                const det = await scanProviderCredentials();
-                if (det.length > 0) deps.applyDetectedProviders(det);
-              } catch (error: unknown) {
-                logger.warn(
-                  { error },
-                  "[startup-phase-poll] provider-credential scan failed during onboarding resume",
-                );
-              }
-            }
-            // scanProviderCredentials is a second in-flight await: the effect
-            // may have been torn down while it ran. Bail before mutating state
-            // or dispatching, matching the guard after the Promise.all above.
-            if (cancelled.current) return;
             applyFirstRunResumeFields(rf, deps);
-            deps.setSetupStep(
-              inferSetupResumeStep({
-                persistedStep: loadPersistedSetupStep(),
-                config,
-              }),
-            );
             deps.setFirstRunLoading(false);
             dispatch({
               type: "BACKEND_REACHED",

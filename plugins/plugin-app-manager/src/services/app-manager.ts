@@ -1468,7 +1468,7 @@ export class AppManager {
    * Bump a run's `lastHeartbeatAt` to "now" without invoking any plugin
    * routes. Returns the updated run, or `null` if the runId is unknown.
    *
-   * The UI calls this on a short interval while the GameView is mounted so
+   * The UI calls this on a short interval while the FullscreenView is mounted so
    * the sweeper knows the tab is still alive. When the tab goes away the
    * heartbeat stops and {@link reapStaleRuns} reclaims the run after
    * `heartbeatTimeoutMs`.

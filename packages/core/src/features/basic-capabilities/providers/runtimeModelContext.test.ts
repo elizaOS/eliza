@@ -79,10 +79,51 @@ describe("runtimeModelContextProvider", () => {
 		);
 	});
 
-	it("resolves codex-cli slots to CODEX_MODEL from env (getSetting hides env vars)", async () => {
-		// codex-cli registers every slot against one CODEX_MODEL rather than the
-		// per-slot *_MODEL keys, and CODEX_MODEL is an ENV var getSetting doesn't
-		// expose — so without the env fallback the slot rendered its raw name.
+	it("resolves provider-declared display model settings from env", async () => {
+		// Some providers register every slot against one underlying model setting
+		// rather than per-slot *_MODEL keys. Provider-owned metadata declares that
+		// setting so core does not branch on provider names.
+		const runtime = makeRuntime({}, {
+			models: new Map([
+				[
+					ModelType.RESPONSE_HANDLER,
+					[
+						{
+							metadata: { displayModelSetting: "CODEX_MODEL" },
+							provider: "subscription-provider",
+						},
+					],
+				],
+				[
+					ModelType.ACTION_PLANNER,
+					[
+						{
+							metadata: { displayModelSetting: "CODEX_MODEL" },
+							provider: "subscription-provider",
+						},
+					],
+				],
+			]),
+		} as Partial<IAgentRuntime>);
+
+		const prev = process.env.CODEX_MODEL;
+		process.env.CODEX_MODEL = "gpt-5.5";
+		try {
+			const result = await runtimeModelContextProvider.get(
+				runtime,
+				makeMessage("what model are you using?"),
+				{} as never,
+			);
+			expect(result.text).toContain("Response handler model: gpt-5.5");
+			expect(result.data?.responseHandlerModel).toBe("gpt-5.5");
+			expect(result.text).not.toContain("RESPONSE_HANDLER");
+		} finally {
+			if (prev === undefined) delete process.env.CODEX_MODEL;
+			else process.env.CODEX_MODEL = prev;
+		}
+	});
+
+	it("does not use provider-name branches for display model settings", async () => {
 		const runtime = makeRuntime({}, {
 			models: new Map([
 				[ModelType.RESPONSE_HANDLER, [{ provider: "codex-cli" }]],
@@ -98,9 +139,8 @@ describe("runtimeModelContextProvider", () => {
 				makeMessage("what model are you using?"),
 				{} as never,
 			);
-			expect(result.text).toContain("Response handler model: gpt-5.5");
-			expect(result.data?.responseHandlerModel).toBe("gpt-5.5");
-			expect(result.text).not.toContain("RESPONSE_HANDLER");
+			expect(result.text).not.toContain("gpt-5.5");
+			expect(result.data?.responseHandlerModel).toBeUndefined();
 		} finally {
 			if (prev === undefined) delete process.env.CODEX_MODEL;
 			else process.env.CODEX_MODEL = prev;

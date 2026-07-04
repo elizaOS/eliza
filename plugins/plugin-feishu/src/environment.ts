@@ -1,3 +1,10 @@
+/**
+ * Loads and validates Feishu connector configuration from runtime settings.
+ * getFeishuConfig reads app credentials and domain (failing closed when a
+ * required field is missing), validateConfig enforces the `cli_` app-id prefix,
+ * and isChatAllowed applies the FEISHU_ALLOWED_CHATS allowlist. Consumed by the
+ * service and the message manager.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { FEISHU_DOMAINS } from "./constants";
 

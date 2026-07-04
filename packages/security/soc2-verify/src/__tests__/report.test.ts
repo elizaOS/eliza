@@ -1,3 +1,7 @@
+/**
+ * Tests SOC2 evidence report rendering and file output with temporary local artifacts.
+ */
+
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";

@@ -1,0 +1,14 @@
+leg1a: 12 identical questions of 48 chars
+leg1b lengths: 48, 138, 225, 315, 402, 497, 588, 673
+{"label":"ttft-1","epoch0":1783083747877,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":94,"ttftMs":57744,"totalMs":57745,"chunkEvents":1,"firstContent":"12 plus 34 equals 46.","text":"12 plus 34 equals 46."}
+{"label":"ttft-2","epoch0":1783083807722,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":68,"ttftMs":54113,"totalMs":54158,"chunkEvents":1,"firstContent":"45 plus 27 equals 72.","text":"45 plus 27 equals 72."}
+{"label":"ttft-3","epoch0":1783083863971,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":55,"ttftMs":52924,"totalMs":52925,"chunkEvents":1,"firstContent":"88 plus 19 equals 107.","text":"88 plus 19 equals 107."}
+{"label":"ttft-4","epoch0":1783083918990,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":74,"ttftMs":58785,"totalMs":58785,"chunkEvents":1,"firstContent":"23 plus 45 equals 68.","text":"23 plus 45 equals 68."}
+{"label":"ttft-5","epoch0":1783083979877,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":79,"ttftMs":53755,"totalMs":53756,"chunkEvents":1,"firstContent":"56 plus 21 equals 77.","text":"56 plus 21 equals 77."}
+{"label":"ttft-6","epoch0":1783084035720,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":68,"ttftMs":54380,"totalMs":54380,"chunkEvents":1,"firstContent":"74 plus 13 equals 87.","text":"74 plus 13 equals 87."}
+{"label":"ttft-7","epoch0":1783084092195,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":44,"ttftMs":54264,"totalMs":54265,"chunkEvents":1,"firstContent":"62 plus 35 equals 97.","text":"62 plus 35 equals 97."}
+{"label":"ttft-8","epoch0":1783084148546,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":67,"ttftMs":54356,"totalMs":54357,"chunkEvents":1,"firstContent":"41 plus 52 equals 93.","text":"41 plus 52 equals 93."}
+{"label":"ttft-9","epoch0":1783084205011,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":53,"ttftMs":57338,"totalMs":57447,"chunkEvents":1,"firstContent":"33 plus 66 equals 99.","text":"33 plus 66 equals 99."}
+{"label":"ttft-10","epoch0":1783084264567,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":102,"ttftMs":54070,"totalMs":54071,"chunkEvents":1,"firstContent":"87 plus 11 equals 98.","text":"87 plus 11 equals 98."}
+{"label":"ttft-11","epoch0":1783084320750,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":60,"ttftMs":54966,"totalMs":54967,"chunkEvents":1,"firstContent":"29 plus 58 equals 87.","text":"29 plus 58 equals 87."}
+{"label":"ttft-12","epoch0":1783084377818,"status":200,"contentType":"text/event-stream","qChars":48,"ttfbMs":48,"ttftMs":54259,"totalMs":54260,"chunkEvents":1,"firstContent":"64 plus 27 equals 91.","text":"64 plus 27 equals 91."}

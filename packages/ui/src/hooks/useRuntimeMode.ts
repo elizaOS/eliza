@@ -4,9 +4,9 @@
  *
  * The endpoint is the single source of truth for `local` / `local-only` /
  * `cloud` / `remote` (see `packages/app-core/src/runtime/mode/runtime-mode.ts`
- * and `runtime-mode-routes.ts`). UI surfaces that previously inferred mode
- * from `activeServer` / `clientBaseUrl` heuristics should consume this hook
- * so the dashboard agrees with the server's resolved configuration.
+ * and `runtime-mode-routes.ts`). UI surfaces read mode through this hook rather
+ * than inferring it from `activeServer` / `clientBaseUrl` heuristics, so the
+ * dashboard agrees with the server's resolved configuration.
  *
  * The result is cached at module scope and shared across all consumers — a
  * single `GET /api/runtime/mode` per session is enough; the snapshot only

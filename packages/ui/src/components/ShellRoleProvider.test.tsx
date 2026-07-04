@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for `deriveShellRole` — the pure mapping from auth status to the
+ * shell's canonical role (local/loopback authenticated → OWNER, etc.).
+ */
+
 import { describe, expect, it } from "vitest";
 import { deriveShellRole } from "./ShellRoleProvider.tsx";
 

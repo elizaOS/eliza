@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
-
+//
+// DynamicViewLoader: the same-origin bundle-URL gate (the RCE guard), that the
+// test-only import hook is stripped from minified production builds, and the
+// runtime load/cache/error behavior. The origin gate and the production-strip
+// check compile the REAL DynamicViewLoader.tsx source with esbuild rather than
+// asserting against a mock.
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -29,6 +37,63 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     expect(isSameOriginBundleUrl("http://evil.example/x.js")).toBe(false);
     // A protocol-relative URL resolves to a different origin → rejected.
     expect(isSameOriginBundleUrl("//evil.example/x.js")).toBe(false);
+  });
+
+  it("erases the test import hook from production builds before the origin gate", async () => {
+    const source = await readFile(
+      resolve(process.cwd(), "src/components/views/DynamicViewLoader.tsx"),
+      "utf8",
+    );
+    const output = await transform(source, {
+      loader: "tsx",
+      format: "esm",
+      minify: true,
+      treeShaking: true,
+      define: {
+        "import.meta.env.DEV": "false",
+        "import.meta.env.MODE": '"production"',
+        "process.env.NODE_ENV": '"production"',
+      },
+    });
+
+    expect(output.code).not.toContain("__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__");
+    expect(output.code).toContain("isSameOriginBundleUrl");
+  });
+});
+
+describe("host-external importer resolution (__ELIZA_DYNAMIC_VIEW_IMPORT__)", () => {
+  async function resolveHostExternal(
+    specifier: string,
+  ): Promise<Record<string, unknown>> {
+    const importFn = window.__ELIZA_DYNAMIC_VIEW_IMPORT__;
+    if (!importFn) throw new Error("import hook not installed");
+    return importFn(specifier);
+  }
+
+  it("consults an importer contributed through registerHostExternalImporter", async () => {
+    const { registerHostExternalImporter } = await import(
+      "../../app-shell-registry"
+    );
+    const marker = { __registered: true };
+    registerHostExternalImporter(
+      "@test/plugin-registered-external",
+      async () => marker,
+    );
+
+    await expect(
+      resolveHostExternal("@test/plugin-registered-external"),
+    ).resolves.toBe(marker);
+  });
+
+  it("still resolves a framework module from the trunk map", async () => {
+    const react = await resolveHostExternal("react");
+    expect(typeof react.useState).toBe("function");
+  });
+
+  it("throws for an unknown specifier that is neither framework nor registered", async () => {
+    await expect(
+      resolveHostExternal("@test/never-registered-external"),
+    ).rejects.toThrow(/unsupported host external/);
   });
 });
 
@@ -412,6 +477,91 @@ describe("DynamicViewLoader", () => {
     });
   });
 
+  it("redacts and refuses raw DOM sensitive fields", async () => {
+    const bundleUrl = "https://capability.example.test/assets/sensitive.js";
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function SensitivePanel() {
+        return (
+          <section>
+            <input
+              data-agent-id="owner-password"
+              data-agent-role="text-input"
+              data-agent-label="Owner password"
+              type="password"
+              defaultValue="existing-secret"
+            />
+          </section>
+        );
+      },
+    }));
+
+    render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="sensitive.view" />);
+    await screen.findByDisplayValue("existing-secret");
+
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-list-sensitive",
+    );
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "agent-fill",
+      { id: "owner-password", value: "changed-secret" },
+      "req-fill-sensitive-agent",
+    );
+    await dispatchViewInteract(
+      "sensitive.view",
+      "gui",
+      "fill-input",
+      { selector: "[data-agent-id='owner-password']", value: "changed-secret" },
+      "req-fill-sensitive-selector",
+    );
+
+    expect(screen.getByDisplayValue("existing-secret")).toBeTruthy();
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-list-sensitive",
+      success: true,
+      result: [
+        expect.objectContaining({
+          id: "owner-password",
+          sensitive: true,
+          valueRedacted: true,
+        }),
+      ],
+    });
+    const listCall = vi
+      .mocked(sendWsMessage)
+      .mock.calls.find(
+        ([message]) =>
+          message.type === "view:interact:result" &&
+          message.requestId === "req-list-sensitive",
+      );
+    expect(JSON.stringify(listCall?.[0])).not.toContain("existing-secret");
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-fill-sensitive-agent",
+      success: true,
+      result: expect.objectContaining({
+        ok: false,
+        id: "owner-password",
+      }),
+    });
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-fill-sensitive-selector",
+      success: true,
+      result: expect.objectContaining({
+        filled: false,
+        selector: "[data-agent-id='owner-password']",
+      }),
+    });
+  });
+
   it("reports missing focus targets without throwing", async () => {
     const bundleUrl = "https://capability.example.test/assets/missing-focus.js";
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
@@ -662,6 +812,53 @@ describe("DynamicViewLoader", () => {
 
     await screen.findByText("Failed to load view");
     expect(screen.getByText("View ID: broken.view")).toBeTruthy();
+  });
+
+  it("shows the recoverable card (never a blank screen) when the bundle import rejects, and Retry re-imports", async () => {
+    // Mode 1: a rejected dynamic import (bundle 404 / network / fetch error)
+    // must land on the SAME "Failed to load view" card with a working Retry —
+    // not a blank/white render.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const bundleUrl = "https://capability.example.test/assets/network-fail.js";
+    let attempt = 0;
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => {
+      attempt += 1;
+      if (attempt === 1) {
+        throw new Error("Failed to fetch dynamically imported module");
+      }
+      return {
+        default: function RecoveredPanel() {
+          return <div>Network recovered v{attempt}</div>;
+        },
+      };
+    });
+
+    const { container } = render(
+      <DynamicViewLoader bundleUrl={bundleUrl} viewId="network.view" />,
+    );
+
+    const retry = await screen.findByRole("button", { name: /retry/i });
+    // The actual card is in the DOM (not an empty container).
+    expect(screen.getByText("Failed to load view")).toBeTruthy();
+    expect(screen.getByText("View ID: network.view")).toBeTruthy();
+    expect(
+      screen.getByText("Failed to fetch dynamically imported module"),
+    ).toBeTruthy();
+    expect(container.textContent).not.toBe("");
+
+    await act(async () => {
+      retry.click();
+    });
+
+    // Retry actually re-attempts the import — the fixed bundle mounts.
+    await screen.findByText("Network recovered v2");
+    expect(screen.queryByText("Failed to load view")).toBeNull();
+    expect(window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__).toHaveBeenCalledTimes(
+      2,
+    );
+    consoleError.mockRestore();
   });
 
   it("recovers a view that crashes at render when Retry re-imports a fixed bundle", async () => {

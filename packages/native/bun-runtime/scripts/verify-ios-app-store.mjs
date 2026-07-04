@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+/**
+ * Verifies that the iOS full-Bun engine and app bundle obey App Store runtime policy.
+ *
+ * The verifier inspects xcframework slices or embedded app frameworks for ABI
+ * metadata, forbidden entitlements, unsafe network policy, and imports that
+ * imply JIT, dynamic loading, or process-spawn paths.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

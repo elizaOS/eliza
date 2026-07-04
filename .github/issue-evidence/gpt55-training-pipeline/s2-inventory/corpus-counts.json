@@ -1,0 +1,68 @@
+{
+  "generatedAt": "2026-07-02T23:02:06.513Z",
+  "scenario": {
+    "dirs": 7,
+    "scenarioFiles": 984,
+    "baseScenarios": 978,
+    "expandedScenarios": 10716,
+    "perDir": [
+      {
+        "dir": "packages/test/scenarios",
+        "files": 713,
+        "base": 707,
+        "expanded": 7777
+      },
+      {
+        "dir": "packages/scenario-runner/test/scenarios",
+        "files": 42,
+        "base": 42,
+        "expanded": 420
+      },
+      {
+        "dir": "plugins/plugin-personal-assistant/test/scenarios",
+        "files": 197,
+        "base": 197,
+        "expanded": 2167
+      },
+      {
+        "dir": "plugins/plugin-app-control/test/scenarios",
+        "files": 15,
+        "base": 15,
+        "expanded": 165
+      },
+      {
+        "dir": "plugins/plugin-health/test/scenarios",
+        "files": 8,
+        "base": 8,
+        "expanded": 88
+      },
+      {
+        "dir": "plugins/plugin-cloud-apps/test/scenarios",
+        "files": 1,
+        "base": 1,
+        "expanded": 11
+      },
+      {
+        "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
+        "files": 8,
+        "base": 8,
+        "expanded": 88
+      }
+    ],
+    "note": "expansion = persona/paraphrase multiplier (~10x) via eliza-scenarios list --count-scenarios; base = existing scenario ids. Harvest targets base ids (expansion optional)."
+  },
+  "benchmark": {
+    "adapters": 53,
+    "note": "53 adapters over 45 benchmark dirs (registry/commands.py). Each benchmark has its own problem/task count (e.g. bfcl ~2k calls, tau_bench airline/retail, mint tasks). Per-benchmark N lives in each suite README; NOT a fixed number. ~25 route through eliza-adapter (real runtime) and are trajectory-harvestable after wiring."
+  },
+  "e2e": {
+    "liveLanes": 51,
+    "scriptedRealServices": 3,
+    "note": "51 *.live.e2e.test.ts / *.real.e2e.test.ts vitest files. Each file has multiple it() cases. Verdict granularity = vitest pass/fail per file. Trajectory-harvestable after ELIZA_SAVE_TRAJECTORIES wiring."
+  },
+  "fullRunCostEstimate": {
+    "scenarioBaseRuns": 978,
+    "scenarioExpandedRuns": 10716,
+    "note": "978 base scenario runs (10,716 if fully expanded), each a full AgentRuntime+PGLite boot with 1-N gpt-5.5 turns. At ~1-3 model calls/scenario => ~1k-30k gpt-5.5 calls for scenarios alone. Benchmarks add thousands more (bfcl/tau/mint). This is why Stage 1 proves on a small slice only."
+  }
+}

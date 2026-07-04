@@ -1,3 +1,10 @@
+/**
+ * DTOs mirrored from the Cloud API schema (`CurrentUserDto`, `AgentDetailDto`,
+ * the `ApiSuccessEnvelope`/`ApiErrorEnvelope` wrappers, etc.). These must stay in
+ * exact sync with the actual API responses — do not add computed or client-only
+ * fields here.
+ */
+
 export type IsoDateString = string;
 type DateLike = Date | IsoDateString;
 

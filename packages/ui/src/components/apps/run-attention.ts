@@ -1,3 +1,11 @@
+/**
+ * Derives the human-readable list of reasons a running app needs attention
+ * (offline/degraded health, detached or missing viewer, a down session status,
+ * a stale heartbeat past `HEARTBEAT_STALE_MS`), consumed by the running-apps UI
+ * to surface warning badges. Status strings are matched case-insensitively
+ * against down/ready keyword sets since connectors report free-form statuses.
+ */
+
 import type { AppRunSummary } from "../../api";
 
 const HEARTBEAT_STALE_MS = 2 * 60 * 1000;

@@ -1,6 +1,4 @@
-/**
- * Type definitions for the BlueBubbles plugin
- */
+/** Domain and transport types for the connector: server config, iMessage message/chat/handle/attachment shapes, send options/results, and webhook event payloads. */
 
 export type DmPolicy = "open" | "pairing" | "allowlist" | "disabled";
 export type GroupPolicy = "open" | "allowlist" | "disabled";

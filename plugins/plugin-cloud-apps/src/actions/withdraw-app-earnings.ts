@@ -47,6 +47,7 @@ import {
 } from "../client.js";
 import {
   buildConnectorCta,
+  CONFIRM_TTL_MS,
   type ConnectorCta,
   confirmationRoomId,
   confirmTargetMismatchMessage,
@@ -54,6 +55,7 @@ import {
   conflictingConfirmTarget,
   deleteCloudAppConfirmation,
   findPendingCloudAppConfirmation,
+  pendingExpired,
   persistCloudAppConfirmation,
   readStructuredConfirmation,
 } from "../safety.js";
@@ -214,6 +216,24 @@ export const withdrawAppEarningsAction: Action = {
           text: "No pending withdrawal confirmation.",
           userFacingText: NO_PENDING_CONFIRMATION_MESSAGE,
           data: { reason: "no_pending_confirmation", withdrawn: false },
+        };
+      }
+
+      if (pendingExpired(pending)) {
+        // A stale confirm must not fire a money-out withdrawal on a bare "yes"
+        // long after the fact. Mirror BUY_APP_DOMAIN / BOOK_INFLUENCER: expire
+        // the pending and ask the user to re-request rather than moving money.
+        await deleteCloudAppConfirmation(runtime, pending.taskId);
+        const msg =
+          `That withdrawal request for ${pending.metadata.appName} is more than ${Math.round(CONFIRM_TTL_MS / 60000)} minutes old, so I didn't move any money. ` +
+          `Ask me to withdraw ${pending.metadata.appName}'s earnings again and I'll re-confirm the amount.`;
+        await callback?.({ text: msg, actions: ["WITHDRAW_APP_EARNINGS"] });
+        return {
+          success: false,
+          text: `Pending withdrawal of ${pending.metadata.appName} expired before confirmation.`,
+          userFacingText: msg,
+          verifiedUserFacing: true,
+          data: { reason: "confirmation_expired", withdrawn: false },
         };
       }
 

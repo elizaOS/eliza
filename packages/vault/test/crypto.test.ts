@@ -1,3 +1,7 @@
+/**
+ * Tests the vault ciphertext envelope and authenticated-data binding.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   CryptoError,

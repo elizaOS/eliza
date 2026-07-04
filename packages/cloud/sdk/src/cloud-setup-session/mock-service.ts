@@ -1,3 +1,11 @@
+/**
+ * In-memory `CloudSetupSessionService` implementation for tests and dev without a
+ * live session: runs a scripted setup tour, accumulates transcript and extracted
+ * facts, and flips the container from provisioning to ready after a configurable
+ * number of `getStatus` polls. Clock and id generation are injectable for
+ * deterministic tests.
+ */
+
 import type {
   CloudSetupSessionService,
   FinalizeHandoffInput,

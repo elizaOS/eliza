@@ -1,3 +1,7 @@
+/**
+ * KMS client types and error classes shared by every backend implementation.
+ */
+
 export type KeyId = string;
 export type KeyVersion = number;
 export type SignatureAlgorithm = "ed25519" | "rsa-pss-sha256";

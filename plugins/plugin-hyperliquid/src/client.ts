@@ -1,3 +1,9 @@
+/**
+ * Extends the shared `ElizaClient` prototype with typed helpers for the four
+ * Hyperliquid read routes. Import this module for its side effect (patching
+ * the prototype) before calling `hyperliquidStatus`/`hyperliquidMarkets`/
+ * `hyperliquidPositions`/`hyperliquidOrders` on an `ElizaClient` instance.
+ */
 import { ElizaClient } from "@elizaos/ui";
 import type {
   HyperliquidMarketsResponse,

@@ -84,6 +84,143 @@ export async function startAndroidScreenRecord({
   };
 }
 
+/**
+ * Record a gesture walkthrough that outruns `screenrecord`'s hard 180s per-file
+ * cap: record back-to-back capped segments on the device, pull each as it ends,
+ * and concat them into one mp4 with ffmpeg (`-c copy`, no re-encode — every
+ * segment shares the same encoder settings). Falls back to the single recorded
+ * segment when ffmpeg is missing or only one segment exists. There is a
+ * sub-second gap between segments (the pull + respawn window); evidence video
+ * tolerates it, so it is not stitched over.
+ */
+export async function startChunkedAndroidScreenRecord({
+  adb = resolveAdb(),
+  serial,
+  artifactDir,
+  filename = "screenrecord.mp4",
+  segmentSeconds = 170,
+  bitRate = "4000000",
+  log = () => {},
+}) {
+  if (!serial) throw new Error("serial is required for Android screenrecord");
+  if (!artifactDir) {
+    throw new Error("artifactDir is required for Android screenrecord");
+  }
+
+  ensureDir(artifactDir);
+  const localPath = path.join(artifactDir, filename);
+  fs.rmSync(localPath, { force: true });
+  const stem = path.basename(filename, path.extname(filename));
+  const remoteBase = `/sdcard/${stem}`;
+
+  const segments = [];
+  let stopped = false;
+  let currentChild = null;
+
+  const recordSegment = (index) => {
+    const remotePath = `${remoteBase}-seg${String(index).padStart(3, "0")}.mp4`;
+    spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
+      stdio: "ignore",
+    });
+    const child = spawn(
+      adb,
+      [
+        "-s",
+        serial,
+        "shell",
+        "screenrecord",
+        "--bit-rate",
+        String(bitRate),
+        "--time-limit",
+        String(Math.min(180, Math.max(1, segmentSeconds))),
+        remotePath,
+      ],
+      { stdio: "ignore" },
+    );
+    currentChild = child;
+    return new Promise((resolve) => {
+      const done = () => resolve(remotePath);
+      child.once("close", done);
+      child.once("error", done);
+    });
+  };
+
+  const loop = (async () => {
+    let index = 0;
+    while (!stopped) {
+      const remotePath = await recordSegment(index);
+      currentChild = null;
+      const segmentLocal = path.join(artifactDir, `.${stem}-seg${index}.mp4`);
+      spawnSync(adb, ["-s", serial, "pull", remotePath, segmentLocal], {
+        stdio: "ignore",
+      });
+      spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
+        stdio: "ignore",
+      });
+      if (isNonEmptyFile(segmentLocal)) {
+        segments.push(segmentLocal);
+        log(`pulled Android screenrecord segment ${index}: ${segmentLocal}`);
+      }
+      index += 1;
+    }
+  })();
+
+  await delay(750);
+  log(`started chunked Android screenrecord on ${serial}: ${remoteBase}-seg*`);
+
+  return {
+    localPath,
+    async stop() {
+      stopped = true;
+      spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
+        stdio: "ignore",
+      });
+      if (currentChild && currentChild.exitCode === null) {
+        currentChild.kill("SIGINT");
+      }
+      await Promise.race([loop, delay(8_000)]);
+
+      if (segments.length === 0) return null;
+      if (segments.length === 1) {
+        fs.copyFileSync(segments[0], localPath);
+      } else if (!concatSegments(segments, localPath, log)) {
+        // ffmpeg unavailable/failed: keep the longest single segment so the run
+        // still has watchable video rather than nothing.
+        const longest = segments
+          .map((file) => ({ file, size: fs.statSync(file).size }))
+          .sort((a, b) => b.size - a.size)[0];
+        fs.copyFileSync(longest.file, localPath);
+        log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
+      }
+      for (const segment of segments) fs.rmSync(segment, { force: true });
+      if (!isNonEmptyFile(localPath)) return null;
+      log(`wrote chunked Android screenrecord: ${localPath}`);
+      return localPath;
+    },
+  };
+}
+
+function concatSegments(segments, outPath, log) {
+  const probe = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" });
+  if (probe.status !== 0) return false;
+  const listPath = `${outPath}.concat.txt`;
+  fs.writeFileSync(
+    listPath,
+    `${segments.map((file) => `file '${file.replace(/'/g, "'\\''")}'`).join("\n")}\n`,
+  );
+  const result = spawnSync(
+    "ffmpeg",
+    ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", outPath],
+    { stdio: "ignore" },
+  );
+  fs.rmSync(listPath, { force: true });
+  if (result.status !== 0 || !isNonEmptyFile(outPath)) {
+    log(`ffmpeg concat failed with status ${result.status}`);
+    return false;
+  }
+  return true;
+}
+
 export function captureAndroidScreenshot({
   adb = resolveAdb(),
   serial,

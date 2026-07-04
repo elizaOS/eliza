@@ -1,0 +1,19 @@
+{
+  "package": "elizaos-plugin-true402",
+  "repository": "github:true402/elizaos-plugin-true402",
+  "kind": "plugin",
+  "description": "Pre-trade rug/honeypot guard for Base tokens — real buy/sell simulation plus liquidity and ownership checks, pay-per-call over x402 (USDC on Base). No accounts, no API keys; free daily trial.",
+  "homepage": "https://true402.dev",
+  "version": "0.1.1",
+  "tags": [
+    "x402",
+    "base",
+    "usdc",
+    "token-safety",
+    "rug-check",
+    "honeypot",
+    "defi",
+    "micropayments",
+    "trading"
+  ]
+}

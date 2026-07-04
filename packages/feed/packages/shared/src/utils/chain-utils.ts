@@ -1,3 +1,4 @@
+/** Maps EVM chain IDs to human-readable display names for the chains Feed operates on. */
 export const CHAIN_NAMES: Record<number, string> = {
   31337: "Local",
   84532: "Base Sepolia",

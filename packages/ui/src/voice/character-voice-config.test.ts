@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for voice-provider default resolution across platform/runtime
+ * combinations. Pure function, no live TTS.
+ */
 import { describe, expect, it } from "vitest";
 import { applyVoiceProviderDefaults } from "./character-voice-config";
 

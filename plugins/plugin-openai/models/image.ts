@@ -1,3 +1,8 @@
+/**
+ * Image model handlers: `handleImageGeneration` (dall-e-3 `/images/generations`)
+ * and `handleImageDescription`, which sends the image to a vision chat model and
+ * returns a `{ title, description }` pair.
+ */
 import type {
   IAgentRuntime,
   ImageDescriptionParams,

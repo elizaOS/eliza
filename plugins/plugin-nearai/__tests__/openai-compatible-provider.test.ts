@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `createNearAIClient` with `@ai-sdk/openai-compatible` mocked:
+ * asserts the endpoint/key/usage settings passed to the provider and that an
+ * injected runtime fetch is forwarded.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 const createOpenAICompatibleMock = vi.fn((config: unknown) => config);

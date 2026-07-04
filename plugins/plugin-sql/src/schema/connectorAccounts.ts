@@ -1,3 +1,20 @@
+/**
+ * Four related tables for external connector (Discord, Telegram, X, etc.)
+ * account management, all scoped per agent and cascade-deleting with it:
+ *
+ * - `connectorAccountsTable` — one row per connected external account,
+ *   uniquely keyed on `(agentId, provider, accountKey)` and
+ *   `(agentId, provider, externalId)` while `deletedAt` is null (soft-delete
+ *   allows re-connecting the same account later).
+ * - `connectorAccountCredentialsTable` — credentials for an account, stored
+ *   only as a `vaultRef` pointer into `@elizaos/vault` or an external secret
+ *   manager; never the raw secret. Unique per `(accountId, credentialType)`.
+ * - `connectorAccountAuditEventsTable` — append-only audit trail of actions
+ *   taken against an account; survives account deletion (`onDelete: "set null"`).
+ * - `oauthFlowsTable` — short-lived, single-use OAuth state tracking keyed by
+ *   a composite `(agentId, provider, stateHash)` primary key; `stateHash` and
+ *   `codeVerifierRef` store hashes/vault pointers, never plaintext secrets.
+ */
 import { sql } from "drizzle-orm";
 import {
   index,

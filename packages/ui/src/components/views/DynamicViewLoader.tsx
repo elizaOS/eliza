@@ -21,16 +21,8 @@
 
 import { resolveAppBranding } from "@elizaos/shared";
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Ban,
-  LoaderCircle,
-  RotateCw,
-} from "lucide-react";
-import {
   type ComponentType,
   memo,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -45,9 +37,16 @@ import {
   getViewRegistry,
   handleAgentSurfaceCapability,
   isAgentSurfaceCapability,
+  isSensitiveAgentElement,
+  SENSITIVE_AGENT_ELEMENT_REASON,
   type ViewAgentRegistry,
 } from "../../agent-surface";
 import { client } from "../../api/index.ts";
+import {
+  type HostExternalImporter,
+  registeredHostExternalSpecifiers,
+  resolveRegisteredHostExternalImporter,
+} from "../../app-shell-registry";
 import {
   type EvictReason,
   emitModuleCacheTelemetry,
@@ -66,7 +65,6 @@ import {
   planModuleCacheEvictions,
 } from "../../state/bounded-view-lru";
 import { installHeapPressureMonitor } from "../../state/heap-pressure-monitor";
-import { useTranslation } from "../../state/TranslationContext.hooks";
 import { useApp } from "../../state/useApp.ts";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
@@ -89,6 +87,12 @@ import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
+import {
+  navigateToViews,
+  ViewErrorState,
+  ViewLoadingSkeleton,
+  ViewRestrictedState,
+} from "./ViewStatusStates";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -331,8 +335,6 @@ function isReactComponentExport(
   );
 }
 
-type HostExternalImporter = () => Promise<Record<string, unknown>>;
-
 function importHostExternal(
   specifier: string,
 ): Promise<Record<string, unknown>> {
@@ -377,6 +379,13 @@ async function importUiRootCompat(): Promise<Record<string, unknown>> {
   return import("../../index.ts");
 }
 
+// Framework + host modules the shell always provides to every view bundle:
+// react, three, `@elizaos/ui/*`, the `@elizaos/app-core` view compat surface,
+// `@elizaos/shared`, and the native capacitor bridges. This map is
+// FRAMEWORK-ONLY — it must never list a plugin-specific specifier. A plugin (or
+// a build-variant entrypoint) contributes its own specifiers through
+// `registerHostExternalImporter` so adding a host-external plugin never edits
+// this shared UI module.
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": importAppCoreViewCompat,
   "@elizaos/app-core/browser": importAppCoreViewCompat,
@@ -393,14 +402,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     importHostExternal("@elizaos/capacitor-system"),
   "@elizaos/shared": () => importHostExternal("@elizaos/shared"),
   "@elizaos/ui": importUiRootCompat,
-  "@elizaos/plugin-browser": () =>
-    importHostExternal("@elizaos/plugin-browser"),
-  "@elizaos/plugin-health/screen-time/mobile-signal-setup": () =>
-    importHostExternal(
-      "@elizaos/plugin-health/screen-time/mobile-signal-setup",
-    ),
-  "@elizaos/plugin-training": () =>
-    importHostExternal("@elizaos/plugin-training"),
   "@elizaos/ui/agent-surface": async () => AgentSurfaceHost,
   "@elizaos/ui/app-navigate-view": () => import("../../app-navigate-view.ts"),
   "@elizaos/ui/api": () => import("../../api/index.ts"),
@@ -450,7 +451,6 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
   react: () => import("react"),
-  "react-plaid-link": () => import("react-plaid-link"),
   "react/jsx-dev-runtime": async () => {
     const devRuntime = await import("react/jsx-dev-runtime");
     if (typeof devRuntime.jsxDEV === "function") {
@@ -475,7 +475,31 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
     import("three/examples/jsm/loaders/GLTFLoader.js"),
 };
 
-const HOST_EXTERNAL_IMPORTER_SPECIFIERS = Object.keys(HOST_EXTERNAL_IMPORTERS);
+/**
+ * Resolve a view-bundle external specifier to its importer: the framework trunk
+ * map first, then the specifiers plugins/build variants contributed through
+ * `registerHostExternalImporter`.
+ */
+function resolveHostExternalImporter(
+  specifier: string,
+): HostExternalImporter | undefined {
+  return (
+    HOST_EXTERNAL_IMPORTERS[specifier] ??
+    resolveRegisteredHostExternalImporter(specifier)
+  );
+}
+
+/**
+ * Every specifier the shell can rewrite for a view bundle — the framework trunk
+ * map plus the registered extension specifiers. Computed per bundle load so a
+ * plugin registered after this module evaluated is still honored.
+ */
+function hostExternalSpecifiers(): string[] {
+  return [
+    ...Object.keys(HOST_EXTERNAL_IMPORTERS),
+    ...registeredHostExternalSpecifiers(),
+  ];
+}
 
 declare global {
   interface Window {
@@ -490,7 +514,7 @@ declare global {
 
 if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
   window.__ELIZA_DYNAMIC_VIEW_IMPORT__ = async (specifier) => {
-    const importer = HOST_EXTERNAL_IMPORTERS[specifier];
+    const importer = resolveHostExternalImporter(specifier);
     if (!importer) {
       throw new Error(
         `DynamicViewLoader: unsupported host external "${specifier}"`,
@@ -528,6 +552,9 @@ async function importViewBundle(
   bundleUrl: string,
 ): Promise<Record<string, unknown>> {
   if (
+    (import.meta.env.DEV ||
+      import.meta.env.MODE === "test" ||
+      process.env.NODE_ENV === "test") &&
     typeof window !== "undefined" &&
     window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
   ) {
@@ -571,7 +598,7 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   rewrittenUrl.searchParams.set("hostExternalRuntime", "1");
   rewrittenUrl.searchParams.set(
     "hostExternalSpecifiers",
-    HOST_EXTERNAL_IMPORTER_SPECIFIERS.join(","),
+    hostExternalSpecifiers().join(","),
   );
   return rewrittenUrl.href;
 }
@@ -784,12 +811,20 @@ function readElementValue(el: HTMLElement): unknown {
 function snapshotDomAgentElement(el: HTMLElement) {
   const rect = el.getBoundingClientRect();
   const role = el.getAttribute("data-agent-role") || "region";
-  return {
+  const descriptor = {
     id: el.getAttribute("data-agent-id") || "",
-    role,
     label: el.getAttribute("data-agent-label") || "",
+    sensitive: el.getAttribute("data-agent-sensitive") === "true",
+  };
+  const sensitive = isSensitiveAgentElement(descriptor, el);
+  return {
+    id: descriptor.id,
+    role,
+    label: descriptor.label,
     status: el.getAttribute("data-state") || undefined,
-    value: readElementValue(el),
+    ...(sensitive
+      ? { sensitive: true, valueRedacted: true }
+      : { value: readElementValue(el) }),
     fillable: DOM_FILLABLE_AGENT_ROLES.has(role),
     clickable: DOM_CLICKABLE_AGENT_ROLES.has(role),
     focused:
@@ -880,6 +915,18 @@ function handleDomAgentSurfaceCapability(
       }
       const el = getAgentElementById(containerEl, id);
       if (!el) return { ok: false, id, reason: "element not found" };
+      if (
+        isSensitiveAgentElement(
+          {
+            id,
+            label: el.getAttribute("data-agent-label") || "",
+            sensitive: el.getAttribute("data-agent-sensitive") === "true",
+          },
+          el,
+        )
+      ) {
+        return { ok: false, id, reason: SENSITIVE_AGENT_ELEMENT_REASON };
+      }
       if (
         el instanceof HTMLInputElement ||
         el instanceof HTMLTextAreaElement ||
@@ -991,7 +1038,12 @@ async function handleStandardCapability(
       const id = agentIdParam(params);
       if (id && registry) {
         const result = registry.fill(id, value);
-        return { filled: result.ok, id, reason: result.reason, value };
+        return {
+          filled: result.ok,
+          id,
+          reason: result.reason,
+          ...(result.ok ? { value } : {}),
+        };
       }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (!target) {
@@ -1002,6 +1054,27 @@ async function handleStandardCapability(
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement
       ) {
+        if (
+          isSensitiveAgentElement(
+            {
+              id:
+                target.getAttribute("data-agent-id") ||
+                target.id ||
+                target.name ||
+                selector ||
+                "",
+              label: target.getAttribute("data-agent-label") || "",
+              sensitive: target.getAttribute("data-agent-sensitive") === "true",
+            },
+            target,
+          )
+        ) {
+          return {
+            filled: false,
+            selector,
+            reason: SENSITIVE_AGENT_ELEMENT_REASON,
+          };
+        }
         setNativeInputValue(target, value);
         return { filled: true, selector, value };
       }
@@ -1011,175 +1084,6 @@ async function handleStandardCapability(
     default:
       throw new Error(`Unknown standard capability "${capability}"`);
   }
-}
-
-/**
- * Navigate back to the view launcher (`/views`). Hoisted so the error/crash
- * recovery surfaces can offer a "Back to views" escape hatch without depending
- * on the view itself having wired the `exitToApps` prop.
- */
-function navigateToViews() {
-  if (typeof window !== "undefined") {
-    window.history.pushState(null, "", "/views");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  }
-}
-
-function ViewStatusFrame({
-  tone,
-  icon,
-  title,
-  children,
-  actions,
-}: {
-  tone: "loading" | "error" | "restricted";
-  icon: ReactNode;
-  title: ReactNode;
-  children?: ReactNode;
-  actions?: ReactNode;
-}) {
-  const toneClass =
-    tone === "error"
-      ? "border-destructive/25 bg-destructive/5 text-destructive"
-      : tone === "restricted"
-        ? "border-muted-foreground/20 bg-muted/20 text-muted-foreground"
-        : "border-primary/20 bg-primary/5 text-primary";
-
-  return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
-      <div
-        className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
-      >
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-background/70">
-            {icon}
-          </div>
-          <div className="min-w-0 text-left">
-            <div className="text-sm font-semibold">{title}</div>
-            {children ? (
-              <div className="mt-1 text-xs opacity-75">{children}</div>
-            ) : null}
-          </div>
-        </div>
-        {actions ? (
-          <div className="flex flex-wrap gap-2 pl-[3.25rem]">{actions}</div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ViewLoadingSkeleton() {
-  const { t } = useTranslation();
-  return (
-    <ViewStatusFrame
-      tone="loading"
-      icon={
-        <LoaderCircle className="h-5 w-5 animate-spin" aria-hidden="true" />
-      }
-      title={t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
-    />
-  );
-}
-
-function ViewRecoveryActions({
-  onRetry,
-  onBack,
-}: {
-  onRetry: () => void;
-  onBack: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1 rounded-sm text-xs"
-        onClick={onRetry}
-      >
-        <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-        {t("dynamicviewloader.retry", { defaultValue: "Retry" })}
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 gap-1 rounded-sm text-xs"
-        onClick={onBack}
-      >
-        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
-        {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
-      </Button>
-    </>
-  );
-}
-
-function ViewErrorState({
-  viewId,
-  error,
-  onRetry,
-  onBack,
-}: {
-  viewId: string;
-  error?: Error | null;
-  onRetry?: () => void;
-  onBack?: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <ViewStatusFrame
-      tone="error"
-      icon={<AlertTriangle className="h-5 w-5" aria-hidden="true" />}
-      title={t("dynamicviewloader.error.title", {
-        defaultValue: "Failed to load view",
-      })}
-      actions={
-        onRetry && onBack ? (
-          <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
-        ) : undefined
-      }
-    >
-      <span>
-        {t("dynamicviewloader.viewId", {
-          viewId,
-          defaultValue: "View ID: {{viewId}}",
-        })}
-      </span>
-      {error?.message ? (
-        <span className="mt-1 block break-words font-mono text-[10px] opacity-60">
-          {error.message}
-        </span>
-      ) : null}
-    </ViewStatusFrame>
-  );
-}
-
-function ViewRestrictedState({ viewId }: { viewId: string }) {
-  const { t } = useTranslation();
-  return (
-    <ViewStatusFrame
-      tone="restricted"
-      icon={<Ban className="h-5 w-5" aria-hidden="true" />}
-      title={t("dynamicviewloader.restricted.title", {
-        defaultValue: "View not available on this platform",
-      })}
-    >
-      <span>
-        {t("dynamicviewloader.restricted.body", {
-          defaultValue:
-            "Dynamic views cannot be loaded on iOS or Android store builds.",
-        })}
-      </span>
-      <span className="mt-1 block">
-        {t("dynamicviewloader.viewId", {
-          viewId,
-          defaultValue: "View ID: {{viewId}}",
-        })}
-      </span>
-    </ViewStatusFrame>
-  );
 }
 
 interface DynamicViewLoaderProps {

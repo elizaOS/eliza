@@ -1,0 +1,810 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "travel.search_flights_sfo_jfk_next_friday",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "BOOK_TRAVEL",
+              "kwargs": {
+                "departureDate": "2026-05-15",
+                "destination": "JFK",
+                "intent": "Find economy flights from SFO to JFK departing 2026-05-15 and returning 2026-05-18 for one passenger.",
+                "origin": "SFO",
+                "passengers": 1,
+                "returnDate": "2026-05-18"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1342,
+          "input_tokens": 41293,
+          "output_tokens": 102,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "I've searched for economy flights from SFO to JFK departing on May 15, 2026, and returning on May 18, 2026, for one passenger. Please let me know if you'd like me to refine the search or proceed with any specific options!",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 3498,
+          "input_tokens": 41425,
+          "output_tokens": 65,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        false
+      ],
+      "total_score": 0.9,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 4840,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.create_trip_window_calendar_block",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "end": "2026-05-18T23:59:59Z",
+                  "start": "2026-05-15T00:00:00Z"
+                },
+                "title": "New York Trip (Unavailable)"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1286,
+          "input_tokens": 41293,
+          "output_tokens": 75,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "I've blocked out your work calendar for the New York trip from May 15th through May 18th, 2026, and marked you as unavailable.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 993,
+          "input_tokens": 41413,
+          "output_tokens": 39,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false
+      ],
+      "total_score": 0.2,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 2279,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.airport_transfer_reminder_morning_of",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "due": "2026-05-15T05:00:00Z",
+                  "listId": "list_personal"
+                },
+                "kind": "reminder",
+                "subaction": "create",
+                "title": "Leave for the airport \u2014 uber to SFO"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1128,
+          "input_tokens": 41285,
+          "output_tokens": 72,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've set a reminder for you to leave for the airport (uber to SFO) on May 15, 2026, at 5:00 AM.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 728,
+          "input_tokens": 41409,
+          "output_tokens": 42,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1856,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.share_itinerary_via_imessage",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "MESSAGE_SEND",
+              "kwargs": {
+                "message": "Flying SFO -> JFK Fri 5/15, returning Mon 5/18. Hotel: MidtownInn.",
+                "target": "Hannah Hill",
+                "targetKind": "contact"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 956,
+          "input_tokens": 41293,
+          "output_tokens": 53,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've sent that itinerary to Hannah Hill via iMessage.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 584,
+          "input_tokens": 41399,
+          "output_tokens": 16,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1540,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.search_flights_nyc_lax_next_week",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "BOOK_TRAVEL",
+              "kwargs": {
+                "departureDate": "2026-05-16",
+                "destination": "LAX",
+                "intent": "Find the cheapest flights from New York (NYC) to Los Angeles (LAX) departing on 2026-05-16 and returning on 2026-05-20 for one adult.",
+                "origin": "NYC",
+                "passengers": 1,
+                "returnDate": "2026-05-20"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 687,
+          "input_tokens": 41303,
+          "output_tokens": 112,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "I've searched for the cheapest flights from New York (NYC) to Los Angeles (LAX) departing on May 16, 2026, and returning on May 20, 2026, for one adult. However, no specific flight options were returned in the search results. Would you like me to try different dates or perhaps look for flights from a specific airport in New York?",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 894,
+          "input_tokens": 41445,
+          "output_tokens": 87,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true,
+        true,
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 1581,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.block_work_calendar_trip_nyc",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "end": "2026-05-18T23:59:59Z",
+                  "start": "2026-05-15T00:00:00Z"
+                },
+                "title": "New York business trip (Unavailable)"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60975,
+          "input_tokens": 41295,
+          "output_tokens": 76,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've blocked out your calendar from May 15th to May 18th, 2026, for your New York business trip.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 1181,
+          "input_tokens": 41418,
+          "output_tokens": 36,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false,
+        false
+      ],
+      "total_score": 0.2,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 62156,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.reminder_flight_departure",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "due": "2026-05-15T07:00:00Z",
+                  "listId": "list_personal"
+                },
+                "kind": "reminder",
+                "subaction": "create",
+                "title": "Flight Departure"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60366,
+          "input_tokens": 41289,
+          "output_tokens": 65,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've created a reminder for your flight departure on 2026-05-15 at 07:00 UTC in your personal reminder list.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 884,
+          "input_tokens": 41393,
+          "output_tokens": 39,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61250,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.send_itinerary_to_spouse",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "MESSAGE_SEND",
+              "kwargs": {
+                "message": "Flight NYC \u2192 LAX on 5/16, return 5/20. Hotel: Sunset Inn.",
+                "target": "Alex",
+                "targetKind": "contact"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1067,
+          "input_tokens": 41293,
+          "output_tokens": 51,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've sent that iMessage to Alex.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 60477,
+          "input_tokens": 41396,
+          "output_tokens": 13,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 0.2,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61544,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.create_hotel_checkin_reminder",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "due": "2026-05-15T15:00:00Z",
+                  "listId": "list_inbox"
+                },
+                "kind": "reminder",
+                "subaction": "create",
+                "title": "Check in at the hotel"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 634,
+          "input_tokens": 41291,
+          "output_tokens": 69,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've set a reminder to check in at the hotel for 2026-05-15 at 15:00 UTC in your inbox list.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 59878,
+          "input_tokens": 41401,
+          "output_tokens": 40,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        false
+      ],
+      "total_score": 0.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 60512,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.block_family_calendar_trip",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "end": "2026-05-18T23:59:59Z",
+                  "start": "2026-05-15T00:00:00Z"
+                },
+                "title": "Family trip OOO"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 1265,
+          "input_tokens": 41297,
+          "output_tokens": 73,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've marked your calendar as unavailable for the 'Family trip OOO' from May 15th to May 18th, 2026.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 60377,
+          "input_tokens": 41412,
+          "output_tokens": 38,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 0.30000000000000004,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 61642,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.create_trip_window_and_flight_event",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "end": "2026-05-18T23:59:59Z",
+                  "start": "2026-05-15T00:00:00Z"
+                },
+                "title": "Trip Block"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 695,
+          "input_tokens": 41325,
+          "output_tokens": 72,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_CREATE_EVENT",
+              "kwargs": {
+                "details": {
+                  "durationMinutes": 240,
+                  "start": "2026-05-16T07:00:00Z"
+                },
+                "title": "Flight NYC \u2192 LAX"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60089,
+          "input_tokens": 41439,
+          "output_tokens": 56,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 3,
+          "agent_message": "OK. I've blocked your calendar from May 15th to May 18th for the trip and added your flight from NYC to LAX on May 16th at 07:00 UTC.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 60404,
+          "input_tokens": 41545,
+          "output_tokens": 48,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41344,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": false,
+      "output_substring_matches": [
+        true,
+        true,
+        false
+      ],
+      "total_score": 0.26666666666666666,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 121188,
+      "error": null
+    },
+    {
+      "scenario_id": "travel.set_travel_buffer_preference",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR_UPDATE_PREFERENCES",
+              "kwargs": {
+                "action": "update_preferences",
+                "travelBufferMinutes": 30
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": 60284,
+          "input_tokens": 41274,
+          "output_tokens": 28,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "OK. I've updated your calendar preferences to include a 30-minute travel buffer before travel events.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": 60377,
+          "input_tokens": 41337,
+          "output_tokens": 24,
+          "cost_usd": null,
+          "tool_results": "<elided: deterministic world observation>",
+          "cache_read_input_tokens": 41216,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 120661,
+      "error": null
+    }
+  ],
+  "pass_at_1": 0.25,
+  "pass_at_k": 0.25,
+  "mean_score_per_domain": {
+    "travel": 0.4222222222222222
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 561049,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-03T19:56:00.213770+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0,
+  "_note": "tool_results (deterministic world observations returned to the model) elided for size; full observations reproducible via README 'How to reproduce'. All model I/O (agent_actions, agent_message, tokens, latency, total_score, state_hash_match) retained."
+}

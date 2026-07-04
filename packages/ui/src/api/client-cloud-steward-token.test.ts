@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+/**
+ * Unit coverage for reading the Steward session token and computing its
+ * seconds-remaining from the JWT `exp`. Tokens hand-built, no live cloud.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
 import { cloudTokenSecsRemaining, getCloudAuthToken } from "./client-cloud";
 
@@ -21,24 +26,24 @@ function makeJwt(exp: number | null): string {
 describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
   beforeEach(() => {
     localStorage.removeItem(STEWARD_TOKEN_KEY);
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
   afterEach(() => {
     localStorage.removeItem(STEWARD_TOKEN_KEY);
-    delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
   });
 
-  it("prefers the Steward session token over the legacy global", () => {
+  it("prefers the Steward session token over the client REST token", () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "device-code-token";
-    expect(getCloudAuthToken()).toBe("steward-jwt");
+    const client = new ElizaClient();
+    client.setToken("client-token");
+    expect(getCloudAuthToken(client)).toBe("steward-jwt");
+    client.setToken(null);
   });
 
-  it("falls back to the legacy global when no Steward token (device-code/Remote)", () => {
-    (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-      "device-code-token";
+  it("resolves the device-code/Remote session token from the steward store", () => {
+    // The device-code/pairing flow persists its session token through the same
+    // steward-session store, so it resolves via the canonical Steward branch.
+    localStorage.setItem(STEWARD_TOKEN_KEY, "device-code-token");
     expect(getCloudAuthToken()).toBe("device-code-token");
   });
 
@@ -49,8 +54,39 @@ describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
     client.setToken(null);
   });
 
+  it("dispatches steward-token-sync when the client REST token changes", () => {
+    const listener = vi.fn();
+    window.addEventListener("steward-token-sync", listener);
+    const client = new ElizaClient();
+
+    client.setToken("client-token");
+    client.setToken(null);
+
+    window.removeEventListener("steward-token-sync", listener);
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
   it("returns null when no token is available anywhere", () => {
     expect(getCloudAuthToken()).toBeNull();
+  });
+
+  it("dispatches steward-token-sync on setToken so mounted gates refresh (#12046 Nit 2)", () => {
+    const client = new ElizaClient();
+    let syncs = 0;
+    const handler = () => {
+      syncs++;
+    };
+    window.addEventListener("steward-token-sync", handler);
+    try {
+      client.setToken("client-token");
+      client.setToken(null);
+      // Both the sign-in and the sign-out write must notify listeners — before
+      // the fix setToken dispatched nothing and the gate went stale until a
+      // remount.
+      expect(syncs).toBe(2);
+    } finally {
+      window.removeEventListener("steward-token-sync", handler);
+    }
   });
 });
 

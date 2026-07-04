@@ -1,3 +1,7 @@
+/**
+ * SOC2 evidence report rendering and persistence for auditor-readable artifacts.
+ */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EvidenceReport } from "../types.js";

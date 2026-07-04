@@ -1266,8 +1266,7 @@ export class MatrixService extends Service implements IMatrixService {
       `Matrix message from ${message.senderInfo.displayName || message.sender} in ${room.name || roomId}: ${message.content.slice(0, 50)}...`
     );
 
-    // Plugin-local event (kept for backward compatibility — other code may
-    // listen for the MatrixMessage/MatrixRoom payload).
+    // Plugin-local event other code may listen for (the MatrixMessage/MatrixRoom payload).
     this.runtime.emitEvent(MatrixEventTypes.MESSAGE_RECEIVED, {
       message,
       room: matrixRoom,

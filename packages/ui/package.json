@@ -43,6 +43,7 @@
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
     "test:warmup-eviction-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warmup-eviction-e2e.mjs",
     "test:tutorial-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/tutorial/__e2e__/run-tutorial-e2e.mjs",
+    "test:permission-priming-e2e": "bun run --cwd ../.. packages/ui/src/components/permissions/__e2e__/run-permission-priming-e2e.mjs",
     "test:immersive-e2e": "bun run --cwd ../.. packages/ui/src/spatial/__e2e__/run-immersive-e2e.mjs",
     "test:chat-ambient-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-ambient-e2e.mjs",
     "test:view-parity": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts registered-view-parity",
@@ -164,6 +165,11 @@
       "types": "./dist/bridge/index.d.ts",
       "import": "./dist/bridge/index.js",
       "default": "./dist/bridge/index.js"
+    },
+    "./bridge/*": {
+      "types": "./dist/bridge/*.d.ts",
+      "import": "./dist/bridge/*.js",
+      "default": "./dist/bridge/*.js"
     },
     "./chat": {
       "types": "./dist/chat/index.d.ts",
@@ -295,6 +301,36 @@
       "import": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     },
+    "./utils/*": {
+      "types": "./dist/utils/*.d.ts",
+      "import": "./dist/utils/*.js",
+      "default": "./dist/utils/*.js"
+    },
+    "./services/*": {
+      "types": "./dist/services/*.d.ts",
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    },
+    "./themes": {
+      "types": "./dist/themes/index.d.ts",
+      "import": "./dist/themes/index.js",
+      "default": "./dist/themes/index.js"
+    },
+    "./App": {
+      "types": "./dist/App.d.ts",
+      "import": "./dist/App.js",
+      "default": "./dist/App.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./build-variant": {
+      "types": "./dist/build-variant.d.ts",
+      "import": "./dist/build-variant.js",
+      "default": "./dist/build-variant.js"
+    },
     "./voice": {
       "types": "./dist/voice/index.d.ts",
       "import": "./dist/voice/index.js",
@@ -306,16 +342,29 @@
       "default": "./dist/widgets/index.js"
     },
     "./dist/styles/*.css": "./dist/styles/*.css",
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    "./*.css": "./dist/*.css"
   },
   "peerDependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@elizaos/capacitor-agent": "workspace:*",
+    "@elizaos/capacitor-llama": "workspace:*",
+    "llama-cpp-capacitor": "^0.1.5",
     "react": "19.2.5",
     "react-dom": "19.2.5"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/app": {
+      "optional": true
+    },
+    "@elizaos/capacitor-agent": {
+      "optional": true
+    },
+    "@elizaos/capacitor-llama": {
+      "optional": true
+    },
+    "llama-cpp-capacitor": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "@elizaos/capacitor-bun-runtime": "workspace:*",

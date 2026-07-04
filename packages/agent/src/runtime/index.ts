@@ -9,6 +9,7 @@ export * from "./owner-entity.ts";
 export * from "./plugin-collector.ts";
 export * from "./plugin-lifecycle.ts";
 export {
+  type FailedPluginDetail,
   getLastFailedPluginDetails,
   getLastFailedPluginNames,
   resolvePlugins,

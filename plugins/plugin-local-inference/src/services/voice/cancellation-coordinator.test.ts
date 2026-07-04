@@ -1,3 +1,4 @@
+/** Covers `VoiceCancellationCoordinator` fanning out barge-in cancellation to registered consumers. Deterministic. */
 import { describe, expect, it, vi } from "vitest";
 import { BargeInController } from "./barge-in";
 import {

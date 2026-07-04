@@ -1,3 +1,7 @@
+/**
+ * Chalk-based color theme for CLI output, built from the shared `CLI_PALETTE`.
+ * Honors `NO_COLOR` and `FORCE_COLOR` when deciding whether to emit ANSI colors.
+ */
 import chalk, { Chalk } from "chalk";
 import { CLI_PALETTE } from "./palette.js";
 

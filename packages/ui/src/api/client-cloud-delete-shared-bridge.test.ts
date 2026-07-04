@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for deleting a shared-agent bridge via the cloud client.
+ * Capacitor mocked, no live cloud.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({

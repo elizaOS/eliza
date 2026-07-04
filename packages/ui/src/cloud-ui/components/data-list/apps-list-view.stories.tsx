@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for AppsListView.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 

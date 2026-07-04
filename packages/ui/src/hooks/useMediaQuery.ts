@@ -1,3 +1,7 @@
+/**
+ * Reactive matchMedia hook subscribing to a media query via useSyncExternalStore
+ * (SSR-safe: false when window/matchMedia is absent).
+ */
 import { useCallback, useSyncExternalStore } from "react";
 
 function getMediaQueryMatch(query: string): boolean {

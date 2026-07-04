@@ -1,3 +1,10 @@
+/**
+ * Presentational building blocks for app detail-extension surfaces — section,
+ * card, grid, badge, and empty-state components plus the shared `SurfaceTone`
+ * palette. Registered detail extensions compose these so third-party app detail
+ * panels render with consistent chrome without re-implementing base styling.
+ */
+
 import type React from "react";
 import type { AppRunSummary } from "../../../api";
 

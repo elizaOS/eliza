@@ -120,6 +120,9 @@
       "@elizaos/core": [
         "./packages/core/dist/index.d.ts"
       ],
+      "@elizaos/import-conversations": [
+        "./packages/import-conversations/dist/index.d.ts"
+      ],
       "@elizaos/interrupt-bench": [
         "./packages/benchmarks/interrupt-bench/src/index.ts"
       ],
@@ -335,6 +338,9 @@
       ],
       "@elizaos/plugin-mcp": [
         "./plugins/plugin-mcp/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-meetings": [
+        "./plugins/plugin-meetings/dist/index.d.ts"
       ],
       "@elizaos/plugin-messages": [
         "./plugins/plugin-messages/dist/index.d.ts"

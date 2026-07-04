@@ -429,6 +429,38 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
  * Fused batch (interim streaming) path — eliza_inference_asr_transcribe.
  * ==================================================================== */
 
+/**
+ * Interim-batch partial cadence (s). Partials go stale by up to one step, so
+ * a shorter step cuts interim staleness — but decodes serialize on the shared
+ * ASR mutex, so a step shorter than the per-pass decode time just queues.
+ * 1.2 s stays the default until a real-lane measurement shows per-pass decode
+ * p90 below the candidate step (#12254 work item 3; target 0.8 s). Tune via
+ * `ELIZA_ASR_STEP_SECONDS`.
+ */
+export const DEFAULT_ASR_STEP_SECONDS = 1.2;
+
+/** Read `ELIZA_ASR_STEP_SECONDS` — a positive float — or null when unset/invalid. */
+export function readAsrStepSecondsFromEnv(
+	env: NodeJS.ProcessEnv = process.env,
+): number | null {
+	const raw = env.ELIZA_ASR_STEP_SECONDS?.trim();
+	if (!raw) return null;
+	const value = Number.parseFloat(raw);
+	return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** Per-pass decode timing for the interim batch adapter (`decodeStats()`). */
+export interface AsrDecodePassStats {
+	/** Decode passes run since construction/reset. */
+	passes: number;
+	/** Wall-clock ms spent inside `asrTranscribe` across all passes. */
+	totalMs: number;
+	/** Slowest single pass, ms. */
+	maxMs: number;
+	/** Most recent pass, ms. */
+	lastMs: number;
+}
+
 export interface FfiBatchTranscriberOptions {
 	ffi: ElizaInferenceFfi;
 	getContext: () => ElizaInferenceContextHandle;
@@ -439,7 +471,8 @@ export interface FfiBatchTranscriberOptions {
 	windowSeconds?: number;
 	/** Trailing overlap kept when committing a prefix chunk, seconds. Default 1.0. */
 	overlapSeconds?: number;
-	/** Minimum new audio (seconds) accumulated before the next decode pass. Default 1.2. */
+	/** Minimum new audio (seconds) accumulated before the next decode pass.
+	 *  Default `ELIZA_ASR_STEP_SECONDS` env else `DEFAULT_ASR_STEP_SECONDS`. */
 	stepSeconds?: number;
 }
 
@@ -480,6 +513,14 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 	/** Decode chain — `asr_transcribe` calls serialize on the native ASR mutex anyway. */
 	private decodeChain: Promise<void> = Promise.resolve();
 
+	/** Per-pass decode timing — the measurement that gates a shorter step. */
+	private readonly passStats: AsrDecodePassStats = {
+		passes: 0,
+		totalMs: 0,
+		maxMs: 0,
+		lastMs: 0,
+	};
+
 	constructor(opts: FfiBatchTranscriberOptions) {
 		super(opts.vad, {
 			...opts.metadata,
@@ -489,21 +530,36 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 		this.getContext = opts.getContext;
 		const windowSeconds = opts.windowSeconds ?? 6.0;
 		const overlapSeconds = Math.min(opts.overlapSeconds ?? 1.0, windowSeconds);
-		const stepSeconds = opts.stepSeconds ?? 1.2;
+		const stepSeconds =
+			opts.stepSeconds ??
+			readAsrStepSecondsFromEnv() ??
+			DEFAULT_ASR_STEP_SECONDS;
 		this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
 		this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
 		this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
 	}
 
+	/** Snapshot of per-pass decode timings (copies; safe to hold). */
+	decodeStats(): AsrDecodePassStats {
+		return { ...this.passStats };
+	}
+
 	private decodeWindow(pcm16k: Float32Array): string {
 		if (pcm16k.length === 0) return "";
-		return this.ffi
+		const started = performance.now();
+		const text = this.ffi
 			.asrTranscribe({
 				ctx: this.getContext(),
 				pcm: pcm16k,
 				sampleRateHz: ASR_SAMPLE_RATE,
 			})
 			.trim();
+		const elapsed = performance.now() - started;
+		this.passStats.passes += 1;
+		this.passStats.totalMs += elapsed;
+		this.passStats.lastMs = elapsed;
+		if (elapsed > this.passStats.maxMs) this.passStats.maxMs = elapsed;
+		return text;
 	}
 
 	protected onFrame(frame: PcmFrame): void {

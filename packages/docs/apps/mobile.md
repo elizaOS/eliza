@@ -13,7 +13,10 @@ app designed to run an Eliza agent on-device. Its Podfile wires the Bun runtime
 bridge, native agent bridge, mobile-agent bridge, llama.cpp inference, camera,
 calendar, canvas, gateway, location, mobile signals, screen capture, talk mode,
 and website-blocking plugins. The iOS target also includes App Intents/App
-Shortcuts for Siri and Shortcuts entry points, Screen Time extensions, a Safari
+Shortcuts for Siri and Shortcuts entry points, an `ElizaWidgets` widget
+extension (home/Lock Screen quick-action widgets plus iOS 18 "Ask Eliza" and
+"Eliza Voice" controls for Control Center, the Lock Screen, and the Action
+button), Screen Time extensions, a Safari
 content-blocker extension, ReplayKit broadcast
 support, BGTaskScheduler wakes, APNs silent-push wake plumbing, and a
 background-runner JS task that pokes the in-process agent over loopback within

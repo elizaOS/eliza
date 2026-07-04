@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * `AuthTokenSync` 401 handling in the Steward runtime: a still-valid token
+ * survives a session-sync/refresh 401 (no re-login loop) and retries the cookie
+ * sync on the next trigger, while a genuinely expired — or exp-less, thus
+ * never-ageable — token is cleared on a refresh 401 so the session self-heals.
+ */
+
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";

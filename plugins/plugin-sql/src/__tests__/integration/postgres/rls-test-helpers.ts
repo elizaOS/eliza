@@ -1,3 +1,11 @@
+/**
+ * Shared setup for the Postgres RLS integration tests in this directory:
+ * `bootstrapPostgresRlsSchema` wipes the target database (superuser),
+ * re-runs migrations, installs RLS functions/policies, and grants the
+ * non-superuser `eliza_test` role table/sequence access so the tests can
+ * exercise RLS as that role. `toPostgresSuperuserUrl` derives the
+ * superuser connection string used for the wipe/grant steps.
+ */
 import type { IDatabaseAdapter } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";

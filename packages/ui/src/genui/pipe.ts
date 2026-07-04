@@ -1,3 +1,7 @@
+/**
+ * Wraps @json-render/core's pipe with the Eliza GenUI patch application, so a
+ * streamed spec renders incrementally through the shared pipe.
+ */
 import { pipeJsonRender as officialPipeJsonRender } from "@json-render/core";
 import { applyElizaGenUiPatch } from "./streaming";
 import type {

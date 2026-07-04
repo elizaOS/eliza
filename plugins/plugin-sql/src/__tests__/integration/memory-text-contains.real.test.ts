@@ -1,3 +1,15 @@
+/**
+ * Focused correctness test for the keyword (`textContains`) predicate on the
+ * SQL `getMemories` path — the small, fast complement to the 200k-row
+ * `memory-keyword-search.real.test.ts` scale test.
+ *
+ * It pins the load-bearing details the scale test cannot exercise cheaply:
+ * literal `_` and backslash escaping (not just `%`), AND-composition with the
+ * existing `roomId` / `tableName` filters, and that the predicate targets
+ * `content->>'text'` ONLY (a token hidden in another `content` field or in
+ * `metadata` must NOT match). Runs on PGlite by default; set `POSTGRES_URL`
+ * to run against a real Postgres.
+ */
 import {
   ChannelType,
   type Content,
@@ -17,18 +29,6 @@ import { embeddingTable, memoryTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
-/**
- * Focused correctness test for the keyword (`textContains`) predicate on the
- * SQL `getMemories` path — the small, fast complement to the 200k-row
- * `memory-keyword-search.real.test.ts` scale test.
- *
- * It pins the load-bearing details the scale test cannot exercise cheaply:
- * literal `_` and backslash escaping (not just `%`), AND-composition with the
- * existing `roomId` / `tableName` filters, and that the predicate targets
- * `content->>'text'` ONLY (a token hidden in another `content` field or in
- * `metadata` must NOT match). Runs on PGlite by default; set `POSTGRES_URL`
- * to run against a real Postgres.
- */
 describe("getMemories textContains keyword filter (real SQL adapter)", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;

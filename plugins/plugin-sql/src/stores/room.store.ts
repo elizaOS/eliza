@@ -1,3 +1,8 @@
+/**
+ * CRUD store for the `rooms` table, scoped to the current agent where
+ * applicable (`getByIds` filters by `agentId`; `getByWorld` does not, since a
+ * world already implies a single owning agent).
+ */
 import { randomUUID } from "node:crypto";
 import type { ChannelType, Room, RoomMetadata, UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";

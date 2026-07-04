@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the OpenApiViewer.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { OpenApiViewer } from "./openapi-viewer";
 

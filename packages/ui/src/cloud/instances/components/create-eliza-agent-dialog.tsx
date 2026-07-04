@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Dialog to create a cloud Eliza agent: pick a flavor for the environment and
+ * provision it.
+ */
 import type { AgentFlavor } from "@elizaos/cloud-shared/lib/constants/agent-flavors";
 import {
   getAgentFlavorsForEnv,
@@ -39,6 +43,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import {
@@ -227,7 +232,8 @@ function ProvisioningProgress({
       {hasError && error && (
         <div className="border border-destructive/20 bg-destructive-subtle px-3 py-2.5 space-y-2">
           <p className="text-sm text-destructive">{error}</p>
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={onRetry}
             className="inline-flex min-h-touch items-center gap-1.5 text-xs text-destructive hover:text-txt-strong transition-colors"
@@ -236,7 +242,7 @@ function ProvisioningProgress({
             {t("cloud.createAgent.retryProvisioning", {
               defaultValue: "Retry provisioning",
             })}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -548,13 +554,14 @@ export function CreateElizaAgentDialog({
   return (
     <>
       {trigger ? (
-        <button
+        <Button
+          variant="ghost"
           type="button"
           className="contents"
           onClick={() => phase === "form" && setOpen(true)}
         >
           {trigger}
-        </button>
+        </Button>
       ) : (
         <BrandButton size="sm" onClick={() => setOpen(true)} disabled={busy}>
           <Plus className="h-4 w-4" />
@@ -640,6 +647,7 @@ export function CreateElizaAgentDialog({
                     className="grid grid-cols-2 gap-2"
                   >
                     <label
+                      htmlFor="create-agent-execution-shared"
                       className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
                         busy
                           ? "cursor-not-allowed opacity-50"
@@ -650,7 +658,8 @@ export function CreateElizaAgentDialog({
                           : "border-border bg-bg-muted hover:border-border-hover"
                       }`}
                     >
-                      <input
+                      <Input
+                        id="create-agent-execution-shared"
                         type="radio"
                         name="execution-mode"
                         checked={!isDedicated}
@@ -680,6 +689,7 @@ export function CreateElizaAgentDialog({
                     </label>
 
                     <label
+                      htmlFor="create-agent-execution-dedicated"
                       className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
                         busy
                           ? "cursor-not-allowed opacity-50"
@@ -690,7 +700,8 @@ export function CreateElizaAgentDialog({
                           : "border-border bg-bg-muted hover:border-border-hover"
                       }`}
                     >
-                      <input
+                      <Input
+                        id="create-agent-execution-dedicated"
                         type="radio"
                         name="execution-mode"
                         checked={isDedicated}

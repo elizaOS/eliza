@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `/api/transcripts*` rawPath routes — request-to-`Transcript`
+ * shaping via `buildTranscriptFromRequest` and the handler contract.
+ */
+
 import type { Memory, RouteHandlerContext, UUID } from "@elizaos/core";
 import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import { describe, expect, it } from "vitest";

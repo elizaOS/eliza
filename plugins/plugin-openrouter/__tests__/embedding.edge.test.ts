@@ -1,3 +1,8 @@
+/**
+ * Edge-case coverage for the embedding handler with a stubbed `fetch` (no live
+ * API): asserts the null-probe marker vector, malformed/empty-input rejections,
+ * and unsupported-dimension validation all short-circuit before any network call.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

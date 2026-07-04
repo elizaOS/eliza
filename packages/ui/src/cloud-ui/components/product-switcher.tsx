@@ -1,3 +1,6 @@
+/**
+ * Product switcher dropdown for the cloud shell (app ↔ dashboard ↔ docs).
+ */
 import { cn } from "../lib/utils";
 
 export type ProductSwitcherItem = {

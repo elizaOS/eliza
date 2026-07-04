@@ -1,3 +1,11 @@
+/**
+ * Drizzle table for durable, categorized long-term memories distilled per
+ * (agent, entity) — each row carries its own `embedding` vector, a
+ * `confidence` score, and access tracking (`accessCount` /
+ * `lastAccessedAt`) used to decay or prioritize recall. Indexed by
+ * agent+entity, category, confidence, and creation time for retrieval
+ * queries.
+ */
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
 

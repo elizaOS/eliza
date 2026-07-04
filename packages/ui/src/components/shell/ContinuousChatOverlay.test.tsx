@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// Core behavior of the floating chat overlay: the mic ↔ send composer swap,
+// draft persistence, thread rendering, back-intent/prefill events, and the
+// press-and-hold copy gesture. Renders the real overlay in jsdom with the API
+// client + clipboard mocked (no network).
 
 import {
   act,
@@ -1353,7 +1358,7 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByLabelText(/send/)).toBeTruthy();
   });
 
-  it("renders the no_provider failure as a recovery gate with a Settings jump", () => {
+  it("renders the no_provider failure as a recovery gate with a Settings jump, while a normal turn still renders its content", () => {
     const openSettings = vi.fn();
     render(
       <ContinuousChatOverlay
@@ -1361,10 +1366,16 @@ describe("ContinuousChatOverlay", () => {
           openSettings,
           messages: [
             {
+              id: "ok",
+              role: "assistant",
+              content: "here is a normal answer",
+              createdAt: 1,
+            },
+            {
               id: "np",
               role: "assistant",
               content: "No model provider is configured.",
-              createdAt: 1,
+              createdAt: 2,
               failureKind: "no_provider",
             },
           ],
@@ -1372,10 +1383,28 @@ describe("ContinuousChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
+
+    // The no_provider turn renders the STRUCTURED gate (heading + Settings CTA),
+    // not an empty/near-empty bubble — this is the actionable recovery the user
+    // needs on a first-message provider failure.
     expect(screen.getByText("Connect a provider to chat")).toBeTruthy();
-    const cta = screen.getByTestId("chat-no-provider-settings");
-    fireEvent.click(cta);
+    const gate = screen
+      .getByTestId("chat-no-provider-settings")
+      .closest('[data-failure="no_provider"]') as HTMLElement;
+    expect(gate).toBeTruthy();
+    // The server's fallback text rides inside the gate body (not dropped).
+    expect(gate.textContent).toContain("No model provider is configured.");
+
+    // The Settings CTA jumps to settings nav (setTab("settings") via the
+    // controller's openSettings).
+    fireEvent.click(screen.getByTestId("chat-no-provider-settings"));
     expect(openSettings).toHaveBeenCalledTimes(1);
+
+    // A normal assistant turn in the same thread is UNAFFECTED — it still
+    // renders its plain content as a thread bubble, not the gate.
+    const normal = screen.getByText("here is a normal answer");
+    expect(normal).toBeTruthy();
+    expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
   it("press-and-hold copies an assistant message and flashes confirmation", () => {
@@ -1523,8 +1552,8 @@ describe("ContinuousChatOverlay", () => {
     const pill = screen.getByTestId("chat-pill");
     // Now the handle owns the gesture: it re-enables pointer events so the user
     // can grab/drag it open (verified by the flick-up recovery test below).
-    expect(pill.className).toContain("pointer-events-auto");
-    expect(pill.className).not.toContain("pointer-events-none");
+    expect(pill.classList.contains("pointer-events-auto")).toBe(true);
+    expect(pill.classList.contains("pointer-events-none")).toBe(false);
     expect(pill.getAttribute("aria-hidden")).toBeNull();
     // Restored to the tab order once it's the active handle — the symmetric half
     // of the collapsed assertion above (tabindex "-1" while NOT pilled). The
@@ -3040,5 +3069,70 @@ describe("ContinuousChatOverlay — cold-boot banner grace gate", () => {
       />,
     );
     expect(screen.queryByTestId("chat-boot-status")).toBeNull();
+  });
+});
+
+// When no LLM/model provider is configured the agent's `canRespond` never flips,
+// so `phase` stays "booting" forever. Without this fix the "Waking …" spinner
+// would spin indefinitely; instead the controller flags `noProviderConfigured`
+// and the overlay suppresses the boot banner (the in-transcript no_provider gate
+// is the real error surface) and stops promising the agent is "waking up".
+describe("ContinuousChatOverlay — no LLM provider configured", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("suppresses the forever 'Waking …' boot banner when no provider is configured", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "booting",
+          noProviderConfigured: true,
+        })}
+      />,
+    );
+    // Well past the 600ms grace window — a cold boot WOULD show the banner here.
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    // No spinner: the agent is not "waking", it's misconfigured.
+    expect(screen.queryByTestId("chat-boot-status")).toBeNull();
+  });
+
+  it("still shows the boot banner when it IS a genuine warm-up (no no_provider signal)", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "booting",
+          noProviderConfigured: false,
+        })}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(screen.getByTestId("chat-boot-status").textContent).toContain(
+      "Waking",
+    );
+  });
+
+  it("swaps the 'waking up…' composer placeholder for a Settings CTA hint", () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          phase: "booting",
+          noProviderConfigured: true,
+        })}
+      />,
+    );
+    const input = screen.getByLabelText("message");
+    const placeholder = input.getAttribute("placeholder") ?? "";
+    expect(placeholder).not.toContain("waking up");
+    expect(placeholder).toContain("Settings");
+    // Typing is still allowed (the send comes back with the gate again if needed).
+    expect(input.hasAttribute("readonly")).toBe(false);
   });
 });

@@ -1,3 +1,21 @@
+/**
+ * `SignalService` — the core Signal connector (`serviceType: "signal"`). Owns the
+ * signal-cli transport in both modes: it either connects to an existing REST
+ * daemon at `SIGNAL_HTTP_URL` or spawns and supervises its own
+ * `signal-cli daemon --http` child process (with macOS Homebrew OpenJDK/PATH
+ * setup and optional auto-install).
+ *
+ * On start it registers a `MessageConnector` and send handler with the runtime,
+ * then polls or SSE-streams inbound envelopes, maps them into message memories,
+ * and emits the `SignalEventTypes` events. Outbound `sendMessage` /
+ * `sendGroupMessage` / `sendReaction` split messages over
+ * `MAX_SIGNAL_MESSAGE_LENGTH` before dispatch. Auto-reply is off by default:
+ * inbound messages are persisted and announced, but the agent only responds when
+ * `SIGNAL_AUTO_REPLY=true`; sends otherwise come from LifeOps or explicit callers.
+ *
+ * Multi-account setups instantiate one client, event stream, and connector
+ * registration per account resolved from `accounts.ts`.
+ */
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

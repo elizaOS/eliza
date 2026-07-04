@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+//
+// The shell controller hook end to end in jsdom: conversation load watchdog,
+// swipe interleaving (#9954), turnStatus derivation, voice-capture routing,
+// transcription mode, TTS reset on conversation change, mic-failure notices,
+// wake-word gating, and the no-provider path. The voice-capture factory, app
+// store, and voice-output hook are mocked; localStorage is backed by an
+// in-memory Storage so hands-free persistence is real.
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
@@ -68,11 +75,17 @@ const appMock = vi.hoisted(() => ({
       role: string;
       text: string;
       timestamp: number;
+      failureKind?: string;
     }>,
     chatSending: false,
     chatFirstTokenReceived: false,
     sendChatText: vi.fn(),
-    agentStatus: { state: "running", canRespond: true },
+    // Mirrors the real store shape (AgentStatus | null — null before the first
+    // status broadcast lands).
+    agentStatus: { state: "running", canRespond: true } as {
+      state: string;
+      canRespond?: boolean;
+    } | null,
     // Conversation-management callbacks the controller wraps in the loading
     // flag (clear / swipe). Default to instant resolution; the watchdog tests
     // override handleNewConversation with a controllable promise.
@@ -1389,5 +1402,168 @@ describe("useShellController — wake-word enablement", () => {
     window.localStorage.setItem("eliza:voice:wake-word-enabled", "true");
     renderHook(() => useShellController());
     expect(wakeListenMock.lastEnabled).toBe(true);
+  });
+});
+
+// ── No LLM/model provider configured → route to Settings, no forever spinner ──
+// When no provider is wired the server keeps `canRespond: false` forever, so the
+// shell's `ready` never flips and it would sit in the "Waking …" boot phase with
+// an infinite spinner. The server also stamps the send's assistant turn with
+// `failureKind: "no_provider"` — the authoritative "no LLM configured" signal.
+// The controller surfaces it as `noProviderConfigured` (so the overlay swaps the
+// boot spinner for the real error gate) and auto-navigates to Settings.
+describe("useShellController — no provider configured", () => {
+  beforeEach(() => {
+    appMock.value.setTab.mockClear();
+    // A running agent that can't respond — exactly the no-provider shape (also
+    // what a warm-up looks like until the send comes back tagged no_provider).
+    appMock.value.agentStatus = { state: "running", canRespond: false };
+  });
+
+  it("is false with no messages, and does NOT navigate to Settings", () => {
+    appMock.value.conversationMessages = [];
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(false);
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+  });
+
+  it("is false for a normal assistant reply (a warm-up that succeeded)", () => {
+    appMock.value.conversationMessages = [
+      { id: "u1", role: "user", text: "hi", timestamp: 1 },
+      { id: "a1", role: "assistant", text: "hello!", timestamp: 2 },
+    ];
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(false);
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+  });
+
+  it("detects a no_provider assistant turn and navigates to Settings once", () => {
+    appMock.value.conversationMessages = [
+      { id: "u1", role: "user", text: "hi", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "This agent has no LLM provider configured.",
+        timestamp: 2,
+        failureKind: "no_provider",
+      },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+
+    expect(result.current.noProviderConfigured).toBe(true);
+    // Auto-navigated straight to where the provider is configured.
+    expect(appMock.value.setTab).toHaveBeenCalledWith("settings");
+    // Even though the agent still reports canRespond:false, the shell is NOT
+    // silently stuck — the condition is surfaced, not hidden behind a spinner.
+    expect(result.current.phase).toBe("booting");
+
+    // Idempotent: a re-render (e.g. streamed token churn) must not re-navigate.
+    appMock.value.setTab.mockClear();
+    rerender();
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale no_provider turn once the agent CAN respond", () => {
+    // The failure stamp is persisted in conversation history, so on a later app
+    // launch / conversation switch the latest assistant turn can still be the
+    // old no_provider gate even though a provider has since been configured.
+    // The live server truth (canRespond: true) must veto the history stamp —
+    // no flag, no Settings hijack.
+    appMock.value.agentStatus = { state: "running", canRespond: true };
+    appMock.value.conversationMessages = [
+      { id: "u1", role: "user", text: "hi", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "This agent has no LLM provider configured.",
+        timestamp: 2,
+        failureKind: "no_provider",
+      },
+    ];
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(false);
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger off history while the status is still unknown", () => {
+    // Before the first status broadcast there is no server verdict; only a
+    // definitive canRespond === false may confirm the persisted history stamp.
+    appMock.value.agentStatus = null;
+    appMock.value.conversationMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        text: "no provider",
+        timestamp: 2,
+        failureKind: "no_provider",
+      },
+    ];
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(false);
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+  });
+
+  it("clears once a later successful reply lands (provider wired in Settings)", () => {
+    appMock.value.conversationMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        text: "no provider",
+        timestamp: 2,
+        failureKind: "no_provider",
+      },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(true);
+
+    // Provider added → the agent can respond, and the newest assistant turn is a
+    // real answer with no failureKind.
+    appMock.value.agentStatus = { state: "running", canRespond: true };
+    appMock.value.conversationMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        text: "no provider",
+        timestamp: 2,
+        failureKind: "no_provider",
+      },
+      { id: "u2", role: "user", text: "hi again", timestamp: 3 },
+      {
+        id: "a2",
+        role: "assistant",
+        text: "hi! how can I help?",
+        timestamp: 4,
+      },
+    ];
+    rerender();
+
+    expect(result.current.noProviderConfigured).toBe(false);
+    // Ready now → out of the booting phase, no spinner.
+    expect(result.current.phase).not.toBe("booting");
+  });
+
+  it("re-arms: a fresh no_provider miss after recovery navigates again", () => {
+    appMock.value.conversationMessages = [
+      { id: "a1", role: "assistant", text: "ok", timestamp: 2 },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+    expect(result.current.noProviderConfigured).toBe(false);
+    expect(appMock.value.setTab).not.toHaveBeenCalled();
+
+    appMock.value.conversationMessages = [
+      { id: "a1", role: "assistant", text: "ok", timestamp: 2 },
+      {
+        id: "a2",
+        role: "assistant",
+        text: "no provider",
+        timestamp: 3,
+        failureKind: "no_provider",
+      },
+    ];
+    rerender();
+
+    expect(result.current.noProviderConfigured).toBe(true);
+    expect(appMock.value.setTab).toHaveBeenCalledWith("settings");
+    expect(appMock.value.setTab).toHaveBeenCalledTimes(1);
   });
 });

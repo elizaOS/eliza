@@ -8,6 +8,10 @@
  */
 
 import {
+  isSensitiveAgentElement,
+  SENSITIVE_AGENT_ELEMENT_REASON,
+} from "./sensitive";
+import {
   type AgentActionResult,
   type AgentElementDescriptor,
   type AgentElementSnapshot,
@@ -149,9 +153,12 @@ export class ViewAgentRegistry {
     const { descriptor } = record;
     const el = record.getElement();
     const role = descriptor.role ?? "region";
-    const value = descriptor.getValue
-      ? descriptor.getValue()
-      : readDomValue(el);
+    const sensitive = isSensitiveAgentElement(descriptor, el);
+    const value = sensitive
+      ? undefined
+      : descriptor.getValue
+        ? descriptor.getValue()
+        : readDomValue(el);
     const rect = el?.getBoundingClientRect();
     const visible = rect ? rect.width > 0 && rect.height > 0 : false;
     const focused =
@@ -165,7 +172,7 @@ export class ViewAgentRegistry {
       group: descriptor.group,
       description: descriptor.description,
       status: descriptor.status,
-      value,
+      ...(sensitive ? { sensitive: true, valueRedacted: true } : { value }),
       fillable: isFillable(descriptor),
       clickable: isClickable(descriptor),
       focused,
@@ -246,6 +253,9 @@ export class ViewAgentRegistry {
   fill(id: string, value: string): AgentActionResult {
     const record = this.elements.get(id);
     if (!record) return { ok: false, id, reason: "element not found" };
+    if (isSensitiveAgentElement(record.descriptor, record.getElement())) {
+      return { ok: false, id, reason: SENSITIVE_AGENT_ELEMENT_REASON };
+    }
     if (!isFillable(record.descriptor)) {
       return { ok: false, id, reason: "element is not fillable" };
     }

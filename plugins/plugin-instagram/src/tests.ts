@@ -1,3 +1,8 @@
+/**
+ * In-process `TestCase[]` suite (runnable via the runtime's test surface, not
+ * Vitest) exercising `splitMessage` and service internals against deterministic
+ * inputs — no live Instagram API.
+ */
 import type { TestCase } from "@elizaos/core";
 import { MAX_DM_LENGTH } from "./constants";
 import { splitMessage } from "./service";

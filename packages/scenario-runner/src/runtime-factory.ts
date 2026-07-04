@@ -424,7 +424,7 @@ export async function createScenarioRuntime(
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is
   // the right deterministic fallback. Match the bench server's dimension (1024 — see
-  // `packages/app-core/src/benchmark/server.ts`) so downstream code that
+  // `packages/lifeops-bench/src/server.ts`) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
   const skipEmbeddingPlugin =

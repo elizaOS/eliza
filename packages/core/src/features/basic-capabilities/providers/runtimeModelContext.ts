@@ -1,9 +1,11 @@
 import type {
 	IAgentRuntime,
 	Memory,
+	ModelRegistrationMetadata,
 	ModelTypeName,
 	Provider,
 } from "../../../types/index.ts";
+import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
 import { getModelFallbackChain, ModelType } from "../../../types/model.ts";
 import { readEnv } from "../../../utils/read-env.ts";
 
@@ -13,7 +15,10 @@ type RuntimeWithModelHelpers = IAgentRuntime & {
 		optionsModel?: string,
 		effectiveModelId?: string,
 	) => string;
-	models?: Map<string, Array<{ provider?: string }>>;
+	models?: Map<
+		string,
+		Array<{ metadata?: ModelRegistrationMetadata; provider?: string }>
+	>;
 };
 
 const MODEL_SETTING_SUFFIX: Record<string, string> = {
@@ -81,11 +86,10 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 		const trimmed = value.trim();
 		if (trimmed.length > 0) return trimmed;
 	}
-	// Many runtime model knobs (CODEX_MODEL, ELIZA_DEFAULT_AGENT_TYPE, opencode
-	// model/base-url) are provided as ENV vars, which `getSetting` does not
-	// expose — without this fallback every model slot rendered its raw slot name
-	// ("TEXT_LARGE") and "what model are you using" leaked internals instead of
-	// the real model (gpt-5.5 via codex).
+	// Many runtime model knobs are provided as ENV vars, which `getSetting` does
+	// not expose — without this fallback every model slot rendered its raw slot
+	// name ("TEXT_LARGE") and "what model are you using" leaked internals
+	// instead of the real configured model id.
 	const fromEnv = readEnv(key)?.trim();
 	return fromEnv && fromEnv.length > 0 ? fromEnv : undefined;
 }
@@ -114,16 +118,9 @@ function configuredModelString(
 			? runtime.resolveProviderModelString(modelType)
 			: undefined;
 	if (resolved && resolved !== String(modelType)) return resolved;
-	// The resolver is absent or returned the raw slot name ("RESPONSE_HANDLER").
-	// Subscription backends (codex) register every slot against one underlying
-	// model configured via their own setting (CODEX_MODEL); only trust it when
-	// the slot is actually served by the codex-cli adapter, so a stale
-	// CODEX_MODEL on a non-codex backend can't mislabel the slot.
-	const provider = registeredProviderFor(runtime, modelType);
-	if (provider === "codex-cli") {
-		const codexModel = readSetting(runtime, "CODEX_MODEL");
-		if (codexModel) return codexModel;
-	}
+	const registration = registeredModelFor(runtime, modelType);
+	const displayModel = displayModelFor(runtime, registration?.metadata);
+	if (displayModel) return displayModel;
 	// Otherwise resolve from the configured *_MODEL keys along the fallback chain
 	// (e.g. ANTHROPIC_LARGE_MODEL). If still unresolvable, return undefined so the
 	// caller OMITS the line rather than leaking the raw slot name to the user.
@@ -133,15 +130,38 @@ function configuredModelString(
 		: undefined;
 }
 
+function displayModelFor(
+	runtime: IAgentRuntime,
+	metadata: ModelRegistrationMetadata | undefined,
+): string | undefined {
+	if (!metadata) return undefined;
+	if (typeof metadata.displayModel === "string") {
+		const trimmed = metadata.displayModel.trim();
+		if (trimmed) return trimmed;
+	}
+	if (typeof metadata.displayModelSetting === "string") {
+		return readSetting(runtime, metadata.displayModelSetting);
+	}
+	return undefined;
+}
+
+function registeredModelFor(
+	runtime: RuntimeWithModelHelpers,
+	modelType: ModelTypeName,
+): { metadata?: ModelRegistrationMetadata; provider?: string } | undefined {
+	for (const candidate of getModelFallbackChain(modelType)) {
+		const registration = runtime.models?.get(candidate)?.[0];
+		if (registration) return registration;
+	}
+	return undefined;
+}
+
 function registeredProviderFor(
 	runtime: RuntimeWithModelHelpers,
 	modelType: ModelTypeName,
 ): string | undefined {
-	for (const candidate of getModelFallbackChain(modelType)) {
-		const provider = runtime.models?.get(candidate)?.[0]?.provider?.trim();
-		if (provider) return provider;
-	}
-	return undefined;
+	const provider = registeredModelFor(runtime, modelType)?.provider?.trim();
+	return provider || undefined;
 }
 
 function optionalLine(label: string, value: string | undefined): string | null {
@@ -177,7 +197,7 @@ function tokenize(text: string): Set<string> {
 
 function shouldRenderRuntimeModelContext(message: Memory): boolean {
 	if (
-		message.content.source === "sub_agent" ||
+		message.content.source === MESSAGE_SOURCE_SUB_AGENT ||
 		(message.content.metadata &&
 			typeof message.content.metadata === "object" &&
 			(message.content.metadata as Record<string, unknown>).subAgent === true)

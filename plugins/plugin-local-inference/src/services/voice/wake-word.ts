@@ -42,6 +42,13 @@ import type {
 	NativeWakeWordHandle,
 } from "./ffi-bindings";
 import {
+	type BudgetReservation,
+	ensureSharedVoiceBudget,
+	reserveOrRamPressure,
+	type VoiceBudget,
+	WAKE_WORD_RESERVE_BYTES,
+} from "./voice-budget";
+import {
 	OpenWakeWordGgmlModel,
 	WakeWordGgmlUnavailableError,
 } from "./wake-word-ggml";
@@ -196,6 +203,8 @@ export class GgmlWakeWordModel implements WakeWordModel {
 	private constructor(
 		private readonly ffi: ElizaInferenceFfi,
 		private readonly handle: NativeWakeWordHandle,
+		/** Voice-budget reservation held while the native session is open. */
+		private readonly reservation: BudgetReservation | null,
 	) {}
 
 	/**
@@ -218,6 +227,8 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		ffi: ElizaInferenceFfi;
 		ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
 		headName: string;
+		/** Voice-budget override; defaults to the process-wide shared budget. */
+		budget?: VoiceBudget;
 	}): Promise<GgmlWakeWordModel> {
 		if (!GgmlWakeWordModel.isSupported(opts.ffi)) {
 			throw new WakeWordUnavailableError(
@@ -236,6 +247,14 @@ export class GgmlWakeWordModel implements WakeWordModel {
 				"[wake-word] Wake-word support probe succeeded, but the required FFI methods are missing on the binding.",
 			);
 		}
+		// Reserve before the native session opens; an over-budget arm throws
+		// `VoiceLifecycleError("ram-pressure")` and nothing is loaded.
+		const budget = opts.budget ?? (await ensureSharedVoiceBudget());
+		const reservation = await reserveOrRamPressure(budget, {
+			modelId: "openwakeword",
+			role: "wake-word",
+			bytes: WAKE_WORD_RESERVE_BYTES,
+		});
 		const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
 		let handle: NativeWakeWordHandle;
 		try {
@@ -245,6 +264,7 @@ export class GgmlWakeWordModel implements WakeWordModel {
 				headName: opts.headName,
 			});
 		} catch (err) {
+			reservation.release();
 			throw new WakeWordUnavailableError(
 				"model-load-failed",
 				`[wake-word] failed to open native wake-word session for head '${opts.headName}': ${
@@ -252,7 +272,7 @@ export class GgmlWakeWordModel implements WakeWordModel {
 				}`,
 			);
 		}
-		return new GgmlWakeWordModel(opts.ffi, handle);
+		return new GgmlWakeWordModel(opts.ffi, handle, reservation);
 	}
 
 	async scoreFrame(frame: Float32Array): Promise<number> {
@@ -286,6 +306,7 @@ export class GgmlWakeWordModel implements WakeWordModel {
 		if (this.closed) return;
 		this.closed = true;
 		this.ffi.wakewordClose?.(this.handle);
+		this.reservation?.release();
 	}
 }
 

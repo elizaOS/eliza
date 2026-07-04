@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 
+/**
+ * The agent-profile registry (`agent-profiles`): token scrub on sign-out,
+ * add/upsert/activate, and query resolution over jsdom `localStorage`. Pure
+ * store logic — no live model or network.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addAgentProfile,
   loadAgentProfileRegistry,
+  resolveAgentProfileByQuery,
   scrubPersistedAgentProfileTokens,
   upsertAndActivateAgentProfile,
 } from "./agent-profiles";
@@ -143,5 +149,60 @@ describe("upsertAndActivateAgentProfile — cross-surface registry sync", () => 
       (x) => x.id === p.id,
     );
     expect(remote?.accessToken).toBe("keep-me");
+  });
+});
+
+describe("resolveAgentProfileByQuery", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("resolves by exact id, exact label, then unique substring", () => {
+    const cloud = addAgentProfile({
+      label: "My Cloud Agent",
+      kind: "cloud",
+      apiBase: "https://agent.example.test",
+    });
+    addAgentProfile({ label: "Laptop", kind: "local", apiBase: "" });
+
+    expect(resolveAgentProfileByQuery(cloud.id)?.id).toBe(cloud.id);
+    expect(resolveAgentProfileByQuery("my cloud agent")?.id).toBe(cloud.id);
+    // Unique substring of the label.
+    expect(resolveAgentProfileByQuery("laptop")?.label).toBe("Laptop");
+  });
+
+  it("resolves a unique kind keyword when exactly one profile has it", () => {
+    const remote = addAgentProfile({
+      label: "VPS",
+      kind: "remote",
+      apiBase: "https://vps.example.test",
+    });
+    addAgentProfile({ label: "Laptop", kind: "local", apiBase: "" });
+
+    expect(resolveAgentProfileByQuery("remote")?.id).toBe(remote.id);
+  });
+
+  it("returns null when a kind keyword is ambiguous", () => {
+    addAgentProfile({ label: "Laptop", kind: "local", apiBase: "" });
+    addAgentProfile({ label: "Desktop", kind: "local", apiBase: "" });
+
+    expect(resolveAgentProfileByQuery("local")).toBeNull();
+  });
+
+  it("returns null for an ambiguous substring, empty query, or no match", () => {
+    addAgentProfile({
+      label: "Cloud North",
+      kind: "cloud",
+      apiBase: "https://n.example.test",
+    });
+    addAgentProfile({
+      label: "Cloud South",
+      kind: "cloud",
+      apiBase: "https://s.example.test",
+    });
+
+    expect(resolveAgentProfileByQuery("cloud")).toBeNull(); // ambiguous substring
+    expect(resolveAgentProfileByQuery("   ")).toBeNull();
+    expect(resolveAgentProfileByQuery("nonexistent")).toBeNull();
   });
 });

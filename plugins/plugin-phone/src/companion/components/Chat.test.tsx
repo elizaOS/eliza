@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Renders the companion Chat home in jsdom and asserts the paired/offline and
+ * remote-session status reflect the props, with the agentUrl env accessor mocked
+ * to isolate the paired-url prop.
+ */
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

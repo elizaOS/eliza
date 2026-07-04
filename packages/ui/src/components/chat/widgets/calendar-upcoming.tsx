@@ -1,3 +1,11 @@
+/**
+ * Icon-first home Calendar widget: surfaces the single most imminent upcoming
+ * event with a tight relative-time meta ("in 45m") and self-hides when nothing
+ * is near. Polls the calendar feed only while the document is visible and the
+ * session is authenticated, and publishes a home-attention weight so the tile
+ * rises on the home grid when an event is imminent. Registered as
+ * `CALENDAR_HOME_WIDGET`; tapping navigates to the full calendar surface.
+ */
 import { CalendarClock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";

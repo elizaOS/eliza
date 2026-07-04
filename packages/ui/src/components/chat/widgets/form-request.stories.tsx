@@ -1,3 +1,4 @@
+/** Storybook + story-gate visual states for the inline chat FormRequest widget. */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { FormRequestSpec } from "../message-form-parser";
 import { FormRequest } from "./form-request";

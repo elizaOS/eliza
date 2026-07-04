@@ -1,3 +1,4 @@
+/** Shared types for the Orca LP position/rebalance/trading-config surface. */
 export interface LPPosition {
   positionId: string;
   poolAddress: string;

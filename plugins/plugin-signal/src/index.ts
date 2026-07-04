@@ -1,3 +1,10 @@
+/**
+ * Plugin entry point for @elizaos/plugin-signal: assembles the `Plugin` object,
+ * wires the `SignalService` and `SignalWorkflowCredentialProvider` services, the
+ * `/api/setup/signal/*` routes, and the connector-account provider, and registers
+ * the cross-connector triage adapter. Also re-exports the plugin's public surface
+ * (types, service, helpers) for programmatic consumers.
+ */
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createSignalConnectorAccountProvider } from "./connector-account-provider";
 
@@ -7,6 +14,9 @@ import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
 // Setup routes (QR pairing / disconnect)
 import { signalSetupRoutes } from "./setup-routes";
 
+// Cross-connector triage adapter
+import { registerSignalTriageAdapter } from "./triage-adapter";
+
 // Types
 import { normalizeE164 } from "./types";
 import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
@@ -14,6 +24,14 @@ import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider
 const signalPlugin: Plugin = {
   name: "signal",
   description: "Signal messaging integration plugin for ElizaOS with end-to-end encryption",
+  connectorSources: [
+    {
+      source: "signal",
+      aliases: ["signal"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   services: [SignalService, SignalWorkflowCredentialProvider],
   actions: [],
   providers: [],
@@ -40,6 +58,9 @@ const signalPlugin: Plugin = {
         "Failed to register Signal provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "signal" source.
+    registerSignalTriageAdapter();
 
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;

@@ -6,6 +6,8 @@
  * Types only — no runtime behaviour.
  */
 
+import type { TaskExecutionProfile } from "@elizaos/contracts";
+
 export type TerminalState =
   | "completed"
   | "skipped"
@@ -30,12 +32,6 @@ export type ScheduledTaskKind =
   | "custom";
 
 export type ScheduledTaskPriority = "low" | "medium" | "high";
-
-export type TaskExecutionProfile =
-  | "foreground"
-  | "bg-light-30s"
-  | "bg-heavy-fgs"
-  | "notify-only";
 
 export type ScheduledTaskSource =
   | "default_pack"

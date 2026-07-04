@@ -19,7 +19,11 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
+import {
+	findCodingDelegationActionName,
+	logger,
+	spawnWithTrajectoryLink,
+} from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views-platform.js";
@@ -166,12 +170,11 @@ async function dispatchEditAgent({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const createTask =
-		runtime.actions.find((a) => a.name === "START_CODING_TASK") ??
-		runtime.actions.find((a) => a.name === "CREATE_TASK");
+	const createTaskName = findCodingDelegationActionName(runtime.actions ?? []);
+	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		const text =
-			"START_CODING_TASK action not registered; cannot dispatch a coding agent.";
+			"Coding delegation action not registered; cannot dispatch a coding agent.";
 		await callback?.({ text });
 		return { success: false, text };
 	}

@@ -4,8 +4,8 @@
  * The cloud surfaces only ever inspect the *unverified* payload (its `exp` plus
  * a few identity claims) to decide whether a locally stored session still looks
  * live before the server confirms it. Signature verification is the server's
- * job. Every cloud domain previously reimplemented the same base64url decode;
- * they all delegate here now so the null/expired semantics stay identical.
+ * job. Every cloud domain delegates here so the null/expired semantics stay
+ * identical across surfaces.
  */
 
 /** Claims the cloud surfaces read off a Steward session token. */

@@ -1,3 +1,10 @@
+/**
+ * Shared helpers for the native capture scripts (capture-android-emu,
+ * capture-ios-sim): CLI/env arg parsing, evidence-path resolution, capture
+ * logging, starting the device-facing host agent, artifact copying, and writing
+ * the capture manifest. SKIP_EXIT_CODE (77) is the agreed "device unavailable,
+ * skip cleanly" exit code across those scripts.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

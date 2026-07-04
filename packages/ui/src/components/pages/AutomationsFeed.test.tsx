@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+// Renders the real AutomationsFeed against a mocked `../../api` client to cover
+// its status overview, truthful run action, and the new-automation → chat
+// hand-off. jsdom + in-memory client stub; no live backend.
+
 import {
   cleanup,
   fireEvent,

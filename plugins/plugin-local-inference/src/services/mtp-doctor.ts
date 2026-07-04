@@ -1,3 +1,9 @@
+/**
+ * Diagnostic that reports whether multi-token-prediction (MTP) tiers are
+ * runnable on this host: it walks the MTP catalog entries, checks the hardware
+ * probe, and emits pass/warn/fail checks with fix hints for the model settings
+ * UI and CLI doctor.
+ */
 import {
 	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,

@@ -1,7 +1,3 @@
-import { elizaLogger } from '@elizaos/core';
-import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../types.js';
-import type { BackgroundRunnerLike, CapacitorEnvironment } from './bridge.js';
-
 /**
  * Capacitor-backed background scheduler.
  *
@@ -16,6 +12,10 @@ import type { BackgroundRunnerLike, CapacitorEnvironment } from './bridge.js';
  * expected to call back into the JS context via the standard Capacitor
  * runner-event protocol. See INSTALL.md.
  */
+import { elizaLogger } from '@elizaos/core';
+import type { BgSchedulerKind, IBgTaskScheduler, ScheduleOptions } from '../types.js';
+import type { BackgroundRunnerLike, CapacitorEnvironment } from './bridge.js';
+
 export class CapacitorBgScheduler implements IBgTaskScheduler {
   readonly kind: BgSchedulerKind = 'capacitor';
 

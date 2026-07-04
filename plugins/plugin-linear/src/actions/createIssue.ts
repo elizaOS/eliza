@@ -1,3 +1,10 @@
+/**
+ * Handles the create_issue Linear op. Uses structured issueData when the caller
+ * supplies it, otherwise extracts title/description/priority/team/assignee/labels
+ * from the message via the createIssue prompt, resolving team, assignee, and
+ * label names to Linear ids before calling LinearService.createIssue. Falls back
+ * to a configured or first-available team when none is named.
+ */
 import {
   type Action,
   type ActionResult,

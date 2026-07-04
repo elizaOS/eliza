@@ -1,5 +1,7 @@
-import * as React from "react";
+import type * as React from "react";
+import { useClickSuppression } from "../../gestures";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { usePullGesture } from "./use-pull-gesture";
 
 /**
@@ -62,23 +64,11 @@ function TitledTopicGroup({
   // straight back — a real tap/click on the header was a visible no-op
   // (collapse + instant re-expand). The buttons keep their onClick for keyboard
   // activation (Enter/Space), which arrives without a preceding pointer gesture.
-  const suppressClickRef = React.useRef(false);
+  const clickSuppression = useClickSuppression();
   const toggleFromGesture = (next: boolean) => {
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 0);
+    clickSuppression.arm();
     onCollapsedChange(next);
   };
-  const suppressGestureClick = React.useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      if (!suppressClickRef.current) return;
-      suppressClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    [],
-  );
   const gesture = usePullGesture({
     onTap: () => toggleFromGesture(!collapsed),
     onPullUp: () => toggleFromGesture(true),
@@ -90,18 +80,18 @@ function TitledTopicGroup({
       data-testid="topic-group"
       data-topic={topic}
       data-collapsed={collapsed}
-      onClickCapture={suppressGestureClick}
+      onClickCapture={clickSuppression.onClickCapture}
     >
       {collapsed ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           data-testid="topic-group-pill"
           aria-expanded={false}
           aria-label={`Expand topic ${topic} (${count} messages)`}
           onClick={() => onCollapsedChange(false)}
           {...gesture}
           className={cn(
-            "my-2 flex w-full touch-none items-center gap-2 rounded-full px-3 py-1.5 text-left transition-colors",
+            "my-2 w-full touch-none justify-start gap-2 whitespace-normal rounded-full px-3 py-1.5 text-left transition-colors",
             "border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
             "  ",
           )}
@@ -114,19 +104,19 @@ function TitledTopicGroup({
           <span className="ml-auto shrink-0 text-[11px] text-white/45">
             {count} {count === 1 ? "message" : "messages"}
           </span>
-        </button>
+        </Button>
       ) : (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
           data-testid="topic-group-header"
           aria-expanded
           aria-label={`Collapse topic ${topic}`}
           onClick={() => onCollapsedChange(true)}
           {...gesture}
           className={cn(
-            "sticky top-0 z-[1] mb-1 mt-3 flex w-full touch-none items-center gap-2 py-1 text-left",
+            "sticky top-0 z-[1] mb-1 mt-3 w-full touch-none gap-2 whitespace-normal py-1 text-left",
             "text-white/45 transition-colors hover:text-white/70",
-            "",
+            "hover:bg-transparent",
           )}
         >
           <span className="h-px flex-1 bg-white/10" aria-hidden />
@@ -134,7 +124,7 @@ function TitledTopicGroup({
             {topic}
           </span>
           <span className="h-px flex-1 bg-white/10" aria-hidden />
-        </button>
+        </Button>
       )}
       {collapsed ? null : children}
     </div>

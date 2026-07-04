@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the API-keys empty state.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ApiKeyEmptyState } from "./api-key-empty-state";
 

@@ -1,11 +1,20 @@
+/**
+ * Covers `internal-tool-apps.ts`: how ViewDeclaration-derived internal apps map
+ * to catalog descriptors, target tabs, window paths, and pinnable names, and how
+ * routes bridge to tool tabs. Pure functions over in-memory view fixtures.
+ */
+
 import { describe, expect, it } from "vitest";
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { pathForTab, tabFromPath } from "../../navigation";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppHasDetailsPage,
+  getInternalToolAppNameForPath,
   getInternalToolApps,
   getInternalToolAppTargetTab,
   getInternalToolAppWindowPath,
+  getPinnableInternalAppNames,
 } from "./internal-tool-apps";
 
 describe("internal tool app descriptors", () => {
@@ -55,5 +64,55 @@ describe("internal tool app descriptors", () => {
   it("routes nested app view paths through the dynamic view renderer", () => {
     expect(tabFromPath("/apps/facewear/tui")).toBe("views");
     expect(tabFromPath("/apps/smartglasses/tui")).toBe("views");
+  });
+
+  it("overlays a plugin's live /api/views ViewDeclaration onto the catalog", () => {
+    // Renaming a plugin app's displayName in its ViewDeclaration must update the
+    // UI catalog with no edit to the static internal-tool declarations.
+    const trainingView: ViewRegistryEntry = {
+      id: "training",
+      label: "Model Studio",
+      description: "Renamed via ViewDeclaration",
+      path: "/apps/fine-tuning",
+      tags: ["training", "renamed"],
+      available: true,
+      pluginName: "@elizaos/plugin-training",
+      hasHeroImage: true,
+      heroImageUrl: "/api/views/training/hero",
+    };
+
+    const staticApp = getInternalToolApps().find(
+      (app) => app.name === "@elizaos/plugin-training",
+    );
+    expect(staticApp?.displayName).toBe("Fine Tuning");
+
+    const overlaid = getInternalToolApps([trainingView]).find(
+      (app) => app.name === "@elizaos/plugin-training",
+    );
+    expect(overlaid?.displayName).toBe("Model Studio");
+    expect(overlaid?.description).toBe("Renamed via ViewDeclaration");
+    expect(overlaid?.capabilities).toEqual(["training", "renamed"]);
+    expect(overlaid?.heroImage).toBe("/api/views/training/hero");
+  });
+
+  it("maps window paths back to their internal-tool app name", () => {
+    expect(getInternalToolAppNameForPath("/apps/fine-tuning")).toBe(
+      "@elizaos/plugin-training",
+    );
+    expect(getInternalToolAppNameForPath("/apps/plugins")).toBe(
+      "@elizaos/app-plugin-viewer",
+    );
+    expect(getInternalToolAppNameForPath("/apps/nonexistent")).toBeNull();
+  });
+
+  it("derives the pinnable list from declared pinnable flags", () => {
+    const pinnable = getPinnableInternalAppNames();
+    expect(pinnable).toContain("@elizaos/plugin-training");
+    expect(pinnable).toContain("@elizaos/plugin-task-coordinator");
+    // Files is a non-pinnable internal tool.
+    expect(pinnable).not.toContain("@elizaos/app-files-viewer");
+    for (const name of pinnable) {
+      expect(getInternalToolAppTargetTab(name)).not.toBeNull();
+    }
   });
 });

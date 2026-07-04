@@ -1,3 +1,8 @@
+/**
+ * Test double for the core capability router that reports every plugin capability
+ * as unavailable, so tests can exercise the coding tools' plugin-absent code paths
+ * without wiring a real router.
+ */
 import {
   CapabilityError,
   type ElizaCapabilityRouter,

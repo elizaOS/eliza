@@ -1,3 +1,8 @@
+/**
+ * Zod schema validating the onboarding profile submission — identity fields, optional
+ * imported social accounts, and legal-acceptance flags. Runtime counterpart to the
+ * OnboardingProfilePayload type.
+ */
 import { z } from "zod";
 import { AssetOrUrlSchema, UsernameSchema } from "./common";
 

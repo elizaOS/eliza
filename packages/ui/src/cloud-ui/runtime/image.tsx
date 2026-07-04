@@ -1,3 +1,6 @@
+/**
+ * Runtime image shim for cloud-ui: a plain img wrapper standing in for the host framework's Image.
+ */
 import type { CSSProperties, ImgHTMLAttributes } from "react";
 
 interface CloudImageProps

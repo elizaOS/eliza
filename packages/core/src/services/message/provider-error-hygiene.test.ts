@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Memory } from "../../types";
+import { type Memory, ModelType } from "../../types";
 import { shouldSkipResponseMemoryPersistence } from "../message";
 import {
 	isModelProviderFallbackError,
@@ -32,6 +32,26 @@ describe("provider error hygiene", () => {
 
 		expect(isModelProviderFallbackError(error)).toBe(true);
 		expect(isRateLimitError(error)).toBe(true);
+	});
+
+	it("never marks TEXT_TO_SPEECH errors as failover-eligible (voice fails closed #12253)", () => {
+		// "fetch failed" (Kokoro model-download failure) matches the transient
+		// heuristic for text slots, but a voice swap is not transient-recoverable.
+		const kokoroDownloadError = new Error("fetch failed");
+		expect(isModelProviderFallbackError(kokoroDownloadError)).toBe(true);
+		expect(
+			isModelProviderFallbackError(
+				kokoroDownloadError,
+				ModelType.TEXT_TO_SPEECH,
+			),
+		).toBe(false);
+		// A genuine 5xx from a TTS provider is likewise not a swap trigger.
+		const serviceError = Object.assign(new Error("service unavailable"), {
+			statusCode: 503,
+		});
+		expect(
+			isModelProviderFallbackError(serviceError, ModelType.TEXT_TO_SPEECH),
+		).toBe(false);
 	});
 
 	it("marks transient failure replies as non-persisted response memories", () => {

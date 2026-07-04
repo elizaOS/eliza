@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for DashboardSection.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { DashboardSection } from "./dashboard-section";
 

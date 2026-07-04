@@ -1,11 +1,7 @@
-export {
-  canRevertSetupTo,
-  getFlaminaTopicForSetupStep,
-  getSetupNavMetas,
-  getSetupStepOrder,
-  resolveSetupNextStep,
-  resolveSetupPreviousStep,
-} from "../first-run/setup-steps";
+/**
+ * Internal re-export surface for state helpers shared within the package without
+ * widening the public `@elizaos/ui/state` barrel.
+ */
 export {
   filterRenderableConversationMessages,
   shouldKeepConversationMessage,
@@ -32,7 +28,6 @@ export {
   applyUiTheme,
   clearAvatarIndex,
   clearPersistedActiveServer,
-  clearPersistedSetupStep,
   createPersistedActiveServer,
   loadActiveConversationId,
   loadAvatarIndex,
@@ -42,7 +37,6 @@ export {
   loadLastNativeTab,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
-  loadPersistedSetupStep,
   loadUiLanguage,
   loadUiShellMode,
   loadUiTheme,
@@ -57,7 +51,6 @@ export {
   saveLastNativeTab,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-  saveSetupStep,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,
@@ -66,7 +59,6 @@ export {
 export {
   deriveFirstRunResumeFieldsFromConfig,
   hasPartialSetupConnectionConfig,
-  inferSetupResumeStep,
 } from "./setup-resume";
 export {
   type TranslationContextValue,
@@ -82,17 +74,12 @@ export {
   type AppContextValue,
   type AppState,
   type ChatTurnUsage,
-  FIRST_RUN_PERMISSION_LABELS,
-  type FirstRunMode,
-  type FirstRunNextOptions,
   type GamePostMessageAuthPayload,
   type InventoryChainFilters,
   LIFECYCLE_MESSAGES,
   type LifecycleAction,
   type LoadConversationMessagesResult,
   type NavigationEventsApi,
-  SETUP_STEPS,
-  type SetupStep,
   type ShellView,
   type SlashCommandInput,
   type StartupErrorReason,

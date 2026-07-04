@@ -1,3 +1,10 @@
+/**
+ * Handler for the `inventory` op of the SHOPIFY action: check stock levels,
+ * adjust a quantity delta, or list store locations via {@link ShopifyService}.
+ * Falls back to `ModelType.TEXT_SMALL` intent classification when parameters
+ * are absent; adjustments are mutations and gate through
+ * {@link requireShopifyConfirmation}.
+ */
 import type {
   ActionResult,
   HandlerCallback,

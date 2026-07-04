@@ -1,3 +1,8 @@
+/**
+ * Checkbox primitive over Radix `@radix-ui/react-checkbox`, styled with this
+ * package's theme tokens. Derived from shadcn/ui `checkbox`
+ * (https://ui.shadcn.com/docs/components/checkbox).
+ */
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check } from "lucide-react";
 import * as React from "react";

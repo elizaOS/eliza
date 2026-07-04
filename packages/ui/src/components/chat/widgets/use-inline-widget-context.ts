@@ -5,9 +5,8 @@
  * `InlineWidgetContext` from THIS hook, so a CHOICE pick, a FOLLOWUPS chip, and
  * a FORM submit behave identically no matter where the reply is rendered.
  *
- * The two surfaces previously each defined these four handlers inline, byte for
- * byte the same. Two copies of one contract is a drift hazard (the issue's #1
- * surface-parity risk, #9304), unify them here.
+ * Keeping the four handlers single-sourced here avoids duplicating one contract
+ * across the two surfaces, which would be a surface-parity drift hazard (#9304).
  *
  * Callers pass the already-subscribed store setters rather than re-subscribing,
  * because `MessageContent` reads `sendActionMessage`/`setChatInput` for other
@@ -15,6 +14,7 @@
  */
 
 import { useMemo } from "react";
+import { dispatchNavigateViewEvent } from "../../../events";
 import type { FormResultValue } from "./form-request";
 import type { InlineWidgetContext } from "./inline-registry";
 
@@ -37,9 +37,7 @@ export function useInlineWidgetContext(
         const detail = payload.startsWith("/")
           ? { viewPath: payload }
           : { viewId: payload };
-        window.dispatchEvent(
-          new CustomEvent("eliza:navigate:view", { detail }),
-        );
+        dispatchNavigateViewEvent(detail);
       },
       // A followup `prompt` chip: prefill the composer draft. Outside a chat
       // provider `setChatInput` is an inert setter, so this safely no-ops.

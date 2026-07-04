@@ -1,3 +1,4 @@
+/** Deterministic unit tests for `handleTextEmbedding` with the AI SDK `embed` and provider mocked: init probe, usage emit, truncation, and error paths. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

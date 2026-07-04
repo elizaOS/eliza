@@ -1,3 +1,11 @@
+/**
+ * End-to-end tests that register plugin-defined Drizzle schemas (a simple
+ * hello-world table pair and a table set with FK relationships) through
+ * `createIsolatedTestDatabase`, confirm the runtime migrates and creates them
+ * alongside the core schema, and exercise a full memory write/read against
+ * one of the dynamically created tables. Runs against a real PGlite/Postgres
+ * adapter, not a mock.
+ */
 import {
   type AgentRuntime,
   ChannelType,
@@ -110,7 +118,6 @@ describe("Dynamic Migration Tests", () => {
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r) => (r as { table_name: string }).table_name);
-      // Plugin tables are created in public schema
       expect(tableNames).toContain("hello_world");
       expect(tableNames).toContain("greetings");
     });
@@ -172,7 +179,6 @@ describe("Dynamic Migration Tests", () => {
 
       const db = complexAdapter.getDatabase();
 
-      // Check tables in public schema (where plugin tables are created)
       const tables = await db.execute(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );

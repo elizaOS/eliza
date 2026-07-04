@@ -1,3 +1,4 @@
+/** Storybook stories for the cockpit per-session mode picker. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 

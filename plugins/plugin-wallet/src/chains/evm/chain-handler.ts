@@ -1,3 +1,11 @@
+/**
+ * `EvmWalletChainHandler` implements `WalletChainHandler` for a single EVM
+ * chain, dispatching `transfer`/`swap`/`gov` subactions from the wallet
+ * router: `prepare*` methods stage a transaction without signing, `execute*`
+ * methods resolve token addresses (native, address, or via the token-data
+ * service), build calldata, and submit through the wallet's signer. One
+ * instance is registered per configured chain by `chains/registry.ts`.
+ */
 import type { ITokenDataService } from "@elizaos/core";
 import {
   type Address,

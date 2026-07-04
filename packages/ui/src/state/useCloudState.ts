@@ -1,5 +1,5 @@
 /**
- * Eliza Cloud state — extracted from AppContext.
+ * Eliza Cloud state, one of the domain hooks AppContext composes.
  *
  * Manages:
  * - Cloud connection state (enabled, connected, persisted key, user ID)
@@ -44,6 +44,7 @@ import {
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   hasStewardLoginLauncher,
+  hasUsableStoredStewardToken,
   launchStewardLogin,
 } from "./cloud-steward-login";
 import { scrubPersistedActiveServerToken } from "./persistence";
@@ -181,12 +182,12 @@ function canPollCloudStatus(): boolean {
 /**
  * Resolve the Steward refresh endpoint for the current target. On hosted web
  * the same-origin cookie path works (the HttpOnly `steward-refresh-token`
- * cookie travels automatically). On native (`capacitor://localhost`) there is
- * no same-origin cookie, so refresh against the configured cloud API base
- * (Bearer-refresh). Returns `undefined` to use the shared default.
+ * cookie travels automatically). On native/Electrobun there is no same-origin
+ * cookie, so refresh against the configured cloud API base (Bearer-refresh).
+ * Returns `undefined` to use the shared default.
  */
 function resolveStewardRefreshEndpoint(): string | undefined {
-  if (!isCapacitorNativeRuntime()) return undefined;
+  if (!isCapacitorNativeRuntime() && !isElectrobunRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
@@ -476,8 +477,16 @@ export function useCloudState({
       // Steward sign-in (passkey / email / OAuth / wallet) instead of the
       // legacy device-code browser window. Same identity on web (same-origin
       // cookie + localStorage JWT) and native (Bearer-from-localStorage).
-      const existingStewardToken = readStoredStewardToken()?.trim();
-      if (existingStewardToken || hasStewardLoginLauncher()) {
+      //
+      // Only take this branch when it can complete on THIS click: a still-usable
+      // stored token (launchStewardLogin short-circuits on it) or a mounted
+      // launcher. A stored-but-EXPIRED JWT with no launcher mounted used to
+      // enter the branch anyway; launchStewardLogin drained the stale token and
+      // then threw "the Steward login surface is not mounted", so the first
+      // click dead-ended on an error and only the second click (token now gone)
+      // reached the working device-code flow. Instead, drain the stale token
+      // below and fall through to the device-code flow on the same click.
+      if (hasUsableStoredStewardToken() || hasStewardLoginLauncher()) {
         closePrePoppedWindow();
         try {
           await launchStewardLogin();
@@ -512,6 +521,13 @@ export function useCloudState({
           completeLogin();
         }
         return loginCompletion;
+      }
+
+      // A stored-but-stale Steward JWT with no launcher mounted: drain it so it
+      // cannot shadow the device-code credentials in subsequent authed calls
+      // (this mirrors what launchStewardLogin would have done before throwing).
+      if (readStoredStewardToken()?.trim()) {
+        clearStoredStewardToken();
       }
 
       // Legacy device-code fallback (retired for Cloud; preserved for the
@@ -656,9 +672,15 @@ export function useCloudState({
             consecutivePollErrors = 0;
             if (poll.status === "authenticated") {
               if (poll.token && typeof window !== "undefined") {
-                (
-                  globalThis as Record<string, unknown>
-                ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
+                // Persist the device-code session token through the canonical
+                // steward-session store (which getCloudAuthToken reads first). On
+                // a native device the OAuth opens an external browser
+                // (SFSafariViewController) which backgrounds the WebView; iOS
+                // often cold-launches it on return, so the token must be durable,
+                // not a volatile in-memory global — otherwise getCloudAuthToken()
+                // reads nothing, elizaCloudConnected never recomputes true, and
+                // onboarding restarts at the greeting.
+                writeStoredStewardToken(poll.token);
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
                 setBootConfig({
@@ -904,19 +926,12 @@ export function useCloudState({
         scrubPersistedActiveServerToken();
         // SECURITY: scrubbing active-server.accessToken alone is incomplete —
         // the LIVE cloud bearer also lives in (a) localStorage steward_session_token
-        // (the JWT read on every /api/* call), (b) per-agent-profile accessToken
-        // copies, and (c) the in-memory __ELIZA_CLOUD_AUTH_TOKEN__ global. Clear
-        // all of them on an explicit disconnect so no usable credential survives
-        // at rest / in memory (XSS / same-origin plugin views).
+        // (the JWT read on every /api/* call, and where the device-code flow
+        // persists its session token) and (b) per-agent-profile accessToken
+        // copies. Clear both on an explicit disconnect so no usable credential
+        // survives at rest / in memory (XSS / same-origin plugin views).
         clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
-        try {
-          delete (globalThis as Record<string, unknown>)
-            .__ELIZA_CLOUD_AUTH_TOKEN__;
-        } catch {
-          (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-            undefined;
-        }
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }

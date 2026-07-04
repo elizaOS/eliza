@@ -1,3 +1,11 @@
+/**
+ * Deterministic coverage for iOS app-bundle policy checks.
+ *
+ * The tests build temporary app fixtures and synthetic symbol output so the
+ * verifier catches unsafe local-network policy and forbidden runtime imports
+ * without requiring an actual signed iOS app.
+ */
+
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

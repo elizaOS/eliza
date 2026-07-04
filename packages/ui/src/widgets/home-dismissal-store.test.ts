@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+
+/**
+ * Covers the home-widget dismissal/sunset store: seen counts, acted/dismissed
+ * flags, and `isHomeWidgetSunset` policy resolution. Pure logic over the
+ * in-memory store (localStorage-backed at runtime; reset between cases).
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   __resetHomeDismissalsForTests,

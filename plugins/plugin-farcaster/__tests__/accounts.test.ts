@@ -1,3 +1,8 @@
+/**
+ * Covers multi-account config resolution — FID reads, account-id discovery, the
+ * `FARCASTER_ACCOUNTS` JSON path, and default-account selection — against a
+ * fake runtime (vi mocks, no network).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FarcasterService } from "../services/FarcasterService";

@@ -1,3 +1,10 @@
+/**
+ * Icon-first home widget surfacing the highest-priority unread inbox thread
+ * (sender + subject, with a count badge), tapping opens the Inbox view. One of
+ * the home-attention widget family; publishes into the shared home-attention
+ * store so it ranks itself on the home surface. Polls only while authenticated
+ * and the document is visible.
+ */
 import { Inbox } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";

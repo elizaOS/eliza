@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/cloud-ui";
 import { LayoutGrid, List, Search } from "lucide-react";
+import { Button } from "../../../components/ui/button";
 import { useT } from "../lib/i18n";
 import type { SortOption, ViewMode } from "./types";
 
@@ -100,7 +101,8 @@ export function CharacterFilters({
 
         {/* View mode toggle */}
         <div className="flex h-9 shrink-0 rounded-full border border-white/15 bg-black/40 p-1 md:h-10">
-          <button
+          <Button
+            variant="ghost"
             type="button"
             aria-label={t("cloud.characterFilters.gridView", {
               defaultValue: "Grid view",
@@ -114,8 +116,9 @@ export function CharacterFilters({
             }`}
           >
             <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             type="button"
             aria-label={t("cloud.characterFilters.listView", {
               defaultValue: "List view",
@@ -129,7 +132,7 @@ export function CharacterFilters({
             }`}
           >
             <List className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

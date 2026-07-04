@@ -1,3 +1,9 @@
+/**
+ * Finds better LP yield opportunities across all supported DEXes and
+ * estimates the cost (transaction fees, swap fees, slippage) of rebalancing
+ * a user's position into one. Estimates use fixed average fee constants and
+ * a default SOL/USD price rather than live fee/price data.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import type {

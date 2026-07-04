@@ -1,3 +1,9 @@
+/**
+ * Integration tests for connector-account persistence (accounts, credential
+ * refs, owner bindings, audit events, OAuth flow state) against a real
+ * isolated PGlite/Postgres adapter via `BaseDrizzleAdapter` delegation — no
+ * mocked adapter.
+ */
 import type { UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";

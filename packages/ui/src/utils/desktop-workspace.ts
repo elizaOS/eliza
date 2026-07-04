@@ -1,3 +1,7 @@
+/**
+ * Desktop workspace helpers over the Electrobun bridge, including click-audit
+ * entry-point tagging for tray/palette/settings launch points.
+ */
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 
 export type DesktopClickAuditEntryPoint =
@@ -45,7 +49,7 @@ export const DESKTOP_WORKSPACE_SURFACES: readonly DesktopWorkspaceSurfaceDef[] =
     },
     {
       id: "triggers",
-      label: "Heartbeats Window",
+      label: "Triggers Window",
       description: "Open scheduled trigger controls in a detached window.",
     },
     {

@@ -1,3 +1,7 @@
+/**
+ * Generates the view/tile icon assets via the FAL image API (needs FAL_KEY).
+ * Build-time tooling, not shipped in the bundle.
+ */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 

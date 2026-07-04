@@ -188,10 +188,21 @@ export const deployAppAction: Action = {
     const config: DeployGateConfig = DEFAULT_DEPLOY_GATE_CONFIG;
     const result = await runDeployGate(
       {
-        getStatus: () => client.getAppDeployStatus(target.id),
-        getApp: () => client.getApp(target.id),
+        // Thread the gate's per-poll abort signal into the HTTP request so a
+        // stalled connection is torn down at the requestTimeoutMs budget.
+        getStatus: (signal) => client.getAppDeployStatus(target.id, { signal }),
+        getApp: (signal) => client.getApp(target.id, { signal }),
         probe: (url) =>
           probeReachable(url, { timeoutMs: config.probeTimeoutMs }),
+        // A transient poll failure never aborts the gate — log and keep polling.
+        onPollError: (err, attempt) =>
+          logger.warn(
+            `[DEPLOY_APP] status poll ${attempt}/${config.maxAttempts} for ${
+              target.id
+            } failed (deploy continues server-side; will keep polling): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
       },
       config,
     );

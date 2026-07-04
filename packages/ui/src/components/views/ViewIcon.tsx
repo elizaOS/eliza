@@ -1,3 +1,11 @@
+/**
+ * Resolves a view's icon to a rendered glyph for launcher tiles and nav rows.
+ * An `icon` that is a data-URI / URL / absolute path renders as an `<img>`; a
+ * named lucide key resolves from the ICONS map; anything unknown (or absent)
+ * falls back to a keyword match against the view's label/id (KEYWORD_ICONS,
+ * first-match-wins) so every view still gets a distinct, meaningful glyph
+ * rather than a generic grid fallback.
+ */
 import {
   Activity,
   AppWindow,

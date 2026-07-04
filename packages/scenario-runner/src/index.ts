@@ -1,3 +1,4 @@
+/** Public entry point for `@elizaos/scenario-runner`: re-exports the execution, discovery, reporting, and native-export surface. */
 export * from "./cli";
 export { runScenario } from "./executor.ts";
 export { attachInterceptor } from "./interceptor.ts";

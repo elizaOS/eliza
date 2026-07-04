@@ -1,0 +1,63 @@
+name: "#8756 Launch Hardening Evidence"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment whose protected deploy secrets should be checked"
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+      branch:
+        description: "Branch to inspect for image/deploy workflow state"
+        required: true
+        default: develop
+      cloud_api_base:
+        description: "Eliza Cloud API base for the optional fresh-agent probe"
+        required: true
+        default: https://api.elizacloud.ai
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    name: Collect #8756 evidence
+    runs-on: ubuntu-24.04
+    environment: ${{ github.event.inputs.environment }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Collect read-only launch-hardening status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_CLOUD_API_BASE: ${{ github.event.inputs.cloud_api_base }}
+        run: |
+          set -euo pipefail
+          node scripts/cloud/verify-8756-launch-hardening.mjs \
+            --branch "${{ github.event.inputs.branch }}" \
+            --environment "${{ github.event.inputs.environment }}" \
+            --cloud-report .github/issue-evidence/8756-launch-hardening-status/cloud-provisioning.json
+
+      - name: Upload #8756 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: 8756-launch-hardening-status
+          path: .github/issue-evidence/8756-launch-hardening-status/**
+          if-no-files-found: error
+          retention-days: 14

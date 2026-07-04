@@ -25,6 +25,9 @@ export const shellHistoryProvider: Provider = {
   contextGate: { anyOf: ["terminal", "code"] },
   cacheStable: false,
   cacheScope: "turn",
+  // Shell history / cwd / file ops are host-operator context — admin+ only.
+  // (#12094 item 3: the gate lives on the provider so it can't drift.)
+  roleGate: { minRole: "ADMIN" },
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {

@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Top bar for the cloud dashboard: title/breadcrumb, actions slot, and the mobile menu toggle.
+ */
 import { LogIn, Menu } from "lucide-react";
 import { memo, type ReactNode } from "react";
 import { BrandButton } from "../brand";

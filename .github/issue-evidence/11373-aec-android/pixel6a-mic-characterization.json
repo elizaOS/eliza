@@ -1,0 +1,15 @@
+{
+  "issue": 11373,
+  "device": "Pixel 6a (bluejay), serial 27051JEGR10034, USB, physical device in a real (uncontrolled) room",
+  "captureClock": "agent-side aec-capture (production LiveDiarizationSession buffers), 16 kHz mono",
+  "micConstraints": { "echoCancellation": false, "noiseSuppression": false, "autoGainControl": false, "voiceIsolation": false },
+  "roomFloorRmsWarmup": 0.021,
+  "echoOnlyNearRms": { "mediaVolume11of25": 0.0743, "mediaVolume25of25": 0.22 },
+  "farReferenceRms": 0.096,
+  "doubleTalkNearRms": 0.094,
+  "notes": [
+    "warmup seconds (no playback) sit at the 0.021 room floor; playback seconds jump to 0.074 (11/25) / 0.22 (25/25) — the echo dominates the mic by ~11 dB / ~20 dB, i.e. a real acoustic loop, unlike the emulator's synthetic mic",
+    "near RMS at full volume (0.22, peak 0.955) shows loudspeaker nonlinearity territory; the canonical capture uses 11/25 (~44 %), comparable to the accepted macOS run's 45 % output volume",
+    "identical near RMS across the two early runs exposed that `cmd media_session volume --set` silently does not apply on this device — volume is driven via KEYCODE_VOLUME_UP/DOWN with read-verify in the committed driver"
+  ]
+}

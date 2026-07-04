@@ -876,7 +876,8 @@ interface StepIndexRow {
 // ============================================================================
 
 export class TrajectoriesService extends Service {
-	static serviceType = "trajectories";
+	static serviceType = "trajectories" as const;
+	static override readonly allowsMultiple = true;
 	get serviceType() {
 		return TrajectoriesService.serviceType;
 	}

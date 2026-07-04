@@ -8,9 +8,8 @@
  * one-shot runs where speed and zero setup matter more than durability.
  *
  * Implements the full batch-first interface from `@elizaos/core`'s
- * `DatabaseAdapter`. Single-item helpers from earlier revisions of this plugin
- * have been removed — call sites should use the batch APIs (`createEntities`,
- * `getMemoriesByIds`, etc.).
+ * `DatabaseAdapter`; there are no single-item helpers — call sites use the
+ * batch APIs (`createEntities`, `getMemoriesByIds`, etc.).
  */
 
 import { randomUUID } from "node:crypto";

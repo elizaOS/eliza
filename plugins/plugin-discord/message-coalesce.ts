@@ -1,3 +1,9 @@
+/**
+ * Debounces and coalesces rapid inbound channel messages before the service
+ * processes them, so a burst from one author collapses into a single turn.
+ * Used by `DiscordService` via the channel debouncer; DMs bypass this and are
+ * dispatched directly.
+ */
 import type { Message as DiscordMessage } from "discord.js";
 
 export interface DiscordMessageCoalesceConfig {

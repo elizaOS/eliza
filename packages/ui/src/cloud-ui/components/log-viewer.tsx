@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
+ */
 import {
   Copy,
   Download,

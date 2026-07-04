@@ -1,3 +1,7 @@
+/**
+ * In-view hint telling the user that a view's search is routed through the
+ * floating chat rather than a local search box. Lives in the view's own header.
+ */
 import type * as React from "react";
 
 import { cn } from "../../lib/utils";

@@ -152,8 +152,15 @@ const validResult = {
 
 interface ErrorResponseBody {
   error?: string;
+  code?: string;
   details?: {
     supportedModels?: string[];
+    provider?: string;
+    model?: string;
+    billingSource?: string;
+    upstreamStatus?: number;
+    upstreamCode?: string;
+    upstreamMessage?: string;
   };
 }
 
@@ -236,19 +243,83 @@ describe("generate-video — post-settle failure must not refund (#10278)", () =
 });
 
 describe("generate-video — pre-settle failure still refunds", () => {
-  test("fal.subscribe throws BEFORE settle: reconciled once to 0, balance restored", async () => {
+  test("provider throws BEFORE settle: refunds and returns provider diagnostics", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
-    subscribe.mockRejectedValue(new Error("fal upstream 503"));
+    const providerError = Object.assign(
+      new Error("fal upstream 503 api_key=secret-token"),
+      {
+        status: 503,
+        code: "FAL_UPSTREAM_UNAVAILABLE",
+      },
+    );
+    subscribe.mockRejectedValue(providerError);
 
     const res = await post();
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as ErrorResponseBody;
+    expect(body).toMatchObject({
+      success: false,
+      error: "Video provider request failed",
+      code: "internal_error",
+      details: {
+        provider: "fal",
+        model: MODEL,
+        billingSource: "fal",
+        upstreamStatus: 503,
+        upstreamCode: "FAL_UPSTREAM_UNAVAILABLE",
+        upstreamMessage: "fal upstream 503 api_key=[REDACTED]",
+      },
+    });
     expect(generationsCreate).not.toHaveBeenCalled();
     // Failure before settle → full refund (reconcile(0)).
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBe(0);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
+
+describe("generate-video — bills what it delivers (#11862 finding 2)", () => {
+  test("when the client omits durationSeconds, the RESOLVED billing default is forwarded to the provider (not undefined)", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue(validResult);
+    generationsCreate.mockResolvedValue({ id: "gen-1" });
+
+    // No durationSeconds in the request → billing resolves it to the catalog
+    // default (8, per the getDefaultVideoBillingDimensions mock above).
+    const res = await post({ model: MODEL, prompt: "a cat" });
+
+    expect(res.status).toBe(200);
+    // The provider (fal) maps durationSeconds → input.duration. Before the fix
+    // the raw request spread forwarded an undefined durationSeconds, so the
+    // provider rendered its OWN default while we billed 8s → undercharge.
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    const falInput = (
+      subscribe.mock.calls[0]?.[1] as { input?: Record<string, unknown> }
+    )?.input;
+    expect(falInput?.duration).toBe(8);
+    expect(falInput?.duration_seconds).toBe(8);
+  });
+
+  test("an explicit client durationSeconds is still forwarded unchanged", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    subscribe.mockResolvedValue(validResult);
+    generationsCreate.mockResolvedValue({ id: "gen-1" });
+
+    const res = await post({
+      model: MODEL,
+      prompt: "a cat",
+      durationSeconds: 5,
+    });
+
+    expect(res.status).toBe(200);
+    const falInput = (
+      subscribe.mock.calls[0]?.[1] as { input?: Record<string, unknown> }
+    )?.input;
+    expect(falInput?.duration).toBe(5);
   });
 });
 

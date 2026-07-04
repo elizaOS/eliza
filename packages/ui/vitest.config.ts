@@ -1,3 +1,6 @@
+/**
+ * Vitest config for the UI unit/component suite (jsdom, TZ=UTC, aliases).
+ */
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +11,7 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const cloudSharedSrc = resolve(monorepoRoot, "packages/cloud/shared/src");
 const loggerSrc = resolve(monorepoRoot, "packages/logger/src");
 const tuiSrc = resolve(monorepoRoot, "packages/tui/src");
 const bunRuntimeSrc = resolve(
@@ -80,6 +84,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: resolve(sharedSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/cloud-shared$/,
+        replacement: resolve(cloudSharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-shared\/(.+)$/,
+        replacement: resolve(cloudSharedSrc, "$1"),
       },
       {
         find: /^@elizaos\/logger$/,
@@ -214,6 +226,16 @@ export default defineConfig({
   test: {
     setupFiles: ["./vitest.setup.ts"],
     pool: "forks",
+    poolOptions: {
+      forks: {
+        // The heaviest jsdom suites (App.screen-background-fuzz walks the FULL
+        // builtin-tab universe under a mounted <App /> several times) peak past
+        // Node's ~4 GB default old-space and OOM-kill the fork worker, which
+        // vitest then reports as "Worker exited unexpectedly" with the file's
+        // results lost. Raise only the ceiling — small suites stay small.
+        execArgv: ["--max-old-space-size=8192"],
+      },
+    },
     server: {
       deps: {
         // Inline packages that use React through Vite's transform pipeline so

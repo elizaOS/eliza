@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the mobile inference gate: which combinations of
+ * `ELIZA_DEVICE_BRIDGE_ENABLED` / `ELIZA_LOCAL_LLAMA` / riscv64 arch enable the
+ * on-device path, and the without-platform warning.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import {
 	shouldEnableMobileLocalInference,

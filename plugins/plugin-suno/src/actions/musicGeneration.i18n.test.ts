@@ -1,3 +1,4 @@
+/** Unit tests asserting Suno subaction routing is i18n-safe: enum/params only, never text keywords. */
 import { describe, expect, it } from 'vitest';
 import { inferSubaction } from './musicGeneration';
 

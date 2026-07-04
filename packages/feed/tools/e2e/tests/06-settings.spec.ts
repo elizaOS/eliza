@@ -1,3 +1,8 @@
+/**
+ * Playwright e2e coverage driving a real MetaMask wallet (@avalix/chroma + Privy) against a live Feed dev server; every spec skips when the /api/health check fails.
+ *
+ * Covers the settings tabs: profile, theme, notifications, privacy, security, API keys, and social linking.
+ */
 import { expect, test } from "./fixtures";
 import {
   clickTab,
@@ -297,10 +302,6 @@ test.describe("Settings - Security Tab", () => {
     );
     expect(hasContent).toBe(true);
   });
-
-  // "2FA option present" was deleted: the SecurityTab component has no 2FA /
-  // two-factor feature, so the spec tested a feature that does not exist and
-  // could only ever pass vacuously.
 });
 
 test.describe("Settings - API Keys Tab", () => {

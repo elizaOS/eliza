@@ -1,3 +1,10 @@
+/**
+ * Multi-account resolution for the Feishu connector. Reads account definitions
+ * from character settings (`character.settings.feishu`) with env-var fallback
+ * (FEISHU_APP_ID/FEISHU_APP_SECRET) surfacing as the `default` account, and
+ * exposes helpers to enumerate, normalize, and resolve accounts to concrete app
+ * credentials. Consumed by connector-account-provider.ts and the service.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

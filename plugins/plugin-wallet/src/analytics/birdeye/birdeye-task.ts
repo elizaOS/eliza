@@ -1,3 +1,10 @@
+/**
+ * `Birdeye` task runner: periodically syncs a configured wallet's Birdeye
+ * transaction history and portfolio into the agent's cache (`BIRDEYE_WALLET_ADDR`
+ * gates whether `syncWallet` does anything). Waits on `BirdeyeService`'s load
+ * promise before calling it, and merges cached transaction history with fresh
+ * data so cache failures never lose already-synced transactions.
+ */
 import {
   type Content,
   createUniqueUuid,

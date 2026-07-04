@@ -9,6 +9,9 @@ export { ignoreAction } from "./ignore.ts";
 export { noneAction } from "./none.ts";
 export { replyAction } from "./reply.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -19,15 +22,9 @@ import { ignoreAction as _bs_2_ignoreAction } from "./ignore.ts";
 import { noneAction as _bs_3_noneAction } from "./none.ts";
 import { replyAction as _bs_4_replyAction } from "./reply.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ = [
+anchorBundleSafety("FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX", [
 	_bs_1_choiceAction,
 	_bs_2_ignoreAction,
 	_bs_3_noneAction,
 	_bs_4_replyAction,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__ =
-	__bundle_safety_FEATURES_BASIC_CAPABILITIES_ACTIONS_INDEX__;
+]);

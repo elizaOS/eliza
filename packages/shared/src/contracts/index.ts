@@ -1,3 +1,4 @@
+/** Barrel re-exporting every API route contract module (agent, apps, auth, wallet, inbox, …). */
 export * from "./agent-routes.js";
 export * from "./app-permissions.js";
 export * from "./app-permissions-routes.js";
@@ -7,8 +8,10 @@ export * from "./apps-lifecycle-routes.js";
 export * from "./apps-loading-routes.js";
 export * from "./apps-runs-routes.js";
 export * from "./auth-routes.js";
+export * from "./automation-nodes.js";
 export * from "./awareness.js";
 export * from "./character-routes.js";
+export * from "./chat.js";
 export * from "./cloud-coding-containers.js";
 export * from "./cloud-topology.js";
 export * from "./config.js";
@@ -25,6 +28,7 @@ export * from "./inbox.js";
 export * from "./inbox-routes.js";
 export * from "./memory-routes.js";
 export * from "./misc-routes.js";
+export * from "./page-scope.js";
 export * from "./permissions.js";
 export * from "./permissions-routes.js";
 export * from "./personal-assistant.js";

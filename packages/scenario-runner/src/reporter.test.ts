@@ -1,3 +1,4 @@
+/** Tests report aggregation and output (reporter.ts): `buildAggregate` roll-ups plus the JSON report and run-viewer files written to a temp dir. */
 import {
   existsSync,
   mkdirSync,

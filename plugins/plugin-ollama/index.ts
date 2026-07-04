@@ -1,3 +1,4 @@
+/** Package entry: re-exports the Ollama plugin, its config helpers, and transport types; default export is the plugin. */
 import { ollamaPlugin } from "./plugin";
 
 export * from "./types";

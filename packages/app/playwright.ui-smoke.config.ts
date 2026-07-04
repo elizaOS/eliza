@@ -48,15 +48,20 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 // WebKit (Safari engine) pointer/focus/text-input lane. iOS/iPadOS ship Safari's
 // WebKit, but every default lane above is Chromium-only, so pointer, focus, and
 // text-input regressions specific to WebKit go uncaught. This lane re-runs the
-// chat pointer/focus/composer specs on WebKit. Scoped to keyless, stub-backed
-// specs that need no Chromium-only permissions (clipboard/microphone) or
-// fake-media launch flags, so they run green on WebKit (chat-message-actions and
-// wallet-inventory grant clipboard permissions WebKit does not support and are
-// intentionally excluded). Opt-in via PLAYWRIGHT_WEBKIT=1: WebKit is a separate
-// browser download (`playwright install webkit`) not present on every machine, so
-// gating keeps the default lane from reddening where WebKit is absent.
+// chat pointer/focus/composer specs plus the plugin-views keyboard focus-order
+// audit on WebKit. Scoped to keyless, stub-backed specs that need no
+// Chromium-only permissions (clipboard/microphone) or fake-media launch flags,
+// so they run green on WebKit (chat-message-actions and wallet-inventory grant
+// clipboard permissions WebKit does not support and are intentionally excluded).
+// CDP-touch specs (Input.dispatchTouchEvent is Chromium-only) stay on Chromium.
+// plugin-views-visual is included for its Tab-order keyboard-navigation audit:
+// the registered plugin views ship in the iOS/macOS WKWebView, so a WebKit focus
+// or sequential-focus-navigation divergence must be caught here, not only on
+// Chromium. Opt-in via PLAYWRIGHT_WEBKIT=1: WebKit is a separate browser download
+// (`playwright install webkit`) not present on every machine, so gating keeps the
+// default lane from reddening where WebKit is absent.
 const WEBKIT_POINTER_FOCUS_SPEC =
-  /(chat-overlay-controls-interactions|conversation-management|slash-commands)\.spec\.ts/;
+  /(chat-overlay-controls-interactions|conversation-management|slash-commands|plugin-views-visual)\.spec\.ts/;
 const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.

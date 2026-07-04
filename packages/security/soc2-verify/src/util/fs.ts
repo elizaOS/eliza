@@ -1,3 +1,7 @@
+/**
+ * Filesystem helpers for SOC2 checks that inspect repository evidence paths.
+ */
+
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";

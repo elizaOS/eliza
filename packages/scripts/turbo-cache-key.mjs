@@ -8,10 +8,10 @@ import {
   lstatSync,
   readdirSync,
   readFileSync,
-  statSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listWorkspaceDirs as listWorkspaceDirsFromSeam } from "./lib/workspaces.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -80,87 +80,13 @@ function normalizePath(value) {
   return value.split(path.sep).join("/");
 }
 
-function readJson(filePath) {
-  return JSON.parse(readFileSync(filePath, "utf8"));
-}
-
-function workspaceGlobToRegExp(glob) {
-  let pattern = "";
-  for (let i = 0; i < glob.length; i += 1) {
-    const char = glob[i];
-    if (char === "*") {
-      if (glob[i + 1] === "*") {
-        pattern += ".*";
-        i += 1;
-      } else {
-        pattern += "[^/]*";
-      }
-    } else if (/[.+^${}()|[\]\\]/.test(char)) {
-      pattern += `\\${char}`;
-    } else {
-      pattern += char;
-    }
-  }
-  return new RegExp(`^${pattern}$`);
-}
-
-function expandWorkspaceGlob(repoRoot, pattern) {
-  let dirs = [repoRoot];
-  for (const part of pattern.split("/")) {
-    const next = [];
-    for (const dir of dirs) {
-      if (part === "*") {
-        let entries;
-        try {
-          entries = readdirSync(dir, { withFileTypes: true });
-        } catch {
-          continue;
-        }
-        for (const entry of entries) {
-          if (entry.isDirectory()) next.push(path.join(dir, entry.name));
-        }
-        continue;
-      }
-      const candidate = path.join(dir, part);
-      try {
-        if (statSync(candidate).isDirectory()) next.push(candidate);
-      } catch {}
-    }
-    dirs = next;
-  }
-  return dirs;
-}
-
+// Workspace members, sorted longest-path-first so `owningWorkspace` attributes a
+// file to its most-specific enclosing workspace (a nested member wins over its
+// ancestor). Discovery itself is the shared seam.
 export function listWorkspaceDirs(repoRoot = DEFAULT_REPO_ROOT) {
-  const rootPackage = readJson(path.join(repoRoot, "package.json"));
-  const workspaceGlobs = rootPackage.workspaces ?? [];
-  const matchers = workspaceGlobs.map((glob) => {
-    const negated = glob.startsWith("!");
-    return {
-      negated,
-      regExp: workspaceGlobToRegExp(negated ? glob.slice(1) : glob),
-    };
-  });
-
-  function isWorkspaceMember(relativeDir) {
-    let member = false;
-    for (const { negated, regExp } of matchers) {
-      if (regExp.test(relativeDir)) member = !negated;
-    }
-    return member;
-  }
-
-  const dirs = new Set();
-  for (const glob of workspaceGlobs) {
-    if (glob.startsWith("!")) continue;
-    for (const dir of expandWorkspaceGlob(repoRoot, glob)) {
-      const relativeDir = normalizePath(path.relative(repoRoot, dir));
-      if (!relativeDir || !isWorkspaceMember(relativeDir)) continue;
-      if (!existsSync(path.join(dir, "package.json"))) continue;
-      dirs.add(relativeDir);
-    }
-  }
-  return [...dirs].sort((a, b) => b.length - a.length || a.localeCompare(b));
+  return listWorkspaceDirsFromSeam({ repoRoot }).sort(
+    (a, b) => b.length - a.length || a.localeCompare(b),
+  );
 }
 
 function packageRootInput(fileName) {

@@ -1,3 +1,8 @@
+/**
+ * Vitest setup module mocking @elizaos/core for the Edge TTS suite, so the
+ * handler runs without booting a runtime. Loaded via setupFiles in
+ * vitest.config.ts.
+ */
 import { vi } from "vitest";
 
 // Faithful re-implementation of core `resolveSetting` (runtime per-agent setting

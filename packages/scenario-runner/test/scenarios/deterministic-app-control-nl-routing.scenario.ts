@@ -1,3 +1,8 @@
+/**
+ * Keyless coverage that natural-language requests route to the correct
+ * plugin-app-control action against seeded scenario views. Runs on the
+ * pr-deterministic lane under the LLM proxy (fixtures pin the routing).
+ */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";

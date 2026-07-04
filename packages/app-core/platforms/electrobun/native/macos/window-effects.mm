@@ -2554,3 +2554,55 @@ extern "C" bool setNativeWindowDragRegion(void *windowPtr, double x,
 
 	return success;
 }
+
+/** Enables the macOS two-finger trackpad swipe back/forward history gesture on
+ *  the window's WKWebView(s). WKWebView defaults
+ *  allowsBackForwardNavigationGestures to NO and Electrobun never sets it, so
+ *  the gesture is dead without this. Idempotent — TS re-calls it from the same
+ *  restack passes as setNativeWindowDragRegion because Electrobun may insert
+ *  WKWebView after the first pass. Uses NSClassFromString + KVC so this file
+ *  keeps zero WebKit imports and the dylib needs no WebKit linkage. Returns
+ *  true once at least one WKWebView received the flag. */
+extern "C" bool enableWindowBackForwardNavigationGestures(void *windowPtr) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+
+		NSView *contentView = [window contentView];
+		if (contentView == nil) {
+			return;
+		}
+
+		Class webViewClass = NSClassFromString(@"WKWebView");
+		if (webViewClass == Nil) {
+			return;
+		}
+
+		// Direct subviews plus one level down: the isolated BrowserView embed
+		// path hosts WKWebView inside a container subview of contentView.
+		for (NSView *sv in [contentView subviews]) {
+			if ([sv isKindOfClass:webViewClass]) {
+				[sv setValue:@YES
+					  forKey:@"allowsBackForwardNavigationGestures"];
+				success = YES;
+				continue;
+			}
+			for (NSView *inner in [sv subviews]) {
+				if ([inner isKindOfClass:webViewClass]) {
+					[inner setValue:@YES
+							 forKey:@"allowsBackForwardNavigationGestures"];
+					success = YES;
+				}
+			}
+		}
+	});
+
+	return success;
+}

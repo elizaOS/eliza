@@ -461,13 +461,15 @@ export async function calculateImageGenerationCostFromCatalog(params: {
 
 export async function calculateVideoGenerationCostFromCatalog(params: {
   model: string;
-  billingSource?: "fal";
+  billingSource?: PricingBillingSource;
   durationSeconds?: number;
   dimensions?: Record<string, unknown>;
 }): Promise<FlatOperationCost> {
+  const definition = getSupportedVideoModelDefinition(params.model);
+  const provider = definition?.provider ?? inferProviderFromCanonicalModel(params.model);
   const entry = await resolvePreparedPricingEntry({
-    billingSource: params.billingSource ?? "fal",
-    provider: "fal",
+    billingSource: params.billingSource ?? definition?.billingSource,
+    provider,
     model: params.model,
     productFamily: "video",
     chargeType: "generation",

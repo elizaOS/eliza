@@ -1,18 +1,19 @@
 // @vitest-environment jsdom
-//
-// Native HTML5 file-drop coverage for the Knowledge/Documents upload surface
-// (#10722). Before this, the drag-and-drop upload path — the ONLY drag-drop
-// affordance on the shipped documents surface — had zero tests. These drive a
-// real `drop` DOM event carrying a populated `dataTransfer.files` and assert
-// the SEMANTIC outcome:
-//
-//   • UploadZone.handleDrop  → onFilesUpload fires with the dropped File(s) and
-//     the zone's live scope options; a same-node drop does not bubble into the
-//     DocumentsView root (stopPropagation), so it never double-uploads.
-//   • DocumentsView root drop → the real handleFilesUpload validation +
-//     batching path runs and client.uploadDocumentsBulk is called with the
-//     dropped file's decoded content. Wrong-type / empty / no-file drops are
-//     rejected before any network call.
+
+/**
+ * Native HTML5 file-drop coverage for the Knowledge/Documents upload surface
+ * (#10722) — the only drag-drop upload affordance on the documents surface. The
+ * tests drive a real `drop` DOM event carrying a populated `dataTransfer.files`
+ * and assert the SEMANTIC outcome:
+ *
+ *   • UploadZone.handleDrop  → onFilesUpload fires with the dropped File(s) and
+ *     the zone's live scope options; a same-node drop does not bubble into the
+ *     DocumentsView root (stopPropagation), so it never double-uploads.
+ *   • DocumentsView root drop → the real handleFilesUpload validation +
+ *     batching path runs and client.uploadDocumentsBulk is called with the
+ *     dropped file's decoded content. Wrong-type / empty / no-file drops are
+ *     rejected before any network call.
+ */
 
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

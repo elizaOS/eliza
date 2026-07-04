@@ -1,3 +1,4 @@
+/** `IStorage` backed by a `Map` of collections to `Map<id, item>` — the raw key-value layer under `InMemoryDatabaseAdapter`; nothing here persists past `close()`/process exit. */
 import type { IStorage } from "./types";
 
 export class MemoryStorage implements IStorage {

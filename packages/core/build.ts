@@ -203,6 +203,7 @@ export async function createElizaBuildConfig(
 
 	const elizaExternals = [
 		"@elizaos/core",
+		"@elizaos/cloud-routing",
 		"@elizaos/shared",
 		"@elizaos/plugin-*",
 	].filter((pkg) => pkg !== selfPackageName);

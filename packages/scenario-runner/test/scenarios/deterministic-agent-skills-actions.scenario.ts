@@ -1,3 +1,7 @@
+/**
+ * Keyless catalog coverage for the plugin-agent-skills action surface
+ * (USE_SKILL and similes). Runs on the pr-deterministic lane under the LLM proxy.
+ */
 import type {
   CapturedAction,
   ScenarioContext,

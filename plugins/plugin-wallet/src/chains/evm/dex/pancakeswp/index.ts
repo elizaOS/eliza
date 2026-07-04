@@ -1,3 +1,8 @@
+/**
+ * PancakeSwap V3 liquidity-pool management sub-plugin: registers
+ * `PancakeSwapV3LpService` and its LP protocol provider with the shared
+ * `LpManagementService` registry.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   createEvmLpProtocolProvider,

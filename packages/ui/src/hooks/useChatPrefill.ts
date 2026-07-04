@@ -1,3 +1,8 @@
+/**
+ * Hook to seed the one floating chat composer from any view — opens the chat
+ * (from the pill if collapsed) and loads text for the user to review/send. How a
+ * view's empty-state recommendations populate the composer.
+ */
 import { useCallback } from "react";
 import { dispatchChatPrefill } from "../events";
 

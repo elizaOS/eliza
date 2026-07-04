@@ -1,3 +1,11 @@
+/**
+ * Fuzzy action-name matching for scenario assertions. A scenario's expected
+ * action name rarely matches the runtime's emitted name character-for-character
+ * (casing, `ACTION_` prefixes, singular/plural, token order), so final checks
+ * compare through `actionsAreScenarioEquivalent` / `actionMatchesScenarioExpectation`
+ * instead of string equality. Matching is token-based: names are normalized to
+ * lowercase alphanumerics and compared for equality, prefix, or suffix overlap.
+ */
 function normalizeActionName(value: string): string {
   return value
     .trim()

@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the default unit/shape suite: aliases `@elizaos/plugin-sql`
+ * to workspace source and excludes the live, real-drift, and PGLite-harness
+ * lanes (each has its own config or gated invocation).
+ */
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 

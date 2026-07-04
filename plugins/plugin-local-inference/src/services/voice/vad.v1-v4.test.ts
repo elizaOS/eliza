@@ -1,5 +1,5 @@
 /**
- * V1 / V4 — fast-endpoint and adaptive-hangover VAD tests.
+ * V1 / V4 / endpoint-hangover VAD tests (deterministic scripted Silero).
  *
  * V1: when `fastEndpointEnabled` is true, the detector uses
  * `fastPauseHangoverMs` instead of the conservative 220 ms default.
@@ -8,11 +8,21 @@
  * trajectory (energy trailing off) collapses the pause hangover to the
  * configured floor — the detector decides "you stopped talking" sooner
  * when the audio confirms it.
+ *
+ * Endpoint hangover (#12254): the `endHangoverMs` default is 300 ms when a
+ * semantic EOT gate is live, 500 ms fixed-VAD floor otherwise; explicit
+ * config always wins. Includes a timeline measurement of the wait between
+ * last speech and `speech-end`.
  */
 
 import { describe, expect, it } from "vitest";
 import type { PcmFrame, VadEvent } from "./types";
-import { VadDetector, type VadLike } from "./vad";
+import {
+	END_HANGOVER_FIXED_VAD_MS,
+	END_HANGOVER_SEMANTIC_EOT_MS,
+	VadDetector,
+	type VadLike,
+} from "./vad";
 
 const SR = 16_000;
 const FRAME = 512;
@@ -218,5 +228,82 @@ describe("V4 — adaptive hangover on sharp RMS drop", () => {
 		if (pause?.type !== "speech-pause") throw new Error("missing");
 		// Floor is 64 ms (~2 windows). Pause shouldn't fire before that.
 		expect(pause.pauseDurationMs).toBeGreaterThanOrEqual(64);
+	});
+});
+
+describe("endpoint hangover defaults (#12254)", () => {
+	const silero = () => new ScriptedSileroWithEnergy([0.9]);
+
+	it("defaults to the 500 ms fixed-VAD floor without a semantic EOT gate", () => {
+		expect(new VadDetector(silero(), {}).endHangoverMs).toBe(
+			END_HANGOVER_FIXED_VAD_MS,
+		);
+		expect(END_HANGOVER_FIXED_VAD_MS).toBe(500);
+	});
+
+	it("defaults to 300 ms when semanticEotActive is true", () => {
+		expect(
+			new VadDetector(silero(), { semanticEotActive: true }).endHangoverMs,
+		).toBe(END_HANGOVER_SEMANTIC_EOT_MS);
+		expect(END_HANGOVER_SEMANTIC_EOT_MS).toBe(300);
+	});
+
+	it("explicit endHangoverMs always wins over the semantic default", () => {
+		expect(
+			new VadDetector(silero(), {
+				semanticEotActive: true,
+				endHangoverMs: 700,
+			}).endHangoverMs,
+		).toBe(700);
+		expect(
+			new VadDetector(silero(), {
+				semanticEotActive: false,
+				endHangoverMs: 250,
+			}).endHangoverMs,
+		).toBe(250);
+	});
+
+	it("never drops below the pause hangover", () => {
+		expect(
+			new VadDetector(silero(), {
+				semanticEotActive: true,
+				pauseHangoverMs: 400,
+			}).endHangoverMs,
+		).toBe(400);
+	});
+
+	it("measured endpoint wait: speech-end fires ~endHangoverMs after last speech", async () => {
+		// ~600 ms of speech (19 windows), then sustained silence.
+		const measure = async (config: {
+			semanticEotActive?: boolean;
+		}): Promise<number> => {
+			const probs = [
+				...Array.from({ length: 19 }, () => 0.92),
+				...Array.from({ length: 60 }, () => 0.02),
+			];
+			const det = new VadDetector(new ScriptedSileroWithEnergy(probs), config);
+			let lastSpeechMs = 0;
+			let endMs: number | null = null;
+			det.onVadEvent((e) => {
+				if (e.type === "speech-end") endMs = e.timestampMs;
+			});
+			let ts = 0;
+			for (let w = 0; w < probs.length; w++) {
+				const rms = probs[w] > 0.5 ? 0.25 : 0.0005;
+				await det.pushFrame(frameWithRms(rms, ts));
+				if (probs[w] > 0.5) lastSpeechMs = ts + FRAME_MS;
+				ts += FRAME_MS;
+			}
+			if (endMs === null) throw new Error("speech-end never fired");
+			return endMs - lastSpeechMs;
+		};
+
+		const fixedWait = await measure({});
+		const semanticWait = await measure({ semanticEotActive: true });
+		// Quantized to the 32 ms window clock: 500 → ≤544, 300 → ≤352.
+		expect(fixedWait).toBeGreaterThanOrEqual(500);
+		expect(fixedWait).toBeLessThanOrEqual(544);
+		expect(semanticWait).toBeGreaterThanOrEqual(300);
+		expect(semanticWait).toBeLessThanOrEqual(352);
 	});
 });

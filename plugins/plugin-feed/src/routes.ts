@@ -186,7 +186,7 @@ async function handleSSEProxy(
 }
 
 // ---------------------------------------------------------------------------
-// Session state (for GameView session polling)
+// Session state (for FullscreenView session polling)
 // ---------------------------------------------------------------------------
 
 function buildSessionState(
@@ -447,7 +447,7 @@ async function prepareFeedCredentials(
 }
 
 // ---------------------------------------------------------------------------
-// Session sub-routes (message + control for GameView integration)
+// Session sub-routes (message + control for FullscreenView integration)
 // ---------------------------------------------------------------------------
 
 function parseSessionId(pathname: string): string | null {
@@ -1124,7 +1124,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
     return proxyPost(config, "/api/admin/agents/resume-all", {}, ctx);
   }
 
-  // --- Session state (for GameView polling) ---
+  // --- Session state (for FullscreenView polling) ---
   const sessionId = parseSessionId(path);
   if (sessionId) {
     const subroute = parseSessionSubroute(path);

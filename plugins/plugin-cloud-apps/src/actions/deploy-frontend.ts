@@ -329,10 +329,21 @@ export const deployFrontendAction: Action = {
       };
       const { deployment } = await client.deployAppFrontend(app.id, body);
 
-      const reply = [
-        `Published "${app.name}" frontend — v${deployment.version} is now live (${deployment.file_count} files, ${(deployment.total_bytes / 1024).toFixed(0)} KB).`,
-        `Preview it under your app's frontend host. Attach a custom domain to serve it publicly.`,
-      ].join("\n");
+      // Don't claim "live" unless the deployment actually activated. The
+      // publish can succeed into a "ready" (built, not serving) state where
+      // activation failed or is pending — reporting that as live is a lie the
+      // user acts on. Only status === "active" is truthfully live.
+      const size = `${deployment.file_count} files, ${(deployment.total_bytes / 1024).toFixed(0)} KB`;
+      const isLive = deployment.status === "active";
+      const reply = isLive
+        ? [
+            `Published "${app.name}" frontend — v${deployment.version} is now live (${size}).`,
+            `Preview it under your app's frontend host. Attach a custom domain to serve it publicly.`,
+          ].join("\n")
+        : [
+            `Published "${app.name}" frontend v${deployment.version} (${size}) — it's built but NOT yet live (status: ${deployment.status}).`,
+            `Activation hasn't completed; try again shortly, or check the app's frontend deployments if it stays this way.`,
+          ].join("\n");
 
       await callback?.({ text: reply, actions: ["DEPLOY_FRONTEND"] });
       return {

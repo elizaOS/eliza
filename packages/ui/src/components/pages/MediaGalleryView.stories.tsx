@@ -1,3 +1,4 @@
+/** Storybook stories for `MediaGalleryView` under `withMockApp` (no backend). */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { MediaGalleryView } from "./MediaGalleryView";

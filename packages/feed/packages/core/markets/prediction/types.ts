@@ -1,3 +1,9 @@
+/**
+ * Domain records, ports, and I/O shapes for prediction markets: questions, markets,
+ * positions, price snapshots, the buy/sell/cancel/resolve trade inputs and results, and
+ * the `PredictionDbPort` persistence and `PredictionServiceDeps` dependency contracts that
+ * keep `PredictionMarketService` decoupled from Drizzle and wallet/fee implementations.
+ */
 import type {
   BroadcastPort,
   CachePort,

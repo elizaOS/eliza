@@ -1,3 +1,8 @@
+/**
+ * Integration tests for message server/channel/participant persistence and
+ * server-scoped memory retrieval, against a real isolated PGlite/Postgres
+ * adapter.
+ */
 import { ChannelType, type Content, type Memory, type UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

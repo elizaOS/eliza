@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the stream pop-out URL builder + opener: query vs. hash
+ * routing across origins and the `apiBase` param. Uses jsdom's `window`.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildStreamPopoutUrl, openStreamPopout } from "./popout-url";
 

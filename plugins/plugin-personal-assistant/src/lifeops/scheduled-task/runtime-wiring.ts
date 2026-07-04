@@ -60,6 +60,11 @@ import { LifeOpsRepository } from "../repository.js";
 import { preferEffectiveMergedState } from "../schedule-state.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
 import { getActivitySignalBus } from "../signals/bus.js";
+import {
+  behaviouralBaselineFromProfile,
+  readActivityProfile,
+  registerActivityProfileGates,
+} from "./activity-gates.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
 interface RepositoryBackedStores {
@@ -194,11 +199,26 @@ function defaultOwnerFactsProvider(
         local,
         cloud,
       });
-      const sampleCount = effective?.baseline?.sampleCount;
-      if (typeof sampleCount === "number" && Number.isFinite(sampleCount)) {
+      const healthSampleCount = effective?.baseline?.sampleCount;
+      // Behavioural baseline from the observed rhythm (plan D.2.3). Feeds the
+      // same personalBaseline surface so `personal_baseline_sufficient` fires
+      // once EITHER a health baseline OR enough observed behaviour exists —
+      // avoids starving persona packs that have no health baseline on day one.
+      const behavioural = behaviouralBaselineFromProfile(
+        await readActivityProfile(runtime),
+      );
+      const sampleCount = Math.max(
+        typeof healthSampleCount === "number" &&
+          Number.isFinite(healthSampleCount)
+          ? healthSampleCount
+          : 0,
+        behavioural?.sampleCount ?? 0,
+      );
+      if (sampleCount > 0) {
         view.personalBaseline = {
           sampleCount,
-          windowDays: effective?.baseline?.windowDays,
+          windowDays:
+            effective?.baseline?.windowDays ?? behavioural?.windowDays,
         };
       }
     } catch (error) {
@@ -538,6 +558,12 @@ function buildLifeOpsRunnerDeps(
   const stores = makeRepositoryBackedStores(opts.runtime, opts.agentId);
 
   const gates = createTaskGateRegistry();
+  // Register the real ActivityProfile-backed readers for circadian_state_in and
+  // no_recent_user_message_in BEFORE the built-ins. registerBuiltInGates is
+  // first-wins, so these production readers take precedence over the generic
+  // fallbacks (which stay resolvable when PA is absent, e.g. plugin-health
+  // standalone tests).
+  registerActivityProfileGates(opts.runtime, gates);
   registerBuiltInGates(gates);
 
   const completionChecks = createCompletionCheckRegistry();
@@ -566,7 +592,8 @@ function buildLifeOpsRunnerDeps(
   // runner deps are built during plugin init, before callers get a chance to
   // register (e.g. registerLifeOpsScheduledTaskSubjectStore in tests).
   const subjectStore: SubjectStoreView =
-    opts.subjectStore ?? makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
+    opts.subjectStore ??
+    makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
   return {
     store: stores.store,
@@ -587,10 +614,7 @@ function buildLifeOpsRunnerDeps(
     },
     hostCapabilities:
       opts.hostCapabilities ??
-      (() =>
-        getHostExecutionCapabilities(
-          opts.runtime,
-        ) as ReadonlySet<TaskExecutionProfile>),
+      (() => getHostExecutionCapabilities(opts.runtime)),
     dispatcher: createProductionScheduledTaskDispatcher({
       runtime: opts.runtime,
     }),

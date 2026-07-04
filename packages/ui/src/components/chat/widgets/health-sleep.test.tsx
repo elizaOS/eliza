@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// HealthSleepWidget: one high-priority datum (latest sleep duration) on a
+// clickable card, an off-rhythm badge and published check-in weight when sleep is
+// irregular, navigation to the Health view on tap, and self-hide when no sleep
+// episodes fall in the window. jsdom render with the API client mocked.
 import {
   cleanup,
   fireEvent,

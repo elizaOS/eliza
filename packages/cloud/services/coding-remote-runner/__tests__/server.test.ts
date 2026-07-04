@@ -53,6 +53,23 @@ describe("coding remote runner HTTP runner", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects wrong and wrong-length bearer tokens, accepts the exact token", async () => {
+    const run = handler();
+    const withToken = (value: string) =>
+      run(
+        new Request("http://127.0.0.1/v1/health", {
+          headers: { authorization: value },
+        }),
+      );
+
+    // Wrong value, same length as `Bearer token`.
+    expect((await withToken("Bearer xoken")).status).toBe(401);
+    // Wrong length (prefix of the expected token).
+    expect((await withToken("Bearer toke")).status).toBe(401);
+    // Exact match still authorizes (constant-time compare stays correct).
+    expect((await withToken("Bearer token")).status).toBe(200);
+  });
+
   it("lists, reads, and writes workspace files", async () => {
     await mkdir(nodePath.join(workspaceRoot, "src"), { recursive: true });
     await writeFile(nodePath.join(workspaceRoot, "README.md"), "hello", "utf8");

@@ -109,6 +109,7 @@ export * from "./org-rate-limit-overrides";
 export * from "./org-storage-quota";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./press-releases";
 export * from "./provider-health";
 // ============================================
 // Referrals & Rewards

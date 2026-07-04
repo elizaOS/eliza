@@ -1,13 +1,17 @@
+/**
+ * Verifies that agent-generated `Media` attachments ride outbound casts as
+ * url-based Farcaster embeds through both send paths (POST connector +
+ * mention-reply callback), with a mocked Neynar client (no network).
+ */
 import type { Content, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FarcasterCastService } from "../services/CastService";
 import { extractCastEmbedUrls } from "../utils";
 import { standardCastHandlerCallback } from "../utils/callbacks";
 
-// Outbound media coverage for the Farcaster connector (#8876). Agent-generated
-// `Media` attachments must ride along as Farcaster cast EMBEDS (url-based), which
-// the send path previously dropped (handleSendPost ignored content.attachments
-// and createCast's `media` param was dead). Mocked Neynar client → runs offline.
+// Outbound media coverage for the Farcaster connector (#8876): agent-generated
+// `Media` attachments must ride along as Farcaster cast EMBEDS (url-based) via
+// handleSendPost → createCast → the send path. Mocked Neynar client → runs offline.
 
 const agentId = "00000000-0000-0000-0000-000000000001" as const;
 

@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the shared speculative benchmark report builder and its
+ * report-path helpers: asserts acceptance rate, speedup, and on-disk report shape
+ * for each speculator. Deterministic, writes to a temp dir.
+ */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

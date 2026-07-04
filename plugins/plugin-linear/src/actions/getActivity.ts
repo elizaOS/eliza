@@ -1,3 +1,8 @@
+/**
+ * Handles the get_activity Linear op. Extracts time-range, action, resource, and
+ * success filters from the message via the getActivity prompt, reads the matching
+ * slice of LinearService's in-memory activity log, and formats it into the reply.
+ */
 import {
   type Action,
   type ActionResult,

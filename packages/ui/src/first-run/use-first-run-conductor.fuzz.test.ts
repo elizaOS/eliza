@@ -1,19 +1,27 @@
 // @vitest-environment jsdom
 
-// Confused-user fuzz for the in-chat first-run conductor: seeded random storms
-// of valid, duplicated, out-of-order, and malformed picks — exactly what a
-// user who doesn't understand the flow (or a flaky trackpad) produces. The
-// REAL conductor + REAL finish use case run underneath; mocks sit only at the
-// network boundary. Deterministic: every storm derives from a fixed seed, so a
-// failure reproduces exactly.
-//
-// Invariants (the "rock solid" contract):
-//   I1  POST /api/first-run fires at most once per onboarding session.
-//   I2  At most one cloud provisioning call per session.
-//   I3  completeFirstRun (the real gate flip) fires at most once.
-//   I4  Every reserved-prefix value is consumed (never falls through to chat).
-//   I5  The transcript stays bounded — no unbounded turn growth under spam.
-//   I6  No unhandled rejection escapes (vitest fails the file if one does).
+/**
+ * Confused-user fuzz for the in-chat first-run conductor: seeded random storms
+ * of valid, duplicated, out-of-order, and malformed picks — exactly what a
+ * user who doesn't understand the flow (or a flaky trackpad) produces. The
+ * REAL conductor + REAL finish use case run underneath; mocks sit only at the
+ * network boundary. Deterministic: every storm derives from a fixed seed, so a
+ * failure reproduces exactly.
+ *
+ * The storm also interleaves free-text sends (#12178 composer unlock): typed
+ * text is answered by the conductor's local echo persona and must NEVER reach
+ * the server, so the pick invariants below hold under mixed pick+text storms.
+ *
+ * Invariants (the "rock solid" contract):
+ *   I1  POST /api/first-run fires at most once per onboarding session.
+ *   I2  At most one cloud provisioning call per session.
+ *   I3  completeFirstRun (the real gate flip) fires at most once.
+ *   I4  Every reserved-prefix value is consumed (never falls through to chat).
+ *   I5  Pick spam adds no turns beyond the bounded set; each free text adds
+ *       exactly one user + one reply (both acknowledged, never deduped away).
+ *   I6  No unhandled rejection escapes (vitest fails the file if one does).
+ *   I7  Typed free text never triggers a server send (folded into I1/I2).
+ */
 
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
@@ -66,8 +74,21 @@ import {
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
-import { tryHandleFirstRunAction } from "./first-run-action-channel";
+import {
+  tryHandleFirstRunAction,
+  tryHandleFirstRunText,
+} from "./first-run-action-channel";
 import { useFirstRunConductor } from "./use-first-run-conductor";
+
+// Free-text a confused user might type mid-flow, interleaved with the picks.
+const TEXT_POOL = [
+  "hello?",
+  "is it working yet",
+  "what do I do",
+  "   ", // blank — a no-op the conductor consumes without seeding a turn
+  "can you just start",
+  "__first_run__:not-really-a-pick", // looks prefixed but arrives as free text
+];
 
 function ensureLocalStorage(): Storage {
   if (typeof window.localStorage?.clear === "function") {
@@ -196,10 +217,23 @@ async function runStorm(opts: {
     ).toBe(true);
   });
 
+  // Count non-blank free-text sends so the transcript bound can account for the
+  // exactly-two turns (user + reply) each one legitimately adds.
+  let freeTextTurns = 0;
   for (let step = 0; step < STORM_STEPS; step += 1) {
-    const value = ACTION_POOL[Math.floor(rand() * ACTION_POOL.length)];
-    // I4: every reserved-prefix value is consumed by the active conductor.
-    expect(tryHandleFirstRunAction(value), `step ${step}: ${value}`).toBe(true);
+    // ~25% of steps type free text instead of tapping a choice — a confused
+    // user narrating at the flow. It must be consumed, never sent to the server.
+    if (rand() < 0.25) {
+      const text = TEXT_POOL[Math.floor(rand() * TEXT_POOL.length)];
+      expect(tryHandleFirstRunText(text), `step ${step}: text`).toBe(true);
+      if (text.trim()) freeTextTurns += 2;
+    } else {
+      const value = ACTION_POOL[Math.floor(rand() * ACTION_POOL.length)];
+      // I4: every reserved-prefix value is consumed by the active conductor.
+      expect(tryHandleFirstRunAction(value), `step ${step}: ${value}`).toBe(
+        true,
+      );
+    }
     if (rand() < 0.3) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -222,13 +256,21 @@ async function runStorm(opts: {
     spies.completeFirstRun.mock.calls.length,
     `seed ${opts.seed}: completeFirstRun count`,
   ).toBeLessThanOrEqual(1);
-  // I5 — transcript stays bounded under 250 spam actions. Every seeded turn
-  // has a stable id except error turns (one per settled failing flow, and a
-  // failing flow needs a fresh user pick to start — far fewer than steps).
+  // I5 — the choice-driven transcript stays bounded under 250 spam actions
+  // (every seeded choice/status turn has a stable id; error turns are one per
+  // settled failing flow), PLUS exactly two turns per non-blank free text. The
+  // free-text portion growing 1:1 with sends is the point — every typed message
+  // is acknowledged, never deduped away.
   expect(
     transcript.current.length,
     `seed ${opts.seed}: transcript size`,
-  ).toBeLessThanOrEqual(40);
+  ).toBeLessThanOrEqual(40 + freeTextTurns);
+  // Every free text was acknowledged: as many user echo turns as non-blank sends.
+  expect(
+    transcript.current.filter((turn) => turn.id.startsWith("first-run:user:"))
+      .length,
+    `seed ${opts.seed}: acknowledged free-text turns`,
+  ).toBe(freeTextTurns / 2);
   // Sanity: nothing rendered a raw "undefined" into the transcript.
   for (const turn of transcript.current) {
     expect(turn.text).not.toContain("undefined");
@@ -244,14 +286,12 @@ beforeEach(() => {
     success: true,
     data: [],
   });
-  (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
-    "cloud-token";
+  localStorage.setItem("steward_session_token", "cloud-token");
 });
 
 afterEach(() => {
   __setAppValueForTests(null);
   ensureLocalStorage().clear();
-  delete (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__;
 });
 
 describe("first-run conductor fuzz storms", () => {

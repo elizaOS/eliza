@@ -128,6 +128,11 @@ const initialTranscribing = params.has("transcribing");
 // `?failure=no_provider` ends the thread with a failed assistant turn so the
 // recovery gate (Connect a provider → Open Settings) can be screenshot.
 const failureKind = params.get("failure");
+// `?noprovider=off` forces the pre-fix behaviour (boot spinner keeps spinning
+// even with a no_provider turn present) so the before/after can be captured from
+// the SAME fixture. Unset → the real controller behaviour: once the server has
+// reported no_provider, `noProviderConfigured` is true.
+const forceNoProviderOff = params.get("noprovider") === "off";
 const SEED_WITH_FAILURE: ShellMessage[] =
   failureKind === "no_provider"
     ? [
@@ -173,6 +178,15 @@ function Harness(): React.JSX.Element {
     React.useState(initialNeedsUnlock);
   const [transcriptionMode, setTranscriptionMode] =
     React.useState(initialTranscribing);
+  // Onboarding is stateful so the e2e can drive the completion (falling) edge —
+  // `window.__setFirstRun(false)` flips it, exercising the #12178 opaque-backdrop
+  // fade + auto-collapse reveal that a static prop can't reach (#12364).
+  const [firstRunOpen, setFirstRunOpen] = React.useState(firstRun);
+  React.useEffect(() => {
+    (
+      window as unknown as { __setFirstRun?: (v: boolean) => void }
+    ).__setFirstRun = setFirstRunOpen;
+  }, []);
 
   // Log lifecycle so the e2e harness can assert the interaction flow from the
   // console (the user asked for logs to be checked alongside the visuals).
@@ -309,6 +323,13 @@ function Harness(): React.JSX.Element {
         ? { kind: "thinking" as const }
         : null,
     messages,
+    // Mirrors the real controller: true once the latest assistant turn carries
+    // `failureKind: "no_provider"`. Drives the overlay to suppress the forever
+    // "Waking …" boot banner and swap the composer placeholder for a Settings
+    // hint (the in-transcript no_provider gate is the error surface).
+    noProviderConfigured:
+      !forceNoProviderOff &&
+      messages[messages.length - 1]?.failureKind === "no_provider",
     canSend: initialCanSend && phase !== "booting",
     recording,
     handsFree,
@@ -353,7 +374,6 @@ function Harness(): React.JSX.Element {
     // Views; `?tab=settings` disables Settings. Unset → all three are enabled.
     currentTab: params.get("tab") ?? undefined,
     navigateHome: () => console.log("[fixture] navigateHome"),
-    navigateToViews: () => console.log("[fixture] navigateToViews"),
     clearConversation: () => console.log("[fixture] clearConversation"),
     stop: () => {
       console.log("[fixture] stop");
@@ -403,7 +423,10 @@ function Harness(): React.JSX.Element {
           ))}
         </div>
       </div>
-      <ContinuousChatOverlay controller={controller} firstRunOpen={firstRun} />
+      <ContinuousChatOverlay
+        controller={controller}
+        firstRunOpen={firstRunOpen}
+      />
     </div>
   );
 }

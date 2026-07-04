@@ -1,6 +1,8 @@
-// In a terminal host (the Node agent, no DOM), register the messages view so it
-// renders inline in the terminal. Lazy + DOM-guarded so the terminal engine
-// stays out of browser/mobile bundles.
+/**
+ * Side-effect module: on a terminal host (the Node agent, no DOM) registers the
+ * Messages view so it renders inline in the terminal. The import is lazy and
+ * DOM-guarded so the terminal engine stays out of browser/mobile bundles.
+ */
 if (typeof window === "undefined") {
   void import("./register-terminal-view")
     .then((m) => m.registerMessagesTerminalView())

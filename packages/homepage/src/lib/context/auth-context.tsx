@@ -1,3 +1,7 @@
+/**
+ * Homepage authentication context for Cloud-backed login, session persistence,
+ * and linked account state.
+ */
 import {
   createContext,
   type ReactNode,

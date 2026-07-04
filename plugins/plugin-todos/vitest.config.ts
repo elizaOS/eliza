@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-todos: pins node resolution conditions for the SQL-backed suite. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

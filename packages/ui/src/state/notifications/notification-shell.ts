@@ -1,3 +1,8 @@
+/**
+ * Open/drag UI state for the notification-center sheet — separate from the
+ * notification data store — so the home pull gesture and the direct entry points
+ * share one headless renderer.
+ */
 import { useSyncExternalStore } from "react";
 
 /**

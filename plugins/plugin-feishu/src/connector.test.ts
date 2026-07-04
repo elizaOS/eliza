@@ -1,3 +1,7 @@
+/**
+ * Tests the Feishu message connector registration and send routing on
+ * FeishuService against a mocked runtime and Lark client (no live API).
+ */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { FeishuService } from "./service";

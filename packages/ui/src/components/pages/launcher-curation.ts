@@ -16,10 +16,11 @@
  * declared, so the whole set hides together in production.
  *
  * Curation is a blocklist + canonical dedup, not a fixed allow-list: known apps
- * are ordered, removed apps are hidden, duplicate registrations collapse to one
- * tile, and everything else that is genuinely loaded and visible still appears
- * so installing a new plugin app keeps working. Native-OS tiles (phone/messages/
- * contacts/camera/files) only appear on the AOSP ElizaOS fork.
+ * are ordered, removed apps are hidden, grouped sub-pages collapse under their
+ * parent tile, duplicate registrations collapse to one tile, and everything else
+ * that is genuinely loaded and visible still appears so installing a new plugin
+ * app keeps working. Native-OS tiles (phone/messages/contacts/camera/files) only
+ * appear on the AOSP ElizaOS fork.
  */
 
 import {
@@ -28,6 +29,7 @@ import {
   resolveViewKind,
 } from "@elizaos/core";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { LAUNCHER_AOSP_ONLY_VIEW_IDS, pathForTab } from "../../navigation";
 
 /** Everyday apps, in display order. They lead the single launcher page; other
  *  loaded apps append after (alphabetically). */
@@ -35,12 +37,16 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "chat",
   "settings",
   "wallet",
+  "tasks",
   "automations",
   "browser",
+  // Character family — the old single Character hub, split into top-level tiles.
   "character",
-  "documents",
-  "transcripts",
   "relationships",
+  "documents",
+  "character-skills",
+  "experience",
+  "transcripts",
   "memories",
   "feed",
   "stream",
@@ -68,28 +74,23 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
 export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
   "feed",
   "stream",
-  "relationships",
 ]);
 
 /**
  * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the
  * end of the launcher page when the AOSP shell is active; hidden on web,
- * desktop, iOS, and stock Play-Store Android.
+ * desktop, iOS, and stock Play-Store Android. Sourced from the canonical
+ * `LAUNCHER_AOSP_ONLY_VIEW_IDS` in `../../navigation` so this launcher gate and
+ * the router-level `NATIVE_OS_VIEW_IDS` filter never drift.
  */
-export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-  "files",
-];
+export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] =
+  LAUNCHER_AOSP_ONLY_VIEW_IDS;
 
 /**
  * Views that never appear in the launcher grid:
  *  - shell surfaces reached another way (views/apps launchers; background +
  *    voice are set from Settings/chat; character-select is inline),
- *  - removed apps (companion, model tester, shopify, wearables),
- *  - wallet sub-views (hyperliquid/polymarket open from inside the Wallet app).
+ *  - removed apps (companion, model tester, shopify, wearables).
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "views",
@@ -105,15 +106,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "shopify",
   "facewear",
   "smartglasses",
-  // Wallet sub-views — reached from inside the Wallet app, not the launcher.
-  "hyperliquid",
-  "polymarket",
-  // Legacy alias for the relationships/contact-graph surface: `rolodex` is a
-  // routable tab (TAB_PATHS "/rolodex") with a launcher tile but NO directViews
-  // branch in renderStaticViewRouterTab, so tapping it lands on the
-  // ViewUnavailableFallback (bounces the user back to the launcher). The real
-  // contact surface is `relationships`; hide this dead alias.
-  "rolodex",
 ]);
 
 /**
@@ -127,9 +119,10 @@ const CANONICAL_ID: ReadonlyMap<string, string> = new Map([
   ["wallet.inventory", "wallet"],
   ["@elizaos/plugin-wallet-ui", "wallet"],
   ["triggers", "automations"],
-  ["tasks", "automations"],
   ["todos", "automations"],
-  ["task-coordinator", "automations"],
+  // The task-coordinator plugin view + the builtin Tasks tab are the one Tasks
+  // orchestrator surface (/apps/tasks); collapse to a single tile.
+  ["task-coordinator", "tasks"],
   ["knowledge", "documents"],
   ["@elizaos/plugin-documents-routes", "documents"],
   ["plugins-page", "plugins"],
@@ -172,6 +165,13 @@ function launcherViewKind(canonicalId: string, entry: ViewEntry) {
   if (DEVELOPER_INDEX.has(canonicalId)) return "developer";
   if (LAUNCHER_PREVIEW_IDS.has(canonicalId)) return "preview";
   return resolveViewKind(entry);
+}
+
+function isGroupedLauncherSubPage(
+  canonicalId: string,
+  entry: ViewEntry,
+): boolean {
+  return entry.group === "wallet" && canonicalId !== "wallet";
 }
 
 /**
@@ -226,21 +226,23 @@ function comparator(indexes: Array<Map<string, number>>) {
 }
 
 /**
- * Curate raw launcher entries into a SINGLE page of tiles. Entries are deduped
- * by canonical id; hidden/removed apps are dropped; native-OS tiles are
- * AOSP-gated; developer + preview views (including the curated developer TOOLS)
- * are hidden unless their kind is enabled. Ordering: curated apps first, then
- * developer tools (when shown), then AOSP tiles, then any other loaded app
- * alphabetically. Returns `[page]`, or `[]` when nothing is visible.
+ * Curate raw launcher entries into the ordered list of tiles the launcher's
+ * single scrolling page renders. Entries are deduped by canonical id;
+ * hidden/removed apps are dropped; native-OS tiles are AOSP-gated; developer +
+ * preview views (including the curated developer TOOLS) are hidden unless their
+ * kind is enabled. Ordering: curated apps first, then developer tools (when
+ * shown), then AOSP tiles, then any other loaded app alphabetically. Returns
+ * `[]` when nothing is visible.
  */
 export function curateLauncherPages(
   entries: ViewEntry[],
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
-): ViewEntry[][] {
+): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
+    if (isGroupedLauncherSubPage(canonicalId, entry)) continue;
     // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
     // unless the user is signed into Eliza Cloud.
     if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
@@ -264,15 +266,16 @@ export function curateLauncherPages(
     if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
       // Preserve the canonical id so navigation + telemetry stay stable even
       // when an aliased registration (e.g. `wallet.inventory`) wins the tile.
-      // When the id is REWRITTEN (an alias won), drop its alias `path` too, so
-      // handleLaunch falls back to `/apps/<canonicalId>` — the route the dedup
-      // presumes — instead of navigating to the alias route while recents +
-      // telemetry record the canonical id (a real launch/telemetry mismatch).
+      // When the id is REWRITTEN (an alias won), re-point `path` at the canonical
+      // tab's own route (`pathForTab`) — NOT the alias route and NOT `undefined`.
+      // Leaving it undefined made handleLaunch fall back to `/apps/<canonicalId>`,
+      // which for `wallet`/`tasks` is not a real route — it resolved to the apps
+      // browse surface (the old AppsView), so those tiles opened the wrong view.
       byCanonical.set(
         canonicalId,
         canonicalId === entry.id
           ? entry
-          : { ...entry, id: canonicalId, path: undefined },
+          : { ...entry, id: canonicalId, path: pathForTab(canonicalId) },
       );
     }
   }
@@ -281,5 +284,5 @@ export function curateLauncherPages(
   // One combined order: curated apps, then developer tools, then AOSP tiles,
   // then uncurated apps alphabetically (the comparator falls through to label).
   page.sort(comparator([APPS_INDEX, DEVELOPER_INDEX, AOSP_INDEX]));
-  return page.length > 0 ? [page] : [];
+  return page;
 }

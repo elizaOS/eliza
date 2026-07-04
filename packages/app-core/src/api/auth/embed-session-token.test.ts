@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMBED_ELEVATED_ROLES,
   type EmbedSessionClaims,
+  isEmbedRole,
   mintEmbedSessionToken,
   verifyEmbedSessionToken,
 } from "./embed-session-token";
@@ -63,5 +65,20 @@ describe("embed session token", () => {
 
   it("refuses to mint without a secret", () => {
     expect(() => mintEmbedSessionToken(claims(), "")).toThrow();
+  });
+});
+
+describe("isEmbedRole / EMBED_ELEVATED_ROLES (#12087 Item 30)", () => {
+  it("accepts exactly the elevated roles", () => {
+    expect(EMBED_ELEVATED_ROLES).toEqual(["OWNER", "ADMIN"]);
+    for (const role of EMBED_ELEVATED_ROLES) {
+      expect(isEmbedRole(role)).toBe(true);
+    }
+  });
+
+  it("rejects non-elevated roles and non-strings (fails closed)", () => {
+    for (const value of ["USER", "GUEST", "NONE", "owner", "", null, 1, {}]) {
+      expect(isEmbedRole(value)).toBe(false);
+    }
   });
 });

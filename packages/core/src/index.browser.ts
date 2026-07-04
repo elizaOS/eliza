@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/filter";
+export * from "./account-pool-bridge";
+export * from "./action-names";
 export * from "./actions";
 export * from "./activity-plaintext";
 export * from "./api/http-helpers";
@@ -35,6 +37,7 @@ export * from "./entities";
 // and exported from both barrels. @elizaos/shared re-exports it from the core
 // barrel so browser consumers resolve the same canonical truthy set.
 export * from "./env-utils";
+export * from "./errors";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {
@@ -87,9 +90,15 @@ export * from "./messaging/interactions";
 // Vendor-neutral model-gateway resolution (#11536 E1). Pure string logic, no
 // Node deps, so it is browser-safe and exported from both barrels.
 export * from "./model-gateway";
+// Pure isomorphic helpers (string token substitution + a state accessor).
+// Canonical owner is `@elizaos/core`; `@elizaos/shared` re-exports them from
+// this barrel so browser consumers resolve the same implementation.
+export * from "./name-tokens";
 export * from "./prompts";
+export * from "./recent-messages-state";
 export * from "./roles";
 export * from "./runtime";
+export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
@@ -125,6 +134,7 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export * from "./streaming-context";
+export * from "./target-sources";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";

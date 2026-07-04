@@ -19,6 +19,8 @@ export const VIEW_CASES: ViewCase[] = (
     // Collapsed plugins: every modality (gui/tui/xr) is drawn from one single
     // view declaration that shares ONE route, so the tui case uses the same
     // path as its gui case, not a separate `/<id>/tui` route.
+    ["birdclaw", "gui", "/birdclaw"],
+    ["birdclaw", "tui", "/birdclaw"],
     ["contacts", "gui", "/contacts"],
     ["contacts", "tui", "/contacts"],
     ["hyperliquid", "gui", "/hyperliquid"],
@@ -33,6 +35,8 @@ export const VIEW_CASES: ViewCase[] = (
     ["finances", "tui", "/finances"],
     ["goals", "gui", "/goals"],
     ["goals", "tui", "/goals"],
+    ["lifeops-live-test", "gui", "/lifeops-live-test"],
+    ["lifeops-live-test", "tui", "/lifeops-live-test"],
     ["health", "gui", "/health"],
     ["health", "tui", "/health"],
     ["inbox", "gui", "/inbox"],

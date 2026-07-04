@@ -11,6 +11,7 @@ const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as strin
 const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
 const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const CODEX_MODEL_SETTING = "CODEX_MODEL";
 
 const CODEX_SUPPORTED_MODELS = [
   "gpt-5",
@@ -42,7 +43,7 @@ function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
 }
 
 function getCodexModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "CODEX_MODEL") ?? "gpt-5.5";
+  return getSetting(runtime, CODEX_MODEL_SETTING) ?? "gpt-5.5";
 }
 
 function getRequestedCodexModel(runtime: IAgentRuntime, params: GenerateTextParams): string {
@@ -215,6 +216,13 @@ const codexModels = {
     generateTextWithCodex(runtime, params, ACTION_PLANNER_MODEL_TYPE),
 } as Plugin["models"];
 
+const codexModelMetadata = Object.fromEntries(
+  Object.keys(codexModels ?? {}).map((modelType) => [
+    modelType,
+    { displayModelSetting: CODEX_MODEL_SETTING },
+  ])
+) satisfies NonNullable<Plugin["modelMetadata"]>;
+
 /** @internal - exported for shape tests only. */
 export const __INTERNAL_buildCodexGenerateParams = buildCodexGenerateParams;
 
@@ -237,7 +245,7 @@ export const codexCliPlugin: Plugin = {
   config: {
     CODEX_AUTH_PATH: readEnv("CODEX_AUTH_PATH") ?? null,
     CODEX_BASE_URL: readEnv("CODEX_BASE_URL") ?? null,
-    CODEX_MODEL: readEnv("CODEX_MODEL") ?? null,
+    [CODEX_MODEL_SETTING]: readEnv(CODEX_MODEL_SETTING) ?? null,
     CODEX_JITTER_MS_MAX: readEnv("CODEX_JITTER_MS_MAX") ?? null,
     CODEX_ORIGINATOR: readEnv("CODEX_ORIGINATOR") ?? null,
   },
@@ -245,6 +253,7 @@ export const codexCliPlugin: Plugin = {
     logger.info(`[codex-cli] initialized. Supported models: ${CODEX_SUPPORTED_MODELS.join(", ")}`);
   },
   models: codexModels,
+  modelMetadata: codexModelMetadata,
 };
 
 export * from "./src/codex-auth";

@@ -1,3 +1,8 @@
+/**
+ * Wire types for the browser-companion bridge (Chrome/Safari): tracking mode,
+ * site-access mode, connection state, and workspace tab shapes shared by the
+ * client and the desktop bridge.
+ */
 export type BrowserBridgeKind = "chrome" | "safari";
 
 export type BrowserBridgeTrackingMode = "off" | "current_tab" | "active_tabs";

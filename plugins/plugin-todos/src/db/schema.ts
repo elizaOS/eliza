@@ -1,3 +1,8 @@
+/**
+ * Drizzle schema for @elizaos/plugin-todos: the `todos` table under
+ * `pgSchema("todos")`, plus its row/insert types and lookup indexes. The runtime
+ * registers migrations from this schema via the plugin's `schema` field.
+ */
 import { sql } from "drizzle-orm";
 import {
   index,

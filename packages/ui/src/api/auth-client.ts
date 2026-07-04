@@ -8,6 +8,7 @@
  * can be used in auth-gated components before the main client is initialised.
  */
 
+import type { RoleGateRole } from "@elizaos/core";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getBootConfig } from "../config/boot-config";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
@@ -46,9 +47,11 @@ export interface AuthAccessInfo {
    * Server-resolved boundary role (#9948). The `/api/auth/me` route computes
    * this from the same trust + token signals as `resolveBoundaryRole`, so the
    * UI's `useRole`/`RoleGate` can gate on the authoritative tier instead of
-   * inferring from `mode`. Optional for back-compat with older backends.
+   * inferring from `mode`. Optional for back-compat with older backends. Typed
+   * as the canonical {@link RoleGateRole} (#12087 Item 28) so the accepted tier
+   * set has one source of truth in `@elizaos/core`.
    */
-  role?: "OWNER" | "ADMIN" | "USER" | "GUEST";
+  role?: RoleGateRole;
 }
 
 // ── Success / failure discriminated unions ────────────────────────────────────

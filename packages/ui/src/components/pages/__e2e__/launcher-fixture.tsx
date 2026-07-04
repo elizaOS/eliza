@@ -78,8 +78,6 @@ function makeEntry(spec: (typeof SPECS)[number]): ViewEntry {
 }
 
 const ENTRIES: ViewEntry[] = SPECS.map(makeEntry);
-// One curated page — the shape LauncherSurface passes in production.
-const PAGE_GROUPS: string[][] = [ENTRIES.map((e) => e.id)];
 
 function Harness(): React.JSX.Element {
   React.useLayoutEffect(() => {
@@ -111,7 +109,6 @@ function Harness(): React.JSX.Element {
         launcher={
           <Launcher
             entries={ENTRIES}
-            pageGroups={PAGE_GROUPS}
             onLaunch={(entry) => {
               (window as Win).__launcherCalls?.launch.push(entry.id);
             }}

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the retained-lazy loader: modules stay resolved across
+ * unmount/remount, cache-eviction telemetry fires, and app-pause frees them.
+ * React Testing Library render, no real module graph.
+ */
+
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -179,6 +185,65 @@ describe("RetainedLazyComponent", () => {
           reason: "app-pause",
         }),
       ]),
+    );
+  });
+
+  it("surfaces onError with a working retry when the loader rejects (never blank)", async () => {
+    let attempt = 0;
+    const loader = vi.fn(async (): Promise<RetainedLazyModule<TestProps>> => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("bundle 404");
+      return {
+        default: function OkPanel({ label }: TestProps) {
+          return <div>{label}</div>;
+        },
+      };
+    });
+
+    render(
+      <RetainedLazyComponent
+        loader={loader}
+        componentProps={{ label: "recovered lazy" }}
+        onError={(error, retry) => (
+          <div>
+            <span data-testid="lazy-error">{error.message}</span>
+            <button type="button" onClick={retry}>
+              retry-lazy
+            </button>
+          </div>
+        )}
+      />,
+    );
+
+    const retryButton = await screen.findByText("retry-lazy");
+    expect(screen.getByTestId("lazy-error").textContent).toBe("bundle 404");
+
+    await act(async () => {
+      retryButton.click();
+    });
+
+    await screen.findByText("recovered lazy");
+    expect(screen.queryByTestId("lazy-error")).toBeNull();
+    expect(loader).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces onError when the module has no renderable default export (mode 3, not blank)", async () => {
+    const loader = vi.fn(
+      async () =>
+        ({ default: undefined }) as unknown as RetainedLazyModule<TestProps>,
+    );
+
+    render(
+      <RetainedLazyComponent
+        loader={loader}
+        componentProps={{ label: "x" }}
+        onError={(error) => <div data-testid="lazy-error">{error.message}</div>}
+      />,
+    );
+
+    const node = await screen.findByTestId("lazy-error");
+    expect(node.textContent).toContain(
+      "did not export a default React component",
     );
   });
 

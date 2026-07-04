@@ -1,3 +1,7 @@
+/**
+ * Vite config that builds the Shopify view bundle (dist/views) the runtime's
+ * dynamic view loader serves, from the `shopify-view-bundle.ts` entry.
+ */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

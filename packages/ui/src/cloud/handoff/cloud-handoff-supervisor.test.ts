@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the cloud conversation-handoff supervisor (start + drive the
+ * handoff) against an injected authed fetch. No live cloud.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   type AuthedAgentFetch,

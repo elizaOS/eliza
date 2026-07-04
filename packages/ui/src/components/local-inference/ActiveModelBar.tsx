@@ -1,3 +1,9 @@
+/**
+ * Compact active-model status strip for the local-inference panel: the loaded
+ * model's display name, its load/ready/error state, and an Unload button.
+ * Renders nothing when no model is loaded.
+ */
+
 import type {
   ActiveModelState,
   InstalledModel,

@@ -1,3 +1,10 @@
+/**
+ * Wire types for the guided cloud-setup session: the session envelope,
+ * transcript messages, extracted owner facts, the container-handoff envelope,
+ * and the action policy. Shared by the service interface, the mock service, and
+ * production implementations of the setup flow.
+ */
+
 export type SetupSessionId = string;
 export type TenantId = string;
 export type ContainerStatus = "provisioning" | "ready" | "failed";

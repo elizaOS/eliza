@@ -95,6 +95,20 @@ describe("ViewErrorBoundary", () => {
     expect(viewLifecycleController.getPhase("crasher")).not.toBe("crashed");
   });
 
+  it("renders a non-blank fallback card (message + retry), never an empty container", () => {
+    const { container } = render(
+      <ViewErrorBoundary viewId="crasher">
+        <Boom />
+      </ViewErrorBoundary>,
+    );
+    const card = screen.getByTestId("view-error-boundary-fallback");
+    // The card is a real, non-empty DOM node — not a blank white screen.
+    expect(card).toBeTruthy();
+    expect(container.textContent).not.toBe("");
+    expect(card.textContent).toContain("kaboom");
+    expect(screen.getByTestId("view-error-retry")).toBeTruthy();
+  });
+
   it("uses a caller-supplied richer fallback when provided", () => {
     render(
       <ViewErrorBoundary

@@ -1,3 +1,8 @@
+/**
+ * Abstract base classes every TEE vendor implements: `DeriveKeyProvider` for
+ * deterministic key derivation, `RemoteAttestationProvider` for TDX quote
+ * generation. Vendor-specific implementations live under `../vendors`.
+ */
 import type {
   DeriveKeyResult,
   RemoteAttestationQuote,

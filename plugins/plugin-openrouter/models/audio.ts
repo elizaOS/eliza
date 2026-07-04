@@ -1,3 +1,12 @@
+/**
+ * The `TRANSCRIPTION` model handler. Normalizes the several accepted input
+ * shapes — URL string, `Buffer`, `Blob`/`File`, core `{ audioUrl }`, and the
+ * local `{ audio, language?, model?, ... }` object — into base64 plus a detected
+ * container format, then POSTs directly to OpenRouter's `/audio/transcriptions`
+ * endpoint (not through the AI SDK). Format is sniffed from mime type, URL
+ * extension, then magic bytes (`detectBufferFormat`). Emits a `MODEL_USED` event
+ * from the response usage. URL inputs are constrained to http/https.
+ */
 import type { TranscriptionParams as CoreTranscriptionParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 

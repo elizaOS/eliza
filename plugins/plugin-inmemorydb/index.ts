@@ -1,3 +1,9 @@
+/**
+ * Plugin entry point: the `init` hook registers `InMemoryDatabaseAdapter` as
+ * the runtime's `IDatabaseAdapter` only if none is already present, backed by
+ * a process-wide `MemoryStorage` singleton keyed off a global symbol so
+ * multiple adapter instances in one process share the same in-memory data.
+ */
 import {
   type IAgentRuntime,
   type IDatabaseAdapter,
@@ -28,10 +34,10 @@ export function createDatabaseAdapter(agentId: UUID): InMemoryDatabaseAdapter {
   return new InMemoryDatabaseAdapter(globalSingletons.storageManager, agentId);
 }
 
-// `IAgentRuntime` historically didn't expose `registerDatabaseAdapter` on the
-// public type — at runtime it does. We narrow the runtime to the registration
-// surface we need and call it defensively so the plugin still loads against
-// runtimes that don't accept adapter registration.
+// `registerDatabaseAdapter` is not part of the public `IAgentRuntime` type but
+// is present at runtime. Narrow to the registration surface actually needed
+// and call it defensively so the plugin still loads against runtimes that
+// don't accept adapter registration.
 type RuntimeWithRegister = IAgentRuntime & {
   registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void;
   adapter?: IDatabaseAdapter;

@@ -1,8 +1,6 @@
 /**
- * useModalState — canonical state machine for modal dialogs.
- *
- * Replaces the common (isOpen, isSubmitting, error) triple-useState pattern
- * with a single tagged union. The state machine has four states:
+ * Canonical state machine for modal dialogs — one tagged union in place of the
+ * (isOpen, isSubmitting, error) triple-useState pattern. Four states:
  *
  *   closed → open → submitting → closed | error → open | closed
  *

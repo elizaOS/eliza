@@ -1,3 +1,9 @@
+/**
+ * Defines the `linear_issues` search category — its filter schema, result-shape
+ * summary, and capabilities — and registers it idempotently with the runtime's
+ * search registry. The plugin entry calls registerLinearSearchCategory on init
+ * so agents can query Linear issues through the generic search surface.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const LINEAR_ISSUES_SEARCH_CATEGORY: SearchCategoryRegistration = {

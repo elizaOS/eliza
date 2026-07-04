@@ -1,10 +1,14 @@
+/**
+ * `NEWS_DATA_SERVICE`: fetches and hand-parses the Brave New Coin RSS feed
+ * (`bravenewcoin.com/rss/insights`) with a small regex-based XML reader
+ * (`parseRSS`/`extractTag`) rather than a full XML parser, into
+ * `RealWorldNewsArticle` records. `getTokenNews`/`getDefiNews` are thin
+ * query-filter wrappers over `getLatestNews`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { RealWorldNewsArticle } from "../interfaces/types";
 
-/**
- * RSS Feed Item Interface
- */
 interface RSSItem {
   title?: string;
   link?: string;
@@ -16,12 +20,6 @@ interface RSSItem {
   creator?: string;
 }
 
-/**
- * Brave New Coin RSS Service for Real-World Crypto Events
- *
- * This service fetches real-world news and events related to cryptocurrency
- * from Brave New Coin RSS feed.
- */
 export class NewsDataService extends Service {
   static serviceType = "NEWS_DATA_SERVICE";
   private rssUrl: string = "https://bravenewcoin.com/rss/insights";
@@ -30,17 +28,11 @@ export class NewsDataService extends Service {
     return "Provides real-world cryptocurrency news and events from Brave New Coin RSS feed";
   }
 
-  /**
-   * Start the NewsData service (static method for framework)
-   */
   static async start(runtime: IAgentRuntime) {
     const service = new NewsDataService(runtime);
     return service;
   }
 
-  /**
-   * Stop the NewsData service (static method for framework)
-   */
   static async stop(runtime: IAgentRuntime) {
     const service = runtime.getService(NewsDataService.serviceType);
     if (!service) {
@@ -48,26 +40,18 @@ export class NewsDataService extends Service {
     }
   }
 
-  /**
-   * Stop the service instance
-   */
   async stop(): Promise<void> {}
 
-  /**
-   * Parse RSS XML to extract news items
-   */
   private parseRSS(xmlText: string): RSSItem[] {
     const items: RSSItem[] = [];
 
     try {
-      // Extract all <item> blocks from the RSS feed
       const itemRegex = /<item>([\s\S]*?)<\/item>/g;
       const itemMatches = xmlText.matchAll(itemRegex);
 
       for (const match of itemMatches) {
         const itemXml = match[1];
 
-        // Extract individual fields
         const title = this.decodeHtmlEntities(
           this.extractTag(itemXml, "title") || "",
         );
@@ -111,9 +95,6 @@ export class NewsDataService extends Service {
     return items;
   }
 
-  /**
-   * Extract content from XML tag
-   */
   private extractTag(xml: string, tagName: string): string | undefined {
     const regex = new RegExp(
       `<${tagName}[^>]*><!\\[CDATA\\[(.*?)\\]\\]><\\/${tagName}>`,
@@ -136,16 +117,10 @@ export class NewsDataService extends Service {
     return undefined;
   }
 
-  /**
-   * Strip HTML tags from text
-   */
   private stripHtml(html: string): string {
     return html.replace(/<[^>]*>/g, "").trim();
   }
 
-  /**
-   * Decode HTML entities (e.g., &#8217; to ')
-   */
   private decodeHtmlEntities(text: string): string {
     const entities: Record<string, string> = {
       "&#8217;": "'",
@@ -175,9 +150,6 @@ export class NewsDataService extends Service {
     return decoded;
   }
 
-  /**
-   * Fetch latest crypto news from Brave New Coin RSS feed
-   */
   async getLatestNews(options?: {
     query?: string;
     language?: string;
@@ -262,9 +234,6 @@ export class NewsDataService extends Service {
     }
   }
 
-  /**
-   * Fetch news about a specific token
-   */
   async getTokenNews(
     tokenSymbol: string,
     options?: {
@@ -280,9 +249,6 @@ export class NewsDataService extends Service {
     });
   }
 
-  /**
-   * Fetch DeFi-specific news
-   */
   async getDefiNews(options?: {
     language?: string;
     limit?: number;
@@ -295,9 +261,6 @@ export class NewsDataService extends Service {
     });
   }
 
-  /**
-   * Fetch blockchain and crypto market news
-   */
   async getCryptoMarketNews(options?: {
     language?: string;
     limit?: number;

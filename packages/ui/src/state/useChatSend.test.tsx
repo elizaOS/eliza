@@ -1,5 +1,12 @@
 // @vitest-environment jsdom
 
+/**
+ * Core coverage of the chat send lifecycle (`useChatSend`): Stop/abort
+ * handling, 404 conversation-gone recovery, always-streaming delivery,
+ * transient send-failure notices, and the cloud shared→dedicated handoff queue.
+ * Real hook under jsdom with a fake API client — deterministic, no live model
+ * or network.
+ */
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

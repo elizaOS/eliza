@@ -1,3 +1,11 @@
+/**
+ * Terminal-style surface for a plugin view whose interact protocol is TUI
+ * rather than GUI. Renders the view's declared capabilities as clickable
+ * commands and its endpoints as chips, then POSTs each command to
+ * `/api/views/:id/interact?viewType=tui` (via CSRF-guarded fetch) and appends
+ * the JSON result to an in-panel transcript. Also emits an `eliza:tui-command`
+ * DOM event per run for host-side observers.
+ */
 import {
   Activity,
   CheckCircle2,
@@ -8,6 +16,7 @@ import {
 } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { fetchWithCsrf } from "../../api/csrf-client";
+import { Button } from "../ui/button";
 
 interface TerminalPluginViewProps {
   id: string;
@@ -219,12 +228,13 @@ export function TerminalPluginView({
             }}
           >
             {resolvedCommands.map((command, index) => (
-              <button
+              <Button
                 key={command}
-                type="button"
+                variant="ghost"
                 data-terminal-command={command}
                 aria-label={`Run ${command}`}
                 title={`Run ${command} (${index + 1})`}
+                className="h-auto whitespace-normal rounded-none p-0 text-left font-normal hover:bg-transparent"
                 style={commandButtonStyle}
                 onClick={() => {
                   void runCommand(command);
@@ -241,7 +251,7 @@ export function TerminalPluginView({
                 <span style={{ color: "#7890a4", marginLeft: "auto" }}>
                   {index + 1}
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
           {endpoints.length > 0 && (

@@ -37,7 +37,12 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ChannelType, logger as coreLogger, stringToUuid } from "@elizaos/core";
+import {
+  ChannelType,
+  logger as coreLogger,
+  MESSAGE_SOURCE_SUB_AGENT,
+  stringToUuid,
+} from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,
@@ -1136,7 +1141,8 @@ async function runSpawnAgent(
       resolvedTaskRoomId,
     );
     const inheritedRoute =
-      content.source === "sub_agent" && extraMetadata.subAgent === true
+      content.source === MESSAGE_SOURCE_SUB_AGENT &&
+      extraMetadata.subAgent === true
         ? inheritedResolvedWorkdirRoute(extraMetadata)
         : undefined;
     const effectiveRoute = route ?? inheritedRoute;
@@ -1169,7 +1175,7 @@ async function runSpawnAgent(
         ? ((content.metadata as Record<string, unknown>).originSource as string)
         : undefined;
     const resolvedSpawnSource =
-      content.source === "sub_agent" && inboundOriginSource
+      content.source === MESSAGE_SOURCE_SUB_AGENT && inboundOriginSource
         ? inboundOriginSource
         : content.source;
 
@@ -1400,7 +1406,7 @@ async function runSend(
 function routedSubAgentCompletion(
   content: Record<string, unknown>,
 ): { completionText: string; sessionId: string } | undefined {
-  if (content.source !== "sub_agent") return undefined;
+  if (content.source !== MESSAGE_SOURCE_SUB_AGENT) return undefined;
   const metadata =
     content.metadata !== null && typeof content.metadata === "object"
       ? (content.metadata as Record<string, unknown>)
@@ -3113,6 +3119,7 @@ export const tasksAction: Action & {
     "CREATE_AGENT_TASK",
     "CREATE_TASK",
     "START_CODING_TASK",
+    "CODE_TASK",
     "LAUNCH_CODING_TASK",
     "RUN_CODING_TASK",
     "START_AGENT_TASK",
@@ -3223,6 +3230,8 @@ export const tasksAction: Action & {
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work.",
   descriptionCompressed:
     "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+  routingHint:
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> SCHEDULED_TASKS / OWNER_REMINDERS / OWNER_ROUTINES instead; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -3630,7 +3639,7 @@ export const tasksAction: Action & {
       metadata?: unknown;
       source?: unknown;
     };
-    if (messageContent.source === "sub_agent") {
+    if (messageContent.source === MESSAGE_SOURCE_SUB_AGENT) {
       const metadata =
         messageContent.metadata !== null &&
         typeof messageContent.metadata === "object"

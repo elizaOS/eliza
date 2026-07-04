@@ -1,3 +1,9 @@
+/**
+ * Dialog for naming a chat message so it can be saved as a reusable slash
+ * command. Validates the name (leading letter, alphanumeric/hyphen), previews
+ * the message text, and hands the chosen name back via `onSave`; the caller
+ * owns the actual persistence.
+ */
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";

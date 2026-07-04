@@ -1,3 +1,16 @@
+/**
+ * Agent-addressable settings controls.
+ *
+ * These pair a {@link SettingsRow} with a control that registers itself on the
+ * active view's agent surface (`useAgentElement`). Because the Settings view is
+ * itself an agent surface (`ShellViewAgentSurface viewId="settings"`), any row
+ * built with these is editable straight from chat/voice — the agent can
+ * `list-elements` and `agent-click` / `agent-fill` them with no extra plumbing.
+ *
+ * Use these instead of a bare `SettingsRow + Switch/Select` whenever the setting
+ * should be configurable from chat (which is the default for settings).
+ */
+
 import type { LucideIcon } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -13,19 +26,6 @@ import {
 } from "../ui/settings-controls";
 import { Switch } from "../ui/switch";
 import { SettingsRow } from "./settings-layout";
-
-/**
- * Agent-addressable settings controls.
- *
- * These pair a {@link SettingsRow} with a control that registers itself on the
- * active view's agent surface (`useAgentElement`). Because the Settings view is
- * itself an agent surface (`ShellViewAgentSurface viewId="settings"`), any row
- * built with these is editable straight from chat/voice — the agent can
- * `list-elements` and `agent-click` / `agent-fill` them with no extra plumbing.
- *
- * Use these instead of a bare `SettingsRow + Switch/Select` whenever the setting
- * should be configurable from chat (which is the default for settings).
- */
 
 function labelToString(label: React.ReactNode, fallback: string): string {
   return typeof label === "string" ? label : fallback;
@@ -244,25 +244,25 @@ export function SettingsSegmentedRow({
         {options.map((option) => {
           const active = option.value === value;
           return (
-            // biome-ignore lint/a11y/useSemanticElements: a themed segmented button keeps its custom styling + agent-surface wiring; a native input[type=radio] would lose them.
-            <button
+            <Button
               key={option.value}
-              type="button"
               role="radio"
               aria-checked={active}
               data-value={option.value}
               data-active={active ? "true" : "false"}
               disabled={disabled}
               onClick={() => onValueChange(option.value)}
+              variant="ghost"
+              size="sm"
               className={cn(
-                "flex h-9 flex-1 items-center justify-center rounded-sm px-2 text-xs font-medium transition-colors    disabled:opacity-50",
+                "h-9 flex-1 rounded-sm px-2 text-xs font-medium transition-colors disabled:opacity-50",
                 active
                   ? "bg-card text-txt-strong"
                   : "text-muted hover:bg-card/60 hover:text-txt",
               )}
             >
               {option.label}
-            </button>
+            </Button>
           );
         })}
       </SettingsSegmentedGroup>

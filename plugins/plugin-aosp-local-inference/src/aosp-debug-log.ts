@@ -1,3 +1,14 @@
+/**
+ * Append-only, line-delimited debug trace for the AOSP fused-inference loader.
+ *
+ * Gated by `ELIZA_AOSP_LLAMA_DEBUG_LOG`: `"1"`/`"true"` targets
+ * `$ELIZA_STATE_DIR/aosp-llama-debug.log`, any other non-falsy value is an
+ * explicit path, and unset/`"0"`/`"false"` disables writes entirely. Each
+ * record is an ISO timestamp, an event name, and an optional bigint-safe JSON
+ * detail blob. Writes are best-effort and swallow all errors so diagnostics
+ * can never perturb the inference path.
+ */
+
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 

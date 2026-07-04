@@ -1,3 +1,5 @@
+/** Shared shapes for the Release Center: app/updater release status, desktop build+session snapshots, WebGPU probe types, and the session-partition constants. */
+
 export type AppReleaseStatus = {
   currentVersion?: string;
   latestVersion?: string | null;

@@ -374,7 +374,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
@@ -387,7 +388,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               >
                 <Icon className="h-4 w-4" />
                 <span className="hidden sm:inline">{tab.label}</span>
-              </button>
+              </Button>
             );
           })}
         </div>

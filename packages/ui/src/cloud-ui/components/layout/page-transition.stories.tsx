@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the route PageTransition.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { PageTransition } from "./page-transition";

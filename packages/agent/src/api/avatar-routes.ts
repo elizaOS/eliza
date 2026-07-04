@@ -2,9 +2,9 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
-// Lazy memoized loader — previously module-scope `await import`, which forced
-// @elizaos/plugin-discord to load on every agent boot just for two pure path
-// helpers. Now only loads on the first /api/avatar/discord/* request.
+// Lazy memoized loader: @elizaos/plugin-discord loads only on the first
+// /api/avatar/discord/* request. A module-scope `await import` would load the
+// whole plugin on every agent boot just for two pure path helpers.
 type DiscordAvatarModule = {
   getDiscordAvatarCacheDir: () => string;
   getDiscordAvatarCachePath: (fileName: string) => string;

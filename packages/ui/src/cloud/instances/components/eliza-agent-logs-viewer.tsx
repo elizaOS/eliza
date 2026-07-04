@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Log viewer for a cloud agent instance, streaming/paging the agent's logs.
+ */
 import { LogViewer } from "@elizaos/ui/cloud-ui";
 import { FileText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

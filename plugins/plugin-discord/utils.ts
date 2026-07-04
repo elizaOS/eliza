@@ -1,3 +1,10 @@
+/**
+ * Assorted runtime helpers shared across the connector — message-service
+ * lookup (`getMessageService`), Discord text normalisation
+ * (`normalizeDiscordMessageText`), and outbound attachment building
+ * (`buildOutboundDiscordAttachment`, which fetches remote media through the
+ * SSRF guard).
+ */
 import {
 	ContentType,
 	fetchRemoteMedia,

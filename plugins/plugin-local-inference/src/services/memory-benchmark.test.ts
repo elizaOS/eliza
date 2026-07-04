@@ -1,3 +1,4 @@
+/** Covers the resident-memory benchmark report planner against synthetic catalog/probe data. Deterministic. */
 import { MODEL_CATALOG } from "@elizaos/shared/local-inference";
 import { describe, expect, it } from "vitest";
 import {

@@ -1,3 +1,11 @@
+/**
+ * The Release Center view: surfaces the agent runtime and desktop-app update
+ * state — current versions, available updates, and check/apply actions — plus a
+ * configurable release-notes link. Desktop update controls only appear under the
+ * Electrobun runtime; elsewhere the view degrades to runtime-update status only.
+ * State flows through the app store's update snapshots and the desktop updater
+ * bridge.
+ */
 import {
   AlertTriangle,
   CheckCircle2,

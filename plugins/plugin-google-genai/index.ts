@@ -1,3 +1,15 @@
+/**
+ * Assembles the `googleGenAIPlugin` object: the plugin's entire surface is a
+ * `models` map binding each elizaOS `ModelType` (nano/small/medium/large/mega,
+ * response-handler, action-planner, embedding, image-description) to a handler
+ * from `./models`. No actions, providers, evaluators, or routes are registered.
+ *
+ * `init` validates the API key at startup, `config` mirrors every supported env
+ * var (both `GOOGLE_*` and generic aliases) into the runtime setting store, and
+ * `tests` carries a live TestSuite that drives real Gemini calls through
+ * `runtime.useModel`. The `index.node.ts` / `index.browser.ts` entrypoints
+ * re-export this for the dual build targets.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

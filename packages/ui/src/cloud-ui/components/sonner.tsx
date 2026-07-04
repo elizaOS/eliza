@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Sonner toaster configured for the cloud theme (colors follow the theme provider).
+ */
 import type { CSSProperties } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { useTheme } from "./theme/theme-provider.hooks";

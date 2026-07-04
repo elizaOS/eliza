@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the SocialConnectionHint.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MemoryRouter } from "react-router-dom";
 import { SocialConnectionHint } from "./social-connection-hint";

@@ -51,7 +51,11 @@ import {
   writeRoutingConfig,
 } from "@elizaos/vault";
 import { sharedVault } from "../services/vault-mirror";
-import { ensureCompatSensitiveRouteAuthorized } from "./auth.ts";
+import {
+  type CompatStateLike,
+  ensureCompatSensitiveRouteAuthorized,
+  ensureRouteMinRole,
+} from "./auth.ts";
 import { sendJson, sendJsonError } from "./response";
 
 // ── Public dispatcher ──────────────────────────────────────────────
@@ -82,6 +86,7 @@ export async function handleSecretsInventoryRoute(
   res: http.ServerResponse,
   pathname: string,
   method: string,
+  state: CompatStateLike,
 ): Promise<boolean> {
   if (
     !pathname.startsWith("/api/secrets/inventory") &&
@@ -89,6 +94,12 @@ export async function handleSecretsInventoryRoute(
   ) {
     return false;
   }
+
+  // #12087 Item 4: self-gate at OWNER so a direct call (bypassing the server.ts
+  // dispatch prefix) still rejects non-OWNER callers. Inventory GETs previously
+  // carried no auth of their own. The inner ensureCompatSensitiveRouteAuthorized
+  // checks on mutating routes remain as intentional additional layering.
+  if (!(await ensureRouteMinRole(req, res, state, "OWNER"))) return true;
 
   // Routing config endpoints.
   if (pathname === "/api/secrets/routing") {

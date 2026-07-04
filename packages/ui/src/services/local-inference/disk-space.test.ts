@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for disk-space advice (low/critical thresholds vs download size).
+ * Pure function, no filesystem.
+ */
 import { describe, expect, it } from "vitest";
 import { adviseDiskSpace, type DiskSpace } from "./disk-space";
 

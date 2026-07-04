@@ -1,3 +1,8 @@
+/**
+ * Guards config values that may be executed as commands, rejecting shell
+ * metacharacters and validating bare-name/path-with-args shapes. Used by the zod
+ * config schemas to keep injected/executable strings from smuggling shell syntax.
+ */
 const UNSAFE_CHARS = /[\0\r\n;&|`$<>"']/;
 const BARE_NAME = /^[A-Za-z0-9._+-]+$/;
 const PATH_WITH_ARGS = /\s+(?:-{1,2}\S+|[A-Za-z0-9._+-]+)(?:\s|$)/;

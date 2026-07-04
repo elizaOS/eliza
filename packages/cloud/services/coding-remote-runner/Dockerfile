@@ -4,6 +4,8 @@ ARG BUN_VERSION=canary
 ARG INSTALL_CODEX=true
 ARG INSTALL_CLAUDE_CODE=true
 ARG INSTALL_OPENCODE=true
+ARG INSTALL_ELIZA_CODE=false
+ARG ELIZA_CODE_PACKAGE=@elizaos/example-code@2.0.0-beta.0
 
 ENV BUN_INSTALL=/root/.bun
 ENV PATH=/root/.bun/bin:/usr/local/bin:$PATH
@@ -28,6 +30,7 @@ RUN curl -fsSL https://bun.sh/install | bash -s "${BUN_VERSION}"
 RUN if [ "$INSTALL_CODEX" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_CLAUDE_CODE" = "true" ]; then npm install -g @anthropic-ai/claude-code; fi \
   && if [ "$INSTALL_OPENCODE" = "true" ]; then npm install -g opencode-ai; fi \
+  && if [ "$INSTALL_ELIZA_CODE" = "true" ]; then npm install -g "$ELIZA_CODE_PACKAGE"; fi \
   && npm cache clean --force
 
 WORKDIR /app

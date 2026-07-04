@@ -1,3 +1,4 @@
+/** Barrel for the coding-tools services and the coding-agent-context Zod schemas. */
 export * from "./coding-agent-context.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
 export { FileStateService } from "./file-state-service.js";

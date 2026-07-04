@@ -1,3 +1,9 @@
+/**
+ * Service abstraction: the `ServiceTypeRegistry` (extended by plugins via module
+ * augmentation) and the long-lived-singleton `Service` base contract. Services are
+ * clients/schedulers/connectors the runtime starts once and shares across the
+ * message loop.
+ */
 import type { JsonValue, Metadata } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
@@ -20,6 +26,8 @@ export interface ServiceTypeRegistry {
 	BROWSER: "browser";
 	PDF: "pdf";
 	REMOTE_FILES: "aws_s3";
+	TUNNEL: "tunnel";
+	CLOUD_AUTH: "CLOUD_AUTH";
 	WEB_SEARCH: "web_search";
 	EMAIL: "email";
 	TEE: "tee";
@@ -37,8 +45,17 @@ export interface ServiceTypeRegistry {
 	CONNECTOR_ACCOUNT: "connector_account";
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage";
 	AGENT_EVENT: "agent_event";
+	CONTROL_TRANSPORT: "control_transport";
 	OPTIMIZED_PROMPT: "optimized_prompt";
 	CHANNEL_TOPICS: "channel_topics";
+	COMMANDS: "commands";
+	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge";
+	SCREEN_CAPTURE: "screen_capture";
+	DOCUMENTS: "documents";
+	RELATIONSHIPS: "relationships";
+	FOLLOW_UP: "follow_up";
+	TRAJECTORIES: "trajectories";
+	SWARM_COORDINATOR: "SWARM_COORDINATOR";
 	UNKNOWN: "unknown";
 }
 
@@ -66,6 +83,7 @@ export type IsValidServiceType<T extends string> = T extends ServiceTypeName
 export type TypedServiceClass<T extends ServiceTypeName> = {
 	new (runtime?: IAgentRuntime): Service;
 	serviceType: T;
+	allowsMultiple?: boolean;
 	start(runtime: IAgentRuntime): Promise<Service>;
 };
 
@@ -112,6 +130,8 @@ export const ServiceType = {
 	BROWSER: "browser",
 	PDF: "pdf",
 	REMOTE_FILES: "aws_s3",
+	TUNNEL: "tunnel",
+	CLOUD_AUTH: "CLOUD_AUTH",
 	WEB_SEARCH: "web_search",
 	EMAIL: "email",
 	TEE: "tee",
@@ -129,11 +149,20 @@ export const ServiceType = {
 	CONNECTOR_ACCOUNT: "connector_account",
 	CONNECTOR_ACCOUNT_STORAGE: "connector_account_storage",
 	AGENT_EVENT: "agent_event",
+	CONTROL_TRANSPORT: "control_transport",
 	NOTIFICATION: "notification",
 	MEDIA_GENERATION: "media_generation",
 	VOICE_CACHE: "voice_cache",
 	OPTIMIZED_PROMPT: "optimized_prompt",
 	CHANNEL_TOPICS: "channel_topics",
+	COMMANDS: "commands",
+	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
+	SCREEN_CAPTURE: "screen_capture",
+	DOCUMENTS: "documents",
+	RELATIONSHIPS: "relationships",
+	FOLLOW_UP: "follow_up",
+	TRAJECTORIES: "trajectories",
+	SWARM_COORDINATOR: "SWARM_COORDINATOR",
 	UNKNOWN: "unknown",
 } as const;
 
@@ -154,6 +183,9 @@ export abstract class Service {
 
 	/** Service type */
 	static serviceType: string;
+
+	/** True when multiple implementations may intentionally share this service type. */
+	static allowsMultiple?: boolean;
 
 	/** Service name */
 	abstract capabilityDescription: string;

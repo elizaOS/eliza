@@ -1,6 +1,9 @@
+/**
+ * `marketProvider` — Birdeye market-overview provider for a fixed set of
+ * Solana tokens (SOL/wBTC/wETH), injecting a compact price/market-cap/
+ * liquidity table into planner context.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-//import { addHeader, composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
-//import type { IToken } from '../types';
 import { BIRDEYE_SERVICE_NAME } from "../constants";
 import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
 import { formatJsonScalar, formatJsonTable } from "../utils";
@@ -40,30 +43,13 @@ export async function getCacheTimed<T>(
   if (!wrapper) return;
   if (options.notOlderThan) {
     const diff = Date.now() - wrapper.setAt;
-    //console.log('checking notOlderThan', diff + 'ms', 'setAt', wrapper.setAt, 'asking', options.notOlderThan)
     if (diff > options.notOlderThan) {
-      // no data
       return;
     }
   }
-  // return data
   return wrapper.data;
 }
 
-/**
- * Provider for Birdeye market data
- *
- * @type {Provider}
- * @property {string} name - The name of the provider
- * @property {string} description - Description of the provider
- * @property {number} position - The position of the provider
- * @property {Function} get - Asynchronous function to get actions that validate for a given message
- *
- * @param {IAgentRuntime} runtime - The agent runtime
- * @param {Memory} message - The message memory
- * @param {State} state - The state of the agent
- * @returns {Object} Object containing data, values, and text related to actions
- */
 export const marketProvider: Provider = {
   name: "BIRDEYE_CRYPTOCURRENCY_MARKET_DATA",
   description: "Birdeye get latest cryptocurrencies overview",
@@ -74,11 +60,8 @@ export const marketProvider: Provider = {
   cacheStable: false,
   cacheScope: "turn",
   roleGate: { minRole: "USER" },
-  //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      //console.log('BIRDEYE_CRYPTOCURRENCY_MARKET_DATA getting');
-
       // Static Solana market addresses used for the Birdeye overview.
       const TOKEN_ADDRESSES = {
         SOL: "So11111111111111111111111111111111111111112",
@@ -92,10 +75,8 @@ export const marketProvider: Provider = {
         "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "ETH", // wETH
       };
 
-      // get the market
       const CAs = Object.values(TOKEN_ADDRESSES);
 
-      // get services
       const birdeyeService = runtime.getService(BIRDEYE_SERVICE_NAME) as
         | {
             getTokensMarketData?: (
@@ -105,7 +86,7 @@ export const marketProvider: Provider = {
             ) => Promise<Record<string, MarketTokenSnapshot | undefined>>;
           }
         | undefined;
-      // want this for custom symbols
+      // Solana service, when present, resolves custom token symbols.
       const solanaService = runtime.getService("chain_solana") as
         | {
             getTokensSymbols?: (
@@ -114,7 +95,6 @@ export const marketProvider: Provider = {
           }
         | undefined;
 
-      // Guard Birdeye service before invoking methods
       if (
         !birdeyeService ||
         typeof birdeyeService.getTokensMarketData !== "function"
@@ -133,7 +113,6 @@ export const marketProvider: Provider = {
         };
       }
 
-      // get data
       const tokenSymbolsPromise =
         solanaService && typeof solanaService.getTokensSymbols === "function"
           ? solanaService.getTokensSymbols(CAs)
@@ -149,7 +128,6 @@ export const marketProvider: Provider = {
       const rows: MarketRow[] = [];
 
       for (const ca of CAs) {
-        // Check if result[ca] exists before accessing it
         if (!result[ca]) {
           rows.push({
             chain: "solana",
@@ -169,10 +147,9 @@ export const marketProvider: Provider = {
           t.symbol ??
           hardcodedSolanaCA2SymbolMap[ca] ??
           "(Not available)";
-        // unwrap symbols
+        // Normalize wrapped-asset symbols to their underlying asset.
         if (symbol === "WBTC") symbol = "BTC";
         if (symbol === "WETH") symbol = "ETH";
-        //console.log('t', t)
         rows.push({
           chain: "solana",
           address: ca,
@@ -184,8 +161,6 @@ export const marketProvider: Provider = {
         });
       }
 
-      //console.log('BIRDEYE_CRYPTOCURRENCY_MARKET_DATA - birdye market data text', latestTxt)
-
       const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
         tokens: Object.fromEntries(
@@ -195,7 +170,6 @@ export const marketProvider: Provider = {
 
       const values = {};
 
-      // Combine all text sections
       const text = [
         "birdeye_market_data:",
         "  status: ok",

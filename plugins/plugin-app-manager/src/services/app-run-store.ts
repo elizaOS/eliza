@@ -1,7 +1,14 @@
+/**
+ * Persistent JSON store for hosted-app run records at
+ * `<stateDir>/apps/runs.v2.json`. Serializes AppManager's in-memory run
+ * registry, normalizing and migrating v1 files on read and writing atomically.
+ * Consumed by AppManager (the live registry) and AppSessionService (the
+ * in-runtime session gate).
+ */
 import * as fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
-import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
+import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import type {
   AppRunAwaySummary,
   AppRunCapabilityAvailability,

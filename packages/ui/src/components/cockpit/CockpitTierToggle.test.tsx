@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for CockpitTierToggle: flipping the segmented control emits
+// the selected Eliza Cloud tier. Deterministic RTL/jsdom, no network.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

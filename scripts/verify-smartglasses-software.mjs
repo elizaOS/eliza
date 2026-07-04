@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Runs the facewear plugin's software-readiness steps in sequence — lint,
+ * typecheck, tests, app-registration verification, and the smartglasses example
+ * software checks — failing on the first failing step. This is the software half
+ * of the smartglasses completion gate (the hardware half needs a real device).
+ */
 import { spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";

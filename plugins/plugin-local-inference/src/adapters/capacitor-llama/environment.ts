@@ -1,3 +1,12 @@
+/**
+ * Environment-config validation for the Capacitor/mobile local-AI adapter.
+ * Parses the model-filename and embedding-dimension overrides
+ * (`LOCAL_SMALL_MODEL`, `LOCAL_LARGE_MODEL`, `LOCAL_EMBEDDING_MODEL`,
+ * `MODELS_DIR`, `CACHE_DIR`, `LOCAL_EMBEDDING_DIMENSIONS`) from `process.env`
+ * through a zod schema, defaulting to the bundled Eliza-1 GGUF filenames and
+ * throwing a readable aggregated error on invalid input.
+ */
+
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 

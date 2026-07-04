@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for home-widget priority scoring from activity signals. Pure
+ * functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   baseHomeScore,

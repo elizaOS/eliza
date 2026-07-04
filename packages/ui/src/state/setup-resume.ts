@@ -1,16 +1,21 @@
+/**
+ * Onboarding-resume derivation from a partial server config. When the backend
+ * reports first-run incomplete but eliza.json already carries connection
+ * evidence (deployment target, linked accounts, service routing), the polling
+ * phase uses these helpers to seed the surviving first-run fields (runtime
+ * target, provider, remote connection) so the in-chat conductor resumes with
+ * the right context instead of a blank slate.
+ */
+
 import {
-  getFirstRunProviderOption,
   isElizaCloudLinkedInConfig,
   normalizeFirstRunProviderId,
-  readFirstRunEnvSecret,
   resolveDeploymentTargetInConfig,
-  resolveLinkedAccountsInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import type { BuildFirstRunConnectionArgs } from "../first-run/first-run-config";
 import { readPersistedMobileRuntimeMode } from "../first-run/mobile-runtime-mode";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import { asRecord } from "./config-readers";
-import type { SetupStep } from "./types";
 
 export function hasPartialSetupConnectionConfig(
   config: Record<string, unknown> | null | undefined,
@@ -37,37 +42,21 @@ export function hasPartialSetupConnectionConfig(
   return isElizaCloudLinkedInConfig(config);
 }
 
-export function inferSetupResumeStep(args: {
-  config?: Record<string, unknown> | null;
-  persistedStep?: SetupStep | null;
-}): SetupStep {
-  if (args.persistedStep) {
-    return args.persistedStep;
-  }
-
-  if (hasPartialSetupConnectionConfig(args.config)) {
-    return "model";
-  }
-
-  return "connection";
+export interface FirstRunResumeFields {
+  firstRunRuntimeTarget: FirstRunRuntimeTarget;
+  firstRunProvider: string;
+  firstRunRemoteConnected: boolean;
+  firstRunRemoteApiBase: string;
+  firstRunRemoteToken: string;
 }
 
 export function deriveFirstRunResumeFieldsFromConfig(
   config: Record<string, unknown> | null | undefined,
-): Partial<BuildFirstRunConnectionArgs> {
+): FirstRunResumeFields {
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
-  const linkedAccounts = resolveLinkedAccountsInConfig(config);
   const serviceRouting = resolveServiceRoutingInConfig(config);
   const llmText = serviceRouting?.llmText ?? null;
   const llmBackend = normalizeFirstRunProviderId(llmText?.backend);
-  const llmProvider = llmBackend ? getFirstRunProviderOption(llmBackend) : null;
-  const root = asRecord(config);
-  const cloud = asRecord(root?.cloud);
-  const cloudApiKey =
-    linkedAccounts?.elizacloud?.status === "linked" &&
-    typeof cloud?.apiKey === "string"
-      ? cloud.apiKey.trim()
-      : "";
 
   const pinnedRuntimeMode = readPersistedMobileRuntimeMode();
   const cloudServerTarget =
@@ -87,53 +76,22 @@ export function deriveFirstRunResumeFieldsFromConfig(
           ? cloudServerTarget
           : "local";
 
-  const fields: Partial<BuildFirstRunConnectionArgs> = {
+  // The provider resumes only when the routing unambiguously names one: the
+  // Eliza Cloud proxy route, or an explicit non-cloud backend.
+  const firstRunProvider =
+    llmText && llmText.transport === "cloud-proxy" && llmBackend === "elizacloud"
+      ? "elizacloud"
+      : llmBackend && llmBackend !== "elizacloud"
+        ? llmBackend
+        : "";
+
+  return {
     firstRunRuntimeTarget,
-    firstRunCloudApiKey: cloudApiKey,
-    firstRunProvider: "",
-    firstRunApiKey: "",
-    firstRunVoiceProvider: "",
-    firstRunVoiceApiKey: "",
-    firstRunPrimaryModel: "",
-    firstRunOpenRouterModel: "",
+    firstRunProvider,
     firstRunRemoteConnected:
       deploymentTarget.runtime === "remote" &&
       Boolean(deploymentTarget.remoteApiBase),
     firstRunRemoteApiBase: deploymentTarget.remoteApiBase ?? "",
     firstRunRemoteToken: deploymentTarget.remoteAccessToken ?? "",
-    firstRunSmallModel: "",
-    firstRunLargeModel: "",
   };
-
-  if (!llmText) {
-    return fields;
-  }
-
-  if (llmText.transport === "cloud-proxy" && llmBackend === "elizacloud") {
-    return {
-      ...fields,
-      firstRunProvider: "elizacloud",
-      firstRunSmallModel: llmText.smallModel ?? "",
-      firstRunLargeModel: llmText.largeModel ?? "",
-    };
-  }
-
-  if (llmBackend && llmBackend !== "elizacloud") {
-    const apiKey =
-      llmProvider?.envKey != null
-        ? (readFirstRunEnvSecret(config, llmProvider.envKey) ?? "")
-        : "";
-
-    return {
-      ...fields,
-      firstRunProvider: llmBackend,
-      firstRunApiKey: apiKey,
-      firstRunPrimaryModel:
-        llmBackend === "openrouter" ? "" : (llmText.primaryModel ?? ""),
-      firstRunOpenRouterModel:
-        llmBackend === "openrouter" ? (llmText.primaryModel ?? "") : "",
-    };
-  }
-
-  return fields;
 }

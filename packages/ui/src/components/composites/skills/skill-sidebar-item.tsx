@@ -1,3 +1,8 @@
+/**
+ * One skill row in a skills sidebar: icon, name/description, and an on/off state
+ * badge with an optional attention pill. Built from the sidebar-content item
+ * primitives so it matches other sidebar rows.
+ */
 import type * as React from "react";
 
 import { SidebarContent } from "../sidebar";

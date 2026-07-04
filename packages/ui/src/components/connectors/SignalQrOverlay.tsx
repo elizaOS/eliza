@@ -1,3 +1,8 @@
+/**
+ * Signal-specific QR pairing overlay: wires the `useSignalPairing` hook and
+ * Signal linking copy into the shared `ConnectorQrPairingOverlay`.
+ */
+
 import { useMemo } from "react";
 import { useSignalPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit coverage for the home-surface model-status hook: it stays `not-required`
+ * for cloud/remote/unauthenticated runtimes and derives readiness from the hub
+ * fetch. Runtime-mode and the API client are mocked (jsdom, no network).
+ */
+
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseRuntimeModeResult } from "../../hooks/useRuntimeMode";

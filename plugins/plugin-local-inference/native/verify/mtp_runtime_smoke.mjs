@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Runtime smoke for MTP (multi-token-prediction) speculative decoding: runs the
+ * spec-capable llama-cli against a real Eliza-1 target model, parses throughput,
+ * and writes a speculative benchmark report via speculative_benchmark_report.mjs.
+ * Hits a real native backend and model files.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

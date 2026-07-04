@@ -1,3 +1,7 @@
+/**
+ * Type-level coverage asserting the UI WidgetSlot / declaration types stay
+ * assignable to the core plugin-widget declaration.
+ */
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { WidgetSlot } from "./types";

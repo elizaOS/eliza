@@ -345,11 +345,13 @@ jobs:
         # ERR_DLOPEN_FAILED before the test bridge comes up (the lane was red
         # for 5+ days with "Packaged app exited before the desktop test bridge
         # became ready").
+        # ffmpeg: the desktop chat-walkthrough spec pumps bridge screenshots into
+        # a real-time MP4 (bridge-frame-recorder.ts) and fails loudly without it.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             xvfb libwebkit2gtk-4.1-0 libgtk-3-0 mesa-utils libgl1-mesa-dri \
-            libayatana-appindicator3-1
+            libayatana-appindicator3-1 ffmpeg
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e

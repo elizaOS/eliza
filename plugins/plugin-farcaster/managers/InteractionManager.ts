@@ -1,3 +1,14 @@
+/**
+ * Turns inbound Farcaster mentions and replies into agent responses. Implements
+ * `IInteractionProcessor`: `processMention`/`processReply` map a Neynar cast to
+ * the domain `Cast`, resolve its embeds to media via `EmbedManager`, ensure the
+ * room/entity connection and a memory, walk the thread back to root, then hand the
+ * memory to `runtime.messageService` with a reply callback and emit
+ * `MENTION_RECEIVED`. `processWebhookData` is the webhook-mode entry that filters
+ * and dedupes cast.created events before dispatching. A one-at-a-time `AsyncQueue`
+ * serializes connection/memory creation. The `InteractionSource` (polling vs
+ * webhook) drives which path fires.
+ */
 import {
   ChannelType,
   createUniqueUuid,

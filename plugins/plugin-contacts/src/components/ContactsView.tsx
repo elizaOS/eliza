@@ -20,10 +20,6 @@ import {
   Contacts,
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
-import {
-  navigateToMessagesWithNumber,
-  navigateToPhoneWithNumber,
-} from "@elizaos/ui/app-navigate-view";
 import { isNative } from "@elizaos/ui/platform";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -40,6 +36,32 @@ const EMPTY_FORM: ContactsFormDraft = {
   phoneNumber: "",
   emailAddress: "",
 };
+
+function navigateToPhoneWithNumber(number: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: {
+        viewId: "phone",
+        viewPath: "/phone",
+        payload: { number },
+      },
+    }),
+  );
+}
+
+function navigateToMessagesWithNumber(recipient: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("eliza:navigate:view", {
+      detail: {
+        viewId: "messages",
+        viewPath: "/messages",
+        payload: { recipient },
+      },
+    }),
+  );
+}
 
 export function ContactsView() {
   const [contacts, setContacts] = useState<ContactSummary[]>([]);

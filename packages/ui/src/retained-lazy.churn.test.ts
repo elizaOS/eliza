@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the retained-lazy loader's cache churn behavior and telemetry.
+ * In-memory, no real modules.
+ */
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleCacheTelemetryEvent } from "./cache-telemetry";

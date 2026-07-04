@@ -69,6 +69,7 @@
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-browser": "workspace:*",
 		"@elizaos/plugin-commands": "workspace:*",
+		"@elizaos/plugin-meetings": "workspace:*",
 		"@sapphire/snowflake": "3.5.5",
 		"discord-api-types": "^0.38.0",
 		"discord.js": "^14.26.4",
@@ -122,6 +123,12 @@
 			"DISCORD_TEST_CHANNEL_ID": {
 				"type": "string",
 				"description": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
+				"required": false,
+				"sensitive": false
+			},
+			"DISCORD_VOICE_TRANSCRIPTS": {
+				"type": "string",
+				"description": "Set to \"on\" to record live diarized meeting transcripts whenever the bot sits in a voice channel. Off by default; the /transcribe slash command can start/stop per channel.",
 				"required": false,
 				"sensitive": false
 			},

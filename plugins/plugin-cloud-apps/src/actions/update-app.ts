@@ -26,6 +26,7 @@ import {
   resolveApp,
   resolveCloudApiKey,
 } from "../client.js";
+import { invalidateAppsCache } from "../providers/cloud-apps.js";
 
 const NO_KEY_MESSAGE =
   "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY and I can update your apps.";
@@ -348,6 +349,10 @@ export const updateAppAction: Action = {
     const target = app;
     try {
       const { app: updated } = await client.updateApp(target.id, intent.patch);
+      // App inventory changed — evict the provider cache so the next turn's
+      // context reflects the new name/description/etc. (cache-invalidation
+      // invariant; the ~60s WeakMap cache would otherwise serve stale state).
+      invalidateAppsCache(runtime);
       const result = updated ?? target;
       const changes = describeChange(intent.patch, result);
       const summary =

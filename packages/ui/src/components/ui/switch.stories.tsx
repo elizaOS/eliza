@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the switch (toggle) primitive.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Switch } from "./switch";
 

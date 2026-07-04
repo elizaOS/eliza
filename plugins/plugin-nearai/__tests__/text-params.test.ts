@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the text handlers with the AI SDK, provider, and core mocked:
+ * asserts param pass-through (topP/temperature/stopSequences), the request-body
+ * normalisation shim (max_completion_tokens→max_tokens, dropped fields, developer→
+ * system role, malformed-JSON passthrough), and MODEL_USED usage emission.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));

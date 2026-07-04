@@ -1,3 +1,7 @@
+/**
+ * Wires the keyboard chord and desktop menu triggers that open the Secrets
+ * Manager modal onto its single open action.
+ */
 import { useEffect } from "react";
 import { subscribeDesktopBridgeEvent } from "../bridge/electrobun-rpc";
 import { dispatchSecretsManagerOpen } from "./useSecretsManagerModal";

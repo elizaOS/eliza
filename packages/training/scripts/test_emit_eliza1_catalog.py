@@ -21,8 +21,7 @@ def test_known_base_models_match_active_eliza1_tiers() -> None:
     assert set(emit.KNOWN_BASE_MODELS) == expected
     assert "elizaos/eliza-1/bundles/0_8b" not in emit.KNOWN_BASE_MODELS
     assert all(
-        meta["tokenizer_family"] == "gemma4"
-        for meta in emit.KNOWN_BASE_MODELS.values()
+        "tokenizer_family" not in meta for meta in emit.KNOWN_BASE_MODELS.values()
     )
 
 
@@ -32,6 +31,7 @@ def test_27b_256k_catalog_defaults_match_gemma_cutover() -> None:
             "base_model": "elizaos/eliza-1/bundles/27b-256k",
             "target_repo": "elizaos/eliza-1/bundles/27b-256k",
             "gguf": {"filename": "text/eliza-1-27b-256k.gguf"},
+            "tokenizer": {"family": "gemma4"},
             "runtime": {"args": []},
         }
     )
@@ -42,3 +42,34 @@ def test_27b_256k_catalog_defaults_match_gemma_cutover() -> None:
     assert entry.tokenizer_family == "gemma4"
     assert entry.cache_type_k == "q8_0"
     assert entry.cache_type_v == "q8_0"
+
+
+def test_catalog_tokenizer_family_comes_from_manifest() -> None:
+    entry = emit.build_catalog_entry(
+        {
+            "base_model": "elizaos/eliza-1/bundles/9b",
+            "target_repo": "elizaos/eliza-1/bundles/9b",
+            "gguf": {"filename": "text/eliza-1-9b-128k.gguf"},
+            "tokenizer": {"family": "qwen35"},
+            "runtime": {"args": []},
+        }
+    )
+
+    assert entry.id == "eliza-1-9b"
+    assert entry.tokenizer_family == "qwen35"
+
+
+def test_catalog_requires_manifest_tokenizer_family() -> None:
+    try:
+        emit.build_catalog_entry(
+            {
+                "base_model": "elizaos/eliza-1/bundles/2b",
+                "target_repo": "elizaos/eliza-1/bundles/2b",
+                "gguf": {"filename": "text/eliza-1-2b-128k.gguf"},
+                "runtime": {"args": []},
+            }
+        )
+    except SystemExit as exc:
+        assert "manifest.tokenizer must be an object" in str(exc)
+    else:
+        raise AssertionError("build_catalog_entry accepted a manifest without tokenizer")

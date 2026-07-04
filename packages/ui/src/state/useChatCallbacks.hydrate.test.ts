@@ -5,6 +5,7 @@
 // regardless of the boot route; this drives the extracted hydration policy with
 // a fake client and asserts that guarantee directly (not via the overlay, which
 // only renders whatever messages already exist).
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api";
 import {
@@ -102,7 +103,7 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(seeded[0]).toMatchObject({
       role: "assistant",
       text: "hi there",
-      source: "agent_greeting",
+      source: MESSAGE_SOURCE_AGENT_GREETING,
     });
     expect(greetingFiredRef.current).toBe(true);
     expect(result).toBeNull(); // greeting inlined → no backfill needed
@@ -182,7 +183,7 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
                 {
                   id: "greeting",
                   role: "assistant",
-                  source: "agent_greeting",
+                  source: MESSAGE_SOURCE_AGENT_GREETING,
                   text: "hey",
                   timestamp: 1,
                 },

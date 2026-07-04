@@ -49,6 +49,16 @@ export interface PluginConfigUiHint {
 	type?: "text" | "password" | "number" | "boolean" | "select" | "textarea";
 	/** Options for select fields */
 	options?: Array<{ value: string; label: string }>;
+	/** Render a toggle that hides this backing field when enabled */
+	modeToggle?: {
+		kind: "mode-toggle-with-hidden-field";
+		enabledLabel: string;
+		disabledLabel: string;
+		enabledHelp?: string;
+		disabledHelp?: string;
+		hiddenValue?: string;
+		restoreValue?: string;
+	};
 }
 
 /**

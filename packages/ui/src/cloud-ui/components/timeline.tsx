@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Scroll-driven animated timeline component for cloud marketing/landing sections.
+ */
 import {
   type MotionStyle,
   motion,

@@ -1,3 +1,13 @@
+/**
+ * Extension service worker — the always-on coordinator. Runs the periodic sync
+ * loop, auto-pairs with the local agent, pulls agent-directed browser sessions
+ * and executes them via the content script, and enforces the website blocklist
+ * through declarativeNetRequest. Bridges popup requests and content-script
+ * responses to the BrowserBridgeRelayClient.
+ *
+ * Under MV3 the worker can be evicted between events, so durable state lives in
+ * chrome.storage.local via src/storage.ts rather than in module scope.
+ */
 import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {

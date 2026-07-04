@@ -1,3 +1,13 @@
+/**
+ * `PERPETUAL_MARKET` action and `PerpetualMarketService`: the conversational
+ * entry point for Hyperliquid perpetual-market reads. The service holds a
+ * registry of `PerpetualMarketProvider`s (Hyperliquid registered by default)
+ * keyed by target name; the action resolves the target provider, dispatches
+ * `read` (status/markets/market/positions/funding) or `place_order`, and maps
+ * the result to `ActionResult`. `place_order` always returns a disabled-
+ * execution notice — this app is read-only by design. Similes cover a large
+ * set of legacy `HYPERLIQUID_*` names for retrieval/fine-tune compatibility.
+ */
 import type {
   Action,
   ActionResult,

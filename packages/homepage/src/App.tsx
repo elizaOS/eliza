@@ -1,3 +1,7 @@
+/**
+ * Client-side route table for the public homepage and authenticated onboarding
+ * surfaces.
+ */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";

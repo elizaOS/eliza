@@ -1,3 +1,4 @@
+/** Deterministic unit tests for text-generation routing — generateText vs streamText across the tools/schema/toolChoice/stream branches — with the `ai` boundary mocked. */
 import type { GenerateTextResult, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

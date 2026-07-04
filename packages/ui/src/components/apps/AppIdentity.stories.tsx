@@ -1,3 +1,8 @@
+/**
+ * Storybook stories for `AppIdentityTile` (and `AppHero`) across categories,
+ * sizes, active/image-only/glyph variants, and the art-less monogram fallback.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import {
   AppHero,

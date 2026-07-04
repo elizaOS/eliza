@@ -11,6 +11,9 @@ export { relationshipsProvider } from "./relationships.ts";
 export { roleProvider } from "./roles.ts";
 export { settingsProvider } from "./settings.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -23,17 +26,11 @@ import { relationshipsProvider as _bs_4_relationshipsProvider } from "./relation
 import { roleProvider as _bs_5_roleProvider } from "./roles.ts";
 import { settingsProvider as _bs_6_settingsProvider } from "./settings.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PROVIDERS_INDEX__ = [
+anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_PROVIDERS_INDEX", [
 	_bs_1_advancedContactsProvider,
 	_bs_2_factsProvider,
 	_bs_3_followUpsProvider,
 	_bs_4_relationshipsProvider,
 	_bs_5_roleProvider,
 	_bs_6_settingsProvider,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PROVIDERS_INDEX__ =
-	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_PROVIDERS_INDEX__;
+]);

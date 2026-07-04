@@ -1,3 +1,7 @@
+/**
+ * Derives text-generation readiness for a slot from the active model, download
+ * jobs, and installed models — the signal the composer gates on.
+ */
 import { MODEL_CATALOG } from "./catalog";
 import { catalogDownloadSizeBytes } from "./recommendation";
 import type {

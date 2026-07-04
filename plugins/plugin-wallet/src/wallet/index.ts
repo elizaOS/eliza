@@ -1,3 +1,4 @@
+/** Barrel for the `WalletBackend` abstraction: the signer interface, its local/Steward implementations, error types, and pending-approval/sign-result types. */
 export type {
   SolanaSigner,
   WalletAddresses,

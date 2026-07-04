@@ -1,3 +1,8 @@
+/**
+ * Live-lane twin of deterministic-sub-agent-credential-request: a real LLM drives
+ * the sub-agent credential-request bridge. Needs live model credentials
+ * (live-only lane).
+ */
 import {
   existsSync,
   mkdirSync,
@@ -544,7 +549,7 @@ async function runLiveCodexCredentialRoundtrip(
       return "~/.codex/auth.json is not a ChatGPT Codex login";
     }
 
-    const { saveAccount } = await import("@elizaos/agent/auth/account-storage");
+    const { saveAccount } = await import("@elizaos/auth/account-storage");
     saveAccount({
       id: "machine-codex-live-credential",
       providerId: "openai-codex",

@@ -1,3 +1,4 @@
+/** Covers echo playback-delay estimation and per-platform seed defaults (#9583). Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_PLAYBACK_DELAY_MS,

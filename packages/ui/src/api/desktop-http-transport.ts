@@ -1,3 +1,8 @@
+/**
+ * AgentRequestTransport for the desktop shell: routes HTTP through the Electrobun
+ * renderer RPC (bypassing CORS/bind-host limits) when running under Electrobun,
+ * falling back to fetch otherwise.
+ */
 import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
 import { getElectrobunRendererRpc } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";

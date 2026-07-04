@@ -1,6 +1,3 @@
-import { sql } from "drizzle-orm";
-import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
-
 /**
  * Auth identity row. One per real user / machine actor on this Eliza instance.
  *
@@ -10,6 +7,9 @@ import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
  * (with possible owner-bindings extending login methods); machines have
  * neither and are authenticated by the bearer token bound to their session.
  */
+import { sql } from "drizzle-orm";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
+
 export const authIdentityTable = pgTable(
   "auth_identities",
   {

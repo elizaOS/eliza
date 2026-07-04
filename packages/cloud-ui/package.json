@@ -1,0 +1,59 @@
+{
+  "name": "@elizaos/cloud-ui",
+  "version": "2.0.3-beta.7",
+  "description": "Eliza Cloud product UI — dashboard, billing, approvals, and account surfaces that self-register into @elizaos/ui's cloud-route + settings-section registries. Cloud-free builds never import this package, so the whole product surface stays out of the agent app with no build-config stubs.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/cloud-ui"
+  },
+  "keywords": [
+    "elizaos",
+    "cloud",
+    "ui",
+    "dashboard"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "clean": "node ../scripts/rm-path-recursive.mjs dist",
+    "build": "bun run build:dist",
+    "build:dist": "bun run clean && tsc --noCheck -p tsconfig.build.json && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/cloud-ui",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "dependencies": {
+    "@elizaos/ui": "workspace:*",
+    "@tanstack/react-query": "^5.90.20",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  }
+}

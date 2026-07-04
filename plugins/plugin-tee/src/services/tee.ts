@@ -1,3 +1,10 @@
+/**
+ * TEEService — the elizaOS Service wrapper other plugins retrieve via
+ * `runtime.getService<TEEService>(TEEService.serviceType)` to get TEE-backed
+ * key derivation. Delegates all crypto to PhalaDeriveKeyProvider regardless of
+ * the configured TEE_VENDOR; only the vendor's providers/actions selection is
+ * vendor-aware.
+ */
 import {
   type IAgentRuntime,
   logger,
@@ -33,7 +40,6 @@ export class TEEService extends Service {
     const secretSalt =
       typeof secretSaltRaw === "string" ? secretSaltRaw : undefined;
 
-    // Set config as Metadata-compatible object
     this.config = {
       mode: teeMode,
       vendor,

@@ -21,11 +21,14 @@
  *      shared adapter. This is the documented best-effort handoff contract.
  */
 
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { expect, test } from "../src/helpers/test-fixtures";
-
-const CLOUD_TOKEN_GLOBAL = "__ELIZA_CLOUD_AUTH_TOKEN__";
 
 test.describe("app onboarding client ↔ real cloud-api", () => {
   test("real ElizaClient provisions, reuses, and arms the handoff through the router", async ({
@@ -40,11 +43,9 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     // getBootConfig().cloudApiBase, and the compat fetch reads the cloud token
     // from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
-    const prevToken = (globalThis as Record<string, unknown>)[
-      CLOUD_TOKEN_GLOBAL
-    ];
+    const prevToken = readStoredStewardToken();
     setBootConfig({ ...prevBoot, cloudApiBase });
-    (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = authToken;
+    writeStoredStewardToken(authToken);
 
     try {
       const client = new ElizaClient(cloudApiBase, authToken);
@@ -104,10 +105,10 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
       expect(handoff.status).toBe("timed-out");
     } finally {
       setBootConfig(prevBoot);
-      if (prevToken === undefined) {
-        delete (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL];
+      if (prevToken === null) {
+        clearStoredStewardToken();
       } else {
-        (globalThis as Record<string, unknown>)[CLOUD_TOKEN_GLOBAL] = prevToken;
+        writeStoredStewardToken(prevToken);
       }
     }
   });

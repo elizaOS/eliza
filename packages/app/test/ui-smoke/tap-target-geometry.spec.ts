@@ -1,11 +1,10 @@
 // Rendered-geometry tap-target gate (#10722 item 6). The 44px floor used to
 // be enforced only as a CSS token (`--min-touch-target`) + lint conventions —
 // nothing ever measured what the browser actually laid out, so a surface
-// could regress below the Apple-HIG 44px floor (the ShellBackButton shipped
-// at 36px; the spatial filter chips at ~34px) with every gate green. This
-// spec measures REAL `boundingBox()` geometry on a coarse-pointer Pixel-7
-// viewport over the shell chrome + spatial-view surfaces this repo's
-// decomposed views actually render.
+// could regress below the Apple-HIG 44px floor (the spatial filter chips
+// shipped at ~34px) with every gate green. This spec measures REAL
+// `boundingBox()` geometry on a coarse-pointer Pixel-7 viewport over the
+// spatial-view surfaces this repo's decomposed views actually render.
 
 import { devices, expect, test } from "@playwright/test";
 import {
@@ -25,24 +24,6 @@ const MIN_TAP_PX = 44 - 0.5;
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
-});
-
-test("shell back button renders a >=44px hit target on touch viewports", async ({
-  page,
-}) => {
-  await openAppPath(page, "/inbox");
-  const back = page.getByTestId("shell-back-button");
-  await expect(back).toBeVisible({ timeout: 60_000 });
-  const box = await back.boundingBox();
-  expect(box, "back button must be laid out").not.toBeNull();
-  if (box) {
-    expect(box.width, "back button hit width").toBeGreaterThanOrEqual(
-      MIN_TAP_PX,
-    );
-    expect(box.height, "back button hit height").toBeGreaterThanOrEqual(
-      MIN_TAP_PX,
-    );
-  }
 });
 
 test("every spatial-view button renders a >=44px hit target on touch viewports", async ({

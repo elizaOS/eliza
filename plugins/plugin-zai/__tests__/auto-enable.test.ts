@@ -1,3 +1,4 @@
+/** Unit tests for `shouldEnable`: deterministic env-map checks over `ZAI_API_KEY` and the legacy `Z_AI_API_KEY` alias. */
 import { describe, expect, it } from "vitest";
 import { shouldEnable } from "../auto-enable";
 

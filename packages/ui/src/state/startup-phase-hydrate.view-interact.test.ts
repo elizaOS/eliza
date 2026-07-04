@@ -1,5 +1,15 @@
 // @vitest-environment jsdom
 
+/**
+ * The ready-phase view-interact wiring (`startup-phase-hydrate.bindReadyPhase`):
+ * agent-driven navigate-view WS events are dispatched to the shell and
+ * view-interact requests are forwarded. jsdom with the API client and
+ * view-interact dispatch mocked — no live agent.
+ */
+import {
+  NAVIGATE_VIEW_EVENT,
+  SHELL_NAVIGATE_VIEW_WS_EVENT,
+} from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
@@ -34,6 +44,7 @@ vi.mock("../components/views/view-interact-registry", () => viewInteractMock);
 
 function makeDeps(): ReadyPhaseDeps {
   return {
+    setActionNotice: vi.fn(),
     setAgentStatusIfChanged: vi.fn(),
     setPendingRestart: vi.fn(),
     setPendingRestartReasons: vi.fn(),
@@ -178,10 +189,10 @@ describe("bindReadyPhase view interaction bridge", () => {
 
   it("dispatches valid shell:navigate:view events to the browser shell", () => {
     const navHandler = vi.fn();
-    window.addEventListener("eliza:navigate:view", navHandler);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     const cleanup = bindReadyPhase({ current: makeDeps() });
 
-    clientMock.handlers.get("shell:navigate:view")?.({
+    clientMock.handlers.get(SHELL_NAVIGATE_VIEW_WS_EVENT)?.({
       viewId: "remote-ledger",
       viewPath: "/views/remote-ledger",
       viewLabel: "Remote Ledger",
@@ -202,15 +213,15 @@ describe("bindReadyPhase view interaction bridge", () => {
     });
 
     cleanup();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 
   it("dispatches valid XR shell:navigate:view events to the browser shell", () => {
     const navHandler = vi.fn();
-    window.addEventListener("eliza:navigate:view", navHandler);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     const cleanup = bindReadyPhase({ current: makeDeps() });
 
-    clientMock.handlers.get("shell:navigate:view")?.({
+    clientMock.handlers.get(SHELL_NAVIGATE_VIEW_WS_EVENT)?.({
       viewId: "spatial-room",
       viewPath: "/apps/spatial-room",
       viewLabel: "Spatial Room",
@@ -229,15 +240,15 @@ describe("bindReadyPhase view interaction bridge", () => {
     });
 
     cleanup();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 
   it("normalizes malformed shell:navigate:view fields before dispatch", () => {
     const navHandler = vi.fn();
-    window.addEventListener("eliza:navigate:view", navHandler);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     const cleanup = bindReadyPhase({ current: makeDeps() });
 
-    clientMock.handlers.get("shell:navigate:view")?.({
+    clientMock.handlers.get(SHELL_NAVIGATE_VIEW_WS_EVENT)?.({
       viewId: 12,
       viewPath: false,
       viewLabel: null,
@@ -258,6 +269,6 @@ describe("bindReadyPhase view interaction bridge", () => {
     });
 
     cleanup();
-    window.removeEventListener("eliza:navigate:view", navHandler);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 });

@@ -1,3 +1,10 @@
+/**
+ * On-chain governance (OpenZeppelin `Governor`) support for the `WALLET`/`gov`
+ * subaction: validates op-specific required params, ABI-encodes the
+ * propose/vote/queue/execute calldata against the `OZGovernor` artifact, and
+ * `routeEvmGovernance` either returns a `prepare` quote or submits the
+ * transaction through the wallet's signer.
+ */
 import type { Chain, Hex } from "viem";
 import {
   type Address,

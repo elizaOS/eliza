@@ -1,3 +1,11 @@
+/**
+ * Real-database integration tests for agent CRUD on the shared
+ * PgDatabaseAdapter/PgliteDatabaseAdapter surface: create/get/update/delete/
+ * count/cleanup, settings-merge semantics (including nested null-removal of
+ * secrets), duplicate-name handling (UUID is the identity, not name), and
+ * cascade delete of an agent's worlds/rooms/entities/memories/components/
+ * participants/relationships/tasks/cache/logs.
+ */
 import {
   type Agent,
   ChannelType,

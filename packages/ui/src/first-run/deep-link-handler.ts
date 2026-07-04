@@ -175,10 +175,9 @@ export function routeFirstRunDeepLink(url: string, urlScheme: string): boolean {
  * when registration failed (no-op).
  */
 /**
- * Minimal contract this module needs from `@capacitor/app`. Keeps the package
- * import surface honest — `@elizaos/ui` does not declare `@capacitor/app` as a
- * direct dependency (the native bridge ships from the host app), and we don't
- * want a `typeof import("@capacitor/app")` to silently promote it.
+ * Minimal contract this module needs from `@capacitor/app`. Keeps the optional
+ * peer import surface honest; native hosts supply the bridge, and we don't want
+ * a `typeof import("@capacitor/app")` to silently promote it.
  */
 type AppUrlOpenEvent = { url: string };
 type ListenerHandle = { remove: () => Promise<void> };
@@ -206,9 +205,8 @@ export async function installFirstRunDeepLinkListener(options: {
   try {
     const capacitorAppPackage = "@capacitor/app";
     const mod = (await import(
-      // `@capacitor/app` is not a declared dependency of `@elizaos/ui` — the
-      // host app brings the native bridge. Dynamic import means web bundles
-      // skip this branch when the package is not installed.
+      // `@capacitor/app` is an optional peer supplied by native hosts. Dynamic
+      // import means web bundles skip this branch when the package is absent.
       /* @vite-ignore */ capacitorAppPackage
     )) as { App: CapacitorAppShape };
     capacitorApp = mod.App;

@@ -4,6 +4,7 @@
  * Reuses the shared `EarningsSimulator` + `RevenueFlowDiagram` from cloud-ui.
  */
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   Coins,
@@ -11,7 +12,9 @@ import {
   Info,
   Loader2,
   Save,
+  Send,
   Server,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -40,8 +43,10 @@ import {
   TooltipTrigger,
 } from "../../../components/ui/tooltip";
 import { cn } from "../../../lib/utils";
-import { api } from "../../lib/api-client";
+import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import type { App } from "../lib/apps";
+import { appQueryKey } from "../lib/apps";
 import { openCloudConsoleRouteExternally } from "../lib/native-cloud-nav";
 
 interface MonetizationSettings {
@@ -56,19 +61,34 @@ interface MonetizationResponse {
   success?: boolean;
   monetization?: MonetizationSettings;
   error?: string;
+  review_status?: App["review_status"];
+}
+
+interface ReviewSubmissionResponse {
+  success?: boolean;
+  review?: {
+    review_status: App["review_status"];
+    rationale?: string | null;
+  };
+  error?: string;
 }
 
 interface AppMonetizationSettingsProps {
-  appId: string;
+  app: App;
 }
 
-export function AppMonetizationSettings({
-  appId,
-}: AppMonetizationSettingsProps) {
+export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const appId = app.id;
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState<App["review_status"]>(
+    app.review_status,
+  );
+  const [reviewRationale, setReviewRationale] = useState<string | null>(null);
   const [settings, setSettings] = useState<MonetizationSettings>({
     monetizationEnabled: false,
     inferenceMarkupPercentage: 0,
@@ -78,6 +98,15 @@ export function AppMonetizationSettings({
   });
   const [hasChanges, setHasChanges] = useState(false);
   const [showEnableDialog, setShowEnableDialog] = useState(false);
+  // The last monetization-enabled state the server confirmed. Only an ENABLE
+  // transition (server-disabled → enabled) is review-gated; disabling and
+  // editing an already-enabled row are always allowed.
+  const [serverMonetizationEnabled, setServerMonetizationEnabled] =
+    useState(false);
+
+  useEffect(() => {
+    setReviewStatus(app.review_status);
+  }, [app.review_status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +116,7 @@ export function AppMonetizationSettings({
         if (cancelled) return;
         if (data.success && data.monetization) {
           setSettings(data.monetization);
+          setServerMonetizationEnabled(data.monetization.monetizationEnabled);
         }
       })
       .catch((error) => {
@@ -108,6 +138,22 @@ export function AppMonetizationSettings({
   }, [appId, t]);
 
   const handleSave = async () => {
+    // Only the ENABLE transition is review-gated. Saving markup/share edits on
+    // an already-enabled row, or disabling, must never be blocked here — the
+    // server is the source of truth and re-enforces (returning review_status in
+    // a 403 body the UI parses).
+    const isEnableTransition =
+      settings.monetizationEnabled && !serverMonetizationEnabled;
+    if (isEnableTransition && reviewStatus !== "approved") {
+      toast.error(
+        t("cloud.monetization.reviewRequiredSave", {
+          defaultValue:
+            "Submit this app for review before enabling monetization.",
+        }),
+      );
+      return;
+    }
+
     setIsSaving(true);
     try {
       await api(`/api/v1/apps/${appId}/monetization`, {
@@ -118,6 +164,7 @@ export function AppMonetizationSettings({
           purchaseSharePercentage: settings.purchaseSharePercentage,
         },
       });
+      setServerMonetizationEnabled(settings.monetizationEnabled);
       toast.success(
         t("cloud.monetization.saved", { defaultValue: "Settings saved" }),
       );
@@ -144,16 +191,31 @@ export function AppMonetizationSettings({
   };
 
   const toggleMonetization = async (enabled: boolean) => {
+    if (enabled && reviewStatus !== "approved") {
+      toast.error(
+        t("cloud.monetization.reviewRequiredToggle", {
+          defaultValue:
+            "Submit this app for review before enabling monetization.",
+        }),
+      );
+      return;
+    }
+
     setSettings((prev) => ({ ...prev, monetizationEnabled: enabled }));
     try {
-      await api(`/api/v1/apps/${appId}/monetization`, {
-        method: "PUT",
-        json: {
-          monetizationEnabled: enabled,
-          inferenceMarkupPercentage: settings.inferenceMarkupPercentage,
-          purchaseSharePercentage: settings.purchaseSharePercentage,
+      const data = await api<MonetizationResponse>(
+        `/api/v1/apps/${appId}/monetization`,
+        {
+          method: "PUT",
+          json: {
+            monetizationEnabled: enabled,
+            inferenceMarkupPercentage: settings.inferenceMarkupPercentage,
+            purchaseSharePercentage: settings.purchaseSharePercentage,
+          },
         },
-      });
+      );
+      if (data.review_status) setReviewStatus(data.review_status);
+      setServerMonetizationEnabled(enabled);
       toast.success(
         enabled
           ? t("cloud.monetization.enabled", {
@@ -166,6 +228,9 @@ export function AppMonetizationSettings({
     } catch (error) {
       // Revert on failure
       setSettings((prev) => ({ ...prev, monetizationEnabled: !enabled }));
+      if (error instanceof ApiError && isReviewStatusErrorBody(error.body)) {
+        setReviewStatus(error.body.review_status);
+      }
       toast.error(
         error instanceof Error
           ? error.message
@@ -175,6 +240,46 @@ export function AppMonetizationSettings({
       );
     }
   };
+
+  const submitForReview = async () => {
+    setIsSubmittingReview(true);
+    setReviewStatus("submitted");
+    setReviewRationale(null);
+    try {
+      const data = await api<ReviewSubmissionResponse>(
+        `/api/v1/apps/${appId}/review`,
+        { method: "POST" },
+      );
+      const nextStatus = data.review?.review_status ?? "under_review";
+      setReviewStatus(nextStatus);
+      setReviewRationale(data.review?.rationale ?? null);
+      await queryClient.invalidateQueries({ queryKey: appQueryKey(appId) });
+      toast.success(
+        nextStatus === "approved"
+          ? t("cloud.monetization.reviewApproved", {
+              defaultValue: "Review approved. You can enable monetization.",
+            })
+          : t("cloud.monetization.reviewSubmitted", {
+              defaultValue: "Review submitted.",
+            }),
+      );
+    } catch (error) {
+      setReviewStatus(app.review_status);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t("cloud.monetization.reviewSubmitFailed", {
+              defaultValue: "Failed to submit review",
+            }),
+      );
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const reviewApproved = reviewStatus === "approved";
+  const canSubmitReview =
+    reviewStatus === "draft" || reviewStatus === "rejected";
 
   if (isLoading) {
     return (
@@ -187,6 +292,64 @@ export function AppMonetizationSettings({
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        <div className="border border-white/10 bg-neutral-900 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div
+                className={cn(
+                  "mt-0.5 rounded-sm p-2",
+                  reviewApproved ? "bg-green-500/10" : "bg-white/5",
+                )}
+              >
+                <ShieldCheck
+                  className={cn(
+                    "h-5 w-5",
+                    reviewApproved ? "text-green-400" : "text-white/50",
+                  )}
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-white">
+                  {getReviewStatusLabel(reviewStatus, t)}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {reviewApproved
+                    ? t("cloud.monetization.reviewApprovedDesc", {
+                        defaultValue:
+                          "This app passed review and can earn from paid usage.",
+                      })
+                    : t("cloud.monetization.reviewRequiredDesc", {
+                        defaultValue:
+                          "Apps must pass automated review before monetization can be enabled.",
+                      })}
+                </p>
+                {reviewRationale && (
+                  <p className="mt-2 text-xs text-neutral-400">
+                    {reviewRationale}
+                  </p>
+                )}
+              </div>
+            </div>
+            {canSubmitReview && (
+              <Button
+                type="button"
+                onClick={submitForReview}
+                disabled={isSubmittingReview}
+                className="shrink-0 bg-[var(--brand-orange)] text-white hover:bg-[#e54f00]"
+              >
+                {isSubmittingReview ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {t("cloud.monetization.submitReview", {
+                  defaultValue: "Submit for review",
+                })}
+              </Button>
+            )}
+          </div>
+        </div>
+
         {/* Monetization Toggle Card */}
         <div
           className={cn(
@@ -224,7 +387,12 @@ export function AppMonetizationSettings({
                       })}
                 </p>
                 <Switch
+                  // The server always allows DISABLING; only ENABLING is
+                  // review-gated. So the switch must stay interactive for a
+                  // legacy enabled-but-unapproved row — otherwise it's trapped
+                  // ON with no way to turn it off.
                   checked={settings.monetizationEnabled}
+                  disabled={!reviewApproved && !settings.monetizationEnabled}
                   onCheckedChange={(checked) => {
                     if (checked && !settings.monetizationEnabled) {
                       setShowEnableDialog(true);
@@ -247,7 +415,8 @@ export function AppMonetizationSettings({
                     })}
               </p>
               {settings.totalCreatorEarnings > 0 && (
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   onClick={() =>
                     navigate(`/dashboard/apps/${appId}?tab=earnings`)
@@ -259,7 +428,7 @@ export function AppMonetizationSettings({
                     defaultValue: "$" + "{{amount}}" + " earned",
                   })}
                   <ChevronRight className="h-3 w-3" />
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -315,7 +484,8 @@ export function AppMonetizationSettings({
               />
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 25, 50, 100, 200].map((preset) => (
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     key={preset}
                     className={cn(
@@ -329,7 +499,7 @@ export function AppMonetizationSettings({
                     }
                   >
                     {preset}%
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -376,7 +546,8 @@ export function AppMonetizationSettings({
               />
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 10, 20, 30, 50].map((preset) => (
-                  <button
+                  <Button
+                    variant="ghost"
                     type="button"
                     key={preset}
                     className={cn(
@@ -390,7 +561,7 @@ export function AppMonetizationSettings({
                     }
                   >
                     {preset}%
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -494,6 +665,45 @@ export function AppMonetizationSettings({
       </div>
     </TooltipProvider>
   );
+}
+
+function isReviewStatusErrorBody(
+  body: unknown,
+): body is { review_status: App["review_status"] } {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "review_status" in body &&
+    typeof (body as { review_status?: unknown }).review_status === "string"
+  );
+}
+
+function getReviewStatusLabel(
+  status: App["review_status"],
+  t: ReturnType<typeof useCloudT>,
+): string {
+  switch (status) {
+    case "approved":
+      return t("cloud.monetization.reviewStatusApproved", {
+        defaultValue: "Review approved",
+      });
+    case "submitted":
+      return t("cloud.monetization.reviewStatusSubmitted", {
+        defaultValue: "Review submitted",
+      });
+    case "under_review":
+      return t("cloud.monetization.reviewStatusInProgress", {
+        defaultValue: "Review in progress",
+      });
+    case "rejected":
+      return t("cloud.monetization.reviewStatusRejected", {
+        defaultValue: "Review rejected",
+      });
+    default:
+      return t("cloud.monetization.reviewStatusRequired", {
+        defaultValue: "Review required",
+      });
+  }
 }
 
 /**

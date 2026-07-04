@@ -1,3 +1,7 @@
+/**
+ * Ensures a store-build desktop has a persisted workspace folder — prompts the
+ * native folder picker once and stores the bookmark for later runs.
+ */
 import {
   pickDesktopWorkspaceFolder,
   resolveDesktopWorkspaceFolderBookmark,

@@ -33,7 +33,7 @@ export function buildPayload(registry: ViewAgentRegistry): {
     id: e.id,
     role: e.role,
     label: e.label,
-    ...(typeof e.value === "string" ? { value: e.value } : {}),
+    ...(!e.sensitive && typeof e.value === "string" ? { value: e.value } : {}),
     ...(e.focused ? { focused: true } : {}),
   }));
   return { viewId: snap.viewId, elements };

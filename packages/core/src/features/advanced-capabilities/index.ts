@@ -5,13 +5,14 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
+ * - Extended providers (facts, contacts, relationships, roles, settings, personality)
  * - Advanced actions (contacts management, room management, personality)
- *   Note: todo planner actions are NOT registered here. The canonical todo
- *   surfaces are TODO (plugin-todos) and OWNER_TODOS (app-lifeops).
+ *   Note: todos are owned entirely by @elizaos/plugin-todos (the `TODO` action +
+ *   `currentTodosProvider` + DB-backed TodosService) and app-lifeops
+ *   (`OWNER_TODOS`). Core registers no todos provider, service, or action.
  * - Registered post-turn evaluators (experience, skills, facts, relationships,
  *   identities, task success)
- * - Additional services (experience, todos, personality)
+ * - Additional services (experience, personality)
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
@@ -27,7 +28,6 @@ import { experienceProvider } from "./experience/providers/experienceProvider.ts
 import { characterAction } from "./personality/actions/character.ts";
 import { personalityAction } from "./personality/actions/personality.ts";
 import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
-import { todosProvider } from "./todos/providers/todos.ts";
 
 // Re-export action, provider, and post-message-action modules
 export * from "./actions/index.ts";
@@ -41,7 +41,6 @@ export * from "./experience/index.ts";
 export type * from "./form/index.ts";
 export * from "./personality/index.ts";
 export * from "./providers/index.ts";
-export * from "./todos/index.ts";
 
 // Import for local use.
 //
@@ -79,7 +78,6 @@ export const advancedProviders = [
 	roleProvider,
 	settingsProvider,
 	experienceProvider,
-	todosProvider,
 	userPersonalityProvider,
 ];
 

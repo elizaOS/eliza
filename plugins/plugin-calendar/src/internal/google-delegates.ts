@@ -461,6 +461,8 @@ export function lifeOpsCalendarEventFromGoogle(args: {
     conferenceLink: event.meetLink ?? null,
     organizer: event.organizer ? { ...event.organizer } : null,
     attendees: (event.attendees ?? []).map(lifeOpsCalendarAttendeeFromGoogle),
+    recurrence: event.recurrence ?? null,
+    recurringEventId: event.recurringEventId ?? null,
     metadata: {
       googlePlugin: true,
       ...(event.metadata ?? {}),
@@ -522,6 +524,7 @@ export function googleCalendarEventInput(args: {
   attendees?:
     | readonly { email?: string | null; displayName?: string | null }[]
     | null;
+  recurrence?: readonly string[] | null;
 }): GoogleCalendarEventInput {
   return {
     accountId: args.accountId,
@@ -536,6 +539,7 @@ export function googleCalendarEventInput(args: {
       ?.map((attendee) => attendee.email?.trim())
       .filter(Boolean)
       .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    recurrence: args.recurrence ? [...args.recurrence] : undefined,
   };
 }
 
@@ -552,6 +556,7 @@ export function googleCalendarEventPatchInput(args: {
   attendees?:
     | readonly { email?: string | null; displayName?: string | null }[]
     | null;
+  recurrence?: readonly string[] | null;
 }): GoogleCalendarEventPatchInput {
   return {
     accountId: args.accountId,
@@ -567,5 +572,6 @@ export function googleCalendarEventPatchInput(args: {
       ?.map((attendee) => attendee.email?.trim())
       .filter(Boolean)
       .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    recurrence: args.recurrence ? [...args.recurrence] : undefined,
   };
 }

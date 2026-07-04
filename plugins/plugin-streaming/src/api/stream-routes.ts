@@ -144,8 +144,15 @@ function error(res: ServerResponse, message: string, status: number): void {
  * 4. macOS -> "avfoundation" (native screen capture)
  * 5. Fallback -> "file" (Puppeteer CDP -> temp JPEG -> FFmpeg)
  */
-/** @internal Exported for testing. */
-export function detectCaptureMode(): StreamConfig["inputMode"] {
+/**
+ * @internal Exported for testing.
+ * @param hasScreenCaptureBridge whether the desktop host registered a
+ *   {@link IScreenCaptureService} (resolved by the caller via `getService`),
+ *   which selects "pipe" mode. Never read from a `globalThis` bridge.
+ */
+export function detectCaptureMode(
+  hasScreenCaptureBridge: boolean,
+): StreamConfig["inputMode"] {
   const explicit = process.env.STREAM_MODE;
   if (explicit === "ui" || explicit === "pipe") return "pipe";
   if (explicit === "x11grab") return "x11grab";
@@ -154,7 +161,7 @@ export function detectCaptureMode(): StreamConfig["inputMode"] {
   if (explicit === "file") return "file";
 
   // Desktop bridge -> pipe mode
-  if ("__elizaScreenCapture" in (globalThis as Record<string, unknown>)) {
+  if (hasScreenCaptureBridge) {
     return "pipe";
   }
 
@@ -263,7 +270,7 @@ async function startStreamPipeline(
   }
   const destId = activeDest?.id ?? null;
 
-  const mode = detectCaptureMode();
+  const mode = detectCaptureMode(Boolean(state.screenCapture));
 
   const audioSource = process.env.STREAM_AUDIO_SOURCE ?? "silent";
   const audioDevice = process.env.STREAM_AUDIO_DEVICE;
@@ -857,7 +864,7 @@ export async function handleStreamRoute(
 
       // Stop current frame capture if active
       if (state.screenCapture?.isFrameCaptureActive()) {
-        state.screenCapture.stopFrameCapture?.();
+        state.screenCapture.stopFrameCapture();
       }
 
       // Build capture options

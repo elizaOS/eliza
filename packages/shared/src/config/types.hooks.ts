@@ -1,3 +1,8 @@
+/**
+ * Hook-mapping configuration types: rules that match inbound events (by path or
+ * source) and map them to wake/agent actions. A slice of the `ElizaConfig` tree
+ * (see types.eliza.ts).
+ */
 export type HookMappingMatch = {
   path?: string;
   source?: string;

@@ -1,3 +1,11 @@
+/**
+ * `teePlugin` entry point: wires the default (Phala) vendor's actions and
+ * providers, registers `TEEService`, and validates `TEE_MODE` at init. Vendor
+ * selection (`TEE_VENDOR`) only affects which vendor's providers/actions are
+ * registered here — `TEEService` itself always uses the Phala key-derivation
+ * provider regardless of vendor.
+ */
+// biome-ignore-all assist/source/organizeImports: preserve current develop's export grouping in this comments-only pass.
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { TEEService } from "./services/tee";
 import { getVendor, TeeVendorNames } from "./vendors";
@@ -11,6 +19,14 @@ export {
   RemoteAttestationProvider,
 } from "./providers";
 export { TEEService } from "./services";
+// Confidential-VM (dstack/CoVE) TEE deployment surface. Registers the host
+// boot-gate evidence provider through the `@elizaos/agent` seam. Kept isolated
+// from the Phala vendor surface above; the two TEE providers do not tangle.
+export {
+  createDstackTeeProvider,
+  dstackConfidentialTeePlugin,
+  registerDstackEvidenceProvider,
+} from "./confidential";
 export * from "./types";
 export {
   calculateSHA256,

@@ -1,3 +1,5 @@
+/** Storybook stories for ThemeToggle: light/dark and the titlebar variant (render fn holds local theme state so the icon flips on click). */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { UiTheme } from "../../state/persistence";

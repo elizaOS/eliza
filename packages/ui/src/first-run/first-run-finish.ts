@@ -1,21 +1,17 @@
-// ============================================================================
-// Headless first-run "finish" use case.
-//
-// This is the SINGLE provisioning implementation for completing onboarding.
-// It owns no presentation — the in-chat first-run conductor
-// (`use-first-run-conductor.ts`) calls these functions and renders the seeded
-// chat messages. All product decisions (default provider, needsProviderSetup,
-// the POST body) live in the pure config layer (`first-run-config.ts` /
-// `first-run.ts`); this module wires the ports.
-//
-// Extracted from the former `use-first-run-controller.ts` React hook (the
-// full-screen onboarding wizard, now deleted). The finish bodies are moved
-// here verbatim apart from replacing React state/setters with injected ports
-// and funneling EVERY `POST /api/first-run` through the single `persistFirstRun`
-// helper (idempotency-guarded), so a completed onboarding posts exactly once.
-// ============================================================================
+/**
+ * Headless first-run "finish" use case.
+ *
+ * This is the SINGLE provisioning implementation for completing onboarding. It
+ * owns no presentation — the in-chat first-run conductor
+ * (`use-first-run-conductor.ts`) calls these functions and renders the seeded
+ * chat messages. All product decisions (default provider, needsProviderSetup,
+ * the POST body) live in the pure config layer (`first-run-config.ts` /
+ * `first-run.ts`); this module wires the ports.
+ *
+ * Every `POST /api/first-run` funnels through the single, idempotency-guarded
+ * `persistFirstRun` helper, so a completed onboarding posts exactly once.
+ */
 
-import { Capacitor } from "@capacitor/core";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
@@ -24,6 +20,7 @@ import {
 } from "../api/client-cloud";
 import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
+import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
@@ -61,10 +58,6 @@ import {
 import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
 
 const FIRST_RUN_AGENT_WAIT_MS = 180_000;
-
-type NativeAgentPlugin = {
-  start?: (options?: { apiBase?: string; mode?: string }) => Promise<unknown>;
-};
 
 // ── Injected ports — the store seams the finish logic needs ──────────────────
 
@@ -239,20 +232,14 @@ function readSyncOnDeviceAgentBearer(): string | null {
 async function startMobileLocalAgent(): Promise<void> {
   if (!isAndroid && !isIOS) return;
   try {
-    const capacitorWithPlugins = Capacitor as typeof Capacitor & {
-      Plugins?: Record<string, NativeAgentPlugin | undefined>;
-    };
-    const registeredAgent =
-      capacitorWithPlugins.Plugins?.Agent ??
-      Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
-    await registeredAgent.start?.({
+    await getAgentPlugin().start?.({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });
   } catch {
     const agentPluginId = "@elizaos/capacitor-agent";
     const { Agent } = await import(/* @vite-ignore */ agentPluginId);
-    await (Agent as NativeAgentPlugin | undefined)?.start?.({
+    await (Agent as AgentPluginLike | undefined)?.start?.({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });

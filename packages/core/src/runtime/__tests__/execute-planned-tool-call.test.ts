@@ -884,7 +884,7 @@ describe("executePlannedToolCall", () => {
 			expect(handler).toHaveBeenCalledOnce();
 		});
 
-		it("matches a policy entry against the action's similes when canonical name is absent", async () => {
+		it("does not match a policy entry against the action's similes", async () => {
 			process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "NONE" });
 			_resetActionRolePolicyCacheForTests();
 			const handler = vi.fn(async () => ({ success: true }));
@@ -906,11 +906,12 @@ describe("executePlannedToolCall", () => {
 				{ name: "SHELL", params: {} },
 			);
 
-			expect(result.success).toBe(true);
-			expect(handler).toHaveBeenCalledOnce();
+			expect(result.success).toBe(false);
+			expect(String(result.error)).toContain("not allowed");
+			expect(handler).not.toHaveBeenCalled();
 		});
 
-		it("denies a simile policy entry when the caller lacks the required role", async () => {
+		it("does not let a simile policy entry tighten an unrelated action", async () => {
 			process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "OWNER" });
 			_resetActionRolePolicyCacheForTests();
 			const handler = vi.fn(async () => ({ success: true }));
@@ -932,9 +933,8 @@ describe("executePlannedToolCall", () => {
 				{ name: "SHELL", params: {} },
 			);
 
-			expect(result.success).toBe(false);
-			expect(String(result.error)).toContain("not allowed");
-			expect(handler).not.toHaveBeenCalled();
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
 		});
 
 		it("ignores policy entries with unrecognized roles instead of granting access", async () => {

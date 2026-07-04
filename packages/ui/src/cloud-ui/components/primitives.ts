@@ -1,3 +1,6 @@
+/**
+ * Re-exports the base components/ui/* primitives into the cloud-ui surface (no new primitives here).
+ */
 export * from "../../components/ui/accordion";
 export * from "../../components/ui/alert";
 export * from "../../components/ui/alert-dialog";
@@ -38,7 +41,6 @@ export * from "../../components/ui/textarea";
 export * from "../../components/ui/toggle";
 export * from "../../components/ui/tooltip";
 export * from "../lib/utils";
-export * from "./ai-elements";
 export * from "./analytics";
 export { ApiKeyEmptyState } from "./api-key-empty-state";
 export * from "./brand";

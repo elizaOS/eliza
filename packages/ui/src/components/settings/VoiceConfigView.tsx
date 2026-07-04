@@ -1,3 +1,11 @@
+/**
+ * Full voice-configuration view: TTS/ASR provider + model selection persisted
+ * to `config.messages` via the API client, an in-panel test-playback, the
+ * wake-word section, and the desktop-only Talk Mode panel (Electrobun bridge).
+ * Barrel-exported from components/index.ts for consumers outside the Settings
+ * section registry.
+ */
+
 import { ASR_PROVIDERS } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -790,14 +798,14 @@ export function WakeWordSection({
             {postTriggerGap.toFixed(2)}s
           </span>
         </div>
-        <input
+        <Input
           ref={gapRef}
           type="range"
           min={0.1}
           max={2.0}
           step={0.05}
           value={postTriggerGap}
-          className="w-full accent-accent"
+          className="h-auto border-0 bg-transparent p-0 accent-accent"
           aria-label={t("voiceconfigview.PostTriggerGap", {
             defaultValue: "Post-trigger gap",
           })}

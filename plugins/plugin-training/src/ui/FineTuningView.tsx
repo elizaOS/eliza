@@ -26,7 +26,14 @@ import { client } from "@elizaos/ui/api";
 import {
   type AppDetailExtensionProps,
   Button,
+  Input,
   registerDetailExtension,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Textarea,
 } from "@elizaos/ui/components";
 import { useIntervalWhenDocumentVisible } from "@elizaos/ui/hooks";
 import { ContentLayout } from "@elizaos/ui/layouts";
@@ -39,6 +46,8 @@ import {
   parsePositiveInteger,
 } from "@elizaos/ui/utils";
 import {
+  Children,
+  isValidElement,
   type ReactNode,
   useCallback,
   useEffect,
@@ -466,7 +475,7 @@ function summarizeAnalysisCoverage(
 
 /* Bottom-line input — the house resting style for form fields. */
 const AGENT_FIELD_INPUT_CLASS =
-  "h-10 w-full border-b border-border/60 bg-transparent px-3 text-sm text-txt outline-none focus:border-accent";
+  "h-11 w-full border-b border-border/60 bg-transparent px-3 text-sm text-txt outline-none focus:border-accent";
 
 function AgentInlineButton({
   agentId,
@@ -549,7 +558,7 @@ function AgentTextField({
     onFill: onChange,
   });
   return (
-    <input
+    <Input
       ref={ref}
       type={type}
       className={className}
@@ -591,7 +600,7 @@ function AgentTextAreaField({
     onFill: onChange,
   });
   return (
-    <textarea
+    <Textarea
       ref={ref}
       className={className}
       value={value}
@@ -624,7 +633,7 @@ function AgentNativeSelect({
   options: readonly string[];
   children: ReactNode;
 }) {
-  const { ref, agentProps } = useAgentElement<HTMLSelectElement>({
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "select",
     label,
@@ -634,17 +643,37 @@ function AgentNativeSelect({
     getValue: () => value,
     onFill: onChange,
   });
+  const selectItems = Children.toArray(children)
+    .map((child) => {
+      if (!isValidElement<{ value?: unknown; children?: ReactNode }>(child)) {
+        return null;
+      }
+      const optionValue = child.props.value;
+      if (typeof optionValue !== "string") {
+        return null;
+      }
+      return { value: optionValue, label: child.props.children };
+    })
+    .filter((item): item is { value: string; label: ReactNode } => !!item);
+
   return (
-    <select
-      ref={ref}
-      className={className}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      aria-label={label}
-      {...agentProps}
-    >
-      {children}
-    </select>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        ref={ref}
+        className={className}
+        aria-label={label}
+        {...agentProps}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {selectItems.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -675,13 +704,14 @@ function AgentCheckboxField({
     onFill: (value) => onChange(value === "true" || value === "1"),
   });
   return (
-    <input
+    <Input
       ref={ref}
       type="checkbox"
       checked={checked}
       onChange={(event) => onChange(event.target.checked)}
       aria-label={label}
       aria-current={checked ? "true" : undefined}
+      className="h-4 w-4 p-0"
       {...agentProps}
     />
   );

@@ -20,6 +20,7 @@ describe("elizaCloudRoutePlugin", () => {
       "POST /api/cloud/coding-containers/promotions",
       "POST /api/cloud/coding-containers",
       "POST /api/cloud/coding-containers/:containerId/sync",
+      "POST /api/tts/cloud",
     ]) {
       expect(routes.has(route)).toBe(true);
     }

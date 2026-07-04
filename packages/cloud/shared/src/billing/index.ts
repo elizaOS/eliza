@@ -1,3 +1,4 @@
+/** Public surface of the isomorphic billing math: markup, credit-markup, and Twilio SMS billing. */
 export {
   type CreditMarkupBreakdown,
   type CreditMarkupInput,

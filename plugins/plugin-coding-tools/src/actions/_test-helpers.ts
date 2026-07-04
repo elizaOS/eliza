@@ -1,3 +1,8 @@
+/**
+ * Shared setup for the action test files: builds a temp workspace and a minimal
+ * runtime stub wired with the SandboxService and FileStateService the handlers
+ * require, over the real filesystem.
+ */
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

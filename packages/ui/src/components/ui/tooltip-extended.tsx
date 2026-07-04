@@ -5,11 +5,9 @@ import { cn } from "../../lib/utils";
 // is kept inline so the scanner emits the utility.
 
 /**
- * Hover-only tooltip with optional shortcut hint — the icon-button affordance
- * primitive exported from the kit. The other extended-tooltip primitives
- * (HoverTooltip, Spotlight, useGuidedTour, TourStep) were deleted as
- * zero-consumer in the Layer 5b sweep — their last shipping surface was a
- * guided-tour feature that was never wired up.
+ * Hover-only tooltip with an optional shortcut hint — the icon-button
+ * affordance primitive exported from the kit, sitting above the base Radix
+ * `tooltip.tsx` primitives.
  */
 export function IconTooltip({
   children,

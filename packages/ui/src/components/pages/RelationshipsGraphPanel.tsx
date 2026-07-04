@@ -1,3 +1,11 @@
+/**
+ * Force-laid-out node/edge graph of the relationships snapshot: renders people
+ * as draggable nodes and their relationships as edges (labelled with sentiment
+ * and interaction count), with zoom controls and hover tooltips. Layout
+ * positions are computed from the snapshot; selecting a group filters the
+ * visible subgraph. Mounted inside the Relationships workspace.
+ */
+
 import {
   Crown,
   Fingerprint,
@@ -1013,18 +1021,19 @@ export function RelationshipsGraphPanel({
             </GraphIconButton>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   ref={zoomToggleButton.ref}
-                  type="button"
                   onClick={handleZoomPercentClick}
-                  className="min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
                   aria-label={t("relationshipsgraph.toggleZoomAria", {
                     defaultValue: "Toggle zoom (fit / 100%)",
                   })}
                   {...zoomToggleButton.agentProps}
                 >
                   {zoomPercent}
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
                 {t("relationshipsgraph.toggleFit", {
@@ -1224,8 +1233,8 @@ export function RelationshipsGraphPanel({
                     width={180}
                     height={radius + 72}
                   >
-                    <button
-                      type="button"
+                    <Button
+                      variant="ghost"
                       onClick={(event) => {
                         if (shouldSuppressClickRef.current) {
                           event.preventDefault();
@@ -1240,7 +1249,7 @@ export function RelationshipsGraphPanel({
                       }
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
-                      className="h-full w-full rounded-sm bg-transparent"
+                      className="h-full w-full rounded-sm bg-transparent hover:bg-transparent"
                       aria-label={t("relationshipsgraph.selectPerson", {
                         name: person.displayName,
                         defaultValue: "Select {{name}}",

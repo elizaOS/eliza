@@ -4,9 +4,9 @@
  * Layout: split-pane on desktop (JSON editor left, React Flow viewer
  * right). On narrow viewports the editor stacks above the viewer.
  *
- * The JSON editor is a plain `<textarea>` — Monaco / CodeMirror are too
- * heavy for the few hundred lines of JSON a workflow contains, and
- * neither library is currently a dependency of `@elizaos/ui`.
+ * The JSON editor uses the shared Textarea primitive; Monaco / CodeMirror are
+ * too heavy for the few hundred lines of JSON a workflow contains, and neither
+ * library is currently a dependency of `@elizaos/ui`.
  *
  * Reactivity: `value` is debounced via `useDebouncedValue`; on debounce
  * settle we parse the JSON. Valid → push to the viewer. Invalid → keep
@@ -57,6 +57,7 @@ import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
 
 export interface WorkflowEditorProps {
@@ -670,14 +671,14 @@ export function WorkflowEditor({
             <span className="font-medium text-txt">workflow.json</span>
             <span>{text.split("\n").length} lines</span>
           </div>
-          <textarea
+          <Textarea
             ref={jsonEditor.ref}
             {...jsonEditor.agentProps}
             value={text}
             onChange={(e) => setText(e.target.value)}
             spellCheck={false}
             data-testid="workflow-editor-json"
-            className="min-h-[240px] flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-txt outline-none sm:min-h-[320px]"
+            className="min-h-[240px] flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-txt sm:min-h-[320px]"
           />
         </PagePanel>
 
@@ -769,10 +770,10 @@ export function WorkflowEditor({
                       const summary = summarizeWorkflowExecution(execution);
                       const selected = execution.id === selectedExecution?.id;
                       return (
-                        <button
+                        <Button
                           key={execution.id}
-                          type="button"
-                          className={`flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left hover:bg-bg-accent/50 ${
+                          variant="ghost"
+                          className={`flex h-auto w-full min-w-0 items-center justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal hover:bg-bg-accent/50 ${
                             selected ? "bg-bg-accent" : ""
                           }`}
                           onClick={() => {
@@ -807,7 +808,7 @@ export function WorkflowEditor({
                               / {summary.durationLabel}
                             </span>
                           </span>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>

@@ -1,3 +1,4 @@
+/** Covers `PhraseChunker` punctuation boundaries, time-budget flush, and first-phrase TTFA budget. Deterministic. */
 import { describe, expect, it } from "vitest";
 import { type ClockMs, chunkTokens, PhraseChunker } from "./phrase-chunker";
 import type { TextToken } from "./types";

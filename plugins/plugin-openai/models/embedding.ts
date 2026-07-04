@@ -1,3 +1,10 @@
+/**
+ * `handleTextEmbedding`: calls the OpenAI embeddings endpoint and validates the
+ * returned vector dimension against `VECTOR_DIMS`. In Cerebras mode without an
+ * explicit embedding endpoint it substitutes a deterministic local hash
+ * embedding (Cerebras serves no embeddings), keeping recall functional when no
+ * real embedding server is reachable.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 

@@ -1,3 +1,8 @@
+/**
+ * Downloads Discord message attachments and detects their media type. Exposes
+ * `AttachmentManager`, used when normalizing inbound messages into runtime
+ * Media.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

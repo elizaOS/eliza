@@ -1,3 +1,7 @@
+/**
+ * Unit tests for config normalization and loopback API-discovery candidate
+ * ordering; pure functions, no chrome.storage.
+ */
 import { describe, expect, it } from "vitest";
 import {
   candidateApiBaseUrlsFromTabs,

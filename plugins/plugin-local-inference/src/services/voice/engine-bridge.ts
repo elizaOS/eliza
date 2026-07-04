@@ -103,9 +103,19 @@ import {
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
 import {
+	pickStreamingMode,
+	readStreamingAsrEnabledFromEnv,
+	StabilizedStreamingTranscriber,
+	type StreamingPipelineMode,
+} from "./streaming-asr/streaming-pipeline-adapter";
+import {
 	ASR_SAMPLE_RATE,
 	AsrUnavailableError,
 	createStreamingTranscriber,
+	DEFAULT_ASR_STEP_SECONDS,
+	ffiSupportsStreamingAsr,
+	readAsrBackendPreferenceFromEnv,
+	readAsrStepSecondsFromEnv,
 	resampleLinear,
 } from "./transcriber";
 import type {
@@ -121,6 +131,10 @@ import type {
 	TtsBackend,
 	VadEventSource,
 } from "./types";
+import {
+	KOKORO_TTS_TRANSIENT_PEAK_BYTES,
+	OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES,
+} from "./voice-budget";
 import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./wav-codec";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
@@ -554,6 +568,16 @@ export class FfiOmniVoiceBackend implements TtsBackend, StreamingTtsBackend {
 		);
 		return { text: (await this.transcribe(args)).trim(), words: [] };
 	}
+}
+
+/** Warn once per process when the fused speaker runtime is absent (#12257). */
+let speakerAttributionUnavailableWarned = false;
+function warnSpeakerAttributionUnavailableOnce(reason: string): void {
+	if (speakerAttributionUnavailableWarned) return;
+	speakerAttributionUnavailableWarned = true;
+	logger.warn(
+		`[EngineVoiceBridge] Speaker attribution requested but ${reason}. Voice continues without attribution.`,
+	);
 }
 
 export interface EngineVoiceBridgeOptions {
@@ -1189,99 +1213,100 @@ export class EngineVoiceBridge {
 		// attribution pipeline wraps the fused encoder + diarizer + profile-store.
 		// Both run through the ONE fused `libelizainference` handle via its
 		// `eliza_inference_speaker_*` / `_diariz_*` ABI — there is no standalone
-		// `libvoice_classifier` runtime.
+		// `libvoice_classifier` runtime. The speaker ABI is probed synchronously
+		// here (`FusedSpeakerEncoder.isSupported`); the native session `load()`
+		// runs lazily on first encode/diarize.
 		//
-		// Fail-fast at ARM time: the fused speaker ABI is probed synchronously
-		// here (`FusedSpeakerEncoder.isSupported`). When the build does not
-		// advertise it, this throws `VoiceStartupError` rather than silently
-		// degrading attribution to "unknown speaker" on the first turn. The
-		// native session `load()` runs lazily on first encode/diarize, but the
-		// capability is decided up front.
+		// Degradation contract (#12257): when the fused speaker runtime is
+		// absent — no fused handle (e.g. the Kokoro-only TTS path) or a build
+		// without the speaker ABI — keep voice working WITHOUT attribution and
+		// warn exactly once. This is configured-absence, not silent error
+		// recovery (loud-fail invariant): voice still runs and the operator is
+		// told once, rather than crashing the session or attributing every turn
+		// to "unknown speaker" behind their back.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const fusedFfi = ffiHandle;
 			const fusedCtx = ffiContextRef;
 			if (!fusedFfi || !fusedCtx) {
-				throw new VoiceStartupError(
-					"missing-fused-build",
-					"[voice] Speaker-attribution requires the fused libelizainference handle (useFfiBackend). No standalone speaker runtime exists.",
+				warnSpeakerAttributionUnavailableOnce(
+					"the fused libelizainference handle is absent (useFfiBackend=false); no standalone speaker runtime exists",
 				);
-			}
-			if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
-				throw new VoiceStartupError(
-					"missing-fused-build",
-					"[voice] The loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols).",
+			} else if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
+				warnSpeakerAttributionUnavailableOnce(
+					"the loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0); rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols)",
 				);
-			}
-			// Fused encoder: probe passed above; the native session opens lazily
-			// on first encode() so voice-off does not keep the model resident.
-			let resolvedEncoder: SpeakerEncoder | null = null;
-			let encoderLoadError: Error | null = null;
-			const lazyEncoder: SpeakerEncoder = {
-				embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
-				sampleRate: SPEAKER_GGML_SAMPLE_RATE,
-				async encode(pcm: Float32Array): Promise<Float32Array> {
-					if (encoderLoadError) throw encoderLoadError;
-					if (!resolvedEncoder) {
-						try {
-							resolvedEncoder = await FusedSpeakerEncoder.load({
-								ffi: fusedFfi,
-								ctx: () => fusedCtx.ensure(),
-							});
-						} catch (err) {
-							encoderLoadError =
-								err instanceof Error ? err : new Error(String(err));
-							throw encoderLoadError;
-						}
-					}
-					return resolvedEncoder.encode(pcm);
-				},
-				async dispose(): Promise<void> {
-					await resolvedEncoder?.dispose();
-				},
-			};
-			selfVoiceImprint = new AgentSelfVoiceImprint({
-				encoder: lazyEncoder,
-			});
-			// Fused diarizer (optional). When the build does not advertise the
-			// diarizer ABI, attribution runs without it — a single-speaker turn
-			// collapses to one segment (the attribution-pipeline localSpeakerId=0
-			// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
-			// it refines multi-speaker windows, it is not required to attribute a
-			// single speaker.
-			let lazyDiarizer: Diarizer | undefined;
-			if (FusedDiarizer.isSupported(fusedFfi)) {
-				let resolvedDiarizer: Diarizer | null = null;
-				let diarizerLoadError: Error | null = null;
-				lazyDiarizer = {
-					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+			} else {
+				// Fused encoder: probe passed above; the native session opens lazily
+				// on first encode() so voice-off does not keep the model resident.
+				let resolvedEncoder: SpeakerEncoder | null = null;
+				let encoderLoadError: Error | null = null;
+				const lazyEncoder: SpeakerEncoder = {
+					embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
 					sampleRate: SPEAKER_GGML_SAMPLE_RATE,
-					async diarizeWindow(pcm: Float32Array) {
-						if (diarizerLoadError) throw diarizerLoadError;
-						if (!resolvedDiarizer) {
+					async encode(pcm: Float32Array): Promise<Float32Array> {
+						if (encoderLoadError) throw encoderLoadError;
+						if (!resolvedEncoder) {
 							try {
-								resolvedDiarizer = await FusedDiarizer.load({
+								resolvedEncoder = await FusedSpeakerEncoder.load({
 									ffi: fusedFfi,
 									ctx: () => fusedCtx.ensure(),
 								});
 							} catch (err) {
-								diarizerLoadError =
+								encoderLoadError =
 									err instanceof Error ? err : new Error(String(err));
-								throw diarizerLoadError;
+								throw encoderLoadError;
 							}
 						}
-						return resolvedDiarizer.diarizeWindow(pcm);
+						return resolvedEncoder.encode(pcm);
 					},
 					async dispose(): Promise<void> {
-						await resolvedDiarizer?.dispose();
+						await resolvedEncoder?.dispose();
 					},
 				};
+				selfVoiceImprint = new AgentSelfVoiceImprint({
+					encoder: lazyEncoder,
+				});
+				// Fused diarizer (optional). When the build does not advertise the
+				// diarizer ABI, attribution runs without it — a single-speaker turn
+				// collapses to one segment (the attribution-pipeline localSpeakerId=0
+				// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
+				// it refines multi-speaker windows, it is not required to attribute a
+				// single speaker.
+				let lazyDiarizer: Diarizer | undefined;
+				if (FusedDiarizer.isSupported(fusedFfi)) {
+					let resolvedDiarizer: Diarizer | null = null;
+					let diarizerLoadError: Error | null = null;
+					lazyDiarizer = {
+						modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+						sampleRate: SPEAKER_GGML_SAMPLE_RATE,
+						async diarizeWindow(pcm: Float32Array) {
+							if (diarizerLoadError) throw diarizerLoadError;
+							if (!resolvedDiarizer) {
+								try {
+									resolvedDiarizer = await FusedDiarizer.load({
+										ffi: fusedFfi,
+										ctx: () => fusedCtx.ensure(),
+									});
+								} catch (err) {
+									diarizerLoadError =
+										err instanceof Error ? err : new Error(String(err));
+									throw diarizerLoadError;
+								}
+							}
+							return resolvedDiarizer.diarizeWindow(pcm);
+						},
+						async dispose(): Promise<void> {
+							await resolvedDiarizer?.dispose();
+						},
+					};
+				}
+				attributionPipeline = new VoiceAttributionPipeline({
+					encoder: lazyEncoder,
+					...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
+					profileStore: opts.profileStore,
+				});
 			}
-			attributionPipeline = new VoiceAttributionPipeline({
-				encoder: lazyEncoder,
-				...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
-				profileStore: opts.profileStore,
-			});
 		}
 
 		// W3-9 / F1 — construct the cancellation coordinator + optimistic policy
@@ -1690,11 +1715,15 @@ export class EngineVoiceBridge {
 	/**
 	 * Construct a `StreamingTranscriber` for live ASR — the contract the
 	 * voice turn controller (W9) feeds mic frames into and the barge-in
-	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
-	 *   fused `libelizainference` streaming ASR (final path, gated on a
-	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
-	 *   only the fused path; the whisper.cpp interim fallback has been removed.
+	 * word-confirm gate (W1) listens to. The drive mode is picked by
+	 * `pickStreamingMode` (#12254): the fused streaming decoder when the
+	 * loaded build advertises one, the ASR bundle is present, and
+	 * `ELIZA_VOICE_STREAMING_ASR` is not disabled (default on) — else the
+	 * interim windowed-batch adapter, announced at INFO. In streaming mode
+	 * the transcriber is wrapped in `StabilizedStreamingTranscriber`
+	 * (word-level LocalAgreement-2) so subscribers only ever see a
+	 * monotonic committed prefix. No fused decoder at all →
+	 * `AsrUnavailableError`; the whisper.cpp fallback has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1703,13 +1732,62 @@ export class EngineVoiceBridge {
 		vad?: VadEventSource;
 	}): StreamingTranscriber {
 		this.assertVoiceOn("create streaming transcriber");
+		return this.constructTranscriber(opts);
+	}
+
+	/** Last ASR drive mode announced, so the pick is logged once per change. */
+	private loggedAsrDriveMode: StreamingPipelineMode | null = null;
+
+	/**
+	 * Shared transcriber construction (mode pick + loud announcement +
+	 * streaming-partial stabilization). `createStreamingTranscriber` adds the
+	 * voice-on assertion; `resolveTranscriber` adds the deferred-failure
+	 * wrapper for the pipeline path.
+	 */
+	private constructTranscriber(opts?: {
+		vad?: VadEventSource;
+	}): StreamingTranscriber {
 		const contextRef = this.ffiContextRef;
-		return createStreamingTranscriber({
+		// An explicit ELIZA_LOCAL_ASR_BACKEND pin wins over the capability
+		// gate; otherwise streaming is picked exactly when supported + present
+		// + not disabled by ELIZA_VOICE_STREAMING_ASR.
+		const envPrefer = readAsrBackendPreferenceFromEnv();
+		const mode: StreamingPipelineMode =
+			envPrefer === "fused"
+				? "streaming"
+				: envPrefer === "ffi-batch"
+					? "batch"
+					: pickStreamingMode({
+							ffiSupportsStreaming: ffiSupportsStreamingAsr(this.ffi),
+							asrBundlePresent: this.asrAvailable,
+							enableStreaming: readStreamingAsrEnabledFromEnv(),
+						});
+		if (this.loggedAsrDriveMode !== mode) {
+			this.loggedAsrDriveMode = mode;
+			if (mode === "streaming") {
+				logger.info(
+					"[EngineVoiceBridge] ASR drive mode: streaming — fused eliza_inference_asr_stream_* decoder with LocalAgreement-2 partial stabilization",
+				);
+			} else {
+				logger.info(
+					`[EngineVoiceBridge] ASR drive mode: batch — fused streaming decoder ${
+						ffiSupportsStreamingAsr(this.ffi)
+							? "disabled (ELIZA_VOICE_STREAMING_ASR/ELIZA_LOCAL_ASR_BACKEND)"
+							: "unavailable on this build (asrStreamSupported() == 0)"
+					}; interim windowed re-transcription at stepSeconds=${readAsrStepSecondsFromEnv() ?? DEFAULT_ASR_STEP_SECONDS}`,
+				);
+			}
+		}
+		const transcriber = createStreamingTranscriber({
 			ffi: this.ffi,
 			getContext: contextRef ? () => contextRef.ensure() : undefined,
 			asrBundlePresent: this.asrAvailable,
 			vad: opts?.vad,
+			prefer: mode === "streaming" ? "fused" : "ffi-batch",
 		});
+		return mode === "streaming"
+			? new StabilizedStreamingTranscriber(transcriber)
+			: transcriber;
 	}
 
 	/**
@@ -2015,11 +2093,23 @@ export class EngineVoiceBridge {
 		events?: VoicePipelineEvents,
 	): VoicePipeline {
 		const transcriber = this.resolveTranscriber();
+		// Per-turn TTS transient reservation (#12254): sized to the measured
+		// decode peak of the backend actually wired. Backends without a
+		// measured table entry (test stubs/overrides) carry no reservation.
+		const ttsTransientBytes =
+			this.backend instanceof FfiOmniVoiceBackend
+				? OMNIVOICE_TTS_TRANSIENT_PEAK_BYTES
+				: this.backend instanceof KokoroTtsBackend
+					? KOKORO_TTS_TRANSIENT_PEAK_BYTES
+					: null;
 		const deps: VoicePipelineDeps = {
 			scheduler: this.scheduler,
 			transcriber,
 			drafter: new MtpDraftProposer(textRunner),
 			verifier: new MtpTargetVerifier(textRunner),
+			...(ttsTransientBytes !== null
+				? { ttsTransientReservation: { bytes: ttsTransientBytes } }
+				: {}),
 		};
 		return new VoicePipeline(deps, config, events);
 	}
@@ -2035,13 +2125,8 @@ export class EngineVoiceBridge {
 	 * silent cloud fallback.
 	 */
 	private resolveTranscriber(): StreamingTranscriber {
-		const ctxRef = this.ffiContextRef;
 		try {
-			return createStreamingTranscriber({
-				ffi: this.ffi,
-				getContext: ctxRef ? () => ctxRef.ensure() : undefined,
-				asrBundlePresent: this.asrAvailable,
-			});
+			return this.constructTranscriber();
 		} catch (err) {
 			if (err instanceof AsrUnavailableError) {
 				return new MissingAsrTranscriber(err.message);

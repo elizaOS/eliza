@@ -1,3 +1,5 @@
+/** Storybook stories for StatusBar — offline, live, stream-unavailable, loading, and long-agent-name states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { StatusBar } from "./StatusBar";

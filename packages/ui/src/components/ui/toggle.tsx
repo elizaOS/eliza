@@ -1,6 +1,7 @@
 /**
- * Toggle component for toggling states with visual feedback.
- * Built on Radix UI primitives with variant and size support.
+ * Two-state toggle button over Radix `@radix-ui/react-toggle`, with cva variant
+ * and size options. Derived from shadcn/ui `toggle`
+ * (https://ui.shadcn.com/docs/components/toggle).
  */
 "use client";
 

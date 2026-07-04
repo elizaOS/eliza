@@ -1,3 +1,8 @@
+/**
+ * Confirms the plaintext private-key export route stays hard-disabled
+ * (HTTP 410, no key material in the response) against a hand-built
+ * `WalletRouteContext` mock — no real HTTP server or wallet backend involved.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { handleWalletRoutes, type WalletRouteContext } from "./wallet-routes";
 

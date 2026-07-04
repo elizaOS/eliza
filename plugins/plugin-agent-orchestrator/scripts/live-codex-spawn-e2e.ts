@@ -17,7 +17,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/agent/auth/account-storage";
+import { saveAccount } from "@elizaos/auth/account-storage";
 import { getDefaultAccountPool } from "../../../packages/app-core/src/services/account-pool.ts";
 import { getCodingAgentSelectorBridge } from "../../../packages/app-core/src/services/coding-account-bridge.ts";
 import { AcpService } from "../src/services/acp-service.ts";

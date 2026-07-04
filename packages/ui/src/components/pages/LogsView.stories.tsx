@@ -1,3 +1,5 @@
+/** Storybook stories for LogsView, seeded with static sample log entries across levels/sources. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { LogsView } from "./LogsView";

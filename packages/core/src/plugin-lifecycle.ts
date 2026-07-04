@@ -1,7 +1,9 @@
+import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
-import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type { RegisteredEvaluator } from "./types/evaluator";
+import type { ModelRegistrationMetadata } from "./types/model";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -62,6 +64,7 @@ type RuntimeModelHandlerRecord = {
 		runtime: unknown,
 		params: Record<string, unknown>,
 	) => Promise<unknown>;
+	metadata?: ModelRegistrationMetadata;
 	provider: string;
 	priority?: number;
 	registrationOrder?: number;
@@ -166,12 +169,6 @@ const pluginRegistrationContext =
 const pluginServiceStartContext =
 	createAsyncContextStorage<RuntimePluginServiceStartCapture>();
 const serviceClassOwners = new WeakMap<RuntimeServiceClass, string>();
-const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
-	"wallet",
-	"lp_pool",
-	"token_data",
-	"trajectories",
-]);
 
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
 	return (
@@ -190,7 +187,8 @@ function warnOnDuplicateServiceTypeRegistration(
 ): void {
 	if (
 		existingServiceClasses.length === 0 ||
-		INTENTIONAL_MULTI_SERVICE_TYPES.has(String(serviceType))
+		serviceClass.allowsMultiple === true ||
+		existingServiceClasses.some((existing) => existing.allowsMultiple === true)
 	) {
 		return;
 	}
@@ -284,19 +282,22 @@ function applyEffectiveActionContexts(
 	};
 }
 
-const DEFAULT_CONTEXT_ROLE_BY_ID = new Map(
-	DEFAULT_CONTEXT_DEFINITIONS.map((definition) => [
-		String(definition.id),
-		definition.roleGate?.minRole,
-	]),
-);
-
+/**
+ * Derive an action's effective role gate from the role gates declared by the
+ * contexts it is tagged with. Resolution goes through the PER-RUNTIME context
+ * registry so contexts registered at runtime by plugins
+ * via `runtime.contexts.register(...)` participate — not just the first-party
+ * defaults. (Previously this read a module-level snapshot of the default
+ * contexts, so a plugin-registered context declaring `minRole: OWNER` was
+ * invisible and the gate silently collapsed to USER — a permission bypass.)
+ */
 function roleGateForActionContexts(
 	contexts: readonly AgentContext[] | undefined,
+	contextRegistry: ContextRegistry,
 ): RoleGate {
 	let minRole: RoleGateRole = "USER";
 	for (const context of contexts ?? []) {
-		const contextRole = DEFAULT_CONTEXT_ROLE_BY_ID.get(String(context));
+		const contextRole = contextRegistry.get(context)?.roleGate?.minRole;
 		if (contextRole && roleRank(contextRole) > roleRank(minRole)) {
 			minRole = contextRole;
 		}
@@ -307,14 +308,20 @@ function roleGateForActionContexts(
 function applyEffectiveActionAccess(
 	action: RuntimeAction,
 	pluginContexts: Plugin["contexts"] | undefined,
+	contextRegistry: ContextRegistry,
 ): RuntimeAction {
 	const withContexts = applyEffectiveActionContexts(action, pluginContexts);
 	const roleGate =
-		withContexts.roleGate ?? roleGateForActionContexts(withContexts.contexts);
+		withContexts.roleGate ??
+		roleGateForActionContexts(withContexts.contexts, contextRegistry);
 	const subActions = withContexts.subActions?.map((subAction) =>
 		typeof subAction === "string"
 			? subAction
-			: applyEffectiveActionAccess(subAction as RuntimeAction, undefined),
+			: applyEffectiveActionAccess(
+					subAction as RuntimeAction,
+					undefined,
+					contextRegistry,
+				),
 	);
 
 	if (withContexts === action) {
@@ -609,6 +616,10 @@ function removeOwnedSendHandlers(
 	}
 }
 
+function removeOwnedConnectorSources(ownership: PluginOwnership): void {
+	unregisterConnectorSourceMetadataOwner(ownership.pluginName);
+}
+
 function removeOwnedComponents(
 	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
@@ -687,6 +698,7 @@ async function teardownPluginOwnership(
 		removeOwnedEvents(runtime, ownership);
 		removeOwnedRoutes(runtime, ownership);
 		removeOwnedModels(privateState, ownership);
+		removeOwnedConnectorSources(ownership);
 		removeOwnedComponents(runtime, ownership);
 		removeOwnedPlugins(runtime, ownership);
 	} catch (error) {
@@ -771,7 +783,11 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture = pluginRegistrationContext.getStore();
 		const actionsBefore = runtimeWithLifecycle.actions.length;
 		originalRegisterAction(
-			applyEffectiveActionAccess(action, capture?.ownership.plugin.contexts),
+			applyEffectiveActionAccess(
+				action,
+				capture?.ownership.plugin.contexts,
+				runtimeWithLifecycle.contexts,
+			),
 		);
 		if (!capture || runtimeWithLifecycle.actions.length <= actionsBefore)
 			return;
@@ -825,17 +841,19 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		handler,
 		provider,
 		priority,
+		metadata,
 	) => {
 		const capture = pluginRegistrationContext.getStore();
 		const modelKey = String(modelType);
 		const modelsBefore = privateState.models.get(modelKey)?.length ?? 0;
-		originalRegisterModel(modelType, handler, provider, priority);
+		originalRegisterModel(modelType, handler, provider, priority, metadata);
 		if (!capture) return;
 		const nextModels = privateState.models.get(modelKey) ?? [];
 		for (const registeredModel of nextModels.slice(modelsBefore)) {
 			pushUniqueModel(capture.ownership.models, {
 				modelType: modelKey,
 				handler: registeredModel.handler as RuntimeModelRegistration["handler"],
+				metadata: registeredModel.metadata,
 				provider: registeredModel.provider,
 			});
 		}

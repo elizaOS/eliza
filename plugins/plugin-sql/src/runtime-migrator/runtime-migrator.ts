@@ -1,3 +1,15 @@
+/**
+ * `RuntimeMigrator` drives the diff-based schema migration that runs at agent
+ * boot: snapshot the plugin's current Drizzle schema, diff it against the
+ * last recorded snapshot (or an introspected baseline if none was recorded),
+ * generate SQL, and apply it inside a transaction — no `drizzle-kit
+ * generate` step required. Per-plugin PostgreSQL advisory locks (skipped on
+ * PGlite/dev databases) prevent concurrent migration races across processes.
+ * Destructive changes (dropped tables/columns, unsafe type changes) are
+ * blocked unless `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` or `options.force`
+ * is set. State is persisted via `MigrationTracker` (hash + timestamp),
+ * `JournalStorage` (Drizzle-compatible journal), and `SnapshotStorage`.
+ */
 import { logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { getRow } from "../types";
@@ -38,12 +50,10 @@ export class RuntimeMigrator {
    * All other plugins should use namespaced schemas
    */
   private getExpectedSchemaName(pluginName: string): string {
-    // Core plugin uses public schema
     if (pluginName === "@elizaos/plugin-sql") {
       return "public";
     }
 
-    // Use the schema transformer's logic for consistency
     return deriveSchemaName(pluginName);
   }
 
@@ -53,7 +63,6 @@ export class RuntimeMigrator {
   private async ensureSchemasExist(snapshot: SchemaSnapshot): Promise<void> {
     const schemasToCreate = new Set<string>();
 
-    // Collect all schemas from tables
     for (const table of Object.values(snapshot.tables)) {
       const schemaName = table.schema || "public";
       if (schemaName !== "public") {
@@ -61,14 +70,12 @@ export class RuntimeMigrator {
       }
     }
 
-    // Also add schemas from the snapshot's schemas object
     for (const schema of Object.keys(snapshot.schemas || {})) {
       if (schema !== "public") {
         schemasToCreate.add(schema);
       }
     }
 
-    // Create all non-public schemas
     for (const schemaName of schemasToCreate) {
       logger.debug({ src: "plugin:sql", schemaName }, "Ensuring schema exists");
       await this.db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`));
@@ -85,7 +92,6 @@ export class RuntimeMigrator {
     for (const table of Object.values(snapshot.tables)) {
       const actualSchema = table.schema || "public";
 
-      // Warn if non-core plugin is using public schema
       if (!isCorePLugin && actualSchema === "public") {
         logger.warn(
           {
@@ -98,7 +104,6 @@ export class RuntimeMigrator {
         );
       }
 
-      // Warn if core plugin is not using public schema
       if (isCorePLugin && actualSchema !== "public") {
         logger.warn(
           {
@@ -296,7 +301,6 @@ export class RuntimeMigrator {
   ): Promise<void> {
     const lockId = this.getAdvisoryLockId(pluginName);
 
-    // Validate lockId is within PostgreSQL bigint range
     if (!this.validateBigInt(lockId)) {
       throw new Error(`Invalid advisory lock ID generated for plugin ${pluginName}`);
     }
@@ -306,11 +310,10 @@ export class RuntimeMigrator {
     try {
       logger.info({ src: "plugin:sql", pluginName }, "Starting migration for plugin");
 
-      // Ensure migration tables exist
       await this.initialize();
 
-      // Only use advisory locks for real PostgreSQL databases
-      // Skip for PGLite or development databases
+      // Advisory locks only apply to real PostgreSQL — PGlite and other dev
+      // databases don't need cross-process coordination.
       const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || "";
       const isRealPostgres = this.isRealPostgresDatabase(postgresUrl);
 
@@ -318,8 +321,6 @@ export class RuntimeMigrator {
         try {
           logger.debug({ src: "plugin:sql", pluginName }, "Using PostgreSQL advisory locks");
 
-          // Convert bigint to string for SQL query
-          // The sql tagged template will properly parameterize this value
           const lockIdStr = lockId.toString();
 
           const lockResult = await this.db.execute(
@@ -337,7 +338,6 @@ export class RuntimeMigrator {
               "Migration already in progress, waiting for lock"
             );
 
-            // Wait for the lock (blocking call)
             await this.db.execute(sql`SELECT pg_advisory_lock(CAST(${lockIdStr} AS bigint))`);
             lockAcquired = true;
 
@@ -349,8 +349,8 @@ export class RuntimeMigrator {
             );
           }
         } catch (lockError) {
-          // If advisory locks fail, log but continue
-          // This might happen if the PostgreSQL version doesn't support advisory locks
+          // Some PostgreSQL versions/configurations don't support advisory
+          // locks — log and continue rather than blocking the migration.
           logger.warn(
             {
               src: "plugin:sql",
@@ -362,36 +362,29 @@ export class RuntimeMigrator {
           lockAcquired = false;
         }
       } else {
-        // For PGLite or other development databases, skip advisory locks
         logger.debug(
           { src: "plugin:sql" },
           "Development database detected, skipping advisory locks"
         );
       }
 
-      // Install required extensions
-      // pgcrypto is only needed for real PostgreSQL (PGLite uses native gen_random_uuid)
+      // pgcrypto is only needed for real PostgreSQL — PGlite has native gen_random_uuid.
       const extensions = isRealPostgres
         ? ["vector", "fuzzystrmatch", "pgcrypto"]
         : ["vector", "fuzzystrmatch"];
       await this.extensionManager.installRequiredExtensions(extensions);
 
-      // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);
 
-      // Ensure all schemas referenced in the snapshot exist
       await this.ensureSchemasExist(currentSnapshot);
 
-      // Validate schema usage and warn about potential issues
       this.validateSchemaUsage(pluginName, currentSnapshot);
 
       const currentHash = hashSnapshot(currentSnapshot);
 
-      // Check if we've already run this exact migration
-      // This check happens AFTER acquiring the lock to handle concurrent scenarios
-      // This is critical: if we had to wait for the lock (lockAcquired was initially false),
-      // another process may have completed the migration while we were waiting
-      // We MUST check regardless of whether lastMigration existed before
+      // Must re-check for an already-completed migration after acquiring the
+      // lock: if this call had to wait for the lock, another process may have
+      // already run this exact migration while we were waiting.
       const lastMigration = await this.migrationTracker.getLastMigration(pluginName);
       if (lastMigration && lastMigration.hash === currentHash) {
         logger.info(
@@ -401,10 +394,11 @@ export class RuntimeMigrator {
         return;
       }
 
-      // Load previous snapshot
       let previousSnapshot = await this.snapshotStorage.getLatestSnapshot(pluginName);
 
-      // If no snapshot exists but tables exist in database, introspect them
+      // No recorded snapshot but the plugin's tables already exist in the
+      // database (e.g. pre-migrator install): introspect them to establish
+      // a baseline instead of treating every existing table as newly created.
       if (!previousSnapshot && Object.keys(currentSnapshot.tables).length > 0) {
         const hasExistingTables = await this.introspector.hasExistingTables(pluginName);
 
@@ -414,16 +408,14 @@ export class RuntimeMigrator {
             "No snapshot found but tables exist in database, introspecting"
           );
 
-          // Determine the schema name for introspection
           const schemaName = this.getExpectedSchemaName(pluginName);
 
-          // Introspect the current database state
           const introspectedSnapshot = await this.introspector.introspectSchema(schemaName);
 
-          // IMPORTANT: Filter the introspected snapshot to only include tables that are
-          // defined in the current schema. This prevents tables from other plugins
-          // (e.g., gamification tables in 'public' schema) from being marked as "orphans"
-          // and scheduled for deletion.
+          // Filter to only tables defined in the current plugin's schema —
+          // otherwise tables belonging to other plugins sharing the same
+          // Postgres schema (e.g. other plugins in 'public') would be
+          // classified as orphans and scheduled for deletion.
           const expectedTableNames = new Set<string>();
           for (const tableKey of Object.keys(currentSnapshot.tables)) {
             const tableData = currentSnapshot.tables[tableKey];
@@ -431,7 +423,6 @@ export class RuntimeMigrator {
             expectedTableNames.add(tableName);
           }
 
-          // Filter introspected tables to only those in the current schema
           const filteredTables: Record<string, SchemaTable> = {};
           for (const tableKey of Object.keys(introspectedSnapshot.tables)) {
             const tableData = introspectedSnapshot.tables[tableKey];
@@ -446,18 +437,14 @@ export class RuntimeMigrator {
             }
           }
 
-          // Use filtered snapshot
           const filteredSnapshot = {
             ...introspectedSnapshot,
             tables: filteredTables,
           };
 
-          // Only use the introspected snapshot if it has tables
           if (Object.keys(filteredSnapshot.tables).length > 0) {
-            // Save this as the initial snapshot (idx: 0)
             await this.snapshotStorage.saveSnapshot(pluginName, 0, filteredSnapshot);
 
-            // Update journal to record this initial state
             await this.journalStorage.updateJournal(
               pluginName,
               0,
@@ -465,7 +452,6 @@ export class RuntimeMigrator {
               true
             );
 
-            // Record this as a migration
             const filteredHash = hashSnapshot(filteredSnapshot);
             await this.migrationTracker.recordMigration(pluginName, filteredHash, Date.now());
 
@@ -474,18 +460,15 @@ export class RuntimeMigrator {
               "Created initial snapshot from existing database"
             );
 
-            // Set this as the previous snapshot for comparison
             previousSnapshot = filteredSnapshot;
           }
         }
       }
 
-      // Check if there are actual changes
       if (!hasChanges(previousSnapshot, currentSnapshot)) {
         logger.info({ src: "plugin:sql", pluginName }, "No schema changes");
 
-        // For empty schemas, we still want to record the migration
-        // to ensure idempotency and consistency
+        // Record even an empty schema so re-runs stay idempotent.
         if (!previousSnapshot && Object.keys(currentSnapshot.tables).length === 0) {
           logger.info({ src: "plugin:sql", pluginName }, "Recording empty schema");
           await this.migrationTracker.recordMigration(pluginName, currentHash, Date.now());
@@ -498,30 +481,25 @@ export class RuntimeMigrator {
         return;
       }
 
-      // Calculate diff
       const diff = await calculateDiff(previousSnapshot, currentSnapshot);
 
-      // Check if diff has changes
       if (!hasDiffChanges(diff)) {
         logger.info({ src: "plugin:sql", pluginName }, "No actionable changes");
         return;
       }
 
-      // Check for potential data loss
       const dataLossCheck = checkForDataLoss(diff);
 
       if (dataLossCheck.hasDataLoss) {
         const isProduction = process.env.NODE_ENV === "production";
 
-        // Determine if destructive migrations are allowed
-        // Priority: explicit options > environment variable
+        // Explicit options take priority over the environment variable.
         const allowDestructive =
           options.force ||
           options.allowDataLoss ||
           process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true";
 
         if (!allowDestructive) {
-          // Block the migration and provide clear instructions
           logger.error(
             {
               src: "plugin:sql",
@@ -539,7 +517,6 @@ export class RuntimeMigrator {
           throw new Error(errorMessage);
         }
 
-        // Log that we're proceeding with destructive operations
         if (dataLossCheck.requiresConfirmation) {
           logger.warn(
             { src: "plugin:sql", pluginName, warnings: dataLossCheck.warnings },
@@ -548,7 +525,6 @@ export class RuntimeMigrator {
         }
       }
 
-      // Generate SQL statements
       const sqlStatements = await generateMigrationSQL(previousSnapshot, currentSnapshot, diff);
 
       if (sqlStatements.length === 0) {
@@ -556,7 +532,6 @@ export class RuntimeMigrator {
         return;
       }
 
-      // Log what we're about to do
       logger.info(
         { src: "plugin:sql", pluginName, statementCount: sqlStatements.length },
         "Executing SQL statements"
@@ -570,7 +545,6 @@ export class RuntimeMigrator {
         });
       }
 
-      // Dry run mode - just log what would happen
       if (options.dryRun) {
         logger.info(
           { src: "plugin:sql", pluginName, statements: sqlStatements },
@@ -579,12 +553,10 @@ export class RuntimeMigrator {
         return;
       }
 
-      // Execute migration in transaction
       await this.executeMigration(pluginName, currentSnapshot, currentHash, sqlStatements);
 
       logger.info({ src: "plugin:sql", pluginName }, "Migration completed successfully");
 
-      // Return a success result
       return;
     } catch (error) {
       logger.error(
@@ -597,13 +569,12 @@ export class RuntimeMigrator {
       );
       throw error;
     } finally {
-      // Always release the advisory lock if we acquired it (only for real PostgreSQL)
+      // Release the advisory lock if this call acquired one (real PostgreSQL only).
       const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || "";
       const isRealPostgres = this.isRealPostgresDatabase(postgresUrl);
 
       if (lockAcquired && isRealPostgres) {
         try {
-          // Convert bigint to string for SQL query (same as when acquiring)
           const lockIdStr = lockId.toString();
           await this.db.execute(sql`SELECT pg_advisory_unlock(CAST(${lockIdStr} AS bigint))`);
           logger.debug({ src: "plugin:sql", pluginName }, "Advisory lock released");
@@ -633,40 +604,27 @@ export class RuntimeMigrator {
     let transactionStarted = false;
 
     try {
-      // Start manual transaction
       await this.db.execute(sql`BEGIN`);
       transactionStarted = true;
 
-      // Execute all SQL statements
       for (const stmt of sqlStatements) {
         logger.debug({ src: "plugin:sql", statement: stmt }, "Executing SQL statement");
         await this.db.execute(sql.raw(stmt));
       }
 
-      // Get next index for journal
       const idx = await this.journalStorage.getNextIdx(pluginName);
 
-      // Record migration
       await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
 
-      // Update journal
       const tag = this.generateMigrationTag(idx, pluginName);
-      await this.journalStorage.updateJournal(
-        pluginName,
-        idx,
-        tag,
-        true // breakpoints
-      );
+      await this.journalStorage.updateJournal(pluginName, idx, tag, /* breakpoints */ true);
 
-      // Store snapshot
       await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
 
-      // Commit the transaction
       await this.db.execute(sql`COMMIT`);
 
       logger.info({ src: "plugin:sql", pluginName, tag }, "Recorded migration");
     } catch (error) {
-      // Rollback on error if transaction was started
       if (transactionStarted) {
         try {
           await this.db.execute(sql`ROLLBACK`);
@@ -695,7 +653,7 @@ export class RuntimeMigrator {
    * Generate migration tag (like 0000_jazzy_shard)
    */
   private generateMigrationTag(idx: number, pluginName: string): string {
-    // Generate a simple tag - in production, use Drizzle's word generation
+    // Simple index+timestamp tag; unlike drizzle-kit, this doesn't use word generation.
     const prefix = idx.toString().padStart(4, "0");
     const timestamp = Date.now().toString(36);
     return `${prefix}_${pluginName}_${timestamp}`;
@@ -754,22 +712,17 @@ export class RuntimeMigrator {
     try {
       logger.info({ src: "plugin:sql", pluginName }, "Checking migration");
 
-      // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);
 
-      // Load previous snapshot
       const previousSnapshot = await this.snapshotStorage.getLatestSnapshot(pluginName);
 
-      // Check if there are changes
       if (!hasChanges(previousSnapshot, currentSnapshot)) {
         logger.info({ src: "plugin:sql", pluginName }, "No changes detected");
         return null;
       }
 
-      // Calculate diff
       const diff = await calculateDiff(previousSnapshot, currentSnapshot);
 
-      // Check for data loss
       const dataLossCheck = checkForDataLoss(diff);
 
       if (dataLossCheck.hasDataLoss) {

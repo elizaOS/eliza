@@ -1,9 +1,11 @@
-// Regression: pasting >4096 chars into the web terminal was silently
-// discarded. xterm delivers a paste as ONE onData chunk, the client sent it
-// as ONE ws message, and the agent server drops any pty-input whose data
-// exceeds its 4096-char per-message cap (DoS protection) with only a server
-// log. sendPtyInput must therefore split oversized input into ordered
-// <=4096-char messages that reassemble to the full paste.
+/**
+ * Unit coverage for `chunkPtyInput` / `sendPtyInput` splitting oversized web-
+ * terminal input into ordered <=4096-char WS messages. xterm delivers a paste
+ * as ONE onData chunk and the agent server silently drops any pty-input over
+ * its 4096-char per-message cap (DoS protection), so a large paste must be
+ * split into pieces that reassemble to the full paste. Transport stubbed, no
+ * live agent.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
 import { chunkPtyInput, MAX_PTY_INPUT_CHUNK_LENGTH } from "./client-agent";

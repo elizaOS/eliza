@@ -2,9 +2,7 @@
  * Cloud connectors surface (Messaging & Communication + Channels groups).
  *
  * These are the CLOUD-hosted connectors (OAuth-redirect + token-credential),
- * distinct from the local-process `ConnectorsSection`. The surface is designed
- * so it can later branch by active-server kind; for now it always renders the
- * cloud variant.
+ * distinct from the local-process `ConnectorsSection`.
  */
 
 "use client";

@@ -25,14 +25,17 @@ export function shouldCreateDesktopTray(
 }
 
 /**
- * Whether the app should launch tray-first: no main window at startup, the
- * tray icon as the only surface, and the window created lazily on demand.
+ * Whether the app should launch dockless (tray-first): the pill + menu-bar
+ * icon are the resting surface and the macOS Dock icon stays hidden until a
+ * full window (dashboard / surface / settings / app) opens. The pill window is
+ * still created at boot — it just doesn't count for the Dock (#12184).
  *
- * Opt-in (default OFF). Tray-first is macOS-only — on Windows (CEF) the UI
- * message loop must be running before setApplicationMenu(), and Linux tray
- * support varies, so both keep a boot window. It also requires the tray to be
- * enabled and excludes kiosk shell mode (kiosk wants a fullscreen window).
- * Enable with ELIZA_DESKTOP_TRAY_FIRST=1.
+ * Default ON for macOS (#12184), the platform where the Dock/accessory model
+ * and menu-bar tray make this the native, unobtrusive experience. Kept
+ * macOS-only — on Windows (CEF) the UI message loop must be running before
+ * setApplicationMenu(), and Linux tray support varies. Requires the tray to be
+ * enabled and excludes kiosk shell mode (kiosk wants a fullscreen window). Kill
+ * switch: ELIZA_DESKTOP_TRAY_FIRST=0 restores the Dock icon at rest.
  */
 export function shouldStartTrayFirst(
   env: NodeJS.ProcessEnv = process.env,
@@ -42,7 +45,7 @@ export function shouldStartTrayFirst(
   if (platform !== "darwin") {
     return false;
   }
-  if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
+  if (parseFalsy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
     return false;
   }
   if (!shouldCreateDesktopTray(env)) {

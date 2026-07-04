@@ -1,0 +1,9 @@
+ Info       [eliza] deferred: ✓ @elizaos/plugin-personal-assistant registered (1755ms)
+ Info       [LIFEOPS:FIRST-RUN:BOOT-SEEDER] [first-run] Seeded 6 default-pack task(s) on boot (0 already-seeded, left untouched). (seeded=6, skipped=0)
+ Info       [eliza-boot] deferred:complete: 2ms (t+44922ms)
+[ui-smoke] live UI ready at http://127.0.0.1:21871
+[w8b] fire loop: ticks=4 firedStatus=fired notif=f2c0d2f0-ed86-4ad7-85f5-fe683e7c5855 cat=reminder
+
+=== two green Playwright runs (fire-loop results) ===
+reuse-stack run:  [w8b] fire loop: ticks=4  firedStatus=fired notif=f2c0d2f0-… cat=reminder  (1 passed, 2.3m)
+fresh-boot run:   [w8b] fire loop: ticks=14 firedStatus=fired notif=02619e94-… cat=reminder  (1 passed, 2.2m)

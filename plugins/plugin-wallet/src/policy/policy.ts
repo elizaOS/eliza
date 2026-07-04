@@ -1,3 +1,8 @@
+/**
+ * `PolicyModule` interface for on-chain spend-policy enforcement (size
+ * limits, allowlists, cooldowns). Actions delegate here after zod parsing and
+ * plugin-level checks rather than inlining policy logic themselves.
+ */
 import type { ApprovalSummary, SignScope } from "../wallet/pending.js";
 
 export interface PolicyEvaluation {

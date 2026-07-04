@@ -1,11 +1,59 @@
+import { getAmbientSingleton } from "./ambient-context";
 import { logger } from "./logger";
-import type { Plugin, Route } from "./types/plugin";
+import {
+	assertPublicRouteIntent,
+	type Plugin,
+	type Route,
+} from "./types/plugin";
 
 export type AppRoutePluginLoader = () => Plugin | Promise<Plugin>;
 
 export interface AppRoutePluginRegistryEntry {
 	id: string;
 	load: AppRoutePluginLoader;
+}
+
+/**
+ * Canonical `Error.name` for the error an app-route plugin loader throws when
+ * its plugin is intentionally absent from this deployment (optional plugin).
+ *
+ * This single string literal is the whole cross-package contract: hosts
+ * (`@elizaos/app-core`) construct {@link OptionalAppRoutePluginUnavailableError}
+ * and {@link drainAppRoutePluginLoaders} recognizes it. Matching is by name (not
+ * `instanceof`) so it stays robust when a combined deployment bundles two copies
+ * of `@elizaos/core` — the class identity differs across bundles but the name
+ * does not.
+ */
+export const OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME =
+	"OptionalAppRoutePluginUnavailableError";
+
+/**
+ * Error an app-route plugin loader throws when its optional plugin is not
+ * installed in this deployment. Hosts throw it; {@link drainAppRoutePluginLoaders}
+ * treats it as a graceful skip. Owned by core so the contract has one definition.
+ */
+export class OptionalAppRoutePluginUnavailableError extends Error {
+	readonly specifier: string;
+
+	constructor(specifier: string, cause?: unknown) {
+		super(`Optional app route plugin ${specifier} is unavailable`, { cause });
+		this.name = OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME;
+		this.specifier = specifier;
+	}
+}
+
+/**
+ * Whether `err` is the optional-app-route-plugin-unavailable signal. Matches by
+ * `Error.name` (not `instanceof`) so it holds across duplicate `@elizaos/core`
+ * bundles in a combined deployment.
+ */
+export function isOptionalAppRoutePluginUnavailableError(
+	err: unknown,
+): boolean {
+	return (
+		err instanceof Error &&
+		err.name === OPTIONAL_APP_ROUTE_PLUGIN_UNAVAILABLE_ERROR_NAME
+	);
 }
 
 interface AppRoutePluginRegistryStore {
@@ -17,20 +65,9 @@ const APP_ROUTE_PLUGIN_REGISTRY_KEY = Symbol.for(
 );
 
 function getRegistryStore(): AppRoutePluginRegistryStore {
-	const globalObject = globalThis as Record<PropertyKey, unknown>;
-	const existing = globalObject[APP_ROUTE_PLUGIN_REGISTRY_KEY] as
-		| AppRoutePluginRegistryStore
-		| null
-		| undefined;
-	if (existing) {
-		return existing;
-	}
-
-	const created: AppRoutePluginRegistryStore = {
+	return getAmbientSingleton(APP_ROUTE_PLUGIN_REGISTRY_KEY, () => ({
 		entries: new Map<string, AppRoutePluginRegistryEntry>(),
-	};
-	globalObject[APP_ROUTE_PLUGIN_REGISTRY_KEY] = created;
-	return created;
+	}));
 }
 
 export function registerAppRoutePluginLoader(
@@ -71,12 +108,8 @@ export async function drainAppRoutePluginLoaders(
 				return await load();
 			} catch (err) {
 				// The optional-unavailable error is thrown by loaders whose plugin is
-				// intentionally absent in this deployment; identify it by name to
-				// avoid a dependency on the app-core error class.
-				if (
-					err instanceof Error &&
-					err.name === "OptionalAppRoutePluginUnavailableError"
-				) {
+				// intentionally absent in this deployment.
+				if (isOptionalAppRoutePluginUnavailableError(err)) {
 					logger.debug(
 						`[app-routes] App route plugin ${id} unavailable, skipping route registration`,
 					);
@@ -96,6 +129,7 @@ export async function drainAppRoutePluginLoaders(
 		if (!plugin?.routes?.length) continue;
 		let added = 0;
 		for (const route of plugin.routes) {
+			assertPublicRouteIntent(route, plugin.name);
 			const routePath = route.path.startsWith("/")
 				? route.path
 				: `/${route.path}`;

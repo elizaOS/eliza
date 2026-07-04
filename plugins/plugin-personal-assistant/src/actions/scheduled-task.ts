@@ -50,7 +50,10 @@ import type {
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
-import { ScheduledTaskValidationError } from "../lifeops/scheduled-task/index.js";
+import {
+  ChannelKeyError,
+  ScheduledTaskValidationError,
+} from "../lifeops/scheduled-task/index.js";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { OWNER_OPERATION_VALIDATE } from "./life.js";
 
@@ -662,6 +665,17 @@ async function handleCreate(
           subaction: "create",
           error: "INVALID_SCHEDULED_TASK",
           issues: error.issues,
+        },
+      };
+    }
+    if (error instanceof ChannelKeyError) {
+      return {
+        success: false,
+        text: `Scheduled task validation failed: ${error.message}`,
+        data: {
+          subaction: "create",
+          error: "INVALID_SCHEDULED_TASK",
+          issues: [error.message],
         },
       };
     }

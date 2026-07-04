@@ -1,3 +1,8 @@
+/**
+ * Registers the Shopify dashboard page with the app-shell page registry, and in
+ * a DOM-less terminal host also registers the terminal view (lazy + guarded so
+ * the terminal engine stays out of browser/mobile bundles).
+ */
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 
 // In a terminal host (the Node agent, no DOM), register the Shopify view so it

@@ -81,6 +81,7 @@
     "@elizaos/capacitor-calendar": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "0.45.2",

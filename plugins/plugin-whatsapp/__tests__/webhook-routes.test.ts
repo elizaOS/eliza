@@ -1,3 +1,8 @@
+/**
+ * Drives the registered webhook HTTP routes end to end: the public GET subscribe
+ * handshake and the signed POST event route, asserting signature rejection and
+ * accepted delivery. Signs bodies with node:crypto against a fake runtime.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime, RouteRequest, RouteResponse, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

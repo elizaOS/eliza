@@ -1,3 +1,9 @@
+/**
+ * OAuth 1.0a (`env` mode) auth provider: assembles the four static consumer/access
+ * credentials from per-account `TwitterClientState` or the `TWITTER_*` settings and
+ * fails loudly, naming the missing vars, when any is absent. Selected by the
+ * auth-provider factory when `TWITTER_AUTH_MODE=env` (the default).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 import { getSetting } from "../../utils/settings";

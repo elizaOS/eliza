@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the pure SMS helpers — buildThreads (grouping, thread/message
+ * ordering, unread counts), smsRole (default-SMS-role derivation), and
+ * normalizeMessagesLimit (clamping). Deterministic, over real-shaped provider
+ * rows; no native bridge.
+ */
+
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import type { SystemStatus } from "@elizaos/capacitor-system";
 import { describe, expect, it } from "vitest";

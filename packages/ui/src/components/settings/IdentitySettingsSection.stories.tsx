@@ -1,3 +1,5 @@
+/** Storybook fixtures for `IdentitySettingsSection`: default, populated, dirty (unsaved edits), loading, and cloud-connected states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";

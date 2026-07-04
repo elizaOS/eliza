@@ -1,7 +1,8 @@
-// ---------------------------------------------------------------------------
-// Config types — Config*, Plugin*, Secret*, Connector*, Trigger*, Training*,
-// Update*, Extension*, Workbench*, Character*, Voice*, Skill*
-// ---------------------------------------------------------------------------
+/**
+ * Config-domain client DTOs: Config*, Plugin*, Secret*, Connector*, Trigger*,
+ * Training*, Update*, Extension*, Workbench*, Character*, Voice*, Skill*. One
+ * slice of the ElizaClient type surface, re-exported through client-types.ts.
+ */
 
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
 import type { MessageExampleContent, PluginParamDef } from "@elizaos/shared";
@@ -192,6 +193,7 @@ export interface PluginInfo {
       label: string;
       icon?: string;
       path: string;
+      tabAffinity?: string;
       order?: number;
       developerOnly?: boolean;
       viewKind?: ViewKind;
@@ -1633,13 +1635,13 @@ export type AutomationStatus =
   | "completed"
   | "draft"
   | "system";
-export type AutomationNodeClass =
-  | "trigger"
-  | "action"
-  | "context"
-  | "integration"
-  | "agent"
-  | "flow-control";
+// The automation-node catalog contract is owned by @elizaos/shared so the Node
+// API can type its route handlers without importing this React-adjacent module.
+export type {
+  AutomationNodeCatalogResponse,
+  AutomationNodeClass,
+  AutomationNodeDescriptor,
+} from "@elizaos/shared";
 
 export interface AutomationRoomBinding {
   conversationId: string | null;
@@ -1700,28 +1702,6 @@ export interface AutomationListResponse {
   summary: AutomationSummary;
   workflowStatus: import("./client-types-chat").WorkflowStatusResponse | null;
   workflowFetchError: string | null;
-}
-
-export interface AutomationNodeDescriptor {
-  id: string;
-  label: string;
-  description: string;
-  class: AutomationNodeClass;
-  source: string;
-  backingCapability: string;
-  ownerScoped: boolean;
-  requiresSetup: boolean;
-  availability: "enabled" | "disabled";
-  disabledReason?: string;
-}
-
-export interface AutomationNodeCatalogResponse {
-  nodes: AutomationNodeDescriptor[];
-  summary: {
-    total: number;
-    enabled: number;
-    disabled: number;
-  };
 }
 
 export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";

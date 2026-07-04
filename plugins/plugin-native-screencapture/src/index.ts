@@ -1,3 +1,4 @@
+/** Entry point: registers the `ScreenCapture` Capacitor plugin, lazy-loading the web implementation, and re-exports the type contract. */
 import { registerPlugin } from "@capacitor/core";
 
 import type { ScreenCapturePlugin } from "./definitions";

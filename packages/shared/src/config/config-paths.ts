@@ -1,3 +1,8 @@
+/**
+ * Dot-notation config path parsing and safe get/set/unset on nested config
+ * objects. Prototype-pollution keys (`__proto__`, `prototype`, `constructor`)
+ * are rejected so untrusted override paths cannot walk into the prototype chain.
+ */
 import { isPlainObject } from "../type-guards.js";
 
 type PathNode = Record<string, unknown>;

@@ -1,7 +1,11 @@
+/** Covers building the voice-workbench report, its markdown rendering, and baseline regression detection. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
+	scoreBargeInGating,
 	scoreDiarization,
 	scoreEotDecision,
+	scoreErle,
+	scorePartialMonotonicity,
 	scoreRespondDecision,
 	scoreTtsAsrRoundTrip,
 } from "./e2e-harness";
@@ -108,6 +112,32 @@ describe("buildVoiceWorkbenchReport", () => {
 		expect(report.metrics.eotLatencyP50Ms).not.toBeNull();
 		expect(report.metrics.eotLatencyP95Ms).toBe(200);
 	});
+
+	it("rolls up barge-in gating, ERLE, and partial-retraction metrics", () => {
+		const report = buildVoiceWorkbenchReport([
+			{
+				scenarioId: "barge-erle-partials",
+				classes: [
+					"speaker-gated-barge-in",
+					"desktop-aec",
+					"streaming-partials",
+				],
+				status: "ran",
+				cases: [
+					scoreBargeInGating([
+						{ expectCancel: true, cancelMs: 120 },
+						{ expectCancel: false, cancelMs: null },
+					]),
+					scoreErle([{ erleDb: 22 }, { erleDb: 19 }], { minErleDb: 18 }),
+					scorePartialMonotonicity(["a", "a b", "a b c"]),
+				],
+			},
+		]);
+		expect(report.metrics.bargeInGatingAccuracy.worst).toBe(1);
+		expect(report.metrics.bargeInCancelMs.worst).toBe(120);
+		expect(report.metrics.erleDb.worst).toBe(19);
+		expect(report.metrics.partialRetractions.worst).toBe(0);
+	});
 });
 
 describe("formatVoiceWorkbenchMarkdown", () => {
@@ -164,5 +194,27 @@ describe("regressionsAgainstBaseline", () => {
 	it("returns nothing when metrics are stable", () => {
 		const report = buildVoiceWorkbenchReport([cleanRespond]);
 		expect(regressionsAgainstBaseline(report, report)).toHaveLength(0);
+	});
+
+	it("flags an ERLE drop and a barge-in cancel-latency rise past tolerance", () => {
+		const make = (
+			erle: number,
+			cancelMs: number,
+		): VoiceWorkbenchScenarioRun => ({
+			scenarioId: "aec",
+			classes: ["desktop-aec", "speaker-gated-barge-in"],
+			status: "ran",
+			cases: [
+				scoreErle([{ erleDb: erle }], { minErleDb: 18 }),
+				scoreBargeInGating([{ expectCancel: true, cancelMs }]),
+			],
+		});
+		const regs = regressionsAgainstBaseline(
+			buildVoiceWorkbenchReport([make(20, 120)]),
+			buildVoiceWorkbenchReport([make(28, 100)]),
+		);
+		const metrics = regs.map((r) => r.metric);
+		expect(metrics).toContain("erleDb");
+		expect(metrics).toContain("bargeInCancelMs");
 	});
 });

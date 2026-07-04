@@ -1,3 +1,4 @@
+/** Tests for the WORKTREE `enter` handler against a real git worktree in a temp repo. */
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";

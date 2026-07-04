@@ -742,13 +742,14 @@ const RoutingRuleRow = memo(
       >
         <td className="px-2 py-1.5 align-top">
           {keyExists ? (
-            <button
+            <Button
               ref={chipRef}
               {...chipAgentProps}
-              type="button"
               onClick={onOpenInSecrets}
               data-testid={`routing-key-chip-${ruleKey}`}
-              className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              variant="ghost"
+              size="sm"
+              className="h-auto gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
               aria-label={t("routing.openInSecrets", {
                 keyPattern,
                 defaultValue: "Open {{keyPattern}} in Secrets tab",
@@ -756,7 +757,7 @@ const RoutingRuleRow = memo(
             >
               {keyPattern}
               <ArrowRight className="h-3 w-3" aria-hidden />
-            </button>
+            </Button>
           ) : (
             <span className="font-mono text-2xs text-muted">{keyPattern}</span>
           )}

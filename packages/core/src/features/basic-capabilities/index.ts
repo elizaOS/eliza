@@ -19,6 +19,11 @@ import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
+import {
+	getConfiguredOwnerEntityIds,
+	type RolesWorldMetadata,
+	recordOwnerGrant,
+} from "../../roles.ts";
 import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import { SensitiveRequestDispatchRegistryService } from "../../sensitive-requests/dispatch-registry.ts";
 import {
@@ -38,7 +43,6 @@ import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
-import type { Role } from "../../types/environment.ts";
 import { EventType } from "../../types/events.ts";
 import type {
 	ActionEventPayload,
@@ -50,6 +54,7 @@ import type {
 	EvaluatorEventPayload,
 	EventPayload,
 	IAgentRuntime,
+	IControlTransportService,
 	IMessageBusService,
 	InvokePayload,
 	Media,
@@ -66,9 +71,15 @@ import type {
 	WorldPayload,
 } from "../../types/index.ts";
 import { MemoryType } from "../../types/memory.ts";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../types/message-source.ts";
 import { ModelType } from "../../types/model.ts";
 import type { ServiceClass } from "../../types/plugin.ts";
-import { ChannelType, ContentType } from "../../types/primitives.ts";
+import {
+	ChannelType,
+	ContentType,
+	type JsonValue,
+} from "../../types/primitives.ts";
+import { ServiceType } from "../../types/service.ts";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -89,8 +100,6 @@ import {
 import { autonomyRoutes } from "../autonomy/routes.ts";
 import { AutonomyService } from "../autonomy/service.ts";
 
-const ROLE_OWNER: Role = "OWNER";
-
 // Re-export action and provider modules
 export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
@@ -104,6 +113,7 @@ export {
 export * from "./providers/index.ts";
 
 import { describeImageCached } from "../../media/index.ts";
+import { recentErrorsProvider } from "../../providers/recent-errors.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
@@ -468,7 +478,7 @@ export function shouldRespond(
 		ChannelType.API,
 	];
 
-	const alwaysRespondSources = ["client_chat"];
+	const alwaysRespondSources = [MESSAGE_SOURCE_CLIENT_CHAT];
 
 	const customChannels = normalizeEnvList(
 		runtime.getSetting("ALWAYS_RESPOND_CHANNELS") ??
@@ -777,6 +787,33 @@ const postGeneratedHandler = async (
 /**
  * Syncs a single user into an entity
  */
+/**
+ * World metadata for a DM channel. The DM sender is granted OWNER of their DM
+ * world ONLY when they are a configured canonical owner (#12087 Item 2). Writing
+ * `roles[entityId] = OWNER` for EVERY DM sender (the prior behavior) made anyone
+ * who could DM the agent the OWNER of their own DM world — and with no canonical
+ * owner configured (the default), that grant is honored by `resolveOwnershipRole`,
+ * clearing every `minRole: OWNER` gate (SECRETS, SHELL, …) for that sender. The
+ * grant now goes through the auditable `recordOwnerGrant` API behind an explicit
+ * owner match; a non-owner DM sender gets an empty (non-owner) world.
+ */
+export function buildDmWorldMetadata(
+	runtime: IAgentRuntime,
+	entityId: string,
+): Record<string, JsonValue> {
+	if (getConfiguredOwnerEntityIds(runtime).includes(entityId)) {
+		const grant: RolesWorldMetadata = {};
+		recordOwnerGrant(grant, entityId);
+		return {
+			ownership: { ownerId: entityId },
+			roles: grant.roles ?? {},
+			roleSources: grant.roleSources ?? {},
+			settings: {}, // Initialize empty settings for setup
+		};
+	}
+	return { settings: {} };
+}
+
 const syncSingleUser = async (
 	entityId: UUID,
 	runtime: IAgentRuntime,
@@ -814,15 +851,7 @@ const syncSingleUser = async (
 
 	const worldMetadata =
 		type === ChannelType.DM
-			? {
-					ownership: {
-						ownerId: entityId,
-					},
-					roles: {
-						[entityId]: ROLE_OWNER,
-					},
-					settings: {}, // Initialize empty settings for setup
-				}
+			? buildDmWorldMetadata(runtime, entityId)
 			: undefined;
 
 	runtime.logger.info(
@@ -920,51 +949,35 @@ const controlMessageHandler = async ({
 		"Processing control message",
 	);
 
-	const serviceNames = Array.from(runtime.getAllServices().keys()) as string[];
-	const websocketServiceName = serviceNames.find(
-		(name: string) =>
-			name.toLowerCase().includes("websocket") ||
-			name.toLowerCase().includes("socket"),
+	const controlTransport = runtime.getService<IControlTransportService>(
+		ServiceType.CONTROL_TRANSPORT,
 	);
 
-	if (websocketServiceName) {
-		const websocketService = runtime.getService(websocketServiceName);
-		interface WebSocketServiceWithSendMessage {
-			sendMessage: (message: {
-				type: string;
-				payload: unknown;
-			}) => Promise<void>;
-		}
-		if (websocketService && "sendMessage" in websocketService) {
-			await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
-				type: "controlMessage",
-				payload: {
-					action: message.payload.action,
-					target: message.payload.target,
-					roomId: message.roomId,
-				},
-			});
-
-			runtime.logger.debug(
-				{
-					src: "basic-capabilities",
-					agentId: runtime.agentId,
-					action: message.payload.action,
-				},
-				"Control message sent successfully",
-			);
-		} else {
-			runtime.logger.error(
-				{ src: "basic-capabilities", agentId: runtime.agentId },
-				"WebSocket service does not have sendMessage method",
-			);
-		}
-	} else {
+	if (!controlTransport) {
 		runtime.logger.error(
 			{ src: "basic-capabilities", agentId: runtime.agentId },
-			"No WebSocket service found to send control message",
+			"No control transport service found to send control message",
 		);
+		return;
 	}
+
+	await controlTransport.sendMessage({
+		type: "controlMessage",
+		payload: {
+			action: message.payload.action,
+			target: message.payload.target,
+			roomId: message.roomId,
+		},
+	});
+
+	runtime.logger.debug(
+		{
+			src: "basic-capabilities",
+			agentId: runtime.agentId,
+			action: message.payload.action,
+		},
+		"Control message sent successfully",
+	);
 };
 
 // ============================================================================
@@ -1119,7 +1132,7 @@ const events: PluginEvents = {
 		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
-			if (payloadContent && payloadContent.source === "client_chat") {
+			if (payloadContent?.source === MESSAGE_SOURCE_CLIENT_CHAT) {
 				const messageBusService =
 					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionStart) {
@@ -1173,7 +1186,7 @@ const events: PluginEvents = {
 		async (payload: ActionEventPayload) => {
 			// Only notify for client_chat messages
 			const payloadContent = payload.content;
-			if (payloadContent && payloadContent.source === "client_chat") {
+			if (payloadContent?.source === MESSAGE_SOURCE_CLIENT_CHAT) {
 				const messageBusService =
 					payload.runtime.getService<IMessageBusService>("message-bus-service");
 				if (messageBusService?.notifyActionUpdate) {
@@ -1338,6 +1351,7 @@ export const basicProviders = [
 	platformChatContextProvider,
 	platformUserContextProvider,
 	providersProvider,
+	recentErrorsProvider,
 	recentMessagesProvider,
 	runtimeModelContextProvider,
 	uiContextProvider,

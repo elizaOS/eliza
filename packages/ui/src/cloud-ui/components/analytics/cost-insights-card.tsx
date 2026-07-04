@@ -1,3 +1,6 @@
+/**
+ * Cloud analytics card summarizing cost trend, progress, and alerts.
+ */
 import { Badge } from "../../../components/ui/badge";
 import { Progress } from "../../../components/ui/progress";
 import { BrandCard } from "../brand/brand-card";

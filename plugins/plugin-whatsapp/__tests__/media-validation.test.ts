@@ -1,3 +1,8 @@
+/**
+ * Guards the SSRF check on outbound media links: both the Cloud API client and
+ * the Baileys message adapter must reject file://, data:, javascript:, and
+ * malformed URLs before dispatch. Deterministic — stubs global fetch, no network.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageAdapter } from "../src/baileys/message-adapter";
 import { WhatsAppClient } from "../src/client";

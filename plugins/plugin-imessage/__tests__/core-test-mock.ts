@@ -1,3 +1,10 @@
+/**
+ * Vitest setup file that mocks `@elizaos/core` so the iMessage suites run
+ * without the real runtime: a stub `Service` base class, a no-op `logger`, and
+ * deterministic `stringToUuid` / `createUniqueUuid` implementations (SHA1 of the
+ * value) so id-mapping assertions stay stable. Referenced from
+ * `vitest.config.ts` `setupFiles`.
+ */
 import { createHash } from "node:crypto";
 import { vi } from "vitest";
 

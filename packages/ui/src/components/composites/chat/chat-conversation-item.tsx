@@ -1,13 +1,13 @@
+/**
+ * One conversation row in the chat sidebar: title (truncated with tooltip when
+ * clipped), rename/delete actions, and active-state styling. On touch devices
+ * the row's action menu opens via press-and-hold; click suppression keeps a
+ * completed long-press from also firing the row's select handler.
+ */
 import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useClickSuppression, usePressAndHold } from "../../../gestures";
 import { cn } from "../../../lib/utils";
 
 // z-[200] mirrors Z_OVERLAY in ../../../lib/floating-layers.ts.
@@ -141,34 +141,20 @@ export const ChatConversationItem = memo(function ChatConversationItem({
   onSelect,
   variant = "default",
 }: ChatConversationItemProps) {
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const suppressClickRef = useRef(false);
+  // No auto-disarm: the tap the browser synthesizes after a long-press can land a
+  // full task later, so the arm must persist until that click consumes it.
+  const clickSuppression = useClickSuppression({ autoDisarm: false });
   const isGameModal = variant === "game-modal";
 
-  const clearLongPressTimer = useCallback(() => {
-    if (longPressTimerRef.current !== null) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => clearLongPressTimer();
-  }, [clearLongPressTimer]);
-
-  const handleTouchStart = (event: React.TouchEvent<HTMLButtonElement>) => {
-    if (!mobile || !onOpenActions) return;
-    clearLongPressTimer();
-    longPressTimerRef.current = setTimeout(() => {
-      suppressClickRef.current = true;
-      onOpenActions(event, conversation);
-      clearLongPressTimer();
-    }, 450);
-  };
-
-  const handleTouchEnd = () => {
-    clearLongPressTimer();
-  };
+  // A held finger opens the row's action menu; the tap the browser then
+  // synthesizes is swallowed so it doesn't also fire onSelect.
+  const pressAndHold = usePressAndHold<HTMLButtonElement>({
+    enabled: mobile && Boolean(onOpenActions),
+    onHold: (event) => {
+      clickSuppression.arm();
+      onOpenActions?.(event, conversation);
+    },
+  });
 
   const renderedTitle = displayTitle ?? conversation.title;
   const showInlineActions = isGameModal;
@@ -200,20 +186,14 @@ export const ChatConversationItem = memo(function ChatConversationItem({
             : "m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent"
         }
         onClick={() => {
-          if (suppressClickRef.current) {
-            suppressClickRef.current = false;
-            return;
-          }
+          if (clickSuppression.consumeArmed()) return;
           onSelect();
         }}
         onContextMenu={(event) => {
           if (mobile || !onOpenActions) return;
           onOpenActions(event, conversation);
         }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        onTouchMove={handleTouchEnd}
+        {...pressAndHold}
       >
         {isUnread ? (
           <span

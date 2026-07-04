@@ -1,3 +1,4 @@
+/** Unit tests for the reminder-table copy migration, driven by a scripted in-memory SQL executor (no live database). */
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_REMINDER_TABLES,

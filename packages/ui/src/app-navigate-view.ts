@@ -1,20 +1,15 @@
+/**
+ * Fires the shared navigate-view event to open a registered view, the imperative
+ * entry the agent's view actions and the shell use to switch views.
+ */
+import {
+  dispatchNavigateViewEvent,
+  type NavigateViewDetail,
+} from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
-import { recordRecentViewId } from "./view-recents";
 
-export type NavigateViewDetail = {
-  viewId?: string;
-  viewPath?: string;
-  viewLabel?: string;
-  viewType?: "gui" | "tui" | "xr";
-  action?: string;
-  /** Sub-section to deep-link within the target view (e.g. a Settings section id). */
-  subview?: string;
-  views?: string[];
-  layout?: string;
-  placement?: string;
-  alwaysOnTop?: boolean;
-};
+export type { NavigateViewDetail };
 
 export type ActiveViewLayout = {
   mode: "split" | "tile";
@@ -22,6 +17,8 @@ export type ActiveViewLayout = {
   layout?: string;
   placement?: string;
 };
+
+const pendingNavigateViewPayloads = new Map<string, unknown>();
 
 // Cross-view phone-number handoff.
 //
@@ -45,6 +42,27 @@ function normalizePhoneNumber(input: string): string {
 let pendingPhoneNumber: string | null = null;
 let pendingMessageRecipient: string | null = null;
 
+export function consumeNavigateViewPayload<T = unknown>(
+  viewId: string,
+): T | null {
+  if (!pendingNavigateViewPayloads.has(viewId)) return null;
+  const payload = pendingNavigateViewPayloads.get(viewId) as T;
+  pendingNavigateViewPayloads.delete(viewId);
+  return payload;
+}
+
+export function __setNavigateViewPayloadForTests(
+  viewId: string,
+  payload: unknown,
+): void {
+  pendingNavigateViewPayloads.set(viewId, payload);
+}
+
+function storeNavigateViewPayload(detail: NavigateViewDetail): void {
+  if (!detail.viewId || detail.payload === undefined) return;
+  pendingNavigateViewPayloads.set(detail.viewId, detail.payload);
+}
+
 export function consumePendingPhoneNumber(): string | null {
   const number = pendingPhoneNumber;
   pendingPhoneNumber = null;
@@ -64,11 +82,7 @@ export function consumePendingMessageRecipient(): string | null {
 export function navigateToPhoneWithNumber(number: string): void {
   if (typeof window === "undefined") return;
   pendingPhoneNumber = normalizePhoneNumber(number) || null;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "phone", viewPath: "/phone" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "phone", viewPath: "/phone" });
 }
 
 /**
@@ -79,11 +93,7 @@ export function navigateToMessagesWithNumber(address: string): void {
   if (typeof window === "undefined") return;
   const trimmed = address.trim();
   pendingMessageRecipient = trimmed || null;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: { viewId: "messages", viewPath: "/messages" },
-    }),
-  );
+  dispatchNavigateViewEvent({ viewId: "messages", viewPath: "/messages" });
 }
 
 export type DesktopTabOpen = (
@@ -181,6 +191,7 @@ export function createNavigateViewHandler({
   return (event: Event) => {
     const detail = (event as CustomEvent<NavigateViewDetail>).detail;
     if (!detail) return;
+    storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
       setViewLayout?.(null);
       if (detail.action === "close-all" || detail.viewId === "__all__") {
@@ -204,7 +215,6 @@ export function createNavigateViewHandler({
         );
         if (!entry) continue;
         resolvedViewIds.push(entry.id);
-        recordRecentViewId(entry.id);
         openDesktopTab(entry, { pinned: false });
       }
       const primaryViewId =
@@ -224,9 +234,6 @@ export function createNavigateViewHandler({
     if (!path) return;
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
-    if (detail.viewId) {
-      recordRecentViewId(detail.viewId);
-    }
     if (directTab) {
       setTab(directTab);
       return;

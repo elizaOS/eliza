@@ -1,0 +1,1022 @@
+{
+  "scenarios": [
+    {
+      "scenario_id": "calendar.check_availability_thursday_morning",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "CALENDAR",
+              "kwargs": {
+                "endAt": "2026-05-14T10:00:00Z",
+                "intent": "is the owner free 2026-05-14T09:00 to 10:00 UTC",
+                "startAt": "2026-05-14T09:00:00Z",
+                "subaction": "check_availability"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "CALENDAR",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"subaction\": \"check_availability\", \"ok\": true, \"events\": []}",
+              "payload": {
+                "subaction": "check_availability",
+                "ok": true,
+                "events": []
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    },
+    {
+      "scenario_id": "mail.archive_specific_newsletter_thread",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "MESSAGE",
+              "kwargs": {
+                "manageOperation": "archive",
+                "operation": "manage",
+                "source": "gmail",
+                "threadId": "thread_01464"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "MESSAGE",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"thread_id\": \"thread_01464\", \"archived_ids\": [\"email_002477\"]}",
+              "payload": {
+                "thread_id": "thread_01464",
+                "archived_ids": [
+                  "email_002477"
+                ]
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done. archive.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    },
+    {
+      "scenario_id": "reminders.create_pickup_reminder_tomorrow_9am",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "LIFE_CREATE",
+              "kwargs": {
+                "details": {
+                  "due": "2026-05-11T09:00:00Z",
+                  "kind": "reminder",
+                  "listId": "list_personal"
+                },
+                "kind": "definition",
+                "subaction": "create",
+                "title": "Pick up kids' soccer uniforms from the laundry"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "LIFE_CREATE",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"id\": \"reminder_auto_f3023891f37f\", \"title\": \"Pick up kids' soccer uniforms from the laundry\"}",
+              "payload": {
+                "id": "reminder_auto_f3023891f37f",
+                "title": "Pick up kids' soccer uniforms from the laundry"
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done. uniforms.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    },
+    {
+      "scenario_id": "health.step_count_today",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "HEALTH",
+              "kwargs": {
+                "date": "2026-05-10",
+                "metric": "steps",
+                "subaction": "by_metric"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "HEALTH",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"subaction\": \"by_metric\", \"ok\": true, \"metric\": \"steps\", \"data\": [{\"id\": \"hm_000534\", \"metric_type\": \"steps\", \"value\": 4236.0, \"recorded_at\": \"2026-02-10T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000528\", \"metric_type\": \"steps\", \"value\": 10231.0, \"recorded_at\": \"2026-02-11T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000522\", \"metric_type\": \"steps\", \"value\": 15038.0, \"recorded_at\": \"2026-02-12T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000516\", \"metric_type\": \"steps\", \"value\": 14896.0, \"recorded_at\": \"2026-02-13T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000510\", \"metric_type\": \"steps\", \"value\": 17946.0, \"recorded_at\": \"2026-02-14T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000504\", \"metric_type\": \"steps\", \"value\": 3027.0, \"recorded_at\": \"2026-02-15T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000498\", \"metric_type\": \"steps\", \"value\": 3284.0, \"recorded_at\": \"2026-02-16T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000492\", \"metric_type\": \"steps\", \"value\": 3148.0, \"recorded_at\": \"2026-02-17T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000486\", \"metric_type\": \"steps\", \"value\": 12788.0, \"recorded_at\": \"2026-02-18T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000480\", \"metric_type\": \"steps\", \"value\": 6504.0, \"recorded_at\": \"2026-02-19T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000474\", \"metric_type\": \"steps\", \"value\": 3641.0, \"recorded_at\": \"2026-02-20T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000468\", \"metric_type\": \"steps\", \"value\": 12888.0, \"recorded_at\": \"2026-02-21T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000462\", \"metric_type\": \"steps\", \"value\": 16002.0, \"recorded_at\": \"2026-02-22T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000456\", \"metric_type\": \"steps\", \"value\": 11340.0, \"recorded_at\": \"2026-02-23T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000450\", \"metric_type\": \"steps\", \"value\": 11001.0, \"recorded_at\": \"2026-02-24T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000444\", \"metric_type\": \"steps\", \"value\": 17294.0, \"recorded_at\": \"2026-02-25T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000438\", \"metric_type\": \"steps\", \"value\": 16593.0, \"recorded_at\": \"2026-02-26T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000432\", \"metric_type\": \"steps\", \"value\": 15123.0, \"recorded_at\": \"2026-02-27T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000426\", \"metric_type\": \"steps\", \"value\": 12864.0, \"recorded_at\": \"2026-02-28T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000420\", \"metric_type\": \"steps\", \"value\": 5702.0, \"recorded_at\": \"2026-03-01T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000414\", \"metric_type\": \"steps\", \"value\": 6867.0, \"recorded_at\": \"2026-03-02T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000408\", \"metric_type\": \"steps\", \"value\": 13032.0, \"recorded_at\": \"2026-03-03T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000402\", \"metric_type\": \"steps\", \"value\": 10964.0, \"recorded_at\": \"2026-03-04T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000396\", \"metric_type\": \"steps\", \"value\": 7235.0, \"recorded_at\": \"2026-03-05T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000390\", \"metric_type\": \"steps\", \"value\": 10345.0, \"recorded_at\": \"2026-03-06T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000384\", \"metric_type\": \"steps\", \"value\": 10861.0, \"recorded_at\": \"2026-03-07T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000378\", \"metric_type\": \"steps\", \"value\": 7015.0, \"recorded_at\": \"2026-03-08T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000372\", \"metric_type\": \"steps\", \"value\": 5285.0, \"recorded_at\": \"2026-03-09T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000366\", \"metric_type\": \"steps\", \"value\": 8853.0, \"recorded_at\": \"2026-03-10T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000360\", \"metric_type\": \"steps\", \"value\": 8827.0, \"recorded_at\": \"2026-03-11T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000354\", \"metric_type\": \"steps\", \"value\": 11911.0, \"recorded_at\": \"2026-03-12T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000348\", \"metric_type\": \"steps\", \"value\": 3751.0, \"recorded_at\": \"2026-03-13T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000342\", \"metric_type\": \"steps\", \"value\": 17630.0, \"recorded_at\": \"2026-03-14T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000336\", \"metric_type\": \"steps\", \"value\": 10780.0, \"recorded_at\": \"2026-03-15T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000330\", \"metric_type\": \"steps\", \"value\": 7148.0, \"recorded_at\": \"2026-03-16T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000324\", \"metric_type\": \"steps\", \"value\": 2832.0, \"recorded_at\": \"2026-03-17T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000318\", \"metric_type\": \"steps\", \"value\": 12540.0, \"recorded_at\": \"2026-03-18T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000312\", \"metric_type\": \"steps\", \"value\": 4408.0, \"recorded_at\": \"2026-03-19T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000306\", \"metric_type\": \"steps\", \"value\": 6252.0, \"recorded_at\": \"2026-03-20T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000300\", \"metric_type\": \"steps\", \"value\": 2896.0, \"recorded_at\": \"2026-03-21T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000294\", \"metric_type\": \"steps\", \"value\": 8912.0, \"recorded_at\": \"2026-03-22T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000288\", \"metric_type\": \"steps\", \"value\": 7384.0, \"recorded_at\": \"2026-03-23T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000282\", \"metric_type\": \"steps\", \"value\": 7672.0, \"recorded_at\": \"2026-03-24T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000276\", \"metric_type\": \"steps\", \"value\": 11361.0, \"recorded_at\": \"2026-03-25T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000270\", \"metric_type\": \"steps\", \"value\": 14571.0, \"recorded_at\": \"2026-03-26T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000264\", \"metric_type\": \"steps\", \"value\": 16770.0, \"recorded_at\": \"2026-03-27T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000258\", \"metric_type\": \"steps\", \"value\": 7833.0, \"recorded_at\": \"2026-03-28T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000252\", \"metric_type\": \"steps\", \"value\": 13672.0, \"recorded_at\": \"2026-03-29T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000246\", \"metric_type\": \"steps\", \"value\": 12897.0, \"recorded_at\": \"2026-03-30T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000240\", \"metric_type\": \"steps\", \"value\": 11706.0, \"recorded_at\": \"2026-03-31T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000234\", \"metric_type\": \"steps\", \"value\": 6130.0, \"recorded_at\": \"2026-04-01T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000228\", \"metric_type\": \"steps\", \"value\": 15798.0, \"recorded_at\": \"2026-04-02T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000222\", \"metric_type\": \"steps\", \"value\": 5975.0, \"recorded_at\": \"2026-04-03T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000216\", \"metric_type\": \"steps\", \"value\": 6730.0, \"recorded_at\": \"2026-04-04T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000210\", \"metric_type\": \"steps\", \"value\": 3096.0, \"recorded_at\": \"2026-04-05T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000204\", \"metric_type\": \"steps\", \"value\": 16982.0, \"recorded_at\": \"2026-04-06T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000198\", \"metric_type\": \"steps\", \"value\": 11818.0, \"recorded_at\": \"2026-04-07T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000192\", \"metric_type\": \"steps\", \"value\": 12546.0, \"recorded_at\": \"2026-04-08T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000186\", \"metric_type\": \"steps\", \"value\": 8753.0, \"recorded_at\": \"2026-04-09T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000180\", \"metric_type\": \"steps\", \"value\": 3743.0, \"recorded_at\": \"2026-04-10T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000174\", \"metric_type\": \"steps\", \"value\": 5515.0, \"recorded_at\": \"2026-04-11T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000168\", \"metric_type\": \"steps\", \"value\": 7304.0, \"recorded_at\": \"2026-04-12T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000162\", \"metric_type\": \"steps\", \"value\": 5636.0, \"recorded_at\": \"2026-04-13T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000156\", \"metric_type\": \"steps\", \"value\": 2038.0, \"recorded_at\": \"2026-04-14T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000150\", \"metric_type\": \"steps\", \"value\": 17737.0, \"recorded_at\": \"2026-04-15T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000144\", \"metric_type\": \"steps\", \"value\": 5106.0, \"recorded_at\": \"2026-04-16T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000138\", \"metric_type\": \"steps\", \"value\": 2504.0, \"recorded_at\": \"2026-04-17T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000132\", \"metric_type\": \"steps\", \"value\": 5635.0, \"recorded_at\": \"2026-04-18T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000126\", \"metric_type\": \"steps\", \"value\": 10139.0, \"recorded_at\": \"2026-04-19T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000120\", \"metric_type\": \"steps\", \"value\": 15288.0, \"recorded_at\": \"2026-04-20T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000114\", \"metric_type\": \"steps\", \"value\": 11916.0, \"recorded_at\": \"2026-04-21T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000108\", \"metric_type\": \"steps\", \"value\": 14025.0, \"recorded_at\": \"2026-04-22T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000102\", \"metric_type\": \"steps\", \"value\": 5040.0, \"recorded_at\": \"2026-04-23T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000096\", \"metric_type\": \"steps\", \"value\": 15881.0, \"recorded_at\": \"2026-04-24T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000090\", \"metric_type\": \"steps\", \"value\": 12180.0, \"recorded_at\": \"2026-04-25T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000084\", \"metric_type\": \"steps\", \"value\": 5274.0, \"recorded_at\": \"2026-04-26T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000078\", \"metric_type\": \"steps\", \"value\": 17627.0, \"recorded_at\": \"2026-04-27T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000072\", \"metric_type\": \"steps\", \"value\": 8567.0, \"recorded_at\": \"2026-04-28T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000066\", \"metric_type\": \"steps\", \"value\": 8854.0, \"recorded_at\": \"2026-04-29T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000060\", \"metric_type\": \"steps\", \"value\": 2301.0, \"recorded_at\": \"2026-04-30T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000054\", \"metric_type\": \"steps\", \"value\": 16197.0, \"recorded_at\": \"2026-05-01T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000048\", \"metric_type\": \"steps\", \"value\": 3222.0, \"recorded_at\": \"2026-05-02T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000042\", \"metric_type\": \"steps\", \"value\": 14100.0, \"recorded_at\": \"2026-05-03T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000036\", \"metric_type\": \"steps\", \"value\": 12111.0, \"recorded_at\": \"2026-05-04T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000030\", \"metric_type\": \"steps\", \"value\": 8398.0, \"recorded_at\": \"2026-05-05T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000024\", \"metric_type\": \"steps\", \"value\": 9050.0, \"recorded_at\": \"2026-05-06T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000018\", \"metric_type\": \"steps\", \"value\": 17240.0, \"recorded_at\": \"2026-05-07T23:59:00Z\", \"source\": \"apple-health\"}, {\"id\": \"hm_000012\", \"metric_type\": \"steps\", \"value\": 5450.0, \"recorded_at\": \"2026-05-08T23:59:00Z\", \"source\": \"fitbit\"}, {\"id\": \"hm_000006\", \"metric_type\": \"steps\", \"value\": 9017.0, \"recorded_at\": \"2026-05-09T23:59:00Z\", \"source\": \"oura\"}, {\"id\": \"hm_000000\", \"metric_type\": \"steps\", \"value\": 7565.0, \"recorded_at\": \"2026-05-10T23:59:00Z\", \"source\": \"fitbit\"}], \"count\": 90, \"source_used\": \"multi\"}",
+              "payload": {
+                "subaction": "by_metric",
+                "ok": true,
+                "metric": "steps",
+                "data": [
+                  {
+                    "id": "hm_000534",
+                    "metric_type": "steps",
+                    "value": 4236.0,
+                    "recorded_at": "2026-02-10T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000528",
+                    "metric_type": "steps",
+                    "value": 10231.0,
+                    "recorded_at": "2026-02-11T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000522",
+                    "metric_type": "steps",
+                    "value": 15038.0,
+                    "recorded_at": "2026-02-12T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000516",
+                    "metric_type": "steps",
+                    "value": 14896.0,
+                    "recorded_at": "2026-02-13T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000510",
+                    "metric_type": "steps",
+                    "value": 17946.0,
+                    "recorded_at": "2026-02-14T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000504",
+                    "metric_type": "steps",
+                    "value": 3027.0,
+                    "recorded_at": "2026-02-15T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000498",
+                    "metric_type": "steps",
+                    "value": 3284.0,
+                    "recorded_at": "2026-02-16T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000492",
+                    "metric_type": "steps",
+                    "value": 3148.0,
+                    "recorded_at": "2026-02-17T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000486",
+                    "metric_type": "steps",
+                    "value": 12788.0,
+                    "recorded_at": "2026-02-18T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000480",
+                    "metric_type": "steps",
+                    "value": 6504.0,
+                    "recorded_at": "2026-02-19T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000474",
+                    "metric_type": "steps",
+                    "value": 3641.0,
+                    "recorded_at": "2026-02-20T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000468",
+                    "metric_type": "steps",
+                    "value": 12888.0,
+                    "recorded_at": "2026-02-21T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000462",
+                    "metric_type": "steps",
+                    "value": 16002.0,
+                    "recorded_at": "2026-02-22T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000456",
+                    "metric_type": "steps",
+                    "value": 11340.0,
+                    "recorded_at": "2026-02-23T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000450",
+                    "metric_type": "steps",
+                    "value": 11001.0,
+                    "recorded_at": "2026-02-24T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000444",
+                    "metric_type": "steps",
+                    "value": 17294.0,
+                    "recorded_at": "2026-02-25T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000438",
+                    "metric_type": "steps",
+                    "value": 16593.0,
+                    "recorded_at": "2026-02-26T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000432",
+                    "metric_type": "steps",
+                    "value": 15123.0,
+                    "recorded_at": "2026-02-27T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000426",
+                    "metric_type": "steps",
+                    "value": 12864.0,
+                    "recorded_at": "2026-02-28T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000420",
+                    "metric_type": "steps",
+                    "value": 5702.0,
+                    "recorded_at": "2026-03-01T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000414",
+                    "metric_type": "steps",
+                    "value": 6867.0,
+                    "recorded_at": "2026-03-02T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000408",
+                    "metric_type": "steps",
+                    "value": 13032.0,
+                    "recorded_at": "2026-03-03T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000402",
+                    "metric_type": "steps",
+                    "value": 10964.0,
+                    "recorded_at": "2026-03-04T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000396",
+                    "metric_type": "steps",
+                    "value": 7235.0,
+                    "recorded_at": "2026-03-05T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000390",
+                    "metric_type": "steps",
+                    "value": 10345.0,
+                    "recorded_at": "2026-03-06T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000384",
+                    "metric_type": "steps",
+                    "value": 10861.0,
+                    "recorded_at": "2026-03-07T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000378",
+                    "metric_type": "steps",
+                    "value": 7015.0,
+                    "recorded_at": "2026-03-08T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000372",
+                    "metric_type": "steps",
+                    "value": 5285.0,
+                    "recorded_at": "2026-03-09T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000366",
+                    "metric_type": "steps",
+                    "value": 8853.0,
+                    "recorded_at": "2026-03-10T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000360",
+                    "metric_type": "steps",
+                    "value": 8827.0,
+                    "recorded_at": "2026-03-11T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000354",
+                    "metric_type": "steps",
+                    "value": 11911.0,
+                    "recorded_at": "2026-03-12T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000348",
+                    "metric_type": "steps",
+                    "value": 3751.0,
+                    "recorded_at": "2026-03-13T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000342",
+                    "metric_type": "steps",
+                    "value": 17630.0,
+                    "recorded_at": "2026-03-14T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000336",
+                    "metric_type": "steps",
+                    "value": 10780.0,
+                    "recorded_at": "2026-03-15T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000330",
+                    "metric_type": "steps",
+                    "value": 7148.0,
+                    "recorded_at": "2026-03-16T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000324",
+                    "metric_type": "steps",
+                    "value": 2832.0,
+                    "recorded_at": "2026-03-17T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000318",
+                    "metric_type": "steps",
+                    "value": 12540.0,
+                    "recorded_at": "2026-03-18T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000312",
+                    "metric_type": "steps",
+                    "value": 4408.0,
+                    "recorded_at": "2026-03-19T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000306",
+                    "metric_type": "steps",
+                    "value": 6252.0,
+                    "recorded_at": "2026-03-20T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000300",
+                    "metric_type": "steps",
+                    "value": 2896.0,
+                    "recorded_at": "2026-03-21T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000294",
+                    "metric_type": "steps",
+                    "value": 8912.0,
+                    "recorded_at": "2026-03-22T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000288",
+                    "metric_type": "steps",
+                    "value": 7384.0,
+                    "recorded_at": "2026-03-23T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000282",
+                    "metric_type": "steps",
+                    "value": 7672.0,
+                    "recorded_at": "2026-03-24T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000276",
+                    "metric_type": "steps",
+                    "value": 11361.0,
+                    "recorded_at": "2026-03-25T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000270",
+                    "metric_type": "steps",
+                    "value": 14571.0,
+                    "recorded_at": "2026-03-26T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000264",
+                    "metric_type": "steps",
+                    "value": 16770.0,
+                    "recorded_at": "2026-03-27T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000258",
+                    "metric_type": "steps",
+                    "value": 7833.0,
+                    "recorded_at": "2026-03-28T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000252",
+                    "metric_type": "steps",
+                    "value": 13672.0,
+                    "recorded_at": "2026-03-29T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000246",
+                    "metric_type": "steps",
+                    "value": 12897.0,
+                    "recorded_at": "2026-03-30T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000240",
+                    "metric_type": "steps",
+                    "value": 11706.0,
+                    "recorded_at": "2026-03-31T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000234",
+                    "metric_type": "steps",
+                    "value": 6130.0,
+                    "recorded_at": "2026-04-01T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000228",
+                    "metric_type": "steps",
+                    "value": 15798.0,
+                    "recorded_at": "2026-04-02T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000222",
+                    "metric_type": "steps",
+                    "value": 5975.0,
+                    "recorded_at": "2026-04-03T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000216",
+                    "metric_type": "steps",
+                    "value": 6730.0,
+                    "recorded_at": "2026-04-04T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000210",
+                    "metric_type": "steps",
+                    "value": 3096.0,
+                    "recorded_at": "2026-04-05T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000204",
+                    "metric_type": "steps",
+                    "value": 16982.0,
+                    "recorded_at": "2026-04-06T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000198",
+                    "metric_type": "steps",
+                    "value": 11818.0,
+                    "recorded_at": "2026-04-07T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000192",
+                    "metric_type": "steps",
+                    "value": 12546.0,
+                    "recorded_at": "2026-04-08T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000186",
+                    "metric_type": "steps",
+                    "value": 8753.0,
+                    "recorded_at": "2026-04-09T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000180",
+                    "metric_type": "steps",
+                    "value": 3743.0,
+                    "recorded_at": "2026-04-10T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000174",
+                    "metric_type": "steps",
+                    "value": 5515.0,
+                    "recorded_at": "2026-04-11T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000168",
+                    "metric_type": "steps",
+                    "value": 7304.0,
+                    "recorded_at": "2026-04-12T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000162",
+                    "metric_type": "steps",
+                    "value": 5636.0,
+                    "recorded_at": "2026-04-13T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000156",
+                    "metric_type": "steps",
+                    "value": 2038.0,
+                    "recorded_at": "2026-04-14T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000150",
+                    "metric_type": "steps",
+                    "value": 17737.0,
+                    "recorded_at": "2026-04-15T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000144",
+                    "metric_type": "steps",
+                    "value": 5106.0,
+                    "recorded_at": "2026-04-16T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000138",
+                    "metric_type": "steps",
+                    "value": 2504.0,
+                    "recorded_at": "2026-04-17T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000132",
+                    "metric_type": "steps",
+                    "value": 5635.0,
+                    "recorded_at": "2026-04-18T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000126",
+                    "metric_type": "steps",
+                    "value": 10139.0,
+                    "recorded_at": "2026-04-19T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000120",
+                    "metric_type": "steps",
+                    "value": 15288.0,
+                    "recorded_at": "2026-04-20T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000114",
+                    "metric_type": "steps",
+                    "value": 11916.0,
+                    "recorded_at": "2026-04-21T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000108",
+                    "metric_type": "steps",
+                    "value": 14025.0,
+                    "recorded_at": "2026-04-22T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000102",
+                    "metric_type": "steps",
+                    "value": 5040.0,
+                    "recorded_at": "2026-04-23T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000096",
+                    "metric_type": "steps",
+                    "value": 15881.0,
+                    "recorded_at": "2026-04-24T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000090",
+                    "metric_type": "steps",
+                    "value": 12180.0,
+                    "recorded_at": "2026-04-25T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000084",
+                    "metric_type": "steps",
+                    "value": 5274.0,
+                    "recorded_at": "2026-04-26T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000078",
+                    "metric_type": "steps",
+                    "value": 17627.0,
+                    "recorded_at": "2026-04-27T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000072",
+                    "metric_type": "steps",
+                    "value": 8567.0,
+                    "recorded_at": "2026-04-28T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000066",
+                    "metric_type": "steps",
+                    "value": 8854.0,
+                    "recorded_at": "2026-04-29T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000060",
+                    "metric_type": "steps",
+                    "value": 2301.0,
+                    "recorded_at": "2026-04-30T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000054",
+                    "metric_type": "steps",
+                    "value": 16197.0,
+                    "recorded_at": "2026-05-01T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000048",
+                    "metric_type": "steps",
+                    "value": 3222.0,
+                    "recorded_at": "2026-05-02T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000042",
+                    "metric_type": "steps",
+                    "value": 14100.0,
+                    "recorded_at": "2026-05-03T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000036",
+                    "metric_type": "steps",
+                    "value": 12111.0,
+                    "recorded_at": "2026-05-04T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000030",
+                    "metric_type": "steps",
+                    "value": 8398.0,
+                    "recorded_at": "2026-05-05T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000024",
+                    "metric_type": "steps",
+                    "value": 9050.0,
+                    "recorded_at": "2026-05-06T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000018",
+                    "metric_type": "steps",
+                    "value": 17240.0,
+                    "recorded_at": "2026-05-07T23:59:00Z",
+                    "source": "apple-health"
+                  },
+                  {
+                    "id": "hm_000012",
+                    "metric_type": "steps",
+                    "value": 5450.0,
+                    "recorded_at": "2026-05-08T23:59:00Z",
+                    "source": "fitbit"
+                  },
+                  {
+                    "id": "hm_000006",
+                    "metric_type": "steps",
+                    "value": 9017.0,
+                    "recorded_at": "2026-05-09T23:59:00Z",
+                    "source": "oura"
+                  },
+                  {
+                    "id": "hm_000000",
+                    "metric_type": "steps",
+                    "value": 7565.0,
+                    "recorded_at": "2026-05-10T23:59:00Z",
+                    "source": "fitbit"
+                  }
+                ],
+                "count": 90,
+                "source_used": "multi"
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done. step.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    },
+    {
+      "scenario_id": "messages.send_imessage_to_hannah",
+      "seed": 2026,
+      "turns": [
+        {
+          "turn_number": 1,
+          "agent_message": "",
+          "agent_actions": [
+            {
+              "name": "MESSAGE",
+              "kwargs": {
+                "message": "running 10 minutes late, see you at the cafe",
+                "operation": "send",
+                "source": "imessage",
+                "target": "Hannah Hill",
+                "targetKind": "contact"
+              }
+            }
+          ],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [
+            {
+              "name": "MESSAGE",
+              "tool_call_id": "call_perfect_1",
+              "content": "{\"id\": \"chat_auto_7ffda9e6a9ac\", \"conversation_id\": \"conv_auto_538c5e4ef2c0\"}",
+              "payload": {
+                "id": "chat_auto_7ffda9e6a9ac",
+                "conversation_id": "conv_auto_538c5e4ef2c0"
+              }
+            }
+          ],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        },
+        {
+          "turn_number": 2,
+          "agent_message": "Done. sent Hannah.",
+          "agent_actions": [],
+          "user_response": "",
+          "latency_ms": null,
+          "input_tokens": 0,
+          "output_tokens": 0,
+          "cost_usd": null,
+          "tool_results": [],
+          "cache_read_input_tokens": null,
+          "cache_creation_input_tokens": null,
+          "cache_hit_pct": null,
+          "cache_supported": true,
+          "model_tier": null,
+          "prompt_cache_key": null,
+          "model_name": null
+        }
+      ],
+      "state_hash_match": true,
+      "output_substring_matches": [
+        true,
+        true
+      ],
+      "total_score": 1.0,
+      "max_score": 1.0,
+      "terminated_reason": "respond",
+      "total_cost_usd": 0,
+      "total_latency_ms": 0,
+      "error": null
+    }
+  ],
+  "pass_at_1": 1.0,
+  "pass_at_k": 1.0,
+  "mean_score_per_domain": {
+    "calendar": 1.0,
+    "mail": 1.0,
+    "reminders": 1.0,
+    "health": 1.0,
+    "messages": 1.0
+  },
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 0,
+  "model_name": "gemma-4-31b",
+  "judge_model_name": "claude-opus-4-7",
+  "timestamp": "2026-07-03T19:09:44.862631+00:00",
+  "seeds": 1,
+  "agent_cost_usd": 0.0,
+  "eval_cost_usd": 0.0
+}

@@ -1,3 +1,8 @@
+/**
+ * Verifies the LINE message connector registers its metadata and routes
+ * outbound sends (including location messages) through the local router,
+ * against a mocked runtime — no live LINE API calls.
+ */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LineService } from "./service.js";

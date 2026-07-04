@@ -1,3 +1,11 @@
+/**
+ * Plugin entry for @elizaos/plugin-google: the barrel that re-exports every
+ * public symbol and defines `googlePlugin`. The plugin registers a single
+ * `GoogleWorkspaceService` and, at init, attaches the Google provider to the
+ * runtime's `ConnectorAccountManager` so the generic connector HTTP routes can
+ * manage accounts and drive OAuth. It registers no actions or providers of its
+ * own; callers invoke the service directly.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";

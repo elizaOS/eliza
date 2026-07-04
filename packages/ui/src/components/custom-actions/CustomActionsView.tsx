@@ -1,5 +1,13 @@
+/**
+ * Full-page management view for custom actions (barrel-exported, routed as an
+ * app surface). Lists actions with search, per-row enable/disable and delete,
+ * bulk JSON import/export, and hosts the `CustomActionEditor` modal for
+ * create/edit. All persistence goes through `client.*CustomAction*`; the list
+ * refreshes after each mutation.
+ */
+
 import type { CustomActionDef } from "@elizaos/shared";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { client } from "../../api/client";
 import { useAppSelector } from "../../state";
 import {
@@ -27,6 +35,7 @@ const HANDLER_BADGE_CLASS: Record<string, string> = {
 
 export function CustomActionsView() {
   const t = useAppSelector((s) => s.t);
+  const importInputId = useId().replace(/:/g, "");
   const [actions, setActions] = useState<CustomActionDef[]>([]);
   const [search, setSearch] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -258,17 +267,22 @@ export function CustomActionsView() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label
-              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} inline-flex cursor-pointer items-center rounded-sm border border-border/60 bg-bg/35 text-muted transition-colors hover:border-border hover:bg-bg/55 hover:text-txt`}
+            <Input
+              id={importInputId}
+              type="file"
+              accept="application/json"
+              onChange={handleImport}
+              className="sr-only border-0 bg-transparent p-0"
+              tabIndex={-1}
+            />
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} cursor-pointer bg-bg/35 text-muted hover:bg-bg/55`}
             >
-              {t("settings.import")}
-              <input
-                type="file"
-                accept="application/json"
-                onChange={handleImport}
-                className="hidden"
-              />
-            </label>
+              <label htmlFor={importInputId}>{t("settings.import")}</label>
+            </Button>
             <Button
               variant="outline"
               size="sm"

@@ -1,6 +1,10 @@
 import { logger } from "../../../logger.ts";
-import { getUserServerRole } from "../../../roles.ts";
-import { type IAgentRuntime, Role, type UUID } from "../../../types/index.ts";
+import {
+	CANONICAL_ROLE_RANK,
+	type RolesWorldMetadata,
+	resolveEntityRole,
+} from "../../../roles.ts";
+import type { IAgentRuntime, Role, UUID } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
 import type {
 	AccessDecision,
@@ -38,29 +42,35 @@ export class ContextualPermissionSystem {
 	>();
 	private delegations = new Map<UUID, PermissionDelegation[]>();
 
-	private static readonly ROLE_PERMISSIONS: Record<string, Set<string>> = {
-		[Role.OWNER]: new Set(["*"]),
-		[Role.ADMIN]: new Set([
-			"manage_roles",
-			"manage_settings",
-			"moderate_content",
-			"timeout_user",
-			"delete_content",
-			"view_audit_log",
-			"evaluate_trust",
-			"record_trust",
-			"view_trust_profiles",
-			"manage_channels",
-			"ban_user",
-		]),
-		[Role.NONE]: new Set([
-			"send_message",
-			"view_content",
-			"evaluate_trust",
-			"view_trust_profiles",
-			"request_elevation",
-		]),
-	};
+	/**
+	 * Role→action grants as cumulative rank tiers (#12087 Item 5). The prior map
+	 * was keyed per-role and non-cumulative, so it had two bugs: GUEST/USER/MEMBER
+	 * had no row at all (roleHasPermission returned false — FEWER grants than the
+	 * unauthenticated NONE tier), and the ADMIN row omitted the base grants
+	 * (send_message/view_content), so an admin could not even send a message.
+	 * Grants now accumulate by canonical rank: everyone at NONE and above gets
+	 * BASE_PERMISSIONS; ADMIN and above additionally get ADMIN_PERMISSIONS; OWNER
+	 * gets everything. (Full target: derive each requirement from the capability it
+	 * protects; the tier sets remain the interim source of truth.)
+	 */
+	private static readonly BASE_PERMISSIONS = new Set([
+		"send_message",
+		"view_content",
+		"evaluate_trust",
+		"view_trust_profiles",
+		"request_elevation",
+	]);
+	private static readonly ADMIN_PERMISSIONS = new Set([
+		"manage_roles",
+		"manage_settings",
+		"moderate_content",
+		"timeout_user",
+		"delete_content",
+		"view_audit_log",
+		"record_trust",
+		"manage_channels",
+		"ban_user",
+	]);
 
 	private static readonly TRUST_ACTION_THRESHOLDS: Record<string, number> = {
 		view_audit_log: 80,
@@ -420,9 +430,20 @@ export class ContextualPermissionSystem {
 		action: string,
 		_resource: string,
 	): boolean {
-		const permissions = ContextualPermissionSystem.ROLE_PERMISSIONS[roleName];
-		if (!permissions) return false;
-		return permissions.has("*") || permissions.has(action);
+		const rank =
+			CANONICAL_ROLE_RANK[
+				String(roleName).toUpperCase() as keyof typeof CANONICAL_ROLE_RANK
+			] ?? 0;
+		if (rank >= CANONICAL_ROLE_RANK.OWNER) {
+			return true;
+		}
+		if (ContextualPermissionSystem.BASE_PERMISSIONS.has(action)) {
+			return true;
+		}
+		if (rank >= CANONICAL_ROLE_RANK.ADMIN) {
+			return ContextualPermissionSystem.ADMIN_PERMISSIONS.has(action);
+		}
+		return false;
 	}
 
 	private async getEntityRoles(
@@ -430,12 +451,18 @@ export class ContextualPermissionSystem {
 		context: PermissionContext,
 	): Promise<string[]> {
 		if (context.worldId) {
-			const role = await getUserServerRole(
+			// #12087 Item 8: context.worldId is ALREADY a hashed world id. The prior
+			// getUserServerRole(runtime, entityId, context.worldId) re-hashed it as a
+			// serverId, found no world, and returned NONE for everyone. resolveEntityRole
+			// reads the world directly and applies canonical-owner/demotion rules.
+			const world = await this.runtime.getWorld(context.worldId as UUID);
+			const role = await resolveEntityRole(
 				this.runtime,
+				world,
+				(world?.metadata ?? {}) as RolesWorldMetadata,
 				entityId,
-				context.worldId,
 			);
-			return role ? [role] : [];
+			return [role];
 		}
 		return [];
 	}

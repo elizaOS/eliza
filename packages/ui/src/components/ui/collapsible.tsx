@@ -1,6 +1,7 @@
 /**
- * Collapsible component system for expandable/collapsible content.
- * Built on Radix UI primitives with trigger and content components.
+ * Thin `data-slot` pass-throughs over Radix `@radix-ui/react-collapsible`.
+ * Verbatim from shadcn/ui `collapsible`
+ * (https://ui.shadcn.com/docs/components/collapsible).
  */
 "use client";
 

@@ -1,3 +1,7 @@
+/**
+ * Core GenUI types: spec/patch shapes, the A2UI compatibility version, action
+ * context/result, and validation-issue records.
+ */
 import type React from "react";
 
 export type ElizaGenUiVersion = "0.1";

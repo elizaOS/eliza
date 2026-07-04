@@ -1,3 +1,7 @@
+/**
+ * Tests password-manager install metadata and generated install commands.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   BACKEND_INSTALL_SPECS,

@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for DashboardRoutePage.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import { DashboardRoutePage } from "./dashboard-route-page";

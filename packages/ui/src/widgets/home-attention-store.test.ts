@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the home-attention store (publish/clear a widget's attention
+ * flag). In-memory store, no harness.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   __resetHomeAttentionForTests,

@@ -1,3 +1,9 @@
+/**
+ * Icon-first home widget surfacing the single most-urgent LifeOps goal (see the
+ * `GoalsAttentionWidget` JSDoc below). One of the home-attention widget family
+ * ({goals,inbox,finances,relationships,needs}-attention) that publish into the
+ * shared home-attention store to rank themselves on the home surface.
+ */
 import { Target } from "lucide-react";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";

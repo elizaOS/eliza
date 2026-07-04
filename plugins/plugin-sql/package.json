@@ -73,6 +73,8 @@
   },
   "scripts": {
     "build": "cd src && bun run build.ts",
+    "migrate": "cd src && drizzle-kit migrate",
+    "migrate:generate": "cd src && drizzle-kit generate",
     "dev": "cd src && bun --hot build.ts",
     "test": "cd src && vitest run",
     "typecheck": "tsgo --noEmit -p src/tsconfig.json",

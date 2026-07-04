@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../state/app-store";
@@ -54,6 +55,10 @@ void main(){
 }`;
 
 describe("useBackgroundApplyChannel — raw GLSL source is not a sink (#11088)", () => {
+  it("uses the shared background apply event contract", () => {
+    expect(BACKGROUND_APPLY_EVENT).toBe(SHARED_BACKGROUND_APPLY_EVENT);
+  });
+
   it("sanity: the for-bomb slips past the static gate (why the channel must drop it)", () => {
     expect(isPlausibleFragmentSource(FOR_BOMB)).toBe(true);
   });

@@ -1,3 +1,8 @@
+/**
+ * Confirms WhatsAppWorkflowCredentialProvider resolves whatsAppApi credentials
+ * (trimmed access token + phone number ID) for the workflow plugin and reports
+ * missing config correctly. Fake runtime with stubbed getSetting; no network.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsAppWorkflowCredentialProvider } from "../src/workflow-credential-provider";

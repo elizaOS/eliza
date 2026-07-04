@@ -1,3 +1,8 @@
+/**
+ * localStorage + server persistence for shell state: the active-server record,
+ * UI language, favorite/recent apps, and background config/history. The single
+ * read/write layer the state modules go through.
+ */
 import { logger } from "@elizaos/logger";
 import { asRecord } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
@@ -22,11 +27,12 @@ import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
-import type { SetupStep } from "./types";
 import {
   type BackgroundConfig,
+  DEFAULT_ACCENT_ID,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_CONFIG,
+  normalizeAccentId,
   type UiShellMode,
   type UiTheme,
   type UiThemeMode,
@@ -365,41 +371,99 @@ export function applyUiTheme(theme: UiTheme): void {
   }
 }
 
-const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
-const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
-const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
-const SETUP_STEP_STORAGE_KEY = "eliza:setup:step";
+/* ── Accent color persistence ─────────────────────────────────────────── */
 
-function normalizeSetupStep(value: unknown): SetupStep | null {
-  switch (value) {
-    case "connection":
-    case "model":
-    case "capabilities":
-      return value;
-    default:
-      return null;
-  }
-}
+const UI_ACCENT_STORAGE_KEY = "eliza:ui-accent";
 
-export function loadPersistedSetupStep(): SetupStep | null {
+/** Load the persisted accent preset id. Defaults to the brand accent. */
+export function loadUiAccentId(): string {
   return tryLocalStorage(
-    () => normalizeSetupStep(localStorage.getItem(SETUP_STEP_STORAGE_KEY)),
-    null,
+    () => normalizeAccentId(localStorage.getItem(UI_ACCENT_STORAGE_KEY)),
+    DEFAULT_ACCENT_ID,
   );
 }
 
-export function saveSetupStep(step: SetupStep): void {
+/** Persist the chosen accent preset id (normalized). */
+export function saveUiAccentId(id: string): void {
   tryLocalStorage(() => {
-    localStorage.setItem(SETUP_STEP_STORAGE_KEY, step);
+    localStorage.setItem(UI_ACCENT_STORAGE_KEY, normalizeAccentId(id));
   }, undefined);
 }
 
-export function clearPersistedSetupStep(): void {
-  tryLocalStorage(() => {
-    localStorage.removeItem(SETUP_STEP_STORAGE_KEY);
-  }, undefined);
+// The `--accent` family a user accent choice overrides. Applied as inline
+// styles on <html> so they win over base.css and any host brand theme; the
+// `default` accent clears them, restoring the brand accent.
+const ACCENT_OVERRIDE_VARS = [
+  "--accent",
+  "--accent-rgb",
+  "--accent-hover",
+  "--accent-muted",
+  "--accent-subtle",
+  "--ring",
+  "--border-hover",
+  "--primary",
+] as const;
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const int = Number.parseInt(m[1], 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
 }
 
+function mixChannel(channel: number, target: number, amount: number): number {
+  return Math.round(channel + (target - channel) * amount);
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Apply a user-chosen accent color to the document root by overriding the
+ * `--accent` family inline (so it wins over base.css / any host brand theme).
+ * `null` (the `default` preset) clears the overrides, restoring the brand
+ * accent. `--accent-foreground` is intentionally left untouched — every preset
+ * is dark enough for the existing near-white foreground.
+ */
+export function applyUiAccent(color: string | null): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root?.style) return;
+  const rgb = color == null ? null : hexToRgb(color);
+  if (color == null || rgb == null) {
+    for (const cssVar of ACCENT_OVERRIDE_VARS)
+      root.style.removeProperty(cssVar);
+    return;
+  }
+  const [r, g, b] = rgb;
+  root.style.setProperty("--accent", color);
+  root.style.setProperty("--accent-rgb", `${r}, ${g}, ${b}`);
+  root.style.setProperty(
+    "--accent-hover",
+    rgbToHex(
+      mixChannel(r, 255, 0.12),
+      mixChannel(g, 255, 0.12),
+      mixChannel(b, 255, 0.12),
+    ),
+  );
+  root.style.setProperty(
+    "--accent-muted",
+    rgbToHex(
+      mixChannel(r, 0, 0.18),
+      mixChannel(g, 0, 0.18),
+      mixChannel(b, 0, 0.18),
+    ),
+  );
+  root.style.setProperty("--accent-subtle", `rgba(${r}, ${g}, ${b}, 0.14)`);
+  root.style.setProperty("--ring", color);
+  root.style.setProperty("--border-hover", color);
+  root.style.setProperty("--primary", color);
+}
+
+const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
+const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
+const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
 /* ── First-run completion persistence ────────────────────────────────── */
 
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
@@ -419,7 +483,37 @@ export function loadPersistedFirstRunComplete(): boolean {
   }
 }
 
+/**
+ * Mirror the completion flag into the Capacitor Preferences native store
+ * (Android SharedPreferences / iOS UserDefaults). WebView localStorage can be
+ * cleared by the OS independently of app-scoped native storage; the native
+ * mirror is what lets a WebView-storage wipe NOT re-trigger onboarding for an
+ * already set-up install. No-op (and never throws) in web / unit-test shells
+ * where Capacitor is unavailable. Mirrors the mobile-runtime-mode dual-write.
+ */
+async function persistNativeFirstRunComplete(complete: boolean): Promise<void> {
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    if (complete) {
+      await Preferences.set({
+        key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+        value: "1",
+      });
+    } else {
+      await Preferences.remove({ key: FIRST_RUN_COMPLETE_STORAGE_KEY });
+    }
+  } catch {
+    // Capacitor Preferences is unavailable in web / unit-test shells.
+  }
+}
+
 export function savePersistedFirstRunComplete(complete: boolean): void {
+  void persistNativeFirstRunComplete(complete);
+
   if (typeof localStorage === "undefined") {
     return;
   }
@@ -434,6 +528,44 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
     logger.warn(
       `[persistence] failed to save first-run completion flag: ${describePersistenceError(err)}`,
     );
+  }
+}
+
+/**
+ * Boot-time durability restore for the onboarding-complete flag (issue #11506).
+ *
+ * Android/iOS can clear a WebView's localStorage independently of the app's
+ * Capacitor Preferences store, which would drop `eliza:first-run-complete` and
+ * re-show onboarding on the next launch even though the agent config on disk is
+ * intact. Completion is mirrored into Preferences on save; on boot, when the
+ * WebView lost the localStorage flag but the durable native store still has it,
+ * restore the localStorage value so the synchronous boot readers
+ * (`loadPersistedFirstRunComplete` in restore, the lifecycle-state init, and
+ * the first-run completion ref) see the completed state and route straight
+ * home instead of re-prompting.
+ *
+ * Awaited early in the restoring-session phase (before `hadPrior` is read), so
+ * the restore repopulates localStorage on the SAME boot. No-op when
+ * localStorage already carries the flag or Capacitor is unavailable.
+ */
+export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise<void> {
+  if (typeof localStorage === "undefined") return;
+  if (loadPersistedFirstRunComplete()) return;
+
+  try {
+    const [{ Capacitor }, { Preferences }] = await Promise.all([
+      import("@capacitor/core"),
+      import("@capacitor/preferences"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+    const { value } = await Preferences.get({
+      key: FIRST_RUN_COMPLETE_STORAGE_KEY,
+    });
+    if (value === "1") {
+      localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+    }
+  } catch {
+    // Native store unavailable — localStorage remains authoritative.
   }
 }
 

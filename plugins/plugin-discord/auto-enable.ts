@@ -16,6 +16,6 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
 	// The full per-connector field check (botToken/applicationId) lives in
 	// the central engine's isConnectorConfigured. We delegate to a simple
 	// "block present + not explicitly disabled" check here; the central
-	// engine's stricter check remains as a fallback during migration.
+	// engine's stricter check remains authoritative.
 	return true;
 }

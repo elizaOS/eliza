@@ -1,3 +1,8 @@
+/**
+ * Keyless coverage that an inbound text attachment flows through the message
+ * pipeline to a reply. Runs on the pr-deterministic lane under the LLM proxy;
+ * live-inbound-attachment proves a real model reads and summarizes it.
+ */
 import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";

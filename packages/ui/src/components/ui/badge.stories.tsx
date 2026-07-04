@@ -1,3 +1,4 @@
+/** Storybook fixture exercising the Badge primitive variants; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
 import { Badge } from "./badge";
 

@@ -1,3 +1,7 @@
+/**
+ * Resolves a character's voice config: applies provider defaults, maps style
+ * presets to voices, and normalizes the persisted VoiceConfig shape.
+ */
 import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,

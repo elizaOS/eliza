@@ -1,3 +1,9 @@
+/**
+ * The Stream view: shows the agent's live ffmpeg stream status (running,
+ * uptime, frame count) and controls to start/stop it. Polls `client.streamStatus`
+ * and seeds from `resource-cache` for instant revisits; degrades to an
+ * unavailable state when no stream backend responds. Reusable in modal form.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";

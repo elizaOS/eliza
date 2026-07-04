@@ -1,3 +1,10 @@
+/**
+ * Safe parser/validator for `plugin.json`: `validateRemotePluginManifest` takes
+ * untrusted JSON and returns a typed `RemotePluginManifest` or a structured
+ * rejection, never trusting unvalidated fields. The trust boundary between an
+ * on-disk/downloaded manifest and the install store.
+ */
+
 import { isJsonObject } from "./json.js";
 import { isRemotePluginIsolation } from "./permissions.js";
 import {

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for Google Chat multi-account resolution, the connector account
+ * provider, and the workflow credential provider, against an in-memory
+ * `getSetting` stub — no Google API calls.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

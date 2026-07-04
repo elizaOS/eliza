@@ -1,13 +1,8 @@
 #!/usr/bin/env node
-import {
-  existsSync,
-  lstatSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -16,18 +11,6 @@ const repoRoot = path.resolve(
 );
 const outPath = path.join(repoRoot, "tsconfig.dist-paths.json");
 const checkOnly = process.argv.includes("--check");
-
-const ignoredDirs = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  ".venv",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "vendor",
-]);
 
 const explicitAliases = new Map([
   ["@elizaos/agent/*", ["./packages/agent/dist/*.d.ts"]],
@@ -70,96 +53,13 @@ function toPosix(value) {
   return value.split(path.sep).join("/");
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function workspacePatternToRegExp(pattern) {
-  const source = pattern
-    .split("/")
-    .map((segment) => (segment === "*" ? "[^/]+" : escapeRegExp(segment)))
-    .join("/");
-  return new RegExp(`^${source}$`);
-}
-
-const rootPackage = readJson(path.join(repoRoot, "package.json"));
-const workspacePatterns = (rootPackage.workspaces ?? []).filter(
-  (entry) => typeof entry === "string",
-);
-const workspaceIncludes = workspacePatterns
-  .filter((pattern) => !pattern.startsWith("!"))
-  .map(workspacePatternToRegExp);
-const workspaceExcludes = workspacePatterns
-  .filter((pattern) => pattern.startsWith("!"))
-  .map((pattern) => workspacePatternToRegExp(pattern.slice(1)));
-
-function matchesWorkspace(relDir) {
-  return (
-    workspaceIncludes.some((pattern) => pattern.test(relDir)) &&
-    !workspaceExcludes.some((pattern) => pattern.test(relDir))
-  );
-}
-
-function childWorkspaceDirs(baseDir, baseRel) {
-  let entries;
-  try {
-    entries = readdirSync(baseDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
-  const dirs = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory() || ignoredDirs.has(entry.name)) continue;
-    const fullPath = path.join(baseDir, entry.name);
-    let stat;
-    try {
-      stat = lstatSync(fullPath);
-    } catch {
-      continue;
-    }
-    if (stat.isSymbolicLink()) continue;
-    dirs.push({
-      abs: fullPath,
-      rel: baseRel ? `${baseRel}/${entry.name}` : entry.name,
-    });
-  }
-  return dirs;
-}
-
-function expandWorkspacePattern(pattern) {
-  let dirs = [{ abs: repoRoot, rel: "" }];
-  for (const segment of pattern.split("/")) {
-    const next = [];
-    for (const dir of dirs) {
-      if (segment === "*") {
-        next.push(...childWorkspaceDirs(dir.abs, dir.rel));
-        continue;
-      }
-      const abs = path.join(dir.abs, segment);
-      if (!existsSync(abs)) continue;
-      next.push({
-        abs,
-        rel: dir.rel ? `${dir.rel}/${segment}` : segment,
-      });
-    }
-    dirs = next;
-  }
-  return dirs;
-}
-
+// Absolute package.json paths of every workspace member, sorted. Discovery is
+// the shared seam (root `workspaces` globs, negation applied, members carry a
+// package.json).
 function workspacePackageManifests() {
-  const manifests = new Set();
-  for (const pattern of workspacePatterns) {
-    if (pattern.startsWith("!")) continue;
-    for (const dir of expandWorkspacePattern(pattern)) {
-      if (!matchesWorkspace(dir.rel)) continue;
-      const manifestPath = path.join(dir.abs, "package.json");
-      if (existsSync(manifestPath)) {
-        manifests.add(manifestPath);
-      }
-    }
-  }
-  return [...manifests].sort((left, right) => left.localeCompare(right));
+  return listWorkspaceDirs({ repoRoot })
+    .map((relDir) => path.join(repoRoot, relDir, "package.json"))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function findTypes(exportValue) {
@@ -204,8 +104,6 @@ function aliasTarget(packageDir, typesPath) {
 
 function packageAliases(manifestPath) {
   const packageDir = path.dirname(manifestPath);
-  const relDir = toPosix(path.relative(repoRoot, packageDir));
-  if (!matchesWorkspace(relDir)) return [];
 
   const pkg = readJson(manifestPath);
   if (!pkg.name) return [];

@@ -1,3 +1,7 @@
+/**
+ * Hook wrapping @json-render/react's useUIStream for Eliza GenUI: streams a spec
+ * and exposes the send options the renderer needs.
+ */
 import type { Spec as OfficialSpec } from "@json-render/core";
 import { useUIStream as officialUseUIStream } from "@json-render/react";
 import { useCallback, useMemo } from "react";

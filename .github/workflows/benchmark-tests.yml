@@ -8,12 +8,12 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "packages/app-core/src/benchmark/**"
+      - "packages/lifeops-bench/**"
       - ".github/workflows/benchmark-tests.yml"
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/app-core/src/benchmark/**"
+      - "packages/lifeops-bench/**"
       - ".github/workflows/benchmark-tests.yml"
   workflow_dispatch:
 
@@ -33,9 +33,9 @@ jobs:
       matrix:
         include:
           - lane: benchmark-tests
-            command: bunx vitest run --config packages/app-core/vitest.config.ts packages/app-core/src/benchmark/*.test.ts --passWithNoTests
+            command: bunx vitest run --config packages/lifeops-bench/vitest.config.ts --root packages/lifeops-bench --passWithNoTests
           - lane: benchmark-lint
-            command: bunx @biomejs/biome check packages/app-core/src/benchmark
+            command: bunx @biomejs/biome check packages/lifeops-bench/src
 
     steps:
       - name: Checkout repository

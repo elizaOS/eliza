@@ -1,3 +1,4 @@
+/** Covers the Kokoro TTS backend including streaming time-to-first-audio. Deterministic, mock runtime. */
 import { describe, expect, it } from "vitest";
 import { scoreFirstResponseLatency } from "../../e2e-harness";
 import type {

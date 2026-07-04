@@ -1,3 +1,9 @@
+/**
+ * Per-user chain filter toggles for the inventory view, scoped to the primary
+ * chains (ethereum/base/bsc/avax/solana). Filters are always normalized
+ * against `DEFAULT_INVENTORY_CHAIN_FILTERS` before use, so a partial or
+ * missing filter object behaves as "all enabled."
+ */
 import type { InventoryChainFilters } from "@elizaos/ui/state";
 import type { ChainKey } from "./chainConfig.ts";
 import { resolveChainKey } from "./chainConfig.ts";

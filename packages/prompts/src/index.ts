@@ -1,3 +1,11 @@
+/**
+ * Single source of truth for the LLM prompt templates the elizaOS runtime uses.
+ * Every shared template is exported here as a plain string (twice: a camelCase
+ * name and an UPPER_SNAKE_CASE alias); the runtime fills `{{...}}` placeholders
+ * via core's `composePrompt`. `@elizaos/core` re-exports these through
+ * `packages/core/src/prompts.ts`. Also re-exports `compressPromptDescription` so
+ * prompt tooling never depends back on core.
+ */
 export { compressPromptDescription } from "./prompt-compression.js";
 
 export const addContactTemplate = `task: Extract contact information to add to relationships.
@@ -683,7 +691,7 @@ replyText: user-facing text. Always write. Simple path = whole answer. Planning 
 
 contexts (directly after replyText): ids from available_contexts. Never invent. ["simple"] or [] = direct reply, no planner.
 
-requiresTool=true for tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Else false.
+requiresTool=true for tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Else false. If the current message is directed at another participant rather than you — bot/webhook chatter, or one person addressing another by name (a "(bot)" tag marks automated senders) — you are only overhearing it: set requiresTool=false and do not invent a task from it.
 
 simple shortcut: choose contexts=["simple"] when the user is asking for a direct chat answer and ALL true:
 - direct conversational, creative, explanatory, summarization, rewriting, translation, brainstorming, or static-knowledge answer

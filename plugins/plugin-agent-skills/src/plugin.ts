@@ -16,6 +16,8 @@ import { promoteSubactionsToActions } from "@elizaos/core";
 // Actions
 import { skillAction } from "./actions/skill";
 import { useSkillAction } from "./actions/use-skill";
+// Binance direct-skill dispatch (registered as a chat pre-handler)
+import { binanceSkillPreHandler } from "./binance/pre-handler";
 // Providers
 import { enabledSkillsProvider } from "./providers/enabled-skills";
 import {
@@ -91,6 +93,10 @@ export const agentSkillsPlugin: Plugin = {
 	services: ALL_SERVICES,
 	actions: ALL_ACTIONS,
 	providers: ALL_PROVIDERS,
+
+	// Direct dispatch for the Binance DeFi skill family: natural-language and
+	// explicit triggers resolve the turn before the first response model call.
+	chatPreHandlers: [binanceSkillPreHandler],
 
 	// Self-declared auto-enable: activate when features.agentSkills is enabled.
 	autoEnable: {

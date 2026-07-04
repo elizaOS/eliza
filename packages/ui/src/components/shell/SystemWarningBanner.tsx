@@ -57,14 +57,17 @@ export function SystemWarningBanner() {
           role="alert"
           aria-live="assertive"
           data-window-titlebar-banner="true"
-          className="mobile-top-banner shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
+          // bg-warn (--warn: #ff8a24) is a light-ish orange in every theme, so
+          // the theme-flipping --accent-foreground (white here) fails WCAG
+          // contrast (~2.4:1). Pin the foreground to near-black for ~8:1.
+          className="mobile-top-banner shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--brand-black)] "
         >
           <span className="truncate">{message}</span>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => dismissSystemWarning(message)}
-            className="shrink-0 rounded-sm px-2 py-0.5 text-xs text-[color:var(--accent-foreground)]/80 hover:bg-black/10"
+            className="shrink-0 rounded-sm px-2 py-0.5 text-xs text-[color:var(--brand-black)]/80 hover:bg-black/10"
           >
             x
           </Button>

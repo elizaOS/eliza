@@ -1,3 +1,4 @@
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Keystone test: the coding-account selector bridge is consulted on spawn and
  * its env patch is injected into the sub-agent subprocess (per agent type),
@@ -105,9 +106,7 @@ vi.mock("node:child_process", () => ({
 
 import { AcpService } from "../../src/services/acp-service.js";
 
-const BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+const BRIDGE_SYMBOL = CODING_AGENT_SELECTOR_BRIDGE_SYMBOL;
 
 interface FakeSelection {
   providerId: string;

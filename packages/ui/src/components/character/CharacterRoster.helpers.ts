@@ -1,3 +1,8 @@
+/**
+ * Pure helpers for CharacterRoster: the tile-clip polygons (slant + inset) and
+ * the projection from shared StylePresets to roster entries. Kept out of the
+ * component so the mapping is unit-testable and reused by the editor.
+ */
 import type { StylePreset } from "@elizaos/shared";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 

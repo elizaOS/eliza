@@ -9,14 +9,12 @@
  * CORS + credentials).
  */
 
+import { configuredStewardApiUrlOverride } from "./steward-config";
+
 const STEWARD_PREFIX = "/steward";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
-}
-
-function isUsableUrl(value: string | undefined): value is string {
-  return Boolean(value?.trim() && !value.includes("your_steward_"));
 }
 
 function getBrowserOrigin(): string | undefined {
@@ -44,6 +42,8 @@ function getBrowserHostname(): string | undefined {
  * the co-hosted proxy.
  */
 export const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
+  "app.elizacloud.ai": "https://api.elizacloud.ai",
+  "app-staging.elizacloud.ai": "https://api-staging.elizacloud.ai",
   "elizacloud.ai": "https://api.elizacloud.ai",
   "www.elizacloud.ai": "https://api.elizacloud.ai",
   "dev.elizacloud.ai": "https://api.elizacloud.ai",
@@ -51,13 +51,8 @@ export const ELIZA_CLOUD_DIRECT_API_BY_HOST: Record<string, string> = {
 };
 
 export function resolveBrowserStewardApiUrl(origin?: string): string {
-  // Vite inlines this only via the literal property name.
-  const override =
-    import.meta.env?.NEXT_PUBLIC_STEWARD_API_URL ??
-    (typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_STEWARD_API_URL
-      : undefined);
-  if (isUsableUrl(override)) {
+  const override = configuredStewardApiUrlOverride();
+  if (override) {
     return trimTrailingSlash(override);
   }
 

@@ -1,3 +1,10 @@
+/**
+ * The Trajectories view: a paginated, searchable list of recorded model
+ * trajectories (scenario/batch runs) with per-row select, download, and delete.
+ * Selection can be controlled by a parent (master/detail) or self-managed
+ * standalone. Binds the floating chat composer as its search box; data and
+ * mutations flow through the trajectories API.
+ */
 import { Download, Route, Trash2, XCircle } from "lucide-react";
 import {
   type ComponentProps,

@@ -1,5 +1,1 @@
-export {
-  AwarenessRegistry,
-  getGlobalAwarenessRegistry,
-  setGlobalAwarenessRegistry,
-} from "@elizaos/shared";
+export { AwarenessRegistry } from "@elizaos/shared";

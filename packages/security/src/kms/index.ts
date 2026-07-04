@@ -1,3 +1,7 @@
+/**
+ * KMS client factory and backend resolver for memory, local desktop, and Steward-backed deployments.
+ */
+
 import { LocalKmsAdapter, randomRootKey } from "./local-adapter.js";
 import { MemoryKmsAdapter } from "./memory-adapter.js";
 import { StewardKmsAdapter } from "./steward-adapter.js";

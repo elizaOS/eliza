@@ -1,3 +1,7 @@
+// Unit tests for the `[TASK:<id>]<title>[/TASK]` marker parser: region
+// detection, id/title extraction, and the MAX_TASK_TITLE_LEN cap. Pure
+// functions over string fixtures — no model, no render.
+
 import { describe, expect, it } from "vitest";
 import { findTaskRegions, MAX_TASK_TITLE_LEN } from "./message-task-parser";
 

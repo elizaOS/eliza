@@ -1,0 +1,9 @@
+
+ RUN  v4.1.5 /home/shaw/eliza-worktrees/11913-bionic-maxtokens/plugins/plugin-local-inference
+
+
+ Test Files  1 passed (1)
+      Tests  20 passed (20)
+   Start at  08:07:04
+   Duration  7.34s (transform 5.37s, setup 0ms, import 6.98s, tests 171ms, environment 0ms)
+

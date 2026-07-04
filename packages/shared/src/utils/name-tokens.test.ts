@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { replaceNameTokens, tokenizeNameOccurrences } from "./name-tokens";
+import {
+  replaceIndexedNameTokens,
+  replaceNameTokens,
+  tokenizeNameOccurrences,
+} from "./name-tokens";
 
 /**
  * Character-name token helpers. `replaceNameTokens` expands `{{name}}` /
@@ -22,6 +26,30 @@ describe("replaceNameTokens", () => {
     // "$&" would re-insert the matched token itself.
     expect(replaceNameTokens("hello {{name}}", "M$&M")).toBe("hello M$&M");
     expect(replaceNameTokens("yo {{agentName}}", "A$AP")).toBe("yo A$AP");
+  });
+
+  it("tolerates whitespace inside the braces (reconciled canonical behavior)", () => {
+    // The pre-consolidation shared copy required tight `{{name}}`; the core
+    // copy allowed `{{ name }}`. The single canonical impl is whitespace-
+    // tolerant so both spellings resolve the same everywhere.
+    expect(replaceNameTokens("Hi {{ name }}!", "Momo")).toBe("Hi Momo!");
+    expect(replaceNameTokens("Hi {{  agentName  }}!", "Momo")).toBe("Hi Momo!");
+  });
+
+  it("returns empty/falsey input unchanged", () => {
+    expect(replaceNameTokens("", "Momo")).toBe("");
+  });
+});
+
+describe("replaceIndexedNameTokens (re-exported from core)", () => {
+  it("resolves indexed example-slot tokens $-safely", () => {
+    expect(
+      replaceIndexedNameTokens("{{name1}} met {{user2}}", ["Ada", "Bo"]),
+    ).toBe("Ada met Bo");
+    // Same $-sequence protection as replaceNameTokens; the former `.replaceAll`
+    // mirrors mangled these.
+    expect(replaceIndexedNameTokens("{{name1}}", ["Cash$$"])).toBe("Cash$$");
+    expect(replaceIndexedNameTokens("{{name1}}", ["M$&M"])).toBe("M$&M");
   });
 });
 

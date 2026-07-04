@@ -1,3 +1,8 @@
+/**
+ * Derives best-bid/best-ask/midpoint/spread from raw CLOB price levels.
+ * Levels with a non-positive or unparsable price are ignored rather than
+ * treated as zero, so a malformed level can't win a `reduce` comparison.
+ */
 export interface PolymarketOrderbookLevel {
   price: string;
   size: string;

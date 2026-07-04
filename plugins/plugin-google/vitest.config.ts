@@ -1,3 +1,4 @@
+/** Vitest config: runs this plugin's `src`/`__tests__` suites with the shared provider-SDK aliases (shims googleapis so tests need no real SDK), excluding live/e2e specs. */
 import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,

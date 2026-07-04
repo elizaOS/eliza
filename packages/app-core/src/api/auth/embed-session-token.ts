@@ -15,13 +15,28 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export type EmbedSessionRole = "OWNER" | "ADMIN";
+/**
+ * #12087 Item 30: the single elevated-role set for the embed boundary. Only these
+ * roles are ever minted into a token or pass the handshake gate; everything else
+ * fails closed. Both the token claims type (below) and the handshake result
+ * (`EmbedLaunchResult` in embed-handshake.ts) consume this one definition.
+ */
+export const EMBED_ELEVATED_ROLES = ["OWNER", "ADMIN"] as const;
+export type EmbedRole = (typeof EMBED_ELEVATED_ROLES)[number];
+
+/** Membership guard for {@link EMBED_ELEVATED_ROLES} (fails closed). */
+export function isEmbedRole(value: unknown): value is EmbedRole {
+  return (
+    typeof value === "string" &&
+    (EMBED_ELEVATED_ROLES as readonly string[]).includes(value)
+  );
+}
 
 export interface EmbedSessionClaims {
   /** The account-scoped Eliza entity the verified platform user maps to. */
   entityId: string;
   /** Verified role (only OWNER/ADMIN are ever minted). */
-  role: EmbedSessionRole;
+  role: EmbedRole;
   /** Whether the embedded surface runs in ADMIN mode. */
   adminMode: boolean;
   /** Expiry, epoch milliseconds. */
@@ -156,7 +171,7 @@ export function verifyEmbedSessionToken(
   }
   if (
     typeof claims.entityId !== "string" ||
-    (claims.role !== "OWNER" && claims.role !== "ADMIN") ||
+    !isEmbedRole(claims.role) ||
     typeof claims.exp !== "number"
   ) {
     return null;

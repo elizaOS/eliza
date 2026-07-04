@@ -1,5 +1,10 @@
+import { logger } from "../logger";
 import type { RoleGateRole } from "../types/contexts";
-import { normalizeGateRole, satisfiesRoleGate } from "./context-gates";
+import {
+	normalizeGateRole,
+	roleRank,
+	satisfiesRoleGate,
+} from "./context-gates";
 
 /**
  * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
@@ -7,14 +12,17 @@ import { normalizeGateRole, satisfiesRoleGate } from "./context-gates";
  * Shape: `{"<ACTION_NAME>": "<RoleGateRole>", ...}` — e.g.
  * `{"SHELL":"GUEST","BROWSER":"MEMBER"}`.
  *
- * When an action name appears in this policy, its declared `contextGate` is
- * bypassed and access is decided solely by whether the caller satisfies the
- * policy's minimum role. Used to whitelist actions whose upstream
- * `contextGate` is narrower than a particular deployment needs.
+ * When an exact action name appears in this policy, its declared `contextGate`
+ * is bypassed and access is decided solely by whether the caller satisfies the
+ * policy's minimum role. Used to whitelist actions whose upstream `contextGate`
+ * is narrower than a particular deployment needs.
  *
- * Lookup is honored in two places:
- *   - `executePlannedToolCall` (top-level planner picks)
- *   - `runSubPlanner` (sub-planner child action list)
+ * The policy is evaluated in exactly one place — the shared `actionGateFailure`
+ * / `canActionRun` gate in `runtime/action-gate.ts` (#12087 Item 9) — which every
+ * exposure/execution path (planner, sub-planner, tool-call executor, shortcut
+ * gate) routes through. A policy key that matches no registered action name or
+ * simile is silently inert; `warnOnUnmatchedActionRolePolicyKeys` surfaces that at
+ * startup (#12087 Item 19).
  */
 
 let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
@@ -66,22 +74,35 @@ export function readActionRolePolicy(): Record<string, RoleGateRole> {
 
 type PolicyAddressableAction = {
 	name: string;
-	similes?: readonly string[];
+	contextGate?: {
+		roleGate?: {
+			minRole?: RoleGateRole;
+		};
+	};
+	roleGate?: {
+		minRole?: RoleGateRole;
+	};
 };
+
+export type ActionRolePolicyWarning =
+	| {
+			type: "unmatched";
+			actionName: string;
+			policyRole: RoleGateRole;
+	  }
+	| {
+			type: "loosens";
+			actionName: string;
+			policyRole: RoleGateRole;
+			declaredRole: RoleGateRole;
+	  };
 
 export function resolveActionRolePolicyRole(
 	action: string | PolicyAddressableAction,
 ): RoleGateRole | undefined {
 	const policy = readActionRolePolicy();
 	if (typeof action === "string") return policy[action];
-	const direct = policy[action.name];
-	if (direct) return direct;
-	for (const simile of action.similes ?? []) {
-		if (typeof simile !== "string") continue;
-		const role = policy[simile];
-		if (role) return role;
-	}
-	return undefined;
+	return policy[action.name];
 }
 
 /**
@@ -99,6 +120,66 @@ export function isActionAllowedByRolePolicy(
 		return false;
 	}
 	return satisfiesRoleGate(userRoles, { minRole: policyRole });
+}
+
+function declaredMinimumRole(
+	action: PolicyAddressableAction,
+): RoleGateRole | undefined {
+	const roles = [
+		action.contextGate?.roleGate?.minRole,
+		action.roleGate?.minRole,
+	].filter((role): role is RoleGateRole => Boolean(role));
+	if (roles.length === 0) return undefined;
+	return roles.reduce((strictest, role) =>
+		roleRank(role) > roleRank(strictest) ? role : strictest,
+	);
+}
+
+export function getActionRolePolicyWarnings(
+	actions: readonly PolicyAddressableAction[],
+): ActionRolePolicyWarning[] {
+	const policy = readActionRolePolicy();
+	const byName = new Map(actions.map((action) => [action.name, action]));
+	const warnings: ActionRolePolicyWarning[] = [];
+
+	for (const [actionName, policyRole] of Object.entries(policy)) {
+		const action = byName.get(actionName);
+		if (!action) {
+			warnings.push({ type: "unmatched", actionName, policyRole });
+			continue;
+		}
+		const declaredRole = declaredMinimumRole(action);
+		if (declaredRole && roleRank(policyRole) < roleRank(declaredRole)) {
+			warnings.push({
+				type: "loosens",
+				actionName,
+				policyRole,
+				declaredRole,
+			});
+		}
+	}
+
+	return warnings;
+}
+
+/**
+ * Warn about `ACTION_ROLE_POLICY` keys that match no registered action name.
+ * Policy lookup is exact-name only; similes intentionally do not authorize.
+ * Returns the unmatched keys for tests.
+ */
+export function warnOnUnmatchedActionRolePolicyKeys(
+	actions: readonly PolicyAddressableAction[],
+): string[] {
+	const warnings = getActionRolePolicyWarnings(actions);
+	const unmatched = warnings
+		.filter((warning) => warning.type === "unmatched")
+		.map((warning) => warning.actionName);
+	if (unmatched.length > 0) {
+		logger.warn(
+			`[action-role-policy] ACTION_ROLE_POLICY key(s) match no registered action name and are inert: ${unmatched.join(", ")}`,
+		);
+	}
+	return unmatched;
 }
 
 /** Test seam — clears the cached `ACTION_ROLE_POLICY` parse. */

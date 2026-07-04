@@ -223,8 +223,10 @@ describe("handleCloudPairRoute", () => {
     expect(body).toContain(
       'window.sessionStorage.setItem("eliza:cloud-pair:api-token", key)',
     );
-    expect(body).toMatch(/window\.__ELIZAOS_API_TOKEN__\s*=\s*key/);
-    expect(body).toMatch(/window\.__ELIZA_API_TOKEN__\s*=\s*key/);
+    expect(body).toContain('Symbol.for("elizaos.app.boot-config")');
+    expect(body).toContain("apiToken: key");
+    expect(body).not.toContain("__ELIZAOS_API_TOKEN__");
+    expect(body).not.toContain("__ELIZA_API_TOKEN__");
     expect(body).toContain('window.location.replace("/")');
     expect(harness.headers()["cache-control"]).toContain("no-store");
     expect(harness.headers()["x-frame-options"]).toBe("DENY");

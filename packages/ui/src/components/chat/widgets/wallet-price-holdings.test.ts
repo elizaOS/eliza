@@ -1,3 +1,7 @@
+// `selectPricedHoldings` selection logic: empty on missing balances, price-only
+// rows with no amount/holding value leaked, dust (<$1) skipped, capped at the top
+// 5 by holding value, only priced symbols included, same symbol aggregated across
+// chains (case-insensitive), native SOL/ETH counted. Pure function — no jsdom.
 import type {
   WalletBalancesResponse,
   WalletMarketPriceSnapshot,

@@ -1,8 +1,17 @@
 /**
- * Conditional logging utility with sensitive data redaction
- * Debug/info logs only show when VERBOSE_LOGGING=true to reduce console noise
- * Provides utilities to redact sensitive data like transaction hashes and IDs
+ * Conditional cloud logging utility with structural sensitive-data redaction.
+ *
+ * Debug/info logs only show when VERBOSE_LOGGING=true to reduce console noise.
+ * Every sink pipes its arguments through the core log-sink redactor
+ * ({@link redactLogArgs}) before writing, so a secret is masked whether or not
+ * the caller wrapped context in {@link redact.context}. Name-based redaction
+ * (which field names are secret) is delegated to core's {@link isSensitiveKeyName}
+ * so the definition lives in exactly one module shared with the runtime; the
+ * `redact.*` helpers below add cloud-specific *display truncation* (tx hashes,
+ * IDs, IPs, wallet addresses) that is not a security masking concern.
  */
+
+import { isSensitiveKeyName, redactLogArgs } from "@elizaos/core";
 
 const isDev = process.env.NODE_ENV === "development";
 // Only show debug/info logs when explicitly enabled via VERBOSE_LOGGING=true
@@ -112,20 +121,11 @@ export const redact = {
       // Auto-redact based on field name patterns
       const lowerKey = key.toLowerCase();
 
-      // Sensitive credential fields — always fully redacted
-      if (
-        lowerKey.includes("privatekey") ||
-        lowerKey.includes("private_key") ||
-        lowerKey.includes("secret") ||
-        lowerKey.includes("password") ||
-        lowerKey.includes("authkey") ||
-        lowerKey.includes("auth_key") ||
-        lowerKey === "apikey" ||
-        lowerKey === "api_key" ||
-        (lowerKey.includes("token") && !lowerKey.includes("tokenid")) ||
-        (lowerKey.includes("key") &&
-          (lowerKey.includes("ssh") || lowerKey.includes("api") || lowerKey.includes("signing")))
-      ) {
+      // Sensitive credential fields — always fully redacted. The predicate is
+      // owned by core (isSensitiveKeyName) so cloud and runtime agree on which
+      // field names are secret; the display-truncation branches below are
+      // cloud-specific and stay here.
+      if (isSensitiveKeyName(key)) {
         redacted[key] = "[REDACTED]";
       } else if (lowerKey.includes("txhash") || lowerKey.includes("transaction_hash")) {
         redacted[key] = redact.txHash(value);
@@ -164,7 +164,7 @@ export const logger = {
    */
   debug: (...args: unknown[]) => {
     if (isVerbose) {
-      console.log(...args);
+      console.log(...redactLogArgs(args));
     }
   },
 
@@ -173,7 +173,7 @@ export const logger = {
    */
   info: (...args: unknown[]) => {
     if (isVerbose) {
-      console.info(...args);
+      console.info(...redactLogArgs(args));
     }
   },
 
@@ -181,7 +181,7 @@ export const logger = {
    * Error-level logs - always shown (critical for production monitoring)
    */
   error: (...args: unknown[]) => {
-    console.error(...args);
+    console.error(...redactLogArgs(args));
   },
 
   /**
@@ -190,7 +190,7 @@ export const logger = {
    */
   warn: (...args: unknown[]) => {
     if (!isBuildPhase) {
-      console.warn(...args);
+      console.warn(...redactLogArgs(args));
     }
   },
 

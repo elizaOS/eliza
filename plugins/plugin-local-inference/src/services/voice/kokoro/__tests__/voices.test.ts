@@ -1,3 +1,4 @@
+/** Covers the `KOKORO_VOICE_PACKS` catalog invariants. Deterministic. */
 import { describe, expect, it } from "vitest";
 import {
 	findKokoroVoice,

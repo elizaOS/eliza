@@ -1,3 +1,9 @@
+/**
+ * URL normalization helpers shared across the extension: coerce a user-entered
+ * agent API URL or a page origin to a canonical, safe http(s) form. Rejects
+ * non-http(s) schemes and credentials-in-URL so downstream code can trust the
+ * result. Pure functions with no browser dependencies.
+ */
 export function normalizeHttpBaseUrl(
   value: unknown,
   defaultValue: string | null = null,

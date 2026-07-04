@@ -1,3 +1,6 @@
+/**
+ * Entry point of the standalone story gallery app: mounts App under the shared providers.
+ */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@ui-src/styles.ts";

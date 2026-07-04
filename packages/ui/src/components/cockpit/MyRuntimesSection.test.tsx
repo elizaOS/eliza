@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// Interaction tests for MyRuntimesSection: it lists the runtimes, marks the
+// active one, and fires switch/add-remote callbacks. Deterministic RTL/jsdom,
+// no network.
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";

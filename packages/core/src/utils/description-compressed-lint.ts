@@ -6,18 +6,19 @@
  * compressor would have applied:
  *
  * - Non-empty, trimmed.
- * - At most {@link MAX_DESCRIPTION_LENGTH} characters.
  * - No filler phrases that the compressor strips (`PHRASE_REPLACEMENTS`).
  * - No long-form word forms that the compressor abbreviates
  *   (`WORD_REPLACEMENTS` — `messages`, `configuration`, etc.).
  * - Starts with an imperative verb, not a stative one (`Helps`, `Allows`,
  *   `It`, `This`, `Should`).
  *
+ * There is intentionally NO maximum length: the full description text reaches
+ * the model (see `compressPromptDescription`, which no longer truncates), so a
+ * long-but-clear description with "use when / do NOT use when" guidance is fine.
+ *
  * Intended for ad-hoc tooling/tests. The helper is intentionally pure: caller
  * decides exit-code semantics.
  */
-
-export const MAX_DESCRIPTION_LENGTH = 160;
 
 /**
  * Banned phrases — must be a substring of one of the keys in
@@ -106,12 +107,6 @@ export function lintDescriptionCompressed(
 	}
 
 	const value = text;
-
-	if (value.length > MAX_DESCRIPTION_LENGTH) {
-		violations.push(
-			`length: descriptionCompressed is ${value.length} chars (max ${MAX_DESCRIPTION_LENGTH})`,
-		);
-	}
 
 	for (const { phrase, pattern } of BANNED_PHRASES) {
 		if (pattern.test(value)) {

@@ -1,3 +1,9 @@
+/**
+ * Tests for the Node `plugin-localdb` entry: persistence of `FileStorage`
+ * data across adapter restarts, the plugin's adapter-registration gate, and
+ * the `LOCALDB_DATA_DIR` resolution. Runs real file I/O against temp
+ * directories — no mocked filesystem.
+ */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

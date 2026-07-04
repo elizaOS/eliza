@@ -1,3 +1,14 @@
+/**
+ * The Eliza Cloud account dashboard: billing summary, balance top-up (Stripe
+ * embedded checkout), auto-top-up settings, spend limits, and managed
+ * Discord/GitHub connection callbacks.
+ *
+ * Reads and mutates through the `client` cloud-billing API; the pure shaping and
+ * normalization helpers live in `cloud-dashboard-utils`. Mounted as the
+ * `CloudDashboard` route in the desktop detached shell (`DetachedShellRoot`).
+ * Locks itself out when the mobile runtime is Cloud-locked
+ * (`isElizaCloudRuntimeLocked`).
+ */
 import {
   ArrowLeft,
   CreditCard,
@@ -1002,13 +1013,13 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       <p className="mb-1 text-2xs font-semibold uppercase text-muted">
         Sign-in window did not open?
       </p>
-      <button
-        type="button"
-        className="block w-full break-all text-left text-xs text-accent underline-offset-2 hover:underline"
+      <Button
+        variant="ghost"
+        className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
-      </button>
+      </Button>
     </div>
   );
 }

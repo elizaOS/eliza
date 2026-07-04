@@ -1,3 +1,4 @@
+/** Style rules shared by every built-in character preset, prepended to each character's own rules. */
 export const SHARED_STYLE_RULES = [
   "Keep it short unless the user clearly wants depth.",
   "Sound young, current, and self-aware without trying too hard.",

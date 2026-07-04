@@ -1,3 +1,8 @@
+/**
+ * Selects the active `WalletBackend` implementation from the
+ * `ELIZA_WALLET_BACKEND` setting (`local` / `steward` / `auto`), with `auto`
+ * preferring Steward when the agent is cloud-provisioned.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { WalletBackend } from "./backend.js";
 import { LocalEoaBackend } from "./local-eoa-backend.js";

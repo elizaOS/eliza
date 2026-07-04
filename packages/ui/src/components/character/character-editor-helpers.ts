@@ -1,6 +1,9 @@
 /**
- * Pure helpers extracted from CharacterEditor and AppContext
- * for testability and reuse.
+ * Pure, side-effect-free helpers backing the character editor: resolving
+ * first-run preset styles, building a character draft from a roster preset,
+ * and deciding when preset defaults should overwrite user edits. Kept separate
+ * from the CharacterEditor component so the logic is unit-testable and shared
+ * with AppContext without pulling in React.
  */
 
 import type { StylePreset } from "@elizaos/shared";

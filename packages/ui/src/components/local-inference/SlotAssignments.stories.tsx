@@ -1,3 +1,5 @@
+/** Storybook stories for SlotAssignments — all-auto, custom, single-model, unverified-bundle, and empty states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   InstalledModel,

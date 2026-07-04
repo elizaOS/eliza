@@ -1,3 +1,8 @@
+/**
+ * Per-agent configuration types: the `AgentsConfig` map, individual agent
+ * definitions, their knowledge sources, and connector bindings. A slice of the
+ * `ElizaConfig` tree (see types.eliza.ts).
+ */
 import type {
   CharacterSettings,
   DocumentSourceItem,

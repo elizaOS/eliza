@@ -1,3 +1,7 @@
+/**
+ * Sidebar header row: an optional search box above caller-supplied header
+ * children, laid out on a `SidebarHeaderStack`.
+ */
 import type * as React from "react";
 
 import type { SidebarSearchBarProps } from "../search";

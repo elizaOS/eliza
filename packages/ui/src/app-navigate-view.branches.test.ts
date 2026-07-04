@@ -1,16 +1,22 @@
 // @vitest-environment jsdom
 
+/**
+ * Branch coverage for `createNavigateViewHandler()` beyond `app-navigate-
+ * view.test.ts`: the early-return guards, viewPath-only navigation, and viewId
+ * navigation resolving a registry entry that is neither pin-tab nor
+ * desktopTabEnabled (navigates without opening a desktop tab). No runtime.
+ */
+
+import {
+  createNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+} from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createNavigateViewHandler,
   type DesktopBridgeRequest,
 } from "./app-navigate-view";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
-
-// Branch coverage for createNavigateViewHandler() that app-navigate-view.test.ts
-// does not exercise: the early-return guards, viewId-less navigation (no recents
-// record), and viewId navigation that resolves a registry entry which is neither
-// pin-tab nor desktopTabEnabled (must navigate without opening a desktop tab).
 
 function view(patch: Partial<ViewRegistryEntry> = {}): ViewRegistryEntry {
   return {
@@ -51,13 +57,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
 }
 
 function navigateEvent(detail: Record<string, unknown>): CustomEvent {
-  return new CustomEvent("eliza:navigate:view", { detail });
-}
-
-function recents(): string[] {
-  return JSON.parse(
-    window.localStorage.getItem("elizaos.views.recent") ?? "[]",
-  );
+  return createNavigateViewEvent(detail);
 }
 
 describe("createNavigateViewHandler guard + fallthrough branches", () => {
@@ -69,26 +69,24 @@ describe("createNavigateViewHandler guard + fallthrough branches", () => {
   it("ignores events that carry no detail", () => {
     const fixture = createHandlerFixture();
 
-    fixture.handler(new CustomEvent("eliza:navigate:view"));
+    fixture.handler(new CustomEvent(NAVIGATE_VIEW_EVENT));
 
     expect(fixture.setTab).not.toHaveBeenCalled();
     expect(fixture.navigatePath).not.toHaveBeenCalled();
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
     expect(fixture.invokeDesktopBridgeRequest).not.toHaveBeenCalled();
-    expect(recents()).toEqual([]);
   });
 
-  it("ignores a detail with neither viewPath nor viewId (no path, no recents)", () => {
+  it("ignores a detail with neither viewPath nor viewId", () => {
     const fixture = createHandlerFixture();
 
     fixture.handler(navigateEvent({ action: "pin-tab" }));
 
     expect(fixture.navigatePath).not.toHaveBeenCalled();
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
-    expect(recents()).toEqual([]);
   });
 
-  it("navigates a viewPath-only detail without recording a recent view", () => {
+  it("navigates a viewPath-only detail", () => {
     const fixture = createHandlerFixture();
 
     fixture.handler(navigateEvent({ viewPath: "/apps/remote-ledger" }));
@@ -96,8 +94,6 @@ describe("createNavigateViewHandler guard + fallthrough branches", () => {
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/remote-ledger");
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
     expect(fixture.setActiveDesktopTabId).not.toHaveBeenCalled();
-    // recordRecentViewId only fires when detail.viewId is present.
-    expect(recents()).toEqual([]);
   });
 
   it("navigates a resolved view that is neither pinned nor tab-enabled without opening a tab", () => {
@@ -109,8 +105,6 @@ describe("createNavigateViewHandler guard + fallthrough branches", () => {
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
     expect(fixture.setActiveDesktopTabId).not.toHaveBeenCalled();
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/remote-ledger");
-    // viewId present, so it is recorded.
-    expect(recents()).toEqual(["remote-ledger"]);
   });
 
   it("navigates a viewId with no registry entry without opening a tab or crashing", () => {
@@ -120,7 +114,6 @@ describe("createNavigateViewHandler guard + fallthrough branches", () => {
 
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
     expect(fixture.navigatePath).toHaveBeenCalledWith("/apps/ghost-view");
-    expect(recents()).toEqual(["ghost-view"]);
   });
 
   it("falls through to plain navigation when open-window is requested without a viewId", () => {

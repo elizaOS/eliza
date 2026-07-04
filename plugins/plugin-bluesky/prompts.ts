@@ -1,10 +1,8 @@
 /**
- * Prompt templates for the BlueSky plugin.
- *
- * These prompts use Handlebars-style template syntax:
- * - {{variableName}} for simple substitution
- * - {{#each items}}...{{/each}} for iteration
- * - {{#if condition}}...{{/if}} for conditionals
+ * LLM prompt templates for the BlueSky plugin: DM reply generation, post
+ * generation, and over-limit post truncation. `{{maxLength}}` / `{{text}}`
+ * placeholders are substituted at compose time. Each template is exported under
+ * both a camelCase and an UPPER_SNAKE_CASE name.
  */
 
 export const generateDmTemplate = `Generate a friendly direct message response under 200 characters.`;

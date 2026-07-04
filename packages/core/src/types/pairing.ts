@@ -1,3 +1,8 @@
+/**
+ * DM-pairing workflow types: `PairingRequest` / `PairingChannel` / allowlist
+ * entries for the flow where a user proves access to a bot over a DM channel via
+ * a short code. Consumed by the pairing services and messaging connectors.
+ */
 import type { UUID } from "./primitives";
 
 /**

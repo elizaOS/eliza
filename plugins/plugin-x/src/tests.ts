@@ -1,5 +1,8 @@
-// packages/plugin-twitter/src/tests/ClientBaseTestSuite.ts
-
+/**
+ * elizaOS `TestSuite` exercising `ClientBase` init and profile caching inside a live
+ * agent runtime, for the runtime's plugin self-test harness (distinct from the Vitest
+ * unit suites).
+ */
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { ClientBase } from "./base";
 import type { TwitterConfig } from "./environment";

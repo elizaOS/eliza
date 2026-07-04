@@ -1,3 +1,8 @@
+/**
+ * Full-height flex frame for a page and its scrollable content column:
+ * `PagePanelFrame` is the outer full-bleed container, `PagePanelContentArea`
+ * the scrolling main column inside it.
+ */
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";

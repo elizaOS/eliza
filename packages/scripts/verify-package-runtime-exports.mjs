@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { findWorkspaceRoot } from "./lib/repo-root.mjs";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -9,22 +10,6 @@ if (!packageDirArg) {
     "Usage: node packages/scripts/verify-package-runtime-exports.mjs <package-dir>",
   );
   process.exit(1);
-}
-
-function findWorkspaceRoot(startDir) {
-  let current = path.resolve(startDir);
-  while (true) {
-    try {
-      const raw = fs.readFileSync(path.join(current, "package.json"), "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed?.workspaces) return current;
-    } catch {
-      // keep walking
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return process.cwd();
-    current = parent;
-  }
 }
 
 const root = findWorkspaceRoot(process.cwd());

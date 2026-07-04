@@ -19,8 +19,11 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  EventType,
+  getSwarmCoordinatorService,
   isRateLimitError,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   ModelType,
   type RolesWorldMetadata,
   type RouteRequestContext,
@@ -30,6 +33,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type {
+  ChatFailureKind,
+  ChatTurnStatus,
   LinkedAccountProviderId,
   LogEntry,
   ReadJsonBodyOptions,
@@ -52,11 +57,6 @@ import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts"
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
-  executeFallbackParsedActions,
-  maybeHandleDirectBinanceSkillRequest,
-  parseFallbackActionBlocks,
-} from "./binance-skill-helpers.ts";
-import {
   maybeAugmentChatMessageWithDocuments,
   maybeAugmentChatMessageWithLanguage,
 } from "./chat-augmentation.ts";
@@ -76,6 +76,16 @@ import {
   isInsufficientCreditsMessage,
 } from "./credit-detection.ts";
 import {
+  executeFallbackParsedActions,
+  parseFallbackActionBlocks,
+} from "./fallback-action-helpers.ts";
+import {
+  type LocalInferenceChatMetadata,
+  type LocalInferenceCommandIntent,
+  type LocalInferenceRouteApi,
+  loadLocalInferenceRouteApi,
+} from "./local-inference-server-api.ts";
+import {
   buildWalletActionNotExecutedReply,
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -94,34 +104,10 @@ export type { ChatImageAttachment, LogEntry };
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
 
-type LocalInferenceChatMetadata = Record<string, unknown>;
-type LocalInferenceCommandIntent =
-  | "cancel"
-  | "download"
-  | "redownload"
-  | "resume"
-  | "retry"
-  | "status"
-  | "switch_smaller"
-  | "use_cloud"
-  | "use_local";
-
-type LocalInferenceChatApi = {
-  getLocalInferenceChatStatus: (
-    intent: LocalInferenceCommandIntent,
-    error?: unknown,
-  ) => Promise<{
-    text: string;
-    localInference: LocalInferenceChatMetadata;
-  }>;
-  handleLocalInferenceChatCommand: (
-    intent: LocalInferenceCommandIntent,
-    prompt: string,
-  ) => Promise<{
-    text: string;
-    localInference: LocalInferenceChatMetadata;
-  }>;
-};
+type LocalInferenceChatApi = Pick<
+  LocalInferenceRouteApi,
+  "getLocalInferenceChatStatus" | "handleLocalInferenceChatCommand"
+>;
 
 let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
 
@@ -129,12 +115,13 @@ let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
  * Resolve the plugin-local-inference chat API used to turn a local-inference
  * failure into a user-facing status (download prompts, switch-model hints, …).
  *
- * An error-reporting path must NEVER throw. The mobile bundle can resolve the
- * dynamic `import("@elizaos/plugin-local-inference")` to a namespace whose named
- * export is `undefined` (tree-shake / circular-init artifact) — which previously
- * made the catch blocks throw `getLocalInferenceChatStatus is not a function`
- * and MASK the real error. So validate the import and fall back to a status
- * derived from the raw error, guaranteeing the actual failure surfaces.
+ * An error-reporting path must NEVER throw. On any platform the loaded module
+ * can carry an `undefined` named export (tree-shake / circular-init artifact) —
+ * which previously made the catch blocks throw
+ * `getLocalInferenceChatStatus is not a function` and MASK the real error. So
+ * validate the loaded functions and fall back to a status derived from the raw
+ * error, guaranteeing the actual failure surfaces. The always-real subpath is
+ * owned by `./local-inference-server-api.ts`.
  */
 function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
   localInferenceChatApiPromise ??=
@@ -155,9 +142,8 @@ function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
         }),
       };
       try {
-        const mod = (await import(
-          "@elizaos/plugin-local-inference"
-        )) as Partial<LocalInferenceChatApi>;
+        const mod =
+          (await loadLocalInferenceRouteApi()) as Partial<LocalInferenceChatApi>;
         return {
           getLocalInferenceChatStatus:
             typeof mod.getLocalInferenceChatStatus === "function"
@@ -662,7 +648,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
     text,
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     actions: ["REPLY"],
     localInference,
   } satisfies Content;
@@ -1401,19 +1387,6 @@ export function getChatFailureReply(
   return getProviderIssueChatReply();
 }
 
-/**
- * Discriminator the conversation route includes in its 200 response so the
- * renderer can distinguish "provider configured but throwing" from "no
- * provider configured at all" — the latter is a UX gate ("Connect a
- * provider"), not a chat reply.
- */
-export type ChatFailureKind =
-  | "insufficient_credits"
-  | "no_provider"
-  | "provider_issue"
-  | "rate_limited"
-  | "local_inference";
-
 export function classifyChatFailure(
   err: unknown,
   logBuffer: LogEntry[],
@@ -1687,32 +1660,6 @@ export function writeChatTokenSse(
   writeSse(res, { type: "token", text, fullText });
 }
 
-/**
- * In-flight assistant-turn status, surfaced to the UI as an additive SSE
- * `{ type: "status", ... }` event so the chat can show what the agent is *doing*
- * rather than just breathing dots. The `token` / `done` / `error` contract is
- * unchanged — a client that ignores `status` events behaves exactly as before.
- *
- * The canonical (and only consumer-facing) definition lives in
- * `@elizaos/ui` `api/client-types-chat.ts` (`ChatTurnStatus`). It is re-declared
- * here — not imported — because the server must not depend on the React UI
- * package; this mirrors the existing `ChatFailureKind` arrangement. The two
- * declarations are kept structurally identical by the SSE-status unit test.
- */
-export interface ChatTurnStatus {
-  kind:
-    | "thinking"
-    | "streaming"
-    | "running_action"
-    | "running_tool"
-    | "evaluating"
-    | "waking"
-    | "speaking";
-  label?: string;
-  actionName?: string;
-  toolName?: string;
-}
-
 export function writeChatStatusSse(
   res: http.ServerResponse,
   status: ChatTurnStatus,
@@ -1854,14 +1801,16 @@ export async function persistAssistantConversationMemory(
     typeof content === "string"
       ? ({
           text: content,
-          source: "client_chat",
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
           channelType,
         } satisfies Content)
       : ({
           ...content,
           text: extractCompatTextContent(content),
           source:
-            typeof content.source === "string" ? content.source : "client_chat",
+            typeof content.source === "string"
+              ? content.source
+              : MESSAGE_SOURCE_CLIENT_CHAT,
           channelType:
             typeof content.channelType === "string"
               ? content.channelType
@@ -2257,7 +2206,7 @@ export async function generateChatResponse(
     // Emit inbound events so trajectory/session hooks run for API chat.
     try {
       if (typeof runtime.emitEvent === "function") {
-        await runtime.emitEvent("MESSAGE_RECEIVED", {
+        await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
           message,
           source: messageSource,
         });
@@ -2305,7 +2254,7 @@ export async function generateChatResponse(
             ),
           });
           memoryLike.metadata = message.metadata;
-          await runtime.emitEvent("MESSAGE_SENT", {
+          await runtime.emitEvent(EventType.MESSAGE_SENT, {
             message: memoryLike,
             source: messageSource,
           });
@@ -2381,25 +2330,27 @@ export async function generateChatResponse(
       withTimeout(
         Promise.resolve(
           runWithTrajectoryContext(trajectoryContext, async () => {
-            // Binance skill direct dispatch
-            const directSkillText = await maybeHandleDirectBinanceSkillRequest(
+            // Plugin-registered chat pre-handlers (generic direct-dispatch
+            // extension point): drained by priority before normal action
+            // processing; the first non-null result resolves the turn.
+            const preHandlerResult = await runtime.drainChatPreHandlers({
               runtime,
               message,
-              replaceCallbackText,
-              emitSnapshot,
-            );
-            if (directSkillText) {
-              const finalText = isClientVisibleNoResponse(directSkillText)
-                ? directSkillText || "(no response)"
-                : directSkillText;
+              appendText: replaceCallbackText,
+              replaceText: emitSnapshot,
+            });
+            if (preHandlerResult) {
+              const directText = preHandlerResult.responseText;
+              const finalText = isClientVisibleNoResponse(directText)
+                ? directText || "(no response)"
+                : directText;
               result = {
                 didRespond: true,
                 responseContent: { text: finalText },
                 responseMessages: [],
               } as typeof result;
               responseText = finalText;
-              forcedWalletExecutionText =
-                isClientVisibleNoResponse(directSkillText);
+              forcedWalletExecutionText = isClientVisibleNoResponse(directText);
               return;
             }
 
@@ -2408,7 +2359,7 @@ export async function generateChatResponse(
               | Record<string, unknown>
               | undefined;
             if (contentMetadata?.intent === "create_task") {
-              const coordinator = runtime.getService("SWARM_COORDINATOR");
+              const coordinator = getSwarmCoordinatorService(runtime);
               if (coordinator) {
                 const createTaskAction =
                   runtime.actions.find(
@@ -2486,7 +2437,7 @@ export async function generateChatResponse(
                 didRespond: true,
                 responseContent: {
                   text: localResult.text,
-                  source: "client_chat",
+                  source: MESSAGE_SOURCE_CLIENT_CHAT,
                   actions: ["REPLY"],
                   localInference: localResult.localInference as
                     | Record<string, unknown>
@@ -2609,7 +2560,7 @@ export async function generateChatResponse(
                     ),
                   });
                   memoryLike.metadata = message.metadata;
-                  await runtime.emitEvent("MESSAGE_SENT", {
+                  await runtime.emitEvent(EventType.MESSAGE_SENT, {
                     message: memoryLike,
                     source: messageSource,
                   });
@@ -3076,7 +3027,7 @@ async function ensureCompatChatConnection(
     roomId,
     worldId,
     userName: resolveAppUserName(state.config),
-    source: "client_chat",
+    source: MESSAGE_SOURCE_CLIENT_CHAT,
     channelId: `${channelIdPrefix}-${roomKey}`,
     type: ChannelType.DM,
     messageServerId,

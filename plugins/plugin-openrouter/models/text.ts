@@ -1,3 +1,19 @@
+/**
+ * Every text `ModelType` handler (nano, small, medium, large, mega, response
+ * handler, action planner) routed through a single `generateTextWithModel`
+ * against the `@openrouter/ai-sdk-provider` chat model. Resolves the configured
+ * model name per type, builds AI SDK `generateText`/`streamText` params, and
+ * emits a `MODEL_USED` usage event after each call.
+ *
+ * Load-bearing normalization lives here: `readToolSet` rekeys runtime
+ * ToolDefinition arrays into a provider-safe `ToolSet` (bare arrays give Google
+ * function names like "0"); `supportsSamplingParameters` suppresses
+ * temperature/frequency/presence for `openai/*`, `anthropic/*`, and reasoning
+ * models that reject them; `buildStructuredOutput` wraps a `responseSchema` into
+ * the SDK `output` field; and prompt/messages/attachments are reconciled into a
+ * single wire shape. Callers that pass messages/tools/toolChoice/responseSchema
+ * get the richer native result object; plain prompts get a string.
+ */
 import type {
   GenerateTextParams,
   IAgentRuntime,

@@ -42,6 +42,7 @@ export {
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
 export { CalendarServiceError } from "./internal/errors.js";
+export * from "./meetings/index.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
 export {
   registerCalendarTerminalView,

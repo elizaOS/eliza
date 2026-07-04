@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Syntax-highlighted read-only code block (Prism vsc-dark-plus) for docs/snippets.
+ */
 import { memo } from "react";
 import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { cn } from "../../lib/utils";

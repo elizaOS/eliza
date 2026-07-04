@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `createBirdeyePortfolioProvider` / `formatPortfolio` against
+ * a mocked runtime and mocked Birdeye service (no live API or LLM call):
+ * covers the plain-portfolio provider, the trade-including variant, and
+ * legacy portfolio-wrapper JSON formatting.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { WalletPortfolioResponse } from "../types/api/wallet";

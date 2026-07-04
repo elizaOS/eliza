@@ -1,30 +1,20 @@
 /**
- * Apps page — single-surface app browser with optional full-screen game mode.
+ * Apps surface — the launcher grid, or a full-screen game/app runtime when a
+ * game run is active.
  */
 
-import type React from "react";
 import { useEffect } from "react";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
 } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
-import { GameView } from "../apps/GameView";
+import { FullscreenView } from "../apps/FullscreenView";
 import { getAppSlug } from "../apps/helpers";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
-import { AppsView } from "./AppsView";
+import { LauncherSurface } from "./LauncherSurface";
 
-type AppsPageViewRenderer = () => React.ReactElement;
-
-export function AppsPageView({
-  inModal,
-  appsView: AppsViewRenderer = AppsView as AppsPageViewRenderer,
-  gameView: GameViewRenderer = GameView as AppsPageViewRenderer,
-}: {
-  inModal?: boolean;
-  appsView?: AppsPageViewRenderer;
-  gameView?: AppsPageViewRenderer;
-} = {}) {
+export function AppsPageView() {
   const { appRuns, appsSubTab, activeGameRunId, setState } =
     useAppSelectorShallow((s) => ({
       appRuns: s.appRuns,
@@ -37,9 +27,9 @@ export function AppsPageView({
     ? appRuns.find((run) => run.runId === activeGameRunId)
     : undefined;
 
-  // When the game view is active (including after refresh where sessionStorage
-  // restores activeGameRunId + appsSubTab="games"), make sure the URL reflects
-  // the app slug so bookmarks and further refreshes work.
+  // When the full-screen game view is active (including after refresh where
+  // sessionStorage restores activeGameRunId + appsSubTab="games"), make sure the
+  // URL reflects the app slug so bookmarks and further refreshes work.
   useEffect(() => {
     if (appsSubTab !== "games" || !activeGameRun) return;
     const slug = getAppSlug(activeGameRun.appName);
@@ -64,25 +54,14 @@ export function AppsPageView({
     }
   }, [appsSubTab, hasActiveGame, setState]);
 
-  if (appsSubTab === "games" && hasActiveGame) {
-    return <GameViewRenderer />;
-  }
-
-  if (inModal) {
-    return (
-      <ShellViewAgentSurface viewId="apps">
-        <div className="settings-content-area">
-          <div className="settings-section-pane pt-4">
-            <AppsViewRenderer />
-          </div>
-        </div>
-      </ShellViewAgentSurface>
-    );
-  }
 
   return (
     <ShellViewAgentSurface viewId="apps">
-      <AppsViewRenderer />
+      {appsSubTab === "games" && hasActiveGame ? (
+        <FullscreenView />
+      ) : (
+        <LauncherSurface />
+      )}
     </ShellViewAgentSurface>
   );
 }

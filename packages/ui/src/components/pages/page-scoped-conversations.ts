@@ -1,31 +1,19 @@
+/**
+ * Page-scoped conversation model: maps each page scope (browser, character,
+ * plugins, wallet, …) to its routing contexts and empty-state intro copy, and
+ * provides the helpers that tag, detect, and build metadata for conversations
+ * bound to a specific page. `PAGE_SCOPE_VERSION` stamps trajectories so later
+ * prompt-optimization passes can cohort by surface contract; bump it when a
+ * scope's brief, copy, or live-state shape changes meaningfully.
+ */
+import type { PageScope } from "@elizaos/shared/contracts";
 import { client } from "../../api";
 import type {
   Conversation,
   ConversationMetadata,
 } from "../../api/client-types-chat";
 
-export type PageScope =
-  | "page-browser"
-  | "page-character"
-  | "page-automations"
-  | "page-apps"
-  | "page-connectors"
-  | "page-phone"
-  | "page-plugins"
-  | "page-settings"
-  | "page-wallet";
-
-export const PAGE_SCOPES: readonly PageScope[] = [
-  "page-browser",
-  "page-character",
-  "page-automations",
-  "page-apps",
-  "page-connectors",
-  "page-phone",
-  "page-plugins",
-  "page-settings",
-  "page-wallet",
-] as const;
+export { PAGE_SCOPES, type PageScope } from "@elizaos/shared/contracts";
 
 const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
   PageScope,

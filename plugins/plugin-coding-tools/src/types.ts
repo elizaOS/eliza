@@ -1,3 +1,10 @@
+/**
+ * Shared constants and result types for the coding-tools plugin: the
+ * `CODING_TOOLS_*` service-type identifiers, the `CODING_TOOLS_CONTEXTS` list, the
+ * log prefix, and the `ToolResult`/`ToolFailure` shapes (plus `success`/`failure`
+ * constructors) that every action handler returns. Imported across actions,
+ * services, and lib so all layers agree on one set of names and envelopes.
+ */
 import type { ActionResult, UUID } from "@elizaos/core";
 
 export const CODING_TOOLS_LOG_PREFIX = "[CodingTools]";

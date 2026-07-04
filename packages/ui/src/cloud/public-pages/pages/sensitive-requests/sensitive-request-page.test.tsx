@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
 
+/**
+ * `SensitiveRequestPage` image/file upload (#8910): an image field renders as a
+ * file input with camera capture (not filtered out) and delivers the upload as
+ * a base64 data URL through the existing submit path, an over-`maxBytes` upload
+ * is rejected and never submitted, and a non-image field renders without
+ * forcing the camera. The router and api-client are doubled; the page is real.
+ */
+
 import {
   cleanup,
   fireEvent,

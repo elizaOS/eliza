@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the text-generation plumbing — model resolution, native tool
+ * and message normalization, structured-output vs tools precedence, and
+ * streaming vs generateText routing. The AI SDK, provider factory, and
+ * detection are all mocked, so no live model is called.
+ */
+
 import type { GenerateTextResult, IAgentRuntime, TextStreamResult } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

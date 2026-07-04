@@ -70,6 +70,7 @@ import {
 	createEvictableModelRole,
 	SharedResourceRegistry,
 } from "./voice/shared-resources";
+import { getSharedVoiceProfileStore } from "./voice/speaker/profile-store-factory";
 import type {
 	RejectedTokenRange,
 	TextToken,
@@ -1156,9 +1157,16 @@ export class LocalInferenceEngine {
 					speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
 				}
 			: {};
+		// Light up speaker attribution on the speak-back loop (#12257): thread
+		// the one shared VoiceProfileStore in so the engine-bridge attribution
+		// gate opens. The store is shared with Pipeline A (live frames) so both
+		// paths resolve the same identities. Absent fused speaker artifacts
+		// degrade to attribution-off with a single warn (engine-bridge gate).
+		const profileStore = await getSharedVoiceProfileStore();
 		bridge = this.startVoice({
 			bundleRoot: bundle.root,
 			useFfiBackend: true,
+			profileStore,
 			...kokoroOverrides,
 		});
 		await bridge.arm();
@@ -1173,6 +1181,12 @@ export class LocalInferenceEngine {
 			// the boot-time warmup race where TTS fires before any text request.
 			await this.activateAssignedBundleForVoice();
 			const bundle = this.activeEliza1Bundle;
+			// Speaker attribution is wired on the fused ASR path
+			// (`ensureActiveBundleAsrReadyOnce`), not here: both startVoice calls
+			// below take the Kokoro-only TTS path (`useFfiBackend: false`), which
+			// has no fused `libelizainference` handle and therefore no speaker
+			// runtime. Threading a profileStore here would be inert — the
+			// engine-bridge gate needs the fused handle to attribute (#12257).
 			if (bundle) {
 				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
 				const kokoro =
@@ -1358,6 +1372,33 @@ export class LocalInferenceEngine {
 		]);
 
 		const micSource = opts.micSource ?? new DesktopMicSource();
+
+		// Fused end-of-turn scorer (ABI v11) — resolved BEFORE the VAD because
+		// its availability decides the endpoint hangover default (#12254): a
+		// live semantic EOT gate permits a 300 ms end-hangover; without one the
+		// fixed-VAD floor is 500 ms. The composite blends the fused semantic
+		// scorer (P(<end_of_turn>) over the loaded text model) with the
+		// heuristic syntactic co-signal; null on a pre-v11 library, in which
+		// case the resolver below falls through to the legacy detectors.
+		const bridgeFfi = bridge.ffi;
+		const fusedEot =
+			opts.turnDetector === false || !bridgeFfi
+				? null
+				: await eotMod.tryBuildFusedEotClassifier({
+						ffi: bridgeFfi,
+						getContext: () => {
+							const ctx = bridge.ffiCtx;
+							if (ctx === null) {
+								throw new VoiceStartupError(
+									"missing-ffi",
+									"[voice] Cannot initialize fused EOT scorer: FFI context is not loaded.",
+								);
+							}
+							return ctx;
+						},
+					});
+		const semanticEotActive = fusedEot !== null;
+
 		const vad =
 			opts.vad ??
 			(await vadMod.createSileroVadDetector({
@@ -1375,7 +1416,15 @@ export class LocalInferenceEngine {
 							return ctx;
 						}
 					: undefined,
+				config: { semanticEotActive },
 			}));
+		logger.info(
+			`[LocalInferenceEngine] voice endpoint: endHangoverMs=${vad.endHangoverMs} (${
+				semanticEotActive
+					? "fused semantic EOT active"
+					: "fixed-VAD floor — fused semantic EOT unavailable"
+			})`,
+		);
 
 		// ASR — throws `AsrUnavailableError` when the fused decoder is
 		// unavailable (the fused build is the sole on-device ASR runtime). Gated
@@ -1410,29 +1459,6 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process Eliza-1 EOT scorer is unavailable on the FFI runtime — use the GGUF turn detector by setting useEliza1Eot:false.",
 			);
 		}
-		// Fused end-of-turn scorer (ABI v11): the model-based turn detector now
-		// runs in-process through libelizainference — a composite of the fused
-		// semantic scorer (P(<end_of_turn>) over the loaded text model) and the
-		// heuristic syntactic co-signal. Built only when the loaded fused build
-		// wires the v11 EOT symbol; null on a pre-v11 library, in which case the
-		// resolver falls through to the heuristic-only classifier.
-		const bridgeFfi = bridge.ffi;
-		const fusedEot =
-			opts.turnDetector === false || !bridgeFfi
-				? null
-				: eotMod.tryBuildFusedEotClassifier({
-						ffi: bridgeFfi,
-						getContext: () => {
-							const ctx = bridge.ffiCtx;
-							if (ctx === null) {
-								throw new VoiceStartupError(
-									"missing-ffi",
-									"[voice] Cannot initialize fused EOT scorer: FFI context is not loaded.",
-								);
-							}
-							return ctx;
-						},
-					});
 		// Resolver order: prefer the fused composite EOT (v11), then the legacy
 		// in-process Eliza-1 scorer + GGUF turn detector (both null on the FFI
 		// runtime — they needed node-llama controlledEvaluate), then the
@@ -1625,6 +1651,8 @@ export class LocalInferenceEngine {
 			stopMicRing();
 			void micSource.stop();
 			transcriber.dispose();
+			// Release the fused EOT scorer's voice-budget reservation.
+			fusedEot?.dispose();
 			wakeWord?.reset();
 			// G5.d: tear down only the per-room barge-in binding. The bridge
 			// owns the coordinator lifecycle and disposes it in

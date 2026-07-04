@@ -1,7 +1,15 @@
+/**
+ * Package barrel for `@elizaos/plugin-wallet`: re-exports the wallet plugin
+ * object, all chain/analytics/LP services, providers, routes, the SDK
+ * (ERC-6551/x402/CCTP/escrow), and supporting types. Consumers should import
+ * from here rather than reaching into subpaths.
+ */
 import "./core-augmentation.js";
+import { registerWalletAutomationNodeContributor } from "./automation-node-contributor.js";
 import { walletRouteRegistration } from "./register-routes.js";
 
 void walletRouteRegistration;
+registerWalletAutomationNodeContributor();
 
 export * from "./actions/index.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
@@ -31,7 +39,11 @@ export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
 export * from "./contracts.js";
 export {
+  AGENT_AUTO_MAX_DAILY_TRADES,
+  agentAutoDailyTrades,
   canUseLocalTradeExecution,
+  getAgentAutoTradeDate,
+  recordAgentAutoTrade,
   resolveTradePermissionMode,
   resolveWalletExportRejection,
 } from "./lib/server-wallet-trade.js";

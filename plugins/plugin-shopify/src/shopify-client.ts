@@ -1,3 +1,10 @@
+/**
+ * Fetch-based Shopify Admin GraphQL API transport — the plugin's sole HTTP
+ * boundary to a store, pinned to Admin API version 2025-04 and using native
+ * `fetch` with no external SDK. {@link ShopifyService} holds one client per
+ * configured account. A test-only `ELIZA_MOCK_SHOPIFY_BASE` seam reroutes the
+ * call to a local mock so the connector runs keyless in deterministic scenarios.
+ */
 const API_VERSION = "2025-04";
 
 /**

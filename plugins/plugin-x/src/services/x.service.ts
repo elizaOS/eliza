@@ -1,3 +1,17 @@
+/**
+ * `XService` — the core runtime service (`serviceType = "x"`) that bridges the
+ * agent to X/Twitter. On start it materializes a `TwitterClientInstance` per
+ * account (each owning a `ClientBase` and the autonomous post/interaction/timeline/
+ * discovery sub-clients) and registers the X message connector (DMs) and post
+ * connector (public feed) with the runtime.
+ *
+ * `TwitterClientInstance` orchestrates the per-account lifecycle: it constructs the
+ * sub-clients, starts the ones enabled by config in `startAutonomousClients()`, and
+ * tears them down on stop. Connector handlers (`resolveTargets`, `fetchMessages`,
+ * `sendHandler`, `postHandler`, `fetchFeed`, `searchPosts`, …) delegate to the
+ * per-account `TwitterMessageService`/`TwitterPostService`. All methods accept an
+ * `accountId` and route through `getSetting` for config.
+ */
 import {
   ChannelType,
   type Content,

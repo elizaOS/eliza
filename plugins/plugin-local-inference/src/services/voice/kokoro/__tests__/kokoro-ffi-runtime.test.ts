@@ -1,3 +1,4 @@
+/** Covers `KokoroFfiRuntime` against the voice FFI bindings. Deterministic, mock bindings. */
 import {
 	mkdirSync,
 	mkdtempSync,

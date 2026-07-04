@@ -47,7 +47,7 @@ This package is a Capacitor plugin, not a standalone elizaOS runtime plugin. It 
 
 ### Browser / web
 
-- Requires `window.__ELIZA_API_BASE__` and optionally `window.__ELIZA_API_TOKEN__` (or `sessionStorage.eliza_api_token`) to be set by the app shell so the plugin can reach the Eliza runtime API.
+- Requires the boot-config `apiBase` (`window.__ELIZAOS_APP_BOOT_CONFIG__`) and optionally `window.__ELIZA_API_TOKEN__` (or `sessionStorage.eliza_api_token`) to be set by the app shell so the plugin can reach the Eliza runtime API.
 
 ## Usage
 

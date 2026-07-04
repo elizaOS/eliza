@@ -37,7 +37,9 @@ import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
+  isWorkspacePluginSourceFallbackAllowed,
   type PluginResolutionPhase,
   resolvePlugins,
 } from "./plugin-resolver.ts";
@@ -87,6 +89,7 @@ export {
 // add `as const` data only — never an `import * as` of these packages.
 import {
   AgentRuntime,
+  AUTONOMY_SERVICE_TYPE,
   AutonomyService,
   addLogListener,
   ChannelType,
@@ -94,16 +97,21 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
+  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   EmbeddingDimensionProbeError,
   type Entity,
+  type IAgentRuntime,
   type LogEntry,
   logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
+  type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
   type TargetInfo,
   type UUID,
+  warnOnUnmatchedActionRolePolicyKeys,
 } from "@elizaos/core";
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
@@ -112,6 +120,7 @@ import {
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  resolveApiExposePort,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -120,48 +129,19 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
-import type { Vault } from "@elizaos/vault";
+import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
+import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
-type AccountPoolCredentialsOptions = {
-  activeBackend?: string | undefined;
-  accountStrategies?: Record<string, unknown> | undefined;
-  serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
-};
-
-type AppCoreRuntimeModule = {
-  hydrateWalletKeysFromNodePlatformSecureStore: () => Promise<void> | void;
-  runVaultBootstrap: () => Promise<{
-    migrated: number;
-    failed: unknown[];
-  }>;
-  sharedVault: () => Vault;
-  getDefaultAccountPool: () => unknown;
-  applyAccountPoolApiCredentials: (
-    options: AccountPoolCredentialsOptions,
-  ) => Promise<void> | void;
-  startAccountPoolKeepAlive: () => void;
-  getBuildVariant: () => "store" | "direct";
-  isStoreBuild: () => boolean;
-};
-
-let _appCoreRuntimePromise: Promise<AppCoreRuntimeModule> | null = null;
-function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
-  // Use a string-literal dynamic import (no indirection through a `const`)
-  // so Bun.build can statically follow it and inline `@elizaos/app-core`
-  // into the mobile bundle. The previous indirect form
-  // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
-  // Bun's resolver and produced a runtime `Cannot find module` on AOSP
-  // where there is no node_modules tree.
-  //
-  // Memoized: boot resolves this ~7x across the pre-resolve-setup phase. The
-  // ES module cache already dedupes evaluation, but caching the promise
-  // collapses the repeated dynamic-import round-trips into one.
-  if (!_appCoreRuntimePromise) {
-    _appCoreRuntimePromise = import(
-      /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
-    ) as Promise<AppCoreRuntimeModule>;
-  }
-  return _appCoreRuntimePromise;
+// Host capabilities (wallet-key hydration, vault bootstrap/access, account
+// pool, build variant) are INJECTED downward by the app-core host via
+// `setAgentHostBridge` before boot — agent never imports `@elizaos/app-core`.
+// When no host installs a bridge (mobile bundle / standalone agent), the leaf
+// default in `./host-bridge.ts` supplies the same no-op behavior the mobile
+// `app-core-runtime.cjs` stub used to. `await`-compatible (returns the bridge
+// synchronously) so existing `await importAppCoreRuntime()` call sites are
+// unchanged.
+function importAppCoreRuntime(): AgentHostBridge {
+  return getAgentHostBridge();
 }
 
 function isBundledMobileRuntime(): boolean {
@@ -186,6 +166,26 @@ async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModul
   return (await import(
     /* @vite-ignore */ moduleId
   )) as E2BCapabilityRouterModule;
+}
+
+// The e2b (`e2b.dev`) SDK backend for the remote capability router lives in the
+// optional `@elizaos/plugin-e2b-sandbox` package — not in `@elizaos/agent`, so
+// the `e2b` dependency stays out of the trunk. When the router selects the
+// `e2b` provider we register the plugin's factory service so the router can
+// route filesystem / terminal / git into an e2b sandbox; if the plugin is not
+// installed we log and leave E2B unavailable rather than failing boot.
+async function registerE2BSandboxFactoryService(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  if (runtime.getService(E2B_SANDBOX_FACTORY_SERVICE_TYPE)) return true;
+  const moduleId = "@elizaos/plugin-e2b-sandbox";
+  const mod = (await import(/* @vite-ignore */ moduleId)) as {
+    E2BSandboxFactoryService?: ServiceClass;
+  };
+  const ServiceClassRef = mod.E2BSandboxFactoryService;
+  if (!ServiceClassRef) return false;
+  await runtime.registerService(ServiceClassRef);
+  return true;
 }
 
 import {
@@ -213,7 +213,6 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
-import { createDstackTeeProvider } from "../services/dstack-tee-provider.ts";
 import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
@@ -227,6 +226,7 @@ import {
   setTeeBootGateState,
   teeBootGateBlocksSecrets,
 } from "../services/tee-boot-gate-state.ts";
+import { resolveTeeEvidenceProvider } from "../services/tee-evidence-provider.ts";
 import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
@@ -250,6 +250,10 @@ import {
   PGLITE_ERROR_CODES,
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import {
+  applyPluginRoleGating,
+  installProviderRoleGatingChokepoint,
+} from "./plugin-role-gating.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
@@ -285,7 +289,11 @@ async function loadRequiredPluginSql(): Promise<
       path.dirname(fileURLToPath(import.meta.url)),
       "../../../../plugins/plugin-sql/src/index.node.ts",
     );
-    if (!isPluginSqlResolutionError(err) || !existsSync(sourceEntry)) {
+    if (
+      !isWorkspacePluginSourceFallbackAllowed() ||
+      !isPluginSqlResolutionError(err) ||
+      !existsSync(sourceEntry)
+    ) {
       throw err;
     }
     logger.debug(
@@ -311,73 +319,30 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
   return null;
 }
 
-// Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
+// Literal-specifier importers so Bun.build inlines each optional plugin into
+// the mobile bundle live in optional-plugin-imports.generated.ts, code-generated
+// from OPTIONAL_STATIC_PLUGIN_PACKAGES (optional-plugins.ts). Adding a plugin to
+// the descriptor table is enough; optional-plugins.test.ts fails if it lacks a
+// generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
+// load through a bare dynamic import from a node_modules/desktop install.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
-    if (packageName === "@elizaos/plugin-agent-orchestrator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-agent-orchestrator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-task-coordinator") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-task-coordinator"
-      );
-    }
-    if (packageName === "@elizaos/plugin-app-control") {
-      const appControlPackageName = packageName;
-      return await import(/* @vite-ignore */ appControlPackageName);
-    }
-    if (packageName === "@elizaos/plugin-shell") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-shell");
-    }
-    if (packageName === "@elizaos/plugin-coding-tools") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-coding-tools");
-    }
-    if (packageName === "@elizaos/plugin-pty") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-pty");
-    }
-    if (packageName === "@elizaos/plugin-birdclaw") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-birdclaw");
-    }
-    if (packageName === "@elizaos/plugin-ollama") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-ollama");
-    }
-    if (packageName === "@elizaos/plugin-elizacloud") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-elizacloud");
-    }
-    if (packageName === "@elizaos/plugin-commands") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-commands");
-    }
-    if (packageName === "@elizaos/plugin-video") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-video");
-    }
-    if (packageName === "@elizaos/plugin-vision") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-vision");
-    }
-    if (packageName === "@elizaos/plugin-background-runner") {
-      return await import(
-        /* @vite-ignore */ "@elizaos/plugin-background-runner"
-      );
-    }
-    if (packageName === "@elizaos/plugin-anthropic") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-anthropic");
-    }
-    if (packageName === "@elizaos/plugin-openai") {
-      return await import(/* @vite-ignore */ "@elizaos/plugin-openai");
-    }
+    const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
+    if (importer) return await importer();
     return await import(packageName);
   } catch {
-    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-    if (sourceEntry) {
-      try {
-        logger.debug(
-          `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-        );
-        return await import(pathToFileURL(sourceEntry).href);
-      } catch {
-        // Fall through to the existing optional-plugin behavior: missing or
-        // unbuildable optional plugins are omitted from STATIC_ELIZA_PLUGINS.
+    if (isWorkspacePluginSourceFallbackAllowed()) {
+      const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
+      if (sourceEntry) {
+        try {
+          logger.debug(
+            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
+          );
+          return await import(pathToFileURL(sourceEntry).href);
+        } catch {
+          // Missing or unbuildable optional plugins are omitted from
+          // STATIC_ELIZA_PLUGINS.
+        }
       }
     }
     return null;
@@ -1688,7 +1653,7 @@ interface AutonomyServiceLike {
  * Uses a runtime property check to safely narrow the opaque Service return.
  */
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  const svc = runtime.getService(AUTONOMY_SERVICE_TYPE);
   if (
     svc &&
     "enableAutonomy" in svc &&
@@ -1703,7 +1668,7 @@ async function startAndRegisterAutonomyService(
   runtime: AgentRuntime,
 ): Promise<AutonomyServiceLike> {
   const service = await AutonomyService.start(runtime);
-  runtime.services.set("AUTONOMY" as never, [service as never]);
+  runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service as AutonomyServiceLike;
 }
 
@@ -2903,12 +2868,8 @@ interface RuntimeWithMethodBindings extends AgentRuntime {
   __elizaMethodBindingsInstalled?: boolean;
   __elizaComponentWriteDiagnosticsInstalled?: boolean;
   __elizaEntityWriteDiagnosticsInstalled?: boolean;
+  __elizaProviderRoleGatingInstalled?: boolean;
   __elizaEntityCreateMutex?: Promise<void>;
-}
-
-interface RuntimeWithActionAliases extends Omit<AgentRuntime, "actions"> {
-  __elizaActionAliasesInstalled?: boolean;
-  actions?: Array<{ name?: string; similes?: string[] }>;
 }
 
 type CreateEntitiesFn = (entities: Entity[]) => Promise<UUID[] | boolean>;
@@ -3284,53 +3245,19 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     runtimeWithBindings.__elizaEntityWriteDiagnosticsInstalled = true;
   }
 
+  // Provider role-gating chokepoint. EVERY plugin registration flows through
+  // runtime.registerPlugin — boot constructor plugins (core calls
+  // this.registerPlugin for each during initialize()), the deferred core-plugin
+  // waves, and post-boot hot-installs via the runtime API
+  // (packages/agent/src/api/plugin-runtime-apply.ts). Gating previously ran only
+  // as a one-shot boot pass, so hot-installed wallet/secrets plugins escaped
+  // redaction and leaked owner/admin-tier context to any sender. Wrapping
+  // registerPlugin gates sensitive providers at registration time, identically
+  // on every path, on both the boot and hot-reload runtimes. Installed here
+  // (before runtime.initialize()) so constructor plugins pass through it too.
+  installProviderRoleGatingChokepoint(runtimeWithBindings);
+
   runtimeWithBindings.__elizaMethodBindingsInstalled = true;
-}
-
-function installActionAliases(runtime: AgentRuntime): void {
-  const runtimeWithAliases = runtime as RuntimeWithActionAliases;
-  if (runtimeWithAliases.__elizaActionAliasesInstalled) {
-    return;
-  }
-
-  const actions = Array.isArray(runtimeWithAliases.actions)
-    ? runtimeWithAliases.actions
-    : [];
-
-  // Keep compaction automatic-only; do not allow manual COMPACT_SESSION invokes.
-  const compactSessionIndex = actions.findIndex(
-    (action) => action?.name?.toUpperCase() === "COMPACT_SESSION",
-  );
-  if (compactSessionIndex !== -1) {
-    actions.splice(compactSessionIndex, 1);
-    logger.info(
-      "[eliza] Disabled manual COMPACT_SESSION action; auto-compaction remains enabled",
-    );
-  }
-
-  // Compatibility alias: older prompts/docs still reference CODE_TASK,
-  // while agent-orchestrator exposes START_CODING_TASK.
-  const codingTaskAction =
-    actions.find(
-      (action) => action?.name?.toUpperCase() === "START_CODING_TASK",
-    ) ??
-    actions.find((action) => action?.name?.toUpperCase() === "CREATE_TASK");
-  if (codingTaskAction) {
-    const similes = Array.isArray(codingTaskAction.similes)
-      ? codingTaskAction.similes
-      : [];
-    const hasCodeTaskAlias = similes.some(
-      (simile) => simile.toUpperCase() === "CODE_TASK",
-    );
-    if (!hasCodeTaskAlias) {
-      codingTaskAction.similes = [...similes, "CODE_TASK"];
-      logger.info(
-        "[eliza] Added action alias CODE_TASK -> START_CODING_TASK for agent-orchestrator",
-      );
-    }
-  }
-
-  runtimeWithAliases.__elizaActionAliasesInstalled = true;
 }
 
 async function registerSqlPluginWithRecovery(
@@ -3385,7 +3312,6 @@ async function registerSqlPluginWithRecovery(
 const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
   ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
   ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
-  ["@elizaos/plugin-personal-assistant", ["@elizaos/plugin-google"]],
 ]);
 
 async function preregisterCorePluginsInDependencyWaves(args: {
@@ -3562,6 +3488,14 @@ export interface StartElizaOptions {
    * server mode (like dev but without watch).
    */
   serverOnly?: boolean;
+  /**
+   * When true, this runtime is the local agent behind a native IPC transport
+   * (Android stdio bridge / Capacitor). The route kernel still initializes for
+   * in-process `dispatchRoute`, but the API server binds no TCP listener unless
+   * `ELIZA_API_EXPOSE_PORT` is truthy — so local mode opens no port on the agent
+   * API by default (dev tooling / LAN / e2e harnesses re-open it via the flag).
+   */
+  localAgentMode?: boolean;
   /**
    * Internal guard to prevent infinite retry loops when recovering from
    * corrupt PGLite state.
@@ -3966,12 +3900,8 @@ export async function startEliza(
   // pool is a desktop feature for users juggling several accounts per provider
   // (work / personal / throwaway). Cloud sandboxes get one set of credentials
   // injected by the daemon as env vars, so there's nothing to multiplex. The
-  // dynamic `importAppCoreRuntime()` here also pulls in
-  // `app-core/services/account-pool`, which statically imports from
-  // `@elizaos/agent` — completing a circular import that deadlocks Node ESM
-  // module evaluation in the cloud Docker boot path. Manifests as a silent
-  // hang at this await call after the node:sqlite experimental warning; PID 1
-  // sits in `ep_poll`, no listen, 180s health timeout.
+  // pool implementation is supplied by the host through the injected agent host
+  // bridge (see ./host-bridge.ts) — no app-core import, no boot-time cycle.
   if (process.env.ELIZA_CLOUD_PROVISIONED !== "1")
     try {
       const accountPool = await importAppCoreRuntime();
@@ -4008,9 +3938,7 @@ export async function startEliza(
   //     it only logs availability — so deferring it changes no resolve input.
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
-    const { applySubscriptionCredentialsLocal } = await import(
-      "../auth/index.ts"
-    );
+    const { applySubscriptionCredentialsLocal } = await import("@elizaos/auth");
     applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
@@ -4019,7 +3947,7 @@ export async function startEliza(
   }
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
-      "../auth/index.ts"
+      "@elizaos/auth"
     );
     await applySubscriptionCredentialsDeferred();
   })().catch((err) => {
@@ -4380,42 +4308,6 @@ export async function startEliza(
     }
   }
 
-  // ── Strip upstream skill providers ──────────────────────────────────────
-  // The upstream @elizaos/plugin-agent-skills registers providers that dump
-  // ALL loaded skills into every prompt (~2000-4000 tokens).  Eliza replaces
-  // them with a BM25-lite dynamic provider (see providers/skill-provider.ts)
-  // that injects only the most relevant skills per turn.
-  //
-  // We keep:
-  //   - agent_skills_overview  (lightweight stats, ~50 tokens)
-  //   - all actions (USE_SKILL, SEARCH_SKILLS, INSTALL_SKILL, …)
-  //   - the AGENT_SKILLS_SERVICE itself
-  {
-    const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
-      "agent_skills",
-      "agent_skill_instructions",
-      "agent_skills_catalog",
-    ]);
-    for (const plugin of pluginsForRuntime) {
-      if (
-        plugin.name === "@elizaos/plugin-agent-skills" &&
-        Array.isArray(plugin.providers)
-      ) {
-        const before = plugin.providers.length;
-        plugin.providers = plugin.providers.filter(
-          (p: { name?: string }) =>
-            !UPSTREAM_SKILL_PROVIDERS_TO_STRIP.has(p.name ?? ""),
-        );
-        const removed = before - plugin.providers.length;
-        if (removed > 0) {
-          logger.info(
-            `[eliza] Stripped ${removed} upstream skill provider(s) — using dynamic BM25-lite provider instead`,
-          );
-        }
-      }
-    }
-  }
-
   // Deduplicate actions across all plugins to avoid "Action already registered"
   // warnings from elizaOS core. basic-capabilities is registered first by the
   // runtime, so include it in deduplication so its actions take precedence.
@@ -4686,6 +4578,24 @@ export async function startEliza(
     }
   };
 
+  // Register the hosted-app run reader as a runtime service so the session gate
+  // can query it via getService instead of statically importing the plugin
+  // (which inverted the host→plugin dependency direction). Dynamic import keeps
+  // the plugin out of the agent's static module graph; absence is non-fatal and
+  // the gate treats it as "no active runs".
+  const registerAppSessionService = async (): Promise<void> => {
+    try {
+      const { AppSessionService } = await import(
+        /* @vite-ignore */ "@elizaos/plugin-app-manager"
+      );
+      await runtime.registerService(AppSessionService);
+    } catch (err) {
+      logger.debug(
+        `[eliza] AppSessionService registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
   const registerRemoteCodingRunner = async (): Promise<void> => {
     if (isBundledMobileRuntime()) return;
     if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
@@ -4694,6 +4604,14 @@ export async function startEliza(
         await loadE2BCapabilityRouterModule();
       const result = await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
+        if (result.provider === "e2b") {
+          const loaded = await registerE2BSandboxFactoryService(runtime);
+          if (!loaded) {
+            logger.warn(
+              "[eliza] E2B remote runner selected but @elizaos/plugin-e2b-sandbox is not installed; E2B filesystem/terminal/git will be unavailable until it is added.",
+            );
+          }
+        }
         logger.info("[eliza] Remote coding runner registered");
       }
     } catch (err) {
@@ -4735,9 +4653,13 @@ export async function startEliza(
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
+      // The concrete evidence provider (dstack/CoVE) is registered by the TEE
+      // deployment plugin through the host seam; absent that plugin this is
+      // undefined and a required policy fails closed (secrets disabled).
+      const evidenceProvider = resolveTeeEvidenceProvider({ env: process.env });
       teeBootGate = await evaluateTeeBootGate({
         env: process.env,
-        evidenceProvider: createDstackTeeProvider({ env: process.env }),
+        ...(evidenceProvider ? { evidenceProvider } : {}),
       });
     } catch (err) {
       // A TEE policy was configured but evidence could not be collected or
@@ -4789,11 +4711,19 @@ export async function startEliza(
         caller: "remote-signing:boot",
       });
       const teePolicy = teeBootGateResult?.policy;
+      // Re-attest each sign through the same registered provider the boot gate
+      // used. This path only runs once the gate has already enabled secrets, so
+      // a required policy implies a registered provider; if none is registered
+      // the re-attesting provider is simply absent (the gate would not have
+      // reached here under a required policy).
+      const signingEvidenceProvider = teePolicy?.required
+        ? resolveTeeEvidenceProvider({ env: process.env })
+        : undefined;
       const signing = createTeeGatedRemoteSigningService({
         signer,
         ...(teePolicy ? { teePolicy } : {}),
-        ...(teePolicy?.required
-          ? { evidenceProvider: createDstackTeeProvider({ env: process.env }) }
+        ...(signingEvidenceProvider
+          ? { evidenceProvider: signingEvidenceProvider }
           : {}),
       });
 
@@ -4846,11 +4776,20 @@ export async function startEliza(
 
   const applyPluginRoleGatingIfAvailable = async (): Promise<void> => {
     try {
-      const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
+      // Belt-and-suspenders full-graph sweep. The durable enforcement point is
+      // the registerPlugin wrapper in installRuntimeMethodBindings, which gates
+      // each plugin at registration time; this re-gates the whole graph and is
+      // idempotent (already-gated providers are skipped). applyPluginRoleGating
+      // is fail-closed per provider.
       applyPluginRoleGating(runtime.plugins ?? []);
     } catch (err) {
-      logger.debug(
-        `[eliza] Plugin provider role gating skipped: ${formatError(err)}`,
+      // #12087 Item 1: this was logged at debug — an import/apply failure here
+      // silently disabled ALL sensitive-provider redaction (SECRETS_STATUS,
+      // walletPortfolio, …). Surface it loudly. Registration-time gating in the
+      // plugin-lifecycle wrapper is the primary enforcement; this boot pass is a
+      // defense-in-depth backstop for plugins registered before that wrapper.
+      logger.error(
+        `[eliza] Plugin provider role gating FAILED — sensitive providers may be ungated: ${formatError(err)}`,
       );
     }
   };
@@ -4951,7 +4890,7 @@ export async function startEliza(
   const startAutonomyServiceIfEnabled = async (
     autonomyEnabled: boolean,
   ): Promise<void> => {
-    if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
+    if (autonomyEnabled && !runtime.getService(AUTONOMY_SERVICE_TYPE)) {
       try {
         await startAndRegisterAutonomyService(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
@@ -5138,6 +5077,8 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     await registerConnectorSetupService();
     bootTimer.lap("svc:connector-setup");
+    await registerAppSessionService();
+    bootTimer.lap("svc:app-session");
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
@@ -5159,6 +5100,8 @@ export async function startEliza(
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
+    await registerDesktopScreenCaptureBridgeService(runtime);
+    bootTimer.lap("svc:desktop-screen-capture");
   };
 
   const registerDeferredRuntimePlugins = async (
@@ -5189,30 +5132,6 @@ export async function startEliza(
             `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
           );
           break;
-        }
-      }
-    }
-
-    for (const plugin of deferredPluginsForRuntime) {
-      if (
-        plugin.name === "@elizaos/plugin-agent-skills" &&
-        Array.isArray(plugin.providers)
-      ) {
-        const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
-          "agent_skills",
-          "agent_skill_instructions",
-          "agent_skills_catalog",
-        ]);
-        const before = plugin.providers.length;
-        plugin.providers = plugin.providers.filter(
-          (p: { name?: string }) =>
-            !UPSTREAM_SKILL_PROVIDERS_TO_STRIP.has(p.name ?? ""),
-        );
-        const removed = before - plugin.providers.length;
-        if (removed > 0) {
-          logger.info(
-            `[eliza] Stripped ${removed} deferred upstream skill provider(s) — using dynamic BM25-lite provider instead`,
-          );
         }
       }
     }
@@ -5329,6 +5248,10 @@ export async function startEliza(
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
+    // #12087 Item 19: now that every plugin's actions are registered, warn about
+    // ACTION_ROLE_POLICY keys that match no action name/simile (a silently-inert
+    // policy, usually from an action rename after the operator wrote the policy).
+    warnOnUnmatchedActionRolePolicyKeys(runtime.actions ?? []);
     await registerConversationProximityProvider();
     // Probe the embedding dimension BEFORE seeding bundled documents (#8769).
     // The deferred plugin waves above register the cloud TEXT_EMBEDDING handler
@@ -5393,10 +5316,6 @@ export async function startEliza(
     void ensureAgentWalletsLazy();
     bootTimer.lap("deferred:autonomy+warmup");
 
-    // Re-install action aliases now that deferred plugins have registered
-    // their actions; the initial pass after the essential boot only saw the
-    // core message-handler actions.
-    installActionAliases(runtime);
     // Same timing reason: validate the intent→action map only once the deferred
     // plugins have registered. Run during blocking init it would warn about
     // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
@@ -5406,8 +5325,8 @@ export async function startEliza(
     );
     // Same timing: turn the (previously dead-but-tested) view-coverage validators
     // into a live drift guard now that all plugins/views are registered (#8798).
-    // Warns when a VIEW_ACTION_MAP entry names an unregistered action, or a
-    // registered view has neither an affinity entry nor a declared ViewCapability.
+    // Warns when a view affinity entry names an unregistered action, or a
+    // registered view has neither relatedActions nor a declared ViewCapability.
     const developerViews = listViews({ developerMode: true });
     validateViewActionMap(
       runtime.actions.map((a) => a.name),
@@ -5470,8 +5389,6 @@ export async function startEliza(
   startMemoryWatchdog();
   // #10203: a `ready`-point fault fires once the agent has reached steady boot.
   await maybeInjectFault("ready");
-
-  installActionAliases(runtime);
 
   // Kick off non-essential plugin loading in the background. The runtime is
   // already usable for chat; deferred capabilities register as they complete.
@@ -5559,9 +5476,18 @@ export async function startEliza(
     const apiPort = process.env.ELIZA_API_PORT
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env);
+    // Local-agent IPC mode (Android stdio bridge / Capacitor): the WebView
+    // reaches the runtime over a native pipe, so bind no TCP listener unless a
+    // caller explicitly opts back in via ELIZA_API_EXPOSE_PORT (dev tooling, LAN
+    // access, e2e harnesses). Every non-local boot leaves localAgentMode unset,
+    // so skipApiListen is false and the port binds exactly as before.
+    const skipApiListen =
+      opts?.localAgentMode === true &&
+      resolveApiExposePort(process.env) !== true;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
+      skipListen: skipApiListen,
       onRestart: async () => {
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
@@ -5648,7 +5574,7 @@ export async function startEliza(
           // that may have been set up during first-run setup.
           try {
             const { applySubscriptionCredentials } = await import(
-              "../auth/index.ts"
+              "@elizaos/auth"
             );
             await applySubscriptionCredentials(freshConfig);
           } catch (subErr) {
@@ -5777,7 +5703,11 @@ export async function startEliza(
             try {
               const { registerE2BRemoteCapabilityRouterIfEnabled } =
                 await loadE2BCapabilityRouterModule();
-              await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
+              const result =
+                await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
+              if (result.registered && result.provider === "e2b") {
+                await registerE2BSandboxFactoryService(newRuntime);
+              }
             } catch {
               // non-fatal
             }
@@ -5791,20 +5721,22 @@ export async function startEliza(
           );
 
           try {
-            const { applyPluginRoleGating } = await import(
-              "./plugin-role-gating.ts"
-            );
+            // Belt-and-suspenders full-graph sweep; the registerPlugin wrapper
+            // (installed on newRuntime via installRuntimeMethodBindings above)
+            // is the durable enforcement point and already gated each plugin at
+            // registration time. This re-gate is idempotent.
             applyPluginRoleGating(newRuntime.plugins ?? []);
           } catch (err) {
-            logger.debug(
-              `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
+            // Never silently disable redaction — report loudly at ERROR.
+            logger.error(
+              `[eliza] Hot-reload plugin provider role gating sweep failed: ${formatError(err)}`,
             );
           }
 
           // Ensure AutonomyService survives hot-reload; the loop remains opt-in.
           const hotReloadAutonomyLoopEnabled = isAutonomyEnabled();
 
-          if (!newRuntime.getService("AUTONOMY")) {
+          if (!newRuntime.getService(AUTONOMY_SERVICE_TYPE)) {
             try {
               await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
@@ -5828,7 +5760,6 @@ export async function startEliza(
             }
           }
 
-          installActionAliases(newRuntime);
           runtime = newRuntime;
           logger.info("[eliza] Hot-reload: Runtime restarted successfully");
           return newRuntime;
@@ -5838,9 +5769,15 @@ export async function startEliza(
         }
       },
     });
-    const dashboardUrl = `http://localhost:${actualApiPort}`;
-    logger.info(`[eliza] Control UI: ${dashboardUrl}`);
-    // API is now listening — safe to begin the deferred plugin waves.
+    if (skipApiListen) {
+      logger.info(
+        "[eliza] Local-agent IPC mode — API route kernel ready in-process, no TCP listener bound",
+      );
+    } else {
+      const dashboardUrl = `http://localhost:${actualApiPort}`;
+      logger.info(`[eliza] Control UI: ${dashboardUrl}`);
+    }
+    // Route kernel is ready — safe to begin the deferred plugin waves.
     kickoffDeferredBoot();
   } catch (apiErr) {
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
@@ -5874,9 +5811,9 @@ export async function startEliza(
     // multi-tenant gateways resolve this container as the inference target
     // and forward inbound platform messages here. Returns null for every
     // non-provisioned runtime, so this is inert outside the cloud
-    // container. See packages/agent/src/runtime/sandbox-registry.ts.
+    // container. See packages/shared/src/sandbox-registry.ts.
     const { buildSandboxRegistryFromEnv } = await import(
-      "./sandbox-registry.ts"
+      "@elizaos/shared/sandbox-registry"
     );
     const sandboxRegistry = buildSandboxRegistryFromEnv();
     if (sandboxRegistry) {
@@ -6044,7 +5981,7 @@ export async function startEliza(
           roomId,
           content: {
             text,
-            source: "client_chat",
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
             channelType: ChannelType.DM,
           },
         });

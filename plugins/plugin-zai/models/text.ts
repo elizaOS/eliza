@@ -1,3 +1,14 @@
+/**
+ * Core text generation for the z.ai handlers. `resolveTextParams` maps
+ * `GenerateTextParams` to the AI SDK call — selecting the per-size model, caching
+ * per-size max-token caps (4096 for `air`/`flash`, 8192 otherwise), and folding
+ * in the resolved thinking config. `generateTextWithModel` runs the call and
+ * emits `MODEL_USED` with token usage.
+ *
+ * Thinking mode is injected at the HTTP fetch layer via `createZaiRequestFetch`
+ * rather than as an AI SDK parameter, because z.ai's OpenAI-compatible endpoint
+ * expects a top-level `thinking` body field the SDK does not natively emit.
+ */
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";

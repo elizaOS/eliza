@@ -1,3 +1,5 @@
+/** Storybook fixtures for `ProviderCard`: default, active, selected, warning, and not-configured states, plus a list layout. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { Cloud, KeyRound, Server, Sparkles } from "lucide-react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";

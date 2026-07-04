@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the browser-workspace wallet helpers: EVM chain-id parsing,
+ * unsupported-chain error shaping, and request dispatch. Pure functions with a
+ * stubbed dispatch target — no browser, no bridge.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { BrowserWorkspaceTab } from "../../api";
 import {

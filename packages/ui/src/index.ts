@@ -1,6 +1,9 @@
-// Stylesheets live in `./styles.ts` (`@elizaos/ui/styles`) so the barrel can be
-// imported by Node-side plugin loaders without forcing a CSS evaluation
-// (Node refuses ".css" extensions). Renderers must opt-in explicitly.
+/**
+ * Main barrel for @elizaos/ui: the package's public export surface. Stylesheets
+ * live in `./styles.ts` (`@elizaos/ui/styles`) so this barrel can be imported by
+ * Node-side plugin loaders without forcing a CSS evaluation (Node refuses ".css"
+ * extensions); renderers must opt into styles explicitly.
+ */
 
 export { resolveAppBranding } from "@elizaos/shared";
 export * from "./App";
@@ -61,15 +64,6 @@ export * from "./chat/index";
 // App-hosted Eliza Cloud surfaces (API client, query client, steward-session
 // glue, cloud-route registry). Namespaced to avoid colliding with the many
 // generic names (`api`, `ApiError`, `queryClient`, …) in the root barrel.
-export {
-  ElizaAvatar,
-  type ElizaAvatarProps,
-  MemoizedChatMessage,
-  type MemoizedChatMessageMessage,
-  type MemoizedChatMessageProps,
-  useReasoningTypewriter,
-  useTypewriterText,
-} from "./cloud-ui/components/ai-elements";
 export { AuthorizeContent } from "./cloud-ui/components/auth/authorize-content";
 export * from "./cloud-ui/components/auth/authorize-return";
 export type { ConnectionCardProps } from "./cloud-ui/components/connection-card";
@@ -468,6 +462,7 @@ export {
   shouldReportFrameBudget,
   summarizeFrameSamples,
 } from "./hooks/frame-budget";
+export * from "./gestures";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
@@ -498,8 +493,10 @@ export {
 } from "./hooks/useRenderGuard";
 export { useTimeout } from "./hooks/useTimeout";
 export type { UiLanguage } from "./i18n/index";
+// `./i18n/index` already re-exports the full `./i18n/messages` surface
+// (language codes, MESSAGES, ensureLanguageLoaded); re-exporting messages again
+// here would double-surface those names and make the barrel ambiguous.
 export * from "./i18n/index";
-export * from "./i18n/messages";
 export { ContentLayout } from "./layouts/content-layout/content-layout";
 export * from "./layouts/index";
 export { PageLayout } from "./layouts/page-layout/page-layout";

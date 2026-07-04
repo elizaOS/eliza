@@ -22,6 +22,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { getPgliteSingletonCache } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserPGlite } from "./pglite-browser";
 
@@ -143,33 +144,16 @@ const elizaCharacter: Character = createCharacter({
 // Pre-initialize PGlite with browser-friendly asset loading
 // ============================================================================
 
-// Hook into the global singletons that plugin-sql uses
-const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
-
-interface PGliteClientManager {
-  getConnection(): unknown;
-  isShuttingDown(): boolean;
-  initialize(): Promise<void>;
-  close(): Promise<void>;
-}
-
-interface GlobalSingletons {
-  pgLiteClientManager?: PGliteClientManager;
-}
-
-// Ensure the global singletons object exists
-const globalSymbols = globalThis as typeof globalThis &
-  Record<symbol, GlobalSingletons>;
-if (!globalSymbols[GLOBAL_SINGLETONS]) {
-  globalSymbols[GLOBAL_SINGLETONS] = {};
-}
-
 /**
  * Pre-initialize PGlite before the SQL plugin runs.
  * This ensures PGlite's WASM and data files are loaded from the correct location.
+ *
+ * Seeds the browser-configured PGlite into plugin-sql's global singleton cache
+ * through its public {@link getPgliteSingletonCache} accessor, so the raw
+ * global-singletons Symbol stays private to plugin-sql.
  */
 async function preinitializePGlite(): Promise<void> {
-  const singletons = globalSymbols[GLOBAL_SINGLETONS];
+  const singletons = getPgliteSingletonCache();
 
   // Only initialize if not already done
   if (singletons.pgLiteClientManager) {
@@ -182,7 +166,7 @@ async function preinitializePGlite(): Promise<void> {
   const pglite = await createBrowserPGlite();
 
   // Create a minimal client manager wrapper
-  singletons.pgLiteClientManager = {
+  const managerWrapper = {
     getConnection: () => pglite,
     isShuttingDown: () => false,
     initialize: async () => {},
@@ -190,6 +174,7 @@ async function preinitializePGlite(): Promise<void> {
       await pglite.close();
     },
   };
+  singletons.pgLiteClientManager = managerWrapper;
 
   console.log("[elizaOS] PGlite pre-initialized successfully");
 }

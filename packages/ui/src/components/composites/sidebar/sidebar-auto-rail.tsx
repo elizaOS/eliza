@@ -1,3 +1,11 @@
+/**
+ * Derives the collapsed sidebar rail's icon buttons from the expanded sidebar's
+ * own items, so the two stay in sync without the caller declaring the rail
+ * twice. `buildSidebarAutoRailItems` walks the React children tree;
+ * `buildSidebarAutoRailItemsFromDom` reads an already-mounted DOM subtree
+ * (the fallback when children aren't statically inspectable). Consumed by the
+ * sidebar root when it renders the collapsed variant.
+ */
 import * as React from "react";
 
 import { SegmentedControl } from "../../ui/segmented-control";

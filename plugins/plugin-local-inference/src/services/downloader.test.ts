@@ -1,3 +1,4 @@
+/** Exercises the curated Eliza-1 `Downloader`: disk preflight, gated-repo handling, and registry writes on completion, against a real temp state dir with a fake HardwareProbe. No network. */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -5,7 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readAssignments } from "./assignments";
 import { findCatalogModel } from "./catalog";
-import { Downloader } from "./downloader";
+import { Downloader, GatedRepoError } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
 import { registryPath } from "./paths";
 import { listInstalledModels } from "./registry";
@@ -917,6 +918,134 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(finalPath)).toBe(false);
 	});
 
+	it("retries a transient 429 with backoff and completes (C8)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		const ggufBody = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(60, 0)]);
+		// 429 twice, then 200 — a rate-limited artifact still exists.
+		let attempts = 0;
+		const fetchSpy = vi.fn(async () => {
+			attempts += 1;
+			if (attempts <= 2) {
+				return new Response("rate limited", {
+					status: 429,
+					headers: { "retry-after": "0" },
+				});
+			}
+			return new Response(ggufBody, {
+				status: 200,
+				headers: { "content-length": String(ggufBody.length) },
+			});
+		});
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+		const sleeps: number[] = [];
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+			// Deterministic, instant backoff — record the calls to bound the retry.
+			sleep: async (ms) => {
+				sleeps.push(ms);
+			},
+		});
+		const completed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "completed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		// Exactly two transient retries preceded the successful third fetch —
+		// the retry count is bounded, not unbounded.
+		expect(attempts).toBe(3);
+		expect(sleeps).toHaveLength(2);
+	});
+
+	it("throws a typed GatedRepoError on a 403 gated repo (C9)", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		// A gated repo answers 403 with an HF-shaped JSON error body.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({ error: "Access to this repo is gated." }),
+					{ status: 403, headers: { "content-type": "application/json" } },
+				),
+		) as unknown as typeof fetch;
+
+		const downloaderErr = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		// Capture the whole failed DownloadJob at the CONSUMER boundary (the
+		// emitted event / status snapshot the UI reads) — not just at the throw
+		// site. C9 is only real if the structured code survives to here.
+		const failedJob = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloaderErr.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		// GatedRepoError carries the machine-readable code + HTTP status.
+		const gated = new GatedRepoError("probe", 403);
+		expect(gated.code).toBe("HF_GATED_REPO");
+		expect(gated.httpStatus).toBe(403);
+
+		await downloaderErr.start(singleFileSpec);
+		const job = await failedJob;
+		// The typed code reaches the consumer as a structured field, not just as
+		// a stringified message the UI would have to pattern-match.
+		expect(job.errorCode).toBe("HF_GATED_REPO");
+		expect(job.errorHttpStatus).toBe(403);
+		expect(job.error).toContain("gated or private");
+		expect(job.error).toContain("403");
+
+		// And it survives the terminal-status persistence round-trip: a fresh
+		// Downloader reading the on-disk status still exposes the coded failure.
+		const rehydrated = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		})
+			.snapshot()
+			.find((j) => j.modelId === base.id);
+		expect(rehydrated?.errorCode).toBe("HF_GATED_REPO");
+		expect(rehydrated?.errorHttpStatus).toBe(403);
+	});
+
 	it("forwards the Eliza Cloud bearer on a single-file download when cloud-linked", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
@@ -973,6 +1102,110 @@ describe("local inference downloader status", () => {
 			if (savedKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
 			else process.env.ELIZAOS_CLOUD_API_KEY = savedKey;
 		}
+	});
+
+	it("fails over from an explicit mirror to direct HuggingFace on transient 5xx", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_HF_BASE_URLS = "https://mirror.example.com";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "test/single-file",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		const ggufBody = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(60, 0)]);
+		const hosts: string[] = [];
+		globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+			const href =
+				typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+			const host = new URL(href).host;
+			hosts.push(host);
+			if (host === "mirror.example.com") {
+				return new Response("temporary mirror failure", { status: 503 });
+			}
+			return new Response(ggufBody, {
+				status: 200,
+				headers: { "content-length": String(ggufBody.length) },
+			});
+		}) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const completed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "completed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		await completed;
+		expect(hosts).toContain("mirror.example.com");
+		expect(hosts.at(-1)).toBe("huggingface.co");
+	});
+
+	it("turns structured HF_GATED proxy errors into authorize guidance", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZAOS_CLOUD_API_KEY = "secret-token";
+
+		const base = findCatalogModel("eliza-1-2b");
+		if (!base) throw new Error("missing test catalog model");
+		const singleFileSpec: CatalogModel = {
+			...base,
+			hfRepo: "private/gated-model",
+			ggufFile: "model.gguf",
+			sizeGb: 0.000001,
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
+
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(
+					JSON.stringify({ code: "HF_GATED", repo: "private/gated-model" }),
+					{
+						status: 403,
+						headers: { "content-type": "application/json" },
+					},
+				),
+		) as unknown as typeof fetch;
+
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+		const failed = new Promise<DownloadJob>((resolve) => {
+			const unsub = downloader.subscribe((event) => {
+				if (event.job.modelId === base.id && event.type === "failed") {
+					unsub();
+					resolve(event.job);
+				}
+			});
+		});
+
+		await downloader.start(singleFileSpec);
+		const job = await failed;
+
+		expect(job.error).toContain("private/gated-model");
+		expect(job.error).toContain(
+			"Link or authorize this device with Eliza Cloud",
+		);
 	});
 
 	it("blocks a download that does not fit on the models volume", async () => {
@@ -1236,5 +1469,315 @@ describe("local inference downloader stale-content robustness", () => {
 		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
 		expect(fs.existsSync(textPart)).toBe(false);
 		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
+	});
+});
+
+describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", () => {
+	type KeepAwakeGlobal = {
+		__ELIZA_BRIDGE__?: { keep_awake_set?: (on: boolean) => unknown };
+	};
+
+	/**
+	 * Stand in for the native `keep_awake_set` bridge the iOS/Android runtime
+	 * installs on `globalThis.__ELIZA_BRIDGE__`. Records every acquire/release
+	 * edge and restores whatever bridge (usually none, in node) was there before.
+	 */
+	function installKeepAwakeSpy(impl?: (on: boolean) => void): {
+		calls: boolean[];
+		restore: () => void;
+	} {
+		const calls: boolean[] = [];
+		const g = globalThis as KeepAwakeGlobal;
+		const hadBridge = "__ELIZA_BRIDGE__" in g;
+		const priorBridge = g.__ELIZA_BRIDGE__;
+		g.__ELIZA_BRIDGE__ = {
+			...(priorBridge ?? {}),
+			keep_awake_set: (on: boolean) => {
+				calls.push(on);
+				impl?.(on);
+			},
+		};
+		return {
+			calls,
+			restore: () => {
+				if (hadBridge) g.__ELIZA_BRIDGE__ = priorBridge;
+				else delete g.__ELIZA_BRIDGE__;
+			},
+		};
+	}
+
+	/**
+	 * `start()` fires `runJob` background (`void this.runJob(...)`) and the job
+	 * emits its terminal (`completed`/`failed`) event from inside its own body —
+	 * the keep-awake release runs one tick later in the `finally`. Wait
+	 * (bounded) for every acquire to be matched by a release before asserting.
+	 */
+	async function settleReleases(calls: boolean[]): Promise<void> {
+		for (let i = 0; i < 200; i++) {
+			const acquires = calls.filter((on) => on).length;
+			const releases = calls.filter((on) => !on).length;
+			if (acquires > 0 && acquires === releases) return;
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+	}
+
+	it("holds the screen awake for the transfer and releases it once the job completes", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		installFetchFixture(freshBundleFixtureFiles());
+		const spy = installKeepAwakeSpy();
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+			await settleReleases(spy.calls);
+
+			expect(job.state).toBe("completed");
+			// The idle timer was disabled for the transfer and re-enabled after.
+			expect(spy.calls).toContain(true);
+			expect(spy.calls.at(-1)).toBe(false);
+			// Every acquire is matched by a release — the finally never leaks a hold.
+			const acquires = spy.calls.filter((on) => on).length;
+			const releases = spy.calls.filter((on) => !on).length;
+			expect(acquires).toBe(releases);
+		} finally {
+			spy.restore();
+		}
+	});
+
+	it("releases the screen-awake hold even when the download fails mid-transfer", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		// Serve the manifest but 404 the text weight so the job fails after the
+		// keep-awake hold has already been acquired.
+		const files = freshBundleFixtureFiles();
+		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		installFetchFixture(files);
+		const spy = installKeepAwakeSpy();
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			await expect(completed).rejects.toThrow();
+			await settleReleases(spy.calls);
+
+			expect(spy.calls).toContain(true);
+			expect(spy.calls.at(-1)).toBe(false);
+			const acquires = spy.calls.filter((on) => on).length;
+			const releases = spy.calls.filter((on) => !on).length;
+			expect(acquires).toBe(releases);
+		} finally {
+			spy.restore();
+		}
+	});
+
+	it("never lets a throwing keep-awake bridge break the download", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		installFetchFixture(freshBundleFixtureFiles());
+		const spy = installKeepAwakeSpy(() => {
+			throw new Error("bridge exploded");
+		});
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+			await settleReleases(spy.calls);
+
+			// The download still succeeds — a keep-awake failure is swallowed and
+			// must never take the transfer down with it.
+			expect(job.state).toBe("completed");
+			// Both edges were still attempted despite each throwing.
+			expect(spy.calls).toContain(true);
+			expect(spy.calls).toContain(false);
+		} finally {
+			spy.restore();
+		}
+	});
+});
+
+describe("local inference downloader native background URLSession path (#11841)", () => {
+	type BgArgs = {
+		id: string;
+		url: string;
+		headers: Record<string, string>;
+		destPath: string;
+		expectedTotalBytes: number;
+	};
+	type BgSnapshot = {
+		id: string;
+		state: "running" | "completed" | "failed" | "cancelled";
+		received: number;
+		total: number;
+		destPath: string;
+		error?: string;
+	};
+	type BgBridgeGlobal = {
+		__ELIZA_BRIDGE__?: Record<string, unknown>;
+	};
+
+	/**
+	 * Stand in for the native iOS `BackgroundDownloadBridge` the runtime installs
+	 * on `globalThis.__ELIZA_BRIDGE__`. Resolves each requested URL against the
+	 * fetch fixture bodies, writes the bytes straight to the downloader's staging
+	 * `destPath` (as the real native session's `didFinishDownloadingTo` move
+	 * does), and reports terminal state synchronously so the downloader's poll
+	 * loop observes completion on its first `bg_download_status` call.
+	 */
+	function installBackgroundDownloadFixture(files: Map<string, string>): {
+		starts: BgArgs[];
+		restore: () => void;
+	} {
+		const starts: BgArgs[] = [];
+		const jobs = new Map<string, BgSnapshot>();
+		const g = globalThis as BgBridgeGlobal;
+		const hadBridge = "__ELIZA_BRIDGE__" in g;
+		const priorBridge = g.__ELIZA_BRIDGE__;
+
+		g.__ELIZA_BRIDGE__ = {
+			...(priorBridge ?? {}),
+			bg_download_start: async (raw: unknown): Promise<BgSnapshot> => {
+				const args = raw as BgArgs;
+				starts.push(args);
+				const remotePath = remotePathOf(args.url);
+				const body = files.get(remotePath);
+				if (body === undefined) {
+					const snap: BgSnapshot = {
+						id: args.id,
+						state: "failed",
+						received: 0,
+						total: 0,
+						destPath: args.destPath,
+						error: `missing ${remotePath}`,
+					};
+					jobs.set(args.id, snap);
+					return snap;
+				}
+				fs.mkdirSync(path.dirname(args.destPath), { recursive: true });
+				fs.writeFileSync(args.destPath, body);
+				const size = Buffer.byteLength(body);
+				const snap: BgSnapshot = {
+					id: args.id,
+					state: "completed",
+					received: size,
+					total: size,
+					destPath: args.destPath,
+				};
+				jobs.set(args.id, snap);
+				return snap;
+			},
+			bg_download_status: async (raw: unknown): Promise<BgSnapshot> => {
+				const { id } = raw as { id: string };
+				return (
+					jobs.get(id) ?? {
+						id,
+						state: "failed",
+						received: 0,
+						total: 0,
+						destPath: "",
+						error: `unknown id ${id}`,
+					}
+				);
+			},
+			bg_download_cancel: async (raw: unknown): Promise<BgSnapshot> => {
+				const { id } = raw as { id: string };
+				const snap = jobs.get(id);
+				if (snap) snap.state = "cancelled";
+				return (
+					snap ?? {
+						id,
+						state: "cancelled",
+						received: 0,
+						total: 0,
+						destPath: "",
+					}
+				);
+			},
+		};
+
+		return {
+			starts,
+			restore: () => {
+				if (hadBridge) g.__ELIZA_BRIDGE__ = priorBridge;
+				else delete g.__ELIZA_BRIDGE__;
+			},
+		};
+	}
+
+	it("installs the bundle through the native bridge without any in-process fetch", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Any in-process fetch on the native path is a routing bug — fail loudly.
+		const fetchSpy = vi.fn(async () => {
+			throw new Error(
+				"fetch must not be used when the native bridge is present",
+			);
+		});
+		globalThis.fetch = fetchSpy as unknown as typeof fetch;
+		const bg = installBackgroundDownloadFixture(freshBundleFixtureFiles());
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+
+			expect(job.state).toBe("completed");
+			expect(fetchSpy).not.toHaveBeenCalled();
+			// Every bundle file (manifest + weights) was pulled via the bridge.
+			expect(bg.starts.length).toBeGreaterThan(1);
+			const installed = (await listInstalledModels()).find(
+				(m) => m.id === model.id,
+			);
+			expect(installed).toBeDefined();
+		} finally {
+			bg.restore();
+		}
+	});
+
+	it("fails the job when the native bridge reports a failed transfer", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+
+		// Serve the manifest but drop the text weight so the native transfer for
+		// that file reports `failed` and the job surfaces the failure.
+		const files = freshBundleFixtureFiles();
+		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		globalThis.fetch = vi.fn(async () => {
+			throw new Error(
+				"fetch must not be used when the native bridge is present",
+			);
+		}) as unknown as typeof fetch;
+		const bg = installBackgroundDownloadFixture(files);
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			await expect(completed).rejects.toThrow();
+		} finally {
+			bg.restore();
+		}
 	});
 });

@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the URL normalization helpers, including rejection of unsafe
+ * URL forms (credentials, non-http schemes).
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeHttpBaseUrl, normalizeHttpOrigin } from "./url";
 

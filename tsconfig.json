@@ -128,6 +128,9 @@
         "./plugins/plugin-native-settings/src/index.ts"
       ],
       "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-e2b-sandbox": [
+        "./plugins/plugin-e2b-sandbox/index.ts"
+      ],
       "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/src/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"
@@ -191,6 +194,8 @@
       "@elizaos/security/*": ["./packages/security/src/*"],
       "@elizaos/tui": ["./packages/tui/src/index.ts"],
       "@elizaos/tui/*": ["./packages/tui/src/*"],
+      "@elizaos/auth": ["./packages/auth/src/index.ts"],
+      "@elizaos/auth/*": ["./packages/auth/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/skills": ["./packages/skills/src/index.ts"],

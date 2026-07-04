@@ -1,3 +1,9 @@
+/**
+ * LLM prompt templates for the X connector's autonomous loops: the
+ * action-selection template (which of like/retweet/quote/reply to take on a
+ * tweet) and the quote/reply generation templates. Placeholders like
+ * `{{agentName}}`/`{{bio}}`/`{{postDirections}}` are filled from character state.
+ */
 export const twitterActionTemplate = `
 # INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
 {{bio}}

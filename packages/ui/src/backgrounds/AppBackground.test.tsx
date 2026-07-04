@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+/**
+ * Verifies AppBackground reads the persisted BackgroundConfig from app state
+ * and renders the matching surface: a shader host in the configured color for
+ * `mode: shader`, an image host for `mode: image`. jsdom render over a seeded
+ * store double.
+ */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { __setAppValueForTests } from "../state/app-store";

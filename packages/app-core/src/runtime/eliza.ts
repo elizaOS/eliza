@@ -22,6 +22,7 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
 
@@ -29,19 +30,26 @@ export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 
 import {
   type AgentRuntime,
+  AUTONOMY_SERVICE_TYPE,
   AutonomyService,
   ChannelType,
+  CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+  isOptionalAppRoutePluginUnavailableError,
   isTruthyEnvValue,
   logger,
   ModelType,
+  OptionalAppRoutePluginUnavailableError,
   type Plugin,
   stringToUuid,
+  type TargetSource,
 } from "@elizaos/core";
+import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
 import {
   ensureRuntimeSqlCompatibility,
   formatError,
   formatErrorWithStack,
   isMobilePlatform,
+  resolveApiExposePort,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncAppEnvToEliza,
@@ -57,6 +65,7 @@ import {
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
+import { resetPluginSqlPgliteSingleton } from "./pglite-auto-reset.js";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
 import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
 
@@ -89,39 +98,21 @@ const _require = createRequire(import.meta.url);
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
-import {
-  ensureTextToSpeechHandler,
-  isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
-} from "./ensure-text-to-speech-handler.js";
+import { ensureTextToSpeechHandler } from "./ensure-text-to-speech-handler.js";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "./startup-overlay.js";
-import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
-import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
-import { DEFAULT_TEXT_TO_SPEECH_PROVIDER } from "./tts-provider-registry.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 
-/** Swarm / PTY paths call TEXT_TO_SPEECH; Edge TTS supplies that model with no API key. */
-const AGENT_ORCHESTRATOR_PLUGIN = "agent-orchestrator";
 const require = createRequire(import.meta.url);
 const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
 const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
-const PLUGIN_SQL_GLOBAL_SINGLETONS = Symbol.for(
-  "elizaos.plugin-sql.global-singletons",
-);
-const ELIZA_AUTO_RESET_PGLITE_ERROR_CODE = "ELIZA_PGLITE_MANUAL_RESET_REQUIRED";
 
 export const shutdownRuntime = upstreamShutdownRuntime;
-
-interface PluginSqlGlobalSingletons {
-  pgLiteClientManager?: {
-    close?: () => Promise<unknown> | unknown;
-  };
-}
 
 type ErrorWithCause = Error & {
   cause?: unknown;
@@ -195,7 +186,8 @@ interface RuntimeAdapterAutonomyCompat {
 }
 
 function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  const svc =
+    runtime.getService(AUTONOMY_SERVICE_TYPE) ?? runtime.getService("autonomy"); // Legacy lowercase serviceType fallback.
   if (isAutonomyService(svc)) {
     return svc;
   }
@@ -206,7 +198,7 @@ async function startAndRegisterAutonomyService(
   runtime: AgentRuntime,
 ): Promise<AutonomyServiceLike> {
   const service = await AutonomyService.start(runtime);
-  runtime.services.set("AUTONOMY" as never, [service as never]);
+  runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
   return service;
 }
 
@@ -219,15 +211,7 @@ export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
 ): ReturnType<typeof upstreamCollectPluginNames> {
   syncBrandEnvAliases();
-  const [config] = args;
   const result = upstreamCollectPluginNames(...args);
-  if (
-    result.has(AGENT_ORCHESTRATOR_PLUGIN) &&
-    !isTextToSpeechEdgeTtsDisabled(config) &&
-    !result.has(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName)
-  ) {
-    result.add(DEFAULT_TEXT_TO_SPEECH_PROVIDER.pluginName);
-  }
   syncBrandEnvAliases();
   return result;
 }
@@ -336,16 +320,6 @@ async function ensureAutonomyBootstrapContext(
 
 type AppRoutePluginModule = Record<string, unknown>;
 
-class OptionalAppRoutePluginUnavailableError extends Error {
-  constructor(
-    readonly specifier: string,
-    cause: unknown,
-  ) {
-    super(`Optional app route plugin ${specifier} is unavailable`, { cause });
-    this.name = "OptionalAppRoutePluginUnavailableError";
-  }
-}
-
 function splitPackageSpecifier(specifier: string): {
   packageName: string;
   exportSubpath: string;
@@ -414,13 +388,19 @@ function resolvePluginExport(
   throw new Error("No plugin export found");
 }
 
-async function loadAppRoutePluginFromSpecifier(
+/**
+ * Import an app module by package specifier, with a workspace-source fallback
+ * for local/source mode. Throws {@link OptionalAppRoutePluginUnavailableError}
+ * when the package is genuinely absent (an optional plugin not installed in this
+ * deployment); rethrows any real load failure (syntax error, init throw, broken
+ * transitive dependency) so it is never misreported as "not installed". Shared
+ * by the route-plugin loader and the runtime-hook loader.
+ */
+async function importAppModuleFromSpecifier(
   specifier: string,
-  exportName: string | undefined,
-): Promise<Plugin> {
-  let module: AppRoutePluginModule;
+): Promise<AppRoutePluginModule> {
   try {
-    module = (await import(
+    return (await import(
       /* webpackIgnore: true */ specifier
     )) as AppRoutePluginModule;
   } catch (err) {
@@ -430,12 +410,19 @@ async function loadAppRoutePluginFromSpecifier(
       throw new OptionalAppRoutePluginUnavailableError(specifier, err);
     }
     logger.debug(
-      `[eliza] Loading app route plugin ${specifier} from workspace source at ${sourceEntry}`,
+      `[eliza] Loading app module ${specifier} from workspace source at ${sourceEntry}`,
     );
-    module = (await import(
+    return (await import(
       pathToFileURL(sourceEntry).href
     )) as AppRoutePluginModule;
   }
+}
+
+async function loadAppRoutePluginFromSpecifier(
+  specifier: string,
+  exportName: string | undefined,
+): Promise<Plugin> {
+  const module = await importAppModuleFromSpecifier(specifier);
   return resolvePluginExport(module, exportName);
 }
 
@@ -570,12 +557,6 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
   await drainAppRoutePluginLoaders(runtime, getAppRoutePluginLoaders());
 }
 
-interface RuntimeHookModule {
-  registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
-}
-
-const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
-
 /**
  * Returns true only for genuine "module is not installed" import failures.
  * Bun raises `ResolveMessage` with `code === "ERR_MODULE_NOT_FOUND"` when a
@@ -592,36 +573,94 @@ function isModuleNotFoundError(err: unknown): boolean {
   return false;
 }
 
-async function registerTrainingRuntimeHooks(
+/**
+ * A runtime-hook contributor: an app's optional post-ready wiring step. `invoke`
+ * loads the app's declared hook module and calls it with the runtime. Resolved
+ * from the registry ({@link getRuntimeHookContributors}) — no feature plugin is
+ * hard-wired by name here; the host drains whatever apps declare a `runtimeHook`.
+ */
+interface RuntimeHookContributor {
+  id: string;
+  invoke: (runtime: AgentRuntime) => Promise<void>;
+}
+
+type RuntimeHookFn = (runtime: AgentRuntime) => void | Promise<void>;
+
+/**
+ * Load an app's runtime-hook export by specifier and invoke it. Uses the shared
+ * {@link importAppModuleFromSpecifier}, so an absent optional plugin surfaces as
+ * {@link OptionalAppRoutePluginUnavailableError} (a graceful skip in the drain)
+ * while a real load failure or a missing/wrong-typed export throws.
+ */
+async function loadAndInvokeRuntimeHook(
+  specifier: string,
+  exportName: string,
   runtime: AgentRuntime,
 ): Promise<void> {
-  let hookMod: RuntimeHookModule;
-  try {
-    hookMod = (await import(
-      TRAINING_RUNTIME_HOOKS_SPECIFIER
-    )) as RuntimeHookModule;
-  } catch (err) {
-    if (isModuleNotFoundError(err)) {
-      logger.warn(
-        `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks`,
-      );
-      return;
-    }
-    // Real load failure (syntax error, broken transitive, init throw, etc.) —
-    // surface it loudly so it is not mistaken for "not installed".
-    logger.error(
-      `[eliza] @elizaos/plugin-training failed to load (not 'not installed'): ${formatErrorWithStack(err)}`,
-    );
-    throw err;
-  }
-
-  if (!hookMod.registerTrainingRuntimeHooks) {
+  const module = await importAppModuleFromSpecifier(specifier);
+  const hook = module[exportName];
+  if (typeof hook !== "function") {
     throw new Error(
-      `[eliza] ${TRAINING_RUNTIME_HOOKS_SPECIFIER} did not export registerTrainingRuntimeHooks`,
+      `[eliza] ${specifier} did not export a runtime-hook function "${exportName}"`,
     );
   }
+  await (hook as RuntimeHookFn)(runtime);
+}
 
-  await hookMod.registerTrainingRuntimeHooks(runtime);
+/**
+ * Resolve every app that declares a `runtimeHook` in the registry into a
+ * contributor. Data-driven and generic: the registry owns the package bindings
+ * (each plugin self-declares its hook in its own `registry-entry.json`), so the
+ * boot tail names no plugin.
+ */
+function getRuntimeHookContributors(): RuntimeHookContributor[] {
+  return getApps(loadRegistry()).flatMap((app) => {
+    const runtimeHook = app.launch.runtimeHook;
+    if (!runtimeHook) return [];
+    return [
+      {
+        id: app.npmName ?? app.id,
+        invoke: (runtime: AgentRuntime) =>
+          loadAndInvokeRuntimeHook(
+            runtimeHook.specifier,
+            runtimeHook.exportName,
+            runtime,
+          ),
+      },
+    ];
+  });
+}
+
+/**
+ * Drain runtime-hook contributors in order, invoking each against the runtime.
+ * An optional plugin that is not installed is skipped gracefully (debug-logged);
+ * any real failure is logged and rethrown so a broken hook is never mistaken for
+ * a benign absence. Exported for a focused unit test of the generic channel.
+ */
+export async function drainRuntimeHookContributors(
+  runtime: AgentRuntime,
+  contributors: RuntimeHookContributor[],
+): Promise<void> {
+  for (const { id, invoke } of contributors) {
+    try {
+      await invoke(runtime);
+    } catch (err) {
+      if (isOptionalAppRoutePluginUnavailableError(err)) {
+        logger.debug(
+          `[eliza] Runtime-hook contributor ${id} unavailable, skipping`,
+        );
+        continue;
+      }
+      logger.error(
+        `[eliza] Runtime-hook contributor ${id} failed: ${formatErrorWithStack(err)}`,
+      );
+      throw err;
+    }
+  }
+}
+
+async function registerRuntimeHooks(runtime: AgentRuntime): Promise<void> {
+  await drainRuntimeHookContributors(runtime, getRuntimeHookContributors());
 }
 
 // The most recent runtime handed to the post-ready boot tail. A backgrounded
@@ -683,7 +722,7 @@ async function repairRuntimeAfterBoot(
     );
   }
 
-  if (!runtime.getService("AUTONOMY")) {
+  if (!runtime.getService(AUTONOMY_SERVICE_TYPE)) {
     try {
       await startAndRegisterAutonomyService(runtime);
       logger.info("[eliza] AutonomyService started and waiting");
@@ -739,13 +778,10 @@ async function repairRuntimeAfterBoot(
 export interface PostReadyBootSteps {
   ensureTextToSpeechHandler: (runtime: AgentRuntime) => Promise<void>;
   registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
-  registerTrainingRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
+  registerRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
   registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
   registerSubAgentCredentialBridgeAdapter: (runtime: AgentRuntime) => boolean;
-  shouldStartTelegramStandaloneBot: () => boolean;
-  ensureTelegramBotPolling: (runtime: AgentRuntime) => Promise<void>;
-  stopTelegramBotPolling: (reason: string) => void;
   ensureTriggerEventBridge: (runtime: AgentRuntime) => Promise<void>;
   ensureConnectorTargetCatalog: (runtime: AgentRuntime) => Promise<void>;
   startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
@@ -754,13 +790,10 @@ export interface PostReadyBootSteps {
 const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
   ensureTextToSpeechHandler,
   registerAppRoutePlugins,
-  registerTrainingRuntimeHooks,
+  registerRuntimeHooks,
   registerCoreSensitiveRequestAdapters,
   registerSubAgentCredentialBridge,
   registerSubAgentCredentialBridgeAdapter,
-  shouldStartTelegramStandaloneBot,
-  ensureTelegramBotPolling,
-  stopTelegramBotPolling,
   ensureTriggerEventBridge,
   ensureConnectorTargetCatalog,
   startDeferredVoiceWarmup,
@@ -771,9 +804,8 @@ const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
  * keeps its original error behavior verbatim — there is no wrapping try/catch:
  * registerAppRoutePlugins isolates per-loader failures internally,
  * ensureTriggerEventBridge / ensureConnectorTargetCatalog swallow into
- * logger.warn internally, and ensureTextToSpeechHandler /
- * registerTrainingRuntimeHooks throw (preserved in the default inline-await
- * dispatch above).
+ * logger.warn internally, and ensureTextToSpeechHandler / registerRuntimeHooks
+ * throw (preserved in the default inline-await dispatch above).
  *
  * `steps` defaults to the real bound functions, so production behavior is
  * unchanged; the seam exists only so the phase split is unit-testable.
@@ -799,7 +831,11 @@ export async function runPostReadyBootTail(
   // runtime only consumes app route plugin loaders.
   await steps.registerAppRoutePlugins(runtime);
 
-  await steps.registerTrainingRuntimeHooks(runtime);
+  // Drain runtime-hook contributors: apps that declare a `runtimeHook` in the
+  // registry wire runtime-only concerns (services, crons, background bootstraps)
+  // that never reach the route table. Generic + data-driven — no feature plugin
+  // is named here. An uninstalled optional plugin is skipped gracefully.
+  await steps.registerRuntimeHooks(runtime);
 
   // Register first-party sensitive-request delivery adapters with the
   // dispatch registry (no-op when the registry service isn't present).
@@ -809,12 +845,6 @@ export async function runPostReadyBootTail(
   // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
   // host coding sub-agents. No-op on child/sandboxed runtimes.
   await steps.registerSubAgentCredentialBridge(runtime);
-
-  if (steps.shouldStartTelegramStandaloneBot()) {
-    await steps.ensureTelegramBotPolling(runtime);
-  } else {
-    steps.stopTelegramBotPolling("passive-lifeops-connectors");
-  }
 
   // Subscribe the trigger event bridge to the runtime event bus so
   // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
@@ -848,14 +878,6 @@ export function __setLatestBootTailRuntimeForTest(
 // hot-reloads so we never leave two handler sets racing the runtime's
 // event bus.
 let _triggerEventBridge: { stop: () => void } | null = null;
-
-// Discord enumeration cache shared with the connector-target-catalog so the
-// catalog service hits one 5-minute REST window instead of one per call.
-// Reset whenever the catalog service is re-created so a hot-reload cannot
-// leak stale guild/channel state into the fresh runtime.
-let _discordEnumerationCache:
-  | import("../services/discord-target-source").DiscordSourceCache
-  | null = null;
 
 // Module-level handle for the connector-target-catalog service.
 let _connectorTargetCatalog: { stop: () => void } | null = null;
@@ -896,16 +918,17 @@ async function ensureConnectorTargetCatalog(
     _connectorTargetCatalog = null;
   }
   try {
-    const { createDiscordSourceCache } = await import(
-      "../services/discord-target-source.js"
-    );
-    _discordEnumerationCache = createDiscordSourceCache();
     const { createElizaConnectorTargetCatalog } = await import(
       "../services/connector-target-catalog.js"
     );
     const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => loadElizaConfig(),
-      discordCache: _discordEnumerationCache,
+      listSources: () => {
+        const registry = runtime.getService(
+          CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+        ) as { list(): TargetSource[] } | null;
+        return registry?.list() ?? [];
+      },
       logger: { warn: runtime.logger.warn.bind(runtime.logger) },
     });
     runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
@@ -929,65 +952,6 @@ async function ensureConnectorTargetCatalog(
         err,
       )}`,
     );
-  }
-}
-
-// Module-level Telegraf bot reference for lifecycle management across restarts.
-let _telegramBot: { stop: (reason?: string) => void } | null = null;
-
-function stopTelegramBotPolling(reason: string): void {
-  if (!_telegramBot) {
-    return;
-  }
-  try {
-    _telegramBot.stop(reason);
-  } catch {
-    /* ignore */
-  }
-  _telegramBot = null;
-}
-
-async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
-  // Stop any previous bot instance
-  if (_telegramBot) {
-    stopTelegramBotPolling("restart");
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) return;
-
-  try {
-    const { Telegraf } = await import("telegraf");
-    const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
-    const bot = new Telegraf(botToken, { telegram: { apiRoot } });
-
-    bot.on("message", async (ctx) => {
-      await handleTelegramStandaloneMessage(runtime, ctx);
-    });
-
-    bot.catch((err: unknown) =>
-      logger.warn(`[eliza] Telegram bot error: ${formatError(err)}`),
-    );
-
-    // Fire-and-forget — bot.launch() only resolves on stop()
-    bot
-      .launch({
-        dropPendingUpdates: true,
-        allowedUpdates: ["message", "message_reaction"],
-      })
-      .catch((err: unknown) =>
-        logger.warn(`[eliza] Telegram bot launch error: ${formatError(err)}`),
-      );
-
-    _telegramBot = bot;
-    // Telegram bot cleanup is handled by the central signal handler in
-    // startEliza() via _telegramBot — no separate registration needed.
-
-    await new Promise((r) => setTimeout(r, 500));
-    logger.info("[eliza] Telegram bot polling started");
-  } catch (err) {
-    logger.warn(`[eliza] Telegram bot setup failed: ${formatError(err)}`);
   }
 }
 
@@ -1225,6 +1189,17 @@ export async function bootElizaRuntime(
 export interface StartElizaOptionsExt extends StartElizaOptions {
   /** Optional callback for embedding model download/init progress. */
   onEmbeddingProgress?: EmbeddingProgressCallback;
+  /**
+   * Local-agent IPC mode: the frontend reaches the runtime over native IPC
+   * (Capacitor / Electrobun RPC / stdio bridge), not an HTTP port. When set,
+   * `startEliza` skips binding the API TCP listener unless the operator opts
+   * back in via `ELIZA_API_EXPOSE_PORT`. The in-process route kernel is still
+   * initialized so the IPC bridge can drive `dispatchRoute`. Default
+   * false/unset — the desktop Electrobun launcher, `eliza start`, and the plain
+   * server-only path leave this unset and keep binding the port exactly as
+   * today. (#12180)
+   */
+  localAgentMode?: boolean;
 }
 
 function collectErrorObjects(err: unknown): ErrorWithCause[] {
@@ -1272,11 +1247,10 @@ function collectErrorMessages(err: unknown): string[] {
   return messages;
 }
 
-function isManualResetPgliteError(err: unknown): boolean {
-  if (getPgliteErrorCode(err) === ELIZA_AUTO_RESET_PGLITE_ERROR_CODE) {
-    return true;
-  }
-
+function hasLegacyManualResetPgliteMessage(err: unknown): boolean {
+  // Legacy fallback for pre-contract plugin-sql errors and raw WASM aborts that
+  // do not carry PGLITE_ERROR_CODES yet. The structured code path above owns
+  // current plugin-sql recovery.
   return collectErrorMessages(err).some((message) => {
     const normalized = message.toLowerCase();
     if (
@@ -1310,6 +1284,18 @@ function isManualResetPgliteError(err: unknown): boolean {
 
     return false;
   });
+}
+
+function isManualResetPgliteError(err: unknown): boolean {
+  const code = getPgliteErrorCode(err);
+  if (
+    code === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED ||
+    code === PGLITE_ERROR_CODES.CORRUPT_DATA
+  ) {
+    return true;
+  }
+
+  return hasLegacyManualResetPgliteMessage(err);
 }
 
 function getPgliteDataDirFromError(err: unknown): string | null {
@@ -1365,48 +1351,6 @@ function isAutoResettablePgliteDir(dataDir: string | null): dataDir is string {
   return typeof dataDir === "string" && path.basename(dataDir) === ".elizadb";
 }
 
-async function resetPluginSqlPgliteSingleton(context: string): Promise<void> {
-  const globalSymbols = globalThis as typeof globalThis &
-    Record<symbol, PluginSqlGlobalSingletons | undefined>;
-  const singletons = globalSymbols[PLUGIN_SQL_GLOBAL_SINGLETONS];
-  const manager = singletons?.pgLiteClientManager;
-
-  if (manager && typeof manager.close === "function") {
-    let closeTimedOut = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-
-    try {
-      await Promise.race([
-        Promise.resolve(manager.close()),
-        new Promise<void>((resolve) => {
-          timeoutHandle = setTimeout(() => {
-            closeTimedOut = true;
-            resolve();
-          }, 1_000);
-        }),
-      ]);
-    } catch (err) {
-      logger.warn(
-        `[eliza] ${context}: failed to close plugin-sql PGlite singleton: ${formatError(err)}`,
-      );
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-    }
-
-    if (closeTimedOut) {
-      logger.warn(
-        `[eliza] ${context}: plugin-sql PGlite singleton close timed out; continuing with a forced reset`,
-      );
-    }
-  }
-
-  if (singletons?.pgLiteClientManager) {
-    delete singletons.pgLiteClientManager;
-  }
-}
-
 async function quarantinePgliteDataDir(
   dataDir: string,
 ): Promise<string | null> {
@@ -1439,7 +1383,7 @@ function normalizePgliteStartupError(err: unknown): unknown {
 
   if (
     err instanceof Error &&
-    getPgliteErrorCode(err) === ELIZA_AUTO_RESET_PGLITE_ERROR_CODE
+    getPgliteErrorCode(err) === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED
   ) {
     return err;
   }
@@ -1453,7 +1397,7 @@ function normalizePgliteStartupError(err: unknown): unknown {
       : `PGlite initialization failed: ${detail}. Stop the app, then rename or delete only the managed PGlite data directory before retrying.`,
     { cause: err },
   ) as ErrorWithCause;
-  wrapped.code = ELIZA_AUTO_RESET_PGLITE_ERROR_CODE;
+  wrapped.code = PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED;
   if (dataDir) {
     wrapped.dataDir = dataDir;
   }
@@ -1463,6 +1407,12 @@ function normalizePgliteStartupError(err: unknown): unknown {
 async function upstreamStartElizaWithPgliteCompat(
   options?: StartElizaOptions,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  // Inject the app-core host capabilities (vault, account pool, wallet-key
+  // hydration, build variant, cloud-pair route) into the agent runtime before
+  // it boots. Every app-core agent boot funnels through here, and this is the
+  // sole caller of `upstreamStartEliza`, so the bridge is always installed
+  // before agent code that reads it runs. See install-agent-host-bridge.ts.
+  installAgentHostBridge();
   try {
     return await upstreamStartEliza(options);
   } catch (err) {
@@ -1586,6 +1536,21 @@ export async function startEliza(
       let updateStartup:
         | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
         | undefined;
+      // Local-agent IPC mode binds NO TCP listener (frontend reaches the
+      // runtime over native IPC), unless the operator opts back in with
+      // ELIZA_API_EXPOSE_PORT for dev tooling / LAN access / e2e harnesses.
+      // Every other caller (desktop launcher, `eliza start`, plain server-only)
+      // leaves `localAgentMode` unset, so `skipApiListen` is false and the bind
+      // path is byte-for-byte identical to today. (#12180)
+      const skipApiListen =
+        options?.localAgentMode === true &&
+        resolveApiExposePort(process.env) !== true;
+      if (skipApiListen) {
+        bootLap("startEliza:local-agent IPC mode — skipping API TCP bind");
+        logger.info(
+          "[eliza] Local-agent IPC mode: initializing route kernel without a TCP listener (set ELIZA_API_EXPOSE_PORT=1 to re-open the port)",
+        );
+      }
       bootLap(
         "startEliza:before startApiServer (config/registry/embedding setup done)",
       );
@@ -1594,9 +1559,12 @@ export async function startEliza(
         // the desktop webview connects + hydrates in PARALLEL with the heavier
         // agent boot instead of waiting the full boot. The runtime is wired in
         // via updateRuntime once it finishes booting below. Mirrors the
-        // dev-server's bind-first orchestration.
+        // dev-server's bind-first orchestration. In local-agent IPC mode
+        // (skipApiListen) the same route kernel is initialized in-process but no
+        // socket is opened; the IPC bridge drives dispatchRoute directly.
         const startedApiServer = await startApiServer({
           port: apiPort,
+          skipListen: skipApiListen,
           initialAgentState: "starting",
           onRestart: async () => {
             if (currentRuntime) {
@@ -1625,23 +1593,32 @@ export async function startEliza(
         throw apiErr;
       }
 
-      // WHY: `startApiServer` may bind a different port than requested (busy
-      // socket, upstream policy). Shells, scripts, and follow-up code reading
-      // env must match the real listener or health checks and user-facing URLs
-      // disagree with `GET /api/health`.
-      syncResolvedApiPort(process.env, actualApiPort, {
-        overwriteUiPort: true,
-      });
-      // Invalidate cached CORS port set so the new port is allowed.
-      // server-cors is statically imported at the top of this module — the
-      // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
-      invalidateCorsAllowedPorts();
+      if (!skipApiListen) {
+        // WHY: `startApiServer` may bind a different port than requested (busy
+        // socket, upstream policy). Shells, scripts, and follow-up code reading
+        // env must match the real listener or health checks and user-facing URLs
+        // disagree with `GET /api/health`. In local-agent IPC mode no port is
+        // bound, so syncing env to `actualApiPort` (a never-bound port) or
+        // emitting a "listening on http://…" URL would be a lie.
+        syncResolvedApiPort(process.env, actualApiPort, {
+          overwriteUiPort: true,
+        });
+        // Invalidate cached CORS port set so the new port is allowed.
+        // server-cors is statically imported at the top of this module — the
+        // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
+        invalidateCorsAllowedPorts();
 
-      logger.info(
-        `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
-      );
-      console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
-      bootLap("startEliza:API bound (webview can connect, ready:false)");
+        logger.info(
+          `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
+        );
+        console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+        bootLap("startEliza:API bound (webview can connect, ready:false)");
+      } else {
+        logger.info(
+          "[eliza] Local-agent IPC mode: route kernel ready (no TCP listener bound)",
+        );
+        bootLap("startEliza:route kernel ready (IPC mode, no TCP bind)");
+      }
 
       // Now boot the runtime; the API is already reachable (state "starting"),
       // so the UI is connecting + hydrating while this runs, then flips to
@@ -1658,7 +1635,7 @@ export async function startEliza(
       console.log("[eliza] Server running. Press Ctrl+C to stop.");
 
       const { buildSandboxRegistryFromEnv } = await import(
-        "../services/sandbox-registry.js"
+        "@elizaos/shared/sandbox-registry"
       );
       const sandboxRegistry = buildSandboxRegistryFromEnv();
       if (sandboxRegistry) {
@@ -1686,7 +1663,6 @@ export async function startEliza(
           process.exit(1);
         }, 10_000);
         forceExitTimer.unref();
-        stopTelegramBotPolling("SIGINT");
         if (sandboxRegistry) {
           sandboxRegistry.stopHeartbeat();
           try {

@@ -1,4 +1,13 @@
-export { resolveAppBranding } from "@elizaos/shared";
+// Registration-surface contracts live in @elizaos/shared (React-free canonical
+// home); import them from there rather than the React package.
+export {
+  type AppDetailExtensionProps,
+  type OverlayApp,
+  type OverlayAppContext,
+  registerDetailExtension,
+  registerOverlayApp,
+  resolveAppBranding,
+} from "@elizaos/shared";
 export {
   type AppRunSummary,
   type AppSessionJsonValue,
@@ -10,7 +19,6 @@ export {
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";
 export { ErrorBoundary } from "@elizaos/ui/browser";
-export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
 export {
   SurfaceBadge,
   SurfaceCard,
@@ -26,12 +34,6 @@ export {
   toneForStatusText,
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface.helpers";
-export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
-export type {
-  OverlayApp,
-  OverlayAppContext,
-} from "@elizaos/ui/components/apps/overlay-app-api";
-export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";

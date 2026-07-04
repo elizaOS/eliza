@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the `/eliza-pair` command handler and
+ * `DiscordOwnerPairingServiceImpl` — pairing-code relay and DM login links,
+ * against a mocked runtime and backend.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

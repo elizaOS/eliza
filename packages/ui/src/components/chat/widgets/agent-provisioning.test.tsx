@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+//
+// AgentProvisioningWidget lifecycle: renders the migrating state (opening chat on
+// tap), a Retry control on a failed handoff (dispatching the retry event), and
+// self-hides once the dedicated agent attaches or for a local/non-shared runtime.
+// jsdom render with the cloud-compat agent helpers + events mocked (no backend).
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudHandoffPhaseDetail } from "../../../events";

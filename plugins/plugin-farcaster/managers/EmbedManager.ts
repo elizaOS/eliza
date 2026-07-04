@@ -1,3 +1,10 @@
+/**
+ * Classifies Neynar cast embeds (image / video / audio / webpage / frame / quoted
+ * cast) and turns them into the runtime's `Media` attachments. Image embeds are
+ * captioned with the vision model (`IMAGE_DESCRIPTION`); other kinds get a derived
+ * title/description. Results are memoized per embed id in an instance cache. Used
+ * by `InteractionManager` to enrich inbound mentions/replies with media.
+ */
 import { type IAgentRuntime, type Media, ModelType, withStandaloneTrajectory } from "@elizaos/core";
 import type { EmbedCast, EmbedUrl, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 

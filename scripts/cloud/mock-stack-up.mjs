@@ -351,6 +351,13 @@ async function main() {
     CONTAINER_CONTROL_PLANE_URL: tCp,
     CONTAINER_CONTROL_PLANE_TOKEN: "local-mock-token",
     CRON_SECRET: "local-cron-secret",
+    // Fixed dev master key so the mock stack exercises the real secrets
+    // envelope end-to-end. Since #12229 (M4) the LocalKMSProvider fails closed
+    // when SECRETS_MASTER_KEY is unset, so any secrets op during a mock session
+    // (connector-OAuth token storage, provisioning/container-deploy secrets)
+    // would otherwise throw. This is a throwaway local-dev key, never a real one.
+    SECRETS_MASTER_KEY:
+      process.env.SECRETS_MASTER_KEY ?? "0123456789abcdef".repeat(4),
   };
 
   try {
@@ -410,9 +417,9 @@ async function main() {
       }
     }
 
-    // packages/cloud-frontend was consolidated into packages/app (#9093); the
-    // standalone frontend no longer exists. Skip its boot gracefully when the
-    // dir is absent so the mock stack still comes up (api + control-plane).
+    // The apex frontend lives in packages/app; there is no standalone
+    // packages/cloud-frontend (#9093). Skip its boot gracefully when the dir is
+    // absent so the mock stack still comes up (api + control-plane).
     const frontendDir = path.join(REPO_ROOT, "packages/cloud-frontend");
     if (!flags.noFrontend && !existsSync(frontendDir)) {
       process.stderr.write(

@@ -1,3 +1,8 @@
+/**
+ * Live integration smoke test hitting the real Google Generative Language API
+ * directly (model list, text generation, embeddings, JSON output). Self-skips
+ * when `GOOGLE_GENERATIVE_AI_API_KEY` is unset.
+ */
 import { config } from "dotenv";
 import { beforeAll, describe, expect, it } from "vitest";
 

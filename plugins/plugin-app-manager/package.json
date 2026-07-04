@@ -41,7 +41,8 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3",

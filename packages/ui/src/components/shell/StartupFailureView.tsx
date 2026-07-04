@@ -1,3 +1,11 @@
+/**
+ * Terminal-state screen shown when startup can't reach the main shell: names the
+ * failure reason (backend timeout/unreachable, agent timeout/error, missing
+ * asset, unknown), offers a retry, and — where a bug reporter is mounted —
+ * pre-fills a startup bug report from the error + captured logs. One of the
+ * `StartupShell` views; rendered by `StartupShell` when `view.kind === "error"`.
+ */
+
 import { AlertCircle } from "lucide-react";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";

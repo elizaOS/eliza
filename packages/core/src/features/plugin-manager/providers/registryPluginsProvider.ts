@@ -50,7 +50,10 @@ export const registryPluginsProvider: Provider & {
 	contextGate: { anyOf: ["connectors", "settings"] },
 	cacheStable: true,
 	cacheScope: "agent",
-	roleGate: { minRole: "USER" },
+	// Registry-plugin availability against local install state is owner context —
+	// preserves the tier the former name-keyed override map enforced
+	// (#12094 item 3).
+	roleGate: { minRole: "OWNER" },
 
 	async get(
 		runtime: IAgentRuntime,

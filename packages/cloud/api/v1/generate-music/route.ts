@@ -173,6 +173,17 @@ app.post("/", async (c) => {
         "validation_error",
       );
     }
+    if (
+      definition.durationControl === "unsupported" &&
+      request.durationSeconds !== undefined
+    ) {
+      return jsonError(
+        c,
+        400,
+        `Model ${request.model} does not support durationSeconds; omit durationSeconds and bill it as a fixed-price generation`,
+        "validation_error",
+      );
+    }
     if (!providerConfigured(c.env, provider)) {
       return jsonError(
         c,
@@ -197,14 +208,19 @@ app.post("/", async (c) => {
     });
 
     const durationSeconds =
-      request.durationSeconds ?? definition.defaultParameters.durationSeconds;
+      definition.durationControl === "supported"
+        ? (request.durationSeconds ??
+          definition.defaultParameters.durationSeconds)
+        : undefined;
     const cost = await calculateMusicGenerationCostFromCatalog({
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
       durationSeconds,
       dimensions: {
-        ...(durationSeconds ? { durationSeconds } : {}),
+        ...(definition.durationControl === "supported" && durationSeconds
+          ? { durationSeconds }
+          : {}),
         ...(request.instrumental !== undefined
           ? { instrumental: request.instrumental }
           : {}),
@@ -240,7 +256,7 @@ app.post("/", async (c) => {
         lyrics: request.lyrics,
         lyricsOptimizer: request.lyricsOptimizer,
         instrumental: request.instrumental,
-        durationSeconds: request.durationSeconds,
+        durationSeconds,
         referenceUrl: request.referenceUrl,
         seed: request.seed,
         outputFormat: request.outputFormat,
@@ -300,7 +316,11 @@ app.post("/", async (c) => {
       file_size: music.file_size ? BigInt(music.file_size) : undefined,
       mime_type: music.content_type ?? "audio/mpeg",
       parameters: {
-        durationSeconds,
+        ...(request.durationSeconds !== undefined
+          ? { requestedDurationSeconds: request.durationSeconds }
+          : {}),
+        ...(durationSeconds ? { durationSeconds } : {}),
+        durationControl: definition.durationControl,
         hasLyrics: Boolean(request.lyrics),
         lyricsOptimizer: request.lyricsOptimizer,
         instrumental: request.instrumental,
@@ -308,7 +328,7 @@ app.post("/", async (c) => {
         outputFormat: request.outputFormat,
       },
       dimensions: {
-        duration: durationSeconds,
+        ...(durationSeconds ? { duration: durationSeconds } : {}),
       },
       cost: String(cost.totalCost),
       credits: String(cost.totalCost),

@@ -19,6 +19,7 @@
  */
 
 import type {
+	VoiceImprintMatchHandle,
 	VoiceProfileObservation,
 	VoiceProfileStore,
 } from "../profile-store";
@@ -58,6 +59,46 @@ export interface VoiceAttributionOutput {
 	observation: VoiceProfileObservation | null;
 }
 
+/** Init for an incremental (windowed) turn — see {@link VoiceAttributionPipeline.beginTurn}. */
+export interface IncrementalTurnInit {
+	turnId: string;
+	source?: VoiceInputSource;
+	startedAtMs?: number;
+	/** Aborts the speech-start speculative `beginMatch` lookup if the turn is cancelled. */
+	signal?: AbortSignal;
+}
+
+/** The trailing partial window and full turn PCM handed to `finalize`. */
+export interface IncrementalTurnFinalize {
+	/** The whole turn's concatenated PCM — spliced for the primary-speaker embedding. */
+	fullPcm: Float32Array;
+	/** The trailing < 5 s window that had not yet been decoded at speech-end. */
+	finalWindowPcm?: Float32Array;
+	/** Turn-relative start (ms) of `finalWindowPcm`. */
+	finalWindowStartMs?: number;
+	endedAtMs?: number;
+	signal?: AbortSignal;
+}
+
+/**
+ * A single long turn diarized window-by-window instead of in one whole-turn
+ * decode. `pushWindow` runs the pyannote 5 s decode as each window fills DURING
+ * the turn; `finalize` runs only the trailing partial window plus the one
+ * embedding + profile-match over the merged segments — so post-endpoint work
+ * drops from a whole-turn (≤30 s) decode to ≤ one 5 s window + match (#12257).
+ *
+ * `speculativeMatch` is the `profileStore.beginMatch` handle kicked off at
+ * speech-start; it resolves in parallel with ASR. The turn-taking sub-issue
+ * (#12255) reads it to gate barge-in before the turn finalizes.
+ */
+export interface IncrementalTurnAttributor {
+	pushWindow(windowPcm: Float32Array, windowStartMs: number): Promise<void>;
+	finalize(args: IncrementalTurnFinalize): Promise<VoiceAttributionOutput>;
+	readonly speculativeMatch: VoiceImprintMatchHandle;
+	/** Count of window decodes done DURING the turn (excludes the finalize window). */
+	readonly windowsDiarized: number;
+}
+
 function nonOverlappingSegments(
 	local: ReadonlyArray<LocalSpeakerSegment>,
 ): LocalSpeakerSegment[] {
@@ -67,6 +108,26 @@ function nonOverlappingSegments(
 		.sort((a, b) =>
 			a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
 		);
+}
+
+/**
+ * Shift window-local segment times into turn-relative time. Each 5 s window is
+ * decoded with 0-based frame timestamps; adding the window's turn-relative start
+ * places its segments on the same timeline the one-shot whole-turn decode uses.
+ * `localSpeakerId` is left untouched — it stays window-local (0..2), so the
+ * profile store's cosine re-clustering (not the diarizer) owns cross-window
+ * identity, exactly as on the one-shot path.
+ */
+function offsetSegments(
+	segments: ReadonlyArray<LocalSpeakerSegment>,
+	offsetMs: number,
+): LocalSpeakerSegment[] {
+	if (offsetMs === 0) return segments.slice();
+	return segments.map((seg) => ({
+		...seg,
+		startMs: seg.startMs + offsetMs,
+		endMs: seg.endMs + offsetMs,
+	}));
 }
 
 function spanDurationMs(spans: ReadonlyArray<LocalSpeakerSegment>): number {
@@ -153,18 +214,128 @@ export class VoiceAttributionPipeline {
 		// Diarizer is optional — when missing we treat the whole turn as
 		// one segment with `localSpeakerId=0`.
 		let rawLocal: LocalSpeakerSegment[] = [];
-		let local: LocalSpeakerSegment[] = [];
 		if (this.deps.diarizer) {
 			try {
 				const out = await this.deps.diarizer.diarizeWindow(req.pcm);
 				rawLocal = out.segments.sort((a, b) =>
 					a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
 				);
-				local = nonOverlappingSegments(rawLocal);
 			} catch {
-				local = [];
+				rawLocal = [];
 			}
 		}
+		return this.resolveAttribution(req, rawLocal);
+	}
+
+	/**
+	 * Begin a windowed long turn: kick off the speech-start speculative
+	 * `beginMatch` and return an attributor that decodes each 5 s window as it
+	 * fills (`pushWindow`) and, at speech-end, decodes only the trailing partial
+	 * window + the one embedding/profile-match (`finalize`). See
+	 * {@link IncrementalTurnAttributor}. Short turns (≤ one window) push no
+	 * windows and finalize over the single whole-turn window — identical to
+	 * `attribute`.
+	 */
+	beginTurn(init: IncrementalTurnInit): IncrementalTurnAttributor {
+		const rawLocal: LocalSpeakerSegment[] = [];
+		let windowsDiarized = 0;
+
+		// The first available window (≥ 1 s) feeds the speculative match so the
+		// identity lookup resolves in parallel with ASR instead of at speech-end.
+		let resolveFirstWindow: (pcm: Float32Array | null) => void = () => {};
+		const firstWindow = new Promise<Float32Array | null>((resolve) => {
+			resolveFirstWindow = resolve;
+		});
+		let firstWindowSettled = false;
+		const settleFirstWindow = (pcm: Float32Array | null): void => {
+			if (firstWindowSettled) return;
+			firstWindowSettled = true;
+			resolveFirstWindow(pcm);
+		};
+
+		const speculativeMatch = this.deps.profileStore.beginMatch({
+			embed: async () => {
+				const pcm = await firstWindow;
+				if (!pcm || pcm.length < WESPEAKER_MIN_SAMPLES) return null;
+				const embedding = await this.deps.encoder.encode(pcm);
+				return {
+					embedding,
+					embeddingModel: this.deps.encoder.modelId ?? "",
+				};
+			},
+			...(init.signal ? { signal: init.signal } : {}),
+		});
+
+		const diarizeInto = async (
+			pcm: Float32Array,
+			startMs: number,
+		): Promise<void> => {
+			if (!this.deps.diarizer) return;
+			try {
+				const out = await this.deps.diarizer.diarizeWindow(pcm);
+				for (const seg of offsetSegments(out.segments, startMs)) {
+					rawLocal.push(seg);
+				}
+			} catch {
+				// A window that fails to diarize contributes no segments; earlier
+				// windows still drive attribution (parity with the one-shot catch).
+			}
+		};
+
+		return {
+			get windowsDiarized() {
+				return windowsDiarized;
+			},
+			speculativeMatch,
+			pushWindow: async (windowPcm, windowStartMs) => {
+				settleFirstWindow(windowPcm);
+				windowsDiarized += 1;
+				await diarizeInto(windowPcm, windowStartMs);
+			},
+			finalize: async (args) => {
+				// A turn shorter than one window never pushed: seed the speculative
+				// match from the final (whole-turn) window so it still resolves.
+				settleFirstWindow(args.finalWindowPcm ?? args.fullPcm);
+				if (args.finalWindowPcm && args.finalWindowPcm.length > 0) {
+					await diarizeInto(args.finalWindowPcm, args.finalWindowStartMs ?? 0);
+				}
+				rawLocal.sort((a, b) =>
+					a.startMs !== b.startMs ? a.startMs - b.startMs : a.endMs - b.endMs,
+				);
+				const req: VoiceAttributionRequest = {
+					turnId: init.turnId,
+					pcm: args.fullPcm,
+					...(init.source ? { source: init.source } : {}),
+					...(init.startedAtMs !== undefined
+						? { startedAtMs: init.startedAtMs }
+						: {}),
+					...(args.endedAtMs !== undefined
+						? { endedAtMs: args.endedAtMs }
+						: {}),
+					...(args.signal ? { signal: args.signal } : {}),
+				};
+				try {
+					return await this.resolveAttribution(req, rawLocal.slice());
+				} finally {
+					speculativeMatch.cancel();
+				}
+			},
+		};
+	}
+
+	/**
+	 * Shared attribution tail: given the turn's diarizer segments (`rawLocal`,
+	 * already in turn-relative time) and full PCM (`req.pcm`), pick the primary
+	 * local speaker, splice its spans, encode, and match/refine against the
+	 * profile store. Both the one-shot `attribute` and the windowed `beginTurn`
+	 * finalize converge here so their output shape is identical.
+	 */
+	private async resolveAttribution(
+		req: VoiceAttributionRequest,
+		rawLocal: LocalSpeakerSegment[],
+	): Promise<VoiceAttributionOutput> {
+		if (req.signal?.aborted) return this.buildEmptyOutput(req);
+		let local = nonOverlappingSegments(rawLocal);
 		if (local.length === 0) {
 			local =
 				rawLocal.length > 0

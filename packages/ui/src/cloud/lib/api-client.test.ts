@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-//
-// Transport-bridge regression for the cloud dashboard's `api-client`. The
-// load-bearing guarantee: the WEB path stays same-origin-only and STILL throws
-// `CROSS_ORIGIN_API_URL` on any cross-origin absolute URL, while native /
-// Electrobun resolves to the single allowlisted Eliza Cloud API host and rides
-// `CapacitorHttp` — but ONLY that one host (every other cross-origin target
-// still throws, even on native).
+
+/**
+ * Transport-bridge contract for the cloud dashboard's `api-client`. The
+ * load-bearing guarantee: the WEB path stays same-origin-only and throws
+ * `CROSS_ORIGIN_API_URL` on any cross-origin absolute URL, while native /
+ * Electrobun resolves to the single allowlisted Eliza Cloud API host and rides
+ * `CapacitorHttp` — but ONLY that one host (every other cross-origin target
+ * still throws, even on native). `@capacitor/core` is doubled to toggle native.
+ */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,7 +27,19 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { setBootConfig } from "../../config/boot-config";
 import { ApiError, api } from "./api-client";
 
-const STEWARD_TOKEN = "steward-jwt-token";
+function makeJwt(payload: Record<string, unknown>): string {
+  const b64url = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
+}
+
+const STEWARD_TOKEN = makeJwt({
+  userId: "u1",
+  exp: 4_102_444_800,
+});
 
 function setElectrobun(active: boolean): void {
   const w = window as unknown as { __electrobunWindowId?: number };
@@ -246,6 +260,129 @@ describe("cloud api-client transport bridge", () => {
     it("STILL throws CROSS_ORIGIN_API_URL for a non-allowlisted host", async () => {
       await expectCrossOriginThrow(api("https://evil.example.com/api/v1/apps"));
       expect(capacitorMocks.request).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- AUTH FALLBACK (#11930): device-code sign-in stores the cloud API key,
+  // never the Steward JWT — native must fall back to it, web must not change.
+
+  describe("cloud API key auth fallback (#11930)", () => {
+    const CLOUD_API_KEY = "eliza_cloud_owner_api_key";
+
+    function nativeOk(): void {
+      capacitorMocks.request.mockResolvedValue({
+        status: 200,
+        data: { apps: [] },
+        headers: {},
+      });
+    }
+
+    it("native: authorizes with the cloud API key when NO Steward token exists (the #11930 401 path)", async () => {
+      capacitorState.isNative = true;
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: CLOUD_API_KEY,
+      });
+      nativeOk();
+
+      await api("/api/v1/apps");
+
+      expect(capacitorMocks.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://api.elizacloud.ai/api/v1/apps",
+          headers: expect.objectContaining({
+            authorization: `Bearer ${CLOUD_API_KEY}`,
+          }),
+        }),
+      );
+    });
+
+    it("native: does not send a local-agent bearer token as Cloud authorization", async () => {
+      capacitorState.isNative = true;
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: "local-agent-bearer-token",
+      });
+      nativeOk();
+
+      await api("/api/v1/apps");
+
+      const call = capacitorMocks.request.mock.calls[0]?.[0];
+      expect(call?.url).toBe("https://api.elizacloud.ai/api/v1/apps");
+      expect(call?.headers.authorization).toBeUndefined();
+    });
+
+    it("native: a live Steward JWT still WINS over the cloud API key when both exist", async () => {
+      capacitorState.isNative = true;
+      // beforeEach already seeded STEWARD_TOKEN_KEY.
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: CLOUD_API_KEY,
+      });
+      nativeOk();
+
+      await api("/api/v1/apps");
+
+      expect(capacitorMocks.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            authorization: `Bearer ${STEWARD_TOKEN}`,
+          }),
+        }),
+      );
+    });
+
+    it("native: an expired Steward JWT is cleared and falls back to the cloud API key", async () => {
+      capacitorState.isNative = true;
+      window.localStorage.setItem(
+        STEWARD_TOKEN_KEY,
+        makeJwt({ userId: "u1", exp: Math.floor(Date.now() / 1000) - 600 }),
+      );
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: CLOUD_API_KEY,
+      });
+      nativeOk();
+
+      await api("/api/v1/apps");
+
+      expect(capacitorMocks.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            authorization: `Bearer ${CLOUD_API_KEY}`,
+          }),
+        }),
+      );
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    });
+
+    it("web: stays byte-identical — NO Authorization header from the REST token without a Steward JWT", async () => {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://www.elizacloud.ai",
+        apiToken: CLOUD_API_KEY,
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify({ apps: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      await api("/api/v1/apps");
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [, calledInit] = fetchSpy.mock.calls[0];
+      expect(
+        new Headers((calledInit as RequestInit).headers).get("Authorization"),
+      ).toBeNull();
     });
   });
 });

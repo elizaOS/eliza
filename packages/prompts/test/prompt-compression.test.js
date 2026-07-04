@@ -1,14 +1,13 @@
+/**
+ * Guards `compressPromptDescription` (a deterministic string transform, no
+ * model). The load-bearing invariant: only whitespace *around* punctuation is
+ * collapsed, never punctuation inside a token — so decimals ("2.5"), thousands
+ * separators ("10,000"), and dotted identifiers ("Node.js") in model-facing
+ * action docs survive verbatim rather than being split ("2. 5", "Node. js").
+ */
 import { describe, expect, it } from "vitest";
 import { compressPromptDescription } from "../src/prompt-compression.js";
 
-/**
- * Punctuation normalization must not split compound tokens: it used to rewrite
- * `\s*[.,]\s*` to "<punct> ", inserting a space into decimals ("2.5" ->
- * "2. 5"), thousands separators ("10,000" -> "10, 000"), and dotted
- * identifiers ("Node.js" -> "Node. js"), corrupting numeric/technical content
- * in model-facing action docs. Only whitespace AROUND punctuation may be
- * normalized; punctuation embedded inside a token must pass through verbatim.
- */
 describe("compressPromptDescription punctuation normalization", () => {
   it("preserves decimal numbers", () => {
     expect(compressPromptDescription("Retrieves up to 2.5 MB of data")).toBe(

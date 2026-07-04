@@ -1,3 +1,8 @@
+/**
+ * Builders and payload types for reward notifications (achievement unlocks, challenge
+ * completions) — produce the title/message/data triple stored on a notification so the
+ * copy stays consistent across the callers that award them.
+ */
 export interface AchievementUnlockedNotificationData {
   [key: string]: string | number;
   kind: "achievement_unlocked";

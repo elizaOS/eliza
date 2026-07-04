@@ -1,3 +1,8 @@
+/**
+ * Formats OSC-8 terminal hyperlinks for CLI output, falling back to `label
+ * (url)` when stdout is not a TTY. Strips ESC bytes from label/url so untrusted
+ * values cannot inject escape sequences.
+ */
 const DOCS_ROOT = "https://docs.eliza.ai";
 
 export function formatTerminalLink(

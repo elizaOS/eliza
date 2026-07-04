@@ -133,6 +133,133 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
+## Error-Handling Simplification
+
+Binding policy for all error handling (parent #12182, foundation #12263). The
+codebase is full of defensive sludge — empty catches, log-and-continue that
+fabricates a result, `return <default>` from catch, `.catch(() => {})` on writes
+that matter, `?? <literal>` standing in for failed/missing data — that
+**swallows failures and makes broken pipelines look healthy**. Remove it.
+
+**Doctrine — fail fast inside, handle at the boundary.** Inner code throws typed
+errors; it does not catch-and-continue. Only designated boundaries translate
+those errors into a structured failure, a user-facing error state, or an
+escalation. This is crash-only design (Candea & Fox, "Crash-Only Software",
+HotOS IX 2003): transparent recovery at a designed boundary beats ad-hoc
+continue-on-error in every function. A failure must surface **observably** —
+either the **agent** sees it (and can retry / reconfigure / disable the failing
+feature) or it is **raised to the owner/developers** when systemic.
+
+**"Not loaded" must never read as "zero"/"empty".** A `?? 0`, `?? []`, `?? ""`,
+or `return 0`/`return []` from a catch that substitutes for failed or missing
+data conflates a broken pipeline with a legitimately empty result. Banned. DTO
+fields are required by default; fix the pipeline, don't paper over it.
+
+**Fast-fail on data paths; throw, never fabricate.** Precedent: issue #9324
+(closed) removed fabricated zero/marker embedding vectors in favor of throwing;
+`plugins/plugin-embeddings/AGENTS.md:32` codifies "THROW, never fabricate".
+
+**UI three-state rule.** `loading` / designed-`empty` / `error` are three
+distinguishable renders — never render healthy-empty from a catch. A
+404-from-unloaded-plugin may degrade to a designed "unavailable" state (J4);
+5xx/transport/parse failures set an error state. Canonical pattern:
+`packages/ui/src/components/pages/StreamView.tsx:55-63`; repaired load shape:
+`packages/ui/src/state/usePluginsSkillsState.ts:195-220`. See the view audit
+`scripts/view-audit/output/MASTER-REPORT.md` §6.A/§6.D.
+
+**Use the foundation.** New/rewritten throw sites use `ElizaError`
+(`packages/core/src/errors.ts`, `{ code, context, cause, severity }`).
+Diagnostic call sites outside the action path (providers, services, background
+jobs, event handlers) call `runtime.reportError(scope, error, context?)` — it
+logs, emits `EventType.ERROR_REPORTED`, surfaces the failure to the agent via
+the `RECENT_ERRORS` provider, and drives owner escalation on repeated systemic
+failure. Action/tool failures already reach the model via the planner loop —
+keep that.
+
+### Justified categories (J1–J7) — keep, annotated `// error-policy:J<N> <reason>`
+
+Every kept handler carries a grep-able `// error-policy:J<N> <reason>` comment
+so "remaining handlers each have a documented justification" is mechanically
+checkable. A justified handler still may not fabricate a success value: J1
+returns a *failure*, J3 returns an explicit *invalid* signal, J4 renders an
+*error/unavailable* state.
+
+- **J1 boundary translation** — one outermost handler per process/transport
+  boundary producing a structured failure.
+- **J2 context-adding rethrow** — must use `cause`.
+- **J3 untrusted-input sanitizing** — parse failures produce an explicit typed
+  "invalid" result, never a fake-valid default.
+- **J4 explicit user-facing degrade** — designed, visually-distinguishable
+  unavailable/error states; only expected error shapes degrade.
+- **J5 unhandled-rejection suppression** — with a comment naming where the
+  rejection IS observed.
+- **J6 best-effort teardown** — debug/warn, teardown paths only.
+- **J7 diagnostics-must-not-kill-the-loop** — trajectory/telemetry writes may
+  catch but must warn + `runtime.reportError`.
+
+Everything else is slop — including every empty catch, log-and-continue that
+fabricates the function's result, `return <default>` from catch,
+`.catch(() => {})` on writes that matter, `?? <literal>` substituting for
+failed/missing data, optional-chaining-as-guard on required collaborators, and
+fallback code paths whose only purpose is masking a primary failure. Every catch
+without an annotation must be either newly-obvious slop or a J1 route boundary in
+a directory documented as such in the batch PR.
+
+**Regression guard (diff-scoped ratchet).** `bun run audit:error-policy-ratchet`
+compares every production source file the branch touches against that file's own
+content at the merge-base with `origin/develop`, and fails only when a touched
+file **adds** an empty catch or server-side `console.*` call. It is immune to
+unrelated `develop` drift (files the branch does not touch are never counted)
+and is a no-op on `develop` itself. Run `... --report` for the repo-wide totals
+the #12182 sweeps drive down. Logger only, never `console`, in server code.
+
+## Slop and Comment Cleanup
+
+Every file is legible on its own: a purpose-explaining prose header at the top,
+in-body comments that carry only what the code cannot, and no change-narration.
+The rules below are binding for new code and for the repo-wide cleanup (#12181).
+
+1. **Header form — one `/** … */` prose block at the very top** (after a `#!`
+   shebang; after a third-party license block in the few files that carry one;
+   before imports). Plain prose, not a template: no `@fileoverview`, no
+   `@author`/`@date`/`@version`. Position is the signal.
+2. **First sentence states what the file does in system terms; never repeat the
+   filename** ("Local content-addressed media store for chat attachments.").
+   Then, only as warranted: relationships (consumers, dependencies, which
+   boundary it sits on), invariants/constraints, gotchas. Issue refs like
+   `(#9948)` are welcome when they anchor non-obvious rationale — never as a
+   substitute for stating it.
+3. **Length scales with weight, hard ceiling ~25 lines.** Barrel `index.ts` /
+   tiny type files: 1 line. Typical modules: 2–6 lines. Load-bearing modules:
+   2–3 short paragraphs. Longer than that belongs in the package
+   `CLAUDE.md`/`README.md` — reference it instead. Test files: 1–3 lines — what
+   surface is under test and how real the harness is (live model vs
+   deterministic proxy, real DB vs in-memory).
+4. **In-body comments carry only what the code cannot say**: intent, invariants,
+   units, boundary conditions, why-this-not-that, protocol quirks, ordering
+   constraints. Keep the two-tier split — `/** JSDoc */` on exported symbols (for
+   callers), `//` for implementation notes. Delete restatement, change-narration,
+   status updates, migration stories, and commented-out code. Do not
+   blanket-comment: a file whose code is clear needs a header and nothing else.
+5. **Churn test = durability test.** Would the comment be true and useful to
+   someone who never saw the previous version? If it only makes sense as a diff
+   annotation, delete it; if the fact is durable but churn-phrased, rewrite it to
+   present tense. History lives in git.
+6. **Accuracy over coverage.** A wrong header is worse than no header. Read the
+   package's `CLAUDE.md` first; if a file's purpose can't be determined, flag it
+   in the PR instead of guessing.
+
+Copy the tone from these in-repo exemplars, don't invent one:
+[`packages/agent/src/api/media-store.ts:1`](packages/agent/src/api/media-store.ts)
+(service), [`packages/ui/src/components/RoleGate.tsx:1`](packages/ui/src/components/RoleGate.tsx)
+(React component), [`packages/scripts/run-all-tests.mjs:1`](packages/scripts/run-all-tests.mjs)
+(script — but don't copy its filename-repetition opener), and `.gitmodules`
+(config prose). Never touch code, string/template literals, third-party license
+blocks (header goes below them), or generated files. Comment-only changes are
+machine-checked by `bun run check:comment-only`
+([`scripts/assert-comment-only-diff.mjs`](scripts/assert-comment-only-diff.mjs)):
+it asserts the code token stream is byte-for-byte unchanged.
+
 ## App visual review — REQUIRED for UI changes in `packages/app/`
 
 Any change in `packages/app/` (or a shared package whose UI bleeds into it) MUST
@@ -158,10 +285,14 @@ layout/theme/components.
 `@elizaos/plugin-personal-assistant` and `@elizaos/plugin-health` share one
 scheduled-item architecture. Reminders, check-ins, follow-ups, watchers,
 recaps, approvals, and outputs are all `ScheduledTask` records routed through a
-single runner (`plugins/plugin-personal-assistant/src/lifeops/scheduled-task/runner.ts`),
+single runner (`plugins/plugin-scheduling/src/scheduled-task/runner.ts`),
 which pattern-matches on structural fields (`kind`, `trigger`, `shouldFire`,
 `completionCheck`, `pipeline`, …), never on `promptInstructions` text. Health
 contributes through registries; LifeOps does not import its internals.
+
+For the full automation vocabulary — how a **workflow**, **trigger**, **task**,
+**scheduled item**, **coding task**, and **automation** differ and what fires
+each (one clock, two consumers) — see [`docs/automation-glossary.md`](docs/automation-glossary.md).
 
 **Do not add:** a second LifeOps scheduling mechanism, a second knowledge-graph
 store (use `EntityStore` / `RelationshipStore`), behavior driven by

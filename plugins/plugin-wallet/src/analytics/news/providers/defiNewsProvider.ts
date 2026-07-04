@@ -1,3 +1,11 @@
+/**
+ * `DEFI_NEWS` provider: renders a DeFi/crypto market report into planner
+ * context — global DeFi and crypto market stats (needs `COINGECKO_SERVICE`),
+ * latest Brave New Coin RSS headlines (always available), and, when a token
+ * symbol/name is detected in the message, per-token data resolved via
+ * Birdeye + on-chain lookup when available, falling back to a hardcoded
+ * symbol-to-CoinGecko-id table for a short list of major tokens.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
@@ -72,28 +80,6 @@ interface SolanaTokenInfoService {
 }
 const DEFI_NEWS_TEXT_LIMIT = 4000;
 
-/**
- * DeFi News Provider
- *
- * Automatically provides comprehensive DeFi and crypto market context to conversations.
- * This provider is dynamic and fetches fresh data on each request.
- *
- * The provider aggregates data from:
- * - Global DeFi market statistics (market cap, volume, dominance) - requires CoinGecko service
- * - Global crypto market data (total market cap, active cryptocurrencies, dominance) - requires CoinGecko service
- * - Latest crypto news from Brave New Coin RSS feed (top 5 articles) - always available
- * - Token-specific data when mentioned - requires CoinGecko and optional Birdeye services
- *
- * The data is formatted as a comprehensive market report that can be used
- * by the agent to provide informed responses about DeFi and crypto markets.
- *
- * Note: The CoinGecko service should be provided by the analytics plugin or similar.
- * If not available, the provider will still work with news data only.
- *
- * @example
- * // The provider is automatically called by the framework
- * // No manual invocation needed - just add to plugin.providers array
- */
 export const defiNewsProvider: Provider = {
   name: "DEFI_NEWS",
   description:
@@ -110,7 +96,6 @@ export const defiNewsProvider: Provider = {
     let defiNewsInfo = "";
 
     try {
-      // Get services - CoinGecko from analytics or similar plugin, NewsData from this plugin
       const coinGeckoService = runtime.getService(
         "COINGECKO_SERVICE",
       ) as CoinGeckoService | null;
@@ -126,24 +111,19 @@ export const defiNewsProvider: Provider = {
         };
       }
 
-      // Check if a specific token is mentioned in the message
       const messageText = message.content.text || "";
 
       defiNewsInfo += `=== DEFI & CRYPTO MARKET REPORT ===\n\n`;
 
-      // Extract symbols dynamically from the message
       let extractedSymbols = extractSymbols(messageText, "loose");
       extractedSymbols = filterTokenSymbols(extractedSymbols);
 
-      // Also check for token names (bitcoin, ethereum, etc.)
       const namedSymbol = getSymbolFromTokenName(messageText);
       if (namedSymbol && !extractedSymbols.includes(namedSymbol)) {
         extractedSymbols.unshift(namedSymbol); // Add to front
       }
 
-      // If token symbols are detected and services are available, look them up
       if (extractedSymbols.length > 0 && coinGeckoService) {
-        // Try to get Birdeye service for symbol lookup
         const birdeyeService = runtime.getService(
           "birdeye",
         ) as BirdeyeLookupService | null;
@@ -152,10 +132,8 @@ export const defiNewsProvider: Provider = {
         ) as SolanaTokenInfoService | null;
 
         if (birdeyeService && solanaService) {
-          // Process up to 3 tokens
           for (const detectedSymbol of extractedSymbols.slice(0, 3)) {
             try {
-              // Look up token by symbol across all chains
               const options =
                 await birdeyeService.lookupSymbolAllChains(detectedSymbol);
               const exactOptions = options.filter(
@@ -167,7 +145,6 @@ export const defiNewsProvider: Provider = {
                 const tokenOption = exactOptions[0];
                 const tokenCA = tokenOption.address;
 
-                // Verify it's actually a token
                 const addressType = await solanaService.getAddressType(tokenCA);
 
                 if (addressType === "Token") {
@@ -189,7 +166,6 @@ export const defiNewsProvider: Provider = {
             }
           }
         } else {
-          // Fallback to CoinGecko ID lookup for major tokens
           for (const detectedSymbol of extractedSymbols.slice(0, 1)) {
             const coingeckoId = getCoinGeckoIdFromSymbol(detectedSymbol);
             if (coingeckoId) {
@@ -204,12 +180,10 @@ export const defiNewsProvider: Provider = {
         }
       }
 
-      // Get global DeFi data (if CoinGecko service is available)
       if (coinGeckoService) {
         const globalDefiData = await getGlobalDefiData(coinGeckoService);
         defiNewsInfo += globalDefiData;
 
-        // Get global crypto market data
         const globalCryptoData = await getGlobalCryptoData(coinGeckoService);
         defiNewsInfo += globalCryptoData;
       } else {
@@ -217,7 +191,6 @@ export const defiNewsProvider: Provider = {
           "⚠️ Market data unavailable (CoinGecko service not configured)\n\n";
       }
 
-      // Get latest crypto news (always available)
       const latestNews = await getLatestCryptoNews(newsDataService);
       defiNewsInfo += latestNews;
     } catch (error) {
@@ -241,14 +214,7 @@ export const defiNewsProvider: Provider = {
   },
 };
 
-/**
- * Extract symbols from text
- * Dynamically extracts token symbols from natural language
- *
- * @param text - The text to extract symbols from
- * @param mode - "strict" only matches $SYMBOL format, "loose" matches various patterns
- * @returns Array of detected symbols
- */
+/** Extracts candidate token symbols from free-form text; `mode` controls strictness (see below). */
 export const extractSymbols = (
   text: string,
   // loose mode will try to extract more symbols but may include false positives
@@ -258,7 +224,6 @@ export const extractSymbols = (
   if (!text.matchAll) return [];
   const symbols = new Set<string>();
 
-  // Match patterns
   const patterns =
     mode === "strict"
       ? [
@@ -281,7 +246,6 @@ export const extractSymbols = (
           /\b([A-Z0-9]{2,10})-USD\b/gi,
         ];
 
-  // Extract all matches
   patterns.forEach((pattern) => {
     const matches = text.matchAll(pattern);
     for (const match of matches) {
@@ -293,11 +257,9 @@ export const extractSymbols = (
   return Array.from(symbols);
 };
 
-/**
- * Filter extracted symbols to remove common words and validate potential tokens
- */
 function filterTokenSymbols(symbols: string[]): string[] {
-  // Common words to exclude (not tokens)
+  // Common English words and fiat currency codes that match the symbol
+  // regexes but aren't tokens.
   const excludeWords = new Set([
     "THE",
     "AND",
@@ -350,9 +312,6 @@ function filterTokenSymbols(symbols: string[]): string[] {
   });
 }
 
-/**
- * Map common token names to their symbols
- */
 function getSymbolFromTokenName(text: string): string | null {
   const lowerText = text.toLowerCase();
 
@@ -379,10 +338,7 @@ function getSymbolFromTokenName(text: string): string | null {
   return null;
 }
 
-/**
- * Get CoinGecko ID from token symbol
- * Fallback mapping for major tokens when Birdeye is not available
- */
+/** Fallback symbol-to-CoinGecko-id mapping for major tokens, used when Birdeye is unavailable. */
 function getCoinGeckoIdFromSymbol(symbol: string): string | null {
   const symbolToCoinGeckoId: Record<string, string> = {
     BTC: "bitcoin",
@@ -403,9 +359,6 @@ function getCoinGeckoIdFromSymbol(symbol: string): string | null {
   return symbolToCoinGeckoId[symbol.toUpperCase()] || null;
 }
 
-/**
- * Get global DeFi market data
- */
 async function getGlobalDefiData(
   coinGeckoService: CoinGeckoService,
 ): Promise<string> {
@@ -428,9 +381,6 @@ async function getGlobalDefiData(
   return defiInfo;
 }
 
-/**
- * Get global crypto market data
- */
 async function getGlobalCryptoData(
   coinGeckoService: CoinGeckoService,
 ): Promise<string> {
@@ -465,9 +415,6 @@ async function getGlobalCryptoData(
   return cryptoInfo;
 }
 
-/**
- * Get latest crypto news
- */
 async function getLatestCryptoNews(
   newsDataService: NewsDataService,
 ): Promise<string> {
@@ -510,10 +457,6 @@ async function getLatestCryptoNews(
   return newsInfo;
 }
 
-/**
- * Get token information by contract address
- * Uses Birdeye + CoinGecko to fetch comprehensive token data
- */
 async function getTokenInfoByAddress(
   coinGeckoService: CoinGeckoService,
   solanaService: SolanaTokenInfoService,
@@ -523,10 +466,8 @@ async function getTokenInfoByAddress(
   let tokenInfo = `📊 TOKEN INFORMATION:\n\n`;
 
   try {
-    // Import PublicKey if needed
     const { PublicKey } = await import("@solana/web3.js");
 
-    // Get token symbol from Solana (for verification)
     let tokenSymbol = symbol;
     try {
       const onChainSymbol = await solanaService.getTokenSymbol(
@@ -539,12 +480,10 @@ async function getTokenInfoByAddress(
       // fall back to provided symbol when on-chain lookup fails
     }
 
-    // Try to search CoinGecko by symbol
     let coinData: CoinGeckoCoinData | null = null;
     const searchResults = await coinGeckoService.searchCoin(tokenSymbol);
 
     if (searchResults && searchResults.length > 0) {
-      // Try to find exact match by Solana platform address
       const solanaMatch = searchResults.find(
         (coin) =>
           coin.platforms?.solana?.toLowerCase() === tokenAddress.toLowerCase(),
@@ -553,7 +492,6 @@ async function getTokenInfoByAddress(
       if (solanaMatch) {
         coinData = await coinGeckoService.getCoinData(solanaMatch.id);
       } else {
-        // Use first result as fallback
         coinData = await coinGeckoService.getCoinData(searchResults[0].id);
       }
     }
@@ -565,7 +503,6 @@ async function getTokenInfoByAddress(
       return tokenInfo;
     }
 
-    // Format comprehensive token data
     tokenInfo += `🪙 ${coinData.name} (${coinData.symbol.toUpperCase()})\n`;
     tokenInfo += `📍 Contract Address: ${tokenAddress}\n\n`;
 
@@ -643,10 +580,6 @@ async function getTokenInfoByAddress(
   return tokenInfo;
 }
 
-/**
- * Get token information
- * This is a helper function that can be used for specific token queries
- */
 export async function getTokenInfo(
   coinGeckoService: CoinGeckoService,
   tokenId: string,

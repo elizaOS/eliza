@@ -1,3 +1,8 @@
+/**
+ * `STEER_LIQUIDITY` provider: renders Steer Finance vault/staking-pool data
+ * into planner context, optionally scoped to a token address and chain found
+ * in the message text. `_getSteerGeneralOverview` is currently unreferenced.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { SteerLiquidityService } from "../services/steerLiquidityService";
 import type {
@@ -19,10 +24,6 @@ function getVaultTokenAddress(
     : vaultToken.address || "Unknown";
 }
 
-/**
- * Steer Finance Liquidity Protocol Provider
- * Provides information about Steer Finance vaults and staking pools
- */
 export const steerLiquidityProvider: Provider = {
   name: "STEER_LIQUIDITY",
   description:
@@ -39,7 +40,6 @@ export const steerLiquidityProvider: Provider = {
     let liquidityInfo = "";
 
     try {
-      // Get Steer liquidity service with proper type casting
       const steerLiquidityService = runtime.getService(
         "STEER_LIQUIDITY_SERVICE",
       ) as SteerLiquidityService;
@@ -53,21 +53,17 @@ export const steerLiquidityProvider: Provider = {
 
       liquidityInfo += `=== STEER FINANCE LIQUIDITY POOLS REPORT ===\n\n`;
 
-      // Extract token address and chain from message content
       const content = message.content.text || "";
 
-      // More flexible regex to catch various formats
       const tokenMatch = content.match(/(0x[a-fA-F0-9]{40})/);
-
-      // Also try to find any 0x pattern that might be a token address
+      // Broader match used to detect a near-miss address (wrong length) for
+      // a more helpful error message than a plain "not found".
       const anyHexMatch = content.match(/(0x[a-fA-F0-9]+)/);
 
-      // Extract chain name from content
       const chainMatch = content.match(
         /\b(base|ethereum|mainnet|polygon|arbitrum|optimism)\b/i,
       );
 
-      // Map chain names to chain IDs
       const chainNameToId: { [key: string]: number } = {
         ethereum: 1,
         mainnet: 1,
@@ -81,7 +77,6 @@ export const steerLiquidityProvider: Provider = {
         ? chainNameToId[chainMatch[1].toLowerCase()]
         : null;
 
-      // Validate chain if specified
       if (
         targetChainId &&
         chainMatch &&
@@ -99,7 +94,6 @@ export const steerLiquidityProvider: Provider = {
       if (tokenMatch) {
         const tokenIdentifier = tokenMatch[1];
 
-        // Validate token address format
         if (!isValidEthereumAddress(tokenIdentifier)) {
           liquidityInfo += `❌ Invalid Ethereum address format: ${tokenIdentifier}\n`;
           liquidityInfo += `Ethereum addresses must be exactly 40 hex characters (42 total with 0x prefix).\n\n`;
@@ -108,7 +102,6 @@ export const steerLiquidityProvider: Provider = {
           liquidityInfo += `• 0x6B175474E89094C44Da98b954EedeAC495271d0F (DAI)\n`;
           liquidityInfo += `• 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 (WETH)\n\n`;
         } else {
-          // Get token-specific liquidity stats with optional chain filtering
           const tokenStats = await getSteerLiquidityStats(
             steerLiquidityService,
             tokenIdentifier,
@@ -116,7 +109,6 @@ export const steerLiquidityProvider: Provider = {
           );
           liquidityInfo += tokenStats;
 
-          // Add single-asset deposit information if available
           const depositInfo = await getSingleAssetDepositInfo(
             steerLiquidityService,
             tokenIdentifier,
@@ -125,7 +117,6 @@ export const steerLiquidityProvider: Provider = {
           liquidityInfo += depositInfo;
         }
       } else if (anyHexMatch) {
-        // Found a hex pattern but it's not exactly 40 characters
         const foundHex = anyHexMatch[1];
         liquidityInfo += `⚠️ Found potential token address: ${foundHex}\n`;
         liquidityInfo += `❌ Invalid Ethereum address format: ${foundHex}\n`;
@@ -136,11 +127,11 @@ export const steerLiquidityProvider: Provider = {
         liquidityInfo += `• 0x9876543210987654321098765432109876543210\n\n`;
         liquidityInfo += `🔍 Your input "${foundHex}" has ${foundHex.length - 2} hex characters, but needs exactly 40.\n\n`;
       } else {
-        // No specific token provided, show protocol overview
+        // No specific token given: show a protocol overview via
+        // testConnection() instead of the more expensive per-token RPC lookups.
         liquidityInfo += `=== STEER FINANCE PROTOCOL OVERVIEW ===\n\n`;
         liquidityInfo += `🔍 Steer Finance Liquidity Protocol Information\n\n`;
 
-        // Use testConnection to get basic info without making expensive RPC calls
         const testResults = await steerLiquidityService.testConnection();
 
         liquidityInfo += `📊 Protocol Status:\n`;
@@ -149,10 +140,8 @@ export const steerLiquidityProvider: Provider = {
         liquidityInfo += `   📈 Available Vaults: ${testResults.vaultCount}\n`;
         liquidityInfo += `   🔒 Available Staking Pools: ${testResults.stakingPoolCount}\n\n`;
 
-        // Add general Steer Finance protocol info
         liquidityInfo += await getSteerProtocolInfo(steerLiquidityService);
 
-        // Add usage instructions
         liquidityInfo += `💡 How to use:\n`;
         liquidityInfo += `   • Provide a token address to search for specific liquidity pools\n`;
         liquidityInfo += `   • Optionally specify a chain to filter results (faster)\n`;
@@ -179,9 +168,6 @@ export const steerLiquidityProvider: Provider = {
   },
 };
 
-/**
- * Get Steer Finance liquidity pool statistics for a specific token
- */
 async function getSteerLiquidityStats(
   steerLiquidityService: SteerLiquidityService,
   tokenIdentifier: string,
@@ -190,7 +176,6 @@ async function getSteerLiquidityStats(
   let statsInfo = "";
 
   try {
-    // Add chain filtering info if specified
     if (targetChainId) {
       const chainName = getChainName(targetChainId);
       statsInfo += `🔍 SEARCHING FOR STEER FINANCE LIQUIDITY POOLS ON ${chainName.toUpperCase()}...\n\n`;
@@ -198,7 +183,6 @@ async function getSteerLiquidityStats(
       statsInfo += `🔍 SEARCHING FOR STEER FINANCE LIQUIDITY POOLS...\n\n`;
     }
 
-    // Get detailed liquidity stats for the token with optional chain filtering
     const tokenStats = await steerLiquidityService.getTokenLiquidityStats(
       tokenIdentifier,
       targetChainId,
@@ -211,7 +195,6 @@ async function getSteerLiquidityStats(
       statsInfo += `24h Volume: $${tokenStats.totalVolume.toLocaleString()}\n`;
       statsInfo += `APY Range: ${tokenStats.apyRange.min.toFixed(2)}% - ${tokenStats.apyRange.max.toFixed(2)}%\n\n`;
 
-      // Display vaults
       if (tokenStats.vaults.length > 0) {
         statsInfo += `🏦 VAULTS (${tokenStats.vaults.length}):\n\n`;
         for (const vault of tokenStats.vaults) {
@@ -219,7 +202,6 @@ async function getSteerLiquidityStats(
         }
       }
 
-      // Display staking pools
       if (tokenStats.stakingPools.length > 0) {
         statsInfo += `🔒 STAKING POOLS (${tokenStats.stakingPools.length}):\n\n`;
         for (const pool of tokenStats.stakingPools) {
@@ -227,7 +209,6 @@ async function getSteerLiquidityStats(
         }
       }
 
-      // Add direct link to Steer app for found strategies
       statsInfo += `🔗 **View on Steer Finance:** https://app.steer.finance\n\n`;
     } else {
       statsInfo += `❌ No Steer Finance liquidity pools found for ${tokenIdentifier}\n\n`;
@@ -235,7 +216,6 @@ async function getSteerLiquidityStats(
       statsInfo += `You can check available pools at: https://app.steer.finance\n`;
     }
 
-    // Add general Steer Finance protocol info
     statsInfo += await getSteerProtocolInfo(steerLiquidityService);
   } catch (error) {
     console.error("Error getting Steer liquidity stats:", error);
@@ -245,9 +225,6 @@ async function getSteerLiquidityStats(
   return statsInfo;
 }
 
-/**
- * Get detailed information about a specific vault
- */
 async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
   let details = `🏦 VAULT: ${vault.address}\n`;
   details += `   📈 Name: ${vault.name}\n`;
@@ -260,7 +237,6 @@ async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
   details += `   🕒 Created: ${new Date(vault.createdAt).toLocaleDateString()}\n`;
   details += `   ✅ Status: ${vault.isActive ? "Active" : "Inactive"}\n`;
 
-  // Show full token addresses if available
   if (vault.token0 && vault.token0 !== "Unknown") {
     const token0Address =
       typeof vault.token0 === "string"
@@ -283,7 +259,6 @@ async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
     details += `   🪙 Token1: Unknown\n`;
   }
 
-  // Display GraphQL enriched data if available
   if (vault.graphqlData) {
     details += `\n   📊 GRAPHQL ENRICHED DATA:\n`;
     details += `      🎯 Weekly Fee APR: ${vault.graphqlData.weeklyFeeAPR.toFixed(2)}%\n`;
@@ -325,9 +300,6 @@ async function getVaultDetails(vault: SteerVaultDetailInput): Promise<string> {
   return details;
 }
 
-/**
- * Get detailed information about a specific staking pool
- */
 async function getStakingPoolDetails(
   pool: SteerStakingPoolDetailInput,
 ): Promise<string> {
@@ -347,9 +319,6 @@ async function getStakingPoolDetails(
   return details;
 }
 
-/**
- * Get chain name from chain ID
- */
 function getChainName(chainId: number): string {
   const chainNames: { [key: number]: string } = {
     1: "Ethereum Mainnet",
@@ -360,9 +329,6 @@ function getChainName(chainId: number): string {
   return chainNames[chainId] || `Chain ${chainId}`;
 }
 
-/**
- * Get general Steer Finance protocol information
- */
 async function getSteerProtocolInfo(
   steerLiquidityService: SteerLiquidityService,
 ): Promise<string> {
@@ -376,7 +342,6 @@ async function getSteerProtocolInfo(
     info += `📊 Total Vaults: ${testResults.vaultCount}\n`;
     info += `🔒 Total Staking Pools: ${testResults.stakingPoolCount}\n\n`;
 
-    // Test GraphQL connection
     const graphqlStatus = await steerLiquidityService.testGraphQLConnection();
     info += `🔍 GraphQL Subgraph: ${graphqlStatus.success ? "Connected" : "Failed"}\n`;
     if (!graphqlStatus.success && graphqlStatus.error) {
@@ -406,9 +371,6 @@ async function getSteerProtocolInfo(
   return info;
 }
 
-/**
- * Get general Steer Finance overview
- */
 async function _getSteerGeneralOverview(
   steerLiquidityService: SteerLiquidityService,
 ): Promise<string> {
@@ -433,9 +395,6 @@ async function _getSteerGeneralOverview(
   return overview;
 }
 
-/**
- * Get single-asset deposit information for a token
- */
 async function getSingleAssetDepositInfo(
   steerLiquidityService: SteerLiquidityService,
   tokenIdentifier: string,
@@ -444,7 +403,6 @@ async function getSingleAssetDepositInfo(
   let depositInfo = "\n💎 SINGLE-ASSET DEPOSIT INFORMATION:\n\n";
 
   try {
-    // Get token stats to find vaults with optional chain filtering
     const tokenStats = await steerLiquidityService.getTokenLiquidityStats(
       tokenIdentifier,
       targetChainId,
@@ -472,7 +430,6 @@ async function getSingleAssetDepositInfo(
         depositInfo += `   🪙 Token0: ${token0Address} (${getTokenSymbol(token0Address)})\n`;
         depositInfo += `   🪙 Token1: ${token1Address} (${getTokenSymbol(token1Address)})\n`;
 
-        // Add additional APY breakdown if available
         if (vault.apr1d || vault.apr7d || vault.apr14d) {
           depositInfo += `   📊 APY Breakdown:\n`;
           if (vault.apr1d)
@@ -483,7 +440,6 @@ async function getSingleAssetDepositInfo(
             depositInfo += `      • 14D: ${vault.apr14d.toFixed(2)}%\n`;
         }
 
-        // Add fee breakdown if available
         if (vault.feeApr || vault.stakingApr || vault.merklApr) {
           depositInfo += `   💸 Fee Breakdown:\n`;
           if (vault.feeApr)
@@ -521,23 +477,16 @@ async function getSingleAssetDepositInfo(
   return depositInfo;
 }
 
-/**
- * Validate Ethereum address format
- */
 function isValidEthereumAddress(address: string): boolean {
-  // Check if it starts with 0x and has exactly 40 hex characters
   const ethereumAddressRegex = /^0x[a-fA-F0-9]{40}$/;
   return ethereumAddressRegex.test(address);
 }
 
-/**
- * Get token symbol from token address
- */
+// No symbol lookup is performed; this always returns a shortened address.
 function getTokenSymbol(address: string): string {
   if (!address || address === "Unknown") {
     return "Unknown";
   }
 
-  // Return shortened address for all tokens
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }

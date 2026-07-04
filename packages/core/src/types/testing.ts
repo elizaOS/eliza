@@ -1,3 +1,7 @@
+/**
+ * Minimal in-runtime test-harness types: `TestSuite` / `TestCase` that a plugin
+ * exports so the agent can run its self-tests against a live `IAgentRuntime`.
+ */
 import type { IAgentRuntime } from "./runtime";
 
 /**

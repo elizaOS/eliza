@@ -1,3 +1,8 @@
+/**
+ * `RuntimeModeConfig` and the execution-mode enum (`cloud`, `local-safe`,
+ * `local-yolo`) with resolver helpers. Determines whether a runtime routes work
+ * to Eliza Cloud or runs locally, and how permissive local execution is.
+ */
 import type { DeploymentTargetConfig } from "../contracts/service-routing.js";
 import { normalizeDeploymentTargetConfig } from "../contracts/service-routing.js";
 import { isPlainObject } from "../type-guards.js";

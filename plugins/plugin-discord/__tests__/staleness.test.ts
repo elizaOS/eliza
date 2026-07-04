@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the staleness guard — tag/skip/ignore behavior for
+ * out-of-sequence messages. Pure-function assertions.
+ */
 import type { Content } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

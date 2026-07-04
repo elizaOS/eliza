@@ -1,3 +1,8 @@
+/**
+ * Matches a voice segment's speaker embedding against known imprint profiles by
+ * cosine similarity and folds accepted segments into a running centroid. The
+ * pure math behind `VoiceProfileStore` speaker recognition; carries no I/O.
+ */
 import type { VoiceInputSource, VoiceSegment, VoiceSpeaker } from "./types";
 
 export const DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD = 0.78;

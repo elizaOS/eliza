@@ -1,3 +1,6 @@
+/**
+ * Storybook stories for the Monaco editor loading skeleton.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { MonacoEditorSkeleton } from "./monaco-editor-skeleton";
 

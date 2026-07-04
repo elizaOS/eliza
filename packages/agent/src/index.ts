@@ -1,3 +1,9 @@
+import type {
+  AgentCloudBillingRouteHandler,
+  AgentCloudCompatRouteHandler,
+  AgentCloudRouteHandler,
+} from "./api/cloud-route-contracts.ts";
+
 export {
   DEFAULT_MAX_BODY_BYTES,
   readJsonBody,
@@ -6,18 +12,18 @@ export {
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
+
 export interface CloudConfigLike {
   apiKey?: string | null;
   baseUrl?: string | null;
   [key: string]: unknown;
 }
 
-type CloudRouteHandler = (...args: unknown[]) => Promise<boolean>;
 type CloudUrlValidator = (value: string) => Promise<string | null>;
 type ElizaCloudRoutesModule = {
-  handleCloudBillingRoute: CloudRouteHandler;
-  handleCloudCompatRoute: CloudRouteHandler;
-  handleCloudRoute: CloudRouteHandler;
+  handleCloudBillingRoute: AgentCloudBillingRouteHandler;
+  handleCloudCompatRoute: AgentCloudCompatRouteHandler;
+  handleCloudRoute: AgentCloudRouteHandler;
   validateCloudBaseUrl: CloudUrlValidator;
 };
 
@@ -27,24 +33,24 @@ async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
   ) as Promise<ElizaCloudRoutesModule>;
 }
 
-export async function handleCloudBillingRoute(
-  ...args: unknown[]
-): Promise<boolean> {
+export const handleCloudBillingRoute: AgentCloudBillingRouteHandler = async (
+  ...args
+) => {
   const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
   return handleCloudBillingRoute(...args);
-}
+};
 
-export async function handleCloudCompatRoute(
-  ...args: unknown[]
-): Promise<boolean> {
+export const handleCloudCompatRoute: AgentCloudCompatRouteHandler = async (
+  ...args
+) => {
   const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
   return handleCloudCompatRoute(...args);
-}
+};
 
-export async function handleCloudRoute(...args: unknown[]): Promise<boolean> {
+export const handleCloudRoute: AgentCloudRouteHandler = async (...args) => {
   const { handleCloudRoute } = await loadElizaCloudRoutes();
   return handleCloudRoute(...args);
-}
+};
 
 export async function validateCloudBaseUrl(
   value: string,
@@ -172,7 +178,7 @@ export {
 export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
-export * from "./auth/index.ts";
+export * from "@elizaos/auth";
 export * from "./awareness/index.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
 export { CharacterSchema } from "./config/character-schema.ts";
@@ -217,6 +223,7 @@ export * from "./runtime/owner-entity.ts";
 export * from "./runtime/plugin-collector.ts";
 export * from "./runtime/plugin-lifecycle.ts";
 export {
+  type FailedPluginDetail,
   getLastFailedPluginDetails,
   getLastFailedPluginNames,
   resolvePlugins,
@@ -254,8 +261,6 @@ export {
   PgApprovalQueue,
   resolveApprovalService,
 } from "./services/approval/index.ts";
-export * from "./services/cove-quote.ts";
-export * from "./services/dstack-tee-provider.ts";
 export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_CACHE_KEY,
@@ -373,6 +378,7 @@ export * from "./services/tee-boot-gate.ts";
 export * from "./services/tee-boot-gate-state.ts";
 export * from "./services/tee-confidential-inference.ts";
 export * from "./services/tee-evidence.ts";
+export * from "./services/tee-evidence-provider.ts";
 export * from "./services/tee-key-release.ts";
 export * from "./services/tee-model-key-boot.ts";
 export * from "./services/tee-policy.ts";

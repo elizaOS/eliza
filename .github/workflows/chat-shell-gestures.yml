@@ -1,15 +1,28 @@
 name: Chat shell gestures
 
 # Real-browser gesture + interleaving e2e for the floating chat shell
-# (packages/ui ContinuousChatOverlay), plus the component-tree render-parity
-# contract. Before #9954 these runners (run-conversation-swipe-e2e,
-# run-chat-sheet-e2e, run-chatux-gesture-e2e) were wired to NO workflow and ran
-# only by hand, so swipe-nav / sheet-detent / topic-gesture regressions could
-# ship silently. This lane drives the REAL overlay with real pointer gestures in
-# headless chromium and the render-parity contract under vitest.
+# (packages/ui ContinuousChatOverlay + home screen), the component-tree
+# render-parity contract, and the CHAT_GESTURE_COVERAGE gate (#12188).
 #
-# Path-gated to packages/ui (and its UI deps) so it only runs when the surface
-# it covers actually changes. The e2e runners bundle the fixtures with esbuild
+# All 11 __e2e__ runners compose the shared runner toolkit
+# (packages/ui/src/testing/e2e-runner) and record a stable-named .webm. This lane
+# drives the REAL surfaces with real pointer/touch gestures in headless chromium,
+# runs the boot-free coverage gate that fails when a gesture-handler site lacks a
+# matrix row, and uploads every runner's video + screenshots.
+#
+# Two shell runners are intentionally NOT in this lane:
+#   - run-fused-wake-integration-e2e drives the REAL native desktop wake producer
+#     (libwakeword + the wakeword-cpp build), which this lane does not compile
+#     (install-native-deps:false) — it self-skips without the lib, so it lives in
+#     the native-desktop build lane.
+#   - run-perf-gate-e2e has a PRE-EXISTING CLS-gate failure (the perf-gate fixture
+#     layout shifts 0.80 during scroll+swipe — reproduces identically on develop
+#     before this issue's migration; its frame-budget checks pass). It is tracked
+#     independently of #12188; adding it here would red the lane over an unrelated
+#     bug. The overlay perf frame budget is still gated below via chat-perf-gate.
+#
+# Path-gated to packages/ui (and the app-side gate + matrix) so it only runs when
+# the surface it covers changes. The e2e runners bundle the fixtures with esbuild
 # and stub @elizaos/core, so no core build is needed; the render-parity vitest
 # imports the real @elizaos/core, so the shared i18n data is generated first.
 on:
@@ -22,6 +35,8 @@ on:
       - "packages/ui/**"
       - "packages/shared/**"
       - "packages/core/src/i18n/**"
+      - "packages/app/test/chat-gesture-coverage.test.ts"
+      - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
   push:
     branches: [main, develop]
     paths:
@@ -31,6 +46,8 @@ on:
       - "packages/ui/**"
       - "packages/shared/**"
       - "packages/core/src/i18n/**"
+      - "packages/app/test/chat-gesture-coverage.test.ts"
+      - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +67,7 @@ jobs:
   chat-shell-gestures:
     name: Chat shell gesture + parity e2e
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -79,6 +96,11 @@ jobs:
       - name: Install Playwright chromium
         run: bunx playwright install --with-deps chromium
 
+      # Boot-free coverage gate: fails when a gesture-handler site in
+      # packages/ui/src lacks a CHAT_GESTURE_COVERAGE matrix row (#12188).
+      - name: Chat gesture coverage gate
+        run: bun run --cwd packages/app test -- chat-gesture-coverage
+
       # Component-tree render parity (jsdom/vitest) — ThreadLine vs MessageContent
       # render the same structure for a shared message corpus.
       - name: Render-parity contract
@@ -103,7 +125,26 @@ jobs:
       - name: TopicGroup gesture e2e
         run: bun run --cwd packages/ui test:chatux-gesture-e2e
 
-      # Perf gate: drive the overlay under scroll + swipe, feed real
+      # Home↔launcher pager swipe, notification pull, launcher long-press
+      # (real CDP touch on mobile + fine-pointer desktop edge buttons).
+      - name: Home-screen gesture e2e
+        run: bun run --cwd packages/ui test:home-screen-e2e
+
+      # Bottom-bar state-machine gestures.
+      - name: Bottombar gesture e2e
+        run: bun run --cwd packages/ui test:bottombar-e2e
+
+      # Warm-up 503 eviction: optimistic bubble survives the reconcile reload +
+      # retry-once delivery (records the recovery flow).
+      - name: Warm-up eviction e2e
+        run: bun run --cwd packages/ui test:warmup-eviction-e2e
+
+      # /chat ambient orange-pulse background: sample the 30s CSS animation
+      # across its named peaks while recording a .webm.
+      - name: Chat ambient pulse e2e
+        run: bun run --cwd packages/ui test:chat-ambient-e2e
+
+      # Perf gates: drive the overlay under scroll + swipe, feed real
       # PerformanceObserver + rAF entries into the shared frame-budget +
       # layout-stability detectors, hard-fail on dropped-frame % / p95 / CLS.
       - name: Chat overlay perf gate
@@ -130,9 +171,12 @@ jobs:
         with:
           name: chat-shell-gesture-artifacts
           path: |
-            packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
             packages/ui/src/components/shell/__e2e__/output/
+            packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
             packages/ui/src/components/shell/__e2e__/output-chatux/
+            packages/ui/src/components/shell/__e2e__/output-home/
+            packages/ui/src/components/shell/__e2e__/output-bottombar/
+            packages/ui/src/components/shell/__e2e__/output-warmup-eviction/
             packages/ui/src/components/shell/__e2e__/output-perf-gate/
             packages/ui/src/components/shell/__e2e__/output-frame-glitch/
           if-no-files-found: warn

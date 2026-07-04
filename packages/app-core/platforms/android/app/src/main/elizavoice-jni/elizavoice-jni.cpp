@@ -1293,20 +1293,32 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamPrefill(JNIEnv* env, jclass,
     if (rc != ELIZA_OK) throw_runtime(env, "llm_stream_prefill", outError);
 }
 
-// Pull the next decode step. Returns JSON {text, done, drafted, accepted}:
+// Pull the next decode step. Returns JSON {text, done, nout, drafted, accepted}:
 // `text` is the detokenized chunk (may span multiple committed tokens via MTP),
 // `done` true at the final step. `text` is JSON-escaped.
+//
+// maxStepTokens bounds how many tokens THIS native call may decode (the C
+// decode loop runs `min(tokens_cap, stream max_tokens remaining)` tokens per
+// call). Clamped to [1, 256] — the fixed token buffer below. Issue #11913:
+// the previous signature always passed the full 256-token buffer as the cap,
+// so one native call decoded ~256 tokens regardless of the caller's per-turn
+// maxTokens, and the Java-side cap check only ran after all that eval work.
 JNIEXPORT jstring JNICALL
 Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
-                                                         jlong streamHandle) {
+                                                         jlong streamHandle,
+                                                         jint maxStepTokens) {
     auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
     int32_t toks[256];
     char text[4096];
     size_t nout = 0;
     int32_t drafted = 0, accepted = 0;
     char* outError = nullptr;
+    int stepCapInt = static_cast<int>(maxStepTokens);
+    if (stepCapInt < 1) stepCapInt = 1;
+    if (stepCapInt > 256) stepCapInt = 256;
     const int rc = eliza_inference_llm_stream_next(
-        s, toks, 256, &nout, text, sizeof(text), &drafted, &accepted, &outError);
+        s, toks, static_cast<size_t>(stepCapInt), &nout, text, sizeof(text),
+        &drafted, &accepted, &outError);
     if (rc < 0) {
         throw_runtime(env, "llm_stream_next", outError);
         return nullptr;

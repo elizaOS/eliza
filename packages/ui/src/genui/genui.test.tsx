@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * End-to-end genUI render: validate an agent-authored spec, render it with
+ * ElizaGenUiRenderer, dispatch prefix actions through the action handler, and
+ * apply a streaming patch. jsdom render over the real validator/renderer/streaming.
+ */
+
 import {
   cleanup,
   fireEvent,

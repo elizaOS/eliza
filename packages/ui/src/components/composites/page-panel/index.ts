@@ -1,3 +1,8 @@
+/**
+ * Barrel for the page-panel surface. Re-exports every sub-part and assembles
+ * the compound `PagePanel` (Root + Header/Frame/ContentArea/Empty/Loading/…)
+ * that view pages use as their standard content chrome.
+ */
 import { PagePanelCollapsibleSection } from "./page-panel-collapsible-section";
 import { PageEmptyState } from "./page-panel-empty";
 import { PagePanelFeatureEmpty } from "./page-panel-feature-empty";

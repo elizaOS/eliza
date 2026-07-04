@@ -1,6 +1,9 @@
+/**
+ * Unit coverage for the startup polling backend: recoverable-base detection and
+ * loopback-origin fallback. Deps injected, no live network.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
-import { scanProviderCredentials } from "../bridge";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   isRecoverableRemoteBase,
@@ -54,7 +57,6 @@ vi.mock("../bridge", async (importOriginal) => {
   return {
     ...actual,
     getBackendStartupTimeoutMs: () => 1000,
-    scanProviderCredentials: vi.fn(async () => []),
   };
 });
 
@@ -91,23 +93,14 @@ function createDeps(): PollingBackendDeps {
     setFirstRunComplete: vi.fn(),
     setFirstRunLoading: vi.fn(),
     setFirstRunOptions: vi.fn(),
-    setSetupStep: vi.fn(),
     setFirstRunRuntimeTarget: vi.fn(),
-    setFirstRunCloudApiKey: vi.fn(),
     setFirstRunProvider: vi.fn(),
-    setFirstRunVoiceProvider: vi.fn(),
-    setFirstRunApiKey: vi.fn(),
-    setFirstRunPrimaryModel: vi.fn(),
-    setFirstRunOpenRouterModel: vi.fn(),
     setFirstRunRemoteConnected: vi.fn(),
     setFirstRunRemoteApiBase: vi.fn(),
     setFirstRunRemoteToken: vi.fn(),
-    setFirstRunSmallModel: vi.fn(),
-    setFirstRunLargeModel: vi.fn(),
     setFirstRunCloudProvisionedContainer: vi.fn(),
     setPairingEnabled: vi.fn(),
     setPairingExpiresAt: vi.fn(),
-    applyDetectedProviders: vi.fn(),
     firstRunCompletionCommittedRef: { current: false },
     uiLanguage: "en",
   };
@@ -1197,60 +1190,6 @@ describe("runPollingBackend cancellation during options fetch", () => {
     );
 
     expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
-    expect(dispatch).not.toHaveBeenCalledWith({
-      type: "BACKEND_REACHED",
-      firstRunComplete: false,
-    });
-  });
-
-  it("bails without mutating state when cancelled during the provider-credential scan", async () => {
-    // Second race window: scanProviderCredentials() is a separate in-flight
-    // await after the Promise.all guard. An effect torn down while it runs must
-    // not call applyFirstRunResumeFields / setSetupStep / dispatch BACKEND_REACHED.
-    const deps = createDeps();
-    const dispatch = vi.fn();
-    (globalThis as { window?: unknown }).window = {
-      location: { origin: "http://localhost:2138", protocol: "http:" },
-    };
-    const cancelled = { current: false };
-    // No firstRunProvider in config -> the scan path runs.
-    clientMock.getConfig.mockResolvedValue({});
-    (
-      scanProviderCredentials as unknown as ReturnType<typeof vi.fn>
-    ).mockImplementation(async () => {
-      cancelled.current = true; // effect cleanup raced the in-flight scan
-      return [];
-    });
-    const ctx: RestoringSessionCtx = {
-      persistedActiveServer: null,
-      restoredActiveServer: {
-        id: "local:desktop",
-        kind: "local",
-        label: "Local agent",
-        apiBase: "http://127.0.0.1:34137",
-      },
-      shouldPreserveCompletedFirstRun: false,
-      hadPriorFirstRun: false,
-    };
-
-    await runPollingBackend(
-      deps,
-      dispatch,
-      {
-        supportsLocalRuntime: true,
-        backendTimeoutMs: 1000,
-        agentReadyTimeoutMs: 1000,
-        probeForExistingInstall: true,
-        defaultTarget: "embedded-local",
-      },
-      ctx,
-      1,
-      { current: 1 },
-      cancelled,
-      { current: null },
-    );
-
-    expect(deps.setSetupStep).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,

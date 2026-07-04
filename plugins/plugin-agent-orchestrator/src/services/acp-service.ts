@@ -4,7 +4,11 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import {
+  SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -25,10 +29,19 @@ import {
 } from "./coding-account-selection.js";
 import { readConfigMcpServers } from "./config-env.js";
 import {
+  applyCredentialProxyEnv,
+  resolveOrchestratorCredentialProxyConfig,
+} from "./credential-proxy-env.js";
+import {
   applyModelGatewayEnv,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
   resolveModelGatewayConfig,
 } from "./model-gateway.js";
+import {
+  type ModelGatewayLease,
+  mintSpawnLease,
+  resolveLeaseBroker,
+} from "./model-gateway-lease.js";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -109,6 +122,16 @@ type RunResult = {
 
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
+// TTL for a per-spawn model lease when neither the spawn nor the service config
+// a timeout — mirrors ACPX_DEFAULT_TIMEOUT_MS (per-prompt) so a lease outlives a
+// single prompt but not a stuck session indefinitely.
+const DEFAULT_LEASE_TTL_MS = 300_000;
+// Session events that mean the task ended; each revokes the session's lease.
+const LEASE_REVOKE_EVENTS: ReadonlySet<SessionEventName> = new Set([
+  "stopped",
+  "error",
+  "cancelled",
+]);
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
@@ -214,8 +237,12 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
   return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
 }
 
+export const ACP_SUBPROCESS_SERVICE_TYPE =
+  CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE ??
+  "ACP_SUBPROCESS_SERVICE";
+
 export class AcpService extends Service {
-  static serviceType = "ACP_SUBPROCESS_SERVICE";
+  static serviceType = ACP_SUBPROCESS_SERVICE_TYPE;
 
   // Process-wide registry of live AcpService instances. The SIGTERM/SIGINT
   // listener is registered exactly ONCE per Node process and fans out to
@@ -261,6 +288,11 @@ export class AcpService extends Service {
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
+  // Per-session model-gateway lease (#11536 E2 residual). Minted at spawn when
+  // gateway mode + a lease broker are configured; the leased token (not the
+  // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
+  // lease is revoked when the session reaches a terminal event.
+  private readonly modelLeases = new Map<string, ModelGatewayLease>();
   // Per-session set of file paths the agent wrote via edit/write tool calls.
   // The only signal that distinguishes a gitignored deploy target the agent
   // authored from gitignored install output git never sees. Accumulated live
@@ -429,7 +461,12 @@ export class AcpService extends Service {
     const nativeStops = Array.from(this.nativeClients.keys()).map((sessionId) =>
       this.stopNativeClient(sessionId),
     );
-    await Promise.allSettled([...stops, ...nativeStops]);
+    // Revoke any leases still live on teardown (sessions that never reached a
+    // terminal event — e.g. process shutdown mid-task).
+    const leaseRevokes = Array.from(this.modelLeases.keys()).map((sessionId) =>
+      this.revokeModelLease(sessionId, "service_stop"),
+    );
+    await Promise.allSettled([...stops, ...nativeStops, ...leaseRevokes]);
     this.started = false;
   }
 
@@ -691,6 +728,13 @@ export class AcpService extends Service {
     // separate enforceSessionLimit()/store.create() left a read-then-act race).
     await this.reserveSessionSlot(session);
 
+    // Mint the per-spawn model lease BEFORE the transport branch, so the leased
+    // token (not the static gateway token) is what buildEnv injects into the
+    // child. Fail-closed refusals (credit-gate / strict no-broker / strict mint
+    // failure) throw here; undo the reserved slot so a refused spawn leaves no
+    // orphan session record. No-op when gateway mode / lease broker are off.
+    await this.mintSpawnLease(id, agentType, opts.timeoutMs);
+
     // App-build tasks lose the parent's deploy contract at the spawn boundary.
     // Re-attach it ONCE here, before the transport branch, so BOTH the native
     // and the CLI/acpx paths host the app and report a verified URL. No-op for
@@ -943,6 +987,7 @@ export class AcpService extends Service {
         session.acpxSessionId ?? session.agentSessionId ?? session.id,
       );
       await this.store.updateStatus(sessionId, "cancelled");
+      void this.revokeModelLease(sessionId, "cancelSession:native");
       return;
     }
     const active = this.activeProcesses.get(sessionId);
@@ -963,6 +1008,7 @@ export class AcpService extends Service {
       });
     }
     await this.store.updateStatus(sessionId, "cancelled");
+    void this.revokeModelLease(sessionId, "cancelSession");
   }
 
   async closeSession(sessionId: string): Promise<void> {
@@ -1529,8 +1575,10 @@ export class AcpService extends Service {
       };
       if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
+        void this.revokeModelLease(session.id, "native_prompt:stopped");
       } else if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
+        void this.revokeModelLease(session.id, "native_prompt:cancelled");
       } else if (finalStopReason === "error" && !finalText?.trim()) {
         // Mirror the handleAcpEvent guard: a stopReason-error session that still
         // captured a real deliverable is relayed as a completion, so don't mark
@@ -1541,6 +1589,7 @@ export class AcpService extends Service {
           "errored",
           "ACP prompt ended with stopReason error",
         );
+        void this.revokeModelLease(session.id, "native_prompt:error");
       } else {
         await this.store.update(session.id, {
           status: "ready",
@@ -1552,6 +1601,7 @@ export class AcpService extends Service {
       const message = errorMessage(err);
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
+        void this.revokeModelLease(session.id, "native_prompt:stopped");
         return {
           sessionId: session.id,
           response: finalText,
@@ -1564,6 +1614,7 @@ export class AcpService extends Service {
       }
       if (this.nativeCancelledPromptSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "cancelled");
+        void this.revokeModelLease(session.id, "native_prompt:cancelled");
         return {
           sessionId: session.id,
           response: finalText,
@@ -2223,6 +2274,13 @@ export class AcpService extends Service {
         });
       }
     }
+    // A terminal event means the task ended (completion via a stop/close,
+    // failure, or timeout/cancel). Revoke the session's model lease so a leaked
+    // child env is dead the moment its task ends. Fire-and-forget: this sync
+    // emitter is called from deep transport paths; revocation is idempotent.
+    if (LEASE_REVOKE_EVENTS.has(event)) {
+      void this.revokeModelLease(sessionId, `event:${event}`);
+    }
   }
 
   private async requireSession(sessionId: string): Promise<SessionInfo> {
@@ -2426,15 +2484,118 @@ export class AcpService extends Service {
     // raw provider key into the child env. Never log the token.
     const gateway = resolveModelGatewayConfig();
     if (gateway) {
-      applyModelGatewayEnv(env, gateway);
+      // Prefer this session's per-spawn lease token over the static gateway
+      // token; the lease is scoped + short-lived + revocable (#11536 E2
+      // residual). Falls back to the static token when no lease was minted
+      // (no broker configured / non-strict mint failure).
+      const lease = childSessionId
+        ? this.modelLeases.get(childSessionId)
+        : undefined;
+      applyModelGatewayEnv(
+        env,
+        lease ? { url: gateway.url, token: lease.token } : gateway,
+      );
       this.log("info", "model-gateway mode engaged for sub-agent env", {
         gatewayUrl: gateway.url,
         agentType,
         sessionId: childSessionId,
+        leased: Boolean(lease),
+        leaseId: lease?.leaseId,
+        leaseExpiresAt: lease
+          ? new Date(lease.expiresAt).toISOString()
+          : undefined,
         excludedProviderKeys: [...MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS],
       });
     }
+    // Credential-proxy mode (#11536 E3) — the NON-MODEL sibling of the gateway
+    // block above. Independent env keys (VCS PATs + GIT_CONFIG_*), so it never
+    // collides with the E2 model-key rewrite. Deletes every raw PAT from the
+    // child env and points git at the broker's credential helper; in strict
+    // mode a raw PAT present here throws and refuses the spawn (fail-closed).
+    const credentialProxy = resolveOrchestratorCredentialProxyConfig();
+    if (credentialProxy) {
+      applyCredentialProxyEnv(env, credentialProxy, process.execPath, {
+        strictScanEnv: process.env,
+      });
+      this.log("info", "credential-proxy mode engaged for sub-agent env", {
+        proxyUrl: credentialProxy.url,
+        strict: credentialProxy.strict,
+        gitHosts: credentialProxy.routes.map((r) => r.host),
+        agentType,
+        sessionId: childSessionId,
+      });
+    }
     return env;
+  }
+
+  /**
+   * Mint a per-spawn model-gateway lease and record it for the session. The
+   * lease TTL equals the task timeout. On a fail-closed refusal (credit-gate,
+   * strict no-broker, or strict mint failure) this throws AND rolls back the
+   * reserved session record so a refused spawn leaves no orphan. No-op (leaves
+   * the static-token path intact) when gateway/broker mode is off.
+   */
+  private async mintSpawnLease(
+    sessionId: string,
+    agentType: AgentType,
+    timeoutMs: number | undefined,
+  ): Promise<void> {
+    const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
+    let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
+    try {
+      outcome = await mintSpawnLease({ sessionId, agentType, ttlMs });
+    } catch (err) {
+      // Fail-closed: drop the reserved slot before surfacing the refusal.
+      await this.store.delete(sessionId).catch(() => {});
+      this.log("warn", "model-gateway lease refused; spawn blocked", {
+        sessionId,
+        agentType,
+        error: errorMessage(err),
+      });
+      throw err;
+    }
+    if (outcome.kind === "leased") {
+      this.modelLeases.set(sessionId, outcome.lease);
+      this.log("info", "model-gateway lease minted for sub-agent", {
+        sessionId,
+        agentType,
+        leaseId: outcome.lease.leaseId,
+        expiresAt: new Date(outcome.lease.expiresAt).toISOString(),
+      });
+    }
+  }
+
+  /**
+   * Revoke and forget a session's model lease. Delete-first makes it idempotent
+   * — a session that fires several terminal events revokes exactly once.
+   * Broker/gateway errors are logged, never thrown (revocation is best-effort
+   * cleanup on an already-terminal session).
+   */
+  private async revokeModelLease(
+    sessionId: string,
+    reason: string,
+  ): Promise<void> {
+    const lease = this.modelLeases.get(sessionId);
+    if (!lease) return;
+    this.modelLeases.delete(sessionId);
+    const gateway = resolveModelGatewayConfig();
+    const broker = gateway ? resolveLeaseBroker(gateway) : null;
+    if (!broker) return;
+    try {
+      await broker.revoke(lease.leaseId);
+      this.log("info", "model-gateway lease revoked", {
+        sessionId,
+        leaseId: lease.leaseId,
+        reason,
+      });
+    } catch (err) {
+      this.log("warn", "model-gateway lease revoke failed", {
+        sessionId,
+        leaseId: lease.leaseId,
+        reason,
+        error: errorMessage(err),
+      });
+    }
   }
 
   private classifyExitError(code: number | null, stderr: string): string {

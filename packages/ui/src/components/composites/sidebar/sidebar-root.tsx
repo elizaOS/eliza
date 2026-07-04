@@ -1,3 +1,11 @@
+/**
+ * Top-level `Sidebar` shell: the resizable/collapsible outer frame that hosts a
+ * sidebar body across desktop, mobile, and game-modal variants. Owns the
+ * expand/collapse control, drag-to-resize width persistence, and the
+ * auto-generated collapsed rail (built from the body's items via
+ * sidebar-auto-rail). Body content is composed from the sidebar-content
+ * primitives; layout tokens live in sidebar-types.
+ */
 import { cva } from "class-variance-authority";
 import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import * as React from "react";
@@ -821,18 +829,19 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
           />
         ) : null}
         {showsCollapsedState && variant === "default" ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-2 left-2 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt",
+              "fixed bottom-2 left-2 z-40 h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}
             onClick={handleExpand}
           >
             <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden />
-          </button>
+          </Button>
         ) : null}
         <React.Fragment key={renderedContentIdentity}>
           {variant === "mobile" ? (

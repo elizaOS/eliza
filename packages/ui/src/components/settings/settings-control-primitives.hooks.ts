@@ -1,3 +1,9 @@
+/**
+ * `useSettingsSave` — shared save-button state machine for settings panels:
+ * runs the caller's async `onSave`, tracks saving/error/success, and clears the
+ * transient success flag after a timeout.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface UseSettingsSaveOptions {

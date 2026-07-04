@@ -1,3 +1,17 @@
+/**
+ * HTTP handling for every `/api/hyperliquid/*` route, and the client that
+ * talks to the public Hyperliquid Info API (`HYPERLIQUID_API_BASE`/info,
+ * POST, no API key). `handleHyperliquidRoute` resolves credential/vault
+ * config from env, serves `status` directly, proxies `markets`/`funding`/
+ * `positions`/`orders` through `createHyperliquidInfoClient`, and returns 501
+ * with an execution-disabled payload for every non-GET method — this app
+ * never signs or submits Hyperliquid exchange calls.
+ *
+ * The `parse*`/`compute*` helpers turn Hyperliquid's raw Info API responses
+ * into the typed DTOs in `hyperliquid-contracts.ts`, deriving mark price,
+ * distance-to-liquidation, and effective leverage server-side so consuming
+ * views only render numbers, never compute them.
+ */
 import type http from "node:http";
 import { sendJson, sendJsonError } from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";

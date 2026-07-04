@@ -1,4 +1,9 @@
+/**
+ * Unit coverage for the Android native agent transport: URL selection and the
+ * native-bridge request path. Capacitor bridge mocked, no real device.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import {
   __resetAndroidNativeAgentTransportForTests,
   androidNativeAgentTransportForUrl,
@@ -101,6 +106,7 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
   afterEach(() => {
     __resetAndroidNativeAgentTransportForTests();
     globalThis.localStorage?.removeItem("eliza:mobile-runtime-mode");
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.unstubAllGlobals();
   });
 
@@ -250,7 +256,10 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", {
       location: { href: "http://localhost/" },
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
+    });
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "eliza-local-agent://ipc",
     });
 
     installAndroidNativeAgentFetchBridge();

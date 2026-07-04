@@ -1,3 +1,8 @@
+/**
+ * Notification transport types: digest delivery settings and the per-event data
+ * payloads (market resolution, performance digest, achievement/challenge rewards)
+ * carried on a stored notification.
+ */
 import type {
   AchievementUnlockedNotificationData,
   ChallengeCompletedNotificationData,

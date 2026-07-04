@@ -1,3 +1,7 @@
+/**
+ * Vitest config for the slow e2e lane (heavy onboarding __e2e__ jsdom flows),
+ * extending the base config with a 15min cap.
+ */
 import { defineConfig } from "vitest/config";
 import baseConfig from "./vitest.config";
 

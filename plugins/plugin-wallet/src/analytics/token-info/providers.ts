@@ -1,3 +1,11 @@
+/**
+ * The three `TokenInfoProvider` implementations `TokenInfoService` dispatches
+ * to: DexScreener (pairs/trending/boosted/profiles), Birdeye (token search +
+ * wallet portfolio), and CoinGecko (search/token/trending via direct REST
+ * calls, no SDK). Each `execute*` function switches on `params.subaction`,
+ * emits through the action callback via `emit`, and reports failures with a
+ * provider-scoped `target` field rather than throwing.
+ */
 import type { ActionResult, ContentValue, IAgentRuntime } from "@elizaos/core";
 import { BirdeyeProvider } from "../birdeye/birdeye";
 import { searchBirdeyeTokens } from "../birdeye/search-category";

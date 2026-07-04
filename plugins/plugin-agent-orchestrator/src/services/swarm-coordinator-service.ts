@@ -52,8 +52,19 @@
  * instead of timing out.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ISwarmCoordinatorService,
+  SwarmCoordinatorAgentDecisionCallback,
+  SwarmCoordinatorChatCallback,
+  SwarmCoordinatorCompleteCallback,
+  SwarmCoordinatorTaskCompletionSummary,
+  SwarmCoordinatorTaskContext,
+  SwarmCoordinatorWsBroadcastCallback,
+  SwarmEvent,
+  SwarmEventListener,
+} from "@elizaos/core";
+import { logger, Service, SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import {
@@ -62,71 +73,20 @@ import {
 } from "./transcript-sanitizer.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
-export const SWARM_COORDINATOR_SERVICE_TYPE = "SWARM_COORDINATOR";
+export { SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
 
 // Sub-agent-router serviceType, mirrored here as a literal (not imported from
 // sub-agent-router.ts) so this module keeps no dependency edge on the router
 // module. Kept in sync with `SubAgentRouter.serviceType`.
 const SUB_AGENT_ROUTER_SERVICE_TYPE = "ACPX_SUB_AGENT_ROUTER";
 
-/** Legacy swarm event shape consumed by the bridges. */
-export interface SwarmEvent {
-  type: string;
-  sessionId: string;
-  timestamp: number;
-  data: unknown;
-}
-
-export type SwarmEventListener = (event: SwarmEvent) => void;
-
-export type ChatMessageCallback = (
-  text: string,
-  source?: string,
-  routing?: {
-    sessionId?: string;
-    threadId?: string;
-    roomId?: string | null;
-  },
-) => Promise<void>;
-
-export type WsBroadcastCallback = (event: SwarmEvent) => void;
-
-export interface TaskContextLike {
-  threadId: string;
-  sessionId: string;
-  agentType: string;
-  label: string;
-  originalTask: string;
-  workdir: string;
-  [key: string]: unknown;
-}
-
-export type AgentDecisionCallback = (
-  eventDescription: string,
-  sessionId: string,
-  taskContext: TaskContextLike,
-) => Promise<unknown | null>;
-
-export interface TaskCompletionSummary {
-  sessionId: string;
-  label: string;
-  agentType: string;
-  originalTask: string;
-  status: string;
-  completionSummary: string;
-  workdir?: string;
-  roomId?: string | null;
-  replyToExternalMessageId?: string | null;
-  [key: string]: unknown;
-}
-
-export type SwarmCompleteCallback = (payload: {
-  tasks: TaskCompletionSummary[];
-  total: number;
-  completed: number;
-  stopped: number;
-  errored: number;
-}) => Promise<void>;
+export type ChatMessageCallback = SwarmCoordinatorChatCallback;
+export type WsBroadcastCallback = SwarmCoordinatorWsBroadcastCallback;
+export type AgentDecisionCallback = SwarmCoordinatorAgentDecisionCallback;
+export type TaskCompletionSummary = SwarmCoordinatorTaskCompletionSummary;
+export type TaskContextLike = SwarmCoordinatorTaskContext;
+export type SwarmCompleteCallback = SwarmCoordinatorCompleteCallback;
+export type { SwarmEvent, SwarmEventListener } from "@elizaos/core";
 
 interface LegacyCoordinatorTask {
   sessionId: string;
@@ -141,6 +101,7 @@ interface LegacyCoordinatorTask {
     roomId?: string;
     replyToExternalMessageId?: string;
   };
+  [key: string]: unknown;
 }
 
 interface EnrichmentMetadata {
@@ -270,7 +231,10 @@ export function sessionHasRouterOrigin(meta: Record<string, unknown>): boolean {
   return true;
 }
 
-export class SwarmCoordinatorService extends Service {
+export class SwarmCoordinatorService
+  extends Service
+  implements ISwarmCoordinatorService
+{
   static override serviceType = SWARM_COORDINATOR_SERVICE_TYPE;
 
   override capabilityDescription =

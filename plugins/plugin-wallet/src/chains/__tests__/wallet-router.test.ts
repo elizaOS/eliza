@@ -1,3 +1,9 @@
+/**
+ * Exercises `walletRouterAction`'s real chain-selection, confirmation-gate,
+ * and dry-run logic end to end against fake `IAgentRuntime`/chain-handler
+ * doubles — no live model, network, or chain, but the routing/gating code
+ * under test is the real production path, not a stub.
+ */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WalletBackendService } from "../../services/wallet-backend-service";

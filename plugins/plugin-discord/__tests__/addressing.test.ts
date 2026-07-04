@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `isDiscordUserAddressed` — mention/reply/name-address
+ * detection. Pure-function assertions over synthetic message shapes.
+ */
 import { describe, expect, it } from "vitest";
 import { isDiscordUserAddressed } from "../addressing";
 

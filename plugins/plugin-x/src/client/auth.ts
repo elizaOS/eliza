@@ -1,3 +1,11 @@
+/**
+ * `TwitterAuth` — lazily materializes a twitter-api-v2 `TwitterApi` from a
+ * `TwitterAuthProvider`, transparently supporting both auth modes: OAuth 1.0a
+ * (built from the provider's four static credentials) and OAuth 2.0 user-context
+ * (a Bearer access token that is refreshed when the provider hands back a new one).
+ * Caches the authenticated `me()` profile and is the object `Client.getV2Client()`
+ * hands the raw v2 client from.
+ */
 import { TwitterApi } from "twitter-api-v2";
 import type {
   TwitterAuthProvider,

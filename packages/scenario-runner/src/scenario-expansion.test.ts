@@ -1,3 +1,4 @@
+/** Tests scenario discovery and edge-variant expansion (loader.ts): loading `.scenario.ts` files from a temp dir, static metadata listing, corpus counting/validation, and `expandScenarioDefinition` variant generation. */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -167,6 +168,7 @@ describe("scenario-runner edge expansion", () => {
       '  id: "fixture.static.only",',
       '  title: "Static only",',
       '  domain: "fixture",',
+      '  tier: "T2",',
       '  turns: [{ kind: "message", name: "ask", text: "Hello" }],',
       "};",
     ]);
@@ -174,7 +176,7 @@ describe("scenario-runner edge expansion", () => {
     process.env.SHOULD_NOT_IMPORT_SCENARIO = "1";
     try {
       await expect(listScenarioMetadata(dir)).resolves.toMatchObject([
-        { id: "fixture.static.only", title: "Static only" },
+        { id: "fixture.static.only", title: "Static only", tier: "T2" },
       ]);
       await expect(
         loadScenarioFile(join(dir, "static-only.scenario.ts")),

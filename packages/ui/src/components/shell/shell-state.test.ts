@@ -1,3 +1,7 @@
+// Unit coverage for selectVisibleShellMessages — the pure selector that windows
+// the rendered shell transcript (dropping empty turns except an in-flight
+// assistant turn while responding, capped at MAX_RENDERED_SHELL_MESSAGES).
+// Pure reducer/selector, no harness.
 import { describe, expect, it } from "vitest";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import {

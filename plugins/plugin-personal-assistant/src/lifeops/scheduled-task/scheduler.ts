@@ -26,6 +26,36 @@ import {
 import { LifeOpsRepository } from "../repository.js";
 import { getScheduledTaskRunner } from "./service.js";
 
+type NoReplyTerminalStatus = "skipped" | "expired" | "failed";
+
+interface NoReplyPolicy {
+  maxRetries: number;
+  retryCadenceMinutes: number[];
+  terminalStatus: NoReplyTerminalStatus;
+  terminalReason: string;
+  sensitive: boolean;
+  allowCrossChannel: boolean;
+  allowNonOwnerNotification: boolean;
+}
+
+interface StoredNoReplyPolicy {
+  maxRetries?: unknown;
+  retryCadenceMinutes?: unknown;
+  terminalStatus?: unknown;
+  terminalReason?: unknown;
+  sensitive?: unknown;
+  allowCrossChannel?: unknown;
+  allowNonOwnerNotification?: unknown;
+}
+
+interface NoReplyState {
+  retryCount: number;
+  lastTimedOutAt?: string;
+  nextRetryAt?: string;
+  terminalReason?: string;
+  terminalOutcome?: string;
+}
+
 export interface ProcessDueScheduledTasksRequest {
   runtime: IAgentRuntime;
   agentId: string;
@@ -108,6 +138,142 @@ function completionResult(task: ScheduledTask): ScheduledTaskCompletionResult {
     status: task.state.status,
     reason: task.state.lastDecisionLog ?? "completed",
     completionCheckKind: task.completionCheck?.kind ?? "unknown",
+  };
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function readPositiveIntegerArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value.filter(
+    (entry): entry is number =>
+      typeof entry === "number" && Number.isInteger(entry) && entry > 0,
+  );
+  return out.length > 0 ? out : undefined;
+}
+
+function readNoReplyState(task: ScheduledTask): NoReplyState {
+  const raw = readRecord(task.metadata?.noReplyState);
+  return {
+    retryCount: readPositiveInteger(raw?.retryCount) ?? 0,
+    lastTimedOutAt:
+      typeof raw?.lastTimedOutAt === "string" ? raw.lastTimedOutAt : undefined,
+    nextRetryAt:
+      typeof raw?.nextRetryAt === "string" ? raw.nextRetryAt : undefined,
+    terminalReason:
+      typeof raw?.terminalReason === "string" ? raw.terminalReason : undefined,
+    terminalOutcome:
+      typeof raw?.terminalOutcome === "string"
+        ? raw.terminalOutcome
+        : undefined,
+  };
+}
+
+function defaultNoReplyPolicyFor(task: ScheduledTask): NoReplyPolicy | null {
+  switch (task.kind) {
+    case "reminder":
+      return {
+        maxRetries: 1,
+        retryCadenceMinutes: [60],
+        terminalStatus: "skipped",
+        terminalReason: "no_reply_reminder_expired",
+        sensitive: false,
+        allowCrossChannel: false,
+        allowNonOwnerNotification: false,
+      };
+    case "checkin":
+      return {
+        maxRetries: 1,
+        retryCadenceMinutes: [24 * 60],
+        terminalStatus: "expired",
+        terminalReason: "no_reply_checkin_expired",
+        sensitive: false,
+        allowCrossChannel: false,
+        allowNonOwnerNotification: false,
+      };
+    case "approval": {
+      const metadata = task.metadata ?? {};
+      const sensitive =
+        metadata.sensitive === true ||
+        metadata.privacyClass === "sensitive" ||
+        metadata.privacyClass === "restricted" ||
+        metadata.requiresApproval === true;
+      return sensitive
+        ? {
+            maxRetries: 1,
+            retryCadenceMinutes: [30],
+            terminalStatus: "expired",
+            terminalReason: "no_reply_sensitive_denied",
+            sensitive: true,
+            allowCrossChannel: false,
+            allowNonOwnerNotification: false,
+          }
+        : {
+            maxRetries: 2,
+            retryCadenceMinutes: [30, 120],
+            terminalStatus: "expired",
+            terminalReason: "no_reply_approval_expired",
+            sensitive: false,
+            allowCrossChannel: false,
+            allowNonOwnerNotification: false,
+          };
+    }
+    default:
+      return null;
+  }
+}
+
+function resolveNoReplyPolicy(task: ScheduledTask): NoReplyPolicy | null {
+  const base = defaultNoReplyPolicyFor(task);
+  const raw = readRecord(
+    task.metadata?.noReplyPolicy,
+  ) as StoredNoReplyPolicy | null;
+  if (!base && !raw) return null;
+  const fallback = base ?? {
+    maxRetries: 0,
+    retryCadenceMinutes: [],
+    terminalStatus: "skipped" as const,
+    terminalReason: "no_reply_timeout",
+    sensitive: false,
+    allowCrossChannel: false,
+    allowNonOwnerNotification: false,
+  };
+  const terminalStatus =
+    raw?.terminalStatus === "skipped" ||
+    raw?.terminalStatus === "expired" ||
+    raw?.terminalStatus === "failed"
+      ? raw.terminalStatus
+      : fallback.terminalStatus;
+  return {
+    maxRetries: readPositiveInteger(raw?.maxRetries) ?? fallback.maxRetries,
+    retryCadenceMinutes:
+      readPositiveIntegerArray(raw?.retryCadenceMinutes) ??
+      fallback.retryCadenceMinutes,
+    terminalStatus,
+    terminalReason:
+      typeof raw?.terminalReason === "string" && raw.terminalReason.length > 0
+        ? raw.terminalReason
+        : fallback.terminalReason,
+    sensitive:
+      typeof raw?.sensitive === "boolean" ? raw.sensitive : fallback.sensitive,
+    allowCrossChannel:
+      typeof raw?.allowCrossChannel === "boolean"
+        ? raw.allowCrossChannel
+        : fallback.allowCrossChannel,
+    allowNonOwnerNotification:
+      typeof raw?.allowNonOwnerNotification === "boolean"
+        ? raw.allowNonOwnerNotification
+        : fallback.allowNonOwnerNotification,
   };
 }
 
@@ -251,16 +417,21 @@ export async function processDueScheduledTasks(
     const timeout = isCompletionTimeoutDue(task, request.now);
     if (timeout.due) {
       try {
-        const skipped = await runner.apply(task.taskId, "skip", {
+        const timedOut = await handleCompletionTimeout({
+          repo,
+          runner,
+          agentId: request.agentId,
+          task,
+          now: request.now,
           reason: timeout.reason,
         });
         result.completionTimeouts.push({
-          taskId: skipped.taskId,
-          status: skipped.state.status,
-          reason: timeout.reason,
+          taskId: timedOut.task.taskId,
+          status: timedOut.task.state.status,
+          reason: timedOut.reason,
           occurrenceAtIso: timeout.occurrenceAtIso,
         });
-        timeoutTaskIds.add(skipped.taskId);
+        timeoutTaskIds.add(timedOut.task.taskId);
       } catch (error) {
         const message = errorMessage(error);
         logger.warn(
@@ -306,6 +477,104 @@ export async function processDueScheduledTasks(
   }
 
   return result;
+}
+
+async function handleCompletionTimeout(args: {
+  repo: LifeOpsRepository;
+  runner: ReturnType<typeof getScheduledTaskRunner>;
+  agentId: string;
+  task: ScheduledTask;
+  now: Date;
+  reason: string;
+}): Promise<{ task: ScheduledTask; reason: string }> {
+  const policy = resolveNoReplyPolicy(args.task);
+  if (!policy) {
+    const skipped = await args.runner.apply(args.task.taskId, "skip", {
+      reason: args.reason,
+    });
+    return { task: skipped, reason: args.reason };
+  }
+
+  const state = readNoReplyState(args.task);
+  if (state.retryCount < policy.maxRetries) {
+    const cadenceIndex = Math.min(
+      state.retryCount,
+      Math.max(0, policy.retryCadenceMinutes.length - 1),
+    );
+    const retryMinutes = policy.retryCadenceMinutes[cadenceIndex] ?? 60;
+    const nextRetryAt = new Date(
+      args.now.getTime() + retryMinutes * 60_000,
+    ).toISOString();
+    args.task.metadata = {
+      ...(args.task.metadata ?? {}),
+      noReplyPolicy: {
+        ...(readRecord(args.task.metadata?.noReplyPolicy) ?? {}),
+        maxRetries: policy.maxRetries,
+        retryCadenceMinutes: policy.retryCadenceMinutes,
+        terminalStatus: policy.terminalStatus,
+        terminalReason: policy.terminalReason,
+        sensitive: policy.sensitive,
+        allowCrossChannel: policy.allowCrossChannel,
+        allowNonOwnerNotification: policy.allowNonOwnerNotification,
+      },
+      noReplyState: {
+        retryCount: state.retryCount + 1,
+        lastTimedOutAt: args.now.toISOString(),
+        nextRetryAt,
+      },
+    };
+    await args.repo.upsertScheduledTask(args.agentId, args.task);
+    const snoozed = await args.runner.apply(args.task.taskId, "snooze", {
+      untilIso: nextRetryAt,
+    });
+    snoozed.trigger = { kind: "once", atIso: nextRetryAt };
+    delete snoozed.state.firedAt;
+    snoozed.state.lastDecisionLog = `no_reply_retry_${state.retryCount + 1}: ${args.reason}`;
+    await args.repo.upsertScheduledTask(args.agentId, snoozed);
+    return {
+      task: snoozed,
+      reason: `no_reply_retry_${state.retryCount + 1}`,
+    };
+  }
+
+  args.task.metadata = {
+    ...(args.task.metadata ?? {}),
+    noReplyPolicy: {
+      ...(readRecord(args.task.metadata?.noReplyPolicy) ?? {}),
+      maxRetries: policy.maxRetries,
+      retryCadenceMinutes: policy.retryCadenceMinutes,
+      terminalStatus: policy.terminalStatus,
+      terminalReason: policy.terminalReason,
+      sensitive: policy.sensitive,
+      allowCrossChannel: policy.allowCrossChannel,
+      allowNonOwnerNotification: policy.allowNonOwnerNotification,
+    },
+    noReplyState: {
+      ...state,
+      lastTimedOutAt: args.now.toISOString(),
+      terminalReason: policy.terminalReason,
+      terminalOutcome: policy.sensitive ? "denied" : policy.terminalStatus,
+    },
+  };
+  await args.repo.upsertScheduledTask(args.agentId, args.task);
+
+  if (policy.terminalStatus === "skipped") {
+    const skipped = await args.runner.apply(args.task.taskId, "skip", {
+      reason: policy.terminalReason,
+    });
+    return { task: skipped, reason: policy.terminalReason };
+  }
+  const settled = await args.runner.pipeline(
+    args.task.taskId,
+    policy.terminalStatus,
+  );
+  const terminal =
+    (await args.repo.getScheduledTask(args.agentId, args.task.taskId)) ??
+    settled[0] ??
+    args.task;
+  terminal.state.lastDecisionLog = policy.terminalReason;
+  await args.repo.upsertScheduledTask(args.agentId, terminal);
+  return { task: terminal, reason: policy.terminalReason };
 }
 
 export async function processScheduledTaskInboundMessage(

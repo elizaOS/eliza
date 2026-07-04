@@ -1,3 +1,7 @@
+/**
+ * Tests the desktop local KMS adapter against deterministic root-key derivation and restart behavior.
+ */
+
 import { describe, expect, it } from "vitest";
 import { orgKey, systemKey } from "../kms/key-namespace.js";
 import { LocalKmsAdapter, randomRootKey } from "../kms/local-adapter.js";

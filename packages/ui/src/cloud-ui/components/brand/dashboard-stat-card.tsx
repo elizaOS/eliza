@@ -1,3 +1,6 @@
+/**
+ * A single dashboard stat card (label + value) built on BrandCard.
+ */
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { BrandCard } from "./brand-card";

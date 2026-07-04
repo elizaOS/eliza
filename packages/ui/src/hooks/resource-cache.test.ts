@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the resource cache's equality gate: an equal payload keeps
+ * the snapshot reference so useSyncExternalStore consumers do not re-render
+ * (#9141). In-memory store, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { getCached, invalidate, setCached, subscribe } from "./resource-cache";
 

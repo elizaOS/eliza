@@ -1,3 +1,6 @@
+/**
+ * Story group for the cloud brand components (buttons, cards, HUD pieces).
+ */
 import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
 import {
   AgentCard,

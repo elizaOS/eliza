@@ -1,3 +1,10 @@
+/**
+ * Pure text/URL helpers for the Release Center: `summarizeError` (message from
+ * an unknown throwable), `normalizeReleaseNotesUrl` (validated URL, falling back
+ * to the GitHub releases page), and `partitionDescription` (localized label for
+ * a desktop session partition). No React.
+ */
+
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 
 const DEFAULT_RELEASE_NOTES_URL = `${EXTERNAL_URLS.github}/releases`;

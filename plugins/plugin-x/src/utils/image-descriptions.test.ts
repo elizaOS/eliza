@@ -1,3 +1,4 @@
+/** Unit tests for `describeTweetPhotos`: empty when no photos/model/DISABLE flag, and per-photo image Media description otherwise; mocked runtime + model. */
 import { type IAgentRuntime, ModelType, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { Tweet } from "../client/tweets";

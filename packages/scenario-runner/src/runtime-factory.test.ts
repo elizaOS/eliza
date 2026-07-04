@@ -1,3 +1,4 @@
+/** Tests the runtime factory's provider-selection logic (runtime-factory.ts): when deterministic LLM proxy vs strict-proxy vs live provider is chosen from env/options, and how live-provider config resolves. */
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

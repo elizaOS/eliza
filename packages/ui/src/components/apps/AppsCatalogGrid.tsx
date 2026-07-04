@@ -1,3 +1,10 @@
+/**
+ * Renders the apps catalog as favorited/section-grouped hero cards, packing
+ * sections into responsive rows sized to the measured container width (1–5
+ * cards per row). Shows skeletons while loading, an error state with retry, and
+ * a per-card favorite toggle; launching a card is delegated to `onLaunch`.
+ */
+
 import { LayoutGrid, Star } from "lucide-react";
 import {
   type MouseEvent,
@@ -9,6 +16,7 @@ import {
 } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useAppSelector } from "../../state";
+import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
@@ -307,12 +315,12 @@ const AppCard = memo(function AppCard({
         isActive ? "border-ok/50" : "border-border"
       }`}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block w-full text-left transition-transform active:scale-[0.99] motion-reduce:transition-none"
+        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent transition-transform active:scale-[0.99] motion-reduce:transition-none"
         onClick={() => onLaunch(app)}
       >
         <AppHero
@@ -349,18 +357,19 @@ const AppCard = memo(function AppCard({
             </div>
           </div>
         </div>
-      </button>
+      </Button>
       {isActive ? (
         <span
           title="Running"
           className="pointer-events-none absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-ok"
         />
       ) : null}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
         aria-pressed={isFavorite}
-        className={`absolute bottom-2.5 right-2.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-scrim transition-colors ${
+        className={`absolute bottom-2.5 right-2.5 h-8 w-8 rounded-full bg-scrim p-0 transition-colors ${
           isFavorite ? "text-warn" : "text-white hover:text-warn"
         }`}
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
@@ -374,7 +383,7 @@ const AppCard = memo(function AppCard({
           fill={isFavorite ? "currentColor" : "none"}
           aria-hidden="true"
         />
-      </button>
+      </Button>
     </div>
   );
 });
@@ -438,13 +447,14 @@ export function AppsCatalogGrid({
         <div className="mb-4 flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-xs text-danger sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           {onRetry ? (
-            <button
-              type="button"
-              className="min-h-touch self-start rounded-full border border-danger/50 px-3 py-1 text-2xs font-semibold uppercase tracking-[0.14em] transition-colors hover:bg-danger/10 sm:self-auto"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto min-h-touch self-start rounded-full border border-danger/50 px-3 py-1 text-2xs font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
               onClick={onRetry}
             >
               Retry
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}

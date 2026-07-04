@@ -1,3 +1,7 @@
+/**
+ * In-process KMS adapter for tests and development that keeps key versions in memory.
+ */
+
 import {
   createHmac,
   generateKeyPairSync,

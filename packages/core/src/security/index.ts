@@ -76,8 +76,12 @@ export {
 	createSecretsRedactor,
 	// Pattern-based redaction
 	getDefaultRedactPatterns,
+	// Name-based redaction (single source of truth for credential key names)
+	isSensitiveKeyName,
 	type RedactOptions,
 	type RedactSensitiveMode,
+	// Log-sink redaction (structural, not opt-in)
+	redactLogArgs,
 	redactObjectSecrets,
 	redactSecrets,
 	redactSensitiveText,

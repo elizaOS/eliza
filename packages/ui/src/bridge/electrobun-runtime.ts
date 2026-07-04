@@ -1,3 +1,7 @@
+/**
+ * Electrobun runtime detection and startup-timeout policy: longer boot budgets
+ * for builds that host the on-device agent (desktop/ElizaOS UA/Capacitor).
+ */
 import { getElectrobunRendererRpc } from "./electrobun-rpc";
 
 type ElectrobunBrowserWindow = Window & {

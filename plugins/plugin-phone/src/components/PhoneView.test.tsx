@@ -7,6 +7,7 @@
 // native bridge with the exact normalized arguments — functional parity with
 // the retired hand-written PhonePluginView/PhoneTuiView surfaces.
 
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import {
   cleanup,
   configure,
@@ -32,6 +33,7 @@ const phoneBridge = vi.hoisted(() => ({
 
 vi.mock("@elizaos/capacitor-phone", () => ({ Phone: phoneBridge }));
 
+import { __setNavigateViewPayloadForTests } from "@elizaos/ui/app-navigate-view";
 import { PhoneView } from "./PhoneView";
 
 function makeCall(over: Record<string, unknown>) {
@@ -101,6 +103,19 @@ afterEach(() => {
 });
 
 describe("PhoneView — unified GUI/XR dialer", () => {
+  it("prefills the dialer from a generic navigation payload", async () => {
+    __setNavigateViewPayloadForTests("phone", { number: " +1 (555) 0100 " });
+
+    render(React.createElement(PhoneView));
+    await screen.findByText("Ada Lovelace");
+
+    expect(
+      Array.from(document.querySelectorAll('[data-spatial-kind="text"]')).some(
+        (n) => n.textContent === "+15550100",
+      ),
+    ).toBe(true);
+  });
+
   it("builds a multi-digit number across keys and places the normalized call", async () => {
     render(React.createElement(PhoneView));
     await screen.findByText("Ada Lovelace");
@@ -257,11 +272,11 @@ describe("PhoneView — navigation", () => {
     await screen.findByText("Ada Lovelace");
     const events: CustomEvent[] = [];
     const listener = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener("eliza:navigate:view", listener);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
     try {
       fireEvent.click(button("contacts"));
     } finally {
-      window.removeEventListener("eliza:navigate:view", listener);
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
     }
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toMatchObject({

@@ -98,12 +98,12 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  * Inject the current API base + token into HTML before the first
  * renderer JS runs. Returns the HTML unchanged if no base is set yet.
  *
- * Sets THREE keys for compatibility:
- *   - `window.__ELIZA_API_BASE__` (legacy global the appClient reads)
- *   - `window.__ELIZA_API_TOKEN__` (token global)
+ * Sets the typed boot config (the single source of truth for both the API base
+ * and token):
  *   - `window.__ELIZAOS_APP_BOOT_CONFIG__` / `__ELIZA_APP_BOOT_CONFIG__`
- *     plus the `Symbol.for("elizaos.app.boot-config")` slot (typed
- *     boot config that SettingsView reads)
+ *     plus the `Symbol.for("elizaos.app.boot-config")` slot (the typed boot
+ *     config — the single source of truth for the API base that the appClient,
+ *     every transport, and the native web shims read)
  *
  * Without the boot-config keys, the same renderer loaded via a regular
  * browser at the static-server's origin falls back to `pageOrigin` for
@@ -120,9 +120,6 @@ export function injectIntoHtml(html: string): string {
   if (current.base) {
     const baseLiteral = safeJsonForHtml(current.base);
     const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-    const tokenInject = tokenLiteral
-      ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
-      : "";
     const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
     // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
     // before any renderer JS runs, so the renderer's cloud-only branding
@@ -137,7 +134,7 @@ export function injectIntoHtml(html: string): string {
     const externalApiBaseInject = externalApiBase
       ? `window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__=${safeJsonForHtml(externalApiBase)};`
       : "";
-    apiBaseInject = `window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${externalApiBaseInject}${tokenInject}${bootConfigInject}`;
+    apiBaseInject = `${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
   }
 
   const script = `<script>${startupTraceInject}${apiBaseInject}</script>`;

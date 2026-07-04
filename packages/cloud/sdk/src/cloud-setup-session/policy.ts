@@ -1,3 +1,9 @@
+/**
+ * `DEFAULT_SETUP_POLICY` and `isActionAllowed`: the allow-list of action types
+ * and the token/turn budgets a setup session may take before container handoff.
+ * Enforced by setup-session implementations to keep the guided flow scoped.
+ */
+
 import type { SetupActionPolicy } from "./types.js";
 
 export const DEFAULT_SETUP_POLICY: SetupActionPolicy = {

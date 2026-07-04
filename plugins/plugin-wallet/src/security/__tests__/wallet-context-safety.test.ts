@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the wallet-context-safety guards: display-label
+ * sanitization and EVM transfer recipient authorization against
+ * injected/inferred addresses. Pure functions exercised with hand-built
+ * `Memory` fixtures — no real runtime, model, or chain involved.
+ */
 import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

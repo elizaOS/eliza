@@ -1,3 +1,10 @@
+/**
+ * `BirdeyeProvider` — low-level Birdeye REST client covering defi/token/
+ * wallet/trader/pair/search endpoints. Every call is cached via
+ * `runtime.getCache`/`setCache` and retried with a fixed delay on 5xx/429/408/
+ * 503 responses or network failures; non-retryable HTTP errors and exhausted
+ * retries are rethrown.
+ */
 import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import {
   API_BASE_URL,
@@ -95,59 +102,8 @@ type FetchParams<T> = T & {
   headers?: Record<string, string>;
 };
 
-// emulate settings from 0.x
 const settings = process.env;
 
-/*
-class BaseCachedProvider {
-    private cache: NodeCache;
-
-    constructor(
-        private cacheManager: ICacheManager,
-        private cacheKey,
-        ttl?: number
-    ) {
-        this.runtime = runtime
-        this.cache = new NodeCache({ stdTTL: ttl || 300 });
-    }
-
-    private readFsCache<T>(key: string): Promise<T | null> {
-        return this.cacheManager.get<T>(path.join(this.cacheKey, key));
-    }
-
-    private writeFsCache<T>(key: string, data: T): Promise<void> {
-        return this.cacheManager.set(path.join(this.cacheKey, key), data, {
-            expires: Date.now() + 5 * 60 * 1000,
-        });
-    }
-
-    public async readFromCache<T>(key: string): Promise<T | null> {
-        // get memory cache first
-        const val = this.cache.get<T>(key);
-        if (val) {
-            return val;
-        }
-
-        const fsVal = await this.readFsCache<T>(key);
-        if (fsVal) {
-            // set to memory cache
-            this.cache.set(key, fsVal);
-        }
-
-        return fsVal;
-    }
-
-    public async writeToCache<T>(key: string, val: T): Promise<void> {
-        // Set in-memory cache
-        this.cache.set(key, val);
-
-        // Write to file-based cache
-        await this.writeFsCache(key, val);
-    }
-}
-*/
-
-// Custom error class for HTTP errors to distinguish from network errors
 class HttpError extends Error {
   constructor(
     public status: number,
@@ -158,26 +114,19 @@ class HttpError extends Error {
   }
 }
 
-// extends BaseCachedProvider
-// really more like a service
 export class BirdeyeProvider {
   private runtime: Pick<IAgentRuntime, "getCache" | "setCache">;
   private maxRetries: number;
 
   constructor(
     runtime: Pick<IAgentRuntime, "getCache" | "setCache">,
-    //cacheManager: ICacheManager,
     _symbolMap?: Record<string, string>,
     maxRetries?: number,
   ) {
-    // super(cacheManager, "birdeye/data")
     this.runtime = runtime;
     this.maxRetries = maxRetries || DEFAULT_MAX_RETRIES;
   }
 
-  /*
-   * COMMON FETCH FUNCTIONS
-   */
   private async fetchWithRetry<T extends BirdeyeApiResponse>(
     url: string,
     options: RequestInit = {},
@@ -236,17 +185,14 @@ export class BirdeyeProvider {
           success: true,
         } as T;
       } catch (error) {
-        // Check if this is an HTTP error (already handled status code logic above)
+        // HttpError retry eligibility is already decided above; a non-retryable
+        // HttpError reaching here must be rethrown as-is.
         if (error instanceof HttpError) {
-          // HTTP errors are only retried if isRetryable was true (handled above)
-          // If we're here, it means it wasn't retryable, so throw
           throw error;
         }
 
-        // Network errors (fetch failures before getting a response) are retryable
-        // This includes: connection failures, DNS errors, timeouts, etc.
+        // Network errors (connection failures, DNS errors, timeouts) are always retryable.
         if (attempts === this.maxRetries) {
-          // Out of retry attempts
           throw error;
         }
 

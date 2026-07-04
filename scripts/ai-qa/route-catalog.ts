@@ -1,3 +1,11 @@
+/**
+ * Route catalog and shared types for the AI-QA screenshot tooling.
+ *
+ * Enumerates every dashboard route the QA scripts visit, the per-route
+ * ready-checks that gate a capture, the viewport sizes and themes to render,
+ * and the settings-section map. Built on top of the app-core dev route catalog
+ * and consumed by the review-screenshots / review-walkthrough scripts.
+ */
 import { buildRouteCatalog } from "../../packages/app-core/src/api/dev-route-catalog";
 
 export type ReadyCheck =

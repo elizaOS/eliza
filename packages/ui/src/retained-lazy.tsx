@@ -1,6 +1,11 @@
+/**
+ * Lazy component loader that retains resolved modules across mounts (with cache
+ * telemetry), so heavy views don't re-import on every navigation.
+ */
 import {
   type ComponentType,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -20,6 +25,21 @@ import {
 import { installHeapPressureMonitor } from "./state/heap-pressure-monitor";
 
 type RetainedCleanup = () => void | Promise<void>;
+
+/**
+ * A resolved module is only mountable if its `default` export is a React
+ * component — a function component/class, or an exotic component object
+ * (`memo`/`forwardRef`/`lazy`, which carry a `$$typeof`). Anything else
+ * (a missing/undefined export, a plain object, a string) would make React throw
+ * "Element type is invalid" and paint a blank screen when rendered as
+ * `<Component … />`, so we detect it up front and surface the error card.
+ */
+function isRenderableComponent(value: unknown): boolean {
+  return (
+    typeof value === "function" ||
+    (typeof value === "object" && value !== null && "$$typeof" in value)
+  );
+}
 
 export interface RetainedLazyModule<TProps extends object> {
   default: ComponentType<TProps>;
@@ -352,11 +372,24 @@ export function RetainedLazyComponent<TProps extends object>({
   cacheKey?: string;
   componentProps: TProps;
   fallback?: ReactNode;
-  onError?: (error: Error) => ReactNode;
+  /**
+   * Recoverable failure surface. Receives the error and a `retry` that
+   * re-imports the module (invalidating the failed cache entry). Callers should
+   * render a card with a Retry affordance so a load/parse/missing-export failure
+   * never leaves a blank screen. When omitted, `fallback` is shown instead of a
+   * blank render.
+   */
+  onError?: (error: Error, retry: () => void) => ReactNode;
 }) {
   const [module, setModule] = useState<RetainedLazyModule<TProps> | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  // Bumping this re-runs the load effect after a Retry: the failed cache entry
+  // is invalidated and the module re-imported, so a transient failure recovers
+  // instead of latching a permanent error card.
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // reloadKey is a manual re-import trigger (see `retry`), so it must be a dep.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-arms the import
   useEffect(() => {
     let cancelled = false;
     const lease = acquireRetainedLazyModule(loader, { cacheKey });
@@ -364,7 +397,17 @@ export function RetainedLazyComponent<TProps extends object>({
     setError(null);
     void lease.promise
       .then((nextModule) => {
-        if (!cancelled) setModule(nextModule);
+        if (cancelled) return;
+        // Import resolved but the module has no renderable default component:
+        // mounting `<undefined … />` throws "Element type is invalid" and paints
+        // blank. Surface the recoverable error instead of rendering nothing.
+        if (!isRenderableComponent(nextModule?.default)) {
+          setError(
+            new Error("Loaded module did not export a default React component"),
+          );
+          return;
+        }
+        setModule(nextModule);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -374,12 +417,21 @@ export function RetainedLazyComponent<TProps extends object>({
       cancelled = true;
       lease.release();
     };
-  }, [loader, cacheKey]);
+  }, [loader, cacheKey, reloadKey]);
 
-  const renderedError = useMemo(
-    () => (error && onError ? onError(error) : null),
-    [error, onError],
-  );
+  const retry = useCallback(() => {
+    invalidateRetainedLazyModule(loader);
+    setError(null);
+    setModule(null);
+    setReloadKey((k) => k + 1);
+  }, [loader]);
+
+  const renderedError = useMemo(() => {
+    if (!error) return null;
+    // A caller with `onError` gets the recoverable card; otherwise fall back to
+    // the loading placeholder rather than a blank render.
+    return onError ? onError(error, retry) : fallback;
+  }, [error, onError, retry, fallback]);
   if (error) return renderedError;
   if (!module) return <>{fallback}</>;
   const Component = module.default;

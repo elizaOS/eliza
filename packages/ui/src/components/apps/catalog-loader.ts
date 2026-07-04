@@ -1,4 +1,14 @@
+/**
+ * Merges the four app sources — registry catalog, installed apps, view-derived
+ * internal tools, and available overlay apps — into one deduped `RegistryAppInfo`
+ * list for the chat surfaces (AppsSection, agent-orchestrator widget). Each
+ * source is fetched with `allSettled` so a single failing endpoint degrades to
+ * an empty slice rather than failing the whole load. `AppsView` uses the sibling
+ * `load-apps-catalog.ts` instead.
+ */
+
 import { client, type RegistryAppInfo } from "../../api";
+import { fetchAvailableViews } from "../../hooks/useAvailableViews";
 import { isHiddenFromAppsView } from "./helpers";
 import { getInternalToolApps } from "./internal-tool-apps";
 import {
@@ -15,16 +25,20 @@ interface LoadMergedCatalogAppsOptions {
 export async function loadMergedCatalogApps({
   includeHiddenApps = false,
 }: LoadMergedCatalogAppsOptions = {}): Promise<RegistryAppInfo[]> {
-  const [catalogAppsResult, installedAppsResult] = await Promise.allSettled([
-    client.listCatalogApps(),
-    client.listApps(),
-  ]);
+  const [catalogAppsResult, installedAppsResult, viewsResult] =
+    await Promise.allSettled([
+      client.listCatalogApps(),
+      client.listApps(),
+      fetchAvailableViews(),
+    ]);
 
   const catalogApps =
     catalogAppsResult.status === "fulfilled" ? catalogAppsResult.value : [];
   const installedApps =
     installedAppsResult.status === "fulfilled" ? installedAppsResult.value : [];
-  const staticApps = [...getInternalToolApps(), ...catalogApps];
+  const networkViews =
+    viewsResult.status === "fulfilled" ? viewsResult.value : [];
+  const staticApps = [...getInternalToolApps(networkViews), ...catalogApps];
   // `getAvailableOverlayApps()` drops `androidOnly: true` apps outside
   // AOSP Eliza-derived Android so WiFi / Contacts / Phone tiles never appear
   // in stock Android, iOS, desktop, or web builds.

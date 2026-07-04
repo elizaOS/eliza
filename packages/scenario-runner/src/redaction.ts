@@ -1,3 +1,10 @@
+/**
+ * Redacts secrets from scenario report payloads before they are written to disk
+ * or surfaced in trajectories. Recursively masks any object key whose normalized
+ * name matches a sensitive-key set (tokens, passwords, api keys, authorization);
+ * `redactedSensitiveActionResult` produces a placeholder result for actions whose
+ * output is sensitive as a whole. Consumed by interceptor.ts and executor.ts.
+ */
 const REDACTED = "[REDACTED]" as const;
 
 const DEFAULT_SENSITIVE_KEYS = new Set([

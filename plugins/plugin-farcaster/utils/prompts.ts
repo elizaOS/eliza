@@ -1,3 +1,7 @@
+/**
+ * Formats a `Cast` and a home timeline into the plain-text blocks the agent's
+ * prompts embed when composing casts and replies.
+ */
 import type { Character } from "@elizaos/core";
 import type { Cast } from "../types";
 

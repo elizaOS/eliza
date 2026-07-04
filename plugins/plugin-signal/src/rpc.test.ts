@@ -1,3 +1,8 @@
+/**
+ * Tests the signal-cli RPC helpers — base-URL normalization, request framing,
+ * and check/version calls — with property-based inputs (fast-check), fake
+ * timers, and a stubbed `fetch`. No live daemon.
+ */
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

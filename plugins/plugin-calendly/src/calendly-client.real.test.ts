@@ -1,14 +1,13 @@
-// Live validation that the Calendly mock/parser matches the REAL API.
-//
-// Hits the live api.calendly.com with a real personal access token and runs the
-// client normalizers against the actual responses, asserting they still produce
-// valid DTOs — i.e. the recorded fixture replayed keyless in
-// calendly-client.contract.test.ts still matches reality. This is the
-// "make sure the mock matches the real API" check.
-//
-// Gated: needs CALENDLY_LIVE_TEST=1 (or TEST_LANE=post-merge) AND a token
-// (CALENDLY_ACCESS_TOKEN or ELIZA_E2E_CALENDLY_ACCESS_TOKEN). Skips cleanly
-// otherwise, so a key-less run is a no-op rather than a failure.
+/**
+ * Live validation that the Calendly client normalizers match the real API: hits
+ * api.calendly.com with a real personal access token and asserts the responses
+ * still produce valid DTOs — i.e. the fixture replayed keyless in
+ * calendly-client.contract.test.ts still matches reality.
+ *
+ * Gated on CALENDLY_LIVE_TEST=1 (or TEST_LANE=post-merge) plus a token
+ * (CALENDLY_ACCESS_TOKEN or ELIZA_E2E_CALENDLY_ACCESS_TOKEN); skips cleanly
+ * otherwise, so a key-less run is a no-op rather than a failure.
+ */
 
 import { describe, expect, it } from "vitest";
 import {

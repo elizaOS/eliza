@@ -1,3 +1,9 @@
+/**
+ * Storybook stories for `ConnectorModeSelector` — a connector with multiple
+ * modes, and cloud-only modes gated on Eliza Cloud connectivity — under a mock
+ * app context.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { AppContextValue } from "../../state/types";

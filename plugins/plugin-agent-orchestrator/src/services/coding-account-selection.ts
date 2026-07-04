@@ -9,74 +9,24 @@
  * behavior untouched.
  */
 
-const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
-  "eliza.account-pool.coding-agent.v1",
-);
+import {
+  type CodingAccountStrategy,
+  type CodingAccountUsage,
+  type CodingAgentSelection,
+  type CodingAgentSelectorBridge,
+  type CodingProviderAvailability,
+  getCodingAgentSelectorBridge,
+} from "@elizaos/core";
 
-export type CodingAccountStrategy =
-  | "priority"
-  | "round-robin"
-  | "least-used"
-  | "quota-aware";
-
-export interface CodingAccountUsage {
-  sessionPct?: number;
-  weeklyPct?: number;
-  resetsAt?: number;
-  refreshedAt: number;
-}
-
-/** A selected account plus the env vars the coding subprocess needs. */
-export interface CodingAccountSelection {
-  providerId: string;
-  accountId: string;
-  label: string;
-  source: "oauth" | "api-key";
-  strategy: string;
-  usage?: CodingAccountUsage;
-  /** Secrets — injected into the spawn env, never persisted to the task store. */
-  envPatch: Record<string, string>;
-}
-
-export interface CodingProviderAvailability {
-  providerId: string;
-  total: number;
-  enabled: number;
-  healthy: number;
-}
-
-interface CodingAgentSelectorBridge {
-  describe(): Record<string, CodingProviderAvailability[]>;
-  select(
-    agentType: string,
-    opts?: {
-      sessionKey?: string;
-      strategy?: CodingAccountStrategy;
-      exclude?: string[];
-    },
-  ): Promise<CodingAccountSelection | null>;
-  markRateLimited(
-    providerId: string,
-    accountId: string,
-    untilMs: number,
-    detail?: string,
-  ): Promise<void>;
-  markNeedsReauth(
-    providerId: string,
-    accountId: string,
-    detail?: string,
-  ): Promise<void>;
-  recordUsage(
-    providerId: string,
-    accountId: string,
-    result: {
-      tokens?: number;
-      ok: boolean;
-      model?: string;
-      latencyMs?: number;
-    },
-  ): Promise<void>;
-}
+// The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
+// the shared types under this plugin's public surface. `CodingAccountSelection`
+// is the orchestrator's historical name for the bridge selection payload.
+export type {
+  CodingAccountStrategy,
+  CodingAccountUsage,
+  CodingProviderAvailability,
+};
+export type CodingAccountSelection = CodingAgentSelection;
 
 /** Non-secret account descriptor stamped onto the session record. */
 export interface CodingAccountMeta {
@@ -107,11 +57,7 @@ export function isMultiAccountAgentType(agentType: string): boolean {
 }
 
 export function getCodingAccountBridge(): CodingAgentSelectorBridge | null {
-  if (typeof globalThis === "undefined") return null;
-  const bridge = (globalThis as Record<symbol, unknown>)[
-    CODING_AGENT_SELECTOR_BRIDGE_SYMBOL
-  ];
-  return (bridge as CodingAgentSelectorBridge | undefined) ?? null;
+  return getCodingAgentSelectorBridge();
 }
 
 export function resolveCodingAccountStrategy(

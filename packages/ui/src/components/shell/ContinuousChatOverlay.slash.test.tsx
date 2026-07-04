@@ -63,6 +63,7 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "navigate", tab: "settings", path: "/settings" },
+    source: "builtin",
   },
   {
     key: "orchestrator",
@@ -75,6 +76,7 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "navigate", viewId: "orchestrator", path: "/orchestrator" },
+    source: "builtin",
   },
   {
     key: "clear",
@@ -88,6 +90,7 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresElevated: false,
     surfaces: ["gui", "tui"],
     target: { kind: "client", clientAction: "clear-chat" },
+    source: "builtin",
   },
   {
     key: "help",
@@ -100,6 +103,7 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     target: { kind: "agent" },
+    source: "builtin",
   },
 ];
 
@@ -110,6 +114,8 @@ function makeSlash(
     commands: COMMANDS,
     loading: false,
     naturalShortcutsEnabled: false,
+    isAuthorized: true,
+    isElevated: true,
     resolveChoices: () => [],
     resolveSection: (t: string) =>
       ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],

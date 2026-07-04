@@ -47,6 +47,23 @@ describe("system prompt helpers", () => {
 		expect(prompt).not.toContain("{{agentName}}");
 	});
 
+	it("inserts names containing $-sequences literally (no String.replace pattern expansion)", () => {
+		// A raw-string replacement would read `$$`/`$&` in the name as
+		// substitution patterns and mangle it; the replacer must be verbatim.
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Cash$$ M$&M",
+				system: "You are {{name}}.",
+				bio: ["Ask {{agentName}} anything."],
+			},
+		});
+
+		expect(prompt).toContain("You are Cash$$ M$&M.");
+		expect(prompt).toContain("Ask Cash$$ M$&M anything.");
+		expect(prompt).not.toContain("{{name}}");
+		expect(prompt).not.toContain("{{agentName}}");
+	});
+
 	it("substitution is idempotent (no placeholders → unchanged)", () => {
 		const prompt = buildCanonicalSystemPrompt({
 			character: {

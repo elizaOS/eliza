@@ -1,3 +1,10 @@
+/**
+ * Orca LP position provider: injects the agent wallet's current Orca
+ * Whirlpool positions into planner context. `fetchPositions` currently
+ * always returns an empty list — the installed `@orca-so/whirlpools-sdk`
+ * version does not expose a position-lookup helper, so this is a stub
+ * pending an SDK upgrade rather than a live query.
+ */
 import {
   type IAgentRuntime,
   logger,

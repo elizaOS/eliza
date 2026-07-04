@@ -11,6 +11,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { listBuiltApps } from "../services/built-apps-registry.js";
 import {
   LLM_GOAL_VERIFIER_NAME,
   verifyGoalCompletion,
@@ -173,6 +174,15 @@ async function dispatchOrchestratorRoutes(
   const method = req.method?.toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
   const query = url.searchParams;
+
+  // GET /api/orchestrator/built-apps — apps the agent built + deployed from
+  // chat (verified live URL at task completion). Reads the durable registry
+  // written by the sub-agent router; independent of the task service, so it
+  // is dispatched before the service gate.
+  if (method === "GET" && pathname === `${PREFIX}/built-apps`) {
+    sendJson(res, { apps: await listBuiltApps(ctx.runtime) });
+    return true;
+  }
 
   const service = await resolveService(ctx);
   if (!service) {

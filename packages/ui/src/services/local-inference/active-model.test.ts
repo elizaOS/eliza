@@ -1,14 +1,22 @@
+/**
+ * Unit coverage for local-inference load-arg resolution and KV-cache-type
+ * validation (stock vs fork-only). Pure functions over a temp dir, no engine.
+ */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as pathJoin } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   isForkOnlyKvCacheType,
   isStockKvCacheType,
   resolveLocalInferenceLoadArgs,
   validateLocalInferenceLoadArgs,
 } from "./active-model";
-import { ELIZA_1_MTP_TIER_IDS } from "./catalog";
+import {
+  ELIZA_1_HOSTED_MTP_TIER_IDS,
+  ELIZA_1_MTP_TIER_IDS,
+  findCatalogModel,
+} from "./catalog";
 import type { InstalledModel } from "./types";
 
 function makeInstalledModel(
@@ -35,8 +43,9 @@ function makeTempElizaBundle(
   const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
   mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
   const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
-  // Shape a would-be separate-drafter MTP file. The resolver should ignore it
-  // until the shared catalog says that hosted Gemma drafter GGUFs are present.
+  // Shape a separate-drafter MTP file. The resolver wires it only for tiers
+  // whose drafter is hosted in the shared catalog (ELIZA_1_HOSTED_MTP_TIER_IDS)
+  // and ignores stray on-disk drafters for every other tier.
   const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${tier}.gguf`);
   writeFileSync(textPath, "fake-text-gguf");
   if (options.hasMtp !== false) {
@@ -121,8 +130,31 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("does not enable MTP args until hosted Gemma drafter GGUFs are cataloged", async () => {
-    for (const id of ELIZA_1_MTP_TIER_IDS) {
+  it("enables MTP args for hosted-drafter tiers whose drafter GGUF is bundled", async () => {
+    expect(ELIZA_1_HOSTED_MTP_TIER_IDS.length).toBeGreaterThan(0);
+    for (const id of ELIZA_1_HOSTED_MTP_TIER_IDS) {
+      const tier = id.replace("eliza-1-", "");
+      const bundle = makeTempElizaBundle(tier);
+      const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
+      const mtp = findCatalogModel(id)?.runtime?.mtp;
+      expect(mtp?.specType).toBe("draft-mtp");
+      try {
+        const args = await resolveLocalInferenceLoadArgs(target);
+        expect(args.draftModelPath).toBe(bundle.drafterPath);
+        expect(args.draftMin).toBe(mtp?.draftMin);
+        expect(args.draftMax).toBe(mtp?.draftMax);
+        expect(args.mobileSpeculative).toBe(true);
+      } finally {
+        rmSync(bundle.bundleRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("ignores a stray on-disk drafter for tiers without a hosted Gemma drafter", async () => {
+    const hosted = new Set<string>(ELIZA_1_HOSTED_MTP_TIER_IDS);
+    const unhosted = ELIZA_1_MTP_TIER_IDS.filter((id) => !hosted.has(id));
+    expect(unhosted.length).toBeGreaterThan(0);
+    for (const id of unhosted) {
       const tier = id.replace("eliza-1-", "");
       const bundle = makeTempElizaBundle(tier);
       const target = makeInstalledModel(id, bundle.textPath, bundle.bundleRoot);
@@ -138,7 +170,12 @@ describe("resolveLocalInferenceLoadArgs", () => {
     }
   });
 
-  it("does not require a drafter GGUF while hosted Gemma MTP is unavailable", async () => {
+  it("falls back to a non-speculative load when a pre-cutover bundle is missing the drafter GGUF", async () => {
+    // Back-compat (#11517): a bundle installed BEFORE the Gemma-4 MTP cutover
+    // has no `mtp/drafter-*.gguf` on disk. The drafter is a perf-only
+    // speculative-decoding artifact, so the model must still load (warn +
+    // plain decode) — never hard-throw and brick the install.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const bundle = makeTempElizaBundle("2b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
@@ -147,9 +184,18 @@ describe("resolveLocalInferenceLoadArgs", () => {
         bundle.bundleRoot,
       );
       const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.modelPath).toBe(bundle.textPath);
       expect(args.draftModelPath).toBeUndefined();
+      expect(args.draftMin).toBeUndefined();
+      expect(args.draftMax).toBeUndefined();
       expect(args.mobileSpeculative).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Re-download the model to enable the MTP drafter",
+        ),
+      );
     } finally {
+      warnSpy.mockRestore();
       rmSync(bundle.bundleRoot, { recursive: true, force: true });
     }
   });

@@ -1,0 +1,909 @@
+{
+  "id": "brush-teeth-basic",
+  "title": "Brush teeth basic save flow",
+  "domain": "tasks",
+  "tags": [
+    "lifeops",
+    "tasks",
+    "smoke"
+  ],
+  "status": "failed",
+  "durationMs": 18289,
+  "turns": [
+    {
+      "name": "brush-teeth preview",
+      "kind": "message",
+      "text": "Help me brush my teeth at 8 am and 9 pm every day.",
+      "responseText": "Sorry, something went wrong. Please try your request again.",
+      "actionsCalled": [
+        {
+          "actionName": "OWNER_ROUTINES",
+          "parameters": {
+            "parameters": {
+              "action": "create",
+              "kind": "definition",
+              "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+              "title": "Brush teeth",
+              "minutes": 0,
+              "confirmed": false,
+              "details": {}
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "actionName": "OWNER_ROUTINES",
+              "deferred": true,
+              "lifeDraft": {
+                "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+                "operation": "create_definition",
+                "createdAt": 1783104977663,
+                "request": {
+                  "cadence": {
+                    "kind": "times_per_day",
+                    "slots": [
+                      {
+                        "key": "clock-1",
+                        "label": "8 am",
+                        "minuteOfDay": 480,
+                        "durationMinutes": 45
+                      },
+                      {
+                        "key": "clock-2",
+                        "label": "9 pm",
+                        "minuteOfDay": 1260,
+                        "durationMinutes": 45
+                      }
+                    ],
+                    "visibilityLeadMinutes": 90,
+                    "visibilityLagMinutes": 180
+                  },
+                  "kind": "habit",
+                  "reminderPlan": {
+                    "steps": [
+                      {
+                        "channel": "in_app",
+                        "offsetMinutes": 0,
+                        "label": "Brush teeth reminder"
+                      }
+                    ]
+                  },
+                  "title": "Brush teeth"
+                }
+              },
+              "preview": {
+                "cadence": {
+                  "kind": "times_per_day",
+                  "slots": [
+                    {
+                      "key": "clock-1",
+                      "label": "8 am",
+                      "minuteOfDay": 480,
+                      "durationMinutes": 45
+                    },
+                    {
+                      "key": "clock-2",
+                      "label": "9 pm",
+                      "minuteOfDay": 1260,
+                      "durationMinutes": 45
+                    }
+                  ],
+                  "visibilityLeadMinutes": 90,
+                  "visibilityLagMinutes": 180
+                },
+                "kind": "habit",
+                "title": "Brush teeth"
+              }
+            },
+            "text": "I can set up a habit called “Brush teeth” that reminds you at 8 am and again at 9 pm each day. This is just a preview—not saved yet. Let me know if you’d like to confirm or if anything should be changed.",
+            "raw": {
+              "success": true,
+              "text": "I can set up a habit called “Brush teeth” that reminds you at 8 am and again at 9 pm each day. This is just a preview—not saved yet. Let me know if you’d like to confirm or if anything should be changed.",
+              "data": {
+                "actionName": "OWNER_ROUTINES",
+                "deferred": true,
+                "lifeDraft": {
+                  "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+                  "operation": "create_definition",
+                  "createdAt": 1783104977663,
+                  "request": {
+                    "cadence": {
+                      "kind": "times_per_day",
+                      "slots": [
+                        {
+                          "key": "clock-1",
+                          "label": "8 am",
+                          "minuteOfDay": 480,
+                          "durationMinutes": 45
+                        },
+                        {
+                          "key": "clock-2",
+                          "label": "9 pm",
+                          "minuteOfDay": 1260,
+                          "durationMinutes": 45
+                        }
+                      ],
+                      "visibilityLeadMinutes": 90,
+                      "visibilityLagMinutes": 180
+                    },
+                    "kind": "habit",
+                    "reminderPlan": {
+                      "steps": [
+                        {
+                          "channel": "in_app",
+                          "offsetMinutes": 0,
+                          "label": "Brush teeth reminder"
+                        }
+                      ]
+                    },
+                    "title": "Brush teeth"
+                  }
+                },
+                "preview": {
+                  "cadence": {
+                    "kind": "times_per_day",
+                    "slots": [
+                      {
+                        "key": "clock-1",
+                        "label": "8 am",
+                        "minuteOfDay": 480,
+                        "durationMinutes": 45
+                      },
+                      {
+                        "key": "clock-2",
+                        "label": "9 pm",
+                        "minuteOfDay": 1260,
+                        "durationMinutes": 45
+                      }
+                    ],
+                    "visibilityLeadMinutes": 90,
+                    "visibilityLagMinutes": 180
+                  },
+                  "kind": "habit",
+                  "title": "Brush teeth"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "durationMs": 9585,
+      "failedAssertions": [
+        "responseIncludesAny: expected response to include any of [brush teeth,brush your teeth,brushing habit,set that up], saw \"Sorry, something went wrong. Please try your request again.\""
+      ]
+    },
+    {
+      "name": "brush-teeth confirm",
+      "kind": "message",
+      "text": "Yes, save that brushing routine.",
+      "responseText": "I’ve saved your brushing routine: “Brush teeth” at 8 am and 9 pm each day. Let me know if you’d like any changes.",
+      "actionsCalled": [
+        {
+          "actionName": "OWNER_REMINDERS",
+          "parameters": {
+            "parameters": {
+              "action": "create",
+              "kind": "definition",
+              "intent": "brush my teeth at 8 am and 9 pm every day",
+              "title": "Brush teeth",
+              "minutes": 0,
+              "confirmed": true,
+              "details": {}
+            },
+            "actionContext": {
+              "previousResults": []
+            }
+          },
+          "result": {
+            "success": true,
+            "data": {
+              "definition": {
+                "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "domain": "user_lifeops",
+                "subjectType": "owner",
+                "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                "visibilityScope": "owner_only",
+                "contextPolicy": "explicit_only",
+                "kind": "habit",
+                "title": "Brush teeth",
+                "description": "Brush teeth at 8:00 and 21:00 each day",
+                "originalIntent": "brush my teeth at 8 am and 9 pm every day",
+                "timezone": "America/New_York",
+                "status": "active",
+                "priority": 3,
+                "cadence": {
+                  "kind": "times_per_day",
+                  "slots": [
+                    {
+                      "key": "clock-1",
+                      "label": "8 am",
+                      "minuteOfDay": 480,
+                      "durationMinutes": 45
+                    },
+                    {
+                      "key": "clock-2",
+                      "label": "9 pm",
+                      "minuteOfDay": 1260,
+                      "durationMinutes": 45
+                    }
+                  ],
+                  "visibilityLeadMinutes": 90,
+                  "visibilityLagMinutes": 180
+                },
+                "windowPolicy": {
+                  "timezone": "America/New_York",
+                  "windows": [
+                    {
+                      "name": "morning",
+                      "label": "Morning",
+                      "startMinute": 300,
+                      "endMinute": 720
+                    },
+                    {
+                      "name": "afternoon",
+                      "label": "Afternoon",
+                      "startMinute": 720,
+                      "endMinute": 1020
+                    },
+                    {
+                      "name": "evening",
+                      "label": "Evening",
+                      "startMinute": 1020,
+                      "endMinute": 1320
+                    },
+                    {
+                      "name": "night",
+                      "label": "Night",
+                      "startMinute": 1320,
+                      "endMinute": 1680
+                    }
+                  ]
+                },
+                "progressionRule": {
+                  "kind": "none"
+                },
+                "websiteAccess": null,
+                "reminderPlanId": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+                "goalId": null,
+                "source": "chat",
+                "metadata": {
+                  "privacyClass": "private",
+                  "publicContextBlocked": true
+                },
+                "id": "3e494230-e42b-4fdb-addf-3b434488da98",
+                "createdAt": "2026-07-03T18:56:28.903Z",
+                "updatedAt": "2026-07-03T18:56:28.903Z"
+              },
+              "reminderPlan": {
+                "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                "ownerType": "definition",
+                "ownerId": "3e494230-e42b-4fdb-addf-3b434488da98",
+                "steps": [
+                  {
+                    "channel": "in_app",
+                    "offsetMinutes": 0,
+                    "label": "Brush teeth reminder"
+                  }
+                ],
+                "mutePolicy": {},
+                "quietHours": {},
+                "id": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+                "createdAt": "2026-07-03T18:56:28.925Z",
+                "updatedAt": "2026-07-03T18:56:28.925Z"
+              },
+              "performance": {
+                "lastCompletedAt": null,
+                "lastSkippedAt": null,
+                "lastActivityAt": null,
+                "totalScheduledCount": 5,
+                "totalCompletedCount": 0,
+                "totalSkippedCount": 0,
+                "totalPendingCount": 5,
+                "currentOccurrenceStreak": 0,
+                "bestOccurrenceStreak": 0,
+                "currentPerfectDayStreak": 0,
+                "bestPerfectDayStreak": 0,
+                "last7Days": {
+                  "scheduledCount": 5,
+                  "completedCount": 0,
+                  "skippedCount": 0,
+                  "pendingCount": 5,
+                  "completionRate": 0,
+                  "perfectDayCount": 0
+                },
+                "last30Days": {
+                  "scheduledCount": 5,
+                  "completedCount": 0,
+                  "skippedCount": 0,
+                  "pendingCount": 5,
+                  "completionRate": 0,
+                  "perfectDayCount": 0
+                }
+              }
+            },
+            "text": "I've saved your brushing routine: \"Brush teeth\" at 8 am and 9 pm each day. Let me know if you’d like any changes.",
+            "raw": {
+              "success": true,
+              "text": "I've saved your brushing routine: \"Brush teeth\" at 8 am and 9 pm each day. Let me know if you’d like any changes.",
+              "data": {
+                "definition": {
+                  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                  "domain": "user_lifeops",
+                  "subjectType": "owner",
+                  "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+                  "visibilityScope": "owner_only",
+                  "contextPolicy": "explicit_only",
+                  "kind": "habit",
+                  "title": "Brush teeth",
+                  "description": "Brush teeth at 8:00 and 21:00 each day",
+                  "originalIntent": "brush my teeth at 8 am and 9 pm every day",
+                  "timezone": "America/New_York",
+                  "status": "active",
+                  "priority": 3,
+                  "cadence": {
+                    "kind": "times_per_day",
+                    "slots": [
+                      {
+                        "key": "clock-1",
+                        "label": "8 am",
+                        "minuteOfDay": 480,
+                        "durationMinutes": 45
+                      },
+                      {
+                        "key": "clock-2",
+                        "label": "9 pm",
+                        "minuteOfDay": 1260,
+                        "durationMinutes": 45
+                      }
+                    ],
+                    "visibilityLeadMinutes": 90,
+                    "visibilityLagMinutes": 180
+                  },
+                  "windowPolicy": {
+                    "timezone": "America/New_York",
+                    "windows": [
+                      {
+                        "name": "morning",
+                        "label": "Morning",
+                        "startMinute": 300,
+                        "endMinute": 720
+                      },
+                      {
+                        "name": "afternoon",
+                        "label": "Afternoon",
+                        "startMinute": 720,
+                        "endMinute": 1020
+                      },
+                      {
+                        "name": "evening",
+                        "label": "Evening",
+                        "startMinute": 1020,
+                        "endMinute": 1320
+                      },
+                      {
+                        "name": "night",
+                        "label": "Night",
+                        "startMinute": 1320,
+                        "endMinute": 1680
+                      }
+                    ]
+                  },
+                  "progressionRule": {
+                    "kind": "none"
+                  },
+                  "websiteAccess": null,
+                  "reminderPlanId": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+                  "goalId": null,
+                  "source": "chat",
+                  "metadata": {
+                    "privacyClass": "private",
+                    "publicContextBlocked": true
+                  },
+                  "id": "3e494230-e42b-4fdb-addf-3b434488da98",
+                  "createdAt": "2026-07-03T18:56:28.903Z",
+                  "updatedAt": "2026-07-03T18:56:28.903Z"
+                },
+                "reminderPlan": {
+                  "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+                  "ownerType": "definition",
+                  "ownerId": "3e494230-e42b-4fdb-addf-3b434488da98",
+                  "steps": [
+                    {
+                      "channel": "in_app",
+                      "offsetMinutes": 0,
+                      "label": "Brush teeth reminder"
+                    }
+                  ],
+                  "mutePolicy": {},
+                  "quietHours": {},
+                  "id": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+                  "createdAt": "2026-07-03T18:56:28.925Z",
+                  "updatedAt": "2026-07-03T18:56:28.925Z"
+                },
+                "performance": {
+                  "lastCompletedAt": null,
+                  "lastSkippedAt": null,
+                  "lastActivityAt": null,
+                  "totalScheduledCount": 5,
+                  "totalCompletedCount": 0,
+                  "totalSkippedCount": 0,
+                  "totalPendingCount": 5,
+                  "currentOccurrenceStreak": 0,
+                  "bestOccurrenceStreak": 0,
+                  "currentPerfectDayStreak": 0,
+                  "bestPerfectDayStreak": 0,
+                  "last7Days": {
+                    "scheduledCount": 5,
+                    "completedCount": 0,
+                    "skippedCount": 0,
+                    "pendingCount": 5,
+                    "completionRate": 0,
+                    "perfectDayCount": 0
+                  },
+                  "last30Days": {
+                    "scheduledCount": 5,
+                    "completedCount": 0,
+                    "skippedCount": 0,
+                    "pendingCount": 5,
+                    "completionRate": 0,
+                    "perfectDayCount": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "durationMs": 8664,
+      "failedAssertions": []
+    }
+  ],
+  "finalChecks": [
+    {
+      "label": "definitionCountDelta",
+      "type": "definitionCountDelta",
+      "status": "passed",
+      "detail": "1 matching definition(s) for \"Brush teeth\""
+    }
+  ],
+  "actionsCalled": [
+    {
+      "actionName": "OWNER_ROUTINES",
+      "parameters": {
+        "parameters": {
+          "action": "create",
+          "kind": "definition",
+          "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+          "title": "Brush teeth",
+          "minutes": 0,
+          "confirmed": false,
+          "details": {}
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "actionName": "OWNER_ROUTINES",
+          "deferred": true,
+          "lifeDraft": {
+            "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+            "operation": "create_definition",
+            "createdAt": 1783104977663,
+            "request": {
+              "cadence": {
+                "kind": "times_per_day",
+                "slots": [
+                  {
+                    "key": "clock-1",
+                    "label": "8 am",
+                    "minuteOfDay": 480,
+                    "durationMinutes": 45
+                  },
+                  {
+                    "key": "clock-2",
+                    "label": "9 pm",
+                    "minuteOfDay": 1260,
+                    "durationMinutes": 45
+                  }
+                ],
+                "visibilityLeadMinutes": 90,
+                "visibilityLagMinutes": 180
+              },
+              "kind": "habit",
+              "reminderPlan": {
+                "steps": [
+                  {
+                    "channel": "in_app",
+                    "offsetMinutes": 0,
+                    "label": "Brush teeth reminder"
+                  }
+                ]
+              },
+              "title": "Brush teeth"
+            }
+          },
+          "preview": {
+            "cadence": {
+              "kind": "times_per_day",
+              "slots": [
+                {
+                  "key": "clock-1",
+                  "label": "8 am",
+                  "minuteOfDay": 480,
+                  "durationMinutes": 45
+                },
+                {
+                  "key": "clock-2",
+                  "label": "9 pm",
+                  "minuteOfDay": 1260,
+                  "durationMinutes": 45
+                }
+              ],
+              "visibilityLeadMinutes": 90,
+              "visibilityLagMinutes": 180
+            },
+            "kind": "habit",
+            "title": "Brush teeth"
+          }
+        },
+        "text": "I can set up a habit called “Brush teeth” that reminds you at 8 am and again at 9 pm each day. This is just a preview—not saved yet. Let me know if you’d like to confirm or if anything should be changed.",
+        "raw": {
+          "success": true,
+          "text": "I can set up a habit called “Brush teeth” that reminds you at 8 am and again at 9 pm each day. This is just a preview—not saved yet. Let me know if you’d like to confirm or if anything should be changed.",
+          "data": {
+            "actionName": "OWNER_ROUTINES",
+            "deferred": true,
+            "lifeDraft": {
+              "intent": "Help me brush my teeth at 8 am and 9 pm every day.",
+              "operation": "create_definition",
+              "createdAt": 1783104977663,
+              "request": {
+                "cadence": {
+                  "kind": "times_per_day",
+                  "slots": [
+                    {
+                      "key": "clock-1",
+                      "label": "8 am",
+                      "minuteOfDay": 480,
+                      "durationMinutes": 45
+                    },
+                    {
+                      "key": "clock-2",
+                      "label": "9 pm",
+                      "minuteOfDay": 1260,
+                      "durationMinutes": 45
+                    }
+                  ],
+                  "visibilityLeadMinutes": 90,
+                  "visibilityLagMinutes": 180
+                },
+                "kind": "habit",
+                "reminderPlan": {
+                  "steps": [
+                    {
+                      "channel": "in_app",
+                      "offsetMinutes": 0,
+                      "label": "Brush teeth reminder"
+                    }
+                  ]
+                },
+                "title": "Brush teeth"
+              }
+            },
+            "preview": {
+              "cadence": {
+                "kind": "times_per_day",
+                "slots": [
+                  {
+                    "key": "clock-1",
+                    "label": "8 am",
+                    "minuteOfDay": 480,
+                    "durationMinutes": 45
+                  },
+                  {
+                    "key": "clock-2",
+                    "label": "9 pm",
+                    "minuteOfDay": 1260,
+                    "durationMinutes": 45
+                  }
+                ],
+                "visibilityLeadMinutes": 90,
+                "visibilityLagMinutes": 180
+              },
+              "kind": "habit",
+              "title": "Brush teeth"
+            }
+          }
+        }
+      }
+    },
+    {
+      "actionName": "OWNER_REMINDERS",
+      "parameters": {
+        "parameters": {
+          "action": "create",
+          "kind": "definition",
+          "intent": "brush my teeth at 8 am and 9 pm every day",
+          "title": "Brush teeth",
+          "minutes": 0,
+          "confirmed": true,
+          "details": {}
+        },
+        "actionContext": {
+          "previousResults": []
+        }
+      },
+      "result": {
+        "success": true,
+        "data": {
+          "definition": {
+            "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+            "domain": "user_lifeops",
+            "subjectType": "owner",
+            "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+            "visibilityScope": "owner_only",
+            "contextPolicy": "explicit_only",
+            "kind": "habit",
+            "title": "Brush teeth",
+            "description": "Brush teeth at 8:00 and 21:00 each day",
+            "originalIntent": "brush my teeth at 8 am and 9 pm every day",
+            "timezone": "America/New_York",
+            "status": "active",
+            "priority": 3,
+            "cadence": {
+              "kind": "times_per_day",
+              "slots": [
+                {
+                  "key": "clock-1",
+                  "label": "8 am",
+                  "minuteOfDay": 480,
+                  "durationMinutes": 45
+                },
+                {
+                  "key": "clock-2",
+                  "label": "9 pm",
+                  "minuteOfDay": 1260,
+                  "durationMinutes": 45
+                }
+              ],
+              "visibilityLeadMinutes": 90,
+              "visibilityLagMinutes": 180
+            },
+            "windowPolicy": {
+              "timezone": "America/New_York",
+              "windows": [
+                {
+                  "name": "morning",
+                  "label": "Morning",
+                  "startMinute": 300,
+                  "endMinute": 720
+                },
+                {
+                  "name": "afternoon",
+                  "label": "Afternoon",
+                  "startMinute": 720,
+                  "endMinute": 1020
+                },
+                {
+                  "name": "evening",
+                  "label": "Evening",
+                  "startMinute": 1020,
+                  "endMinute": 1320
+                },
+                {
+                  "name": "night",
+                  "label": "Night",
+                  "startMinute": 1320,
+                  "endMinute": 1680
+                }
+              ]
+            },
+            "progressionRule": {
+              "kind": "none"
+            },
+            "websiteAccess": null,
+            "reminderPlanId": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+            "goalId": null,
+            "source": "chat",
+            "metadata": {
+              "privacyClass": "private",
+              "publicContextBlocked": true
+            },
+            "id": "3e494230-e42b-4fdb-addf-3b434488da98",
+            "createdAt": "2026-07-03T18:56:28.903Z",
+            "updatedAt": "2026-07-03T18:56:28.903Z"
+          },
+          "reminderPlan": {
+            "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+            "ownerType": "definition",
+            "ownerId": "3e494230-e42b-4fdb-addf-3b434488da98",
+            "steps": [
+              {
+                "channel": "in_app",
+                "offsetMinutes": 0,
+                "label": "Brush teeth reminder"
+              }
+            ],
+            "mutePolicy": {},
+            "quietHours": {},
+            "id": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+            "createdAt": "2026-07-03T18:56:28.925Z",
+            "updatedAt": "2026-07-03T18:56:28.925Z"
+          },
+          "performance": {
+            "lastCompletedAt": null,
+            "lastSkippedAt": null,
+            "lastActivityAt": null,
+            "totalScheduledCount": 5,
+            "totalCompletedCount": 0,
+            "totalSkippedCount": 0,
+            "totalPendingCount": 5,
+            "currentOccurrenceStreak": 0,
+            "bestOccurrenceStreak": 0,
+            "currentPerfectDayStreak": 0,
+            "bestPerfectDayStreak": 0,
+            "last7Days": {
+              "scheduledCount": 5,
+              "completedCount": 0,
+              "skippedCount": 0,
+              "pendingCount": 5,
+              "completionRate": 0,
+              "perfectDayCount": 0
+            },
+            "last30Days": {
+              "scheduledCount": 5,
+              "completedCount": 0,
+              "skippedCount": 0,
+              "pendingCount": 5,
+              "completionRate": 0,
+              "perfectDayCount": 0
+            }
+          }
+        },
+        "text": "I've saved your brushing routine: \"Brush teeth\" at 8 am and 9 pm each day. Let me know if you’d like any changes.",
+        "raw": {
+          "success": true,
+          "text": "I've saved your brushing routine: \"Brush teeth\" at 8 am and 9 pm each day. Let me know if you’d like any changes.",
+          "data": {
+            "definition": {
+              "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+              "domain": "user_lifeops",
+              "subjectType": "owner",
+              "subjectId": "71da199c-ba36-0996-a5eb-0236efbcbf0b",
+              "visibilityScope": "owner_only",
+              "contextPolicy": "explicit_only",
+              "kind": "habit",
+              "title": "Brush teeth",
+              "description": "Brush teeth at 8:00 and 21:00 each day",
+              "originalIntent": "brush my teeth at 8 am and 9 pm every day",
+              "timezone": "America/New_York",
+              "status": "active",
+              "priority": 3,
+              "cadence": {
+                "kind": "times_per_day",
+                "slots": [
+                  {
+                    "key": "clock-1",
+                    "label": "8 am",
+                    "minuteOfDay": 480,
+                    "durationMinutes": 45
+                  },
+                  {
+                    "key": "clock-2",
+                    "label": "9 pm",
+                    "minuteOfDay": 1260,
+                    "durationMinutes": 45
+                  }
+                ],
+                "visibilityLeadMinutes": 90,
+                "visibilityLagMinutes": 180
+              },
+              "windowPolicy": {
+                "timezone": "America/New_York",
+                "windows": [
+                  {
+                    "name": "morning",
+                    "label": "Morning",
+                    "startMinute": 300,
+                    "endMinute": 720
+                  },
+                  {
+                    "name": "afternoon",
+                    "label": "Afternoon",
+                    "startMinute": 720,
+                    "endMinute": 1020
+                  },
+                  {
+                    "name": "evening",
+                    "label": "Evening",
+                    "startMinute": 1020,
+                    "endMinute": 1320
+                  },
+                  {
+                    "name": "night",
+                    "label": "Night",
+                    "startMinute": 1320,
+                    "endMinute": 1680
+                  }
+                ]
+              },
+              "progressionRule": {
+                "kind": "none"
+              },
+              "websiteAccess": null,
+              "reminderPlanId": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+              "goalId": null,
+              "source": "chat",
+              "metadata": {
+                "privacyClass": "private",
+                "publicContextBlocked": true
+              },
+              "id": "3e494230-e42b-4fdb-addf-3b434488da98",
+              "createdAt": "2026-07-03T18:56:28.903Z",
+              "updatedAt": "2026-07-03T18:56:28.903Z"
+            },
+            "reminderPlan": {
+              "agentId": "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc",
+              "ownerType": "definition",
+              "ownerId": "3e494230-e42b-4fdb-addf-3b434488da98",
+              "steps": [
+                {
+                  "channel": "in_app",
+                  "offsetMinutes": 0,
+                  "label": "Brush teeth reminder"
+                }
+              ],
+              "mutePolicy": {},
+              "quietHours": {},
+              "id": "2089d3fd-ce76-4db2-b477-1bc5c78c1c8d",
+              "createdAt": "2026-07-03T18:56:28.925Z",
+              "updatedAt": "2026-07-03T18:56:28.925Z"
+            },
+            "performance": {
+              "lastCompletedAt": null,
+              "lastSkippedAt": null,
+              "lastActivityAt": null,
+              "totalScheduledCount": 5,
+              "totalCompletedCount": 0,
+              "totalSkippedCount": 0,
+              "totalPendingCount": 5,
+              "currentOccurrenceStreak": 0,
+              "bestOccurrenceStreak": 0,
+              "currentPerfectDayStreak": 0,
+              "bestPerfectDayStreak": 0,
+              "last7Days": {
+                "scheduledCount": 5,
+                "completedCount": 0,
+                "skippedCount": 0,
+                "pendingCount": 5,
+                "completionRate": 0,
+                "perfectDayCount": 0
+              },
+              "last30Days": {
+                "scheduledCount": 5,
+                "completedCount": 0,
+                "skippedCount": 0,
+                "pendingCount": 5,
+                "completionRate": 0,
+                "perfectDayCount": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "failedAssertions": [
+    {
+      "label": "brush-teeth preview",
+      "detail": "responseIncludesAny: expected response to include any of [brush teeth,brush your teeth,brushing habit,set that up], saw \"Sorry, something went wrong. Please try your request again.\""
+    }
+  ],
+  "providerName": "openai"
+}

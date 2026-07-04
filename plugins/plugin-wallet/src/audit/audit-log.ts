@@ -1,3 +1,10 @@
+/**
+ * Hash-chained, append-only audit log row for wallet actions and signing
+ * events. Each row's `rowHash` is a SHA-256 over its canonical fields
+ * (including `prevHash`, which links to the previous row), so
+ * `verifyAuditLogRow` can detect any row whose content, chain link, or
+ * stored hash was altered after the fact.
+ */
 import { createHash } from "node:crypto";
 import type {
   ActionFailureCode,
@@ -28,9 +35,6 @@ export type AuditOutcome =
   | "approved"
   | "rejected";
 
-/**
- * Row shape for the append-only audit log.
- */
 export interface AuditLogRow {
   readonly id: bigint;
   readonly ts: number;

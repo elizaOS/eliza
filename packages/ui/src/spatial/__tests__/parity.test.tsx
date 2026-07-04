@@ -1,3 +1,7 @@
+/**
+ * GUI↔TUI parity coverage: the same AgentProfileView renders consistently as DOM
+ * and as spatial IR/lines. No live terminal.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

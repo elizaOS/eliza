@@ -1,3 +1,7 @@
+/**
+ * ElizaClient extension for the notification inbox: list, unread count, and
+ * mark-read verbs backing the notification store.
+ */
 import type {
   AgentNotification,
   NotificationCategory,

@@ -1,3 +1,10 @@
+/**
+ * Minimal i18n provider for the elizaOS marketing homepage.
+ *
+ * English is inlined as `defaultValue` at every call site; non-English locales
+ * load lazily from `src/i18n/locales/*` while matching the hook contract used by
+ * shared UI packages.
+ */
 import { detectClientLanguage } from "@elizaos/ui/i18n/region";
 import {
   createContext,
@@ -7,17 +14,6 @@ import {
   useMemo,
   useState,
 } from "react";
-
-/**
- * Minimal i18n for the elizaOS marketing homepage. Mirrors the contract used by
- * other packages so call sites look identical:
- *
- *   const t = useT();
- *   t("homepage_eliza.hero.title", { defaultValue: "Your Eliza, everywhere." });
- *
- * English is inlined as `defaultValue` at every call site; non-English locales
- * load lazily from `src/i18n/locales/*`.
- */
 
 export const UI_LANGUAGES = [
   "en",

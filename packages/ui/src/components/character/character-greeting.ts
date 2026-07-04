@@ -1,3 +1,9 @@
+/**
+ * Resolves the greeting-animation asset path for a character: an explicit
+ * override wins, otherwise it falls back to the greetingAnimation of the style
+ * preset matching the character's avatar index. Paths are normalized to be
+ * root-relative (leading slashes stripped) so callers can join them uniformly.
+ */
 import { getStylePresets } from "@elizaos/shared";
 
 function normalizeGreetingAnimationPath(path: string | null | undefined) {

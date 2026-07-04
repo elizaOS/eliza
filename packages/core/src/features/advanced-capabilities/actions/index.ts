@@ -14,6 +14,9 @@ export { postAction } from "./post.ts";
 export { roleAction, updateRoleAction } from "./role.ts";
 export { roomOpAction } from "./room.ts";
 
+// Path-derived symbol so parents that `export *` two of these don't
+// collide on a shared `__BUNDLE_SAFETY__` name.
+import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -27,16 +30,10 @@ import {
 } from "./role.ts";
 import { roomOpAction as _bs_5_roomOpAction } from "./room.ts";
 
-// Path-derived symbol so parents that `export *` two of these don't
-// collide on a shared `__BUNDLE_SAFETY__` name.
-const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ = [
+anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX", [
 	_bs_1_messageAction,
 	_bs_2_postAction,
 	_bs_3_roleAction,
 	_bs_4_updateRoleAction,
 	_bs_5_roomOpAction,
-];
-(
-	globalThis as Record<string, unknown>
-).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__ =
-	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_ACTIONS_INDEX__;
+]);

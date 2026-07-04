@@ -13,6 +13,7 @@ type MacEffectsSymbols = {
   ensureWindowShadow(ptr: Pointer): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
+  enableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
   orderOutWindow(ptr: Pointer): boolean;
   makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
   isAppActive(): boolean;
@@ -68,6 +69,10 @@ function loadLib(): MacEffectsLib {
       },
       setNativeWindowDragRegion: {
         args: [FFIType.ptr, FFIType.f64, FFIType.f64],
+        returns: FFIType.bool,
+      },
+      enableWindowBackForwardNavigationGestures: {
+        args: [FFIType.ptr],
         returns: FFIType.bool,
       },
       orderOutWindow: { args: [FFIType.ptr], returns: FFIType.bool },
@@ -161,6 +166,20 @@ export function setNativeDragRegion(
   height: number,
 ): boolean {
   return getLib()?.symbols.setNativeWindowDragRegion(ptr, x, height) ?? false;
+}
+
+/**
+ * Enable the macOS two-finger trackpad swipe back/forward history gesture on
+ * the window's WKWebView(s). WKWebView defaults
+ * `allowsBackForwardNavigationGestures` to NO and Electrobun never sets it, so
+ * the gesture stays dead without this. Idempotent; WKWebView is often inserted
+ * after first layout, so call it from every restack pass. Returns true once at
+ * least one WKWebView received the flag.
+ */
+export function enableBackForwardNavigationGestures(ptr: Pointer): boolean {
+  return (
+    getLib()?.symbols.enableWindowBackForwardNavigationGestures(ptr) ?? false
+  );
 }
 
 /** Hide the window — removes it from screen AND from Cmd+Tab / Mission Control */
