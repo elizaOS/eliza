@@ -8,7 +8,9 @@
     "dev": "bun --hot run server.ts",
     "typecheck": "tsgo --noEmit",
     "test": "bun run test.ts",
-    "build": "bun build server.ts --outdir=dist --target=bun --format=esm"
+    "build": "bun build server.ts --outdir=dist --target=bun --format=esm",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/cloud-sdk": "workspace:*"

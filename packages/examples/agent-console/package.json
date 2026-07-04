@@ -8,7 +8,9 @@
     "start": "bun run server.ts",
     "dev": "bun --hot run server.ts",
     "test": "bun test action-scanner.test.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
