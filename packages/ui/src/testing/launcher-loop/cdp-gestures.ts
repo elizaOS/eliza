@@ -291,7 +291,11 @@ export class CdpTouchDriver implements Driver {
       (direction === "left" && before === "home") ||
       (direction === "right" && before === "launcher");
     const expected =
-      committed && canNavigate ? (before === "home" ? "launcher" : "home") : before;
+      committed && canNavigate
+        ? before === "home"
+          ? "launcher"
+          : "home"
+        : before;
 
     const target =
       direction === "left"

@@ -28,10 +28,14 @@ import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { runLauncherLoop } from "../../../ui/src/testing/launcher-loop";
 import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
+import {
   collectBlueColors,
   collectHoverViolations,
 } from "./helpers/brand-color-scans";
-import { installDefaultAppRoutes, openAppPath, seedAppStorage } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
@@ -99,7 +103,9 @@ test.describe("launcher gesture loop (real app, shared engine)", () => {
     expect(blueBefore, "no blue on the surface before the loop").toEqual([]);
     const hoverBefore = await collectHoverViolations(page);
     expect(hoverBefore.violations, "no orange→black hover before").toEqual([]);
-    expect(hoverBefore.hoverFailures, "hover probes applied before").toEqual([]);
+    expect(hoverBefore.hoverFailures, "hover probes applied before").toEqual(
+      [],
+    );
 
     // Drive the navigation-safe alphabet against the real surface. `tileIds: []`
     // omits the tile tap/long-press commands (a tap navigates away + unmounts
@@ -143,9 +149,12 @@ test.describe("launcher gesture loop (real app, shared engine)", () => {
       path.join(OUT_DIR, `${testInfo.project.name}-loop-observations.json`),
       `${JSON.stringify(evidence, null, 2)}\n`,
     );
-    await testInfo.attach(`${testInfo.project.name} launcher loop observations`, {
-      body: JSON.stringify(evidence, null, 2),
-      contentType: "application/json",
-    });
+    await testInfo.attach(
+      `${testInfo.project.name} launcher loop observations`,
+      {
+        body: JSON.stringify(evidence, null, 2),
+        contentType: "application/json",
+      },
+    );
   });
 });
