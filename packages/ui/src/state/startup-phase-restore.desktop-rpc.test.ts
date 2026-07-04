@@ -35,12 +35,9 @@ function makeDeps(): RestoringSessionDeps {
     setStartupError: vi.fn(),
     setAuthRequired: vi.fn(),
     setConnected: vi.fn(),
-    setFirstRunExistingInstallDetected: vi.fn(),
     setFirstRunOptions: vi.fn(),
     setFirstRunComplete: vi.fn(),
     setFirstRunLoading: vi.fn(),
-    applyDetectedProviders: vi.fn(),
-    forceLocalBootstrapRef: { current: false },
     firstRunCompletionCommittedRef: { current: false },
     uiLanguage: "en",
   };
@@ -56,22 +53,13 @@ describe("runRestoringSession desktop bridge startup calls", () => {
     });
   });
 
-  it("does not leave restoring-session stuck when desktop install inspection times out", async () => {
+  it("routes a fresh desktop launch with no persisted server into onboarding", async () => {
     const deps = makeDeps();
     const dispatch = vi.fn();
     const ctxRef = { current: null };
 
     await runRestoringSession(deps, dispatch, ctxRef, { current: false });
 
-    expect(
-      bridgeMock.invokeDesktopBridgeRequestWithTimeout,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rpcMethod: "agentInspectExistingInstall",
-        ipcChannel: "agent:inspectExistingInstall",
-        timeoutMs: 5_000,
-      }),
-    );
     expect(dispatch).toHaveBeenCalledWith({
       type: "NO_SESSION",
       hadPriorFirstRun: false,

@@ -1,24 +1,18 @@
 // @vitest-environment jsdom
 
-import fc from "fast-check";
+// Deterministic first-run helpers: draft normalization, runtime-target
+// mapping, submit validation, and the /api/first-run payload builder.
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  applyFirstRunVoiceTranscript,
   buildFirstRunSubmitPlan,
   clearPersistedFirstRunState,
   DEFAULT_AGENT_NAME,
-  FIRST_RUN_STEPS,
   type FirstRunProfileDraft,
   firstRunDownloadsLocalModel,
   firstRunNeedsCloudConnect,
   firstRunRuntimeTarget,
-  isFirstRunPromptEcho,
-  loadPersistedFirstRunState,
-  nextFirstRunStep,
-  normalizeCloudOnlyFirstRunState,
   normalizeFirstRunName,
-  previousFirstRunStep,
-  savePersistedFirstRunState,
   validateFirstRunSubmitDraft,
 } from "./first-run";
 
@@ -73,15 +67,6 @@ describe("first-run flow", () => {
     expect(DEFAULT_AGENT_NAME).toBe("Eliza");
   });
 
-  it("branches off the runtime step (inference + remote both return to it)", () => {
-    expect(nextFirstRunStep("runtime")).toBe("inference");
-    expect(nextFirstRunStep("inference")).toBeNull();
-    expect(nextFirstRunStep("remote")).toBeNull();
-    expect(previousFirstRunStep("inference")).toBe("runtime");
-    expect(previousFirstRunStep("remote")).toBe("runtime");
-    expect(previousFirstRunStep("runtime")).toBeNull();
-  });
-
   it("maps runtime choices to canonical first-run targets", () => {
     expect(firstRunRuntimeTarget("local")).toBe("local");
     expect(firstRunRuntimeTarget("local", "all-local")).toBe("local");
@@ -123,86 +108,13 @@ describe("first-run flow", () => {
     expect(firstRunDownloadsLocalModel("cloud-inference")).toBe(false);
   });
 
-  it("round-trips first-run progress until setup completes", () => {
-    const draft: FirstRunProfileDraft = {
-      agentName: "Eliza",
-      runtime: "remote",
-      localInference: "all-local",
-      remoteApiBase: "https://agent.example.com",
-      remoteToken: "token",
-    };
-
-    savePersistedFirstRunState({ step: "remote", draft });
-    expect(loadPersistedFirstRunState(fallbackDraft)).toEqual({
-      step: "remote",
-      draft,
-    });
-
-    clearPersistedFirstRunState();
-    expect(loadPersistedFirstRunState(fallbackDraft)).toBeNull();
-  });
-
-  it('coerces a persisted "pick-agent" step back to "runtime" on load', () => {
-    const draft: FirstRunProfileDraft = {
-      agentName: "Eliza",
-      runtime: "cloud",
-      localInference: "all-local",
-      remoteApiBase: "",
-      remoteToken: "",
-    };
-    // "pick-agent" is a transient step whose agent list lives only in memory,
-    // so a reload mid-pick must restart the cloud flow at "runtime" rather than
-    // restore a picker with no agents. It is deliberately not in FIRST_RUN_STEPS
-    // nor whitelisted by isFirstRunStep, which is what produces this coercion.
+  it("clears the legacy wizard draft left behind by old installs", () => {
     window.localStorage.setItem(
       "eliza:first-run",
-      JSON.stringify({ step: "pick-agent", draft }),
+      JSON.stringify({ step: "remote", draft: fallbackDraft }),
     );
-    expect(loadPersistedFirstRunState(fallbackDraft)?.step).toBe("runtime");
-  });
-
-  it("fuzzes corrupted persisted first-run state into a safe normalized draft", () => {
-    fc.assert(
-      fc.property(fc.jsonValue(), (value) => {
-        window.localStorage.setItem("eliza:first-run", JSON.stringify(value));
-        const loaded = loadPersistedFirstRunState(fallbackDraft);
-        if (loaded === null) return;
-
-        expect(FIRST_RUN_STEPS).toContain(loaded.step);
-        expect(["local", "cloud", "remote"]).toContain(loaded.draft.runtime);
-        expect(["all-local", "cloud-inference"]).toContain(
-          loaded.draft.localInference,
-        );
-        expect(typeof loaded.draft.agentName).toBe("string");
-        expect(typeof loaded.draft.remoteApiBase).toBe("string");
-        expect(typeof loaded.draft.remoteToken).toBe("string");
-      }),
-      { numRuns: 300 },
-    );
-  });
-
-  it("normalizes persisted cloud-only first-run state back to cloud runtime", () => {
-    const state = normalizeCloudOnlyFirstRunState({
-      step: "remote",
-      draft: {
-        agentName: "Eliza",
-        runtime: "remote",
-        localInference: "all-local",
-        remoteApiBase: "https://agent.example.com",
-        remoteToken: "secret",
-      },
-    });
-
-    expect(state).toEqual({
-      step: "runtime",
-      draft: {
-        agentName: "Eliza",
-        runtime: "cloud",
-        localInference: "all-local",
-        remoteApiBase: "",
-        remoteToken: "",
-      },
-    });
+    clearPersistedFirstRunState();
+    expect(window.localStorage.getItem("eliza:first-run")).toBeNull();
   });
 
   it("builds a server-backed local first-run payload without an owner name", () => {
@@ -313,7 +225,7 @@ describe("first-run flow", () => {
         runtime: "remote",
         remoteApiBase: "",
       }),
-    ).toMatchObject({ valid: false, step: "remote" });
+    ).toMatchObject({ valid: false });
 
     expect(
       validateFirstRunSubmitDraft({ ...fallbackDraft, runtime: "local" }),
@@ -334,7 +246,7 @@ describe("first-run flow", () => {
           runtime: "remote",
           remoteApiBase,
         }),
-      ).toMatchObject({ valid: false, step: "remote" });
+      ).toMatchObject({ valid: false });
     }
 
     expect(
@@ -367,125 +279,5 @@ describe("first-run flow", () => {
         remoteAccessToken: "token",
       },
     });
-  });
-
-  it("applies voice transcripts to select and launch a runtime", () => {
-    const remote = applyFirstRunVoiceTranscript({
-      step: "runtime",
-      draft: fallbackDraft,
-      transcript: "use a remote server",
-    });
-    expect(remote).toMatchObject({
-      step: "remote",
-      draft: { runtime: "remote" },
-      action: "none",
-    });
-
-    // Picking the local runtime advances to the inference sub-choice rather
-    // than finishing — the user must still pick cloud vs on-device inference.
-    const local = applyFirstRunVoiceTranscript({
-      step: "runtime",
-      draft: fallbackDraft,
-      transcript: "start local",
-    });
-    expect(local).toMatchObject({
-      step: "inference",
-      draft: { runtime: "local" },
-      action: "none",
-    });
-  });
-
-  it("picks an inference target by voice and finishes from the inference step", () => {
-    const localDraft: FirstRunProfileDraft = {
-      ...fallbackDraft,
-      runtime: "local",
-    };
-
-    const cloud = applyFirstRunVoiceTranscript({
-      step: "inference",
-      draft: localDraft,
-      transcript: "cloud inference",
-    });
-    expect(cloud).toMatchObject({
-      step: "inference",
-      draft: { localInference: "cloud-inference" },
-      action: "finish",
-    });
-
-    const onDevice = applyFirstRunVoiceTranscript({
-      step: "inference",
-      draft: localDraft,
-      transcript: "on device",
-    });
-    expect(onDevice).toMatchObject({
-      step: "inference",
-      draft: { localInference: "all-local" },
-      action: "finish",
-    });
-
-    // A bare finish command on the inference step takes the recommended default.
-    const bareStart = applyFirstRunVoiceTranscript({
-      step: "inference",
-      draft: localDraft,
-      transcript: "start",
-    });
-    expect(bareStart).toMatchObject({
-      step: "inference",
-      draft: { localInference: "cloud-inference" },
-      action: "finish",
-    });
-
-    // Regression (#11841): the on-device option is labelled "On this device
-    // (recommended)". The word "recommended" must NOT be read as a cloud signal,
-    // or an explicit local pick becomes cloud-inference and the local model
-    // download never triggers.
-    const onDeviceRecommended = applyFirstRunVoiceTranscript({
-      step: "inference",
-      draft: localDraft,
-      transcript: "On this device (recommended)",
-    });
-    expect(onDeviceRecommended).toMatchObject({
-      step: "inference",
-      draft: { localInference: "all-local" },
-      action: "finish",
-    });
-    expect(
-      firstRunDownloadsLocalModel(onDeviceRecommended.draft.localInference),
-    ).toBe(true);
-  });
-
-  it("filters prompt echo before voice transcripts can mutate setup state", () => {
-    expect(
-      isFirstRunPromptEcho({
-        promptText: "Where should Eliza run?",
-        transcript: "where should eliza run",
-      }),
-    ).toBe(true);
-    expect(
-      isFirstRunPromptEcho({
-        promptText: "Where should Eliza run?",
-        transcript: "use a remote server",
-      }),
-    ).toBe(false);
-  });
-
-  it("routes spoken remote setup without leaving the first-run contract", () => {
-    const remote = applyFirstRunVoiceTranscript({
-      step: "remote",
-      draft: { ...fallbackDraft, runtime: "remote" },
-      transcript: "agent dot example dot com",
-    });
-    expect(remote).toMatchObject({
-      step: "remote",
-      draft: { remoteApiBase: "agent.example.com" },
-      action: "none",
-    });
-
-    const finish = applyFirstRunVoiceTranscript({
-      step: "remote",
-      draft: remote.draft,
-      transcript: "continue",
-    });
-    expect(finish.action).toBe("finish");
   });
 });

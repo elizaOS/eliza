@@ -22,7 +22,6 @@ import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
-import type { SetupStep } from "./types";
 import {
   type BackgroundConfig,
   DEFAULT_ACCENT_ID,
@@ -460,38 +459,6 @@ export function applyUiAccent(color: string | null): void {
 const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
 const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
 const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
-const SETUP_STEP_STORAGE_KEY = "eliza:setup:step";
-
-function normalizeSetupStep(value: unknown): SetupStep | null {
-  switch (value) {
-    case "connection":
-    case "model":
-    case "capabilities":
-      return value;
-    default:
-      return null;
-  }
-}
-
-export function loadPersistedSetupStep(): SetupStep | null {
-  return tryLocalStorage(
-    () => normalizeSetupStep(localStorage.getItem(SETUP_STEP_STORAGE_KEY)),
-    null,
-  );
-}
-
-export function saveSetupStep(step: SetupStep): void {
-  tryLocalStorage(() => {
-    localStorage.setItem(SETUP_STEP_STORAGE_KEY, step);
-  }, undefined);
-}
-
-export function clearPersistedSetupStep(): void {
-  tryLocalStorage(() => {
-    localStorage.removeItem(SETUP_STEP_STORAGE_KEY);
-  }, undefined);
-}
-
 /* ── First-run completion persistence ────────────────────────────────── */
 
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";

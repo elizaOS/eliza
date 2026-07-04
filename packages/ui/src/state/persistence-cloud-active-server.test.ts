@@ -103,7 +103,6 @@ describe("Cloud active server persistence", () => {
           accessToken: "cloud-token",
         },
         clientApiAvailable: true,
-        forceLocal: false,
         isDesktop: false,
       }),
     ).toBe(false);
@@ -123,7 +122,6 @@ describe("Cloud active server persistence", () => {
           apiBase: "eliza-local-agent://ipc",
         },
         clientApiAvailable: false,
-        forceLocal: false,
         isDesktop: false,
       }),
     ).toBe(true);
@@ -171,7 +169,6 @@ describe("Cloud active server persistence", () => {
           accessToken: "cloud-token",
         },
         clientApiAvailable: true,
-        forceLocal: false,
         isDesktop: false,
       }),
     ).toBe(true);

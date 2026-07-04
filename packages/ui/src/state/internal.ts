@@ -1,12 +1,4 @@
 export {
-  canRevertSetupTo,
-  getFlaminaTopicForSetupStep,
-  getSetupNavMetas,
-  getSetupStepOrder,
-  resolveSetupNextStep,
-  resolveSetupPreviousStep,
-} from "../first-run/setup-steps";
-export {
   filterRenderableConversationMessages,
   shouldKeepConversationMessage,
 } from "./conversation-message-filter";
@@ -32,7 +24,6 @@ export {
   applyUiTheme,
   clearAvatarIndex,
   clearPersistedActiveServer,
-  clearPersistedSetupStep,
   createPersistedActiveServer,
   loadActiveConversationId,
   loadAvatarIndex,
@@ -42,7 +33,6 @@ export {
   loadLastNativeTab,
   loadPersistedActiveServer,
   loadPersistedFirstRunComplete,
-  loadPersistedSetupStep,
   loadUiLanguage,
   loadUiShellMode,
   loadUiTheme,
@@ -57,7 +47,6 @@ export {
   saveLastNativeTab,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
-  saveSetupStep,
   saveUiLanguage,
   saveUiShellMode,
   saveUiTheme,
@@ -66,7 +55,6 @@ export {
 export {
   deriveFirstRunResumeFieldsFromConfig,
   hasPartialSetupConnectionConfig,
-  inferSetupResumeStep,
 } from "./setup-resume";
 export {
   type TranslationContextValue,
@@ -82,17 +70,12 @@ export {
   type AppContextValue,
   type AppState,
   type ChatTurnUsage,
-  FIRST_RUN_PERMISSION_LABELS,
-  type FirstRunMode,
-  type FirstRunNextOptions,
   type GamePostMessageAuthPayload,
   type InventoryChainFilters,
   LIFECYCLE_MESSAGES,
   type LifecycleAction,
   type LoadConversationMessagesResult,
   type NavigationEventsApi,
-  SETUP_STEPS,
-  type SetupStep,
   type ShellView,
   type SlashCommandInput,
   type StartupErrorReason,

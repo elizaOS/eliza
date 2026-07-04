@@ -1,3 +1,12 @@
+/**
+ * Deterministic first-run helpers shared by the in-chat onboarding conductor
+ * and the headless finish path: draft normalization, runtime-target mapping,
+ * submit validation, and the POST /api/first-run payload builder. The old
+ * wizard's step machine, persisted step/draft state, and voice-transcript
+ * routing were deleted with the wizard itself (#12178); onboarding state now
+ * lives in the conductor's refs plus `firstRunComplete`.
+ */
+
 import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   getDefaultStylePreset,
@@ -9,13 +18,6 @@ import {
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
-// "pick-agent" is a transient cloud-only step shown after sign-in when the user
-// already has cloud agents (choose one or create new). It is entered
-// programmatically via setStep, NOT via the linear next/previous nav, so it is
-// deliberately kept OUT of FIRST_RUN_STEPS and out of isFirstRunStep — a
-// persisted "pick-agent" therefore coerces back to "runtime" on reload (the
-// agent list is in-memory only), restarting the cloud flow cleanly.
-export type FirstRunStep = "runtime" | "inference" | "remote" | "pick-agent";
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 
 /**
@@ -34,12 +36,6 @@ export type FirstRunLocalInference =
   | "cloud-inference"
   | "configure-later";
 
-export const FIRST_RUN_STEPS: readonly FirstRunStep[] = [
-  "runtime",
-  "inference",
-  "remote",
-] as const;
-
 const FIRST_RUN_STATE_STORAGE_KEY = "eliza:first-run";
 
 /** Default agent name when the user does not pick one (the first style preset). */
@@ -53,47 +49,14 @@ export interface FirstRunProfileDraft {
   remoteToken: string;
 }
 
-export type FirstRunDraftUpdate = <K extends keyof FirstRunProfileDraft>(
-  key: K,
-  value: FirstRunProfileDraft[K],
-) => void;
-
 export interface FirstRunSubmitPlan {
   payload: Record<string, unknown>;
   runtimeConfig: BuildFirstRunRuntimeConfigResult;
 }
 
-export type FirstRunVoiceAction = "none" | "finish";
-
-export interface FirstRunVoiceUpdate {
-  step: FirstRunStep;
-  draft: FirstRunProfileDraft;
-  action: FirstRunVoiceAction;
-}
-
-export interface PersistedFirstRunState {
-  step: FirstRunStep;
-  draft: FirstRunProfileDraft;
-}
-
 export interface FirstRunSubmitValidation {
   valid: boolean;
-  step: FirstRunStep;
   message: string | null;
-}
-
-export function normalizeCloudOnlyFirstRunState(
-  state: PersistedFirstRunState,
-): PersistedFirstRunState {
-  return {
-    step: "runtime",
-    draft: {
-      ...state.draft,
-      runtime: "cloud",
-      remoteApiBase: "",
-      remoteToken: "",
-    },
-  };
 }
 
 function trimmedOrDefault(value: string, fallback: string): string {
@@ -107,82 +70,7 @@ export function normalizeFirstRunName(
   return (value ?? "").trim().replace(/\s+/g, " ");
 }
 
-function isFirstRunStep(value: unknown): value is FirstRunStep {
-  return value === "runtime" || value === "inference" || value === "remote";
-}
-
-function isFirstRunRuntime(value: unknown): value is FirstRunRuntime {
-  return value === "local" || value === "cloud" || value === "remote";
-}
-
-function isFirstRunLocalInference(
-  value: unknown,
-): value is FirstRunLocalInference {
-  return (
-    value === "all-local" ||
-    value === "cloud-inference" ||
-    value === "configure-later"
-  );
-}
-
-function readStringField(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  return typeof value === "string" ? value : "";
-}
-
-function normalizePersistedDraft(
-  value: unknown,
-  fallback: FirstRunProfileDraft,
-): FirstRunProfileDraft {
-  if (!value || typeof value !== "object") return fallback;
-  const record = value as Record<string, unknown>;
-  return {
-    agentName:
-      readStringField(record, "agentName") ||
-      normalizeFirstRunName(fallback.agentName) ||
-      DEFAULT_AGENT_NAME,
-    runtime: isFirstRunRuntime(record.runtime)
-      ? record.runtime
-      : fallback.runtime,
-    localInference: isFirstRunLocalInference(record.localInference)
-      ? record.localInference
-      : fallback.localInference,
-    remoteApiBase: readStringField(record, "remoteApiBase"),
-    remoteToken: readStringField(record, "remoteToken"),
-  };
-}
-
-export function loadPersistedFirstRunState(
-  fallbackDraft: FirstRunProfileDraft,
-): PersistedFirstRunState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(FIRST_RUN_STATE_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      step: isFirstRunStep(parsed.step) ? parsed.step : "runtime",
-      draft: normalizePersistedDraft(parsed.draft, fallbackDraft),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function savePersistedFirstRunState(
-  state: PersistedFirstRunState,
-): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      FIRST_RUN_STATE_STORAGE_KEY,
-      JSON.stringify(state),
-    );
-  } catch {
-    return;
-  }
-}
-
+/** Drop the legacy wizard's persisted draft (old installs may still carry it). */
 export function clearPersistedFirstRunState(): void {
   if (typeof window === "undefined") return;
   try {
@@ -190,24 +78,6 @@ export function clearPersistedFirstRunState(): void {
   } catch {
     return;
   }
-}
-
-/**
- * Forward navigation in the (branching, not linear) first-run flow. The only
- * automatic next step is the Local runtime's inference sub-choice
- * (runtime → inference). Remote is a sibling branch entered explicitly from the
- * runtime screen, and both sub-steps are terminal, so they have no next step.
- */
-export function nextFirstRunStep(step: FirstRunStep): FirstRunStep | null {
-  return step === "runtime" ? "inference" : null;
-}
-
-/**
- * Back navigation: the `inference` and `remote` sub-steps both branch off the
- * `runtime` choice, so "back" from either returns to the runtime screen.
- */
-export function previousFirstRunStep(step: FirstRunStep): FirstRunStep | null {
-  return step === "runtime" ? null : "runtime";
 }
 
 export function firstRunRuntimeTarget(
@@ -223,8 +93,8 @@ export function firstRunRuntimeTarget(
  * Whether the current runtime selection needs an Eliza Cloud connection before
  * setup can finish. True for the Cloud runtime and for Local + cloud-inference
  * (the hybrid, where the on-device agent routes inference through Eliza Cloud).
- * Drives both the primary-button label ("Connect" vs "Start") and the OAuth
- * gate in the finish handlers, so the decision lives in one place.
+ * Drives the OAuth gate in the finish handlers, so the decision lives in one
+ * place.
  */
 export function firstRunNeedsCloudConnect(
   draft: Pick<FirstRunProfileDraft, "runtime" | "localInference">,
@@ -248,27 +118,9 @@ export function firstRunDownloadsLocalModel(
   return localInference === "all-local";
 }
 
-function stripFirstRunVoicePrefix(value: string): string {
+function normalizeRemoteTarget(value: string): string {
   return value
     .trim()
-    .replace(/^(?:hey\s+)?eliza\b[\s,.:;!-]*/i, "")
-    .trim();
-}
-
-function normalizeFirstRunVoiceCommand(value: string): string {
-  return stripFirstRunVoicePrefix(value)
-    .toLowerCase()
-    .replace(/[.,!?;:]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function hasFinishCommand(command: string): boolean {
-  return /\b(?:start|launch|continue|connect|finish|run)\b/.test(command);
-}
-
-function normalizeSpokenRemoteTarget(value: string): string {
-  return stripFirstRunVoicePrefix(value)
     .replace(/\bdot\b/gi, ".")
     .replace(/\bslash\b/gi, "/")
     .replace(/\bcolon\b/gi, ":")
@@ -296,133 +148,25 @@ function looksLikeRemoteTarget(value: string): boolean {
   );
 }
 
-export function applyFirstRunVoiceTranscript(args: {
-  step: FirstRunStep;
-  draft: FirstRunProfileDraft;
-  transcript: string;
-}): FirstRunVoiceUpdate {
-  const spoken = stripFirstRunVoicePrefix(args.transcript);
-  const command = normalizeFirstRunVoiceCommand(args.transcript);
-  const draft = { ...args.draft };
-
-  if (!spoken || !command) {
-    return { step: args.step, draft, action: "none" };
-  }
-
-  if (args.step === "runtime") {
-    if (/\b(?:remote|api|server|existing)\b/.test(command)) {
-      draft.runtime = "remote";
-      return { step: "remote", draft, action: "none" };
-    }
-    if (/\b(?:cloud|elizacloud|eliza cloud)\b/.test(command)) {
-      draft.runtime = "cloud";
-      return {
-        step: "runtime",
-        draft,
-        action: hasFinishCommand(command) ? "finish" : "none",
-      };
-    }
-    if (
-      /\b(?:local|this computer|this device|bundled|offline)\b/.test(command)
-    ) {
-      draft.runtime = "local";
-      // Local needs an inference sub-choice; advance to it rather than finishing.
-      return { step: "inference", draft, action: "none" };
-    }
-    return {
-      step: "runtime",
-      draft,
-      action: hasFinishCommand(command) ? "finish" : "none",
-    };
-  }
-
-  if (args.step === "inference") {
-    const wantsLocal =
-      /\b(?:local|on device|on-device|this device|this computer|offline|device|phone)\b/.test(
-        command,
-      );
-    // NB: "recommended" is NOT a cloud signal. The on-device option is labelled
-    // "On this device (recommended)", so matching "recommended" here misread an
-    // explicit local pick as cloud → `localInference` became "cloud-inference"
-    // and the local model download never triggered (#11841). Cloud options still
-    // carry "cloud"/"eliza cloud"/"online"; a bare "recommended" falls through to
-    // the same cloud-inference default below, so removing it changes nothing else.
-    const wantsCloud = /\b(?:cloud|elizacloud|eliza cloud|online)\b/.test(
-      command,
-    );
-    if (wantsLocal && !wantsCloud) {
-      draft.localInference = "all-local";
-      return { step: "inference", draft, action: "finish" };
-    }
-    if (wantsCloud) {
-      draft.localInference = "cloud-inference";
-      return { step: "inference", draft, action: "finish" };
-    }
-    // A bare "start/continue" with no inference keyword takes the recommended
-    // default (cloud inference); anything else stays put for clarification.
-    if (hasFinishCommand(command)) {
-      draft.localInference = "cloud-inference";
-      return { step: "inference", draft, action: "finish" };
-    }
-    return { step: "inference", draft, action: "none" };
-  }
-
-  const tokenMatch = spoken.match(/^(?:token|access token|use token)\s+(.+)$/i);
-  if (tokenMatch) {
-    draft.remoteToken = tokenMatch[1]?.trim() ?? "";
-    return {
-      step: "remote",
-      draft,
-      action:
-        hasFinishCommand(command) && draft.remoteApiBase ? "finish" : "none",
-    };
-  }
-
-  const remoteTarget = normalizeSpokenRemoteTarget(spoken);
-  if (looksLikeRemoteTarget(remoteTarget)) {
-    draft.remoteApiBase = remoteTarget;
-    return { step: "remote", draft, action: "none" };
-  }
-
-  return {
-    step: "remote",
-    draft,
-    action:
-      hasFinishCommand(command) && draft.remoteApiBase ? "finish" : "none",
-  };
-}
-
 export function validateFirstRunSubmitDraft(
   draft: FirstRunProfileDraft,
 ): FirstRunSubmitValidation {
   if (draft.runtime === "remote") {
-    const remoteTarget = normalizeSpokenRemoteTarget(draft.remoteApiBase);
+    const remoteTarget = normalizeRemoteTarget(draft.remoteApiBase);
     if (!remoteTarget) {
       return {
         valid: false,
-        step: "remote",
         message: "Enter the remote agent URL first.",
       };
     }
     if (!looksLikeRemoteTarget(remoteTarget)) {
       return {
         valid: false,
-        step: "remote",
         message: "Enter a valid remote agent URL.",
       };
     }
   }
-  return { valid: true, step: "runtime", message: null };
-}
-
-export function isFirstRunPromptEcho(args: {
-  promptText: string;
-  transcript: string;
-}): boolean {
-  const prompt = normalizeFirstRunVoiceCommand(args.promptText);
-  const transcript = normalizeFirstRunVoiceCommand(args.transcript);
-  if (prompt.length < 12 || transcript.length < 12) return false;
-  return prompt === transcript || prompt.includes(transcript);
+  return { valid: true, message: null };
 }
 
 export function buildFirstRunSubmitPlan(args: {

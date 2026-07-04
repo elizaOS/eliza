@@ -53,7 +53,6 @@ import type {
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
   StreamEventEnvelope,
-  SystemPermissionId,
   TriggerHealthSnapshot,
   TriggerRunRecord,
   TriggerSummary,
@@ -95,57 +94,6 @@ export interface NavigationEventsApi {
    */
   scheduleAfterTabCommit: (fn: () => void) => void;
 }
-
-export type SetupStep = "connection" | "model" | "capabilities";
-
-export interface SetupStepMeta {
-  id: SetupStep;
-  name: string;
-  subtitle: string;
-}
-
-export const SETUP_STEPS: SetupStepMeta[] = [
-  {
-    id: "connection",
-    name: "setup.stepName.connection",
-    subtitle: "setup.stepSub.connection",
-  },
-  {
-    id: "model",
-    name: "setup.stepName.model",
-    subtitle: "setup.stepSub.model",
-  },
-  {
-    id: "capabilities",
-    name: "setup.stepName.capabilities",
-    subtitle: "setup.stepSub.capabilities",
-  },
-];
-
-export type FirstRunMode = "basic" | "advanced" | "elizacloudonly";
-
-export type FlaminaGuideTopic =
-  | "provider"
-  | "rpc"
-  | "permissions"
-  | "voice"
-  | "features";
-
-export interface FirstRunNextOptions {
-  allowPermissionBypass?: boolean;
-  omitRuntimeProvider?: boolean;
-  skipTask?: string;
-}
-
-export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
-  accessibility: "Accessibility",
-  "screen-recording": "Screen Recording",
-  microphone: "Microphone",
-  camera: "Camera",
-  shell: "Full Disk Access",
-  "website-blocking": "Website Blocking",
-  location: "Location",
-};
 
 import type { ActionBanner } from "./action-banner";
 import type { ActionNotice, ActionTone } from "./action-notice";
@@ -607,65 +555,21 @@ export interface AppState {
   // Startup
   startupStatus: string | null;
 
-  // First-run
-  setupStep: SetupStep;
-  firstRunMode: FirstRunMode;
-  firstRunActiveGuide: string | null;
+  // First-run (the in-chat conductor owns flow state; these are the surviving
+  // cross-surface fields: finish-port + CONNECT_EVENT writes, content-pack and
+  // character-editor reads, and the cloud-provisioned skip guard)
   firstRunDeferredTasks: string[];
   postFirstRunChecklistDismissed: boolean;
   firstRunOptions: FirstRunOptions | null;
   firstRunName: string;
-  firstRunOwnerName: string;
   firstRunStyle: string;
   firstRunRuntimeTarget: FirstRunRuntimeTarget;
-  firstRunCloudApiKey: string;
-  firstRunSmallModel: string;
-  firstRunLargeModel: string;
   firstRunProvider: string;
-  firstRunApiKey: string;
-  firstRunVoiceProvider: string;
-  firstRunVoiceApiKey: string;
-  firstRunExistingInstallDetected: boolean;
-  firstRunDetectedProviders: Array<{
-    id: string;
-    source: string;
-    apiKey?: string;
-    authMode?: string;
-    status?: "valid" | "invalid" | "unchecked" | "error";
-    cliInstalled: boolean;
-  }>;
   firstRunRemoteApiBase: string;
   firstRunRemoteToken: string;
   firstRunRemoteConnecting: boolean;
   firstRunRemoteError: string | null;
   firstRunRemoteConnected: boolean;
-  firstRunOpenRouterModel: string;
-  firstRunPrimaryModel: string;
-  firstRunTelegramToken: string;
-  firstRunDiscordToken: string;
-  firstRunWhatsAppSessionPath: string;
-  firstRunTwilioAccountSid: string;
-  firstRunTwilioAuthToken: string;
-  firstRunTwilioPhoneNumber: string;
-  firstRunBlooioApiKey: string;
-  firstRunBlooioPhoneNumber: string;
-  firstRunGithubToken: string;
-  firstRunSubscriptionTab: "token" | "oauth";
-  firstRunElizaCloudTab: "login" | "apikey";
-  firstRunSelectedChains: Set<string>;
-  firstRunRpcSelections: Record<string, string>;
-  firstRunRpcKeys: Record<string, string>;
-  setupAvatar: number;
-
-  // First-run feature toggles (features step)
-  firstRunFeatureTelegram: boolean;
-  firstRunFeatureDiscord: boolean;
-  firstRunFeaturePhone: boolean;
-  firstRunFeatureCrypto: boolean;
-  firstRunFeatureBrowser: boolean;
-  firstRunFeatureComputerUse: boolean;
-  /** Which feature is currently mid-OAuth flow, or null. */
-  firstRunFeatureOAuthPending: string | null;
   firstRunCloudProvisionedContainer: boolean;
 
   // Command palette
@@ -974,13 +878,6 @@ export interface AppActions {
   handleCharacterMessageExamplesInput: (value: string) => void;
 
   // First-run
-  handleFirstRunBack: () => void;
-  /** Jump to an earlier step in the active track (sidebar); backward-only. */
-  handleFirstRunJumpToStep: (step: SetupStep) => void;
-  /** Set internal configuration step and sync Flamina guide. */
-  goToFirstRunStep: (step: SetupStep) => void;
-  handleFirstRunRemoteConnect: () => Promise<void>;
-  handleFirstRunUseLocalBackend: () => void;
   /**
    * Finalize first-run without running the chat handoff.
    * Used when first-run setup already persisted the server-side profile.

@@ -36,7 +36,6 @@ import {
   loadPersistedActiveServer,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
-import type { FirstRunMode, SetupStep } from "./types";
 import { shouldAwaitAgentReadiness } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
@@ -189,25 +188,15 @@ export interface UseChatLifecycleDeps {
   setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
   setFirstRunLoading: (v: boolean) => void;
   setFirstRunComplete: (v: boolean) => void;
-  setSetupStep: (v: SetupStep) => void;
-  setFirstRunMode: (v: FirstRunMode) => void;
-  setFirstRunActiveGuide: (v: string | null) => void;
   setFirstRunDeferredTasks: (v: string[]) => void;
   setPostFirstRunChecklistDismissed: (v: boolean) => void;
   setFirstRunName: (v: string) => void;
   setFirstRunStyle: (v: string) => void;
   setFirstRunRuntimeTarget: (v: AppState["firstRunRuntimeTarget"]) => void;
   setFirstRunProvider: (v: string) => void;
-  setFirstRunApiKey: (v: string) => void;
-  setFirstRunVoiceProvider: (v: string) => void;
-  setFirstRunVoiceApiKey: (v: string) => void;
-  setFirstRunPrimaryModel: (v: string) => void;
-  setFirstRunOpenRouterModel: (v: string) => void;
   setFirstRunRemoteConnected: (v: boolean) => void;
   setFirstRunRemoteApiBase: (v: string) => void;
   setFirstRunRemoteToken: (v: string) => void;
-  setFirstRunSmallModel: (v: string) => void;
-  setFirstRunLargeModel: (v: string) => void;
   setFirstRunOptions: (v: FirstRunOptions | null) => void;
 
   // Character / avatar
@@ -271,25 +260,15 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setFirstRunUiRevealNonce,
     setFirstRunLoading,
     setFirstRunComplete,
-    setSetupStep,
-    setFirstRunMode,
-    setFirstRunActiveGuide,
     setFirstRunDeferredTasks,
     setPostFirstRunChecklistDismissed,
     setFirstRunName,
     setFirstRunStyle,
     setFirstRunRuntimeTarget,
     setFirstRunProvider,
-    setFirstRunApiKey,
-    setFirstRunVoiceProvider,
-    setFirstRunVoiceApiKey,
-    setFirstRunPrimaryModel,
-    setFirstRunOpenRouterModel,
     setFirstRunRemoteConnected,
     setFirstRunRemoteApiBase,
     setFirstRunRemoteToken,
-    setFirstRunSmallModel,
-    setFirstRunLargeModel,
     setFirstRunOptions,
     setSelectedVrmIndex,
     setCustomVrmUrl,
@@ -677,9 +656,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setFirstRunUiRevealNonce((n) => n + 1);
           setFirstRunLoading(false);
           setFirstRunComplete(false);
-          setSetupStep("connection");
-          setFirstRunMode("basic");
-          setFirstRunActiveGuide(null);
           setFirstRunDeferredTasks([]);
           setPostFirstRunChecklistDismissed(false);
           setFirstRunName(defaultFirstRunStyle.name);
@@ -687,16 +663,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           persistMobileRuntimeModeForServerTarget("");
           setFirstRunRuntimeTarget("");
           setFirstRunProvider("");
-          setFirstRunApiKey("");
-          setFirstRunVoiceProvider("");
-          setFirstRunVoiceApiKey("");
-          setFirstRunPrimaryModel("");
-          setFirstRunOpenRouterModel("");
           setFirstRunRemoteConnected(false);
           setFirstRunRemoteApiBase("");
           setFirstRunRemoteToken("");
-          setFirstRunSmallModel("");
-          setFirstRunLargeModel("");
           coordinatorResetRef.current?.();
         },
         resetAvatarSelection: () => {
@@ -724,25 +693,15 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setFirstRunComplete,
       setFirstRunLoading,
       setFirstRunOptions,
-      setSetupStep,
-      setFirstRunMode,
-      setFirstRunActiveGuide,
       setFirstRunDeferredTasks,
       setPostFirstRunChecklistDismissed,
       setFirstRunName,
       setFirstRunStyle,
       setFirstRunRuntimeTarget,
       setFirstRunProvider,
-      setFirstRunApiKey,
-      setFirstRunVoiceProvider,
-      setFirstRunVoiceApiKey,
-      setFirstRunPrimaryModel,
-      setFirstRunOpenRouterModel,
       setFirstRunRemoteConnected,
       setFirstRunRemoteApiBase,
       setFirstRunRemoteToken,
-      setFirstRunSmallModel,
-      setFirstRunLargeModel,
       setFirstRunUiRevealNonce,
       setConversationMessages,
       setActiveConversationId,
