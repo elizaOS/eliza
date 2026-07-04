@@ -375,6 +375,7 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
               ? { image: config.cloudContainerImage }
               : {}),
             environmentVars: {
+              HOST: "0.0.0.0",
               ELIZA_REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
               REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
               ELIZA_CODING_WORKSPACE: config.workdir,

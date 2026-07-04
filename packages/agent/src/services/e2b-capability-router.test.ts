@@ -717,6 +717,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       expect(provisionBody).toMatchObject({
         container: {
           environmentVars: {
+            HOST: "0.0.0.0",
             ELIZA_CODING_WORKSPACE: "/workspace",
             ELIZA_SANDBOX_AGENT_RUNNERS: "codex,claude-code,opencode",
           },

@@ -176,6 +176,9 @@ describe("coding remote runner HTTP runner", () => {
       ELIZA_CODING_WORKSPACE: workspaceRoot,
       ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
     });
+    const previousRunnerToken = process.env.ELIZA_REMOTE_RUNNER_HTTP_TOKEN;
+    const previousSecretCloudKey = process.env.SECRET_CLOUD_KEY;
+    const previousPath = process.env.PATH;
     process.env.ELIZA_REMOTE_RUNNER_HTTP_TOKEN = "super-secret-token";
     process.env.SECRET_CLOUD_KEY = "leak-me";
     process.env.PATH = process.env.PATH ?? "/usr/bin";
@@ -188,7 +191,21 @@ describe("coding remote runner HTTP runner", () => {
       expect(built.ELIZA_REMOTE_RUNNER_HTTP_TOKEN).toBeUndefined();
       expect(built.SECRET_CLOUD_KEY).toBeUndefined();
     } finally {
-      delete process.env.SECRET_CLOUD_KEY;
+      if (previousRunnerToken === undefined) {
+        delete process.env.ELIZA_REMOTE_RUNNER_HTTP_TOKEN;
+      } else {
+        process.env.ELIZA_REMOTE_RUNNER_HTTP_TOKEN = previousRunnerToken;
+      }
+      if (previousSecretCloudKey === undefined) {
+        delete process.env.SECRET_CLOUD_KEY;
+      } else {
+        process.env.SECRET_CLOUD_KEY = previousSecretCloudKey;
+      }
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
     }
   });
 
