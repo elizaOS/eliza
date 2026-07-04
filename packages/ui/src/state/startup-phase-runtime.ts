@@ -28,7 +28,8 @@ import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 function isCapacitorNative(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
-      { isNativePlatform?: () => boolean } | undefined;
+      | { isNativePlatform?: () => boolean }
+      | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
     return false;
