@@ -493,4 +493,27 @@ describe("processDueScheduledTasks — reminder intensity modulates the no-reply
     );
     expect(retried?.metadata?.noReplyPolicy).toMatchObject({ maxRetries: 1 });
   });
+
+  it("records the applied intensity on the task so the ladder choice is auditable", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    await resolveOwnerFactStore(runtime).setReminderIntensity(
+      { intensity: "persistent" },
+      provenance,
+    );
+    const reminder = await seedFiredReminder(runtime, "high");
+
+    const result = await timeoutTick(runtime);
+
+    expect(result.errors).toEqual([]);
+    const retried = await repo.getScheduledTask(
+      runtime.agentId,
+      reminder.taskId,
+    );
+    expect(retried?.metadata?.noReplyState).toMatchObject({
+      retryCount: 1,
+      appliedReminderIntensity: "persistent",
+    });
+  });
 });

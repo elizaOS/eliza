@@ -1,11 +1,13 @@
 /**
  * Pure-transform coverage for reminder-intensity → no-reply ladder (#12284 D3).
- * No runtime graph: exercises `applyReminderIntensityToNoReplyPolicy` directly.
+ * No runtime graph: exercises `applyReminderIntensityToNoReplyPolicy` and the
+ * quiet-streak intensity softener directly.
  */
 import { describe, expect, it } from "vitest";
 import {
   applyReminderIntensityToNoReplyPolicy,
   type NoReplyLadder,
+  softenReminderIntensityForQuietStreak,
 } from "./no-reply-intensity.ts";
 
 const base: NoReplyLadder = { maxRetries: 1, retryCadenceMinutes: [60] };
@@ -76,5 +78,23 @@ describe("applyReminderIntensityToNoReplyPolicy", () => {
     expect(
       applyReminderIntensityToNoReplyPolicy(rich, "minimal", "high"),
     ).toMatchObject({ terminalStatus: "skipped", sensitive: true });
+    expect(
+      applyReminderIntensityToNoReplyPolicy(rich, "persistent", "high"),
+    ).toMatchObject({ terminalStatus: "skipped", sensitive: true });
+  });
+});
+
+describe("softenReminderIntensityForQuietStreak", () => {
+  it("steps each intensity one notch down toward less chasing", () => {
+    expect(softenReminderIntensityForQuietStreak("persistent")).toBe("normal");
+    expect(softenReminderIntensityForQuietStreak("normal")).toBe("minimal");
+    expect(softenReminderIntensityForQuietStreak(undefined)).toBe("minimal");
+  });
+
+  it("keeps the already-suppressive intensities as fixed points", () => {
+    expect(softenReminderIntensityForQuietStreak("minimal")).toBe("minimal");
+    expect(softenReminderIntensityForQuietStreak("high_priority_only")).toBe(
+      "high_priority_only",
+    );
   });
 });

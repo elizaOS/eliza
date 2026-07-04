@@ -203,6 +203,8 @@ export interface RecentTaskStatesProvider {
     kinds?: ScheduledTaskKind[];
     subjectIds?: string[];
     lookbackDays?: number;
+    /** Pins the lookback window's upper bound; defaults to wall clock. */
+    asOf?: Date;
   }): Promise<RecentTaskStatesSummary>;
 }
 

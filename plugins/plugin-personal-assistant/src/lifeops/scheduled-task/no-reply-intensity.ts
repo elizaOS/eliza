@@ -1,5 +1,5 @@
 /**
- * Pure reminder-intensity → no-reply-policy transform (#12284 D3).
+ * Pure reminder-intensity → no-reply-policy transforms (#12284 D3 items 6+8).
  *
  * The owner's `reminderIntensity` fact shapes how persistently the tick-driven
  * no-reply loop re-nudges when the owner does not reply. This is the structural
@@ -7,8 +7,13 @@
  * (which shapes the legacy reminder-plan steps): the initial fire always
  * happens; intensity only reshapes the *follow-up* ladder.
  *
- * Kept as a standalone pure function so it is unit-testable without booting the
- * scheduler's runtime graph. `scheduler.ts` calls it against the default
+ * The quiet-streak softener lives here too so the quiet-user-watcher signal
+ * modulates behavior through the SAME intensity lookup instead of a second
+ * policy mechanism: a ≥3-day silent streak steps the effective intensity one
+ * notch down, and the regular intensity table does the rest.
+ *
+ * Kept as standalone pure functions so they are unit-testable without booting
+ * the scheduler's runtime graph. `scheduler.ts` calls them against the default
  * per-kind policy before merging any explicit per-task `metadata.noReplyPolicy`
  * override (which still wins).
  */
@@ -55,5 +60,28 @@ export function applyReminderIntensityToNoReplyPolicy<T extends NoReplyLadder>(
     }
     default:
       return policy;
+  }
+}
+
+/**
+ * Step the effective reminder intensity one notch DOWN for a quiet streak
+ * (#12284 item 8): when the owner has ignored ≥3 consecutive check-ins, the
+ * next no-reply ladder is selected as if the owner had asked for one level
+ * less chasing — never a guilt-framed extra poke. `minimal` has no lower
+ * notch, and `high_priority_only` already suppresses everything non-critical,
+ * so both are fixed points. An unset intensity softens like `normal`.
+ */
+export function softenReminderIntensityForQuietStreak(
+  intensity: ReminderIntensity | undefined,
+): ReminderIntensity {
+  switch (intensity) {
+    case "persistent":
+      return "normal";
+    case "minimal":
+      return "minimal";
+    case "high_priority_only":
+      return "high_priority_only";
+    default:
+      return "minimal";
   }
 }

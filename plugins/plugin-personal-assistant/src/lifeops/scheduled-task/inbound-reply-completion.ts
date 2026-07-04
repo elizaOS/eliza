@@ -32,6 +32,7 @@ import {
   pendingPromptRoomIdForTask,
 } from "@elizaos/plugin-scheduling";
 import { resolvePendingPromptsStore } from "../pending-prompts/store.js";
+import { recordTaskStateEntry } from "./scheduler.js";
 
 const LOG_SRC = "lifeops:scheduled-task:inbound-reply-completion";
 
@@ -81,6 +82,14 @@ export async function completeFiredTasksOnOwnerReply(
       if (updated.state.status === "completed") {
         result.completed.push(task.taskId);
         await resolvePendingPromptsStore(runtime).forgetTask(task.taskId);
+        // Feed the recent-task-states log: the reply is the engagement
+        // signal that breaks a quiet streak (#12284 item 8). Never throws.
+        await recordTaskStateEntry(
+          runtime,
+          updated,
+          "completed",
+          new Date(repliedAtIso),
+        );
         logger.info(
           {
             src: LOG_SRC,

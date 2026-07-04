@@ -6,8 +6,12 @@
  *
  * Contract: summarize(opts?): Promise<{ summary, streaks, notable }>
  *
- * Reads the cache-backed task log maintained by the scheduled-task runner
- * via `readScheduledTaskLog`.
+ * Reads the cache-backed task log via `readScheduledTaskLog`. The log's
+ * production writer is the LifeOps scheduled-task tick
+ * (`../lifeops/scheduled-task/scheduler.ts`), which appends fires,
+ * completions, and no-reply terminal outcomes so the summarized streaks —
+ * including the quiet-user softening signal (#12284 item 8) — reflect real
+ * spine activity, not just test seeds.
  */
 
 import { hasOwnerAccess } from "@elizaos/agent";
@@ -49,11 +53,19 @@ export interface RecentTaskStatesProvider {
     kinds?: ScheduledTaskKind[];
     subjectIds?: string[];
     lookbackDays?: number;
+    /** Pins the lookback window's upper bound; defaults to wall clock. */
+    asOf?: Date;
   }): Promise<RecentTaskStatesSummary>;
 }
 
 const TASK_LOG_CACHE_KEY = "eliza:lifeops:scheduled-task-log:v1";
 const DEFAULT_LOOKBACK_DAYS = 7;
+/**
+ * Hard cap on retained log entries. The summarize window is 7 days by
+ * default; even a chatty agent (dozens of fires/outcomes a day) stays far
+ * below this, so the cap only guards the cache row against unbounded growth.
+ */
+const TASK_LOG_MAX_ENTRIES = 500;
 
 /**
  * Read the scheduled-task log from the cache-backed list maintained alongside
@@ -78,7 +90,10 @@ export async function readScheduledTaskLog(
 }
 
 /**
- * Test/integration helper — append an entry to the log.
+ * Append an entry to the log, retaining only the newest
+ * {@link TASK_LOG_MAX_ENTRIES}. Called by the scheduled-task tick for fires,
+ * completions, and no-reply terminal outcomes (and by tests to seed
+ * histories directly).
  */
 export async function appendScheduledTaskLogEntry(
   runtime: IAgentRuntime,
@@ -88,7 +103,10 @@ export async function appendScheduledTaskLogEntry(
   const existing =
     (await cache.getCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY)) ?? [];
   existing.push(entry);
-  await cache.setCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY, existing);
+  await cache.setCache<RecentTaskStateEntry[]>(
+    TASK_LOG_CACHE_KEY,
+    existing.slice(-TASK_LOG_MAX_ENTRIES),
+  );
 }
 
 const TERMINAL_OUTCOMES: ReadonlySet<TerminalState> = new Set<TerminalState>([
@@ -191,11 +209,16 @@ export function createRecentTaskStatesProvider(
   return {
     async summarize(opts = {}) {
       const lookbackDays = opts.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
-      const cutoffMs = Date.now() - lookbackDays * 86_400_000;
+      const asOfMs = opts.asOf?.getTime() ?? Date.now();
+      const cutoffMs = asOfMs - lookbackDays * 86_400_000;
       const log = await readScheduledTaskLog(runtime);
       const filtered = log.filter((entry) => {
         const recordedMs = Date.parse(entry.recordedAt);
-        if (!Number.isFinite(recordedMs) || recordedMs < cutoffMs) {
+        if (
+          !Number.isFinite(recordedMs) ||
+          recordedMs < cutoffMs ||
+          recordedMs > asOfMs
+        ) {
           return false;
         }
         if (

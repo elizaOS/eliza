@@ -8,6 +8,12 @@
  * shouldFire, completionCheck, recurrence, due time), never on promptInstructions
  * text. The always-loaded scheduling plugin owns the runner service; this module
  * is the pure due/fire computation it drives.
+ *
+ * The no-reply ladder is owner-adaptive (#12284): the `reminderIntensity`
+ * owner fact reshapes the default per-kind policy, and a ≥3-day quiet streak
+ * (derived from the recent-task-states log this tick also feeds) steps the
+ * effective intensity one notch down so a silent owner gets backed off, not
+ * chased harder.
  */
 import { hasOwnerAccess } from "@elizaos/agent";
 import {
@@ -16,7 +22,7 @@ import {
   type Memory,
   type MessagePayload,
 } from "@elizaos/core";
-import type { ScheduledTask } from "@elizaos/plugin-scheduling";
+import type { ScheduledTask, TerminalState } from "@elizaos/plugin-scheduling";
 import {
   expectedReplyKindForTask,
   getAnchorRegistry,
@@ -27,6 +33,15 @@ import {
   pendingPromptRoomIdForTask,
 } from "@elizaos/plugin-scheduling";
 import {
+  quietStreakDaysFromObservations,
+  runQuietUserWatcher,
+} from "../../default-packs/quiet-user-watcher.js";
+import {
+  appendScheduledTaskLogEntry,
+  createRecentTaskStatesProvider,
+  type RecentTaskStateEntry,
+} from "../../providers/recent-task-states.js";
+import {
   ownerFactsToView,
   type ReminderIntensity,
   resolveOwnerFactStore,
@@ -36,7 +51,10 @@ import {
   resolvePendingPromptsStore,
 } from "../pending-prompts/store.js";
 import { LifeOpsRepository } from "../repository.js";
-import { applyReminderIntensityToNoReplyPolicy } from "./no-reply-intensity.js";
+import {
+  applyReminderIntensityToNoReplyPolicy,
+  softenReminderIntensityForQuietStreak,
+} from "./no-reply-intensity.js";
 import { getScheduledTaskRunner } from "./service.js";
 
 type NoReplyTerminalStatus = "skipped" | "expired" | "failed";
@@ -135,7 +153,9 @@ function isTickDrivenCompletionCheck(task: ScheduledTask): boolean {
   );
 }
 
-function isTerminalStatus(status: ScheduledTask["state"]["status"]): boolean {
+function isTerminalStatus(
+  status: ScheduledTask["state"]["status"],
+): status is TerminalState {
   return (
     status === "completed" ||
     status === "skipped" ||
@@ -246,17 +266,43 @@ function defaultNoReplyPolicyFor(task: ScheduledTask): NoReplyPolicy | null {
   }
 }
 
+interface NoReplyPolicyResolution {
+  policy: NoReplyPolicy;
+  /** Intensity the ladder was actually derived with (post-softening). */
+  appliedIntensity?: ReminderIntensity;
+  /** True when a quiet streak stepped the effective intensity down. */
+  quietStreakSoftened: boolean;
+}
+
+/**
+ * Quiet-streak softening applies only to the "poke" kinds. Approvals stay at
+ * full cadence: they gate agent-side actions, and silently under-chasing one
+ * changes what the agent is allowed to do (sensitive approvals fail closed).
+ */
+function isQuietSoftenableKind(kind: ScheduledTask["kind"]): boolean {
+  return kind === "reminder" || kind === "checkin";
+}
+
 function resolveNoReplyPolicy(
   task: ScheduledTask,
   intensity?: ReminderIntensity,
-): NoReplyPolicy | null {
+  quietStreakDays?: number,
+): NoReplyPolicyResolution | null {
   const defaultPolicy = defaultNoReplyPolicyFor(task);
+  // Quiet-streak softening (#12284 item 8): a silent owner steps the
+  // effective intensity one notch down, then the regular intensity lookup
+  // shapes the ladder — one mechanism, two signals.
+  const quietStreakSoftened =
+    quietStreakDays !== undefined && isQuietSoftenableKind(task.kind);
+  const appliedIntensity = quietStreakSoftened
+    ? softenReminderIntensityForQuietStreak(intensity)
+    : intensity;
   // Owner intensity shapes the DEFAULT ladder; an explicit per-task
   // `metadata.noReplyPolicy` override (merged below) still wins field-by-field.
   const base = defaultPolicy
     ? applyReminderIntensityToNoReplyPolicy(
         defaultPolicy,
-        intensity,
+        appliedIntensity,
         task.priority,
       )
     : null;
@@ -280,26 +326,85 @@ function resolveNoReplyPolicy(
       ? raw.terminalStatus
       : fallback.terminalStatus;
   return {
-    maxRetries: readPositiveInteger(raw?.maxRetries) ?? fallback.maxRetries,
-    retryCadenceMinutes:
-      readPositiveIntegerArray(raw?.retryCadenceMinutes) ??
-      fallback.retryCadenceMinutes,
-    terminalStatus,
-    terminalReason:
-      typeof raw?.terminalReason === "string" && raw.terminalReason.length > 0
-        ? raw.terminalReason
-        : fallback.terminalReason,
-    sensitive:
-      typeof raw?.sensitive === "boolean" ? raw.sensitive : fallback.sensitive,
-    allowCrossChannel:
-      typeof raw?.allowCrossChannel === "boolean"
-        ? raw.allowCrossChannel
-        : fallback.allowCrossChannel,
-    allowNonOwnerNotification:
-      typeof raw?.allowNonOwnerNotification === "boolean"
-        ? raw.allowNonOwnerNotification
-        : fallback.allowNonOwnerNotification,
+    policy: {
+      maxRetries: readPositiveInteger(raw?.maxRetries) ?? fallback.maxRetries,
+      retryCadenceMinutes:
+        readPositiveIntegerArray(raw?.retryCadenceMinutes) ??
+        fallback.retryCadenceMinutes,
+      terminalStatus,
+      terminalReason:
+        typeof raw?.terminalReason === "string" && raw.terminalReason.length > 0
+          ? raw.terminalReason
+          : fallback.terminalReason,
+      sensitive:
+        typeof raw?.sensitive === "boolean"
+          ? raw.sensitive
+          : fallback.sensitive,
+      allowCrossChannel:
+        typeof raw?.allowCrossChannel === "boolean"
+          ? raw.allowCrossChannel
+          : fallback.allowCrossChannel,
+      allowNonOwnerNotification:
+        typeof raw?.allowNonOwnerNotification === "boolean"
+          ? raw.allowNonOwnerNotification
+          : fallback.allowNonOwnerNotification,
+    },
+    ...(appliedIntensity ? { appliedIntensity } : {}),
+    quietStreakSoftened,
   };
+}
+
+/**
+ * Derive the owner's quiet streak (consecutive ignored check-ins/follow-ups)
+ * from the recent-task-states log, evaluated as of the tick's `now`. Returns
+ * `undefined` when the owner is not quiet — the softening no-op.
+ */
+async function resolveQuietStreakDays(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<number | undefined> {
+  const observations = await runQuietUserWatcher(
+    createRecentTaskStatesProvider(runtime),
+    { asOf: now },
+  );
+  return quietStreakDaysFromObservations(observations);
+}
+
+/**
+ * Mirror a task transition into the recent-task-states log — the feed the
+ * quiet-user watcher and the quiet-streak no-reply softening read. Only the
+ * transitions that say something about the OWNER's engagement are recorded
+ * (fires, completions, no-reply terminals); gate denials and dispatch retries
+ * are runner mechanics, not owner behavior, and would pollute the streaks.
+ * Never throws (J7 inside) — safe to call after a committed transition.
+ * Also called by `inbound-reply-completion.ts` for its completion path.
+ */
+export async function recordTaskStateEntry(
+  runtime: IAgentRuntime,
+  task: ScheduledTask,
+  outcome: RecentTaskStateEntry["outcome"],
+  recordedAt: Date,
+): Promise<void> {
+  try {
+    await appendScheduledTaskLogEntry(runtime, {
+      taskId: task.taskId,
+      kind: task.kind,
+      outcome,
+      recordedAt: recordedAt.toISOString(),
+      ...(task.subject ? { subjectId: task.subject.id } : {}),
+    });
+  } catch (error) {
+    // error-policy:J7 telemetry write; a failed log append must not undo or
+    // re-error a task transition that already committed. Surfaced via
+    // reportError so repeated failures escalate.
+    logger.warn(
+      `[lifeops-scheduled-task] task-state log append failed for ${task.taskId}: ${errorMessage(error)}`,
+    );
+    runtime.reportError("lifeops:scheduled-task:state-log", error, {
+      taskId: task.taskId,
+      outcome,
+    });
+  }
 }
 
 function readMessageOccurredAt(message: Memory, fallback: Date): Date {
@@ -359,6 +464,12 @@ export async function processDueScheduledTasks(
   // Owner-wide reminder intensity shapes how persistently the no-reply loop
   // re-nudges (see `applyReminderIntensityToNoReplyPolicy`).
   const reminderIntensity = ownerFactsRaw.reminderIntensity?.value;
+  // Quiet streak (#12284 item 8): read once per tick; when present it steps
+  // the effective intensity one notch down for reminder/checkin ladders.
+  const quietStreakDays = await resolveQuietStreakDays(
+    request.runtime,
+    request.now,
+  );
   const dueContext = {
     now: request.now,
     ownerFacts,
@@ -416,6 +527,12 @@ export async function processDueScheduledTasks(
       if (evaluated.state.status === "completed") {
         result.completions.push(completionResult(evaluated));
         completedTaskIds.add(evaluated.taskId);
+        await recordTaskStateEntry(
+          request.runtime,
+          evaluated,
+          "completed",
+          request.now,
+        );
       }
     } catch (error) {
       const message = errorMessage(error);
@@ -450,6 +567,7 @@ export async function processDueScheduledTasks(
           agentId: request.agentId,
           task,
           reminderIntensity,
+          quietStreakDays,
           now: request.now,
           reason: timeout.reason,
         });
@@ -460,6 +578,15 @@ export async function processDueScheduledTasks(
           occurrenceAtIso: timeout.occurrenceAtIso,
         });
         timeoutTaskIds.add(timedOut.task.taskId);
+        const timedOutStatus = timedOut.task.state.status;
+        if (isTerminalStatus(timedOutStatus)) {
+          await recordTaskStateEntry(
+            request.runtime,
+            timedOut.task,
+            timedOutStatus,
+            request.now,
+          );
+        }
       } catch (error) {
         const message = errorMessage(error);
         logger.warn(
@@ -515,14 +642,30 @@ async function handleCompletionTimeout(args: {
   now: Date;
   reason: string;
   reminderIntensity?: ReminderIntensity;
+  quietStreakDays?: number;
 }): Promise<{ task: ScheduledTask; reason: string }> {
-  const policy = resolveNoReplyPolicy(args.task, args.reminderIntensity);
-  if (!policy) {
+  const resolution = resolveNoReplyPolicy(
+    args.task,
+    args.reminderIntensity,
+    args.quietStreakDays,
+  );
+  if (!resolution) {
     const skipped = await args.runner.apply(args.task.taskId, "skip", {
       reason: args.reason,
     });
     return { task: skipped, reason: args.reason };
   }
+  const { policy } = resolution;
+  // Persisted alongside the resolved ladder so the softening decision is
+  // observable in the task record (#12284 item 8), not just in behavior.
+  const appliedIntensityMetadata = {
+    ...(resolution.appliedIntensity
+      ? { appliedReminderIntensity: resolution.appliedIntensity }
+      : {}),
+    ...(resolution.quietStreakSoftened
+      ? { quietStreakSoftened: true, quietStreakDays: args.quietStreakDays }
+      : {}),
+  };
 
   const state = readNoReplyState(args.task);
   if (state.retryCount < policy.maxRetries) {
@@ -550,6 +693,7 @@ async function handleCompletionTimeout(args: {
         retryCount: state.retryCount + 1,
         lastTimedOutAt: args.now.toISOString(),
         nextRetryAt,
+        ...appliedIntensityMetadata,
       },
     };
     await args.repo.upsertScheduledTask(args.agentId, args.task);
@@ -589,6 +733,7 @@ async function handleCompletionTimeout(args: {
       lastTimedOutAt: args.now.toISOString(),
       terminalReason: policy.terminalReason,
       terminalOutcome: policy.sensitive ? "denied" : policy.terminalStatus,
+      ...appliedIntensityMetadata,
     },
   };
   await args.repo.upsertScheduledTask(args.agentId, args.task);
@@ -663,6 +808,14 @@ export async function processScheduledTaskInboundMessage(
       if (evaluated.state.status === "completed") {
         result.completions.push(completionResult(evaluated));
         await promptStore.resolve(roomId, prompt.taskId);
+        // The reply is the streak-breaking engagement signal: without this
+        // append a quiet streak would survive the owner coming back.
+        await recordTaskStateEntry(
+          request.runtime,
+          evaluated,
+          "completed",
+          now,
+        );
       }
     } catch (error) {
       const message = errorMessage(error);
@@ -787,6 +940,12 @@ async function handleFireResult(args: {
         reason: decision.reason,
         occurrenceAtIso: decision.occurrenceAtIso,
       });
+      await recordTaskStateEntry(
+        request.runtime,
+        persisted,
+        "fired",
+        request.now,
+      );
       try {
         const recorded = await recordPendingPromptIfNeeded({
           runtime: request.runtime,

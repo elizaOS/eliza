@@ -11,6 +11,13 @@
  * morning-brief pack to fold in; it does **not** send a separate
  * notification (that's what the consolidation policy on `wake.confirmed` is
  * for — see `consolidation-policies.ts`).
+ *
+ * The observations also have one structural consumer (#12284 item 8): the
+ * scheduled-task tick derives the quiet streak through the same helpers and
+ * softens the next no-reply ladder one intensity notch
+ * (`softenReminderIntensityForQuietStreak` in
+ * `../lifeops/scheduled-task/no-reply-intensity.ts`) — back off a silent
+ * owner instead of repeating the same cadence at them.
  */
 
 import type {
@@ -141,16 +148,32 @@ export function deriveQuietObservations(
 }
 
 /**
+ * Extract the quiet-streak length (in ignored check-ins/follow-ups) from a
+ * set of watcher observations, or `undefined` when the owner is not quiet.
+ * The structural seam the scheduler's no-reply softening keys on.
+ */
+export function quietStreakDaysFromObservations(
+  observations: QuietUserWatcherObservation[],
+): number | undefined {
+  const quiet = observations.find(
+    (observation) => observation.kind === "quiet_for_days",
+  );
+  return quiet?.days;
+}
+
+/**
  * Convenience wrapper for the runtime: ask the provider for a summary, then
- * derive observations.
+ * derive observations. `asOf` pins the lookback window for deterministic
+ * tick-time evaluation (defaults to wall clock inside the provider).
  */
 export async function runQuietUserWatcher(
   provider: RecentTaskStatesProvider,
-  options: { thresholdDays?: number; lookbackDays?: number } = {},
+  options: { thresholdDays?: number; lookbackDays?: number; asOf?: Date } = {},
 ): Promise<QuietUserWatcherObservation[]> {
   const summary = await provider.summarize({
     kinds: ["checkin", "followup"],
     lookbackDays: options.lookbackDays ?? 7,
+    ...(options.asOf ? { asOf: options.asOf } : {}),
   });
   return deriveQuietObservations(summary, {
     thresholdDays: options.thresholdDays,
