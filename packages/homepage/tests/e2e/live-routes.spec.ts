@@ -1,3 +1,7 @@
+/**
+ * Live route smoke coverage for homepage pages, console errors, network failures, and screenshots.
+ */
+
 import { expect, type Page, test } from "playwright/test";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 

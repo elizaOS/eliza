@@ -1,3 +1,7 @@
+/**
+ * Live Playwright coverage for public onboarding controls that do not require API mocks.
+ */
+
 import { expect, test } from "playwright/test";
 
 test.setTimeout(180_000);

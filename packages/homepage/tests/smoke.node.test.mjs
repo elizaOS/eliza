@@ -1,7 +1,9 @@
-// Source-level smoke: don't import the React tree (pulls three.js, etc.); just
-// assert the entry module exports a default function via static inspection.
-// Runs under `node --test` so the homepage `test` script exits clean without
-// adding vitest as a dep.
+/**
+ * Source-level smoke test for the marketing page export without importing the React tree.
+ *
+ * The package test script runs under node:test, so this avoids pulling three.js
+ * or adding Vitest just to confirm the entry component remains exportable.
+ */
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

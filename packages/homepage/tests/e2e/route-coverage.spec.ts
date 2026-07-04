@@ -1,3 +1,7 @@
+/**
+ * Static route-matrix coverage guard for homepage live and visual Playwright specs.
+ */
+
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

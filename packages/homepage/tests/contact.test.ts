@@ -1,3 +1,7 @@
+/**
+ * Tests homepage SMS contact link constants and href generation for the shared Eliza gateway.
+ */
+
 import { describe, expect, test } from "bun:test";
 import {
   buildElizaSmsHref,

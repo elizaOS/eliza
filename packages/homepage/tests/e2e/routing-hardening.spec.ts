@@ -1,3 +1,7 @@
+/**
+ * Playwright hardening tests for hostile route inputs and browser history restoration.
+ */
+
 import { expect, type Page, test } from "playwright/test";
 
 function collectPageErrors(page: Page): string[] {

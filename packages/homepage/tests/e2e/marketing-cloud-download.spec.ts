@@ -1,3 +1,7 @@
+/**
+ * Playwright coverage for marketing download CTAs and cloud/app link targets.
+ */
+
 import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   type APIRequestContext,

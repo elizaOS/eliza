@@ -1,3 +1,7 @@
+/**
+ * Playwright route-flow coverage for mocked homepage auth, linking, and provisioning paths.
+ */
+
 import { expect, type Page, test } from "playwright/test";
 
 const TEST_TOKEN = "homepage-e2e-token";

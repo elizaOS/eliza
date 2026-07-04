@@ -1,13 +1,11 @@
-// Visual regression for the marketing homepage (#9310 §3.16).
-//
-// Every route × viewport is compared against a committed baseline in
-// visual.spec.ts-snapshots/ via toHaveScreenshot (threshold in
-// playwright.config.ts), mirroring packages/os/homepage/tests/visual.spec.ts.
-// The quality-retry capture stays as a pre-check so a blank/half-painted page
-// fails with a clear "screenshot is one color" message instead of a noisy
-// pixel diff. Regenerate baselines per platform with
-// scripts/regenerate-baselines.sh; quality.yml / deploy-homepage.yml
-// auto-regenerate + commit the 10 linux baselines when missing.
+/**
+ * Visual regression coverage for the marketing homepage routes.
+ *
+ * Every route and viewport is compared against committed baselines via
+ * toHaveScreenshot, while the quality-retry pre-check rejects blank or
+ * half-painted captures with a clear diagnostic before pixel diffing.
+ * Baselines regenerate per platform through scripts/regenerate-baselines.sh.
+ */
 
 import { expect, type Page, test } from "playwright/test";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
