@@ -1,6 +1,8 @@
 name: Docker CI Smoke
 
 on:
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  workflow_call:
   pull_request:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]

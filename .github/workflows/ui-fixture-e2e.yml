@@ -17,6 +17,8 @@ name: UI Fixture E2E
 # documents the skip instead of silently not existing.
 
 on:
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  workflow_call:
   pull_request:
     branches: [main, develop]
     paths:

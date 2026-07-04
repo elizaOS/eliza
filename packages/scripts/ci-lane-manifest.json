@@ -68,5 +68,49 @@
       "@elizaos/skills"
     ],
     "nonEmptyScriptLanes": ["test", "test:e2e", "test:integration"]
-  }
+  },
+  "$reusableComment": "The platform lanes the scheduled exhaustive orchestrator (develop-exhaustive.yml) must invoke via workflow_call so the full develop matrix runs unfiltered. ci-full-matrix-proof.mjs fails if the orchestrator drops a lane's `uses:` or a listed workflow stops declaring a workflow_call trigger. These are the lanes test.yml's own schedule does not cover: Windows, mobile, scenario, UI gates, keyless harness, docker, dev, desktop/electrobun.",
+  "exhaustiveOrchestrator": ".github/workflows/develop-exhaustive.yml",
+  "reusableWorkflows": [
+    {
+      "workflow": ".github/workflows/windows-ci.yml",
+      "name": "Windows full matrix"
+    },
+    {
+      "workflow": ".github/workflows/mobile-build-smoke.yml",
+      "name": "Mobile build smoke"
+    },
+    {
+      "workflow": ".github/workflows/scenario-pr.yml",
+      "name": "Scenario deterministic E2E"
+    },
+    {
+      "workflow": ".github/workflows/ui-e2e-gate.yml",
+      "name": "UI e2e gate"
+    },
+    {
+      "workflow": ".github/workflows/ui-fixture-e2e.yml",
+      "name": "UI fixture e2e"
+    },
+    {
+      "workflow": ".github/workflows/ui-story-gate.yml",
+      "name": "UI story gate"
+    },
+    {
+      "workflow": ".github/workflows/keyless-harness-e2e.yml",
+      "name": "Keyless harness E2E"
+    },
+    {
+      "workflow": ".github/workflows/docker-ci-smoke.yml",
+      "name": "Docker image smoke"
+    },
+    {
+      "workflow": ".github/workflows/dev-smoke.yml",
+      "name": "Dev onboarding smoke"
+    },
+    {
+      "workflow": ".github/workflows/test-electrobun-release.yml",
+      "name": "Electrobun desktop release"
+    }
+  ]
 }

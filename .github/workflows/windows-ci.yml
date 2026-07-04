@@ -14,6 +14,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  workflow_call:
   push:
     branches: [main, develop]
     paths:

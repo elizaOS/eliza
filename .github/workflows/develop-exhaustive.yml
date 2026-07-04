@@ -1,0 +1,158 @@
+name: Develop Exhaustive Lane
+
+# Un-cancellable scheduled run of the FULL develop matrix (#12342, epic #12191
+# phase 5). test.yml's own 09:17 schedule already covers the unit / e2e /
+# plugin / desktop / zero-key lanes; this orchestrator adds the platform lanes
+# that otherwise only run path-gated on PRs — Windows, mobile, scenario, the
+# three UI gates, the keyless harness, docker, dev onboarding, and the
+# electrobun/desktop contract — by invoking each via `workflow_call` so no step
+# is duplicated. workflow_call bypasses the per-workflow path filters, and a
+# schedule-origin event makes every called workflow's
+# `github.event_name != 'pull_request'` job gate evaluate true, so the lanes run
+# unfiltered (exhaustive). The final proof job statically asserts the committed
+# manifest still matches test.yml AND that every required reusable workflow is
+# wired here and declares workflow_call, then fails the run if any reusable lane
+# did not succeed — a skipped or failed platform lane is a coverage gap, not a
+# pass.
+
+on:
+  schedule:
+    # Twice daily, offset from test.yml (09:17) and ci-full-matrix-proof (03:13/
+    # 15:13) so the three scheduled signals do not stampede the runner pool.
+    - cron: "0 6 * * *"
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+# Dedicated group, never cancelled by push/PR traffic: the whole point is a
+# completed daily coverage signal (#12337/#12342).
+concurrency:
+  group: develop-exhaustive-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+jobs:
+  windows:
+    name: Windows full matrix
+    uses: ./.github/workflows/windows-ci.yml
+    secrets: inherit
+  mobile:
+    name: Mobile build smoke
+    uses: ./.github/workflows/mobile-build-smoke.yml
+    secrets: inherit
+  scenario:
+    name: Scenario deterministic E2E
+    uses: ./.github/workflows/scenario-pr.yml
+    secrets: inherit
+  ui-e2e:
+    name: UI e2e gate
+    uses: ./.github/workflows/ui-e2e-gate.yml
+    secrets: inherit
+  ui-fixture:
+    name: UI fixture e2e
+    uses: ./.github/workflows/ui-fixture-e2e.yml
+    secrets: inherit
+  ui-story:
+    name: UI story gate
+    uses: ./.github/workflows/ui-story-gate.yml
+    secrets: inherit
+  keyless-harness:
+    name: Keyless harness E2E
+    uses: ./.github/workflows/keyless-harness-e2e.yml
+    secrets: inherit
+  docker:
+    name: Docker image smoke
+    uses: ./.github/workflows/docker-ci-smoke.yml
+    secrets: inherit
+  dev-onboarding:
+    name: Dev onboarding smoke
+    uses: ./.github/workflows/dev-smoke.yml
+    secrets: inherit
+  electrobun:
+    name: Electrobun desktop release
+    uses: ./.github/workflows/test-electrobun-release.yml
+    secrets: inherit
+
+  matrix-proof:
+    name: Exhaustive lane matrix proof
+    needs:
+      - windows
+      - mobile
+      - scenario
+      - ui-e2e
+      - ui-fixture
+      - ui-story
+      - keyless-harness
+      - docker
+      - dev-onboarding
+      - electrobun
+    # Run even when a reusable lane failed so the proof enumerates every lane
+    # and the result check below can name the offender; only a cancel skips it.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    env:
+      CI: "true"
+      BUN_VERSION: "1.3.14"
+      NODE_VERSION: "24.15.0"
+      NODE_NO_WARNINGS: "1"
+      NODE_OPTIONS: "--max-old-space-size=8192"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Assert every reusable lane succeeded (skipped/failed == gap)
+        env:
+          RESULTS: >-
+            windows=${{ needs.windows.result }}
+            mobile=${{ needs.mobile.result }}
+            scenario=${{ needs.scenario.result }}
+            ui-e2e=${{ needs.ui-e2e.result }}
+            ui-fixture=${{ needs.ui-fixture.result }}
+            ui-story=${{ needs.ui-story.result }}
+            keyless-harness=${{ needs.keyless-harness.result }}
+            docker=${{ needs.docker.result }}
+            dev-onboarding=${{ needs.dev-onboarding.result }}
+            electrobun=${{ needs.electrobun.result }}
+        run: |
+          fail=0
+          for pair in $RESULTS; do
+            lane="${pair%%=*}"
+            result="${pair##*=}"
+            if [ "$result" = "success" ]; then
+              echo "lane $lane: success"
+            else
+              echo "::error::exhaustive lane $lane did not succeed (result=$result) — a skipped or failed platform lane is a coverage gap, not a pass"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Validate GitHub-native turbo cache contract
+        run: node packages/scripts/ci-turbo-cache-contract.mjs
+
+      - name: Validate workflow dedup contract
+        run: node packages/scripts/ci-workflow-dedup-contract.mjs
+
+      - name: Capture exhaustive test plan
+        run: node packages/scripts/run-all-tests.mjs --plan=json > /tmp/full-matrix-plan.json
+
+      - name: Prove exhaustive lane coverage (manifest + reusable wiring)
+        run: node packages/scripts/ci-full-matrix-proof.mjs --plan-file /tmp/full-matrix-plan.json

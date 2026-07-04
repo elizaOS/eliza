@@ -86,19 +86,31 @@ const HEALTHY_PLAN = {
   ],
 };
 
-function runProof({ workflow, manifest, plan }) {
+function runProof({ workflow, manifest, plan, orchestrator, reusables }) {
   const dir = mkdtempSync(join(tmpdir(), "ci-matrix-proof-"));
   try {
     const workflowPath = join(dir, "test.yml");
     const manifestPath = join(dir, "manifest.json");
     const planPath = join(dir, "plan.json");
     writeFileSync(workflowPath, workflow);
-    // The manifest's `workflow` field is resolved relative to the repo root, so
-    // point it at the fixture via an absolute path for the test.
-    writeFileSync(
-      manifestPath,
-      JSON.stringify({ ...manifest, workflow: workflowPath }),
-    );
+    // The manifest's path fields are resolved relative to the repo root, so
+    // point them at the fixtures via absolute paths for the test.
+    const resolved = { ...manifest, workflow: workflowPath };
+    if (orchestrator) {
+      const orchestratorPath = join(dir, "develop-exhaustive.yml");
+      writeFileSync(orchestratorPath, orchestrator);
+      resolved.exhaustiveOrchestrator = orchestratorPath;
+    }
+    if (reusables) {
+      resolved.reusableWorkflows = Object.entries(reusables).map(
+        ([basename, content]) => {
+          const p = join(dir, basename);
+          writeFileSync(p, content);
+          return { workflow: p, name: basename };
+        },
+      );
+    }
+    writeFileSync(manifestPath, JSON.stringify(resolved));
     writeFileSync(planPath, JSON.stringify(plan));
 
     const result = spawnSync(
@@ -208,6 +220,85 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain(
       'script lane "test:e2e" collected zero tasks',
     );
+  });
+
+  const CALLABLE_WORKFLOW = `name: Reusable
+on:
+  workflow_call:
+  pull_request:
+jobs:
+  x:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo ok
+`;
+
+  const NON_CALLABLE_WORKFLOW = `name: Reusable
+on:
+  pull_request:
+jobs:
+  x:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo ok
+`;
+
+  function orchestrator(basenames) {
+    const lanes = basenames
+      .map(
+        (b, i) =>
+          `  lane${i}:\n    uses: ./.github/workflows/${b}\n    secrets: inherit`,
+      )
+      .join("\n");
+    return `name: Develop Exhaustive\non:\n  schedule:\n    - cron: "0 6 * * *"\njobs:\n${lanes}\n`;
+  }
+
+  test("passes when the orchestrator wires every reusable lane and each is callable", () => {
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan: HEALTHY_PLAN,
+      orchestrator: orchestrator(["windows-ci.yml", "scenario-pr.yml"]),
+      reusables: {
+        "windows-ci.yml": CALLABLE_WORKFLOW,
+        "scenario-pr.yml": CALLABLE_WORKFLOW,
+      },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("PASS every expected lane accounted for");
+  });
+
+  test("fails when the orchestrator drops a reusable lane's uses:", () => {
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan: HEALTHY_PLAN,
+      // Only wires windows-ci; scenario-pr is listed but not invoked.
+      orchestrator: orchestrator(["windows-ci.yml"]),
+      reusables: {
+        "windows-ci.yml": CALLABLE_WORKFLOW,
+        "scenario-pr.yml": CALLABLE_WORKFLOW,
+      },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("missing reusable lane");
+    expect(result.stderr).toContain("scenario-pr.yml");
+  });
+
+  test("fails when a listed reusable workflow no longer declares workflow_call", () => {
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan: HEALTHY_PLAN,
+      orchestrator: orchestrator(["windows-ci.yml", "scenario-pr.yml"]),
+      reusables: {
+        "windows-ci.yml": CALLABLE_WORKFLOW,
+        "scenario-pr.yml": NON_CALLABLE_WORKFLOW,
+      },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("reusable workflow not callable");
+    expect(result.stderr).toContain("scenario-pr.yml");
   });
 
   test("proves the real committed manifest against the real workflow + plan", () => {

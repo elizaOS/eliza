@@ -1,6 +1,8 @@
 name: Validate Electrobun Release Workflow
 
 on:
+  # Reusable entry for the scheduled exhaustive develop lane (#12342).
+  workflow_call:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:

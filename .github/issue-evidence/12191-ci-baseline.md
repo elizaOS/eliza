@@ -64,8 +64,47 @@ serialization or latest-only semantics and are not develop coverage).
 - `ci-ok` `strict_results` now includes `push`, so a skipped real lane on
   `develop` fails the aggregate instead of passing silently.
 
-## After metrics (to be filled by phase 5, #12342)
+## What phases 4/5 added on top of phase 1
 
-Re-run the same `gh run list` census once the change has been on `develop` long
-enough to accumulate completed push runs; record completion rate, cancel rate,
-wall-clock p50/p95, and billable-minute deltas against this baseline.
+- **Phase 4 (#12341):** the whole repo is off the Vercel SaaS Turbo remote
+  cache and on the GitHub-native cache (`setup-bun-workspace` →
+  `turbo-cache-github` shim). 0 workflows wire `TURBO_TOKEN` / `TURBO_TEAM` /
+  `TURBO_CACHE: remote:rw` (was ~20). `ci-workflow-dedup-contract.mjs` now
+  forbids the SaaS env and requires the GitHub-native cache on the publish
+  paths. PR-lane `typecheck` (ci.yaml) and `lint` (quality.yml) run through
+  `turbo --affected` scoped to the PR merge base.
+- **Phase 5 (#12342):** `develop-exhaustive.yml` — an un-cancellable scheduled
+  orchestrator (06:00/18:00 UTC, own concurrency group) — invokes the platform
+  lanes test.yml's schedule does not cover (Windows / mobile / scenario / the 3
+  UI gates / keyless harness / docker / dev / electrobun) via `workflow_call`,
+  then runs `ci-full-matrix-proof.mjs`. The proof fails on a missing lane, a
+  PR-only-pinned lane, a dropped reusable-workflow `uses:` or `workflow_call`
+  trigger, a plan-floor breach, or a zero-collected lane
+  (`run-all-tests.mjs --min-tasks`).
+
+## After metrics — the exact post-merge census a reviewer runs
+
+These require live `develop` CI data accumulated after merge; run once the
+branch has been on `develop` long enough:
+
+```bash
+# Completed-vs-cancelled develop push coverage (phase-1 target: >0 completed).
+gh run list --repo elizaos/eliza --workflow test.yml --branch develop \
+  --event push --limit 200 --json conclusion,createdAt
+
+# The un-cancellable scheduled exhaustive lane completes >=2x/day, never
+# cancelled by pushes (phase-5 DoD: 7 consecutive days).
+gh run list --repo elizaos/eliza --workflow develop-exhaustive.yml \
+  --event schedule --limit 20 --json conclusion,createdAt
+gh run list --repo elizaos/eliza --workflow ci-full-matrix-proof.yml \
+  --event schedule --limit 20 --json conclusion,createdAt
+
+# Turbo cache-hit parity on a representative develop PR (phase-4 DoD):
+# grep the affected typecheck/lint step logs for ">>> FULL TURBO" / cache hits.
+gh run view <pr-run-id> --log | grep -iE 'cache hit|FULL TURBO|>>> '
+```
+
+Record completion rate, cancel rate, wall-clock p50/p95, and billable-minute
+deltas against the phase-1 numbers above. The mechanisms are verified in the
+#12191 PR (contract negative tests + live guard fail-loud demos); these metrics
+are the only observation-gated items.

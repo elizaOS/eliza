@@ -5,12 +5,18 @@
  * scheduled full-matrix run cannot silently drop coverage or report vacuous
  * green.
  *
- * It cross-checks three independent sources of truth:
+ * It cross-checks four independent sources of truth:
  *   1. `packages/scripts/ci-lane-manifest.json` — the committed expectation.
  *   2. `.github/workflows/test.yml` — every manifest lane must exist as a job
  *      and must not be gated so it can never run on the exhaustive (non-PR)
  *      event, which would turn a "required" lane into a permanent skip.
- *   3. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
+ *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
+ *      must still invoke every manifest `reusableWorkflows` lane via
+ *      `workflow_call`, and each of those workflows must still declare a
+ *      `workflow_call` trigger. A dropped `uses:` or a removed trigger silently
+ *      strips a platform lane (Windows/mobile/scenario/UI/desktop) from the
+ *      exhaustive matrix and fails the job.
+ *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
  *      manifest floors (total tasks/packages, per-script-lane presence, and the
  *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
  *      deleted core package collapses one of these and fails the job.
@@ -192,6 +198,62 @@ function checkWorkflowLanes(manifest, violations, laneReport) {
   }
 }
 
+// The scheduled exhaustive orchestrator (develop-exhaustive.yml) must keep
+// invoking every platform lane the manifest lists, and each of those workflows
+// must still declare a `workflow_call` trigger — otherwise the orchestrator
+// silently drops that lane's coverage. Both halves are checked statically so a
+// dropped `uses:` or a removed trigger fails without waiting for the run.
+function checkReusableWorkflows(manifest, violations, laneReport) {
+  if (
+    !manifest.exhaustiveOrchestrator ||
+    !Array.isArray(manifest.reusableWorkflows)
+  ) {
+    return;
+  }
+  const orchestratorPath = resolve(repoRoot, manifest.exhaustiveOrchestrator);
+  let orchestratorText;
+  try {
+    orchestratorText = readFileSync(orchestratorPath, "utf8");
+  } catch {
+    violations.push(
+      `missing exhaustive orchestrator: ${manifest.exhaustiveOrchestrator} not found`,
+    );
+    return;
+  }
+
+  for (const reusable of manifest.reusableWorkflows) {
+    const basename = reusable.workflow.split("/").pop();
+    const usesRef = `./.github/workflows/${basename}`;
+    if (!orchestratorText.includes(`uses: ${usesRef}`)) {
+      violations.push(
+        `missing reusable lane: ${manifest.exhaustiveOrchestrator} does not invoke ${usesRef} (${reusable.name})`,
+      );
+      laneReport.push({ lane: basename, name: reusable.name, status: "NOT-WIRED" });
+      continue;
+    }
+    let declaresWorkflowCall = false;
+    try {
+      declaresWorkflowCall = /^\s{2}workflow_call:/m.test(
+        readFileSync(resolve(repoRoot, reusable.workflow), "utf8"),
+      );
+    } catch {
+      violations.push(
+        `missing reusable workflow: ${reusable.workflow} (${reusable.name}) not found`,
+      );
+      laneReport.push({ lane: basename, name: reusable.name, status: "MISSING" });
+      continue;
+    }
+    if (!declaresWorkflowCall) {
+      violations.push(
+        `reusable workflow not callable: ${reusable.workflow} does not declare a workflow_call trigger, so ${manifest.exhaustiveOrchestrator} cannot invoke it`,
+      );
+      laneReport.push({ lane: basename, name: reusable.name, status: "NO-CALL" });
+      continue;
+    }
+    laneReport.push({ lane: basename, name: reusable.name, status: "OK" });
+  }
+}
+
 function checkPlanFloors(manifest, plan, violations, floorReport) {
   const floors = manifest.planFloors;
   const summary = plan.summary || {};
@@ -314,6 +376,7 @@ export function runProof(options) {
   const floorReport = [];
 
   checkWorkflowLanes(manifest, violations, laneReport);
+  checkReusableWorkflows(manifest, violations, laneReport);
   checkPlanFloors(manifest, plan, violations, floorReport);
 
   return { manifest, plan, violations, laneReport, floorReport };
