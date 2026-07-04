@@ -1,19 +1,21 @@
 #!/usr/bin/env node
-// Find candidate duplicate React components in @elizaos/ui.
-//
-// Walks packages/ui/src for .ts/.tsx files. Extracts:
-//   - filename basename (e.g. button)
-//   - exported React component identifiers (default + named PascalCase exports)
-//
-// Groups by:
-//   1. EXACT name (case-insensitive) — same component name in multiple files
-//   2. PARTIAL name — components whose normalized name is a token-subset of
-//      another, or differ only by a common suffix/prefix (Card / CardLite,
-//      ChatHeader / ChatHeaderCompact, etc.)
-//
-// Output is markdown to stdout + JSON report to scripts/duplicate-components-report.json
-//
-// Usage: bun run scripts/find-duplicate-components.mjs [--min N]
+/**
+ * Finds candidate duplicate React components in @elizaos/ui.
+ *
+ * Walks packages/ui/src for .ts/.tsx files. Extracts:
+ *   - filename basename (e.g. button)
+ *   - exported React component identifiers (default + named PascalCase exports)
+ *
+ * Groups by:
+ *   1. EXACT name (case-insensitive) — same component name in multiple files
+ *   2. PARTIAL name — components whose normalized name is a token-subset of
+ *      another, or differ only by a common suffix/prefix (Card / CardLite,
+ *      ChatHeader / ChatHeaderCompact, etc.)
+ *
+ * Output is markdown to stdout + JSON report to scripts/duplicate-components-report.json
+ *
+ * Usage: bun run scripts/find-duplicate-components.mjs [--min N]
+ */
 
 import fs from "node:fs";
 import path from "node:path";

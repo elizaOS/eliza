@@ -1,15 +1,17 @@
-// Enable affordance for the dev perf HUD + frame-budget telemetry (issue #9141).
-//
-// The frame-budget monitor + PerfOverlay self-gate on `window.__ELIZA_PERF_HUD__`
-// so they cost production nothing. This module is the single place that flips it:
-// - boot enable from a Vite env (`VITE_ELIZA_PERF_HUD`) or a persisted pref,
-// - a runtime hotkey (Cmd/Ctrl+Shift+P),
-// - a console handle (`window.__elizaPerfHud()`),
-// each dispatching PERF_TOGGLE_EVENT so live consumers react.
-//
-// Reflow + re-render telemetry gates separately on isRenderTelemetryEnabled().
-// Only the rAF-driven FPS/jank sampler is opt-in here, to honor the battery
-// decision that removed permanent rAF loops.
+/**
+ * Enable affordance for the dev perf HUD + frame-budget telemetry (issue #9141).
+ *
+ * The frame-budget monitor + PerfOverlay self-gate on `window.__ELIZA_PERF_HUD__`
+ * so they cost production nothing. This module is the single place that flips it:
+ * - boot enable from a Vite env (`VITE_ELIZA_PERF_HUD`) or a persisted pref,
+ * - a runtime hotkey (Cmd/Ctrl+Shift+P),
+ * - a console handle (`window.__elizaPerfHud()`),
+ * each dispatching PERF_TOGGLE_EVENT so live consumers react.
+ *
+ * Reflow + re-render telemetry gates separately on isRenderTelemetryEnabled().
+ * Only the rAF-driven FPS/jank sampler is opt-in here, to honor the battery
+ * decision that removed permanent rAF loops.
+ */
 
 import { isRenderTelemetryEnabled } from "../hooks/useRenderGuard";
 

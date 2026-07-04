@@ -1,7 +1,8 @@
-// ---------------------------------------------------------------------------
-// Cloud types — Cloud*, App*, Trajectory*, Registry*, Whitelist*,
-// Verification*, Wallet display types, CodingAgent*, Pty*
-// ---------------------------------------------------------------------------
+/**
+ * Cloud-domain client DTOs: Cloud*, App*, Trajectory*, Registry*, Whitelist*,
+ * Verification*, wallet display types, CodingAgent*, Pty*. One slice of the
+ * ElizaClient type surface, re-exported through client-types.ts.
+ */
 
 import type {
   TrajectoryExportOptions as CoreTrajectoryExportOptions,

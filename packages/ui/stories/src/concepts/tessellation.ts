@@ -1,12 +1,14 @@
-// Tessellation — tectonic facets breathing in traveling sine waves.
-//
-// IcosahedronGeometry(1,2), non-indexed, flat-shaded. At build, base vertex
-// positions and their normalized radial directions are cached in Float32Arrays.
-// Each frame, every vertex is displaced outward along its direction by the sum
-// of two traveling sine waves whose ridgelines sweep across the globe over time.
-// computeVertexNormals() after each update keeps the flat facets crisp.
-// Wave amplitude and speed grow with energy; a sharp pulse on respond flares
-// emissive intensity and spikes amplitude briefly; accent tint bleeds in on respond.
+/**
+ * Tessellation — tectonic facets breathing in traveling sine waves.
+ *
+ * IcosahedronGeometry(1,2), non-indexed, flat-shaded. At build, base vertex
+ * positions and their normalized radial directions are cached in Float32Arrays.
+ * Each frame, every vertex is displaced outward along its direction by the sum
+ * of two traveling sine waves whose ridgelines sweep across the globe over time.
+ * computeVertexNormals() after each update keeps the flat facets crisp.
+ * Wave amplitude and speed grow with energy; a sharp pulse on respond flares
+ * emissive intensity and spikes amplitude briefly; accent tint bleeds in on respond.
+ */
 
 import type {
   ConceptDescriptor,

@@ -1,12 +1,14 @@
-// Shared kit for the voice-orb comparison harness.
-//
-// Concept files (./concepts/<id>.ts) import the types + helpers from HERE, never
-// from voice-main.tsx — importing the entry module would re-run its
-// `createRoot`/`root.render` and mount a second React tree onto the canvas.
-//
-// TSL's node API is a runtime proxy with no usable static types, so the
-// three/tsl modules are typed loosely at this boundary and nowhere else.
-// Concepts receive `THREE`/`TSL` already imported.
+/**
+ * Shared kit for the voice-orb comparison harness.
+ *
+ * Concept files (./concepts/<id>.ts) import the types + helpers from HERE, never
+ * from voice-main.tsx — importing the entry module would re-run its
+ * `createRoot`/`root.render` and mount a second React tree onto the canvas.
+ *
+ * TSL's node API is a runtime proxy with no usable static types, so the
+ * three/tsl modules are typed loosely at this boundary and nowhere else.
+ * Concepts receive `THREE`/`TSL` already imported.
+ */
 
 export type WebGPUModule = Record<string, any>;
 export type TSLModule = Record<string, any>;

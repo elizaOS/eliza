@@ -1,4 +1,4 @@
-// Re-export shim: AOSP renderer detection now lives in `@elizaos/shared`.
+/** Re-export shim for AOSP renderer detection, which lives in `@elizaos/shared`. */
 export {
   isAospElizaUserAgent,
   userAgentHasElizaOSMarker,

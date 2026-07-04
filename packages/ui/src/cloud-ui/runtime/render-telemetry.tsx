@@ -1,8 +1,10 @@
 "use client";
 
-// Only the RenderTelemetryProfiler component lives here so Vite React Fast
-// Refresh can hot-patch it. The telemetry primitives (constants, types,
-// setRenderTelemetrySink, useRenderGuard) live in hooks/useRenderGuard.
+/**
+ * Only the RenderTelemetryProfiler component lives here so Vite React Fast
+ * Refresh can hot-patch it. The telemetry primitives (constants, types,
+ * setRenderTelemetrySink, useRenderGuard) live in hooks/useRenderGuard.
+ */
 
 import {
   Profiler,

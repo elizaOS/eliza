@@ -1,19 +1,16 @@
-// ============================================================================
-// Headless first-run "finish" use case.
-//
-// This is the SINGLE provisioning implementation for completing onboarding.
-// It owns no presentation — the in-chat first-run conductor
-// (`use-first-run-conductor.ts`) calls these functions and renders the seeded
-// chat messages. All product decisions (default provider, needsProviderSetup,
-// the POST body) live in the pure config layer (`first-run-config.ts` /
-// `first-run.ts`); this module wires the ports.
-//
-// Extracted from the former `use-first-run-controller.ts` React hook (the
-// full-screen onboarding wizard, now deleted). The finish bodies are moved
-// here verbatim apart from replacing React state/setters with injected ports
-// and funneling EVERY `POST /api/first-run` through the single `persistFirstRun`
-// helper (idempotency-guarded), so a completed onboarding posts exactly once.
-// ============================================================================
+/**
+ * Headless first-run "finish" use case.
+ *
+ * This is the SINGLE provisioning implementation for completing onboarding. It
+ * owns no presentation — the in-chat first-run conductor
+ * (`use-first-run-conductor.ts`) calls these functions and renders the seeded
+ * chat messages. All product decisions (default provider, needsProviderSetup,
+ * the POST body) live in the pure config layer (`first-run-config.ts` /
+ * `first-run.ts`); this module wires the ports.
+ *
+ * Every `POST /api/first-run` funnels through the single, idempotency-guarded
+ * `persistFirstRun` helper, so a completed onboarding posts exactly once.
+ */
 
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";

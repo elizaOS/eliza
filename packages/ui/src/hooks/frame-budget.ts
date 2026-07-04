@@ -1,15 +1,17 @@
-// Frame-budget measurement for the dashboard shell (issue #9141, task 1).
-//
-// The render-telemetry stack (useRenderGuard / RenderTelemetryProfiler) detects
-// runaway *render loops* — too many React commits per second. It says nothing
-// about *dropped frames*: a single expensive layout/paint or a main-thread long
-// task blows the 60/120fps budget without ever tripping a commit-rate threshold.
-// This module is the missing measurement — a pure summarizer over a window of
-// requestAnimationFrame deltas plus PerformanceObserver('longtask') counts, so
-// the live HUD and any KPI spec can read the same numbers from the same math.
-//
-// Everything here is pure and deterministic (no rAF, no DOM) so it unit-tests
-// cleanly; the rAF/observer glue lives in ./useFrameBudgetMonitor.
+/**
+ * Frame-budget measurement for the dashboard shell (issue #9141, task 1).
+ *
+ * The render-telemetry stack (useRenderGuard / RenderTelemetryProfiler) detects
+ * runaway *render loops* — too many React commits per second. It says nothing
+ * about *dropped frames*: a single expensive layout/paint or a main-thread long
+ * task blows the 60/120fps budget without ever tripping a commit-rate threshold.
+ * This module is the missing measurement — a pure summarizer over a window of
+ * requestAnimationFrame deltas plus PerformanceObserver('longtask') counts, so
+ * the live HUD and any KPI spec can read the same numbers from the same math.
+ *
+ * Everything here is pure and deterministic (no rAF, no DOM) so it unit-tests
+ * cleanly; the rAF/observer glue lives in ./useFrameBudgetMonitor.
+ */
 
 /** A frame-rate target. 60 → a 16.67ms budget; 120 → 8.33ms (ProMotion). */
 export interface FrameBudget {

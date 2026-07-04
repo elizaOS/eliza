@@ -1,19 +1,19 @@
-// ============================================================================
-// Cloud-login resume marker (device WebView-eviction survival).
-//
-// On a native device the first-run cloud login opens an EXTERNAL browser
-// (SFSafariViewController), which backgrounds the WebView; iOS frequently
-// cold-launches the app on return, wiping the conductor's in-memory flow state
-// (draftRef / pendingCloudResumeRef / the transcript). Without a durable marker
-// the conductor re-mounts and re-seeds the greeting — the user experiences a
-// "restart" back to "where should your agent run?".
-//
-// This marker persists the minimum needed to RESUME the interrupted cloud flow
-// after the relaunch: the runtime intent + the draft fields the provision step
-// reads. Paired with the durable cloud token (steward-session), on return the
-// conductor re-arms the existing auto-resume path and completes onboarding into
-// chat instead of restarting. Cleared on completion or a fresh runtime pick.
-// ============================================================================
+/**
+ * Cloud-login resume marker (device WebView-eviction survival).
+ *
+ * On a native device the first-run cloud login opens an EXTERNAL browser
+ * (SFSafariViewController), which backgrounds the WebView; iOS frequently
+ * cold-launches the app on return, wiping the conductor's in-memory flow state
+ * (draftRef / pendingCloudResumeRef / the transcript). Without a durable marker
+ * the conductor re-mounts and re-seeds the greeting — the user experiences a
+ * "restart" back to "where should your agent run?".
+ *
+ * This marker persists the minimum needed to RESUME the interrupted cloud flow
+ * after the relaunch: the runtime intent + the draft fields the provision step
+ * reads. Paired with the durable cloud token (steward-session), on return the
+ * conductor re-arms the existing auto-resume path and completes onboarding into
+ * chat instead of restarting. Cleared on completion or a fresh runtime pick.
+ */
 
 import type { FirstRunLocalInference, FirstRunProfileDraft } from "./first-run";
 

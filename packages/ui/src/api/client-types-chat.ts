@@ -1,7 +1,8 @@
-// ---------------------------------------------------------------------------
-// Chat types — Conversation*, Chat*, Message*, Stream*, Action*, Emote*,
-// Document*, Memory*, MCP*, Share*
-// ---------------------------------------------------------------------------
+/**
+ * Chat-domain client DTOs: Conversation*, Chat*, Message*, Stream*, Action*,
+ * Emote*, Document*, Memory*, MCP*, Share*. One slice of the ElizaClient type
+ * surface, re-exported through client-types.ts.
+ */
 
 import type {
   ChatFailureKind,

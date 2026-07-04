@@ -1,24 +1,26 @@
-// Runtime reflow (layout-shift) telemetry (issue #9141).
-//
-// useRenderGuard catches runaway *re-renders*; useFrameBudgetMonitor catches
-// dropped *frames*. Neither catches a *reflow*: content jumping after paint (a
-// ranked widget list reordering, a card popping in and pushing siblings down,
-// an avatar loading with no reserved box). That visible "blip" is exactly a
-// `layout-shift` PerformanceEntry, the same signal Chrome sums into CLS.
-//
-// This module is the missing runtime glue: a passive PerformanceObserver that
-// windows the shifts and emits a LayoutShiftTelemetryEvent on the SAME
-// `eliza:render-telemetry` channel the render-guard and frame-budget monitor
-// use (one channel, by design). The pure CLS math lives in
-// ../testing/layout-stability (shared with the unit tests + the e2e observer),
-// so this file is only the browser glue and stays thin.
-//
-// A layout-shift observer is passive: it fires only when the layout actually
-// shifts, with no rAF/poll, so unlike the frame-budget sampler it is cheap
-// enough to run always-on in dev. It therefore gates on the same
-// isRenderTelemetryEnabled() switch as useRenderGuard (on in dev/test, off in
-// production, killable via __ELIZA_RENDER_TELEMETRY_DISABLED__ or the env), not
-// the opt-in perf-HUD flag.
+/**
+ * Runtime reflow (layout-shift) telemetry (issue #9141).
+ *
+ * useRenderGuard catches runaway *re-renders*; useFrameBudgetMonitor catches
+ * dropped *frames*. Neither catches a *reflow*: content jumping after paint (a
+ * ranked widget list reordering, a card popping in and pushing siblings down,
+ * an avatar loading with no reserved box). That visible "blip" is exactly a
+ * `layout-shift` PerformanceEntry, the same signal Chrome sums into CLS.
+ *
+ * This module is the missing runtime glue: a passive PerformanceObserver that
+ * windows the shifts and emits a LayoutShiftTelemetryEvent on the SAME
+ * `eliza:render-telemetry` channel the render-guard and frame-budget monitor
+ * use (one channel, by design). The pure CLS math lives in
+ * ../testing/layout-stability (shared with the unit tests + the e2e observer),
+ * so this file is only the browser glue and stays thin.
+ *
+ * A layout-shift observer is passive: it fires only when the layout actually
+ * shifts, with no rAF/poll, so unlike the frame-budget sampler it is cheap
+ * enough to run always-on in dev. It therefore gates on the same
+ * isRenderTelemetryEnabled() switch as useRenderGuard (on in dev/test, off in
+ * production, killable via __ELIZA_RENDER_TELEMETRY_DISABLED__ or the env), not
+ * the opt-in perf-HUD flag.
+ */
 
 import { useEffect } from "react";
 import {

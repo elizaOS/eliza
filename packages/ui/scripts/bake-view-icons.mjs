@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Bake the generated launcher view icons (PNG) into a committed TS file as
-// base64 data URIs, so every tile is preloaded in the JS bundle — no network,
-// no /api/views hero 404 on native, no client-SVG fallback, no loading/empty
-// state. Source PNGs are generated via codex CLI (see scripts/gen-view-icons).
-//
-// Usage: node scripts/bake-view-icons.mjs [srcDir]   (default /tmp/view-icons)
+/**
+ * Bakes the generated launcher view icons (PNG) into a committed TS file as
+ * base64 data URIs, so every tile is preloaded in the JS bundle — no network,
+ * no /api/views hero 404 on native, no client-SVG fallback, no loading/empty
+ * state. Source PNGs are generated via codex CLI (see scripts/gen-view-icons).
+ *
+ * Usage: node scripts/bake-view-icons.mjs [srcDir]   (default /tmp/view-icons)
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

@@ -1,20 +1,20 @@
-// ============================================================================
-// In-chat model-status conductor (headless) — #12178 WI-4.
-//
-// While the local text model is not yet ready (missing / downloading / loading
-// / error), this hook keeps ONE live system turn (`model:download-status`) in
-// the SAME transcript the floating chat renders, so download progress is
-// visible INSIDE the chat — the home widget is invisible while the full-screen
-// onboarding chat covers home. The card updates in place (never one bubble per
-// tick), shows name / % / ETA, clamps the displayed percent monotonically, and
-// carries `__model__:` controls (cancel / switch to cloud / retry / download)
-// that route through the model action channel — never to the server.
-//
-// It reads the already-plumbed `controller.modelStatus`
-// (`deriveHomeModelStatus`) — nothing new is fetched. It coexists with the
-// first-run conductor (separate turn id) and stays mounted after onboarding, so
-// a later boot where the model isn't ready still surfaces the card.
-// ============================================================================
+/**
+ * In-chat model-status conductor (headless) — #12178 WI-4.
+ *
+ * While the local text model is not yet ready (missing / downloading / loading
+ * / error), this hook keeps ONE live system turn (`model:download-status`) in
+ * the SAME transcript the floating chat renders, so download progress is
+ * visible INSIDE the chat — the home widget is invisible while the full-screen
+ * onboarding chat covers home. The card updates in place (never one bubble per
+ * tick), shows name / % / ETA, clamps the displayed percent monotonically, and
+ * carries `__model__:` controls (cancel / switch to cloud / retry / download)
+ * that route through the model action channel — never to the server.
+ *
+ * It reads the already-plumbed `controller.modelStatus`
+ * (`deriveHomeModelStatus`) — nothing new is fetched. It coexists with the
+ * first-run conductor (separate turn id) and stays mounted after onboarding, so
+ * a later boot where the model isn't ready still surfaces the card.
+ */
 
 import * as React from "react";
 import type { ConversationMessage } from "../api";

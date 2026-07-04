@@ -1,17 +1,18 @@
-// Single auto-scroll / at-bottom / jump-to-latest engine for chat threads (#12348).
-//
-// Both chat surfaces that own their own scroller — the homescreen `ChatSurface`
-// mini-chat and (to follow) the continuous overlay — used to hand-roll the same
-// three behaviours: pin to the newest line while the reader rests at the bottom,
-// do NOT yank a reader who has scrolled up to read history, and coalesce the
-// bottom-follow write into a single rAF so a streamed token never forces a
-// synchronous reflow. This hook is that logic, once, with the at-bottom state
-// promoted to a real value so a "jump to latest" affordance can render when the
-// reader has scrolled away (previously no surface had one).
-//
-// It is scroll math only — no chrome, no message shape. The caller wires the
-// returned `scrollRef` to its scroller, reads `atBottom` to gate a jump control,
-// and calls `jumpToLatest()` from that control.
+/**
+ * Single auto-scroll / at-bottom / jump-to-latest engine for chat threads (#12348).
+ *
+ * The chat surfaces that own their own scroller — the homescreen `ChatSurface`
+ * mini-chat and the continuous overlay — share the same three behaviours through
+ * this one hook: pin to the newest line while the reader rests at the bottom, do
+ * NOT yank a reader who has scrolled up to read history, and coalesce the
+ * bottom-follow write into a single rAF so a streamed token never forces a
+ * synchronous reflow. The at-bottom state is a real value so a "jump to latest"
+ * affordance can render when the reader has scrolled away.
+ *
+ * It is scroll math only — no chrome, no message shape. The caller wires the
+ * returned `scrollRef` to its scroller, reads `atBottom` to gate a jump control,
+ * and calls `jumpToLatest()` from that control.
+ */
 
 import {
   useCallback,

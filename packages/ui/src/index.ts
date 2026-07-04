@@ -1,6 +1,9 @@
-// Stylesheets live in `./styles.ts` (`@elizaos/ui/styles`) so the barrel can be
-// imported by Node-side plugin loaders without forcing a CSS evaluation
-// (Node refuses ".css" extensions). Renderers must opt-in explicitly.
+/**
+ * Main barrel for @elizaos/ui: the package's public export surface. Stylesheets
+ * live in `./styles.ts` (`@elizaos/ui/styles`) so this barrel can be imported by
+ * Node-side plugin loaders without forcing a CSS evaluation (Node refuses ".css"
+ * extensions); renderers must opt into styles explicitly.
+ */
 
 export { resolveAppBranding } from "@elizaos/shared";
 export * from "./App";

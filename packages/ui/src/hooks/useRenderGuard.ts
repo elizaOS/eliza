@@ -1,7 +1,9 @@
-// Canonical render-loop telemetry for every elizaOS front-end (app shell and
-// cloud dashboard alike). The RenderTelemetryProfiler component lives in
-// ../cloud-ui/runtime/render-telemetry.tsx so it stays Fast Refresh-compatible;
-// everything else (constants, types, sink, useRenderGuard) is here.
+/**
+ * Canonical render-loop telemetry for every elizaOS front-end (app shell and
+ * cloud dashboard alike). The RenderTelemetryProfiler component lives in
+ * ../cloud-ui/runtime/render-telemetry.tsx so it stays Fast Refresh-compatible;
+ * everything else (constants, types, sink, useRenderGuard) is here.
+ */
 
 import { useEffect, useRef } from "react";
 

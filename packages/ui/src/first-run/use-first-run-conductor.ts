@@ -1,39 +1,39 @@
-// ============================================================================
-// In-chat first-run conductor (headless).
-//
-// Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
-// seeds synthetic assistant turns into the SAME live transcript the floating
-// `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
-// the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
-// routes the user's first-run-scoped picks to the headless finish use case
-// (`first-run-finish.ts`). It owns NO presentation — the existing
-// `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
-// free from message fields. It registers an action handler on the first-run
-// channel so the chat's single send funnel short-circuits first-run picks
-// before they hit the server.
-//
-// The composer is UNLOCKED during onboarding (#12178, a deliberate reversal of
-// the #9952 onboarding lock): the user can type freely, and a second channel
-// handler (`setFirstRunTextHandler`) answers that free text with a local user
-// turn + a deterministic assistant reply that varies by flow position. Free
-// text NEVER reaches the server pre-completion — the AppContext funnel enforces
-// that; this hook only renders the local echo.
-//
-// Provisioning runs exactly once and POSTs /api/first-run exactly once (the
-// finish module funnels + idempotency-guards it). The real
-// `firstRunComplete` flip is DEFERRED to the tutorial-or-skip pick, so the
-// tutorial step is reachable after every runtime path.
-//
-// Confused-user guards (spam taps, stale widgets, out-of-order picks):
-// - `busyRef` — one finish/provision flow at a time; extra picks are consumed
-//   as no-ops while one is in flight.
-// - `provisionedRef` latch — after provisioning succeeds only the tutorial
-//   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
-// - Strict id validation per group — garbage under the reserved prefix is
-//   consumed, never acted on and never forwarded to the server.
-// - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
-//   connect-and-resume continuation (`pendingCloudResumeRef`).
-// ============================================================================
+/**
+ * In-chat first-run conductor (headless).
+ *
+ * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
+ * seeds synthetic assistant turns into the SAME live transcript the floating
+ * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
+ * the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
+ * routes the user's first-run-scoped picks to the headless finish use case
+ * (`first-run-finish.ts`). It owns NO presentation — the existing
+ * `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
+ * free from message fields. It registers an action handler on the first-run
+ * channel so the chat's single send funnel short-circuits first-run picks
+ * before they hit the server.
+ *
+ * The composer is UNLOCKED during onboarding (#12178, a deliberate reversal of
+ * the #9952 onboarding lock): the user can type freely, and a second channel
+ * handler (`setFirstRunTextHandler`) answers that free text with a local user
+ * turn + a deterministic assistant reply that varies by flow position. Free
+ * text NEVER reaches the server pre-completion — the AppContext funnel enforces
+ * that; this hook only renders the local echo.
+ *
+ * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
+ * finish module funnels + idempotency-guards it). The real `firstRunComplete`
+ * flip is DEFERRED to the tutorial-or-skip pick, so the tutorial step is
+ * reachable after every runtime path.
+ *
+ * Confused-user guards (spam taps, stale widgets, out-of-order picks):
+ * - `busyRef` — one finish/provision flow at a time; extra picks are consumed
+ *   as no-ops while one is in flight.
+ * - `provisionedRef` latch — after provisioning succeeds only the tutorial
+ *   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
+ * - Strict id validation per group — garbage under the reserved prefix is
+ *   consumed, never acted on and never forwarded to the server.
+ * - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
+ *   connect-and-resume continuation (`pendingCloudResumeRef`).
+ */
 
 import * as React from "react";
 import type {
@@ -483,11 +483,11 @@ export function useFirstRunConductor(): void {
   const seedError = React.useCallback(
     (message: string) => {
       erroredRef.current = true;
-      // A DISTINCT, non-looping error surface. Previously this re-appended the
-      // runtime CHOICE, so a persistent finish error (e.g. the /api/first-run
-      // 404) re-offered the same runtime question forever with no way out. Now
-      // the error turn carries its own recovery choice (retry / restart /
-      // Settings escape) so onboarding is always recoverable.
+      // A DISTINCT, non-looping error surface: the error turn carries its own
+      // recovery choice (retry / restart / Settings escape) so onboarding is
+      // always recoverable. It must NOT re-append the runtime CHOICE — that
+      // would re-offer the same runtime question forever with no way out on a
+      // persistent finish error (e.g. the /api/first-run 404).
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,

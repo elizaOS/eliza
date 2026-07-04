@@ -1,6 +1,10 @@
-// Headless checker: load every Storybook story in isolation, capture render
-// errors (SB error overlay, page errors, console.error). Usage:
-//   node stories/check-stories.mjs [--base http://localhost:6006] [--limit N] [--filter substr] [--globals theme:light]
+/**
+ * Headless checker: loads every Storybook story in isolation and captures
+ * render errors (SB error overlay, page errors, console.error).
+ *
+ * Usage:
+ *   node stories/check-stories.mjs [--base http://localhost:6006] [--limit N] [--filter substr] [--globals theme:light]
+ */
 import { chromium } from "playwright";
 
 const arg = (name, def) => {

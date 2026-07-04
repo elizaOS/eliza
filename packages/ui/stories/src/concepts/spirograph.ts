@@ -1,16 +1,18 @@
-// Harmonic Lissajous / spirograph curves — thick white glass tubes over the
-// solid orange field, each with a per-tube fresnel rim glow.
-//
-// 5 closed 3D curves, each traced by parametric harmonics over t in [0, 2π]:
-//   x = sin(a*t + φx), y = sin(b*t + φy), z = sin(c*t + φz)
-// Each closed curve is resampled into a CatmullRom path and swept into a real
-// TubeGeometry (so the strands have genuine thickness — THREE.Line ignores
-// linewidth on WebGPU). An unlit white material drives its opacity from a
-// view-angle fresnel term: opaque bright silhouette, translucent core letting
-// the orange show through, so every thread reads as a glowing glass tube.
-//
-// The whole bundle turns very slowly; each tube also drifts on its own axis.
-// Respond spreads the tubes apart and pumps overall opacity. Hue stays white.
+/**
+ * Harmonic Lissajous / spirograph curves — thick white glass tubes over the
+ * solid orange field, each with a per-tube fresnel rim glow.
+ *
+ * 5 closed 3D curves, each traced by parametric harmonics over t in [0, 2π]:
+ *   x = sin(a*t + φx), y = sin(b*t + φy), z = sin(c*t + φz)
+ * Each closed curve is resampled into a CatmullRom path and swept into a real
+ * TubeGeometry (so the strands have genuine thickness — THREE.Line ignores
+ * linewidth on WebGPU). An unlit white material drives its opacity from a
+ * view-angle fresnel term: opaque bright silhouette, translucent core letting
+ * the orange show through, so every thread reads as a glowing glass tube.
+ *
+ * The whole bundle turns very slowly; each tube also drifts on its own axis.
+ * Respond spreads the tubes apart and pumps overall opacity. Hue stays white.
+ */
 
 import type {
   ConceptDescriptor,
