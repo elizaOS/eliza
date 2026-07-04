@@ -22,7 +22,11 @@ interface CapturedParams {
 
 function runtimeWith(
   useModel: ReturnType<typeof vi.fn>,
-  opts?: { localTranscription?: boolean },
+  opts?: {
+    localTranscription?: boolean;
+    localProvider?: string;
+    metadataLocal?: boolean;
+  },
 ): IAgentRuntime {
   return {
     useModel,
@@ -31,9 +35,12 @@ function runtimeWith(
         ? [
             {
               modelType: "TRANSCRIPTION",
-              provider: "eliza-local-inference",
+              provider: opts.localProvider ?? "eliza-local-inference",
               priority: 0,
               registrationOrder: 0,
+              ...(opts.metadataLocal === undefined
+                ? {}
+                : { metadata: { local: opts.metadataLocal } }),
             },
           ]
         : [],
@@ -103,11 +110,44 @@ describe("RuntimeModelAsrBackend", () => {
     });
   });
 
+  it("routes interim LocalAgreement windows to provider-declared local transcription", async () => {
+    const useModel = vi.fn().mockResolvedValue("edge transcript");
+    const backend = new RuntimeModelAsrBackend(
+      runtimeWith(useModel, {
+        localTranscription: true,
+        localProvider: "acme-edge-asr",
+        metadataLocal: true,
+      }),
+    );
+
+    await expect(
+      backend.transcribe(WAV, { purpose: "interim" }),
+    ).resolves.toEqual({
+      text: "edge transcript",
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    const [, params, provider] = useModel.mock.calls[0] as [
+      string,
+      CapturedParams,
+      string,
+    ];
+    expect(provider).toBe("acme-edge-asr");
+    expect(params.transcriptionPurpose).toBe("interim");
+    expect(params.billing?.billable).toBe(false);
+  });
+
   it("skips interim LocalAgreement windows when local inference is unavailable", async () => {
     const useModel = vi.fn(async () => {
       throw new Error("should not route interim windows to hosted STT");
     });
-    const backend = new RuntimeModelAsrBackend(runtimeWith(useModel));
+    const backend = new RuntimeModelAsrBackend(
+      runtimeWith(useModel, {
+        localTranscription: true,
+        localProvider: "hosted-stt",
+        metadataLocal: false,
+      }),
+    );
 
     await expect(
       backend.transcribe(WAV, { purpose: "interim" }),

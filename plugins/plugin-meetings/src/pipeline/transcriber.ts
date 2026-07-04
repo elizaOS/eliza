@@ -64,14 +64,23 @@ function isNonSpeech(text: string): boolean {
   return text.length === 0 || NON_SPEECH_PATTERN.test(text);
 }
 
-function hasLocalInferenceTranscription(runtime: IAgentRuntime): boolean {
-  return runtime
-    .getModelRegistrations()
-    .some(
-      (registration) =>
-        registration.modelType === ModelType.TRANSCRIPTION &&
-        registration.provider === LOCAL_INFERENCE_PROVIDER,
-    );
+function localTranscriptionProvider(
+  runtime: IAgentRuntime,
+): string | undefined {
+  const registrations = runtime.getModelRegistrations();
+  const localRegistration = registrations.find(
+    (registration) =>
+      registration.modelType === ModelType.TRANSCRIPTION &&
+      registration.metadata?.local === true,
+  );
+  if (localRegistration) return localRegistration.provider;
+
+  return registrations.find(
+    (registration) =>
+      registration.modelType === ModelType.TRANSCRIPTION &&
+      registration.provider === LOCAL_INFERENCE_PROVIDER &&
+      registration.metadata?.local !== false,
+  )?.provider;
 }
 
 /**
@@ -116,8 +125,8 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       ...(opts.signal ? { signal: opts.signal } : {}),
     };
     const provider =
-      opts.purpose === "interim" && hasLocalInferenceTranscription(this.runtime)
-        ? LOCAL_INFERENCE_PROVIDER
+      opts.purpose === "interim"
+        ? localTranscriptionProvider(this.runtime)
         : undefined;
 
     if (opts.purpose === "interim" && !provider) {
