@@ -1,3 +1,11 @@
+/**
+ * Sandboxed `node:fs` facade for the iOS bridge runtime.
+ *
+ * The proxy mirrors sync, callback, stream, and promise APIs while routing
+ * path-taking operations through the mobile filesystem resolver installed by
+ * `installMobileFsShim`.
+ */
+
 import * as realFs from "node:fs";
 
 import * as sandboxedPromises from "./fs-promises-proxy.ts";

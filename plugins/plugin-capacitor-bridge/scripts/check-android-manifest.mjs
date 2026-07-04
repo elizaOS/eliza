@@ -1,3 +1,10 @@
+/**
+ * Android manifest guard for the Capacitor bridge native fragment.
+ *
+ * The package build runs this before bundling so a stray `tools:*` attribute
+ * cannot reach Capacitor sync without the namespace declaration Android needs.
+ */
+
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

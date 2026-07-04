@@ -1,10 +1,9 @@
 /**
- * @elizaos/plugin-cloud-apps
+ * Cloud Apps lifecycle plugin for connector-driven app management.
  *
- * Lets an Eliza agent manage the user's Eliza Cloud Apps — list them, describe
- * one, and run the create → deploy → live loop — from a single plugin
- * registration that reaches every connector (in-app, Discord, Telegram, and
- * cloud-hosted) through the shared AgentRuntime pipeline.
+ * The registration lets an Eliza agent list, inspect, create, deploy, monetize,
+ * back up, and safely mutate the user's Eliza Cloud Apps from every connector
+ * surface through the shared AgentRuntime pipeline.
  *
  * Read-core (non-mutating):
  *   - Action  LIST_CLOUD_APPS       — list the user's apps (name / url / status).
@@ -36,14 +35,9 @@
  *                                     to honest replies; money never transits the connector.
  *   - Action  LIST_APP_DOMAINS      — READ-ONLY: registrar/status/SSL/verification per domain.
  *
- * Auth: reads `ELIZAOS_CLOUD_API_KEY` (+ optional `ELIZAOS_CLOUD_BASE_URL`) via
- * runtime settings — the same credentials plugin-elizacloud uses. With no key
- * the actions degrade gracefully and the provider stays EMPTY.
- *
- * NOTE: a real end-to-end deploy can't be verified until the staging deploy
- * backend is armed (#9853 / Phase 4). DEPLOY_APP's tests drive the completion
- * gate with a mocked status progression + reachability — that is the proof for now.
- * ───────────────────────────────────────────────────────────────────────────
+ * Auth uses `ELIZAOS_CLOUD_API_KEY` plus optional `ELIZAOS_CLOUD_BASE_URL` from
+ * runtime settings, matching plugin-elizacloud credentials. Without a key,
+ * actions decline gracefully and the provider stays empty.
  */
 
 import type { Plugin } from "@elizaos/core";

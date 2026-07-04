@@ -1,17 +1,17 @@
+/**
+ * Unit tests for the platform-neutral NDJSON stdio bridge.
+ *
+ * They drive the framing and dispatch loop with fake buffered and streaming
+ * handlers, while the full iOS CLI wiring remains covered by the bridge route
+ * tests.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	createStdioBridge,
 	type StdioBridgeResponseFrame,
 	type StdioBridgeStreamHandler,
 } from "./stdio-bridge.ts";
-
-/**
- * Unit tests for the platform-neutral NDJSON stdio kernel (#12180). These drive
- * the framing/dispatch loop directly with a fake buffered request handler
- * standing in for the in-process `dispatchRoute` kernel, so they run with no
- * runtime boot and no device. The full iOS CLI wiring is exercised by
- * `../ios/bridge.routes.test.ts` (which must stay green after this extraction).
- */
 
 /** Collect written frames and feed NDJSON input in one shot. */
 function harness(

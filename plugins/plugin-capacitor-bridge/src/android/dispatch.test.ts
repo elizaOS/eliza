@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the Android in-process route dispatch path.
+ *
+ * They drive `dispatchBufferedRequest` and `dispatchStreamingRequest` against a
+ * fake route kernel, proving the loopback buffered envelope and incremental
+ * streaming sink lifecycle without booting a runtime or device.
+ */
+
 import type { IAgentRuntime, RouteHandlerResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
@@ -6,14 +14,6 @@ import {
 	dispatchBufferedRequest,
 	dispatchStreamingRequest,
 } from "./dispatch.ts";
-
-/**
- * Unit tests for the Android in-process route dispatch (#12352). They drive
- * `dispatchBufferedRequest` / `dispatchStreamingRequest` against a fake
- * `dispatchRoute` standing in for the real in-process kernel — no runtime boot,
- * no device — asserting the loopback-shaped buffered envelope and the
- * incremental streaming sink lifecycle the WebView contract depends on.
- */
 
 const runtime = {} as IAgentRuntime;
 

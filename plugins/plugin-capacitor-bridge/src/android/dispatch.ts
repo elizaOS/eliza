@@ -175,8 +175,8 @@ function notFound(method: string, pathname: string): AndroidBufferedResponse {
 /**
  * Dispatch one buffered request in-process and return the loopback-shaped
  * envelope. Throws on an invalid path/method (the caller surfaces it as an
- * error frame). A body arrives already-buffered because the handler ran to
- * `res.end()` before this resolves.
+ * error frame). A body arrives already-buffered because this resolves only after
+ * the handler runs to `res.end()`.
  */
 export async function dispatchBufferedRequest(
 	runtime: IAgentRuntime,

@@ -1,3 +1,11 @@
+/**
+ * iOS Bun-host bridge for the Capacitor local-agent runtime.
+ *
+ * The native shell starts this module over stdio, then exchanges JSON-RPC
+ * frames for in-process API routes, local model loading, downloads, voice
+ * calls, and transcript surfaces while all filesystem access stays sandboxed.
+ */
+
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -50,10 +58,6 @@ import {
 } from "../shared/stdio-bridge.ts";
 import { runModelGrind } from "./model-grind.ts";
 
-// `BridgeRequest` / `BridgeResponse` are the shared stdio frame types
-// (imported above as aliases) — the single source of truth for the NDJSON
-// request/response envelope this bridge speaks.
-
 interface HostCallFrame {
 	type: "host_call";
 	id: string;
@@ -103,7 +107,7 @@ interface HttpRequestPayload {
 interface HttpStreamRequestPayload extends HttpRequestPayload {
 	/**
 	 * The stream identity the caller pre-allocated so it can attach
-	 * `agentStream*` listeners before this request runs (the native `call`
+	 * `agentStream*` listeners ahead of this request (the native `call`
 	 * blocks until the stream finishes, so listeners must be live first).
 	 */
 	streamId?: unknown;
@@ -4433,8 +4437,7 @@ async function dispatchBridgeRequest(
 			// Each frame reaches the WebView as a `stream_emit` host-call, which the
 			// native host translates into an `agentStream*` Capacitor event. The
 			// call blocks until the stream finishes; tokens are already delivered by
-			// then, so the caller's listeners (attached before this ran) saw them
-			// live.
+			// then, so the caller's pre-attached listeners saw them live.
 			return fetchBackendStream(
 				backendForStream,
 				streamPayload,

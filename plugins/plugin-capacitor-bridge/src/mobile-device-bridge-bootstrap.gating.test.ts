@@ -1,9 +1,11 @@
-// Regression: the capacitor-llama TEXT handlers must NOT be registered while
-// nothing can serve them. On Android the WebView-side llama-cpp-capacitor
-// plugin is retired (#9560 one-bionic-path cutover), so the WS device bridge
-// can never attach; if the handlers register anyway they win `useModel`
-// routing at priority 0 and every chat turn dies with
-// "DEVICE_DISCONNECTED: no Capacitor llama device bridge attached" (#11277).
+/**
+ * Regression coverage for dead mobile bridge handler registration.
+ *
+ * Android text handlers must stay unregistered unless the bionic host or a real
+ * device bridge can serve them, otherwise they capture model routing and every
+ * chat turn fails with a disconnected-device error.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // SERVICE_ENABLED is read at module load, so enable the bridge before importing.

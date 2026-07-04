@@ -1,3 +1,11 @@
+/**
+ * Shared path-guard primitives for the mobile filesystem shim.
+ *
+ * These helpers normalize Node path-like inputs, derive read/write intent, and
+ * route filesystem calls through the workspace resolver that blocks traversal
+ * and native-binary writes.
+ */
+
 import * as realFs from "node:fs";
 import * as nodePath from "node:path";
 import { fileURLToPath } from "node:url";

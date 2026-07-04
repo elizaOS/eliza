@@ -1,3 +1,10 @@
+/**
+ * Import-safety coverage for the Capacitor bridge public barrel.
+ *
+ * Desktop consumers must be able to import helper exports without implicitly
+ * booting Android bridge state or mutating mobile platform environment vars.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const SAVED_ENV = {

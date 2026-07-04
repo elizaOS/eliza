@@ -130,7 +130,7 @@ function setupAndroidBridgeEnvironment(): string {
 		canonicalHome = rawHome;
 	}
 
-	// Remap any env var that starts with the old (symlink) prefix to the
+	// Remap any env var that starts with the symlinked prefix to the
 	// canonical (real) prefix so downstream code resolves paths consistently.
 	if (canonicalHome !== rawHome) {
 		if (process.env.HOME) process.env.HOME = canonicalHome;

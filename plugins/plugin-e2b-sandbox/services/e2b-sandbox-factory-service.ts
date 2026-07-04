@@ -1,3 +1,11 @@
+/**
+ * E2B SDK-backed sandbox factory for the host remote capability router.
+ *
+ * The service is registered under the shared E2B factory service type; the host
+ * router selects this provider only when the plugin is installed and configured.
+ * SDK entry metadata is normalized into the core sandbox contract here.
+ */
+
 import {
   E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   type E2BSandboxClient,
@@ -13,14 +21,6 @@ import {
 import type { SandboxConnectOpts, SandboxOpts } from "e2b";
 
 const LOG_CONTEXT = { src: "service:e2b_sandbox_factory" } as const;
-
-/**
- * `@elizaos/plugin-e2b-sandbox` — the `e2b.dev` SDK backend for the host remote
- * capability router. Registering this service under
- * {@link E2B_SANDBOX_FACTORY_SERVICE_TYPE} is the single thing that lets the
- * router select the `e2b` provider; without the plugin the router routes only
- * eliza-cloud / home runners and reports E2B as unavailable.
- */
 export class E2BSandboxFactoryService
   extends Service
   implements E2BSandboxFactoryServiceContract
@@ -98,8 +98,7 @@ type E2BSdkSandbox = {
       error?: string;
     }>;
   };
-  // The e2b SDK's Sandbox.kill() resolves to a boolean (was void in older SDK
-  // versions); match it so the SDK Sandbox stays structurally assignable here.
+  // Match the SDK's boolean kill result so Sandbox stays structurally assignable.
   kill(opts?: { requestTimeoutMs?: number }): Promise<boolean>;
 };
 

@@ -4,7 +4,7 @@
  * Rotating invalidates the current key IMMEDIATELY — anything using it stops
  * working until updated — so this action never rotates on the first ask:
  *   1. First turn ("rotate my Acme key"): resolve the app, return a confirmation
- *      prompt spelling out that the old key dies right away. No rotate call.
+ *      prompt spelling out that the previous key dies right away. No rotate call.
  *   2. Follow-up with structured `confirm: true` for the pending prompt:
  *      `client.regenerateAppApiKey(id)` runs exactly once.
  *

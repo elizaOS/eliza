@@ -1,10 +1,11 @@
-// Regression for #11669: the bootstrap's registry-backed model resolution
-// must survive an app-container migration. Rows are stored relative to the
-// local-inference root; legacy rows hold absolute paths from a container
-// UUID that no longer exists after an iOS reinstall/update. Before this fix
-// `resolveFromRegistry` did a verbatim existsSync on the stored string, so
-// both formats failed and the loader fell through to re-downloading a model
-// that was already fully present on disk.
+/**
+ * Regression coverage for registry-backed local model path resolution.
+ *
+ * The bootstrap must survive iOS app-container migration: relative rows resolve
+ * against the current local-inference root, while legacy absolute rows are
+ * re-anchored by their stored suffix only when the artifact exists.
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

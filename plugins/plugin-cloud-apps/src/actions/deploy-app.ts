@@ -11,9 +11,9 @@
  * On a verified-live deploy we also write the idempotent facts cache so the
  * agent recalls the app later (convenience, not the gate).
  *
- * NOTE: a real end-to-end deploy cannot be verified until the staging deploy
- * backend is armed (#9853 / Phase 4). The unit tests drive the gate with a
- * mocked status progression + reachability — that is the proof for now.
+ * The completion gate is injectable, so tests pin the status progression and
+ * reachability decisions here while live staging deploy coverage remains owned
+ * by the cloud API e2e lane.
  */
 
 import type { AppDto } from "@elizaos/cloud-sdk";

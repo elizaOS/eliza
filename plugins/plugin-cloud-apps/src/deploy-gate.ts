@@ -22,10 +22,9 @@
  * receives an AbortSignal to tear down the stalled connection, and the gate
  * additionally races the call so even a signal-ignoring dep can never wedge it.
  *
- * The gate is pure and fully injectable (status fetch, app fetch, probe, sleep)
- * so it can be unit-tested against a mocked status progression + reachability —
- * which is the proof for now: a real end-to-end deploy cannot be verified until
- * the staging deploy backend is armed (#9853 / Phase 4).
+ * The gate is pure and fully injectable (status fetch, app fetch, probe, sleep),
+ * so unit tests can pin status progression, timeout, and reachability behavior
+ * without coupling this helper to a live staging deploy backend.
  */
 
 import type { AppDeployStatusResponse, AppResponse } from "@elizaos/cloud-sdk";

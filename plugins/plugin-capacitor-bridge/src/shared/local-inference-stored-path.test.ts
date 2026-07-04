@@ -1,7 +1,11 @@
-// Regression for #11669: registry.json rows must survive an iOS app-container
-// migration. Stored rows are container-relative; legacy absolute rows from a
-// dead container UUID are re-anchored by their `/local-inference/` suffix and
-// only accepted when the artifact really exists at the re-anchored location.
+/**
+ * Regression coverage for persisted local-inference model paths.
+ *
+ * Registry rows survive iOS app-container migration by storing relative paths;
+ * legacy absolute rows are re-anchored by their `/local-inference/` suffix only
+ * when the artifact exists under the current state directory.
+ */
+
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1208,10 +1208,10 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // The bionic host does a SINGLE blocking generate per call (no streaming), so
 // the whole decode must finish inside this window. On a CPU-only build (the
 // Vulkan lib isn't staged) a small model runs at only a few tok/s, so a longer
-// reply (~200+ tokens) blew past the old 120s cap → "bionic host timed out", the
-// turn fell back to an empty/failed reply, and an empty trajectory was recorded.
-// Default to 300s (the other native device-bridge ops already use 600s) and let
-// it be tuned via env for slower devices.
+// reply (~200+ tokens) can exceed a 120s window and surface as a bionic-host
+// timeout with an empty/failed turn. Default to 300s (the other native
+// device-bridge ops already use 600s) and let it be tuned via env for slower
+// devices.
 const BIONIC_REQUEST_TIMEOUT_MS = readTimeoutMs(
 	"ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
 	300_000,
