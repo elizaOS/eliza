@@ -487,6 +487,52 @@ describe("VoiceService", () => {
     expect(String(signal?.source)).toMatch(/^client-ambient/);
   });
 
+  it("suppresses the agent's own echo while TTS playback is within the post-TTS cooldown (#12256 layer 1)", async () => {
+    // A controllable clock so the reply's age can exceed ECHO_WINDOW_MS (9 s)
+    // while playback stays recent — the case the age-only guard misses and the
+    // playback-cooldown catches.
+    let clockMs = Date.parse("2026-05-17T12:00:00.000Z");
+    const adapter = new MockVoiceRuntimeAdapter();
+    const voice = new VoiceService({
+      env: { ELIZA_VOICE_LIVE_RUNTIME: "1", ELIZA_VOICE_POST_TTS_COOLDOWN_MS: "1500" },
+      now: () => new Date(clockMs),
+      runtimeAdapter: adapter,
+    });
+    await voice.start({ mode: "local-runtime" });
+
+    // Turn 1: the agent replies, so lastAgentReply = "response:the capital…".
+    adapter.emitAsrFinal({ text: "the capital of france" });
+    await flushVoiceEvents();
+
+    // A long reply plays for 12 s — its message age now exceeds ECHO_WINDOW_MS,
+    // so the age-only echo guard would MISS a late echo. The playback stamp is
+    // fresh (this is what the cooldown catches). The mock reply text is
+    // "response:the capital of france"; the echo transcribes the clean tail.
+    clockMs += 12_000;
+    await voice.synthesizeSpeech({ text: "the capital of france" });
+    clockMs += 500; // echo returns 500 ms into playback (inside the 1500 cooldown)
+
+    adapter.emitAsrFinal({ text: "capital of france" });
+    await flushVoiceEvents();
+    const signalDuring = adapter.lastHandoffParams?.metadata
+      ?.voiceTurnSignal as Record<string, unknown> | undefined;
+    expect(signalDuring?.agentShouldSpeak).toBe(false); // echo suppressed
+    expect(signalDuring?.nextSpeaker).toBe("user");
+
+    // Close the echo turn with a playback so the next ASR-final opens a fresh
+    // turn (an unfinished turn would short-circuit on runtimeCommitTurnId).
+    await voice.synthesizeSpeech({ text: "anything else" });
+
+    // Well past the cooldown AND the age window: the same words now read as a
+    // genuine (repeated) user turn — the gate no longer suppresses on echo.
+    clockMs += 12_000;
+    adapter.emitAsrFinal({ text: "capital of france" });
+    await flushVoiceEvents();
+    const signalAfter = adapter.lastHandoffParams?.metadata
+      ?.voiceTurnSignal as Record<string, unknown> | undefined;
+    expect(signalAfter?.agentShouldSpeak).toBe(true);
+  });
+
   it("starts live audio mode with a mocked adapter", async () => {
     const { voice, adapter } = harness({
       ELIZA_VOICE_LIVE_AUDIO: "1",
