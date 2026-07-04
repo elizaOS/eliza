@@ -1,3 +1,4 @@
+// Defines the estate admin document safe LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

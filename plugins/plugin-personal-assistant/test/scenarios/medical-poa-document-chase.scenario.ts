@@ -1,3 +1,4 @@
+// Defines the medical poa document chase LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,
@@ -67,7 +68,7 @@ export default scenario({
       },
     },
     {
-      // Live-LLM resolution: the owner REJECTS the distribution for now.
+      // Live-LLM resolution: the owner REJECTS the distribution at this point.
       kind: "message",
       name: "owner-holds-poa-distribution",
       room: "main",

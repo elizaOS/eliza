@@ -1,3 +1,4 @@
+// Exercises LifeOps policy, scheduling, or owner-context invariants.
 import { describe, expect, it } from "vitest";
 import { validateLifeOpsPolicyRule } from "./policy-memory.ts";
 

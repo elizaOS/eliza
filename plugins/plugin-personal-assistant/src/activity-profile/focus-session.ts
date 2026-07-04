@@ -1,3 +1,4 @@
+// Supports LifeOps activity and focus projections consumed by owner context.
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

@@ -1,3 +1,4 @@
+// Registers LifeOps delivery channels and channel priority posture.
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ChannelCapabilities,

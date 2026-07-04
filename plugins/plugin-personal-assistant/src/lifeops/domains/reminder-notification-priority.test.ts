@@ -1,3 +1,4 @@
+// Exercises LifeOps domain priority and notification behavior.
 import { describe, expect, it } from "vitest";
 import {
   REMINDER_DISTANT_WINDOW_MS,

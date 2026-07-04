@@ -1,3 +1,4 @@
+// Adds a focused LifeOpsService mixin for a domain capability.
 import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,

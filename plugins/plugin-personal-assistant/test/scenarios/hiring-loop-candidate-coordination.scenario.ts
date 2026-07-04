@@ -1,3 +1,4 @@
+// Defines the hiring loop candidate coordination LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 

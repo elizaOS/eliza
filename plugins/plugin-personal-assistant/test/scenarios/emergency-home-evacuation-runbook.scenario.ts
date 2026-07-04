@@ -1,3 +1,4 @@
+// Defines the emergency home evacuation runbook LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

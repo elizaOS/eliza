@@ -1,3 +1,4 @@
+// Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
 import { describe, expect, it } from "vitest";
 import { redactSensitiveData } from "../src/lifeops/redact-sensitive-data.js";
 

@@ -1,3 +1,4 @@
+// Implements a LifeOps domain service behind the assistant orchestration layer.
 import type {
   EmailSubscriptionScanResult,
   EmailUnsubscribeRecord,

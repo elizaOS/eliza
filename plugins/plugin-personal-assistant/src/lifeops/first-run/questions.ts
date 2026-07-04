@@ -168,7 +168,7 @@ export function parseTimezone(value: unknown): string | null {
   if (trimmed.length === 0 || trimmed.length > 64) return null;
   // RFC-grade timezone validation lives at the OwnerFactStore layer; for
   // first-run we accept any non-empty string and trust the IANA name.
-  // Catastrophically wrong names surface later via downstream resolution.
+  // Catastrophically wrong names surface subsequent via downstream resolution.
   return trimmed;
 }
 

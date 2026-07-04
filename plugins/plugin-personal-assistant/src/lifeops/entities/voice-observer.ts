@@ -116,7 +116,7 @@ export class VoiceObserver {
     }
 
     // Step 3: if the OWNER speaks a kin claim (partner OR sibling — issue
-    // #10726 added siblings), queue it for later resolution. We don't
+    // #10726 added siblings), queue it for subsequent resolution. We don't
     // resolve it on the owner's turn because we don't yet know which entity
     // the named person is.
     let queuedPartnerClaims = 0;

@@ -1,3 +1,4 @@
+// Supports LifeOps activity and focus projections consumed by owner context.
 import type { ActivityProfile } from "./types.js";
 
 /**

@@ -1,3 +1,4 @@
+// Defines the art auction provenance diligence LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 

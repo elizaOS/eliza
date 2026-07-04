@@ -2409,7 +2409,7 @@ async function isForeignPageScope(
 
 // Metadata reused by the owner-* umbrella actions in owner-surfaces.ts.
 // The old umbrella is no longer planner-visible — owner-surfaces publishes the
-// individual reminder/alarm/goal/todo/routine umbrellas that delegate into
+// individual reminder/alarm/goal/task-list/routine umbrellas that delegate into
 // `runLifeOperationHandler` below.
 export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
@@ -3876,8 +3876,8 @@ export async function runLifeOperationHandler(
       if (!target) {
         const weeklyReview = await service.reviewGoalsForWeek();
         if (weeklyReview.summary.totalGoals === 0) {
-          // No goals to review — fall through to overview so todo-list-style
-          // queries like "what's on my todo list today?" still resolve.
+          // No goals to review — fall through to overview so task-list-style
+          // queries like "what's on my task item list today?" still resolve.
           const overview = await service.getOverview();
           const userQuery = messageText(message) || intent || "overview";
           const fallback = formatOverviewForQuery(overview, userQuery);

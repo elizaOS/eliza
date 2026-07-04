@@ -1,3 +1,4 @@
+// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
 import type { LifeOpsServiceBase } from "./service-mixin-core.js";
 
 /**

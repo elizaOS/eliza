@@ -1,3 +1,4 @@
+// Defines the calendar triple overlap LifeOps scenario-runner spec.
 import type {
   CapturedAction,
   ScenarioContext,
@@ -258,7 +259,7 @@ async function seedFeedAndLoader(
 
 async function cleanupFeedAndLoader(): Promise<string | undefined> {
   // Restore the production CalendarService-backed loader and remove the
-  // seeded rows so later scenarios in a shared runtime see a clean store.
+  // seeded rows so subsequent scenarios in a shared runtime see a clean store.
   setConflictDetectLoader(createCalendarFeedConflictLoader());
   if (seededRepository && seededAgentId) {
     for (const spec of Object.values(EVENTS)) {

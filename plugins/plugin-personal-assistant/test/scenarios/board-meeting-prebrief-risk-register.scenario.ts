@@ -1,3 +1,4 @@
+// Defines the board meeting prebrief risk register LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

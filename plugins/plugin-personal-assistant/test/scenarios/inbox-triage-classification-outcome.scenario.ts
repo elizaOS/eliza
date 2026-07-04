@@ -1,3 +1,4 @@
+// Defines the inbox triage classification outcome LifeOps scenario-runner spec.
 import type {
   ScenarioCheckResult,
   ScenarioContext,

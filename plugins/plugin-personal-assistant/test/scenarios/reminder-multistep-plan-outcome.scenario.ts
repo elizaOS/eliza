@@ -1,3 +1,4 @@
+// Defines the reminder multistep plan outcome LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 function assertApiBody(options: {

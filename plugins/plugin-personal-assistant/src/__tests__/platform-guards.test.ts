@@ -38,7 +38,7 @@ function restorePlatform(): void {
 // Reset the module registry before every test so that any guard which captures
 // `process.platform` at module-init time (instead of at call time) still sees
 // the per-test platform override. Today `isDarwin()` reads the value lazily,
-// but this keeps the suite valid if that guard later moves to module init.
+// but this keeps the suite valid if that guard subsequent moves to module init.
 beforeEach(() => {
   vi.resetModules();
 });

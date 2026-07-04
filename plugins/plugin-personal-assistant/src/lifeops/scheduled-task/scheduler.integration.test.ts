@@ -728,7 +728,7 @@ describe("processDueScheduledTasks — production wiring", () => {
     // Approval with an EXPLICIT completion timeout and a `pipeline.onSkip`
     // followup. (When `pipeline.onSkip` is set the approval-default rule does
     // NOT backfill `followupAfterMinutes`, so it must be provided.) On the
-    // first tick the approval fires; once the timeout elapses a later tick
+    // first tick the approval fires; once the timeout elapses a subsequent tick
     // runs the completion-timeout pass. No-reply expiry is not a user skip, so
     // it must not propagate the onSkip child.
     const seed = await seedScheduledTask(runtime, {

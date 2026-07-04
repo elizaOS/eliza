@@ -1,3 +1,4 @@
+// Applies owner messaging policy before connector dispatch.
 import type {
   DraftRecord,
   DraftRequest,

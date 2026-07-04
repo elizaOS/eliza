@@ -1,3 +1,4 @@
+// Provides shared scenario helpers for LifeOps approval and owner-outcome checks.
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 
 /**

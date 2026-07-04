@@ -1,3 +1,4 @@
+// Defines the calendar conflict detect reschedule LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

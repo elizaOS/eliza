@@ -1,3 +1,4 @@
+// Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
 import type { Action, Plugin, Service } from "@elizaos/core";
 import { blockerPlugin } from "@elizaos/plugin-blocker";
 import { calendarPlugin } from "@elizaos/plugin-calendar";

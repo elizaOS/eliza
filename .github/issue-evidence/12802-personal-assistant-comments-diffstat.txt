@@ -1,0 +1,19 @@
+plugin-personal-assistant comment-only sweep
+
+221 source files changed
+232 insertions
+27 deletions
+
+Representative touched areas:
+- plugins/plugin-personal-assistant/src/activity-profile/*.ts
+- plugins/plugin-personal-assistant/src/followup/*.ts
+- plugins/plugin-personal-assistant/src/lifeops/**/*.ts
+- plugins/plugin-personal-assistant/src/website-blocker/chat-integration/**/*.ts
+- plugins/plugin-personal-assistant/test/*.ts
+- plugins/plugin-personal-assistant/test/scenarios/**/*.ts
+
+Validation summary:
+- Header/churn audit: 815 source files, 0 missing headers, 0 churn comments
+- bun run check:comment-only: passed
+- git diff --check: passed
+- bun run verify: attempted; failed in unrelated baseline lint, final failing task @elizaos/electrobun#lint

@@ -92,7 +92,7 @@ describe("BlockRuleWriter + BlockRuleReader", () => {
     const writer = new BlockRuleWriter(harness.runtime);
     const reader = new BlockRuleReader(harness.runtime);
     // Every manual bypass is refused for harsh rules and the reconciler only
-    // releases them via the gate todo — without one the rule could never end.
+    // releases them via the gate task item — without one the rule could never end.
     await expect(
       writer.createBlockRule({
         profile: "focus",

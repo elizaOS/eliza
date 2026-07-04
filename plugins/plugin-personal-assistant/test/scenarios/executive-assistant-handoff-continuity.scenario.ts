@@ -1,3 +1,4 @@
+// Defines the executive assistant handoff continuity LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 

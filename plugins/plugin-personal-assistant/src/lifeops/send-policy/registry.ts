@@ -1,3 +1,4 @@
+// Registers connector send-policy rules for approval-aware dispatch.
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   SendPolicyContext,

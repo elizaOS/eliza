@@ -928,7 +928,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // Deterministic completion for fired scheduled tasks awaiting an owner
     // reply — no LLM verb required. Two passes with distinct coverage:
     // `handleScheduledTaskInboundMessage` walks the pending-prompts store for
-    // the room (user_replied_within + stale-prompt cleanup);
+    // the room (user_replied_within + stale-prompt teardown);
     // `completeFiredTasksOnOwnerReply` matches fired tasks by their own
     // pending-prompt room and re-evaluates every check kind (incl.
     // subject_updated). Both are owner-gated and idempotent. Boundary catch:

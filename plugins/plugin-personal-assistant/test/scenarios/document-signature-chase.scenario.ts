@@ -1,3 +1,4 @@
+// Defines the document signature chase LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,

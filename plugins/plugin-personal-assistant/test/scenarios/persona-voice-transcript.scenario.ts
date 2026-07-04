@@ -1,3 +1,4 @@
+// Defines the persona voice transcript LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { personaDentistFinalChecks } from "./_helpers/persona-dentist-outcome";
 

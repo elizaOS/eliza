@@ -1371,7 +1371,7 @@ export const lifeActivityEvents = appLifeopsPgSchema.table(
 );
 
 // T7g — Website blocker chat integration (plan §6.8).
-// Stores block rules whose lifecycle is driven by todo completion, fixed
+// Stores block rules whose lifecycle is driven by task item completion, fixed
 // duration, or an explicit ISO target. The reconciler releases rules when
 // their gate is fulfilled; harsh_no_bypass rules can only be released by the
 // reconciler on gate fulfillment (never by the user).

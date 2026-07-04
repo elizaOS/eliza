@@ -325,7 +325,7 @@ describe("processDueScheduledTasks — recurrence across occurrences + tick cloc
       "fired",
     );
 
-    // Task B fires on a LATER tick and carries a 30-minute completion
+    // Task B fires on a SUBSEQUENT tick and carries a 30-minute completion
     // timeout. Frozen clock: firedAt would be stamped 12:00 and the timeout
     // (12:30) would already be past at the 13:50 tick.
     const taskB = await seedScheduledTask(
@@ -389,7 +389,7 @@ describe("processDueScheduledTasks — recurrence across occurrences + tick cloc
       "fired",
     );
 
-    // Same window, later tick: no second fire.
+    // Same window, subsequent tick: no second fire.
     const day1Later = await tick(runtime, "2026-05-09T08:30:00.000Z");
     expect(day1Later.fires.filter((f) => f.taskId === seed.taskId)).toEqual([]);
 

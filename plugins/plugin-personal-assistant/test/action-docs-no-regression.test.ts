@@ -1,3 +1,4 @@
+// Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
 import { allActionDocs } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { credentialsAction } from "../src/actions/credentials.ts";

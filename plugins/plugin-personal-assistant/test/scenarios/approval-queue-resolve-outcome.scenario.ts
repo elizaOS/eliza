@@ -1,3 +1,4 @@
+// Defines the approval queue resolve outcome LifeOps scenario-runner spec.
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 

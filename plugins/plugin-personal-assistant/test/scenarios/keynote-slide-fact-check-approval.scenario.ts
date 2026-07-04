@@ -1,3 +1,4 @@
+// Defines the keynote slide fact check approval LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,

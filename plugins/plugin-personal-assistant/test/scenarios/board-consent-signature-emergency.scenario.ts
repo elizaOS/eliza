@@ -1,3 +1,4 @@
+// Defines the board consent signature emergency LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,

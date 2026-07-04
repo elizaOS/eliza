@@ -1,3 +1,4 @@
+// Tracks LifeOps follow-up obligations through the scheduled-task spine.
 import type {
   IAgentRuntime,
   JsonValue,

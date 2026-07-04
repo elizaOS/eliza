@@ -1,3 +1,4 @@
+// Defines the notification delivery multichannel outcome LifeOps scenario-runner spec.
 import type {
   ScenarioCheckResult,
   ScenarioContext,
@@ -134,7 +135,7 @@ async function assertPersistedDelivery(
   const attempts = inspection.attempts ?? [];
 
   // 1. The deliverable channel delivered more than once: the plan step AND the
-  //    later escalation step. This proves real multi-step sequenced delivery,
+  //    subsequent escalation step. This proves real multi-step sequenced delivery,
   //    not a single nudge.
   const deliveredInApp = attempts.filter(
     (attempt) =>
@@ -253,7 +254,7 @@ export default scenario({
     // urgency gate. visibilityLeadMinutes opens the relevance window well before
     // dueAt, so all steps within the window become due when processed at
     // {{now+10m}} (same mechanics the template relies on). The escalation step
-    // is a second in_app step at a later offset.
+    // is a second in_app step at a subsequent offset.
     {
       kind: "api",
       name: "seed multi-channel reminder plan",

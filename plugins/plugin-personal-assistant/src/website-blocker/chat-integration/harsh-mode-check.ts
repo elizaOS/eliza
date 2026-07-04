@@ -1,3 +1,4 @@
+// Reconciles LifeOps block rules with website blocker chat requests.
 import type { IAgentRuntime } from "@elizaos/core";
 import { executeRawSql, sqlQuote } from "../../lifeops/sql.js";
 import { BLOCK_RULES_TABLE } from "./block-rule-schema.js";

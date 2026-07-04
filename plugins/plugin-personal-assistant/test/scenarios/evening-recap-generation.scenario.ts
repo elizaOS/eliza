@@ -1,3 +1,4 @@
+// Defines the evening recap generation LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

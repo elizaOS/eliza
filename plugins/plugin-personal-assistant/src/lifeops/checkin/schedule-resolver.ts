@@ -1,3 +1,4 @@
+// Resolves LifeOps check-in schedules into runner-ready timing windows.
 import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsOwnerProfile } from "../owner-profile.js";
 import { readLifeOpsOwnerProfile } from "../owner-profile.js";

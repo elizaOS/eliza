@@ -1,3 +1,4 @@
+// Defines the missed call repair reschedule LifeOps scenario-runner spec.
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Bypass the OWNER access gate so the test exercises the subaction handlers
 // without seeding world/role tables. `getSelfControlStatus` stays a spyable
-// vi.fn but delegates to the real engine (backed by the harness temp hosts
+// vi.fn but delegates to the real engine (backed by the harness scratch hosts
 // file) so the writer's OS-state sync sees the truth; the live-status
 // formatting test pins its own status via `vi.spyOn(...).mockResolvedValue`.
 vi.mock(
@@ -133,7 +133,7 @@ describe("WEBSITE_BLOCK list_active / release subactions", () => {
     // `getSelfControlStatus` in the factory mock is a shared vi.fn;
     // `vi.restoreAllMocks()` does not restore a factory-created mock, so a
     // persistent mockResolvedValue here would leak this pinned "foreign
-    // /etc/hosts block" into later tests and make the writer's OS sync refuse
+    // /etc/hosts block" into subsequent tests and make the writer's OS sync refuse
     // to engage. Pin exactly the one status read this subaction performs.
     vi.spyOn(
       websiteBlockerEngine,

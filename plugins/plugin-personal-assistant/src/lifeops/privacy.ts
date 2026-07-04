@@ -1,3 +1,4 @@
+// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
 import {
   type ConnectorAccount,
   DEFAULT_PRIVACY_LEVEL,

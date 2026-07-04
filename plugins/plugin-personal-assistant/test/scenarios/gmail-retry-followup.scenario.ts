@@ -1,3 +1,4 @@
+// Defines the gmail retry followup LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

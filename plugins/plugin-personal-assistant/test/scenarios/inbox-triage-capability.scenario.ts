@@ -1,3 +1,4 @@
+// Defines the inbox triage capability LifeOps scenario-runner spec.
 import type { MessageAdapter, MessageRef, MessageSource } from "@elizaos/core";
 import type {
   ScenarioCheckResult,

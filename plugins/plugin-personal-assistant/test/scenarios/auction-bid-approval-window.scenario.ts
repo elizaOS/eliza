@@ -1,3 +1,4 @@
+// Defines the auction bid approval window LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,

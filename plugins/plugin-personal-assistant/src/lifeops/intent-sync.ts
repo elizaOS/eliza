@@ -1,3 +1,4 @@
+// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { executeRawSql, parseJsonRecord, sqlText, toText } from "./sql.js";

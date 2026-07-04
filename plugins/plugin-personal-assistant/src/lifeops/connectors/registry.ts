@@ -1,3 +1,4 @@
+// Registers LifeOps connector projections without owning connector transports.
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ConnectorContribution,

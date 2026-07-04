@@ -258,7 +258,7 @@ describe("owner send-approval worker", () => {
     expect(adapter.sentDraftIds).toHaveLength(0);
     expect(harness.deletedTaskIds).toContain(task.id);
 
-    // A later confirm replaying the stale task object must not send: the
+    // A subsequent confirm replaying the stale task object must not send: the
     // live-row re-read sees the deletion.
     await expect(
       dispatchChosenOption(harness.runtime, task, "confirm"),

@@ -1,3 +1,4 @@
+// Exercises LifeOps owner workflows, connector boundaries, and scheduled-task behavior.
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

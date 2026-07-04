@@ -1,3 +1,4 @@
+// Implements a LifeOps domain service behind the assistant orchestration layer.
 import { SubscriptionsService } from "@elizaos/plugin-finances/services/subscriptions-service";
 import type { LifeOpsSubscriptionPlaybook } from "@elizaos/plugin-finances/subscriptions-playbooks";
 import type {

@@ -1,3 +1,4 @@
+// Defines the workout blocker basic LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

@@ -1,3 +1,4 @@
+// Defines the daily brief cross channel LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

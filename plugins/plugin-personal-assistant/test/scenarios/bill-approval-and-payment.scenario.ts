@@ -1,3 +1,4 @@
+// Defines the bill approval and payment LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,

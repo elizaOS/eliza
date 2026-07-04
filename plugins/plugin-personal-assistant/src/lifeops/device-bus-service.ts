@@ -1,3 +1,4 @@
+// Supports the LifeOps scheduled-task spine, owner facts, and assistant context.
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   acknowledgeIntent,

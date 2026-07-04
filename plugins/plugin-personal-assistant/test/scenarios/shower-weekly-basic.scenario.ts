@@ -1,3 +1,4 @@
+// Defines the shower weekly basic LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

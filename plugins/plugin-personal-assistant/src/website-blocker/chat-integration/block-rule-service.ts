@@ -1,3 +1,4 @@
+// Reconciles LifeOps block rules with website blocker chat requests.
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -63,7 +64,7 @@ function assertCreateInput(input: CreateBlockRuleInput): void {
     throw new Error("[BlockRuleWriter] until_todo gate requires gateTodoId");
   }
   // A harsh rule refuses every manual bypass (confirmed release, chat unblock,
-  // HTTP DELETE) and the reconciler only releases it via its gate todo. Without
+  // HTTP DELETE) and the reconciler only releases it via its gate task item. Without
   // a gateTodoId it would be a permanent lock with no exit path at all.
   if (input.gateType === "harsh_no_bypass" && !input.gateTodoId) {
     throw new Error(

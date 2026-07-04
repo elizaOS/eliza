@@ -1,3 +1,4 @@
+// Defines the email reply draft outcome LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 

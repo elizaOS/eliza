@@ -1,3 +1,4 @@
+// Defines the daily left today variants LifeOps scenario-runner spec.
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
