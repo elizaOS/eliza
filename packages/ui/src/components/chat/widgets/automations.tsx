@@ -38,19 +38,19 @@ function compareRunning(a: AutomationItem, b: AutomationItem): number {
 }
 
 /**
- * Tasks home widget. Glanceable, icon-first surface of the agent's currently
- * running tasks — default system automations, active user workflows, AND
- * boot-seeded LifeOps scheduled tasks (gm / gn / daily check-in / morning-brief
- * watcher) — merged from `GET /api/automations` + `GET /api/lifeops/scheduled-tasks`.
- * Shows the most relevant running task's title plus a "+N" badge for the rest;
- * tapping opens the unified Tasks view.
+ * Automations home widget. Glanceable, icon-first surface of the agent's
+ * currently running automations — default system automations, active user
+ * workflows, AND boot-seeded LifeOps scheduled items (gm / gn / daily check-in /
+ * morning-brief watcher) — merged from `GET /api/automations` +
+ * `GET /api/lifeops/scheduled-tasks`. Shows the most relevant running item's
+ * title plus a "+N" badge for the rest; tapping opens the Automations view.
  *
  * Zero-setup: no connect gate. Self-hides (renders null) once the first fetch
  * settles with nothing running, so a fresh home surface never shows an empty
  * placeholder (#9143). A 404 on either source (the runtime/runner not hosted
  * here, e.g. mobile) settles to "nothing running" rather than a broken card.
  */
-export function WorkflowsWidget({
+export function AutomationsWidget({
   spanClassName = "col-span-2 row-span-1",
 }: Partial<WidgetProps>) {
   const { state } = useUnifiedTasks({ timeoutMs: TASKS_TIMEOUT_MS });
@@ -66,10 +66,10 @@ export function WorkflowsWidget({
       <div className={spanClassName}>
         <HomeWidgetCard
           icon={<Workflow />}
-          label="Tasks"
+          label="Automations"
           value="Loading…"
-          testId="chat-widget-workflows"
-          ariaLabel="Tasks loading."
+          testId="chat-widget-automations"
+          ariaLabel="Automations loading."
           onActivate={open}
         />
       </div>
@@ -88,13 +88,13 @@ export function WorkflowsWidget({
     <div className={spanClassName}>
       <HomeWidgetCard
         icon={<Workflow />}
-        label="Tasks"
+        label="Automations"
         value={top.title}
         badge={extraCount > 0 ? `+${extraCount}` : undefined}
-        testId="chat-widget-workflows"
-        ariaLabel={`Running tasks: ${top.title}${
+        testId="chat-widget-automations"
+        ariaLabel={`Running automations: ${top.title}${
           extraCount > 0 ? `, and ${extraCount} more` : ""
-        }. Open tasks.`}
+        }. Open automations.`}
         onActivate={open}
       />
     </div>

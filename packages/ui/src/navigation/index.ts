@@ -295,12 +295,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
-    // One consolidated surface — scheduled tasks + recurring workflows share the
-    // Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
+    // One consolidated surface — workflows, triggers, and scheduled items share
+    // the Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
     label: "Automations",
     tabs: ["automations"],
     icon: Clock3,
-    description: "Scheduled tasks and recurring workflows",
+    description: "Workflows, triggers, and scheduled items",
   },
   {
     label: "Settings",

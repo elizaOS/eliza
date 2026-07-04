@@ -27,7 +27,7 @@ vi.mock("../../../chat/useSlashCommandController", () => ({
   reportUserViewSwitch: vi.fn(),
 }));
 
-import { WorkflowsWidget } from "./workflows";
+import { AutomationsWidget } from "./automations";
 
 function automation(overrides: Record<string, unknown>) {
   return {
@@ -87,7 +87,7 @@ function scheduledResponse(tasks: ReturnType<typeof scheduledTask>[]) {
   return { tasks };
 }
 
-describe("WorkflowsWidget", () => {
+describe("AutomationsWidget", () => {
   beforeEach(() => {
     listAutomationsMock.mockReset();
     listScheduledTasksMock.mockReset();
@@ -98,8 +98,8 @@ describe("WorkflowsWidget", () => {
 
   it("renders a loading card before the fetch resolves", () => {
     listAutomationsMock.mockReturnValue(new Promise(() => {}));
-    render(<WorkflowsWidget />);
-    expect(screen.getByTestId("chat-widget-workflows")).toBeTruthy();
+    render(<AutomationsWidget />);
+    expect(screen.getByTestId("chat-widget-automations")).toBeTruthy();
     expect(screen.getByText("Loading…")).toBeTruthy();
   });
 
@@ -109,7 +109,7 @@ describe("WorkflowsWidget", () => {
     listScheduledTasksMock.mockResolvedValue(
       scheduledResponse([scheduledTask({ metadata: { recordKey: "gm" } })]),
     );
-    render(<WorkflowsWidget />);
+    render(<AutomationsWidget />);
     await waitFor(() => expect(screen.getByText("Good morning")).toBeTruthy());
   });
 
@@ -125,7 +125,7 @@ describe("WorkflowsWidget", () => {
         }),
       ]),
     );
-    const { container } = render(<WorkflowsWidget />);
+    const { container } = render(<AutomationsWidget />);
     await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     // Manual trigger → paused → not "running" → self-hides.
     expect(container.firstElementChild).toBeNull();
@@ -144,7 +144,7 @@ describe("WorkflowsWidget", () => {
         }),
       ]),
     );
-    render(<WorkflowsWidget />);
+    render(<AutomationsWidget />);
     // System automations sort first.
     await waitFor(() => expect(screen.getByText("Assistant")).toBeTruthy());
     expect(screen.getByText("+2")).toBeTruthy();
@@ -169,7 +169,7 @@ describe("WorkflowsWidget", () => {
         automation({ id: "a", title: "Live one" }),
       ]),
     );
-    render(<WorkflowsWidget />);
+    render(<AutomationsWidget />);
     await waitFor(() => expect(screen.getByText("Live one")).toBeTruthy());
     // No badge: only one running automation survives the filter.
     expect(screen.queryByText("+1")).toBeNull();
@@ -177,14 +177,14 @@ describe("WorkflowsWidget", () => {
 
   it("self-hides when nothing is running", async () => {
     listAutomationsMock.mockResolvedValue(listResponse([]));
-    const { container } = render(<WorkflowsWidget />);
+    const { container } = render(<AutomationsWidget />);
     await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     expect(container.firstElementChild).toBeNull();
   });
 
   it("self-hides when the automations endpoint fails", async () => {
     listAutomationsMock.mockRejectedValue(new Error("404"));
-    const { container } = render(<WorkflowsWidget />);
+    const { container } = render(<AutomationsWidget />);
     await waitFor(() => expect(screen.queryByText("Loading…")).toBeNull());
     expect(container.firstElementChild).toBeNull();
   });
@@ -195,8 +195,8 @@ describe("WorkflowsWidget", () => {
     );
     const navSpy = vi.fn();
     window.addEventListener("eliza:navigate:view", navSpy);
-    render(<WorkflowsWidget />);
-    const card = await screen.findByTestId("chat-widget-workflows");
+    render(<AutomationsWidget />);
+    const card = await screen.findByTestId("chat-widget-automations");
     fireEvent.click(card);
     expect(navSpy).toHaveBeenCalledTimes(1);
     const detail = (navSpy.mock.calls[0][0] as CustomEvent).detail;
@@ -209,9 +209,9 @@ describe("WorkflowsWidget", () => {
       listResponse([automation({ id: "w-1", title: "Daily digest" })]),
     );
     const { container } = render(
-      <WorkflowsWidget spanClassName="col-span-2 row-span-1" />,
+      <AutomationsWidget spanClassName="col-span-2 row-span-1" />,
     );
-    await screen.findByTestId("chat-widget-workflows");
+    await screen.findByTestId("chat-widget-automations");
     const root = container.firstElementChild as HTMLElement;
     expect(root.className).toContain("col-span-2");
     expect(root.className).toContain("row-span-1");

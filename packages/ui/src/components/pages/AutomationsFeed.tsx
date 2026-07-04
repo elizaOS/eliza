@@ -89,7 +89,7 @@ export interface AutomationsFeedProps {
 const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   {
     all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
-    tasks: { key: "automationsfeed.filterTasks", defaultLabel: "Tasks" },
+    prompts: { key: "automationsfeed.filterPrompts", defaultLabel: "Prompts" },
     workflows: {
       key: "automationsfeed.filterWorkflows",
       defaultLabel: "Workflows",
@@ -102,7 +102,7 @@ const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
   };
 const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   all: <Layers className="h-3.5 w-3.5" aria-hidden />,
-  tasks: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
+  prompts: <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />,
   workflows: <Workflow className="h-3.5 w-3.5" aria-hidden />,
   active: <Play className="h-3.5 w-3.5" aria-hidden />,
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
@@ -357,7 +357,7 @@ export function AutomationsFeed({
   const filterCounts = useMemo<Record<FeedFilter, number>>(
     () => ({
       all: allRows.length,
-      tasks: allRows.filter((r) => r.kind === "task").length,
+      prompts: allRows.filter((r) => r.kind === "task").length,
       workflows: allRows.filter((r) => r.kind === "workflow").length,
       active: allRows.filter((r) => r.active).length,
       inactive: allRows.filter((r) => !r.active).length,
