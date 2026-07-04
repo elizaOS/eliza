@@ -522,9 +522,9 @@ export default function StewardLoginSection() {
 
   if (step === "success") {
     return (
-      <div className="flex flex-col items-center gap-4 py-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
-        <p className="text-sm text-white/72">
+      <div className="flex flex-col items-center gap-4 py-8" role="status">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+        <p className="text-sm text-muted">
           {t("cloud.login.redirecting", {
             defaultValue: "Redirecting to dashboard...",
           })}
@@ -536,21 +536,29 @@ export default function StewardLoginSection() {
   if (step === "email-sent") {
     return (
       <div className="space-y-4 py-4 text-center">
-        <p className="text-white">
-          Magic link sent to <strong>{email}</strong>
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent">
+          <EmailIcon />
+        </div>
+        <p className="text-txt-strong">
+          {t("cloud.login.magicLinkSent", {
+            defaultValue: "Magic link sent to",
+          })}{" "}
+          <strong className="font-semibold">{email}</strong>
         </p>
-        <p className="text-sm text-white/72">
-          Check your inbox and click the link to sign in.
+        <p className="text-sm text-muted">
+          {t("cloud.login.magicLinkHint", {
+            defaultValue: "Check your inbox and click the link to sign in.",
+          })}
         </p>
         <button
           type="button"
-          className="text-sm text-white/68 transition-colors hover:text-white"
+          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
           onClick={() => {
             setStep("idle");
             setLoading(null);
           }}
         >
-          ← Back to login
+          {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
         </button>
       </div>
     );
@@ -560,16 +568,16 @@ export default function StewardLoginSection() {
     return (
       <div className="space-y-4 py-4">
         <div className="space-y-1 text-center">
-          <p className="text-white">
+          <p className="font-medium text-txt-strong">
             {t("cloud.login.otp.title", {
               defaultValue: "Set up your passkey",
             })}
           </p>
-          <p className="text-sm text-white/72">
+          <p className="text-sm text-muted">
             {t("cloud.login.otp.subtitle", {
               defaultValue: "Enter the 6-digit code we sent to",
             })}{" "}
-            <strong>{email}</strong>
+            <strong className="font-semibold text-txt">{email}</strong>
           </p>
         </div>
 
@@ -596,14 +604,14 @@ export default function StewardLoginSection() {
             if (e.key === "Enter") handleVerifyOtpAndRegister();
           }}
           disabled={loading !== null}
-          className="w-full border border-white/20 bg-black px-4 py-3 text-center text-lg tracking-[0.5em] text-white placeholder:tracking-normal placeholder:text-white/40 outline-none transition    disabled:opacity-50"
+          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-lg tracking-[0.5em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
         />
 
         <button
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full items-center justify-center gap-2 bg-accent px-4 py-3 font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
+          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -614,7 +622,7 @@ export default function StewardLoginSection() {
         <div className="flex items-center justify-between text-sm">
           <button
             type="button"
-            className="text-white/68 transition-colors hover:text-white"
+            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
             onClick={() => {
               setStep("idle");
               setOtpCode("");
@@ -622,11 +630,11 @@ export default function StewardLoginSection() {
               setLoading(null);
             }}
           >
-            ← {t("cloud.login.back", { defaultValue: "Back" })}
+            {t("cloud.login.back", { defaultValue: "Back" })}
           </button>
           <button
             type="button"
-            className="text-white/68 transition-colors hover:text-white disabled:opacity-50"
+            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             disabled={loading !== null}
             onClick={startPasskeySignup}
           >
@@ -647,8 +655,8 @@ export default function StewardLoginSection() {
           defaultValue: "Loading sign-in options",
         })}
       >
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
-        <p className="text-sm text-white/72">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+        <p className="text-sm text-muted">
           {t("cloud.login.loadingOptions", {
             defaultValue: "Loading sign-in options...",
           })}
@@ -680,7 +688,7 @@ export default function StewardLoginSection() {
           if (e.key === "Enter") handlePasskey();
         }}
         disabled={isLoading}
-        className="w-full border border-white/20 bg-black px-4 py-3 text-white placeholder:text-white/40 outline-none transition    disabled:opacity-50"
+        className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
         autoComplete="email webauthn"
       />
 
@@ -690,7 +698,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 bg-accent px-4 py-3 font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -701,7 +709,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -709,7 +717,7 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      <p className="text-center text-xs text-white/55">
+      <p className="text-center text-xs text-muted">
         {t("cloud.login.signupHint", {
           defaultValue: "New here? Passkey sets up your account in seconds.",
         })}
@@ -717,9 +725,13 @@ export default function StewardLoginSection() {
 
       {hasOAuthProviders && (
         <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-white/14" />
-          <span className="text-xs text-white/62">or continue with</span>
-          <div className="h-px flex-1 bg-white/14" />
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-muted">
+            {t("cloud.login.orContinueWith", {
+              defaultValue: "or continue with",
+            })}
+          </span>
+          <div className="h-px flex-1 bg-border" />
         </div>
       )}
 
@@ -730,7 +742,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -741,7 +753,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -756,7 +768,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50 sm:col-span-2"
+              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -769,14 +781,18 @@ export default function StewardLoginSection() {
         </div>
       )}
 
-      {error && <p className="text-center text-sm text-red-400">{error}</p>}
+      {error && (
+        <p className="text-center text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
   );
 }
 
