@@ -42,8 +42,8 @@ function defaultDecode(value: string): string {
   } catch {
     // error-policy:J3 malformed escape — keep the raw value, matching the
     // cookie package's tolerant decode
+    return value;
   }
-  return value;
 }
 
 function defaultEncode(value: string): string {
