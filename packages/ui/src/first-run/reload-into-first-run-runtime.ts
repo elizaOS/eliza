@@ -41,7 +41,8 @@ export function reloadIntoFirstRunRuntime(target?: FirstRunReloadTarget): void {
   try {
     window.localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   } catch {
-    // The query navigation still forces first-run when storage is unavailable.
+    // error-policy:J6 best-effort cleanup — the query navigation below still
+    // forces first-run when storage is unavailable
   }
   const url = new URL(window.location.href);
   url.searchParams.set(FIRST_RUN_QUERY_NAME, FIRST_RUN_QUERY_VALUE);

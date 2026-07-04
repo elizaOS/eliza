@@ -78,7 +78,9 @@ export function clearCloudLoginPending(): void {
   try {
     window.localStorage.removeItem(CLOUD_RESUME_STORAGE_KEY);
   } catch {
-    // Non-fatal.
+    // error-policy:J6 best-effort cleanup — a storage that rejects removeItem
+    // also rejected the setItem in markCloudLoginPending, so there is no
+    // persisted marker to clear
   }
 }
 

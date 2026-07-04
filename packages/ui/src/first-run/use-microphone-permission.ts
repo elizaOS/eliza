@@ -60,6 +60,8 @@ async function probeMicrophoneViaGetUserMedia(): Promise<MicrophonePermissionSta
     }
     return "granted";
   } catch {
+    // error-policy:J4 permission probe — a rejected getUserMedia reads as
+    // denied; the step renders the settings affordance either way
     return "denied";
   }
 }
@@ -69,8 +71,8 @@ async function openMicrophoneSettingsViaClient(): Promise<void> {
   try {
     await client.openPermissionSettings(MICROPHONE);
   } catch {
-    // Opening OS settings is best-effort; a failure here must not break
-    // onboarding. The user can still grant access through the OS directly.
+    // error-policy:J4 opening OS settings is best-effort; a failure must
+    // not break onboarding — the user can still grant access via the OS
   }
 }
 
@@ -96,9 +98,9 @@ export function useMicrophonePermission(): MicrophonePermissionController {
         status = result.status;
         canRequest = result.canRequest;
       } catch {
-        // The platform permission client failed (older renderer, missing
-        // bridge); fall back to the browser probe rather than surfacing an
-        // error the user cannot act on.
+        // error-policy:J4 the platform permission client failed (older
+        // renderer, missing bridge); fall back to the browser probe rather
+        // than surfacing an error the user cannot act on
         status = await probeMicrophoneViaGetUserMedia();
         canRequest = status !== "denied";
       }

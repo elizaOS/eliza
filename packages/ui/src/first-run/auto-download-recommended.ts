@@ -62,7 +62,8 @@ async function waitForLocalAgent(apiBase: string): Promise<boolean> {
       const res = await fetchWithCsrf(url, { method: "GET" });
       if (res.ok) return true;
     } catch {
-      // network not ready yet; fall through to sleep
+      // error-policy:J4 boot poll — network not ready yet; retry until the
+      // deadline, after which the caller skips auto-download for this boot
     }
     await new Promise<void>((r) => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
   }
@@ -103,6 +104,8 @@ export async function autoDownloadRecommendedLocalModelInBackground(
   try {
     snapshot = await client.getLocalInferenceHub();
   } catch {
+    // error-policy:J4 leave the marker unset — a later boot retries the
+    // auto-download once the hub responds
     return;
   }
 
@@ -120,8 +123,8 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     try {
       await client.setLocalInferenceActive(installedElizaDownload);
     } catch {
-      // Leave the marker unset so a later boot retries activation after the
-      // local runtime stabilizes.
+      // error-policy:J4 leave the marker unset so a later boot retries
+      // activation after the local runtime stabilizes
       return;
     }
     writeMarker();
@@ -138,7 +141,7 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     await client.startLocalInferenceDownload(recommended.id);
     writeMarker();
   } catch {
-    // Leave the marker unset so a later boot retries once the runtime
-    // stabilizes — e.g. the user toggled Local while the network was off.
+    // error-policy:J4 leave the marker unset so a later boot retries once
+    // the runtime stabilizes — e.g. the user toggled Local while offline
   }
 }

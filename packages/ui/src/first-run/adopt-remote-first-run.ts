@@ -38,6 +38,7 @@ export function normalizeRemoteAgentUrl(value: string): string {
   try {
     parsed = new URL(candidate);
   } catch {
+    // error-policy:J3 untrusted user input — explicit invalid signal
     throw new Error("Enter a valid remote agent URL.");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -85,10 +86,10 @@ export async function adoptRemoteAgentFirstRun(
   try {
     alreadyComplete = (await client.getFirstRunStatus()).complete === true;
   } catch {
-    // A fresh host with no persisted first-run state, or one whose build
-    // predates the status route, is the expected "needs adoption" shape — fall
-    // through to the completion write below. A genuinely unreachable remote
-    // re-fails there, so the failure still surfaces; it is not hidden here.
+    // error-policy:J4 a fresh host with no persisted first-run state, or one
+    // whose build predates the status route, is the expected "needs adoption"
+    // shape — fall through to the completion write below. A genuinely
+    // unreachable remote re-fails there, so the failure still surfaces.
     alreadyComplete = false;
   }
 

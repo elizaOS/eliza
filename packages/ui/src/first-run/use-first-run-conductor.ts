@@ -577,9 +577,9 @@ export function useFirstRunConductor(): void {
         }
         handleOutcome(outcome);
       })
-      // Unlike runFirstRunFinish (which funnels throws to seedError), these
-      // cloud entrypoints can reject (OAuth/network); without this the
-      // "Connecting…" turn strands on screen as an unhandled rejection.
+      // error-policy:J4 unlike runFirstRunFinish (which funnels throws to
+      // seedError), these cloud entrypoints can reject (OAuth/network);
+      // without this the "Connecting…" turn strands as an unhandled rejection
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
         busyRef.current = false;
@@ -764,6 +764,7 @@ export function useFirstRunConductor(): void {
                 ),
               );
             })
+            // error-policy:J4 restore failure is surfaced as an onboarding turn
             .catch((error) => {
               const message =
                 error instanceof Error ? error.message : String(error);
@@ -838,6 +839,7 @@ export function useFirstRunConductor(): void {
           portsRef.current,
         )
           .then(handleOutcome)
+          // error-policy:J4 bind failure is surfaced as an onboarding error turn
           .catch((err: unknown) => seedError(cloudFailureMessage(err)))
           .finally(() => {
             busyRef.current = false;
