@@ -37,6 +37,7 @@ vi.mock("../api", () => ({
 
 function makeDeps(): ReadyPhaseDeps {
   return {
+    setActionNotice: vi.fn(),
     setAgentStatusIfChanged: vi.fn(),
     setPendingRestart: vi.fn(),
     setPendingRestartReasons: vi.fn(),

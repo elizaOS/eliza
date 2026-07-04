@@ -15,6 +15,7 @@ import type {
 	Memory,
 	UUID,
 } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/core";
 import {
 	findCommandByKeyForRuntime,
 	getCommandsByCategoryForRuntime,
@@ -182,6 +183,84 @@ async function runCompactAction(
 	return reply("Conversation compaction completed.");
 }
 
+/**
+ * `/model local|cloud [id]` drives the SAME loopback runtime-switch route the
+ * MODEL_SWITCH action uses (packages/agent/src/api/runtime-switch-routes.ts),
+ * so a slash command and an agent action share one switch implementation. A
+ * bare model name (no local/cloud target) is not a runtime switch — it falls
+ * through to the per-room `/model` preference below.
+ */
+async function runModelSwitchViaRoute(
+	target: "local" | "cloud",
+	model: string | undefined,
+): Promise<CommandResult> {
+	const port = resolveServerOnlyPort(process.env);
+	let response: Response;
+	try {
+		response = await fetch(
+			`http://127.0.0.1:${port}/api/runtime/model-switch`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ target, ...(model ? { model } : {}) }),
+				signal: AbortSignal.timeout(150_000),
+			},
+		);
+	} catch (err) {
+		return reply(
+			`Couldn't switch the model: ${err instanceof Error ? err.message : String(err)}.`,
+		);
+	}
+	const body = (await response.json().catch(() => null)) as Record<
+		string,
+		unknown
+	> | null;
+	if (!response.ok || body?.ok !== true) {
+		return reply(
+			`Couldn't switch the model: ${
+				typeof body?.error === "string"
+					? body.error
+					: `route returned ${response.status}`
+			}.`,
+		);
+	}
+	if (body.target === "cloud") {
+		return reply(`Switched to Eliza Cloud inference (${body.model}).`);
+	}
+	const name =
+		typeof body.displayName === "string"
+			? body.displayName
+			: String(body.model);
+	if (body.status === "downloading") {
+		const size =
+			typeof body.downloadSizeGb === "number"
+				? ` (${body.downloadSizeGb} GB)`
+				: "";
+		return reply(`Switching to on-device ${name} — downloading${size}…`);
+	}
+	if (body.status === "loading") {
+		return reply(`Switching to on-device ${name} — loading now.`);
+	}
+	return reply(`Switched to on-device ${name}.`);
+}
+
+/**
+ * Parse a `/model` argument list into a runtime-switch target. Returns null
+ * when the first token is neither `local` nor `cloud` (a bare model name), so
+ * the caller keeps the per-room preference behavior.
+ */
+export function parseModelSwitchArgs(
+	parsed: ParsedCommand,
+): { target: "local" | "cloud"; model?: string } | null {
+	const tokens = (parsed.rawArgs?.trim() || parsed.args.join(" ").trim())
+		.split(/\s+/)
+		.filter(Boolean);
+	const first = tokens[0]?.toLowerCase();
+	if (first !== "local" && first !== "cloud") return null;
+	const model = tokens[1]?.trim();
+	return { target: first, ...(model ? { model } : {}) };
+}
+
 async function setOptionCommand(
 	runtime: IAgentRuntime,
 	roomId: string,
@@ -281,12 +360,21 @@ export async function runCommand(
 			);
 		}
 
+		case "model": {
+			// `/model local|cloud [id]` is a runtime inference switch shared with
+			// the MODEL_SWITCH action; a bare model name stays a per-room setting.
+			const switchArgs = parseModelSwitchArgs(parsed);
+			if (switchArgs) {
+				return runModelSwitchViaRoute(switchArgs.target, switchArgs.model);
+			}
+			return setOptionCommand(runtime, roomId, parsed, OPTION_COMMANDS.model);
+		}
+
 		case "think":
 		case "verbose":
 		case "reasoning":
 		case "queue":
 		case "elevated":
-		case "model":
 		case "tts":
 			return setOptionCommand(
 				runtime,

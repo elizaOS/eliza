@@ -38,6 +38,7 @@ vi.mock("../components/views/view-interact-registry", () => viewInteractMock);
 
 function makeDeps(): ReadyPhaseDeps {
   return {
+    setActionNotice: vi.fn(),
     setAgentStatusIfChanged: vi.fn(),
     setPendingRestart: vi.fn(),
     setPendingRestartReasons: vi.fn(),

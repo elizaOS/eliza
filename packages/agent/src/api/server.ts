@@ -388,6 +388,7 @@ import {
   resolveWalletDiagnosticStatus,
 } from "./plugin-diagnostic.ts";
 import { createRuntimeReadyGate } from "./runtime-ready-gate.ts";
+import { handleRuntimeSwitchRoutes } from "./runtime-switch-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -3408,6 +3409,21 @@ async function handleRequest(
       error,
       broadcastWs: state.broadcastWs ?? undefined,
       runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── Runtime switch routes (/api/runtime/model-switch, /agent-switch) ──────
+  if (
+    await handleRuntimeSwitchRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      json,
+      error,
+      broadcastWs: state.broadcastWs ?? undefined,
     })
   ) {
     return;

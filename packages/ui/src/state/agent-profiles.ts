@@ -91,6 +91,41 @@ export function saveAgentProfileRegistry(registry: AgentProfileRegistry): void {
   }, undefined);
 }
 
+/**
+ * Resolve a free-text switch query (from the AGENT_SWITCH action / `shell:
+ * switch-agent` WS event) to a saved profile: exact id, then exact label
+ * (case-insensitive), then a unique label substring match, then a unique
+ * kind match ("cloud"/"local"/"remote"). Returns null when nothing matches or
+ * a substring/kind is ambiguous — the caller reports "not-found" rather than
+ * switching to the wrong agent.
+ */
+export function resolveAgentProfileByQuery(
+  query: string,
+  registry: AgentProfileRegistry = loadAgentProfileRegistry(),
+): AgentProfile | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const profiles = registry.profiles;
+
+  const byId = profiles.find((p) => p.id.toLowerCase() === q);
+  if (byId) return byId;
+
+  const byLabel = profiles.find((p) => p.label.trim().toLowerCase() === q);
+  if (byLabel) return byLabel;
+
+  const bySubstring = profiles.filter((p) =>
+    p.label.trim().toLowerCase().includes(q),
+  );
+  if (bySubstring.length === 1) return bySubstring[0];
+
+  if (q === "local" || q === "cloud" || q === "remote") {
+    const byKind = profiles.filter((p) => p.kind === q);
+    if (byKind.length === 1) return byKind[0];
+  }
+
+  return null;
+}
+
 export function getActiveProfile(): AgentProfile | null {
   const registry = loadAgentProfileRegistry();
   if (!registry.activeProfileId) return null;

@@ -38,6 +38,12 @@ import {
 } from "../navigation";
 import { isTransientOptionalFetchFailure } from "../utils";
 import { emitViewEvent } from "../views/view-event-bus";
+import type { ActionTone } from "./action-notice";
+import {
+  loadAgentProfileRegistry,
+  resolveAgentProfileByQuery,
+} from "./agent-profiles";
+import { switchRuntimeNonDestructive } from "./switch-runtime";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -110,6 +116,14 @@ export interface ReadyPhaseDeps {
   activeConversationIdRef: React.RefObject<string | null>;
   elizaCloudPollInterval: React.MutableRefObject<number | null>;
   elizaCloudLoginPollTimer: React.MutableRefObject<number | null>;
+  /** Transient shell toast — confirms agent-driven model/agent switches. */
+  setActionNotice: (
+    text: string,
+    tone?: ActionTone,
+    ttlMs?: number,
+    once?: boolean,
+    busy?: boolean,
+  ) => void;
 }
 
 function normalizeAppEmoteEvent(
@@ -461,6 +475,112 @@ export function bindReadyPhase(
     },
   );
 
+  // Agent-driven text-inference switch (#12178). The server has already applied
+  // the routing change over loopback before broadcasting; this handler surfaces
+  // the user-facing confirmation. Download progress (local target, missing
+  // bundle) continues to flow through the existing local-inference SSE stream +
+  // home model-status hook — no re-fetch needed here.
+  const unbindModelSwitch = client.onWsEvent(
+    "shell:model-switch",
+    (data: Record<string, unknown>) => {
+      const target = data.target === "cloud" ? "cloud" : "local";
+      const status =
+        data.status === "downloading" ||
+        data.status === "loading" ||
+        data.status === "ready"
+          ? data.status
+          : "ready";
+      const displayName =
+        typeof data.displayName === "string" && data.displayName.length > 0
+          ? data.displayName
+          : typeof data.model === "string"
+            ? data.model
+            : target === "cloud"
+              ? "Eliza Cloud"
+              : "the on-device model";
+      const notice =
+        target === "cloud"
+          ? `Switched to Eliza Cloud inference (${displayName}).`
+          : status === "downloading"
+            ? `Switching to on-device ${displayName} — downloading…`
+            : status === "loading"
+              ? `Switching to on-device ${displayName} — loading…`
+              : `Switched to on-device ${displayName}.`;
+      depsRef.current?.setActionNotice(
+        notice,
+        "success",
+        undefined,
+        false,
+        status === "downloading" || status === "loading",
+      );
+    },
+  );
+
+  // Agent-driven runtime-profile switch (#12178). The server owns no profile
+  // registry (profiles are client-persisted), so it broadcasts the request with
+  // a `requestId`; the shell resolves the profile, applies it via the canonical
+  // `switchRuntimeNonDestructive` (inheriting its remote-trust gate), and posts
+  // the outcome back to the ORIGINATING agent's result endpoint. The result must
+  // go to the origin base captured BEFORE the switch, since a successful switch
+  // repoints the live client to a different backend.
+  const unbindSwitchAgent = client.onWsEvent(
+    "shell:switch-agent",
+    (data: Record<string, unknown>) => {
+      const requestId =
+        typeof data.requestId === "string" ? data.requestId : null;
+      const query = typeof data.profile === "string" ? data.profile : "";
+      if (!requestId) return;
+
+      const originBase =
+        typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+      const reportResult = (body: {
+        ok: boolean;
+        profileId?: string;
+        profileLabel?: string;
+        reason?: string;
+      }): void => {
+        void fetch(`${originBase}/api/runtime/agent-switch/result`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, ...body }),
+        }).catch(() => {
+          // The switch already applied locally; a lost result callback only
+          // means the agent's HTTP call times out (it degrades to "no-shell").
+        });
+      };
+
+      const profile = resolveAgentProfileByQuery(
+        query,
+        loadAgentProfileRegistry(),
+      );
+      if (!profile) {
+        reportResult({ ok: false, reason: "not-found" });
+        return;
+      }
+
+      const result = switchRuntimeNonDestructive(profile.id);
+      if (!result.ok) {
+        reportResult({ ok: false, reason: result.reason });
+        if (result.reason === "untrusted-remote") {
+          depsRef.current?.setActionNotice(
+            `Refused to switch to "${profile.label}" — untrusted remote address.`,
+            "error",
+          );
+        }
+        return;
+      }
+      reportResult({
+        ok: true,
+        profileId: result.profile.id,
+        profileLabel: result.profile.label,
+      });
+      depsRef.current?.setActionNotice(
+        `Switched the app to "${result.profile.label}".`,
+        "success",
+      );
+    },
+  );
+
   const unbindViewEvent = client.onWsEvent(
     "view:event",
     (data: Record<string, unknown>) => {
@@ -780,6 +900,8 @@ export function bindReadyPhase(
     unbindSysWarn();
     unbindRestart();
     unbindShellNavigateView();
+    unbindModelSwitch();
+    unbindSwitchAgent();
     unbindViewEvent();
     unbindViewInteract();
     unbindConvUp();

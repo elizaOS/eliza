@@ -1448,6 +1448,7 @@ function AppProviderInner({
     setConnected,
     setAgentStatus,
     setAgentStatusIfChanged,
+    setActionNotice,
     setStartupPhase,
     setStartupError,
     setAuthRequired,

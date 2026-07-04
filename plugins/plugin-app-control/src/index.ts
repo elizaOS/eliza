@@ -13,8 +13,10 @@
  */
 
 import type { Plugin } from "@elizaos/core";
+import { agentSwitchAction } from "./actions/agent-switch.js";
 import { appAction, createAppAction } from "./actions/app.js";
 import { backgroundAction } from "./actions/background.js";
+import { modelSwitchAction } from "./actions/model-switch.js";
 import {
 	closeAllViewsAction,
 	closeViewAction,
@@ -36,6 +38,14 @@ import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
 import { viewNavigationShortcuts } from "./shortcuts.js";
 
+export {
+	agentSwitchAction,
+	type AgentSwitchActionDeps,
+	type AgentSwitchFn,
+	type AgentSwitchOutcome,
+	createAgentSwitchAction,
+	inferAgentSwitchProfile,
+} from "./actions/agent-switch.js";
 export type { AppMode } from "./actions/app.js";
 export type {
 	BackgroundApplyOp,
@@ -51,6 +61,16 @@ export {
 	MATCHER_VIEW_IDS,
 	matchViewCommand,
 } from "./actions/view-command-matcher.js";
+export {
+	createModelSwitchAction,
+	inferModelSwitchRequest,
+	type ModelSwitchActionDeps,
+	type ModelSwitchFn,
+	type ModelSwitchOutcome,
+	modelSwitchAction,
+	type ModelSwitchTarget,
+	sanctionedModelError,
+} from "./actions/model-switch.js";
 export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
@@ -130,6 +150,8 @@ export const appControlPlugin: Plugin = {
 		closeViewAction,
 		closeAllViewsAction,
 		backgroundAction,
+		modelSwitchAction,
+		agentSwitchAction,
 	],
 	shortcuts: viewNavigationShortcuts,
 	// Three-stage view-switch cascade:
