@@ -188,5 +188,5 @@ Account-level settings override the base connector settings. Use `defaultAccount
 ## Related
 
 - [MS Teams connector](/connectors/msteams)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

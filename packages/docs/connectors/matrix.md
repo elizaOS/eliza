@@ -69,5 +69,5 @@ To explicitly disable the connector even when a token is present:
 ## Related
 
 - [Matrix plugin reference](/connectors/matrix)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

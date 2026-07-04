@@ -8,7 +8,7 @@ description: "Why dynamic plugin imports fail without NODE_PATH and how Eliza fi
 
 This doc explains **why** dynamic plugin imports fail without `NODE_PATH` and **how** we fix it across CLI, dev server, and Electrobun.
 
-> **Note:** The source files referenced in this document live in the elizaOS submodule (`eliza/`). Run `bun run setup:upstreams` to populate the submodule so you can inspect them locally. All paths like `src/runtime/eliza.ts` refer to `eliza/packages/app-core/src/runtime/eliza.ts` unless otherwise noted.
+> **Note:** The source files referenced in this document live in the elizaOS submodule (`eliza/`). Run `git submodule update --init --recursive` to populate the submodule so you can inspect them locally. All paths like `src/runtime/eliza.ts` refer to `eliza/packages/app-core/src/runtime/eliza.ts` unless otherwise noted.
 
 ## The problem
 
@@ -24,7 +24,7 @@ Node resolves this by walking up from the **importing file's directory**. When e
 |---|---|---|---|
 | `bun run dev` | `src/runtime/eliza.ts` | `src/runtime/` | Usually yes (2 levels) |
 | `bun run dev` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
-| Electrobun dev | `eliza-dist/eliza.js` | `apps/app/electrobun/eliza-dist/` | **No** — walks into `apps/` |
+| Electrobun dev | `eliza-dist/eliza.js` | `packages/app-core/platforms/electrobun/eliza-dist/` | **No** — walks into `apps/` |
 | Electrobun packaged | `app.asar.unpacked/eliza-dist/eliza.js` | Inside the `.app` bundle | **No** — different filesystem |
 
 In the Electrobun cases (and sometimes the built dist case depending on bundler behavior), the walk never reaches the repo root where `@elizaos/plugin-*` packages are installed. The import fails with "Cannot find module".
@@ -64,7 +64,7 @@ env.NODE_PATH = ...;
 // Packaged: use ASAR node_modules
 ```
 
-**Why here:** The Electrobun native runtime loads `eliza-dist/eliza.js` via `dynamicImport()`. In dev mode, `__dirname` is deep inside `apps/app/electrobun/build/src/native/` — we walk up to find the first `node_modules` directory (the monorepo root). In packaged mode, we use the ASAR's `node_modules` instead.
+**Why here:** The Electrobun native runtime loads `eliza-dist/eliza.js` via `dynamicImport()`. In dev mode, `__dirname` is deep inside `packages/app-core/platforms/electrobun/build/src/native/` — we walk up to find the first `node_modules` directory (the monorepo root). In packaged mode, we use the ASAR's `node_modules` instead.
 
 ## Why not just use the bundler?
 
@@ -121,7 +121,7 @@ Optional plugins (and some core-adjacent packages) can end up in the load set be
 
 **Why we record provenance:** `collectPluginNames()` optionally fills a **`PluginLoadReasons`** map (first source wins per package). `resolvePlugins()` passes it through; benign optional failures are summarized as **`Optional plugins not installed: … (added by: …)`**. That answers “what should I change?” — edit config, unset env, install the package, or add a plugin checkout — instead of chasing a false “eliza is broken” hypothesis.
 
-**Browser / stagehand:** `@elizaos/plugin-browser` expects a **stagehand-server** tree that is **not** in the npm tarball. Eliza discovers `plugins/plugin-browser/stagehand-server` by **walking parents** from the runtime so both flat Eliza checkouts and **`eliza/` submodule** layouts resolve. See **[Developer diagnostics and workspace](guides/developer-diagnostics-and-workspace.md)**.
+**Browser / stagehand:** `@elizaos/plugin-browser` expects a **stagehand-server** tree that is **not** in the npm tarball. Eliza discovers `plugins/plugin-browser/stagehand-server` by **walking parents** from the runtime so both flat Eliza checkouts and **`eliza/` submodule** layouts resolve. See **[Developer diagnostics and workspace](/apps/desktop-local-development)**.
 
 ## Pack-and-test and vendored workspace validation
 

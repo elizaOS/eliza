@@ -72,7 +72,7 @@ cmake -B packages/native/plugins/voice-classifier-cpp/build-darwin \
       -DCMAKE_BUILD_TYPE=Release packages/native/plugins/voice-classifier-cpp
 cmake --build packages/native/plugins/voice-classifier-cpp/build-darwin -j
 ```
-Pure scalar C, `-lm` only, builds in <2s. 5/7 ctests pass (1 gguf-loader
+Pure scalar C, `-lm` only, builds in under 2s. 5/7 ctests pass (1 gguf-loader
 fixture failure, 1 parity test skipped without fixtures).
 
 ### 0.4 Corrected gap statuses

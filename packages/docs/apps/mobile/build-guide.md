@@ -6,7 +6,7 @@ description: "Compile, sign, and distribute the Eliza mobile app for iOS and And
 
 The Eliza mobile app (`packages/app`) is a Capacitor project that wraps the shared web UI in a native shell. Building it requires three steps: compiling the workspace Capacitor plugins, bundling the Vite web assets, and syncing them into the native iOS or Android project. Distribution builds additionally require code signing — Apple certificates and provisioning profiles for iOS, a keystore for Android.
 
-All build commands are invoked via `bun run` from inside the `packages/app` directory.
+The examples below use `bun run --cwd packages/app ...` from the repository root so they are copy-pasteable from a normal checkout.
 
 ## Features
 
@@ -32,21 +32,21 @@ All build commands are invoked via `bun run` from inside the `packages/app` dire
 **Build commands:**
 
 ```bash
-# From packages/app — build everything and sync to iOS
-bun run build:ios
+# Build everything and sync to iOS
+bun run --cwd packages/app build:ios
 
 # Build everything and sync to Android
-bun run build:android
+bun run --cwd packages/app build:android
 
 # Build custom Capacitor plugins only
-bun run plugin:build
+bun run --cwd packages/app plugin:build
 
 # Push already-built web assets to both native projects
-bun run cap:sync
+bun run --cwd packages/app cap:sync
 
 # Open native project in IDE
-bun run cap:open:ios      # Xcode
-bun run cap:open:android  # Android Studio
+bun run --cwd packages/app cap:open:ios      # Xcode
+bun run --cwd packages/app cap:open:android  # Android Studio
 ```
 
 **iOS signing:** Open `packages/app-core/platforms/ios/App/App.xcworkspace` in Xcode, select the App target, go to Signing & Capabilities, and choose your development team. For App Store distribution, select a distribution certificate and a matching provisioning profile.
@@ -74,7 +74,7 @@ bun run dev
 
 ELIZA_IOS_REMOTE_API_BASE=http://192.168.1.42:31337 \
 ELIZA_IOS_REMOTE_API_TOKEN=replace-with-the-same-token \
-bun run dev:ios:remote-mac
+bun run --cwd packages/app build:ios:local:device
 ```
 
 If `ELIZA_IOS_REMOTE_API_BASE` is omitted, the helper picks the first non-loopback IPv4 address and port `31337`. Run from Xcode with an Apple development team selected to install on a physical phone.
@@ -85,7 +85,7 @@ Build the bundled iOS shell with the cloud runtime defaults, then select Eliza C
 in the first onboarding view:
 
 ```bash
-bun run dev:ios:cloud
+bun run --cwd packages/app build:ios:cloud:device
 ```
 
 Set `ELIZA_IOS_CLOUD_BASE` or `VITE_ELIZA_CLOUD_BASE` only when targeting a non-default Eliza Cloud environment.
@@ -101,7 +101,7 @@ bun run dev
 
 ELIZA_IOS_DEVICE_BRIDGE_API_BASE=https://agent-or-tunnel.example.com \
 ELIZA_IOS_DEVICE_BRIDGE_TOKEN=replace-with-the-same-token \
-bun run dev:ios:cloud-hybrid
+bun run --cwd packages/app build:ios:cloud:device
 ```
 
 `ELIZA_IOS_DEVICE_BRIDGE_API_BASE` derives `wss://.../api/local-inference/device-bridge`. Use `ELIZA_IOS_DEVICE_BRIDGE_URL` when the bridge lives at a different URL. The server still decides which slots use the paired device through Local models routing; the phone does not override cloud routing on its own.
@@ -139,8 +139,8 @@ bun run dev
 4. Sync and launch on device:
 
 ```bash
-bun run cap:sync
-bun run cap:open:ios    # or cap:open:android
+bun run --cwd packages/app cap:sync
+bun run --cwd packages/app cap:open:ios    # or cap:open:android
 ```
 
 5. Run the app from Xcode or Android Studio. The app loads from Vite, and edits to web code hot-reload instantly.
@@ -156,7 +156,7 @@ Remove the `server` override from `capacitor.config.ts` before building for dist
 1. Compile plugins, bundle web assets, and sync to the iOS project:
 
 ```bash
-bun run build:ios
+bun run --cwd packages/app build:ios
 ```
 
 2. Open the workspace in Xcode:
@@ -190,14 +190,14 @@ This means Xcode cannot find a valid development or distribution certificate. Fi
 1. Compile plugins, bundle web assets, and sync to the Android project:
 
 ```bash
-bun run build:android
+bun run --cwd packages/app build:android
 ```
 
 2. Open the Android project in Android Studio:
 
 ```bash
 # Or use the helper:
-bun run cap:open:android
+bun run --cwd packages/app cap:open:android
 ```
 
 3. Wait for Gradle sync to complete. Android Studio will download dependencies and index the project. This can take several minutes on first open.
@@ -311,7 +311,7 @@ Then restart your terminal and retry the build.
 One or more custom Capacitor plugin TypeScript sources failed to compile. Isolate the error by building plugins separately:
 
 ```bash
-bun run plugin:build
+bun run --cwd packages/app plugin:build
 ```
 
 Review the TypeScript compiler output to identify which plugin has the error. Fix the TypeScript issue, then re-run the full build.
@@ -321,7 +321,7 @@ Review the TypeScript compiler output to identify which plugin has the error. Fi
 The native shell launched but no web content is visible. This usually means web assets were not synced to the native project. Run:
 
 ```bash
-bun run cap:sync
+bun run --cwd packages/app cap:sync
 ```
 
 Then rebuild and re-run from the IDE. Also verify that the `server` override in `capacitor.config.ts` is removed if you previously used live reload.

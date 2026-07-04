@@ -180,5 +180,5 @@ Per-channel settings are defined within a team under `teams.<team-id>.channels.<
 ## Related
 
 - [Google Chat connector](/connectors/googlechat)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

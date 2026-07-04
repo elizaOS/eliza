@@ -7,7 +7,7 @@ description: What shipped in Eliza and elizaOS — features, improvements, fixes
 
 ## Verification verdicts return to chat
 
-When your agent spawns a [coding agent](/guides/coding-swarms) to build a new app or plugin (`APP.create`, `PLUGIN.create`), the verification verdict — pass or fail — is now posted back into the originating chat room when the run completes. Previously the verdict was visible to ops via SSE/WS but silently dropped from the conversation, leaving you without confirmation that your request had landed. Verdicts are deduped and the bridge cleans up its subscriptions correctly when sessions end.
+When your agent spawns a coding agent to build a new app or plugin (`APP.create`, `PLUGIN.create`), the verification verdict — pass or fail — is now posted back into the originating chat room when the run completes. Previously the verdict was visible to ops via SSE/WS but silently dropped from the conversation, leaving you without confirmation that your request had landed. Verdicts are deduped and the bridge cleans up its subscriptions correctly when sessions end.
 
 ## First-party app protection
 
@@ -23,11 +23,11 @@ The [app verification](/dashboard/apps) browser-check now fails closed if `puppe
 
 ## Open in cloud from the homepage
 
-A new **Open in cloud** button on the Eliza homepage takes you from a marketing page to a running [cloud agent](/guides/cloud) in one flow. Click it and a popup opens, signs you in, provisions (or reuses) a cloud agent, polls the provision job, and redirects the popup to your agent UI when it's ready — no manual dashboard hop. The button shows idle, preparing, and cancellable states throughout, and cleanly handles popup-closed and timeout cases.
+A new **Open in cloud** button on the Eliza homepage takes you from a marketing page to a running [cloud agent](/tracks/cloud/overview) in one flow. Click it and a popup opens, signs you in, provisions (or reuses) a cloud agent, polls the provision job, and redirects the popup to your agent UI when it's ready — no manual dashboard hop. The button shows idle, preparing, and cancellable states throughout, and cleanly handles popup-closed and timeout cases.
 
 ## Updates
 
-- **Coding-agent model preferences propagate to spawned sessions** — When you set Anthropic or OpenAI model preferences in [coding agent settings](/guides/coding-swarms), those choices now flow correctly into the environment of every spawned coding session through the orchestrator's PTY layer. Previously a stale default could leak into long-running sessions.
+- **Coding-agent model preferences propagate to spawned sessions** — When you set Anthropic or OpenAI model preferences in coding agent settings, those choices now flow correctly into the environment of every spawned coding session through the orchestrator's PTY layer. Previously a stale default could leak into long-running sessions.
 - **Computer-use action routing fix** — The action planner now routes computer-use requests (browser navigation, screenshot, click) to the correct handler more reliably, eliminating misroutes that previously sent these requests through generic chat replies.
 - **Gmail email-draft-reply graceful 404** — When your agent tries to draft a reply to a Gmail thread that's been deleted or moved, the action now degrades gracefully with a clear message instead of surfacing a Google API 404.
 - **LIFE explicit-intent routing** — LIFE actions now require explicit life-tracking intent in the prompt before routing, so casual phrases like "remember to call mom" no longer trigger the LIFE handler when you meant a simple todo.
@@ -97,7 +97,7 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 ## Updates
 
 - **Direct life-ops launch** — Opening life-ops from the dashboard now goes straight to the section you tapped instead of routing through an intermediate landing screen.
-- **n8n empty-state translations** — The [automations](/guides/cloud) empty state for workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
+- **n8n empty-state translations** — The [automations](/tracks/cloud/overview) empty state for workflows is now fully localized (Spanish, French, and Chinese) so first-time setup reads cleanly in every supported language.
 - **Eliza Cloud TTS polish** — Cloud-hosted text-to-speech has been refreshed for cleaner audio output and more reliable streaming when your agent speaks back through Discord or the desktop voice surface.
 - **Default assistant name sync** — The assistant name shown across the desktop app, chat, and connector greetings now stays in sync with your agent configuration on first run, so renaming your agent applies everywhere immediately.
 - **Inbox routing reliability** — Inbox route handling has been hardened with deeper test coverage, so cross-channel messages land in the canonical inbox consistently across Gmail, Discord, Telegram, Signal, and iMessage.
@@ -116,7 +116,7 @@ The runtime now respects per-plugin role declarations on startup. Plugins that d
 
 ## Automations sidebar and chat polish
 
-The [automations](/guides/cloud) view has a refreshed sidebar layout and a smoother chat-driven authoring flow. Drafting and iterating on workflows from chat now feels more responsive, and recent automation chat fixes resolve cases where messages could fall out of sync with the active workflow.
+The [automations](/tracks/cloud/overview) view has a refreshed sidebar layout and a smoother chat-driven authoring flow. Drafting and iterating on workflows from chat now feels more responsive, and recent automation chat fixes resolve cases where messages could fall out of sync with the active workflow.
 
 ## Mobile pane navigation
 
@@ -124,10 +124,10 @@ Mobile-pane navigation and controls in the dashboard have been reworked so switc
 
 ## Updates
 
-- **Experience extraction validation** — The [training system](/guides/training) now validates extracted experience against a broader scenario set, improving the quality of patterns your agent learns from real conversations.
+- **Experience extraction validation** — The [training system](/tracks/training/overview) now validates extracted experience against a broader scenario set, improving the quality of patterns your agent learns from real conversations.
 - **Lifeops settings cleanup** — The life-ops settings panel has been streamlined with cleaner access visuals and tighter layout, making it easier to review which connectors and capabilities are active.
 - **Lifeops interaction polish** — Small interaction details across the life-ops surface — selection states, hover feedback, and transitions — have been tightened for a more cohesive feel.
-- **Wallet market card sizing** — The [wallet](/guides/wallet) market cards have been resized for better density on the wallet dashboard, so more of your portfolio fits without scrolling.
+- **Wallet market card sizing** — The [wallet](/cloud/wallet-api) market cards have been resized for better density on the wallet dashboard, so more of your portfolio fits without scrolling.
 - **Chat composer fix** — The chat composer no longer drops focus or input in edge cases that previously required clicking back into the field.
 - **Relationships workspace** — The contacts view has been updated with workspace improvements for browsing your agent's relationship graph.
 
@@ -154,7 +154,7 @@ The legacy three-step setup wizard and its connection subflow have been replaced
 
 ## Wallet dashboard polish
 
-The [wallet](/guides/wallet) dashboard has been refreshed with a cleaner rail header, updated chain badges, live prediction data, and a tighter overall layout. Balance lookups on Eliza Cloud now detect the correct EVM RPC endpoint automatically, so cloud wallets resolve balances without manual RPC configuration.
+The [wallet](/cloud/wallet-api) dashboard has been refreshed with a cleaner rail header, updated chain badges, live prediction data, and a tighter overall layout. Balance lookups on Eliza Cloud now detect the correct EVM RPC endpoint automatically, so cloud wallets resolve balances without manual RPC configuration.
 
 ## Updates
 
@@ -163,7 +163,7 @@ The [wallet](/guides/wallet) dashboard has been refreshed with a cleaner rail he
 - **Refreshed app hero artwork** — Hero images for the Database Viewer, LifeOps, Log Viewer, Memory Viewer, Plugin Viewer, Relationship Viewer, Runtime Debugger, Skills Viewer, and Trajectory Viewer have been updated with higher-resolution artwork.
 - **Mobile shell layout** — The mobile shell layout has been refined for better density on phone-sized viewports.
 - **iMessage startup logging** — The [iMessage connector](/connectors/imessage) now emits clearer startup logs and recovers more reliably when the Messages database is temporarily unavailable.
-- **Faster fresh-clone setup** — A new `./install` / `install.cmd` entry point replaces the previous `bootstrap` alias, giving you a single reliable way to set up the repo after a fresh clone. See [CONTRIBUTING](/guides/contributing) for details.
+- **Faster fresh-clone setup** — A new `./install` / `install.cmd` entry point replaces the previous `bootstrap` alias, giving you a single reliable way to set up the repo after a fresh clone. See [CONTRIBUTING](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) for details.
 
 ## Bug fixes
 
@@ -178,7 +178,7 @@ The [wallet](/guides/wallet) dashboard has been refreshed with a cleaner rail he
 
 ## Dual-wallet with cloud wallet provisioning
 
-Your agent now supports a dual-wallet architecture where local and cloud wallets coexist, with a primary source per chain. When you log into [Eliza Cloud](/guides/cloud) with the cloud wallet feature enabled, EVM and Solana wallets are imported from the cloud and set as primary automatically — no manual setup. You can switch the primary source at any time, and cloud wallet descriptors can be re-queried on demand. If provisioning fails during login, authentication still succeeds and you can retry wallet provisioning later.
+Your agent now supports a dual-wallet architecture where local and cloud wallets coexist, with a primary source per chain. When you log into [Eliza Cloud](/tracks/cloud/overview) with the cloud wallet feature enabled, EVM and Solana wallets are imported from the cloud and set as primary automatically — no manual setup. You can switch the primary source at any time, and cloud wallet descriptors can be re-queried on demand. If provisioning fails during login, authentication still succeeds and you can retry wallet provisioning later.
 
 ## Agent Browser Bridge
 
@@ -186,11 +186,11 @@ The LifeOps Browser extension has been renamed and relocated as the **Agent Brow
 
 ## Automation drafts
 
-The [automations](/guides/cloud) view now supports drafting workflows before activating them. A new draft pane lets you compose a workflow scoped to a specific room, normalize its title, and handle send errors gracefully if the draft can't be delivered. Drafts stay out of your live automation list until you're ready to ship them.
+The [automations](/tracks/cloud/overview) view now supports drafting workflows before activating them. A new draft pane lets you compose a workflow scoped to a specific room, normalize its title, and handle send errors gracefully if the draft can't be delivered. Drafts stay out of your live automation list until you're ready to ship them.
 
 ## Cloud agent provisioning UX
 
-The cloud [dashboard](/guides/cloud) now handles non-running runtime cards clearly. The primary **Open** button is disabled and labeled with the agent's current state ("starting…", "stopped", "paused", "unreachable") while the card polls for readiness, with a pulsing status dot during provisioning and a tooltip explaining the expected boot time. The button flips back to the solid **Open** state automatically as soon as the health probe returns running. Deleting cloud agents and inline provisioning from the dashboard have also been restored.
+The cloud [dashboard](/tracks/cloud/overview) now handles non-running runtime cards clearly. The primary **Open** button is disabled and labeled with the agent's current state ("starting…", "stopped", "paused", "unreachable") while the card polls for readiness, with a pulsing status dot during provisioning and a tooltip explaining the expected boot time. The button flips back to the solid **Open** state automatically as soon as the health probe returns running. Deleting cloud agents and inline provisioning from the dashboard have also been restored.
 
 ## BlueBubbles connector
 
@@ -201,7 +201,7 @@ A new [BlueBubbles connector](/connectors/bluebubbles) lets your agent bridge to
 - **Chat and page polish** — Page-scoped chat context, chat widget heading, chat title, and chat sidebar have all been refined for cleaner layouts and more reliable context when switching between pages.
 - **Sidebar and apps view modernization** — The dashboard sidebar controls, [apps view](/dashboard/apps) catalog, and apps sidebar have been cleaned up with collapsed controls and tighter density. The character editor, [character](/agents/character-interface) layout, character panel, and character sidebar have also been polished for a more consistent navigation experience.
 - **Connector sidebar cleanup** — The connector configuration sidebar has been cleaned up and polished, with clearer toggles and connector switches for enabling/disabling individual platforms.
-- **Embedded knowledge uploads** — The [knowledge](/guides/documents) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
+- **Embedded knowledge uploads** — The [knowledge](/cloud/documents) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
 - **X (Twitter) billing and status** — X connector billing is now surfaced alongside other cloud usage, and status reporting has been hardened with new test coverage.
 - **Cloud migration fix** — A migration issue affecting cloud-deployed agents has been resolved so upgrades apply cleanly on first boot.
 - **iOS runtime setup modes** — The iOS app now supports distinct runtime build and setup modes, giving mobile users a smoother first-run experience.
@@ -246,7 +246,7 @@ The chat interface is cleaner and more compact. Message bubbles are flatter with
 
 ## Cloud travel booking
 
-Your agent can now search and book flights and hotels through conversation when connected to [Eliza Cloud](/guides/cloud). Travel features — including flight search, hotel search, and booking — are enabled by default for cloud users. Billing is handled automatically against your cloud credit balance with a service fee applied server-side. If your balance is insufficient, the agent routes you to the wallet top-up flow.
+Your agent can now search and book flights and hotels through conversation when connected to [Eliza Cloud](/tracks/cloud/overview). Travel features — including flight search, hotel search, and booking — are enabled by default for cloud users. Billing is handled automatically against your cloud credit balance with a service fee applied server-side. If your balance is insufficient, the agent routes you to the wallet top-up flow.
 
 ## Feature toggles
 
@@ -254,7 +254,7 @@ A new feature toggles panel in [settings](/user/provider-setup) gives you granul
 
 ## Automations UX overhaul
 
-The [automations](/guides/cloud) view has been redesigned with a smoother getting-started experience. A new workflow templates modal offers six starter recipes — Daily Email Digest, Slack-to-Discord Bridge, RSS to Summary, Calendar to Slack, GitHub Issue Triage, and Email to Notion — so you can spin up common workflows in one click. A zero-state setup screen guides new users with clear calls to action. The schedule editor now shows a live preview of your next three trigger times for interval, one-time, and cron schedules, with inline validation for cron expressions.
+The [automations](/tracks/cloud/overview) view has been redesigned with a smoother getting-started experience. A new workflow templates modal offers six starter recipes — Daily Email Digest, Slack-to-Discord Bridge, RSS to Summary, Calendar to Slack, GitHub Issue Triage, and Email to Notion — so you can spin up common workflows in one click. A zero-state setup screen guides new users with clear calls to action. The schedule editor now shows a live preview of your next three trigger times for interval, one-time, and cron schedules, with inline validation for cron expressions.
 
 ## Visual workflow graph
 
@@ -285,7 +285,7 @@ Your agent now picks the right action more reliably when you give it natural-lan
 
 ## Updates
 
-- **Training optimizer accuracy** — The [training system](/guides/training) now scores action planner outputs using strict action-name matching instead of fuzzy token overlap, so optimization runs produce more meaningful improvements to your agent's behavior.
+- **Training optimizer accuracy** — The [training system](/tracks/training/overview) now scores action planner outputs using strict action-name matching instead of fuzzy token overlap, so optimization runs produce more meaningful improvements to your agent's behavior.
 - **Skill actions canonical** — Legacy skill invocation methods have been retired. `USE_SKILL` is now the single way to trigger [skills](/plugins/skills), with all previous aliases (`RUN_SKILL`, `INVOKE_SKILL`) redirecting to it automatically.
 - **Skills API streamlined** — The [skills](/plugins/skills) enable/disable endpoint has been canonical to a single toggle surface, making skill management more predictable for integrations and automations.
 - **Graceful health-connector recovery** — If a connector's health check is temporarily unreachable, the runtime now degrades gracefully instead of blocking other actions from running.
@@ -301,7 +301,7 @@ Your agent now picks the right action more reliably when you give it natural-lan
 
 ## Dashboard redesign
 
-The [cloud dashboard](/guides/cloud) homepage has been completely redesigned. Agent cards now use a data-first layout with cleaner instance grids and filter chips for quick browsing. A new persistent sidebar with vertical tabs replaces the previous navigation, and the hero section is now typography-focused for a quieter, more readable landing experience. You can provision new cloud agents directly from the dashboard with an inline modal — no more navigating away to create an agent. Deleting cloud agents and managing card actions are also restored.
+The [cloud dashboard](/tracks/cloud/overview) homepage has been completely redesigned. Agent cards now use a data-first layout with cleaner instance grids and filter chips for quick browsing. A new persistent sidebar with vertical tabs replaces the previous navigation, and the hero section is now typography-focused for a quieter, more readable landing experience. You can provision new cloud agents directly from the dashboard with an inline modal — no more navigating away to create an agent. Deleting cloud agents and managing card actions are also restored.
 
 ## workflow automations
 
@@ -316,7 +316,7 @@ The life-ops connector setup panels have been redesigned with a flat, borderless
 - **Mobile-responsive homepage** — The dashboard homepage is now fully responsive on phones and tablets. The topbar is sticky so the menu button stays reachable on long pages, filter chips scroll horizontally on narrow screens, tap targets meet touch-friendly sizing, and horizontal overflow is eliminated across all viewport widths.
 - **Settings panels compacted** — The Cloud and AI Model settings panels have been streamlined. Placeholder UI like the agents grid, usage metrics, and dead external links have been removed. Model selection dropdowns now appear correctly even before explicitly connecting to the cloud.
 - **OpenRouter SDK upgraded** — The OpenRouter plugin has been upgraded to `@openrouter/ai-sdk-provider` v2.0.0 for improved model routing and compatibility.
-- **Discord task agent cleanup** — [Coding agent](/guides/coding-swarms) messages in Discord are now much cleaner. Heartbeat updates show real elapsed time instead of internal tool names, and debug-level messages like session state and validator analysis no longer leak into the channel.
+- **Discord task agent cleanup** — Coding agent messages in Discord are now much cleaner. Heartbeat updates show real elapsed time instead of internal tool names, and debug-level messages like session state and validator analysis no longer leak into the channel.
 - **Homepage accessibility** — Modals and runtime cards now meet accessibility parity standards with proper ARIA attributes, and contrast has been improved across micro-labels, status hints, and sidebar rows.
 
 ## Bug fixes
@@ -343,7 +343,7 @@ The life-ops Google integration now supports multiple Google accounts per side �
 
 ## Steward wallet auto-provisioning on cloud login
 
-When you log into [Eliza Cloud](/guides/cloud) from the desktop app, a [Steward](/guides/wallet)-managed wallet is now provisioned automatically. You no longer need to configure Steward credentials manually after connecting to the cloud — the wallet page, spending policies, and transaction signing all work out of the box as soon as you log in.
+When you log into [Eliza Cloud](/tracks/cloud/overview) from the desktop app, a [Steward](/cloud/wallet-api)-managed wallet is now provisioned automatically. You no longer need to configure Steward credentials manually after connecting to the cloud — the wallet page, spending policies, and transaction signing all work out of the box as soon as you log in.
 
 ## Updates
 
@@ -365,21 +365,21 @@ When you log into [Eliza Cloud](/guides/cloud) from the desktop app, a [Steward]
 
 ## Steward Vault managed wallets
 
-Your agent now supports a dual-wallet architecture with [Steward Vault](/guides/wallet) integration. When connected, transactions route through a managed vault that evaluates spending policies — including per-transaction, daily, and weekly USD-denominated caps — before signing. You can switch between local and cloud wallets at any time, and your primary wallet selection persists across restarts. Both EVM and Solana chains are supported, with automatic RPC fallbacks when balance lookups fail.
+Your agent now supports a dual-wallet architecture with [Steward Vault](/cloud/wallet-api) integration. When connected, transactions route through a managed vault that evaluates spending policies — including per-transaction, daily, and weekly USD-denominated caps — before signing. You can switch between local and cloud wallets at any time, and your primary wallet selection persists across restarts. Both EVM and Solana chains are supported, with automatic RPC fallbacks when balance lookups fail.
 
 ## Agent training
 
-A new [training system](/guides/training) lets you shape your agent's behavior with custom examples and feedback. Provide training data through the dashboard and the training engine processes it into actionable patterns your agent applies in conversation. Training runs are visible in the dashboard so you can track progress and refine results over time.
+A new [training system](/tracks/training/overview) lets you shape your agent's behavior with custom examples and feedback. Provide training data through the dashboard and the training engine processes it into actionable patterns your agent applies in conversation. Training runs are visible in the dashboard so you can track progress and refine results over time.
 
 ## Character catalog in desktop
 
-The desktop app now includes an expanded character catalog for browsing and selecting agent personalities. Character previews load faster and the selection flow integrates directly with the [setup wizard](/guides/beginners-user-guide) and character editor, so you can explore available characters without leaving the setup process.
+The desktop app now includes an expanded character catalog for browsing and selecting agent personalities. Character previews load faster and the selection flow integrates directly with the [setup wizard](/user/apps-and-control) and character editor, so you can explore available characters without leaving the setup process.
 
 ## Updates
 
-- **Coding agent session hydration** — [Coding agent](/guides/coding-swarms) sessions now persist their state and restore it when you return, so you pick up where you left off instead of starting a fresh session. The coding agent settings and model configuration panels have also been refreshed.
+- **Coding agent session hydration** — Coding agent sessions now persist their state and restore it when you return, so you pick up where you left off instead of starting a fresh session. The coding agent settings and model configuration panels have also been refreshed.
 - **Companion emote picker** — The [companion](/dashboard/apps) overlay now includes an emote picker, letting you trigger VRM avatar expressions and gestures on demand. The emote system is integrated with the companion chat and shell.
-- **Homepage approval queue and transaction history** — The cloud [dashboard](/guides/cloud) now shows a cleaner approval queue and formatted transaction history, making it easier to review pending actions and past activity at a glance.
+- **Homepage approval queue and transaction history** — The cloud [dashboard](/tracks/cloud/overview) now shows a cleaner approval queue and formatted transaction history, making it easier to review pending actions and past activity at a glance.
 - **Life-ops sidebar cleanup** — The stale todo sidebar widget has been removed from the life-ops section, reducing clutter for users who manage tasks through conversation instead.
 - **Plugin config reconciliation** — Plugin enabled states are now reconciled automatically on startup. If your config file was edited externally or a migration only updated one location, the runtime detects the drift and corrects it — so plugins stay in sync without manual intervention.
 - **Desktop diagnostic redaction** — Bug reports submitted from the desktop app now automatically redact API keys, tokens, and secrets from URLs before they leave your machine, preventing accidental credential exposure in diagnostic logs.
@@ -423,7 +423,7 @@ Google Calendar actions now support updating and deleting events through convers
 - **Setup streamlined** — Unused setup steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
 - **Action context deduplication** — Your agent's LLM context no longer includes duplicate action results. Action state is now the sole source with a generous token budget, which means faster responses and more room for conversation history.
 - **Music player stream reliability** — The music player audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
-- **Knowledge view improvements** — The [knowledge](/guides/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
+- **Knowledge view improvements** — The [knowledge](/cloud/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
 - **Cloud deployment improvements** — Cloud Docker images now build with all runtime patches applied in a single pipeline, making cloud container provisioning faster and more reliable.
 
 ## Bug fixes
@@ -446,7 +446,7 @@ The canonical inbox now supports three new actions you can trigger through chat.
 
 ## Connector setup panels
 
-Setting up connectors no longer requires editing config files. Discord, Telegram, iMessage, Signal, and WhatsApp now have dedicated setup panels directly in the dashboard. Each panel walks you through authentication, shows connection status, and lets you configure per-connector settings like chat permissions and mode selection. See [connectors](/guides/connectors) for details.
+Setting up connectors no longer requires editing config files. Discord, Telegram, iMessage, Signal, and WhatsApp now have dedicated setup panels directly in the dashboard. Each panel walks you through authentication, shows connection status, and lets you configure per-connector settings like chat permissions and mode selection. See [connectors](/tracks/agent/connect-channels) for details.
 
 ## Companion overlay app
 
@@ -485,7 +485,7 @@ Companion mode is now a launchable overlay app instead of a shell toggle. Open a
 ## Updates
 
 - **Life-ops routing improved** — The life-ops Gmail and Calendar actions now use LLM-driven routing instead of regex-based overrides, producing more accurate subaction selection. Action descriptions include clearer guidance so the LLM picks the right tool on the first try.
-- **Coding agent progress streams to Discord** — When your agent spawns a [coding task](/guides/coding-swarms) from Discord, progress updates now stream back to the channel. You get a heartbeat after 45 seconds of silence and the final result is posted automatically when the task completes — no more staring at silence during long builds.
+- **Coding agent progress streams to Discord** — When your agent spawns a coding task from Discord, progress updates now stream back to the channel. You get a heartbeat after 45 seconds of silence and the final result is posted automatically when the task completes — no more staring at silence during long builds.
 - **Chat UI performance** — The chat composer and PTY session polling no longer trigger unnecessary re-renders across the dashboard. Typing in chat is noticeably smoother, especially with the companion view or coding terminals open.
 - **Sidebar widgets respect plugin state** — Dashboard sidebar widgets for unconfigured plugins (like life-ops without a Google connector) are now hidden automatically, reducing clutter and stopping unnecessary background polling.
 - **Connector setup on macOS** — Setup flows for connectors on macOS are now complete, with guided configuration panels for each supported platform.
@@ -508,7 +508,7 @@ Companion mode is now a launchable overlay app instead of a shell toggle. Open a
 
 ## Eliza Cloud as a provider for coding agents
 
-[Coding agents](/guides/coding-swarms) (Claude Code, Codex, Aider) can now use Eliza Cloud as their LLM provider. Select "Eliza Cloud" in the coding agents settings, pair your cloud API key, and your coding sessions route through the cloud — no per-agent API keys required. The settings UI reflects per-agent auth readiness so you can see at a glance which agents are ready to use. An improved terminal color palette also makes Codex output easier to read.
+Coding agents (Claude Code, Codex, Aider) can now use Eliza Cloud as their LLM provider. Select "Eliza Cloud" in the coding agents settings, pair your cloud API key, and your coding sessions route through the cloud — no per-agent API keys required. The settings UI reflects per-agent auth readiness so you can see at a glance which agents are ready to use. An improved terminal color palette also makes Codex output easier to read.
 
 ## Contacts view
 
@@ -516,11 +516,11 @@ A new Contacts tab in the Advanced section gives you a visual map of your agent'
 
 ## Content pack picker
 
-The [setup](/guides/beginners-development-guide) identity step and character editor now include a content pack browser. Choose from available themed packs to customize your agent's startup experience, backgrounds, and branding directly during setup or from the character editor at any time.
+The [setup](/tracks/framework-app/overview) identity step and character editor now include a content pack browser. Choose from available themed packs to customize your agent's startup experience, backgrounds, and branding directly during setup or from the character editor at any time.
 
 ## Discord cloud settings
 
-Cloud-deployed agents now expose a full Discord configuration panel in the [cloud dashboard](/guides/cloud). Configure DM policies, guild behavior, action toggles (reactions, stickers, polls, threads), message formatting, and privileged intents — all without editing config files.
+Cloud-deployed agents now expose a full Discord configuration panel in the [cloud dashboard](/tracks/cloud/overview). Configure DM policies, guild behavior, action toggles (reactions, stickers, polls, threads), message formatting, and privileged intents — all without editing config files.
 
 ## Connection lost overlay
 
@@ -529,11 +529,11 @@ When your agent's backend becomes unreachable, the dashboard now shows a clear f
 ## Updates
 
 - **Chat source indicators simplified** — Cross-channel source labels in the sidebar and inbox now use compact icons instead of full text badges, reducing visual clutter while still showing which platform each message came from.
-- **Connector identity and delivery checks** — Messages from connectors now include richer identity metadata and delivery status, making it easier to track cross-platform message routing in the [inbox](/guides/connectors).
+- **Connector identity and delivery checks** — Messages from connectors now include richer identity metadata and delivery status, making it easier to track cross-platform message routing in the [inbox](/tracks/agent/connect-channels).
 - **Trajectory scenario grouping** — The [trajectory view](/advanced/trajectories) now groups related LLM calls into named scenarios with history filters, making it easier to review and compare agent behavior across sessions.
 - **Advanced memory storage** — Your agent can now persist structured memories beyond the default conversation history. This enables richer context recall across sessions and is available through the agent configuration.
 - **Cloud voice support hardened** — Cloud containers now ship with native audio encoding dependencies, so Discord voice and TTS work reliably without additional setup. When voice dependencies are missing, the system degrades gracefully with a clear error instead of crashing.
-- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/guides/documents).
+- **Knowledge plugin auto-configuration** — The knowledge plugin now auto-enables when API keys or a cloud provider are available, and auto-detects your text provider and model from your existing configuration. No manual setup needed to start using [knowledge](/cloud/documents).
 
 ## Bug fixes
 
@@ -553,11 +553,11 @@ Installing a plugin on the desktop app now automatically restarts the agent so t
 
 ## Setup skipped when already configured
 
-If your backend is already set up — for example, after restoring from a backup or reconnecting an existing agent — the [setup wizard](/guides/beginners-user-guide) is now skipped automatically. You go straight to chat instead of stepping through setup screens you've already completed.
+If your backend is already set up — for example, after restoring from a backup or reconnecting an existing agent — the [setup wizard](/user/apps-and-control) is now skipped automatically. You go straight to chat instead of stepping through setup screens you've already completed.
 
 ## Updates
 
-- **EVM wallet startup is safer** — The EVM wallet plugin no longer relies on an environment opt-in workaround when a cloud wallet is provisioned. See [wallet setup](/guides/wallet) for details.
+- **EVM wallet startup is safer** — The EVM wallet plugin no longer relies on an environment opt-in workaround when a cloud wallet is provisioned. See [wallet setup](/cloud/wallet-api) for details.
 - **Smoother desktop authentication** — Brief network hiccups no longer trigger unnecessary re-authentication prompts on the desktop app. Transient 401 responses are now handled gracefully so your session stays connected.
 
 ## Bug fixes
@@ -581,7 +581,7 @@ A new Feed tab in the [apps view](/dashboard/apps) gives your agent access to th
 
 ## Canonical cross-channel inbox
 
-A new Inbox tab between Chat and Stream aggregates messages from every connected platform — iMessage, Telegram, Discord, WhatsApp, WeChat, Slack, Signal, and SMS — into a single time-ordered feed. Each message shows a color-coded source label so you can see at a glance which platform it came from. Filter by source using the chip row at the top to focus on specific channels. The inbox is read-only for triage; responding still flows through each connector's own send path. See [connectors](/guides/connectors) for setup.
+A new Inbox tab between Chat and Stream aggregates messages from every connected platform — iMessage, Telegram, Discord, WhatsApp, WeChat, Slack, Signal, and SMS — into a single time-ordered feed. Each message shows a color-coded source label so you can see at a glance which platform it came from. Filter by source using the chip row at the top to focus on specific channels. The inbox is read-only for triage; responding still flows through each connector's own send path. See [connectors](/tracks/agent/connect-channels) for setup.
 
 ## Life-ops: Google Calendar and Gmail
 
@@ -626,7 +626,7 @@ The orchestrator, Vite, API, and Electrobun can now print framed settings tables
 
 ## Managed Discord for cloud agents
 
-Cloud-deployed agents can now run as managed Discord bots. When you connect a Discord server through the [Eliza Cloud dashboard](/guides/cloud), your agent automatically joins the server with the correct permissions and grants connector-admin access to the linked Discord account. No manual bot token or invite URL setup required — the cloud bridge handles identity, roles, and message routing for you.
+Cloud-deployed agents can now run as managed Discord bots. When you connect a Discord server through the [Eliza Cloud dashboard](/tracks/cloud/overview), your agent automatically joins the server with the correct permissions and grants connector-admin access to the linked Discord account. No manual bot token or invite URL setup required — the cloud bridge handles identity, roles, and message routing for you.
 
 ## Stable and canary download channels
 
@@ -667,12 +667,12 @@ The startup splash screen now supports content packs — themed bundles of backg
 
 ## Setup voice previews
 
-Character selection during [setup](/guides/beginners-user-guide) now plays a pre-generated voice catchphrase for each character in your selected language. Fifty-six voicelines (eight characters across seven languages) are bundled as static assets for instant playback — no TTS API call required. If a static voiceline is unavailable, the system falls back to your configured TTS provider.
+Character selection during [setup](/user/apps-and-control) now plays a pre-generated voice catchphrase for each character in your selected language. Fifty-six voicelines (eight characters across seven languages) are bundled as static assets for instant playback — no TTS API call required. If a static voiceline is unavailable, the system falls back to your configured TTS provider.
 
 ## Updates
 
-- **Setup simplified to two steps** — The [setup wizard](/guides/beginners-user-guide) has been streamlined from six steps down to splash, identity, providers, and chat. Voice configuration and permissions have moved to [settings](/apps/dashboard/settings) where they can be configured at any time, reducing first-run friction.
-- **Wallet setup available inline** — The [wallet](/guides/wallet) page now shows Steward status and setup options directly instead of redirecting you to settings. Each wallet section handles its own unconfigured state, so you always see the full layout with contextual setup prompts.
+- **Setup simplified to two steps** — The [setup wizard](/user/apps-and-control) has been streamlined from six steps down to splash, identity, providers, and chat. Voice configuration and permissions have moved to [settings](/apps/dashboard/settings) where they can be configured at any time, reducing first-run friction.
+- **Wallet setup available inline** — The [wallet](/cloud/wallet-api) page now shows Steward status and setup options directly instead of redirecting you to settings. Each wallet section handles its own unconfigured state, so you always see the full layout with contextual setup prompts.
 - **Wallet plugins auto-enable** — When EVM or Solana private keys are present in your environment, the corresponding wallet plugins now load automatically on startup. Previously, you had to manually enable them even when keys were already configured.
 - **Plugin install paths recorded** — Installing a plugin from the dashboard now records its install path in your configuration, so the plugin resolver can find downloaded packages reliably across restarts.
 - **Voiceline volume normalized** — All setup voicelines are now normalized to -16 LUFS (EBU R128), preventing volume jumps when switching between characters or languages.
@@ -698,8 +698,8 @@ Character selection during [setup](/guides/beginners-user-guide) now plays a pre
 ## Updates
 
 - **Windows desktop startup stabilized** — The Windows desktop app now starts reliably on first boot. A series of fixes isolated the bootstrap webview session, preventing profile data conflicts that could cause the app to hang or fail to render after installation.
-- **Setup configuration streamlined** — The [setup wizard](/guides/beginners-user-guide) now writes your hosting and provider choices to a single canonical location during setup. Previously, settings could be saved in multiple places, occasionally causing configuration drift after completing setup.
-- **Startup gateway reliability** — Startup now restores your previous server connection and provider state more reliably. If your last session used [Eliza Cloud](/guides/cloud), the app reconnects without requiring you to re-select your provider.
+- **Setup configuration streamlined** — The [setup wizard](/user/apps-and-control) now writes your hosting and provider choices to a single canonical location during setup. Previously, settings could be saved in multiple places, occasionally causing configuration drift after completing setup.
+- **Startup gateway reliability** — Startup now restores your previous server connection and provider state more reliably. If your last session used [Eliza Cloud](/tracks/cloud/overview), the app reconnects without requiring you to re-select your provider.
 
 ## Bug fixes
 
@@ -727,7 +727,7 @@ You can now browse and install skills from a remote registry directly in the das
 
 ## Steward EVM signing for cloud containers
 
-Cloud-deployed agents can now sign EVM transactions through the [Steward](/guides/wallet) bridge. When a cloud container has Steward configured, trades and transfers route through the policy-enforced signing proxy automatically — the same safety controls available on desktop now work in cloud deployments.
+Cloud-deployed agents can now sign EVM transactions through the [Steward](/cloud/wallet-api) bridge. When a cloud container has Steward configured, trades and transfers route through the policy-enforced signing proxy automatically — the same safety controls available on desktop now work in cloud deployments.
 
 ## Splash screen with asset preloading
 
@@ -738,7 +738,7 @@ The startup experience has been redesigned with a retro-styled splash screen tha
 - **Agent context awareness** — Your agent now knows about its own model configuration, wallet status, and installed plugins when answering questions, so it can give more accurate responses about its own capabilities.
 - **Cloud model defaults updated** — Cloud containers now default to Sonnet 4.6 and Minimax M2.7 for better out-of-the-box response quality.
 - **Sidebar search in Database and Runtime views** — The [database](/advanced/database) and runtime views now include search in the sidebar header, making it easier to find tables and entries in large datasets.
-- **Plugins sorted by status** — The [plugins](/plugins/overview) and [connectors](/guides/connectors) lists now show ready/enabled plugins at the top, so you can quickly see what's active.
+- **Plugins sorted by status** — The [plugins](/plugins/overview) and [connectors](/tracks/agent/connect-channels) lists now show ready/enabled plugins at the top, so you can quickly see what's active.
 - **Plugins grouped by category** — Plugin lists now display category labels with visual grouping, making it easier to browse large plugin collections.
 - **Dark mode contrast softened** — Dark mode surfaces use deeper backgrounds with dimmer text for reduced eye strain during extended sessions.
 - **Restart banner moved to toast** — The "restart required" banner is now a compact toast notification in the bottom-right corner instead of a full-width bar, reducing visual disruption.
@@ -788,11 +788,11 @@ The first time you open the desktop app, your agent now asks "What should I call
 
 ## Steward wallet integration
 
-Wallet transactions can now route through [Steward](https://steward.fi) for policy-enforced signing. When connected, all trades and transfers pass through a vault that evaluates USD-based spending limits, rate limits, and address allowlists before signing — so you stay in control of what your agent can spend. The [wallet tab](/guides/wallet) shows balances, transaction history, and a pending approvals queue in one place. Configure spending policies in [settings](/apps/dashboard/settings) with per-transaction, daily, and weekly caps denominated in USD.
+Wallet transactions can now route through [Steward](https://steward.fi) for policy-enforced signing. When connected, all trades and transfers pass through a vault that evaluates USD-based spending limits, rate limits, and address allowlists before signing — so you stay in control of what your agent can spend. The [wallet tab](/cloud/wallet-api) shows balances, transaction history, and a pending approvals queue in one place. Configure spending policies in [settings](/apps/dashboard/settings) with per-transaction, daily, and weekly caps denominated in USD.
 
 ## Knowledge view redesign
 
-The [knowledge](/guides/documents) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
+The [knowledge](/cloud/documents) sidebar now shows filenames prominently with inline type and source tags. A live search box filters documents by filename as you type, with semantic vector search still available on Enter. Hover any document to reveal the upload date and a quick-delete button.
 
 ## Updates
 
@@ -829,8 +829,8 @@ You can now share bug reports and startup failure diagnostics remotely. If your 
 
 ## Updates
 
-- **Character selection moved earlier in setup** — You now choose your agent's character right after the welcome screen instead of midway through setup, so your agent's personality is established before you configure providers. See the [setup guide](/guides/beginners-user-guide).
-- **Wallet routing and network mode** — Wallet transactions now support provider fallback routing and explicit network mode selection, making token transfers and trades more reliable across chains. See the [wallet guide](/guides/wallet).
+- **Character selection moved earlier in setup** — You now choose your agent's character right after the welcome screen instead of midway through setup, so your agent's personality is established before you configure providers. See the [setup guide](/user/apps-and-control).
+- **Wallet routing and network mode** — Wallet transactions now support provider fallback routing and explicit network mode selection, making token transfers and trades more reliable across chains. See the [wallet guide](/cloud/wallet-api).
 - **Cloud container configuration** — Cloud-provisioned containers now accept `ELIZAOS_CLOUD_BASE_URL`, `ENABLE_AUTONOMY`, and `CORS_ORIGINS` environment variables, removing the need for post-boot file patching. Server-side authentication is also enforced by default on all cloud container endpoints.
 - **Immediate language sync on desktop** — Changing your dashboard language now applies to chat responses immediately without a restart. Windows desktop menus also include working About, Quit, and Update Check actions.
 - **Activity indicator canonical** — The swarm activity indicator is now a single status box above the chat composer with color-coded states, replacing scattered per-agent indicators.
@@ -900,14 +900,14 @@ Eliza now automatically reduces prompt sizes by around 36% for general chat. The
 
 **Why a hard pin in `package.json`:** A caret range (`^2.0.0-alpha.10`) allowed the resolver to pick **`alpha.12`**, breaking fresh installs and lockfile updates. The fix is version selection, not a small dist patch (the plugin body is missing entirely).
 
-**Docs:** [Plugin resolution — pinned OpenRouter](/plugin-resolution-and-node-path#pinned-elizaosplugin-openrouter), [OpenRouter registry page](/plugins/overview#eliza-pinned-version-and-upstream-bundle-bug), root `README.md` (upstream note), and `docs/direction.md` (done item).
+**Docs:** [Plugin resolution — pinned OpenRouter](/plugin-resolution-and-node-path#pinned-elizaosplugin-openrouter), [OpenRouter registry page](/plugin-resolution-and-node-path#pinned-elizaosplugin-openrouter), root `README.md` (upstream note), and `docs/direction.md` (done item).
 
 </Update>
 
 <Update label="2026-03-26" description="Dashboard pricing, background mode, desktop UI polish" tags={["Feature", "Update", "Fix"]}>
 ## Dashboard pricing info
 
-The cloud [dashboard](/guides/cloud) now shows pricing information before you create an agent. Hosting rates, credit pack options with volume discounts, and minimum deposit requirements are visible on the credits page, the create-agent form, and the empty-agents landing view — so you know what to expect before committing.
+The cloud [dashboard](/tracks/cloud/overview) now shows pricing information before you create an agent. Hosting rates, credit pack options with volume discounts, and minimum deposit requirements are visible on the credits page, the create-agent form, and the empty-agents landing view — so you know what to expect before committing.
 
 ## Desktop background mode
 
@@ -915,7 +915,7 @@ Closing the desktop window no longer briefly flashes a replacement window. The a
 
 ## Updates
 
-- **Coding agents on Eliza Cloud** — [Coding agents](/guides/coding-swarms) (Claude Code, Codex) now route through Eliza Cloud proxy endpoints when cloud inference is active. Previously, switching to cloud mode wiped their API keys.
+- **Coding agents on Eliza Cloud** — Coding agents (Claude Code, Codex) now route through Eliza Cloud proxy endpoints when cloud inference is active. Previously, switching to cloud mode wiped their API keys.
 - **Desktop shell consistency** — A broad layout and theme pass brings chat, skills, apps, heartbeats, stream, knowledge, setup, companion, and settings surfaces onto a shared chrome system. Spacing, hierarchy, and readability are improved across the board, and the companion composer uses a proper structural container instead of layered visual nudges.
 - **Wallet action feedback** — Wallet actions like balance checks and token transfers now reliably report success or failure in the [trajectory view](/advanced/trajectories), making it easier to trace what happened during a transaction.
 - **Cloud container access** — Cloud-provisioned containers no longer auto-generate an API token that locks out the web UI. Managed deployments are accessible immediately without browser auth until the pairing flow is configured.
@@ -939,11 +939,11 @@ Closing the desktop window no longer briefly flashes a replacement window. The a
 <Update label="2026-03-25" description="Coding agent terminals, setup identity step, security hardening" tags={["Feature", "Update", "Fix"]}>
 ## Coding agent terminal drawer
 
-Coding agent sessions now have an inline terminal right in the chat view. Click any active agent in the status bar to open a tabbed xterm.js drawer showing live terminal output, with keyboard input forwarding and buffered history. In companion mode, the terminal opens as a side panel instead. See the [coding swarms guide](/guides/coding-swarms) for details.
+Coding agent sessions now have an inline terminal right in the chat view. Click any active agent in the status bar to open a tabbed xterm.js drawer showing live terminal output, with keyboard input forwarding and buffered history. In companion mode, the terminal opens as a side panel instead. See the coding swarms guide for details.
 
 ## Setup identity step
 
-The [setup wizard](/guides/beginners-user-guide) now includes an identity step where you choose your agent's avatar and persona before launch. Browse available characters, preview their VRM model, and start with the right personality from the first conversation.
+The [setup wizard](/user/apps-and-control) now includes an identity step where you choose your agent's avatar and persona before launch. Browse available characters, preview their VRM model, and start with the right personality from the first conversation.
 
 ## Homepage redesign
 
@@ -990,7 +990,7 @@ A broad audit addressed 54 issues across the stack. Highlights that affect your 
 <Update label="2026-03-24" description="Heartbeat templates, Steward bridge, dashboard performance" tags={["Feature", "Update", "Fix"]}>
 ## Heartbeat templates and detail view
 
-The [heartbeats](/guides/triggers) page now includes starter templates and the ability to save your own, so you can create new triggers from proven patterns instead of starting from scratch. A new detail view lets you click any heartbeat to see its schedule, run history, and success/failure statistics at a glance. You can also pause, resume, and duplicate heartbeats directly from the detail view without opening the editor.
+The [heartbeats](/dashboard/chat#autonomous-panel) page now includes starter templates and the ability to save your own, so you can create new triggers from proven patterns instead of starting from scratch. A new detail view lets you click any heartbeat to see its schedule, run history, and success/failure statistics at a glance. You can also pause, resume, and duplicate heartbeats directly from the detail view without opening the editor.
 
 ## Steward bridge for wallet transactions
 
@@ -999,7 +999,7 @@ Wallet trade and transfer endpoints now support delegated signing through the St
 ## Updates
 
 - **Dashboard performance** — The dashboard UI is significantly faster. State management has been restructured so that typing in chat, polling agent status, and browsing settings no longer cause unrelated parts of the UI to re-render. Navigation, translation, and lifecycle updates are now isolated, which means smoother interactions across the board.
-- **Setup visual polish** — The [setup wizard](/guides/beginners-user-guide) has refreshed button styling with improved contrast, a cleaner provider grid layout with proper dark mode support, and new pill-style tabs replacing the previous underline design.
+- **Setup visual polish** — The [setup wizard](/user/apps-and-control) has refreshed button styling with improved contrast, a cleaner provider grid layout with proper dark mode support, and new pill-style tabs replacing the previous underline design.
 
 ## Bug fixes
 
@@ -1010,7 +1010,7 @@ Wallet trade and transfer endpoints now support delegated signing through the St
 <Update label="2026-03-23" description="WeChat connector, settings redesign, Windows fixes" tags={["Feature", "Update", "Fix"]}>
 ## WeChat connector
 
-Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `bun add wechat` and configure it in your [social settings](/guides/connectors).
+Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `bun add wechat` and configure it in your [social settings](/tracks/agent/connect-channels).
 
 ## Tagalog language support
 
@@ -1030,8 +1030,8 @@ The [plugins](/plugins/overview) view now uses the same sidebar list layout as c
 
 ## Updates
 
-- **Setup flow rewrite** — The [setup wizard](/guides/beginners-user-guide) now derives step order, back navigation, and the sidebar step list from a single source of truth. Back navigation works reliably (including connection → welcome), completed steps are clickable to jump backward, and forward sidebar jumps are blocked so login/finish validation can't be skipped.
-- **Cloud dashboard streamlined** — The [cloud dashboard](/guides/cloud) billing view is now a compact single-page layout with flat agent lists and simplified card nesting, making it faster to scan your agents and credits at a glance.
+- **Setup flow rewrite** — The [setup wizard](/user/apps-and-control) now derives step order, back navigation, and the sidebar step list from a single source of truth. Back navigation works reliably (including connection → welcome), completed steps are clickable to jump backward, and forward sidebar jumps are blocked so login/finish validation can't be skipped.
+- **Cloud dashboard streamlined** — The [cloud dashboard](/tracks/cloud/overview) billing view is now a compact single-page layout with flat agent lists and simplified card nesting, making it faster to scan your agents and credits at a glance.
 - **Voice streaming quality** — Streaming text merge now handles Unicode normalization, abbreviations, decimal numbers, URLs, and ellipses correctly, so text-to-speech no longer splits sentences at unexpected points.
 - **i18n completeness** — Added 88+ missing translation keys across all non-English locales and replaced 29 hardcoded English strings with translatable calls. A regression test now enforces key parity across all locales.
 - **Browser surface stability** — The in-app browser window no longer crashes on mount in the desktop app. URL entry in the address bar now drives the webview reliably.
@@ -1083,7 +1083,7 @@ Docs: [Desktop app — battery and energy (macOS)](/apps/desktop#battery-and-ene
 
 - **`scripts/dev-platform.mjs`** ( **`dev:desktop` / `dev:desktop:watch`** ) — Before spawning children, probes **`ELIZA_API_PORT`** (default **31337**) and, in Vite dev mode, **`ELIZA_PORT`** (default **2138**), advancing to the next free **127.0.0.1** TCP port when needed. **Why:** Vite’s `server.port` + proxy target and Electrobun’s **`ELIZA_RENDERER_URL` / `ELIZA_DESKTOP_API_BASE`** must match the **same** numbers the API process binds; pre-allocating in the orchestrator avoids a race where Vite loads config before the API picks a dynamic port. **Implementation:** `scripts/lib/allocate-loopback-port.mjs` (brief bind test per candidate).
 - **`apps/app/vite.config.ts`** — Dev server **`port`** reads **`ELIZA_PORT`** (default **2138**) so the Vite child started by dev-platform listens where the orchestrator chose. **Why:** the config file used to hard-code **2138**, ignoring env when the orchestrator moved the UI port.
-- **Embedded desktop agent (`apps/app/electrobun/src/native/agent.ts`)** — Resolves a free port from the preferred **`ELIZA_PORT`** via **`findFirstAvailableLoopbackPort`** (`loopback-port.ts`) instead of killing foreign PIDs by default. **Why:** coexistence with another Eliza (or any server) on the default port should not require root or surprise SIGKILL. After a healthy start, the **Electrobun main process** sets **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** to the real API port so late readers and tooling stay consistent. **Opt-in legacy reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** restores **`lsof` + SIGKILL** on the preferred port first (single-instance / “take over” dev workflows).
+- **Embedded desktop agent (`packages/app-core/platforms/electrobun/src/native/agent.ts`)** — Resolves a free port from the preferred **`ELIZA_PORT`** via **`findFirstAvailableLoopbackPort`** (`loopback-port.ts`) instead of killing foreign PIDs by default. **Why:** coexistence with another Eliza (or any server) on the default port should not require root or surprise SIGKILL. After a healthy start, the **Electrobun main process** sets **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** to the real API port so late readers and tooling stay consistent. **Opt-in legacy reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** restores **`lsof` + SIGKILL** on the preferred port first (single-instance / “take over” dev workflows).
 - **`packages/app-core/src/runtime/eliza.ts`** ( **`bun run dev`** server-only path) — After **`startApiServer`**, syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** upstream may fall back if the requested port is busy; the CLI banner and anything reading env must match **`/api/health`**.
 - **`packages/app-core/src/runtime/dev-server.ts`** — Syncs **`ELIZA_API_PORT`** and **`ELIZA_PORT`** to the actual bind; **does not** overwrite **`ELIZA_PORT`** when it carries the **Vite UI** port from dev-platform. **Why:** one process serves both “logical” roles in desktop dev; conflating UI and API env vars would break **`GET /api/dev/stack`** `desktop.uiPort` and proxy assumptions.
 - **Electrobun `index.ts` + `surface-windows.ts`** — On **`agent:status`** updates with a port, **`injectApiBase`** runs for the **main** window and **every** detached surface window. **Why:** dynamic API ports must reach Settings / Chat / etc. without a full reload.
@@ -1100,7 +1100,7 @@ Docs: [Desktop app — battery and energy (macOS)](/apps/desktop#battery-and-ene
 **What shipped**
 
 - **`GET /api/dev/stack`** — JSON index: real API listen port (from socket when possible), desktop renderer URL/ports from env, whether **screenshot** and **aggregated console** hooks are active, plus hints (e.g. Electrobun’s internal RPC port in launcher logs). **Why on the API:** one host agents already probe; avoids parsing Electrobun’s ephemeral port.
-- **`bun run desktop:stack-status -- --json`** — CLI that checks ports and merges `/api/dev/stack`, `/api/health`, `/api/status`. **Why:** scripts and CI do not need the dashboard.
+- **`node packages/app-core/scripts/desktop-stack-status.mjs --json`** — CLI that checks ports and merges `/api/dev/stack`, `/api/health`, `/api/status`. **Why:** scripts and CI do not need the dashboard.
 - **Screenshot (default on for `dev:desktop` / `dev:desktop:watch`)** — Electrobun serves a loopback PNG; the API proxies **`GET /api/dev/cursor-screenshot`** (loopback, session token between children). Uses existing **full-screen OS capture** (`screencapture` on macOS). **Why proxy:** single URL on the API port; **why full screen first:** reuses `ScreenCaptureManager.takeScreenshot()` instead of unproven webview-only capture. Opt-out: **`ELIZA_DESKTOP_SCREENSHOT_SERVER=0`**.
 - **Aggregated console (default on)** — Prefixed vite/api/electrobun lines append to **`<stateDir>/desktop-dev-console.log`**; **`GET /api/dev/console-log`** (loopback) returns a capped tail (`maxLines` / `maxBytes`). **Why file:** agents can read the path from stack JSON; **why HTTP tail:** avoids loading huge files into context; **why basename allow-list on path env:** prevents arbitrary file read via mis-set env. Opt-out: **`ELIZA_DESKTOP_DEV_LOG=0`**.
 - **Cursor** — `.cursor/rules/eliza-desktop-dev-observability.mdc` documents the workflow (**why:** Cursor does not auto-poll localhost; rules carry discovery).
@@ -1139,7 +1139,7 @@ Docs: [Environment variables](/cli/overview), [TTS plugin](/plugins/overview).
 
 Root **`vitest.config.ts`** now includes **`packages/app-core/test/**/*.test.ts(x)`** and **`packages/app-core/src/**/*.test.tsx`**, and excludes **`packages/app-core/test/**/*.e2e.test.*`** from the default unit job (e2e still uses **`test/vitest/e2e.config.ts`**). **Why:** harness tests under `test/state`, `test/runtime`, etc. were skipped; a single explicit `SetupWizard.test.tsx` path was brittle for future colocated TSX tests.
 
-See [Contributing — Testing](/guides/contributing) (subsection *`packages/app-core` in the root Vitest config*).
+See [Contributing — Testing](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) (subsection *`packages/app-core` in the root Vitest config*).
 
 ## Desktop tray: RPC wait timeout cleanup
 
@@ -1157,7 +1157,7 @@ The dashboard setup wizard now derives **step order**, **back navigation**, and 
 - **Sidebar:** completed steps are **clickable** to jump backward only (`handleSetupJumpToStep`), validated with the same rules as repeated Back—**forward** sidebar jumps are intentionally disallowed so finish/login validation cannot be skipped.
 - **Welcome “Get Started”** uses `goToSetupStep("connection")` so advanced mode can sync the Flamina guide in one place instead of raw `setState` on the step alone.
 
-Developer guide: [Onboarding UI flow](/guides/onboarding-ui-flow).
+Developer guide: [Onboarding UI flow](/user/apps-and-control).
 
 ## Connection step: pure subflow + view registry
 
@@ -1167,7 +1167,7 @@ Inside the **`connection`** wizard step (hosting, remote backend, Eliza Cloud, n
 - **`applyConnectionTransition`** returns either a **patch** (applied via `setState` in `ConnectionStep`) or an **effect** token for **`useLocalBackend`** — **why:** disconnecting the remote client and `retryStartup` are not pure and must stay in `AppContext`.
 - **React** is split into `ConnectionStep` (snapshot + dispatch + bootstrap `useEffect`) and `components/first-run/connection/*` (one component per screen). **Why:** keeps the pure module importable from tests without jsdom, and shrinks review surface when changing one path.
 
-See the same guide: [Onboarding UI flow](/guides/onboarding-ui-flow) (section *Pure connection flow*).
+See the same guide: [Onboarding UI flow](/user/apps-and-control) (section *Pure connection flow*).
 
 ## Desktop dev orchestrator (`dev-platform`)
 
@@ -1199,7 +1199,7 @@ After browser/OAuth login succeeds on the **Login** tab (pre-provider and provid
 - **`handleReset`** / **`completeResetLocalStateAfterServerWipe`** clear the **persisted active server**, **API base/token**, and **Eliza Cloud** UI flags after a server wipe. **Why:** otherwise the UI stayed pointed at cloud/remote after config reset, so setup looked “stuck.”
 - **`App` shell:** setup is no longer blocked by **`agentStatus === "starting"`**. **Why:** right after a reset the agent often returns to `starting`; the old gate kept the main shell (or loader) visible instead of **`SetupWizard`**, so reset looked like it did nothing after confirm.
 
-Docs: [Desktop app](/apps/desktop) (application menu), [Onboarding UI flow](/guides/onboarding-ui-flow).
+Docs: [Desktop app](/apps/desktop) (application menu), [Onboarding UI flow](/user/apps-and-control).
 </Update>
 
 <Update label="2026-06-25" description="Week of June 19–25" tags={["Feature", "Update", "Fix"]}>
@@ -1218,7 +1218,7 @@ A new Release Center view in the [desktop app](/apps/desktop) gives you a dedica
 ## Bug fixes
 
 - Fixed agent name reverting to the default after restarting — your chosen name, bio, and system prompt now persist correctly across restarts
-- Fixed Eliza Cloud not activating after selecting it during [setup](/guides/beginners-user-guide) — cloud mode is now detected reliably regardless of how the setup payload is structured
+- Fixed Eliza Cloud not activating after selecting it during [setup](/user/apps-and-control) — cloud mode is now detected reliably regardless of how the setup payload is structured
 - Fixed a desktop startup crash caused by a React hook-order error
 - Fixed legacy local installs being forced back into setup — existing configurations are now recognized during startup
 - Fixed macOS desktop self-update failing when the app is launched from outside `/Applications`, which previously triggered App Management permission prompts
@@ -1235,7 +1235,7 @@ The cloud [dashboard](/apps/dashboard) now discovers and manages both local and 
 
 ## Knowledge image and MDX uploads
 
-The [knowledge base](/guides/documents) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
+The [knowledge base](/cloud/documents) now accepts image files and `.mdx` documents. Image uploads are automatically described using your agent's vision model (or stored as a reference entry if vision is unavailable) instead of failing with a "binary data" error. MDX files are processed as markdown, making it easy to import documentation directly.
 
 ## Homepage redesign
 
@@ -1244,7 +1244,7 @@ The homepage has been simplified to a single-page layout with a download dropdow
 ## Updates
 
 - **Eliza Cloud as a first-class TTS provider** — Eliza Cloud now appears as its own voice provider in [settings](/apps/dashboard/settings) instead of being nested under ElevenLabs. This eliminates the confusing provider-plus-source selection and ensures the correct voice catalog loads for your chosen provider.
-- **All coding agents visible in settings** — The [coding agents](/guides/coding-swarms) settings section now correctly displays all installed agents (Claude, Gemini, Codex, Aider). Previously, only Aider appeared because the settings UI wasn't matching full adapter names from the preflight API.
+- **All coding agents visible in settings** — The coding agents settings section now correctly displays all installed agents (Claude, Gemini, Codex, Aider). Previously, only Aider appeared because the settings UI wasn't matching full adapter names from the preflight API.
 - **Coding agent settings load without flicker** — Revisiting the coding agents settings page no longer shows a loading skeleton. The preflight data is cached after the first visit so subsequent navigations render immediately.
 - **Mobile dashboard improvements** — Navigation spacing, content responsiveness, and layout on phone-sized screens have been tightened across both the homepage and dashboard.
 
@@ -1305,7 +1305,7 @@ Setup, settings, and subscription flows now share a single provider configuratio
 <Update label="2026-06-04" description="Week of May 29 – June 4" tags={["Feature", "Update"]}>
 ## Privy server wallets
 
-Your agent can now provision and manage wallets through Privy's server-side wallet infrastructure. Three new API endpoints — `/api/privy/status`, `/api/privy/login`, and `/api/privy/logout` — handle wallet provisioning for both Ethereum and Solana chains automatically. Configure your Privy credentials and the system creates wallets on demand when your agent needs them. See the [wallet guide](/guides/wallet) for details.
+Your agent can now provision and manage wallets through Privy's server-side wallet infrastructure. Three new API endpoints — `/api/privy/status`, `/api/privy/login`, and `/api/privy/logout` — handle wallet provisioning for both Ethereum and Solana chains automatically. Configure your Privy credentials and the system creates wallets on demand when your agent needs them. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Conversation history rollback
 
@@ -1328,7 +1328,7 @@ You can now have full voice conversations with your agent hands-free. Talk mode 
 
 ## Triggers and heartbeats
 
-Your agent can now run tasks on a schedule without manual intervention. Create interval, one-time, or cron-based triggers that wake the agent and execute prompts or actions automatically. The dashboard shows triggers as "Heartbeats" with a two-panel UI — browse your triggers on the left, create or edit on the right with a friendly duration picker. You can also create triggers from chat by asking your agent to do something on a schedule. See the [triggers guide](/guides/triggers) for details.
+Your agent can now run tasks on a schedule without manual intervention. Create interval, one-time, or cron-based triggers that wake the agent and execute prompts or actions automatically. The dashboard shows triggers as "Heartbeats" with a two-panel UI — browse your triggers on the left, create or edit on the right with a friendly duration picker. You can also create triggers from chat by asking your agent to do something on a schedule. See the [triggers guide](/dashboard/chat#autonomous-panel) for details.
 
 ## Database browser
 
@@ -1336,7 +1336,7 @@ A built-in database browser in the dashboard lets you inspect your agent's data 
 
 ## Fine-tuning pipeline
 
-The training system now supports the full fine-tuning lifecycle from the dashboard. Build datasets from captured trajectories, start and monitor training jobs with real-time progress via SSE events, import finished models into Ollama, and activate them as your agent's default. The system auto-detects your hardware backend — MLX on Apple Silicon, CUDA on NVIDIA GPUs, or CPU. See the [training guide](/guides/training) for details.
+The training system now supports the full fine-tuning lifecycle from the dashboard. Build datasets from captured trajectories, start and monitor training jobs with real-time progress via SSE events, import finished models into Ollama, and activate them as your agent's default. The system auto-detects your hardware backend — MLX on Apple Silicon, CUDA on NVIDIA GPUs, or CPU. See the [training guide](/tracks/training/overview) for details.
 
 ## OpenAI-compatible API
 
@@ -1352,11 +1352,11 @@ Eliza now exposes OpenAI-compatible endpoints at `/v1/models` and `/v1/chat/comp
 <Update label="2026-05-21" description="Week of May 15–21" tags={["Feature", "Update"]}>
 ## Autonomous mode
 
-Your agent can now reason and act independently between conversations. When enabled, the agent runs a continuous loop — observing its environment, making decisions, and executing actions without waiting for input. Toggle autonomous mode from the dashboard or via the `GET /api/agent/autonomy` and `POST /api/agent/autonomy` endpoints. The autonomous panel in the chat view shows real-time thoughts, actions, and heartbeats as your agent works in the background. See the [autonomous mode guide](/guides/autonomous-mode) for details.
+Your agent can now reason and act independently between conversations. When enabled, the agent runs a continuous loop — observing its environment, making decisions, and executing actions without waiting for input. Toggle autonomous mode from the dashboard or via the `GET /api/agent/autonomy` and `POST /api/agent/autonomy` endpoints. The autonomous panel in the chat view shows real-time thoughts, actions, and heartbeats as your agent works in the background. See the [autonomous mode guide](/dashboard/chat#autonomous-panel) for details.
 
 ## Local model downloads
 
-You can now download and run Eliza-1 models locally for fully offline inference. The local stack focuses on Eliza-1 GGUF text generation and embedding models published through HuggingFace and cached on disk after download. See the [local models guide](/guides/local-models) for details.
+You can now download and run Eliza-1 models locally for fully offline inference. The local stack focuses on Eliza-1 GGUF text generation and embedding models published through HuggingFace and cached on disk after download. See the [local models guide](/model-providers#local-models-with-ollama) for details.
 
 ## Chrome extension for browser control
 
@@ -1382,15 +1382,15 @@ The dashboard now requires a pairing code for initial authentication. When you f
 <Update label="2026-05-14" description="Week of May 8–14" tags={["Feature", "Update"]}>
 ## Media generation
 
-Your agent can now generate images, videos, and audio — and analyze images with AI vision — all from chat. Two new actions are available: `GENERATE_MEDIA` for image, video, and audio generation, and `ANALYZE_IMAGE` for vision analysis. Each supports multiple provider backends including FAL.ai, OpenAI, Google, xAI, and Eliza Cloud. Choose between cloud mode (no API key needed) and bring-your-own-key mode per media type. A media gallery in the dashboard lets you browse everything your agent has created. See the [media generation guide](/guides/media-generation) for details.
+Your agent can now generate images, videos, and audio — and analyze images with AI vision — all from chat. Two new actions are available: `GENERATE_MEDIA` for image, video, and audio generation, and `ANALYZE_IMAGE` for vision analysis. Each supports multiple provider backends including FAL.ai, OpenAI, Google, xAI, and Eliza Cloud. Choose between cloud mode (no API key needed) and bring-your-own-key mode per media type. A media gallery in the dashboard lets you browse everything your agent has created. See the [media generation guide](/configuration#media-generation) for details.
 
 ## Event hooks
 
-You can now extend your agent with event-driven hooks that respond to commands, session events, agent lifecycle events, and gateway events. Hooks are loaded from disk at startup — each hook is a directory with a frontmatter config and a handler module. Use hooks to add custom behavior without modifying core code. See the [hooks guide](/guides/hooks) for details.
+You can now extend your agent with event-driven hooks that respond to commands, session events, agent lifecycle events, and gateway events. Hooks are loaded from disk at startup — each hook is a directory with a frontmatter config and a handler module. Use hooks to add custom behavior without modifying core code. See the [hooks guide](/configuration#hooks) for details.
 
 ## Config includes
 
-Split your agent configuration across multiple files with the `$include` directive. Compose shared base configs, separate environment-specific settings, and keep large configurations organized. Local keys override included keys, so you can layer overrides cleanly. See the [config includes guide](/guides/config-includes) for details.
+Split your agent configuration across multiple files with the `$include` directive. Compose shared base configs, separate environment-specific settings, and keep large configurations organized. Local keys override included keys, so you can layer overrides cleanly. See the [config includes guide](/configuration#include-directive) for details.
 
 ## Plugin eject system
 
@@ -1411,21 +1411,21 @@ Your agent can now connect to six additional platforms:
 - **Linear** — issue tracking integration.
 - **Zalo** — messaging on Vietnam's largest chat platform.
 
-Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/tracks/agent/connect-channels).
 
 ## Updates
 
 - **Voice wake word** — You can now configure a wake word (default: "eliza") so your agent listens for a trigger phrase before responding. Adjust sensitivity and Whisper model size from the voice settings panel.
 - **Install plugins from chat** — Ask your agent to install a plugin by name (e.g., "install the discord plugin") and it handles the download, installation, and restart automatically.
 - **Runtime log level** — Change your agent's log verbosity at runtime by asking it to "set log level to debug" (or trace, info, warn, error) without restarting.
-- **Configuration templates** — Eight production-ready config templates are now available for common deployment scenarios — minimal setup, Discord bot, multi-model, and more. See the [config templates guide](/guides/config-templates).
-- **Dashboard themes and avatars** — Six visual themes and eight built-in 3D VRM avatars with 29 emotes across six categories. Themes control colors, typography, borders, and animations across the entire dashboard. See the [themes guide](/guides/themes).
+- **Configuration templates** — Eight production-ready config templates are now available for common deployment scenarios — minimal setup, Discord bot, multi-model, and more. See the [config templates guide](/configuration#full-example).
+- **Dashboard themes and avatars** — Six visual themes and eight built-in 3D VRM avatars with 29 emotes across six categories. Themes control colors, typography, borders, and animations across the entire dashboard. See the [themes guide](/configuration#ui-theme).
 </Update>
 
 <Update label="2026-05-07" description="Week of May 1–7" tags={["Feature", "Update"]}>
 ## Agent export and import
 
-You can now migrate your agent between machines with a single encrypted file. Export captures the full agent state — character, memories, knowledge, relationships, and configuration — into a password-protected `.eliza-agent` archive. Import it on another machine to restore everything. See the [agent export guide](/guides/agent-export) for details.
+You can now migrate your agent between machines with a single encrypted file. Export captures the full agent state — character, memories, knowledge, relationships, and configuration — into a password-protected `.eliza-agent` archive. Import it on another machine to restore everything. See the [agent export guide](/apps/dashboard/settings#9-agent-export-import) for details.
 
 ## Sandbox and computer use
 
@@ -1433,11 +1433,11 @@ Agents can now run code, browse the web, take screenshots, record audio, and int
 
 ## MCP marketplace
 
-You can now browse and install Model Context Protocol servers directly from the official MCP registry. Search for tools by name, view details, and install them in one step — the configuration is generated automatically. MCP servers extend your agent with external capabilities like file access, database queries, and API integrations. See the [MCP marketplace guide](/guides/mcp-marketplace) for details.
+You can now browse and install Model Context Protocol servers directly from the official MCP registry. Search for tools by name, view details, and install them in one step — the configuration is generated automatically. MCP servers extend your agent with external capabilities like file access, database queries, and API integrations. See the [MCP marketplace guide](/cloud/mcps#mcp-registry) for details.
 
 ## Custom actions editor
 
-A visual editor in the dashboard lets you create custom agent actions without writing plugin code. Define actions with HTTP, shell, or code handlers, configure parameters and headers, and test them — all from the UI. See the [custom actions guide](/guides/custom-actions) for details.
+A visual editor in the dashboard lets you create custom agent actions without writing plugin code. Define actions with HTTP, shell, or code handlers, configure parameters and headers, and test them — all from the UI. See the [custom actions guide](/tracks/framework/actions-providers-evaluators#action) for details.
 
 ## Plugin eject system
 
@@ -1459,7 +1459,7 @@ Your agent can now connect to three additional messaging platforms:
 - **Nostr** — relay-based decentralized social with private key auth, configurable relay list, and DM support.
 - **Nextcloud Talk** — webhook-based bot integration with per-room filtering.
 
-Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/tracks/agent/connect-channels).
 
 ## Updates
 
@@ -1469,7 +1469,7 @@ Install any connector with adding to character.plugins and running `bun add <nam
 - **Streaming permissions in setup** — Camera and microphone permissions are now requested during the setup wizard and manageable from Settings, so streaming works out of the box on both mobile and desktop.
 - **Dark theme button readability** — Accent-colored buttons now use dark text for better contrast, and hover effects highlight the border instead of changing text color.
 - **Setup layout improvements** — The connection step now shows a Quick Start / Advanced toggle, full-width provider cards, and an always-visible Continue button on the permissions step.
-- **Configuration templates** — Eight ready-to-use configuration templates for common deployment scenarios are now available. See the [config templates guide](/guides/config-templates).
+- **Configuration templates** — Eight ready-to-use configuration templates for common deployment scenarios are now available. See the [config templates guide](/configuration#full-example).
 </Update>
 
 <Update label="2026-04-30" description="Week of April 24–30" tags={["Feature", "Update"]}>
@@ -1479,11 +1479,11 @@ When a chat response is interrupted mid-stream — whether from a network hiccup
 
 ## Orchestrator trajectory tagging
 
-LLM calls made by the [swarm orchestrator](/guides/coding-swarms) are now tagged with a purple "orchestrator" badge in the [trajectories viewer](/advanced/trajectories). Each entry includes metadata like decision type, session ID, and task label, making it easier to distinguish orchestrator reasoning from individual agent calls during multi-agent runs.
+LLM calls made by the swarm orchestrator are now tagged with a purple "orchestrator" badge in the [trajectories viewer](/advanced/trajectories). Each entry includes metadata like decision type, session ID, and task label, making it easier to distinguish orchestrator reasoning from individual agent calls during multi-agent runs.
 
 ## Training backend auto-detection
 
-The [fine-tuning](/guides/training) system now detects available ML backends — MLX on Apple Silicon, CUDA on NVIDIA GPUs, and CPU as a fallback — before starting a training job. If the requested backend isn't available, you get a clear error instead of a cryptic failure mid-run.
+The [fine-tuning](/tracks/training/overview) system now detects available ML backends — MLX on Apple Silicon, CUDA on NVIDIA GPUs, and CPU as a fallback — before starting a training job. If the requested backend isn't available, you get a clear error instead of a cryptic failure mid-run.
 
 ## Updates
 
@@ -1498,7 +1498,7 @@ The Telegram connector now handles unexpected errors gracefully instead of crash
 
 ## Updates
 
-- **Connectors tab shows selected connector only** — The [connectors](/guides/connectors) configuration panel now displays only the connector you selected in the sidebar instead of rendering all connectors at once, making it easier to find and edit settings.
+- **Connectors tab shows selected connector only** — The [connectors](/tracks/agent/connect-channels) configuration panel now displays only the connector you selected in the sidebar instead of rendering all connectors at once, making it easier to find and edit settings.
 - **macOS permission dialog identity** — System permission prompts on macOS (microphone, accessibility, etc.) now correctly display "Eliza" as the requesting app name instead of a generic or missing identifier.
 
 ## Bug fixes
@@ -1517,15 +1517,15 @@ Your agent can now connect to six additional messaging platforms out of the box:
 - **Google Chat** — service account integration with webhook delivery and per-space configuration. See the [Google Chat plugin docs](/connectors/googlechat).
 - **Mattermost** — self-hosted team messaging with bot token auth and mention filtering. See the [Mattermost plugin docs](/connectors/mattermost).
 
-Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/tracks/agent/connect-channels).
 
 ## Lens Protocol connector
 
-Your agent can now interact on the Lens Protocol decentralized social network. Post, reply, react, repost, and handle notifications — all through the Lens V3 API. Configure it alongside your other [social connectors](/guides/connectors).
+Your agent can now interact on the Lens Protocol decentralized social network. Post, reply, react, repost, and handle notifications — all through the Lens V3 API. Configure it alongside your other [social connectors](/tracks/agent/connect-channels).
 
 ## Trajectory archival and optimization
 
-Trajectory data — the full record of every LLM call your agent makes — is now archived durably with compressed exports. The system preserves complete prompt and response text for [training](/guides/training) fidelity while extracting lightweight insights into metadata, reducing storage usage without losing data. Archived trajectories are compressed as JSONL before pruning, so nothing is lost during TTL cleanup. See the [trajectories guide](/advanced/trajectories) for details.
+Trajectory data — the full record of every LLM call your agent makes — is now archived durably with compressed exports. The system preserves complete prompt and response text for [training](/tracks/training/overview) fidelity while extracting lightweight insights into metadata, reducing storage usage without losing data. Archived trajectories are compressed as JSONL before pruning, so nothing is lost during TTL cleanup. See the [trajectories guide](/advanced/trajectories) for details.
 
 ## Updates
 
@@ -1545,11 +1545,11 @@ Your agent can now report on its own status. A new awareness system aggregates h
 
 ## Coding agent settings
 
-The Settings view now includes a Coding Agents section where you can choose the agent selection strategy, default agent type, permission level, and per-agent model preferences. These controls give you finer-grained control over how [coding swarms](/guides/coding-swarms) behave.
+The Settings view now includes a Coding Agents section where you can choose the agent selection strategy, default agent type, permission level, and per-agent model preferences. These controls give you finer-grained control over how coding swarms behave.
 
 ## Granular cloud service toggles
 
-When connected to Eliza Cloud, you can now enable or disable individual cloud services — inference, RPC, media, TTS, and embeddings — instead of toggling the entire cloud connection. This lets you keep cloud RPC while using a local model provider, for example. See the [cloud guide](/guides/cloud) for details.
+When connected to Eliza Cloud, you can now enable or disable individual cloud services — inference, RPC, media, TTS, and embeddings — instead of toggling the entire cloud connection. This lets you keep cloud RPC while using a local model provider, for example. See the [cloud guide](/tracks/cloud/overview) for details.
 
 ## Character generation API format update
 
@@ -1582,7 +1582,7 @@ The companion UI now supports internationalization. English and Simplified Chine
 
 ## Coding agent always available
 
-The coding agent plugin is now a core plugin that loads automatically on every startup. You no longer need to manually enable it to use coding and terminal features. See the [coding swarms guide](/guides/coding-swarms) for details.
+The coding agent plugin is now a core plugin that loads automatically on every startup. You no longer need to manually enable it to use coding and terminal features. See the coding swarms guide for details.
 
 ## Health endpoint and crash recovery
 
@@ -1591,7 +1591,7 @@ A new `GET /api/health` endpoint returns structured status for every subsystem �
 ## Updates
 
 - **Improved desktop startup errors** — When the agent runtime fails to load, the desktop app now keeps the API server running and shows the actual error message in the UI instead of a generic "Failed to fetch." This makes it much easier to diagnose configuration issues.
-- **NFA endpoints graceful fallback** — The `/api/nfa/status` and `/api/nfa/learnings` endpoints now return empty data gracefully when the BNB identity plugin is not installed, instead of failing. See the [wallet guide](/guides/wallet) for details.
+- **NFA endpoints graceful fallback** — The `/api/nfa/status` and `/api/nfa/learnings` endpoints now return empty data gracefully when the BNB identity plugin is not installed, instead of failing. See the [wallet guide](/cloud/wallet-api) for details.
 - **Plugin logos in companion view** — Installed plugins now display their logos in the companion UI for easier identification.
 
 ## Bug fixes
@@ -1616,7 +1616,7 @@ A new standalone Settings window gives you quick access to General, Providers, A
 
 ## Application menu overhaul
 
-The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/guides/documents), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/guides/connectors). File, View, and Window menus have also been expanded for quicker navigation.
+The menu bar has been reorganized with a new Agent menu that gives you one-click access to [Knowledge](/cloud/documents), [Skills](/plugins/skills), [Plugins](/plugins/overview), and [Social Connectors](/tracks/agent/connect-channels). File, View, and Window menus have also been expanded for quicker navigation.
 
 ## Interactive tray provider management
 
@@ -1635,7 +1635,7 @@ You can now manage cloud agents directly from the Eliza homepage. The new dashbo
 
 ## Cloud-first setup
 
-Running `bun run dev` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
+Running `bun run dev` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/tracks/cloud/overview) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/tracks/cloud/overview) for details.
 
 ## Game-style notebook character editor
 
@@ -1643,7 +1643,7 @@ The [character editor](/agents/character-interface) has been redesigned as an in
 
 ## Scratch workspace controls for coding agents
 
-Coding agent sessions now show keep, promote, and delete controls for scratch workspaces. When a coding session ends, you can decide whether to retain the temporary workspace, promote it to a permanent one, or clean it up — directly from the dashboard. See the [coding swarms guide](/guides/coding-swarms) for details.
+Coding agent sessions now show keep, promote, and delete controls for scratch workspaces. When a coding session ends, you can decide whether to retain the temporary workspace, promote it to a permanent one, or clean it up — directly from the dashboard. See the coding swarms guide for details.
 
 ## Official Docker images
 
@@ -1681,7 +1681,7 @@ Default workspace boilerplate files are no longer injected into every prompt —
 
 ## Wallet key export security
 
-Wallet private key exports now require a 10-second confirmation delay, are rate-limited to one export per 10 minutes, and generate an audit log entry for every attempt. This protects against instant key extraction from compromised sessions. See the [wallet guide](/guides/wallet) for details.
+Wallet private key exports now require a 10-second confirmation delay, are rate-limited to one export per 10 minutes, and generate an audit log entry for every attempt. This protects against instant key extraction from compromised sessions. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Cloud API key protection
 
@@ -1758,7 +1758,7 @@ You can now manage live streaming directly from companion mode — including des
 
 ## NFA wallet flow
 
-A new identity and NFA wallet flow adds an identity card surface, wallet-style confirmation UX, and public BSC RPC defaults. See the [wallet guide](/guides/wallet) for details.
+A new identity and NFA wallet flow adds an identity card surface, wallet-style confirmation UX, and public BSC RPC defaults. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Link sanitization for chat messages
 
@@ -1798,7 +1798,7 @@ The command palette now uses a centralized command registry, making it easier to
 <Update label="2026-03-07" description="Feb 23 – March 7" tags={["Feature", "Update", "Security", "Fix"]}>
 ## Coding agent swarm orchestration
 
-You can now run multiple coding agents in parallel on a single task. The new swarm coordinator decomposes complex work into sub-tasks, routes each to the best-performing agent based on success rate and speed, and displays live terminal output in side-by-side panes. See the [coding swarms guide](/guides/coding-swarms) for details.
+You can now run multiple coding agents in parallel on a single task. The new swarm coordinator decomposes complex work into sub-tasks, routes each to the best-performing agent based on success rate and speed, and displays live terminal output in side-by-side panes. See the coding swarms guide for details.
 
 ## Live streaming to Twitch, YouTube, and custom RTMP
 
@@ -1806,15 +1806,15 @@ Eliza now supports multi-destination live streaming. You can stream to Twitch, Y
 
 ## 3D companion with VRM avatars
 
-A full 3D companion view is now available with a VRM avatar engine, animations, bubble emotes, theme switching, and localization support (English and Chinese). The companion view also includes a wallet trading panel with token swaps, send, trade history, portfolio display, and P&L analytics. See the [wallet guide](/guides/wallet) for details.
+A full 3D companion view is now available with a VRM avatar engine, animations, bubble emotes, theme switching, and localization support (English and Chinese). The companion view also includes a wallet trading panel with token swaps, send, trade history, portfolio display, and P&L analytics. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## iMessage and SMS connector
 
-The new Blooio plugin adds iMessage and SMS as a first-class messaging connector. Set up your API key and phone number during setup to start messaging. See the [connectors overview](/guides/connectors) for details.
+The new Blooio plugin adds iMessage and SMS as a first-class messaging connector. Set up your API key and phone number during setup to start messaging. See the [connectors overview](/tracks/agent/connect-channels) for details.
 
 ## Bulk knowledge import
 
-You can now upload multiple files and entire folders to the [knowledge base](/guides/documents) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
+You can now upload multiple files and entire folders to the [knowledge base](/cloud/documents) at once. Large imports are processed in streaming batches so you don't need to upload files one at a time.
 
 ## In-app bug reports
 
@@ -1834,7 +1834,7 @@ The app now supports `/`, `#`, and `$` command prefixes in chat for quick access
 
 ## Companion wallet trading panel
 
-The companion view now includes a full trading panel. You can swap tokens on BNB Chain via PancakeSwap, send BNB and tokens with address validation, browse your multi-chain portfolio, view NFT collectibles, and check P&L analytics — all without leaving the companion. See the [wallet guide](/guides/wallet) for details.
+The companion view now includes a full trading panel. You can swap tokens on BNB Chain via PancakeSwap, send BNB and tokens with address validation, browse your multi-chain portfolio, view NFT collectibles, and check P&L analytics — all without leaving the companion. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Telegram message chunking and draft-stream
 
@@ -1842,7 +1842,7 @@ The Telegram connector now automatically splits long agent responses into proper
 
 ## Agent activity box
 
-A sticky activity indicator now shows real-time per-task progress in the chat view. Routine coding-agent status messages are filtered from chat history to reduce noise. See the [coding swarms guide](/guides/coding-swarms) for details.
+A sticky activity indicator now shows real-time per-task progress in the chat view. Routine coding-agent status messages are filtered from chat history to reduce noise. See the coding swarms guide for details.
 
 ## Opinion markets plugin
 
@@ -1850,7 +1850,7 @@ A new opinion markets plugin lets your agent trade on prediction markets through
 
 ## BNB identity plugin and NFA learning provenance
 
-A new BNB Chain identity plugin gives your agent on-chain identity management. The plugin supports BAP-578 NFA (Non-Fungible Agent) learning provenance — you can mint NFAs, update Merkle roots for your agent's learning history, and query NFA status. See the [wallet guide](/guides/wallet) for details.
+A new BNB Chain identity plugin gives your agent on-chain identity management. The plugin supports BAP-578 NFA (Non-Fungible Agent) learning provenance — you can mint NFAs, update Merkle roots for your agent's learning history, and query NFA status. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Agent self-awareness
 
@@ -1870,7 +1870,7 @@ Streaming now auto-detects the best capture method for your platform — native 
 
 ## Wallet trading actions
 
-New `CHECK_BALANCE`, `EXECUTE_TRADE`, and `TRANSFER_TOKEN` actions let your agent trade tokens on BSC via PancakeSwap. A trading profile tracks P&L and trade history. See the [wallet guide](/guides/wallet) for details.
+New `CHECK_BALANCE`, `EXECUTE_TRADE`, and `TRANSFER_TOKEN` actions let your agent trade tokens on BSC via PancakeSwap. A trading profile tracks P&L and trade history. See the [wallet guide](/cloud/wallet-api) for details.
 
 ## Emote animations restored
 

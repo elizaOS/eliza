@@ -26,7 +26,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 **Impact.** Plugin runs inside the user's runtime; can attempt to access connector tokens, exfiltrate memory/conversation content, or pivot to the Cloud session.
 
 **Mitigations.**
-- Signed manifest required for First-party / Partner tiers ([24](../../POLICIES/24-plugin-connector-trust.md)).
+- Signed manifest required for First-party / Partner tiers (24 (POLICIES/24-plugin-connector-trust.md)).
 - Sandboxed worker process with declared-permission enforcement.
 - Published revocation list checked at install + periodically.
 - SBOM + Cosign signature on first-party plugin builds.
@@ -54,7 +54,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 **Impact.** Released model emits unsafe or confidential output; brand and legal exposure.
 
 **Mitigations.**
-- Default-no on customer data for training ([23](../../POLICIES/23-ai-ml-model-governance.md)).
+- Default-no on customer data for training (23 (POLICIES/23-ai-ml-model-governance.md)).
 - `model_lineage.json` manifest per release with consent-class breakdown.
 - Red-team eval (incl. training-data extraction probes) before release.
 - Cosign signing on artifacts; HMAC on DSPy prompt assets.
@@ -73,7 +73,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 - KMS operations audited with append-only retention.
 - Dual-accept windows allow detection during rotation.
 
-**Residual.** KEK loss = data loss for keys not yet rotated. Documented as SEV-0 in [`INCIDENT-RUNBOOK.md`](INCIDENT-RUNBOOK.md).
+**Residual.** KEK loss = data loss for keys not yet rotated. Documented as SEV-0 in [`INCIDENT-RUNBOOK.md`](/security/INCIDENT-RUNBOOK).
 
 ### T5. Supply-chain attack (npm / HuggingFace / container base)
 
@@ -95,7 +95,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 **Impact.** Read/write access to the user's third-party account.
 
 **Mitigations.**
-- Restricted-class storage with KMS-encrypted envelope + AAD scoped to user+grant ([10](../../POLICIES/10-data-classification.md), [24](../../POLICIES/24-plugin-connector-trust.md)).
+- Restricted-class storage with KMS-encrypted envelope + AAD scoped to user+grant (10 (POLICIES/10-data-classification.md), 24 (POLICIES/24-plugin-connector-trust.md)).
 - No tokens in logs (OTel collector redaction).
 - Scope-minimization at OAuth grant.
 - User-revocable + emergency-revoke broadcast capability.
@@ -120,7 +120,7 @@ The boundary that matters: anything that ships from device → Cloud is in audit
 **Impact.** Silent confidentiality / integrity loss.
 
 **Mitigations.**
-- Human review required ([16](../../POLICIES/16-secure-development.md)).
+- Human review required (16 (POLICIES/16-secure-development.md)).
 - Security-critical paths require Security Lead sign-off (CODEOWNERS).
 - Property-based tests on billing math.
 - Quarterly PR audit samples include AI-attributed commits.

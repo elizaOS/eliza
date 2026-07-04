@@ -165,5 +165,5 @@ Farcaster supports direct casts (private messages via Warpcast). The connector h
 
 ## Related
 
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

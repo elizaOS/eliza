@@ -19,7 +19,7 @@ This document describes the security architecture and hardening measures impleme
 5. [Prototype Pollution Prevention](#prototype-pollution-prevention)
 6. [Plugin Installation Safety](#plugin-installation-safety)
 7. [Electrobun RPC Validation](#electrobun-rpc-validation)
-8. [Auth & Token Model](#auth--token-model)
+8. [Auth & Token Model](#auth-token-model)
 9. [DNS Rebinding Protection](#dns-rebinding-protection)
 10. [Configuration Injection Prevention](#configuration-injection-prevention)
 
@@ -162,7 +162,7 @@ All `npm install` and `bun install` calls include the `--ignore-scripts` flag to
 
 ## Electrobun RPC Validation
 
-**File:** `apps/app/electrobun/src/native/desktop.ts`
+**File:** `packages/app-core/platforms/electrobun/src/native/desktop.ts`
 
 ### `shell.openExternal` Validation
 URLs passed to `shell.openExternal` are validated to only allow `http:` and `https:` schemes. This prevents:

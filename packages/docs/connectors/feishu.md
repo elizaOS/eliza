@@ -57,5 +57,5 @@ The connector auto-enables when `token`, `botToken`, or `apiKey` is truthy in th
 ## Related
 
 - [Feishu plugin reference](/connectors/feishu)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

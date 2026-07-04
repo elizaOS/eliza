@@ -131,7 +131,7 @@ Theme picker with 6 built-in themes displayed as a button grid (3 columns on mob
 | **haxor** | Terminal green |
 | **psycho** | Pure chaos |
 
-The active theme is highlighted. Theme selection is persisted to local storage and applied immediately. See [Themes & Avatars](/guides/themes) for details.
+The active theme is highlighted. Theme selection is persisted to local storage and applied immediately. See [Themes & Avatars](/configuration#ui-theme) for details.
 
 #### 2. AI Model
 

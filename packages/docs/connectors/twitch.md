@@ -108,5 +108,5 @@ All fields are defined under `connectors.twitch` in `eliza.json`.
 ## Related
 
 - [Twitch plugin reference](/connectors/twitch)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

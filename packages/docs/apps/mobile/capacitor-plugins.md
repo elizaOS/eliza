@@ -4,7 +4,7 @@ sidebarTitle: "Capacitor Plugins"
 description: "Workspace Capacitor plugins that give the Eliza mobile app access to native iOS and Android capabilities."
 ---
 
-The Eliza mobile app ships custom Capacitor plugins plus core `@capacitor/*` plugins. Each custom plugin is an independent package under `packages/native/plugins/<name>/` and must be compiled before the web app can bundle it (`bun run plugin:build` from `packages/app`). Platform availability differs by package: some plugins ship Swift and Kotlin implementations, some are iOS-only or Android-only, and some are web or TypeScript facades used by the app shell.
+The Eliza mobile app ships custom Capacitor plugins plus core `@capacitor/*` plugins. Each custom plugin is an independent package under `packages/native/plugins/<name>/` and must be compiled before the web app can bundle it (`bun run --cwd packages/app plugin:build` from `packages/app`). Platform availability differs by package: some plugins ship Swift and Kotlin implementations, some are iOS-only or Android-only, and some are web or TypeScript facades used by the app shell.
 
 Most plugins follow the same structure: a TypeScript interface describing the web-facing API, a web implementation used in browser environments, and native implementations for iOS (Swift) or Android (Kotlin) when the platform allows the feature. Platform-specific gaps are intentional for phone, SMS, contacts, Wi-Fi, system settings, Apple Calendar, and iOS Screen Time surfaces.
 

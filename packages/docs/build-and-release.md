@@ -24,7 +24,7 @@ See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86
 The packaged app runs the agent from `eliza-dist/` (bundled JS + `node_modules`). The main bundle is built by tsdown with dependencies inlined where possible, but:
 
 - **Plugins** (`@elizaos/plugin-*`) are loaded at runtime; their dist/ and any **runtime-only** dependencies (native addons, optional requires, etc.) must be present in `eliza-dist/node_modules`.
-- **Why not rely on a single global node_modules at pack time?** The app is built into an ASAR (and unpacked dirs); resolution at runtime is from the app directory. So we copy the subset we need into `apps/app/electrobun/eliza-dist/node_modules` before packaging runs.
+- **Why not rely on a single global node_modules at pack time?** The app is built into an ASAR (and unpacked dirs); resolution at runtime is from the app directory. So we copy the subset we need into `packages/app-core/platforms/electrobun/eliza-dist/node_modules` before packaging runs.
 
 The packaging scripts derive that subset instead of keeping a hand-maintained allowlist:
 
@@ -64,11 +64,11 @@ CI workflows that need Node (for node-gyp / native modules or npm registry) were
 - **Electrobun release:** `.github/workflows/release-electrobun.yml` — on version tag push or manual dispatch; builds macOS arm64, macOS x64, Windows x64, and Linux x64 Electrobun artifacts plus update channel files.
 - **Pre-release gate and tag publication:** `.github/workflows/agent-release.yml` — validates the heavy build matrix, then creates the GitHub Release only after the blocking lanes are green.
 - **Post-release distribution:** `.github/workflows/release-orchestrator.yml` — triggered by the published GitHub Release (or manual dispatch), computes stable vs pre-release channel policy, and fans out to the reusable publish workflows for npm, package registries, Android, Apple, Homebrew, and homepage deploy.
-- **Local desktop build:** From repo root, use the Electrobun path: `bun run build:desktop` for a local bundle build, then `bash apps/app/electrobun/scripts/smoke-test.sh` for packaged desktop verification.
+- **Local desktop build:** From repo root, use the Electrobun path: `node packages/app-core/scripts/desktop-build.mjs build` for a local bundle build, then `bash packages/app-core/platforms/electrobun/scripts/smoke-test.sh` for packaged desktop verification.
 
 ## Electrobun update-channel naming
 
-Electrobun writes **platform-prefixed flat artifact names** into `apps/app/electrobun/artifacts/`, for example:
+Electrobun writes **platform-prefixed flat artifact names** into `packages/app-core/platforms/electrobun/artifacts/`, for example:
 
 - `canary-macos-arm64-Eliza-canary.app.tar.zst`
 - `canary-macos-arm64-Eliza-canary.dmg`
@@ -84,10 +84,10 @@ Why the workflow mirrors that shape directly to `https://eliza.ai/releases/`:
 
 The official Electrobun docs expect the CLI to come from the project dependency and be invoked through npm scripts or `bunx`. Eliza now uses the shared desktop builder to reach that package-local path:
 
-- `apps/app/electrobun/package.json` declares `electrobun` as a dependency.
+- `packages/app-core/platforms/electrobun/package.json` declares `electrobun` as a dependency.
 - `scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
 - `scripts/desktop-build.mjs package` resolves `electrobun` from
-  `apps/app/electrobun/node_modules/.bin` first, then falls back to a
+  `packages/app-core/platforms/electrobun/node_modules/.bin` first, then falls back to a
   PATH/global binary and only uses `bunx` as a last resort.
 
 Why: package-local resolution keeps desktop packaging reproducible and makes CI
@@ -105,25 +105,25 @@ We still keep two Windows-specific guards around that documented flow:
 `scripts/desktop-build.mjs` now runs a desktop preflight before preload bundling. It verifies:
 
 - Bun version is a supported stable version.
-- `apps/app/electrobun/node_modules/electrobun/package.json` contains `exports["./view"]`.
-- Bun can resolve/import `electrobun/view` from `apps/app/electrobun`.
+- `packages/app-core/platforms/electrobun/node_modules/electrobun/package.json` contains `exports["./view"]`.
+- Bun can resolve/import `electrobun/view` from `packages/app-core/platforms/electrobun`.
 
 If preload build fails with `EACCES` around `electrobun/view`, use this exact repair flow:
 
 1. Stop all Bun/Electrobun/Eliza processes.
-2. Delete `apps/app/electrobun/node_modules`.
+2. Delete `packages/app-core/platforms/electrobun/node_modules`.
 3. Delete root `node_modules/.bun`.
 4. From repo root run `bun install --frozen-lockfile`.
-5. Retry `bun run start:desktop`.
+5. Retry `bun run dev:desktop`.
 
-You can run the preflight alone with `bun run desktop:preflight`.
+You can run the preflight alone with `node packages/app-core/scripts/desktop-build.mjs preflight`.
 
 ## Desktop WebGPU: browser + native
 
 Eliza now carries both WebGPU paths in the desktop app:
 
 - **Renderer-side WebGPU:** the existing avatar and vector-browser scenes run in the webview and prefer `three/webgpu` when the embedded browser exposes `navigator.gpu`.
-- **Electrobun-native WebGPU:** `apps/app/electrobun/electrobun.config.ts` enables `bundleWGPU: true` on macOS, Windows, and Linux, so packaged desktop builds also include Dawn (`libwebgpu_dawn.*`) for Bun-side `GpuWindow`, `WGPUView`, and `<electrobun-wgpu>` surfaces.
+- **Electrobun-native WebGPU:** `packages/app-core/platforms/electrobun/electrobun.config.ts` enables `bundleWGPU: true` on macOS, Windows, and Linux, so packaged desktop builds also include Dawn (`libwebgpu_dawn.*`) for Bun-side `GpuWindow`, `WGPUView`, and `<electrobun-wgpu>` surfaces.
 - **Renderer choice for packaged builds:** macOS stays on the native renderer by default, while Windows and Linux default to bundled CEF. That matches Electrobun's current cross-platform guidance: Linux distribution should use CEF-backed `BrowserWindow`/`BrowserView` instances, and CEF gives us the most consistent browser-side WebGPU path on the non-macOS desktop targets.
 
 Why this split exists:
@@ -135,10 +135,10 @@ Why this split exists:
 
 The local Electrobun smoke test now verifies the backend, not just the window shell:
 
-- After building, `apps/app/electrobun/scripts/smoke-test.sh` launches the packaged app and tails `~/.config/Eliza/eliza-startup.log`.
+- After building, `packages/app-core/platforms/electrobun/scripts/smoke-test.sh` launches the packaged app and tails `~/.config/Eliza/eliza-startup.log`.
 - It fails if the child runtime logs `Cannot find module`, exits before becoming healthy, or never reaches `Runtime started -- agent: ... port: ...`.
 - Once the startup log reports a port, the script probes `http://127.0.0.1:${port}/api/health` and requires that endpoint to stay healthy for the liveness window.
-- On Windows, `apps/app/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Eliza-Setup*.exe` installer path when no direct packaged bundle artifact is available.
+- On Windows, `packages/app-core/platforms/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Eliza-Setup*.exe` installer path when no direct packaged bundle artifact is available.
 
 Why: the previous smoke test could pass while the launcher stayed open but the embedded agent backend had already crashed.
 

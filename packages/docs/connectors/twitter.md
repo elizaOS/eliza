@@ -169,5 +169,5 @@ The posting interval is calculated as a random value between `postIntervalMin` a
 ## Related
 
 - [xAI plugin reference](/plugins/overview)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

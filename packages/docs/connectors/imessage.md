@@ -212,5 +212,5 @@ The iMessage connector requires macOS. It will not function on Linux or Windows.
 
 - [BlueBubbles Connector](/connectors/bluebubbles) -- iMessage via BlueBubbles HTTP API (works from any machine)
 - [Blooio Connector](/connectors/blooio) -- iMessage/SMS via Blooio cloud service
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

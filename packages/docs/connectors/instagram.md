@@ -64,4 +64,4 @@ Configure in `~/.local/state/eliza/eliza.json`:
 ## Related
 
 - [Instagram plugin reference](/connectors/instagram)
-- [Connectors overview](/guides/connectors#instagram)
+- [Connectors overview](/connectors/instagram)

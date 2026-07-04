@@ -448,6 +448,145 @@ function normalizeSpecsInPlace(actionsSpec, providersSpec) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function markdownText(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "-";
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function markdownCell(value) {
+  return markdownText(value)
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, "<br />");
+}
+
+/**
+ * @param {unknown} schema
+ * @returns {string}
+ */
+function schemaTypeLabel(schema) {
+  if (!schema || typeof schema !== "object") {
+    return "-";
+  }
+  const record = /** @type {Record<string, unknown>} */ (schema);
+  if (typeof record.type === "string") {
+    return record.type;
+  }
+  if (Array.isArray(record.oneOf)) {
+    return "oneOf";
+  }
+  if (Array.isArray(record.anyOf)) {
+    return "anyOf";
+  }
+  return "-";
+}
+
+/**
+ * @param {Record<string, unknown>} action
+ * @returns {string}
+ */
+function renderActionMarkdown(action) {
+  const lines = [
+    `### ${markdownText(action.name)}`,
+    "",
+    markdownText(action.description),
+    "",
+  ];
+  if (Array.isArray(action.similes) && action.similes.length > 0) {
+    lines.push(
+      `- **Aliases:** ${action.similes.map(markdownText).join(", ")}`,
+      "",
+    );
+  }
+  if (Array.isArray(action.parameters) && action.parameters.length > 0) {
+    lines.push(
+      "| Parameter | Required | Type | Description |",
+      "| --- | --- | --- | --- |",
+    );
+    for (const param of action.parameters) {
+      if (!param || typeof param !== "object") {
+        continue;
+      }
+      const record = /** @type {Record<string, unknown>} */ (param);
+      lines.push(
+        `| \`${markdownCell(record.name)}\` | ${record.required === true ? "yes" : "no"} | ${markdownCell(schemaTypeLabel(record.schema))} | ${markdownCell(record.description)} |`,
+      );
+    }
+    lines.push("");
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+/**
+ * @param {Record<string, unknown>} provider
+ * @returns {string}
+ */
+function renderProviderMarkdown(provider) {
+  const lines = [
+    `### ${markdownText(provider.name)}`,
+    "",
+    markdownText(provider.description),
+    "",
+  ];
+  if (typeof provider.position === "number" || typeof provider.dynamic === "boolean") {
+    lines.push(
+      `- **Position:** ${typeof provider.position === "number" ? provider.position : "-"}`,
+      `- **Dynamic:** ${provider.dynamic === true ? "yes" : "no"}`,
+      "",
+    );
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+/**
+ * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} actionsSpec
+ * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} providersSpec
+ */
+function generateMarkdownCatalog(actionsSpec, providersSpec) {
+  const docsDir = path.join(REPO_ROOT, "packages", "docs");
+  ensureDirectory(docsDir);
+
+  const actionRows = actionsSpec.all.items.map((item) =>
+    renderActionMarkdown(/** @type {Record<string, unknown>} */ (item)),
+  );
+  const providerRows = providersSpec.all.items.map((item) =>
+    renderProviderMarkdown(/** @type {Record<string, unknown>} */ (item)),
+  );
+
+  const content = `---
+title: "Action Catalog"
+sidebarTitle: "Action Catalog"
+description: "Generated reference for canonical Eliza action and provider prompt docs."
+---
+
+# Action Catalog
+
+This catalog is generated from \`packages/prompts/specs/**\` by \`bun run --cwd packages/prompts build:action-docs\`. Do not edit it by hand; change the source spec or generator instead.
+
+## Summary
+
+- **Canonical actions:** ${actionsSpec.all.items.length}
+- **Core actions:** ${actionsSpec.core.items.length}
+- **Plugin overlay actions:** ${actionsSpec.all.items.length - actionsSpec.core.items.length}
+- **Canonical providers:** ${providersSpec.all.items.length}
+- **Core providers:** ${providersSpec.core.items.length}
+
+## Actions
+
+${actionRows.join("\n")}
+## Providers
+
+${providerRows.join("\n")}`;
+
+  fs.writeFileSync(path.join(docsDir, "action-catalog.md"), content);
+}
+
 function generateTypeScript(actionsSpec, providersSpec) {
   const outDir = path.join(REPO_ROOT, "packages", "core", "src", "generated");
   ensureDirectory(outDir);
@@ -591,6 +730,7 @@ function main() {
   normalizeSpecsInPlace(actionsSpec, providersSpec);
 
   generateTypeScript(actionsSpec, providersSpec);
+  generateMarkdownCatalog(actionsSpec, providersSpec);
 
   console.log("Generated action/provider docs.");
 }

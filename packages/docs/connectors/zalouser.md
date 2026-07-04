@@ -88,5 +88,5 @@ Or configure in `~/.local/state/eliza/eliza.json`:
 
 - [Zalo connector](/connectors/zalo) — Official Account variant
 - [Zalouser plugin reference](/connectors/zalouser)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

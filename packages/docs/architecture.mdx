@@ -7,7 +7,7 @@ description: Eliza system architecture — layers, plugin system, and cross-plat
 Eliza is the agent. [elizaOS](https://elizaos.ai) is the agentic operating system it runs on. The same backend ships to CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers entry points, runtime lifecycle, plugin loading, the API surface, and build tooling.
 
 <Info>
-Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live in the `eliza/` git submodule. Initialize it with `bun run setup:upstreams` or `git submodule update --init --recursive` to browse these files locally.
+Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live in the `eliza/` git submodule. Initialize it with `git submodule update --init --recursive` or `git submodule update --init --recursive` to browse these files locally.
 </Info>
 
 ## High-level diagram
@@ -58,7 +58,7 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
 
 ## Entry points and boot sequence
 
-> **Note:** Source paths like `packages/app-core/src/...` and `packages/agent/src/...` referenced throughout this page live in the elizaOS submodule at `eliza/`. Run `bun run setup:upstreams` to populate the submodule for local inspection.
+> **Note:** Source paths like `packages/app-core/src/...` and `packages/agent/src/...` referenced throughout this page live in the elizaOS submodule at `eliza/`. Run `git submodule update --init --recursive` to populate the submodule for local inspection.
 
 Eliza has two primary entry points, plus a dev-server variant:
 

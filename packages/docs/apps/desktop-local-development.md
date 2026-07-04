@@ -26,7 +26,7 @@ On a **TTY**, tables may use a **Unicode box frame** and a large **figlet-style*
 
 **Why:** Desktop dev runs **four processes** with overlapping env (ports, URLs, feature flags). The goal is **fast visual scanning** of *effective* values for humans and IDE agents — the same rationale as port pre-allocation and prefixed logs. This is **not** companion or dashboard UI; it does not ship to end users as product chrome.
 
-**Docs:** [Developer diagnostics and workspace](../guides/developer-diagnostics-and-workspace.md).
+**Docs:** this page is the current developer diagnostics and desktop workspace reference.
 
 **Why separate commands?** A full **production** Vite build is still useful when you want parity with shipped assets or when you are not touching the desktop shell UI. `bun run dev:desktop:watch` points Electrobun at the Vite dev server for HMR, while `bun run dev` stays on the browser dashboard stack.
 
@@ -76,7 +76,7 @@ If the preferred port is already bound, the orchestrator tries **preferred + 1**
 
 **Why pre-allocate in the parent (not only inside the API process):** Vite reads `vite.config.ts` once at startup; the proxy’s **`target`** must match the API port **before** the first request. If only the API shifted ports after bind, the UI would still proxy to the old default until someone restarted Vite. Resolving ports **once** in `dev-platform.mjs` keeps **orchestrator logs, env, proxy, and Electrobun** on the same numbers.
 
-**Packaged desktop (`local` embedded agent):** the Electrobun main process calls **`findFirstAvailableLoopbackPort`** (`packages/app/electrobun/src/native/loopback-port.ts`) from the preferred **`ELIZA_PORT`** (default **2138**), passes that to the **`entry.js start`** child, and after a healthy start updates **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** in the shell. **Why we stopped default `lsof` + SIGKILL:** a second Eliza (or any app) on the same default port is valid when state dirs differ; killing PIDs from the shell is surprising and can terminate unrelated work. **Opt-in reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** runs the old **“free this port first”** behavior for developers who want single-instance takeover.
+**Packaged desktop (`local` embedded agent):** the Electrobun main process calls **`findFirstAvailableLoopbackPort`** (`packages/app-core/platforms/electrobun/src/native/loopback-port.ts`) from the preferred **`ELIZA_PORT`** (default **2138**), passes that to the **`entry.js start`** child, and after a healthy start updates **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** in the shell. **Why we stopped default `lsof` + SIGKILL:** a second Eliza (or any app) on the same default port is valid when state dirs differ; killing PIDs from the shell is surprising and can terminate unrelated work. **Opt-in reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** runs the old **“free this port first”** behavior for developers who want single-instance takeover.
 
 **Detached windows:** when the embedded API port is finalized or changes, **`injectApiBase`** runs for the main window and **all** `SurfaceWindowManager` windows (**why:** chat/settings/etc. must not keep polling a stale `http://127.0.0.1:…`).
 
@@ -84,15 +84,15 @@ If the preferred port is already bound, the orchestrator tries **preferred + 1**
 
 ## macOS: frameless window chrome (native dylib)
 
-On **macOS**, Electrobun only copies **`libMacWindowEffects.dylib`** into the dev bundle when that file exists (see `packages/app/electrobun/electrobun.config.ts`). Without it, **traffic-light layout, drag regions, and inner-edge resize** can be missing or wrong — easy to mistake for a generic Electrobun bug.
+On **macOS**, Electrobun only copies **`libMacWindowEffects.dylib`** into the dev bundle when that file exists (see `packages/app-core/platforms/electrobun/electrobun.config.ts`). Without it, **traffic-light layout, drag regions, and inner-edge resize** can be missing or wrong — easy to mistake for a generic Electrobun bug.
 
 After cloning the repo, or whenever you change `native/macos/window-effects.mm`, build the dylib from the Electrobun package:
 
 ```bash
-cd packages/app/electrobun && bun run build:native-effects
+bun run --cwd packages/app-core/platforms/electrobun build:native-effects
 ```
 
-More detail: [Electrobun shell package](https://github.com/elizaOS/eliza/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../apps/desktop-local-development.md).
+More detail: [Electrobun shell package](https://github.com/elizaOS/eliza/tree/main/packages/app-core/platforms/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../apps/desktop-local-development.md).
 
 ## macOS: Local Network permission (gateway discovery)
 
@@ -134,7 +134,7 @@ Shutdown uses `signalSpawnedProcessTree` — **only** the PID tree rooted at eac
 
 ## Seeing many `bun` processes
 
-**Expected.** You typically have: the orchestrator, `bun run vite`, `bun --watch` API, `bun run dev` under Electrobun (preload build + `bunx electrobun dev`), plus Bun/Vite/Electrobun internals. Worry if counts **grow without bound** or processes **survive** after the dev session fully exits.
+**Expected.** You typically have: the orchestrator, the Vite dev server, `bun --watch` API, `bun run dev` under Electrobun (preload build + `bunx electrobun dev`), plus Bun/Vite/Electrobun internals. Worry if counts **grow without bound** or processes **survive** after the dev session fully exits.
 
 ## IDE and agent observability (Cursor, scripts)
 
@@ -153,9 +153,9 @@ Returns stable JSON (`schema: eliza.dev.stack/v1`): API **listen port** (from th
 
 **Why on the API:** agents often already probe `/api/health`; one extra GET reuses the same host and avoids parsing Electrobun’s ephemeral port.
 
-### `bun run desktop:stack-status -- --json`
+### `node packages/app-core/scripts/desktop-stack-status.mjs --json`
 
-Script: `scripts/desktop-stack-status.mjs` (with `scripts/lib/desktop-stack-status.mjs`). Probes UI/API ports, fetches `/api/dev/stack`, `/api/health`, and `/api/status`.
+Script: `packages/app-core/scripts/desktop-stack-status.mjs` (with `packages/app-core/scripts/lib/desktop-stack-status.mjs`). Probes UI/API ports, fetches `/api/dev/stack`, `/api/health`, and `/api/status`.
 
 **Why a CLI:** agents and CI can run it without loading the dashboard; JSON exit code reflects API health for simple automation.
 
@@ -173,7 +173,7 @@ Prefixed **vite / api / electrobun** lines are mirrored to **`<stateDir>/desktop
 
 ## UI E2E (Playwright)
 
-Browser smoke tests target the **same renderer URL** Electrobun loads in watch mode (`http://localhost:<ELIZA_PORT>`, default **2138**). They do **not** drive the native Electrobun webview; tray, native menus, and packaged-only behaviors stay covered by **`bun run test:desktop:packaged`** (where applicable) and the [release regression checklist](/build-and-release).
+Browser smoke tests target the **same renderer URL** Electrobun loads in watch mode (`http://localhost:<ELIZA_PORT>`, default **2138**). They do **not** drive the native Electrobun webview; tray, native menus, and packaged-only behaviors stay covered by **`bun run --cwd packages/app test:desktop:packaged`** (where applicable) and the [release regression checklist](/build-and-release).
 
 **Why Playwright:** the app already ships Playwright for renderer and packaged checks, so the browser smoke flows now use the same supported stack instead of a separate TestCafe toolchain. This removes the vulnerable `replicator` dependency entirely and keeps the UI E2E surface on one runner.
 
@@ -183,13 +183,13 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 
 | Command | Purpose |
 |---------|---------|
-| `bun run --cwd packages/app test:e2e` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
+| `bun run --cwd packages/app test:e2e` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
 | `bun run --cwd packages/app test:e2e test/ui-smoke/settings-chat-control.spec.ts` | Runs the companion media settings persistence smoke. |
 | `bun run --cwd packages/app test:desktop:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
 **Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 
-**Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run test:desktop:packaged`**, **`bun run test:desktop:playwright`**, and the [release regression checklist](/build-and-release).
+**Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run --cwd packages/app test:desktop:packaged`**, **`bun run --cwd packages/app test:e2e`**, and the [release regression checklist](/build-and-release).
 
 ## Related source
 
@@ -200,12 +200,12 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | `scripts/lib/vite-renderer-dist-stale.mjs` | When `vite build` is needed |
 | `scripts/lib/kill-ui-listen-port.mjs` | Free UI port |
 | `scripts/lib/kill-process-tree.mjs` | Scoped tree kill |
-| `scripts/lib/desktop-stack-status.mjs` | Port + HTTP probes for `desktop:stack-status` |
-| `scripts/desktop-stack-status.mjs` | CLI entry for agents (`--json`) |
+| `packages/app-core/scripts/lib/desktop-stack-status.mjs` | Port + HTTP probes for `desktop:stack-status` |
+| `packages/app-core/scripts/desktop-stack-status.mjs` | CLI entry for agents (`--json`) |
 | `eliza/packages/app-core/src/api/dev-stack.ts` | Payload for `GET /api/dev/stack` |
 | `eliza/packages/app-core/src/api/dev-console-log.ts` | Safe tail read for `GET /api/dev/console-log` |
-| `packages/app/electrobun/src/index.ts` | `resolveRendererUrl()`; starts screenshot dev server when enabled |
-| `packages/app/electrobun/src/screenshot-dev-server.ts` | Loopback PNG server (proxied as `/api/dev/cursor-screenshot`) |
+| `packages/app-core/platforms/electrobun/src/index.ts` | `resolveRendererUrl()`; starts screenshot dev server when enabled |
+| `packages/app-core/platforms/electrobun/src/screenshot-dev-server.ts` | Loopback PNG server (proxied as `/api/dev/cursor-screenshot`) |
 | `packages/app/playwright.ui-smoke.config.ts` | Playwright config for renderer smoke specs |
 | `packages/app/playwright.ui-packaged.config.ts` | Playwright config for packaged `file://` smoke |
 | `packages/app/test/ui-smoke/ui-smoke.spec.ts` | Main UI traversal + `TAB_PATHS` parity (e.g. `/apps` disabled) |

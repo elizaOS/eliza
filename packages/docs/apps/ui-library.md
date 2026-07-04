@@ -28,4 +28,4 @@ bun add @elizaos/ui
 
 - [Apps overview](/apps/overview)
 - [Framework App](/tracks/framework-app/overview)
-- [Themes guide](/guides/themes)
+- [Themes guide](/configuration#ui-theme)

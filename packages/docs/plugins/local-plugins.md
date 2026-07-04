@@ -612,7 +612,7 @@ Set breakpoints in your plugin's TypeScript files and launch with F5.
 **TypeScript compilation errors:**
 ```bash
 cd ~/.local/state/eliza/plugins/custom/my-plugin
-bun run tsc --noEmit  # Type-check without emitting
+bunx tsc --noEmit  # Type-check without emitting
 ```
 
 ---
@@ -690,4 +690,4 @@ Remove the local copy from `~/.local/state/eliza/plugins/custom/` to avoid loadi
 
 - [Plugin Development Guide](/plugins/development) -- Full plugin API reference
 - [Skills Documentation](/plugins/skills) -- Lighter-weight extensions
-- [Contributing Guide](/guides/contributing) -- Contributing plugins upstream
+- [Contributing Guide](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) -- Contributing plugins upstream

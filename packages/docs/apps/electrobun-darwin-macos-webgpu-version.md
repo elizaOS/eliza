@@ -54,9 +54,9 @@ We use a **two-segment** mapping, matching Apple’s published Darwin release ta
 
 | Piece | Location |
 |--------|----------|
-| Mapping + `checkWebGpuSupport` | `apps/app/electrobun/src/native/webgpu-browser-support.ts` |
-| Vitest | `apps/app/electrobun/src/native/__tests__/webgpu-browser-support.test.ts` |
-| Startup log / browser surface | `apps/app/electrobun/src/index.ts` (search `WebGPU Browser`) |
+| Mapping + `checkWebGpuSupport` | `packages/app-core/platforms/electrobun/src/native/webgpu-browser-support.ts` |
+| Vitest | `packages/app-core/platforms/electrobun/src/native/__tests__/webgpu-browser-support.test.ts` |
+| Startup log / browser surface | `packages/app-core/platforms/electrobun/src/index.ts` (search `WebGPU Browser`) |
 
 ## Maintenance note
 

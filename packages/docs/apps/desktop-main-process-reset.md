@@ -43,9 +43,9 @@ Settings still uses **`handleReset`** in the renderer (confirm in webview + full
 
 | Concern | Location |
 |--------|----------|
-| Menu template / action ids | `apps/app/electrobun/src/application-menu.ts` |
-| Native confirm + orchestration | `apps/app/electrobun/src/index.ts` (`resetElizaFromApplicationMenu`) |
-| Testable fetch/restart/poll core | `apps/app/electrobun/src/menu-reset-from-main.ts` |
+| Menu template / action ids | `packages/app-core/platforms/electrobun/src/application-menu.ts` |
+| Native confirm + orchestration | `packages/app-core/platforms/electrobun/src/index.ts` (`resetElizaFromApplicationMenu`) |
+| Testable fetch/restart/poll core | `packages/app-core/platforms/electrobun/src/menu-reset-from-main.ts` |
 | Tray subscription (legacy `menu-reset-eliza` + applied) | `eliza/packages/app-core/src/shell/DesktopTrayRuntime.tsx` |
 | Renderer sync + lifecycle | `eliza/packages/app-core/src/state/handle-reset-applied-from-main.ts`, `complete-reset-local-state-after-wipe.ts` |
 | Parse `agentStatus` from push payload | `eliza/packages/app-core/src/state/parsers.ts` (`parseAgentStatusFromMainMenuResetPayload`) |
@@ -54,7 +54,7 @@ Settings still uses **`handleReset`** in the renderer (confirm in webview + full
 
 | Suite | File | What it proves |
 |-------|------|----------------|
-| Main reset core | `apps/app/electrobun/src/__tests__/menu-reset-from-main.test.ts` | Candidate ordering, skip non-ok HTTP, poll until running, embedded vs external branches, failed POST |
+| Main reset core | `packages/app-core/platforms/electrobun/src/__tests__/menu-reset-from-main.test.ts` | Candidate ordering, skip non-ok HTTP, poll until running, embedded vs external branches, failed POST |
 | Renderer reset | `eliza/packages/app-core/src/state/reset-main-process.test.ts` | Order of local wipes, first-run options failure path, lifecycle busy / begin-fail / success / throw + `finishLifecycleAction` |
 | Payload parse | `eliza/packages/app-core/src/state/parsers.test.ts` | Valid / invalid `agentStatus` on tray payload |
 
@@ -65,7 +65,7 @@ Settings still uses **`handleReset`** in the renderer (confirm in webview + full
 - [Desktop app](/apps/desktop) — native menu overview (table updated to match main-process reset).
 - [Environment variables](/cli/overview) — `ELIZA_DISABLE_EDGE_TTS` and other runtime flags.
 - [TTS / Edge plugin](/plugins/overview) — Microsoft Edge TTS cloud disclosure when orchestrator auto-loads Edge TTS.
-- [Contributing — Testing](/guides/contributing) — Vitest include globs for `packages/app-core`.
+- [Contributing — Testing](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) — Vitest include globs for `packages/app-core`.
 
 ## Tray RPC wait timeout
 

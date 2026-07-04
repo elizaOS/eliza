@@ -28,11 +28,11 @@ source of truth for Siri/App Intents, Android App Actions, widgets, keyboard
 extensions, share targets, Apple Intelligence schema work, and per-platform
 local-inference routing.
 
-Use `bun run build:ios:local` from `packages/app` to bake
+Use `bun run --cwd packages/app build:ios:local` to bake
 `runtimeMode=local`, build `packages/agent/dist-mobile-ios/agent-bundle.js`,
 stage it under `App/public/agent/`, and include the native llama bridge. The
 default local target is the iOS simulator; use
-`bun run build:ios:local:device` or set
+`bun run --cwd packages/app build:ios:local:device` or set
 `ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
 when you want a sideload/device build.
 That target still does not imply a host shell or downloaded native code. The
@@ -151,16 +151,16 @@ is assembled.
 
 ## Building the App
 
-All mobile build commands run from the **repository root** using `bun run`.
+All mobile build commands run from the **repository root** using `bun run --cwd packages/app ...` unless a root-level target is shown.
 
 ### Build for iOS
 
 ```bash
 # Build plugins, web assets, and sync to the iOS project
-bun run build:ios
+bun run --cwd packages/app build:ios
 
 # Open the Xcode project
-bun run cap:open:ios
+bun run --cwd packages/app cap:open:ios
 ```
 
 This runs `vite build` to produce the `dist/` web assets, then `capacitor sync ios` to copy them into the native iOS project and update native dependencies.
@@ -171,10 +171,10 @@ The Xcode workspace is at `packages/app/ios/App/App.xcworkspace`.
 
 ```bash
 # Build plugins, web assets, and sync to the Android project
-bun run build:android
+bun run --cwd packages/app build:android
 
 # Open the Android Studio project
-bun run cap:open:android
+bun run --cwd packages/app cap:open:android
 ```
 
 This runs `vite build` followed by `capacitor sync android` to copy web assets and update the Gradle project.
@@ -186,7 +186,7 @@ The Android project is at `packages/app/android/`.
 All custom Capacitor plugins must be built before the web app can bundle them:
 
 ```bash
-bun run plugin:build
+bun run --cwd packages/app plugin:build
 ```
 
 This iterates through each plugin directory (`gateway`, `swabble`, `camera`, `screencapture`, `canvas`, `desktop`, `location`, `talkmode`, `agent`, `appblocker`, `llama`, `mobile-signals`, `websiteblocker`) and runs the build script for each.
@@ -196,16 +196,14 @@ This iterates through each plugin directory (`gateway`, `swabble`, `camera`, `sc
 If you have already built the web assets and only need to push changes to the native projects:
 
 ```bash
-cd packages/app
-
 # Sync all platforms
-bun run cap:sync
+bun run --cwd packages/app cap:sync
 
 # Sync iOS only
-bun run cap:sync:ios
+bun run --cwd packages/app cap:sync:ios
 
 # Sync Android only
-bun run cap:sync:android
+bun run --cwd packages/app cap:sync:android
 ```
 
 ## Platform Configuration
@@ -622,13 +620,13 @@ For rapid development with live reload (all commands from the repo root):
 
 ```bash
 # Build plugins and web assets
-bun run build:ios
+bun run --cwd packages/app build:ios
 
 # Start Vite dev server in a separate terminal
 bun run dev
 
 # Open Xcode and run on a simulator
-bun run cap:open:ios
+bun run --cwd packages/app cap:open:ios
 ```
 
 Update the Capacitor server config to point to your dev server IP for live reload.
@@ -637,13 +635,13 @@ Update the Capacitor server config to point to your dev server IP for live reloa
 
 ```bash
 # Build plugins and web assets
-bun run build:android
+bun run --cwd packages/app build:android
 
 # Start Vite dev server in a separate terminal
 bun run dev
 
 # Open Android Studio and run on an emulator
-bun run cap:open:android
+bun run --cwd packages/app cap:open:android
 ```
 
 ### Running Tests
@@ -653,7 +651,7 @@ bun run cap:open:android
 bun run test
 
 # Watch mode
-bun run test:watch
+bun run --cwd packages/app test:watch
 ```
 
 ## Troubleshooting
@@ -673,7 +671,7 @@ Open the Xcode project, select the App target, go to Signing & Capabilities, and
 Run the build command from the repo root, which includes the sync step automatically:
 
 ```bash
-bun run build:ios   # or build:android
+bun run --cwd packages/app build:ios   # or build:android
 ```
 
 ### Gateway discovery not finding devices

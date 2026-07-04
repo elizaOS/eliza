@@ -37,7 +37,7 @@ bun install
 bun run dev          # API + the Eliza app UI
 ```
 
-To run a whole device as elizaOS instead, see [elizaOS — the operating system](#elizaos--the-operating-system).
+To run a whole device as elizaOS instead, see [elizaOS — the operating system](#elizaos-the-operating-system).
 
 ## What Eliza does
 

@@ -88,6 +88,8 @@ These have sensible defaults and do not block starting Phase 0.
 
 ---
 
+<a id="d5--topology-split-console-at-apex-app-on-its-own-subdomain"></a>
+
 ## D5 — Topology split: console at apex, app on its own subdomain ✅ (supersedes D1) — ⚠️ SUPERSEDED by D6
 
 > **SUPERSEDED 2026-06-23 by [D6](#d6--re-consolidate-one-codebase-packagesapp-serves-both-apex-and-subdomain).**
@@ -139,6 +141,8 @@ app deploy and vice-versa.
 CTA). Cloudflare `eliza-app` project + `app.*` domains pending (CUTOVER-RUNBOOK).**
 
 ---
+
+<a id="d6--re-consolidate-one-codebase-packagesapp-serves-both-apex-and-subdomain"></a>
 
 ## D6 — Re-consolidate: one codebase (`packages/app`) serves both apex and subdomain ✅ (supersedes D5)
 

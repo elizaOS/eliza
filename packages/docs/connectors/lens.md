@@ -61,5 +61,5 @@ The Lens connector will auto-enable once the API key is configured.
 ## Related
 
 - [Lens plugin reference](/connectors/lens)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

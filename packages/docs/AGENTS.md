@@ -57,6 +57,7 @@ packages/docs/
 ├── test/
 │   └── docs.test.js            # Test suite (nav integrity, broken links, empty files)
 ├── public/                     # Static assets (synced from packages/shared via predev/prebuild)
+├── brand -> public/brand       # Mintlify local checker alias for /brand/* assets
 ├── images/                     # Images used in docs
 ├── logo/                       # Logo SVGs (light.svg, dark.svg)
 └── style.css                   # Custom CSS overrides
@@ -117,7 +118,7 @@ Top-level tabs as of current content:
 
 ## Brand asset sync
 
-`predev` and `prebuild` both run `node ../shared/scripts/sync-to-public.mjs ./public` with flags `--logos --favicons --ogembeds --banners`. This copies brand assets from `packages/shared` into the `public/` directory so Mintlify can serve them. Do not hand-edit files under `public/brand/` — they are regenerated on every dev/build run.
+`predev` and `prebuild` both run `node ../shared/scripts/sync-to-public.mjs ./public` with flags `--logos --favicons --ogembeds --banners`. This copies brand assets from `packages/shared` into the `public/` directory so Mintlify can serve them. The tracked `brand` symlink points at `public/brand` so Mintlify's local validator can resolve `/brand/*` paths the same way the served site does. Do not hand-edit files under `public/brand/` — they are regenerated on every dev/build run.
 
 ## Conventions / gotchas
 
@@ -128,10 +129,10 @@ Top-level tabs as of current content:
 - Mintlify uses the `$schema` in `docs.json` for validation; keep the schema URL intact.
 - For architecture, naming, logging, and git workflow rules that apply across the entire repo, see the root `AGENTS.md`.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->
+{/* BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) */}
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[PR_EVIDENCE.md](../../PR_EVIDENCE.md)**. Read it.
+> The binding, repo-wide standard is repo-root `PR_EVIDENCE.md`. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
@@ -167,4 +168,4 @@ behavior, **re-capture** evidence; stale proof is worse than none.
 - The site built and the changed pages **rendered**, with before/after screenshots (desktop + mobile).
 - Link/redirect checks that actually resolve, and any embedded examples that actually run.
 - For redirects: the real HTTP redirect chain captured.
-<!-- END: evidence-and-e2e-mandate -->
+{/* END: evidence-and-e2e-mandate */}

@@ -231,7 +231,7 @@ Irreversible or security-sensitive operations.
 
 Private key export does not require a password beyond the confirmation dialog. Store exported keys offline immediately and do not leave the dialog open unattended.
 
-**Reset agent** removes all data associated with the current agent from both `localStorage` and native Preferences. The action is not reversible without a prior [Agent Export](#9-agent-export--import).
+**Reset agent** removes all data associated with the current agent from both `localStorage` and native Preferences. The action is not reversible without a prior [Agent Export](#9-agent-export-import).
 
 ---
 

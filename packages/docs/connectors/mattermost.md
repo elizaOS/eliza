@@ -126,5 +126,5 @@ Mattermost does not support multi-account configuration. Each agent runs a singl
 
 ## Related
 
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

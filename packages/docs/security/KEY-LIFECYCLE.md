@@ -2,7 +2,7 @@
 
 # Key Lifecycle
 
-Authoritative lifecycle documentation for every key class used in the Eliza stack. Implements [`../../POLICIES/12-cryptography.md`](../../POLICIES/12-cryptography.md) against the contract in `audits/KMS-CONTRACT.md` and the Steward spec in `audits/STEWARD-KMS-SPEC.md`.
+Authoritative lifecycle documentation for every key class used in the Eliza stack. Implements `../../POLICIES/12-cryptography.md` (POLICIES/12-cryptography.md) against the contract in `audits/KMS-CONTRACT.md` and the Steward spec in `audits/STEWARD-KMS-SPEC.md`.
 
 ## Namespace layout
 
@@ -31,7 +31,7 @@ prompt.hmac               — DSPy prompt artifact HMAC
 | Use | Wraps / unwraps DEKs only. Never used to encrypt application data directly. |
 | Rotation | 730 days. Triggers re-wrap of every DEK. |
 | Dual-accept | 30 days during which both old + new KEK can unwrap. After window, old KEK destroyed. |
-| Revocation | Emergency: see [`INCIDENT-RUNBOOK.md`](INCIDENT-RUNBOOK.md) Playbook A. |
+| Revocation | Emergency: see [`INCIDENT-RUNBOOK.md`](/security/INCIDENT-RUNBOOK) Playbook A. |
 | Audit | Every wrap / unwrap operation logged with operator + AAD. |
 
 ### `dek.<namespace>` (data-encryption keys)
@@ -101,7 +101,7 @@ prompt.hmac               — DSPy prompt artifact HMAC
 
 ## Cross-cutting
 
-- **No keys in source.** CI gates enforce ([`16`](../../POLICIES/16-secure-development.md)).
-- **No keys in logs.** OTel collector redaction enforces ([`14`](../../POLICIES/14-logging-monitoring.md)).
+- **No keys in source.** CI gates enforce (`16` (POLICIES/16-secure-development.md)).
+- **No keys in logs.** OTel collector redaction enforces (`14` (POLICIES/14-logging-monitoring.md)).
 - **Quarterly key inventory** by Security Lead.
 - **Destroy events are non-reversible** and logged as `audit_events` rows with reason.

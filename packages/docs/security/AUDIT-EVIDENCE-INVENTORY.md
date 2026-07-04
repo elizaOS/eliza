@@ -16,8 +16,8 @@ What an auditor will request, who owns it, where it lives, and how it is produce
 
 | Evidence | Owner | Location | Cadence |
 |---|---|---|---|
-| Master Info Sec Policy | Security Lead | [`POLICIES/01-information-security.md`](../../POLICIES/01-information-security.md) | Annual review |
-| All numbered policies | Security Lead | [`POLICIES/`](../../POLICIES/) | Annual review |
+| Master Info Sec Policy | Security Lead | `POLICIES/01-information-security.md` (POLICIES/01-information-security.md) | Annual review |
+| All numbered policies | Security Lead | `POLICIES/` (POLICIES/) | Annual review |
 | Signed policy acknowledgments | People Ops | HR system | Per hire + annual |
 | Org chart | People Ops | HR system | On change |
 | Board / leadership security minutes | Security Lead | Internal drive | Quarterly |

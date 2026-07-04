@@ -148,4 +148,4 @@ bun add zalouser
 ## Related
 
 - [Zalo Plugin Reference](/connectors/zalo)
-- [Connectors overview](/guides/connectors#zalo)
+- [Connectors overview](/connectors/zalo)

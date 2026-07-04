@@ -273,5 +273,5 @@ Each account inherits the base config and can override any field.
 ## Related
 
 - [Discord plugin reference](/connectors/discord)
-- [Connectors overview](/guides/connectors)
+- [Connectors overview](/tracks/agent/connect-channels)
 - [Configuration reference](/configuration)

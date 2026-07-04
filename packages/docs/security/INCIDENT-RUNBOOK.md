@@ -2,7 +2,7 @@
 
 # Incident Response Runbook
 
-Operational playbook for the policy in [`../../POLICIES/08-incident-response.md`](../../POLICIES/08-incident-response.md).
+Operational playbook for the policy in `../../POLICIES/08-incident-response.md` (POLICIES/08-incident-response.md).
 
 ## On-call contacts (placeholders — fill in)
 
@@ -18,7 +18,7 @@ Operational playbook for the policy in [`../../POLICIES/08-incident-response.md`
 ### 1. Detection
 
 - Source: alert from Prometheus rules (`deploy/observability/prometheus/alerts/security.yml`), customer report, internal report, automated scanner.
-- First responder acknowledges within the SLA in [`../../POLICIES/08-incident-response.md`](../../POLICIES/08-incident-response.md).
+- First responder acknowledges within the SLA in `../../POLICIES/08-incident-response.md` (POLICIES/08-incident-response.md).
 
 ### 2. Triage
 
@@ -131,6 +131,6 @@ Operational playbook for the policy in [`../../POLICIES/08-incident-response.md`
 
 ## After every incident
 
-- Update [`../../POLICIES/08-incident-response.md`](../../POLICIES/08-incident-response.md) if procedure changed.
+- Update `../../POLICIES/08-incident-response.md` (POLICIES/08-incident-response.md) if procedure changed.
 - File risk-register entry if the incident reveals a new risk.
-- Update [`THREAT-MODEL.md`](THREAT-MODEL.md) if a new threat class emerged.
+- Update [`THREAT-MODEL.md`](/security/THREAT-MODEL) if a new threat class emerged.

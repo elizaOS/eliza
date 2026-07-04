@@ -124,7 +124,7 @@ On startup, the Electrobun shell and `AgentManager` coordinate these steps:
 
 ### Native application menu (e.g. macOS **Eliza** menu)
 
-The OS menu bar template is built in **`apps/app/electrobun/src/application-menu.ts`** and wired in **`index.ts`** (`application-menu-clicked`). **Why a data file:** the same structure is validated by tests and stays free of platform branches scattered through the main process.
+The OS menu bar template is built in **`packages/app-core/platforms/electrobun/src/application-menu.ts`** and wired in **`index.ts`** (`application-menu-clicked`). **Why a data file:** the same structure is validated by tests and stays free of platform branches scattered through the main process.
 
 | Item (example) | Action id | Behavior |
 |----------------|-----------|----------|
@@ -390,4 +390,4 @@ The desktop app runs with full system access. Be cautious with plugins and custo
 - **Content Security Policy** -- Applied to all windows. The policy is intentionally permissive to support third-party embedded apps that may require WebAssembly and external scripts.
 - **Window navigation** -- External URLs are blocked from the main window and opened in the default browser. Only the custom scheme and localhost origins are allowed.
 - **Context isolation** -- All `BrowserWindow` instances use `contextIsolation: true` and `nodeIntegration: false`.
-- **SSRF protection** -- Custom action HTTP handlers block requests to private/internal network addresses. See [Custom Actions](/guides/custom-actions).
+- **SSRF protection** -- Custom action HTTP handlers block requests to private/internal network addresses. See [Custom Actions](/tracks/framework/actions-providers-evaluators#action).

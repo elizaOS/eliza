@@ -21,6 +21,13 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
+const ROOT_DOCS = [
+  "README.md",
+  "PR_EVIDENCE.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "WINDOWS.md",
+];
 
 function rel(repoRoot, filePath) {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");
@@ -146,15 +153,19 @@ function collectDocs(repoRoot, scope = "all") {
     return [...files].sort((left, right) => left.localeCompare(right));
   }
 
-  const rootReadme = path.join(repoRoot, "README.md");
-  if (exists(rootReadme)) {
-    files.add(rootReadme);
+  for (const rootDoc of ROOT_DOCS) {
+    const rootDocPath = path.join(repoRoot, rootDoc);
+    if (exists(rootDocPath)) {
+      files.add(rootDocPath);
+    }
   }
 
-  const packagesDir = path.join(repoRoot, "packages");
-  if (exists(packagesDir)) {
-    for (const readme of walkReadmes(packagesDir)) {
-      files.add(readme);
+  if (scope !== "docs") {
+    const packagesDir = path.join(repoRoot, "packages");
+    if (exists(packagesDir)) {
+      for (const readme of walkReadmes(packagesDir)) {
+        files.add(readme);
+      }
     }
   }
 
@@ -290,6 +301,7 @@ function resolveLinkedFile(repoRoot, fromFile, filePart) {
       firstExistingPath([
         path.join(repoRoot, "packages", "docs", "docs", stripped),
         path.join(repoRoot, "packages", "docs", stripped),
+        path.join(repoRoot, "packages", "docs", "public", stripped),
         ...docsAliasPaths(repoRoot, stripped),
         path.join(repoRoot, "docs", stripped),
         path.join(repoRoot, stripped),

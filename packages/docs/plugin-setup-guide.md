@@ -82,7 +82,7 @@ where to get the credentials, minimum required fields, and tips for optional fie
 - `X_AUTH_MODE` — `env` (default) or `oauth`
 - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` — Twitter OAuth keys (for the X connector side of xAI)
 - `X_ENABLE_POST`, `X_ENABLE_REPLIES`, `X_ENABLE_ACTIONS` — Toggle X/Twitter behaviors
-**Tips:** xAI = Grok models. The `X_*` vars are for the Twitter integration bundled with xAI. Keep auth mode as `api_key` unless you need OAuth. For a standalone Twitter connector (without Grok), see the [Twitter/X connector](#twitter--x) section below — it uses `TWITTER_*` env vars and `connectors.twitter` config instead.
+**Tips:** xAI = Grok models. The `X_*` vars are for the Twitter integration bundled with xAI. Keep auth mode as `api_key` unless you need OAuth. For a standalone Twitter connector (without Grok), see the [Twitter/X connector](#twitter-x) section below — it uses `TWITTER_*` env vars and `connectors.twitter` config instead.
 
 ### Ollama (Local Models)
 **Get credentials:** No API key needed — install Ollama locally

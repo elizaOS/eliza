@@ -1,974 +1,475 @@
 ---
 title: "Action Catalog"
 sidebarTitle: "Action Catalog"
-description: "Snapshot reference of actions available across Eliza plugins."
+description: "Generated reference for canonical Eliza action and provider prompt docs."
 ---
 
 # Action Catalog
 
-_Catalog snapshot from 2026-04-16. Total actions: 147._
+This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd packages/prompts build:action-docs`. Do not edit it by hand; change the source spec or generator instead.
 
-## Summary Statistics
+## Summary
 
-- **Total actions catalogued:** 147
-- **Actions with examples:** 136
-- **Actions with validate function:** 139
-- **Actions with handler function:** 139
-- **Actions without description:** 22
+- **Canonical actions:** 23
+- **Core actions:** 14
+- **Plugin overlay actions:** 9
+- **Canonical providers:** 23
+- **Core providers:** 23
 
-### Top Packages by Action Count
-
-| Package | Count | Type |
-|---------|-------|------|
-| `core/advanced-capabilities` | 24 | CORE |
-| `plugin-agent-orchestrator` | 11 | PLUGIN |
-| `plugin-music-library` | 8 | PLUGIN |
-| `plugin-agent-skills` | 8 | PLUGIN |
-| `plugin-music-player` | 8 | PLUGIN |
-| `app-app-lifeops` | 6 | APP |
-| `plugin-computeruse` | 5 | PLUGIN |
-| `plugin-commands` | 5 | PLUGIN |
-| `core/trust` | 5 | CORE |
-| `plugin-shopify` | 5 | PLUGIN |
-| `core/basic-capabilities` | 4 | CORE |
-| `plugin-signal` | 4 | PLUGIN |
-| `core/plugin-manager` | 3 | CORE |
-| `core/secrets` | 3 | CORE |
-| `core/advanced-planning` | 2 | CORE |
-| `plugin-bluebubbles` | 2 | PLUGIN |
-
----
-
-## Action Listings
-
-## Core / @elizaos/core / advanced-capabilities
-
-### ADD_CONTACT
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/addContact.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_APPEND
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_DELETE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_LIST
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_READ
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_SEARCH
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/search.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CLIPBOARD_WRITE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### FOLLOW_ROOM
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/followRoom.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### FORM_RESTORE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/form/actions/restore.ts`
-- **Description:** Restore a previously stashed form session
-- **Similes:** `RESUME_FORM`, `CONTINUE_FORM`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### GENERATE_IMAGE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/imageGeneration.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MODIFY_CHARACTER
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts`
-- **Description:** Optional natural-language request describing the desired character or interaction change. If provided, the action evaluates this request instead of relying only on the raw message text.
-- **Similes:** `UPDATE_PERSONALITY`, `CHANGE_PERSONALITY`, `UPDATE_CHARACTER`, `CHANGE_CHARACTER`, `CHANGE_BEHAVIOR`, `ADJUST_BEHAVIOR`, `CHANGE_TONE`, `UPDATE_TONE`, `CHANGE_STYLE`, `UPDATE_STYLE`, `CHANGE_VOICE`, `CHANGE_RESPONSE_STYLE`, `UPDATE_RESPONSE_STYLE`, `EVOLVE_CHARACTER`, `SELF_MODIFY`, `SET_RESPONSE_STYLE`, `SET_LANGUAGE`, `SET_INTERACTION_MODE`, `SET_USER_PREFERENCE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MUTE_ROOM
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/muteRoom.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### READ_ATTACHMENT
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts`
-- **Description:** Read a stored attachment by attachment ID. Use this instead of relying on inline attachment descriptions in the conversation context. Set addToClipboard=true to keep the result in bounded task clipboa
-- **Similes:** `OPEN_ATTACHMENT`, `INSPECT_ATTACHMENT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### READ_FILE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts`
-- **Description:** Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.
-- **Similes:** `OPEN_FILE`, `LOAD_FILE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### RECORD_EXPERIENCE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-### REMOVE_CONTACT
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/removeContact.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### REMOVE_FROM_CLIPBOARD
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts`
-- **Description:** Remove an item from the bounded clipboard when it is no longer needed for the current task.
-- **Similes:** `CLEAR_CLIPBOARD_ITEM`, `DELETE_CLIPBOARD_ITEM`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEARCH_CONTACTS
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/searchContacts.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MESSAGE
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/message.ts`
-- **Description:** Primary addressed-message router. Subactions are selected with `operation`.
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### THINK
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/think.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UNFOLLOW_ROOM
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/unfollowRoom.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UNMUTE_ROOM
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/unmuteRoom.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UPDATE_CONTACT
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/updateContact.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UPDATE_ENTITY
-
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/updateEntity.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/agent-orchestrator
-
-### START_CODING_TASK
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/start-coding-task.ts`
-- **Description:** Create one or more asynchronous task agents for any open-ended multi-step job.
-- **Similes:** `CREATE_TASK`, `LAUNCH_CODING_TASK`, `RUN_CODING_TASK`, `START_AGENT_TASK`, `SPAWN_AND_PROVISION`, `CODE_THIS`, `LAUNCH_TASK`, `CREATE_SUBTASK`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### FINALIZE_WORKSPACE
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/finalize-workspace.ts`
-- **Description:** Finalize workspace changes by committing, pushing, and optionally creating a pull request.
-- **Similes:** `COMMIT_AND_PR`, `CREATE_PR`, `SUBMIT_CHANGES`, `FINISH_WORKSPACE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### LIST_AGENTS
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/list-agents.ts`
-- **Description:** List active task agents together with current task progress so the main agent can keep the user updated while work continues asynchronously.
-- **Similes:** `LIST_CODING_AGENTS`, `SHOW_CODING_AGENTS`, `GET_ACTIVE_AGENTS`, `LIST_SESSIONS`, `SHOW_CODING_SESSIONS`, `SHOW_TASK_AGENTS`, `LIST_SUB_AGENTS`, `SHOW_TASK_STATUS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MANAGE_ISSUES
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/manage-issues.ts`
-- **Description:** Manage GitHub issues for a repository.
-- **Similes:** `CREATE_ISSUE`, `LIST_ISSUES`, `CLOSE_ISSUE`, `COMMENT_ISSUE`, `UPDATE_ISSUE`, `GET_ISSUE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### PROVISION_WORKSPACE
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/provision-workspace.ts`
-- **Description:** Create a git workspace for coding tasks.
-- **Similes:** `CREATE_WORKSPACE`, `CLONE_REPO`, `SETUP_WORKSPACE`, `PREPARE_WORKSPACE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEND_TO_AGENT
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/send-to-agent.ts`
-- **Description:** Send text input or key presses to a running task-agent session.
-- **Similes:** `SEND_TO_CODING_AGENT`, `MESSAGE_CODING_AGENT`, `INPUT_TO_AGENT`, `RESPOND_TO_AGENT`, `TELL_CODING_AGENT`, `MESSAGE_AGENT`, `TELL_TASK_AGENT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SPAWN_AGENT
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/spawn-agent.ts`
-- **Description:** Spawn a specific task agent inside an existing workspace when you need direct control.
-- **Similes:** `SPAWN_CODING_AGENT`, `START_CODING_AGENT`, `LAUNCH_CODING_AGENT`, `CREATE_CODING_AGENT`, `SPAWN_CODER`, `RUN_CODING_AGENT`, `SPAWN_SUB_AGENT`, `START_TASK_AGENT`, `CREATE_AGENT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### STOP_AGENT
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/stop-agent.ts`
-- **Description:** Stop a running task-agent session.
-- **Similes:** `STOP_CODING_AGENT`, `KILL_CODING_AGENT`, `TERMINATE_AGENT`, `END_CODING_SESSION`, `CANCEL_AGENT`, `CANCEL_TASK_AGENT`, `STOP_SUB_AGENT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### TASK_CONTROL
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/task-control.ts`
-- **Description:** Pause, stop, resume, continue, archive, or reopen a coordinator task thread while preserving the durable thread history.
-- **Similes:** `CONTROL_TASK`, `PAUSE_TASK`, `RESUME_TASK`, `STOP_TASK`, `CONTINUE_TASK`, `ARCHIVE_TASK`, `REOPEN_TASK`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### TASK_HISTORY
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/task-history.ts`
-- **Description:** Query coordinator task history without stuffing raw transcripts into model context. Use this for active work, yesterday/last-week summaries, topic search, counts, and thread detail lookup.
-- **Similes:** `LIST_TASK_HISTORY`, `GET_TASK_HISTORY`, `SHOW_TASKS`, `COUNT_TASKS`, `TASK_STATUS_HISTORY`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### TASK_SHARE
-
-- **File:** `eliza/plugins/plugin-agent-orchestrator/src/actions/task-share.ts`
-- **Description:** Discover the best available way to view or share a task result, including artifacts, live preview URLs, workspace paths, and environment share capabilities.
-- **Similes:** `SHARE_TASK_RESULT`, `SHOW_TASK_ARTIFACT`, `VIEW_TASK_OUTPUT`, `CAN_I_SEE_IT`, `PULL_IT_UP`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/music-library
-
-### ADD_TO_PLAYLIST
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/addToPlaylist.ts`
-- **Description:** Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.
-- **Similes:** `ADD_SONG_TO_PLAYLIST`, `PUT_IN_PLAYLIST`, `SAVE_TO_PLAYLIST`, `ADD_TRACK_TO_PLAYLIST`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### DELETE_PLAYLIST
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/deletePlaylist.ts`
-- **Description:** Delete a saved playlist. Works best in DMs to avoid flooding group chats.
-- **Similes:** `REMOVE_PLAYLIST`, `DELETE_SAVED_PLAYLIST`, `REMOVE_SAVED_PLAYLIST`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### DOWNLOAD_MUSIC
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/downloadMusic.ts`
-- **Description:** Download music to the local library without playing it. Requires the configured music fetch service to resolve the track.
-- **Similes:** `FETCH_MUSIC`, `GET_MUSIC`, `DOWNLOAD_SONG`, `SAVE_MUSIC`, `GRAB_MUSIC`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### LIST_PLAYLISTS
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/listPlaylists.ts`
-- **Description:** List all saved playlists for the user. Works best in DMs to avoid flooding group chats.
-- **Similes:** `SHOW_PLAYLISTS`, `MY_PLAYLISTS`, `PLAYLIST_LIST`, `VIEW_PLAYLISTS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### LOAD_PLAYLIST
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/loadPlaylist.ts`
-- **Description:** Load a saved playlist and add all tracks to the queue. Works best in DMs to avoid flooding group chats.
-- **Similes:** `PLAY_PLAYLIST`, `LOAD_QUEUE`, `RESTORE_PLAYLIST`, `PLAY_SAVED_PLAYLIST`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### PLAY_MUSIC_QUERY
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/playMusicQuery.ts`
-- **Description:** Handle any complex music query that requires understanding and research. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific y
-- **Similes:** `SMART_PLAY`, `RESEARCH_AND_PLAY`, `FIND_AND_PLAY`, `INTELLIGENT_MUSIC_SEARCH`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SAVE_PLAYLIST
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/savePlaylist.ts`
-- **Description:** Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.
-- **Similes:** `SAVE_QUEUE`, `CREATE_PLAYLIST`, `STORE_PLAYLIST`, `SAVE_MUSIC_LIST`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEARCH_YOUTUBE
-
-- **File:** `eliza/plugins/plugin-music-library/src/actions/searchYouTube.ts`
-- **Description:** Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific URL.
-- **Similes:** `FIND_YOUTUBE`, `SEARCH_YOUTUBE_VIDEO`, `FIND_SONG`, `SEARCH_MUSIC`, `GET_YOUTUBE_LINK`, `LOOKUP_YOUTUBE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/agent-skills
-
-### GET_SKILL_DETAILS
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/get-skill-details.ts`
-- **Description:** Get detailed information about a specific skill including version, owner, and stats.
-- **Similes:** `SKILL_INFO`, `SKILL_DETAILS`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### INSTALL_SKILL
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/install-skill.ts`
-- **Description:** Install a skill from the ClawHub registry. The skill will be security-scanned before activation.
-- **Similes:** `DOWNLOAD_SKILL`, `ADD_SKILL`, `GET_SKILL`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEARCH_SKILLS
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/search-skills.ts`
-- **Description:** Search the skill registry for available skills by keyword or category.
-- **Similes:** `BROWSE_SKILLS`, `LIST_SKILLS`, `FIND_SKILLS`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SYNC_SKILL_CATALOG
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/sync-catalog.ts`
-- **Description:** Sync the skill catalog from the registry to discover new skills.
-- **Similes:** `REFRESH_SKILLS`, `UPDATE_CATALOG`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### TOGGLE_SKILL
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/toggle-skill.ts`
-- **Description:** Enable or disable an installed skill. Say
-- **Similes:** `ENABLE_SKILL`, `DISABLE_SKILL`, `TURN_ON_SKILL`, `TURN_OFF_SKILL`, `ACTIVATE_SKILL`, `DEACTIVATE_SKILL`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UNINSTALL_SKILL
-
-- **File:** `eliza/plugins/plugin-agent-skills/typescript/src/actions/uninstall-skill.ts`
-- **Description:** Uninstall a non-bundled skill. Bundled skills cannot be removed.
-- **Similes:** `REMOVE_SKILL`, `DELETE_SKILL`
-- **Validate:** ❌ no
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/music-player
-
-### MANAGE_ROUTING
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/manageRouting.ts`
-- **Description:** Manage audio routing modes and assignments
-- **Similes:** `SET_ROUTING_MODE`, `ROUTE_AUDIO`, `STOP_ROUTING`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MANAGE_ZONES
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/manageZones.ts`
-- **Description:** Manage audio zones for multi-bot voice routing
-- **Similes:** `CREATE_ZONE`, `DELETE_ZONE`, `LIST_ZONES`, `ADD_TO_ZONE`, `REMOVE_FROM_ZONE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### PAUSE_MUSIC
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/pauseResumeMusic.ts`
-- **Description:** Pause the currently playing track (hold playback). Use whenever the user asks to pause music or audio.
-- **Similes:** `PAUSE`, `PAUSE_AUDIO`, `PAUSE_SONG`, `PAUSE_PLAYBACK`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### PLAY_AUDIO
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/playAudio.ts`
-- **Description:** Start playing a new song: provide a track name, artist, search words, or a media URL.
-- **Similes:** `PLAY_YOUTUBE`, `PLAY_YOUTUBE_AUDIO`, `PLAY_VIDEO_AUDIO`, `PLAY_MUSIC`, `PLAY_SONG`, `PLAY_TRACK`, `START_MUSIC`, `PLAY_THIS`, `STREAM_YOUTUBE`, `PLAY_FROM_YOUTUBE`, `QUEUE_SONG`, `ADD_TO_QUEUE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### QUEUE_MUSIC
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/queueMusic.ts`
-- **Description:** Add a song to the queue for later
-- **Similes:** `ADD_TO_QUEUE`, `QUEUE_SONG`, `QUEUE_TRACK`, `ADD_SONG`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SHOW_QUEUE
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/showQueue.ts`
-- **Description:** Show the current music queue
-- **Similes:** `QUEUE`, `LIST_QUEUE`, `SHOW_PLAYLIST`, `QUEUE_LIST`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SKIP_TRACK
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/skipTrack.ts`
-- **Description:** Skip the current track and play the next queued song. Use for skip, next track, or next song.
-- **Similes:** `SKIP`, `NEXT_TRACK`, `SKIP_SONG`, `NEXT_SONG`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### STOP_MUSIC
-
-- **File:** `eliza/plugins/plugin-music-player/src/actions/stopMusic.ts`
-- **Description:** Stop playback and clear the queue. Use when the user wants music off or the queue cleared.
-- **Similes:** `STOP_AUDIO`, `STOP_PLAYING`, `STOP_SONG`, `TURN_OFF_MUSIC`, `MUSIC_OFF`, `SILENCE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## App / app-lifeops
-
-> This generated inventory is partial for LifeOps. The canonical action
-> registration is `personalAssistantPlugin.actions` in
-> `eliza/plugins/plugin-personal-assistant/src/plugin.ts`, which currently includes browser
-> companion, inbox, approvals, travel, check-in, follow-up, scheduling, and
-> activity actions beyond the legacy subset below.
-
-### BLOCK_APPS
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/app-blocker.ts`
-- **Description:** Admin-only. Block selected apps on the user
-- **Similes:** `BLOCK_APP`, `BLOCK_APPLICATION`, `APP_BLOCKER`, `START_APP_BLOCK`, `BLOCK_DISTRACTING_APPS`, `SHIELD_APPS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### BLOCK_WEBSITES
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/website-blocker.ts`
-- **Description:** Admin-only. Start a local website block by editing the system hosts file.
-- **Similes:** `SELFCONTROL_BLOCK_WEBSITES`, `BLOCK_WEBSITE`, `BLOCK_SITE`, `BLOCK_WEBSITE_NOW`, `WEBSITE_BLOCKER`, `WEBSITEBLOCKER`, `START_FOCUS_BLOCK`, `BLOCK_SITE`, `BLOCK_DISTRACTING_SITES`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### CALENDAR_ACTION
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/calendar.ts`
-- **Description:** Interact with Google Calendar through LifeOps.
-- **Similes:** `CALENDAR`, `CHECK_CALENDAR`, `SCHEDULE_EVENT`, `CREATE_CALENDAR_EVENT`, `SEARCH_CALENDAR`, `NEXT_MEETING`, `ITINERARY`, `TRAVEL_SCHEDULE`, `CHECK_SCHEDULE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### GMAIL_ACTION
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/gmail.ts`
-- **Description:** Interact with Gmail through LifeOps.
-- **Similes:** `GMAIL`, `CHECK_EMAIL`, `EMAIL_TRIAGE`, `SEARCH_EMAIL`, `DRAFT_EMAIL_REPLY`, `SEND_EMAIL_REPLY`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### LIFE
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/life.ts`
-- **Description:** Manage the user
-- **Similes:** `MANAGE_LIFEOPS`, `QUERY_LIFEOPS`, `CREATE_TASK`, `CREATE_HABIT`, `CREATE_GOAL`, `TRACK_HABIT`, `COMPLETE_TASK`, `SET_ALARM`, `SET_REMINDER`, `SNOOZE_REMINDER`, `SET_REMINDER_INTENSITY`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UPDATE_OWNER_PROFILE
-
-- **File:** `eliza/plugins/plugin-personal-assistant/src/actions/update-owner-profile.ts`
-- **Description:** Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them.
-- **Similes:** `SAVE_OWNER_PROFILE`, `SET_OWNER_PROFILE`, `UPDATE_USER_PROFILE`, `SAVE_USER_PROFILE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-## Plugin / @elizaos/computeruse
-
-### BROWSER_ACTION
-
-- **File:** `eliza/plugins/plugin-computeruse/src/actions/browser-action.ts`
-- **Description:** Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into forms, reads DOM state, executes JavaScript
-- **Similes:** `CONTROL_BROWSER`, `WEB_BROWSER`, `OPEN_BROWSER`, `BROWSE_WEB`, `NAVIGATE_BROWSER`, `BROWSER_CLICK`, `BROWSER_TYPE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### FILE_ACTION
-
-- **File:** `eliza/plugins/plugin-computeruse/src/actions/file-action.ts`
-- **Description:** Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n
-- **Similes:** `READ_FILE`, `WRITE_FILE`, `EDIT_FILE`, `DELETE_FILE`, `LIST_DIRECTORY`, `FILE_OPERATION`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### MANAGE_WINDOW
-
-- **File:** `eliza/plugins/plugin-computeruse/src/actions/manage-window.ts`
-- **Description:** Manage desktop windows through the local runtime. This includes listing visible windows, focusing or switching windows, minimizing, maximizing, restoring, closing, and parity arrange/move commands that report unsupported platform behavior clearly.
-- **Similes:** `LIST_WINDOWS`, `FOCUS_WINDOW`, `SWITCH_WINDOW`, `MINIMIZE_WINDOW`, `MAXIMIZE_WINDOW`, `CLOSE_WINDOW`, `WINDOW_MANAGEMENT`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### TERMINAL_ACTION
-
-- **File:** `eliza/plugins/plugin-computeruse/src/actions/terminal-action.ts`
-- **Description:** Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n
-- **Similes:** `RUN_COMMAND`, `EXECUTE_COMMAND`, `SHELL_COMMAND`, `TERMINAL`, `RUN_SHELL`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-### USE_COMPUTER
-
-- **File:** `eliza/plugins/plugin-computeruse/src/actions/use-computer.ts`
-- **Description:** Control the local desktop. This action can inspect the current screen, move the mouse, click, drag, type, press keys, scroll, and perform modified clicks. It is intended for real application interacti
-- **Similes:** `CONTROL_COMPUTER`, `COMPUTER_ACTION`, `DESKTOP_ACTION`, `CLICK`, `CLICK_SCREEN`, `TYPE_TEXT`, `PRESS_KEY`, `KEY_COMBO`, `SCROLL_SCREEN`, `MOVE_MOUSE`, `DRAG`, `MOUSE_CLICK`, `TAKE_SCREENSHOT`, `CAPTURE_SCREEN`, `SCREEN_CAPTURE`, `GET_SCREENSHOT`, `SEE_SCREEN`, `LOOK_AT_SCREEN`, `VIEW_SCREEN`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
-
-## Plugin / @elizaos/commands
-
-### COMMANDS_LIST
-
-- **File:** `eliza/plugins/plugin-commands/typescript/src/actions/commands-list.ts`
-- **Description:** List all available commands with their aliases. Only activates for /commands or /cmds slash commands.
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-### HELP_COMMAND
-
-- **File:** `eliza/plugins/plugin-commands/typescript/src/actions/help.ts`
-- **Description:** Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-### MODELS_COMMAND
-
-- **File:** `eliza/plugins/plugin-commands/typescript/src/actions/models.ts`
-- **Description:** List available AI models and providers. Only activates for /models slash command.
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-### STATUS_COMMAND
-
-- **File:** `eliza/plugins/plugin-commands/typescript/src/actions/status.ts`
-- **Description:** Show session directive settings via /status slash command. Only activates for /status or /s prefix.
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-### STOP_COMMAND
-
-- **File:** `eliza/plugins/plugin-commands/typescript/src/actions/stop.ts`
-- **Description:** Stop current operation or abort running tasks. Triggered by /stop, /abort, or /cancel slash commands only.
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
-
-## Core / @elizaos/core / trust
-
-### EVALUATE_TRUST
-
-- **File:** `eliza/packages/core/src/features/trust/actions/evaluateTrust.ts`
-- **Description:** Evaluates the trust score and profile for a specified entity
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### RECORD_TRUST_INTERACTION
-
-- **File:** `eliza/packages/core/src/features/trust/actions/recordTrustInteraction.ts`
-- **Description:** Records a trust-affecting interaction between entities
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### REQUEST_ELEVATION
-
-- **File:** `eliza/packages/core/src/features/trust/actions/requestElevation.ts`
-- **Description:** Request temporary elevation of permissions for a specific action
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UPDATE_ROLE
-
-- **File:** `eliza/packages/core/src/features/trust/actions/roles.ts`
-- **Description:** Assigns a role (Admin, Owner, None) to a user or list of users in a channel.
-- **Similes:** `CHANGE_ROLE`, `SET_PERMISSIONS`, `ASSIGN_ROLE`, `MAKE_ADMIN`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### UPDATE_SETTINGS
-
-- **File:** `eliza/packages/core/src/features/trust/actions/settings.ts`
-- **Description:** Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.
-- **Similes:** `UPDATE_SETTING`, `SAVE_SETTING`, `SET_CONFIGURATION`, `CONFIGURE`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Plugin / @elizaos/shopify
-
-### MANAGE_SHOPIFY_CUSTOMERS
-
-- **File:** `eliza/plugins/plugin-shopify/src/actions/manage-customers.ts`
-- **Description:** List and search customers in a connected Shopify store.
-- **Similes:** `LIST_CUSTOMERS`, `FIND_CUSTOMER`, `SEARCH_CUSTOMERS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MANAGE_SHOPIFY_INVENTORY
-
-- **File:** `eliza/plugins/plugin-shopify/src/actions/manage-inventory.ts`
-- **Description:** Check inventory levels, adjust stock quantities, and list store locations in Shopify.
-- **Similes:** `CHECK_INVENTORY`, `ADJUST_INVENTORY`, `CHECK_STOCK`, `UPDATE_STOCK`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MANAGE_SHOPIFY_ORDERS
-
-- **File:** `eliza/plugins/plugin-shopify/src/actions/manage-orders.ts`
-- **Description:** List recent orders, check specific order status, and mark orders as fulfilled in Shopify.
-- **Similes:** `LIST_ORDERS`, `CHECK_ORDERS`, `FULFILL_ORDER`, `ORDER_STATUS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### MANAGE_SHOPIFY_PRODUCTS
-
-- **File:** `eliza/plugins/plugin-shopify/src/actions/manage-products.ts`
-- **Description:** List, search, create, or update products in a connected Shopify store.
-- **Similes:** `LIST_PRODUCTS`, `CREATE_PRODUCT`, `UPDATE_PRODUCT`, `SEARCH_PRODUCTS`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### SEARCH_SHOPIFY_STORE
-
-- **File:** `eliza/plugins/plugin-shopify/src/actions/search-store.ts`
-- **Description:** Search across products, orders, and customers in a connected Shopify store.
-- **Similes:** `SHOPIFY_SEARCH`, `STORE_SEARCH`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-## Core / @elizaos/core / basic-capabilities
-
-### CHOOSE_OPTION
-
-- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/choice.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### IGNORE
-
-- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/ignore.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
-
-### NONE
-
-- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/none.ts`
-- **Description:** Response without additional action
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+## Actions
 
 ### REPLY
 
-- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/reply.ts`
-- **Description:** _(not provided)_
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. Do NOT use REPLY to send to a different channel/person or to run an email/inbox workflow — use MESSAGE (action=send) for a directed send to another channel or DM, MESSAGE inbox operations for triage/drafts, and POST to publish to a public feed.
 
-## Core / @elizaos/core / connector-actions
+- **Aliases:** GREET, RESPOND, RESPONSE
+
+### IGNORE
+
+Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.
+
+- **Aliases:** STOP_TALKING, STOP_CHATTING, STOP_CONVERSATION
+
+### NONE
+
+Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.
+
+- **Aliases:** NO_ACTION, NO_RESPONSE, NO_REACTION, NOOP, PASS
 
 ### MESSAGE
 
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/message.ts`
-- **Description:** Primary addressed-message router. Use `operation` for send, read, search, list_channels, list_servers, react, edit, delete, pin, join, leave, or get_user.
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.
+
+- **Aliases:** DM, DIRECT_MESSAGE, CHAT, CHANNEL, ROOM
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. |
+| `source` | no | string | Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge. |
+| `accountId` | no | string | Optional connector account id for multi-account message connectors. |
+| `sources` | no | array | Optional inbox sources for action=triage, list_inbox, or search_inbox. |
+| `target` | no | string | Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID. |
+| `channel` | no | string | Loose channel, room, or group name/reference. |
+| `server` | no | string | Loose server, guild, workspace, or team name/reference. |
+| `message` | no | string | Message text for action=send or replacement text for action=edit. |
+| `query` | no | string | Search term for action=search or action=search_inbox. |
+| `content` | no | string | Inbox search text or message lookup hint for draft/respond/manage operations. |
+| `sender` | no | string | Sender identifier, handle, or display name for inbox search or reply lookup. |
+| `body` | no | string | Draft or response body for action=draft_reply, draft_followup, or respond. |
+| `to` | no | array | Recipient identifiers for action=draft_followup. |
+| `subject` | no | string | Optional subject for email-like draft operations. |
+| `messageId` | no | string | Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage. |
+| `draftId` | no | string | Draft identifier for action=send_draft or action=schedule_draft_send. |
+| `confirmed` | no | boolean | Whether the user explicitly confirmed sending for action=send_draft. |
+| `sendAt` | no | string | Scheduled send time for action=schedule_draft_send. |
+| `emoji` | no | string | Reaction value for action=react. |
+| `pin` | no | boolean | Pin state for action=pin. Use false to unpin when supported. |
+| `manageOperation` | no | string | Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe. |
+| `label` | no | string | Label for action=manage when adding or removing labels. |
+| `tag` | no | string | Tag for action=manage when adding or removing tags. |
+| `limit` | no | integer | Maximum number of messages/channels/servers/inbox items to return. |
+| `cursor` | no | string | Opaque pagination cursor for read/search/list operations. |
+| `sinceMs` | no | number | Start timestamp in milliseconds for inbox list/search/triage operations. |
+| `since` | no | string | Start timestamp or parseable date for action=search_inbox. |
+| `until` | no | string | End timestamp or parseable date for action=read_channel range=dates or action=search_inbox. |
 
 ### POST
 
-- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/post.ts`
-- **Description:** Primary public-feed router. Use `operation` for send, read, or search.
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.
 
-## Core / @elizaos/core / plugin-manager
+- **Aliases:** TWEET, CAST, PUBLISH, FEED_POST, TIMELINE
 
-### CORE_STATUS
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | Post action: send, read, or search. |
+| `source` | no | string | Post connector source such as x, bluesky, farcaster, nostr, or instagram. |
+| `accountId` | no | string | Optional connector account id for multi-account post connectors. |
+| `text` | no | string | Public post text for action=send. |
+| `target` | no | string | Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference. |
+| `feed` | no | string | Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed. |
+| `query` | no | string | Search term for action=search. |
+| `replyTo` | no | string | Post/comment/reply target for action=send. |
+| `mediaId` | no | string | Media id for connector-specific comment surfaces such as Instagram. |
+| `limit` | no | integer | Maximum number of posts to return. |
+| `cursor` | no | string | Opaque pagination cursor for action=read or action=search. |
+| `attachments` | no | array | Optional post attachments. |
 
-- **File:** `eliza/packages/core/src/features/plugin-manager/actions/coreStatusAction.ts`
-- **Description:** Check thestatus of the @elizaos/core package (ejected or npm)
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
+### ROOM
 
-### LIST_EJECTED_PLUGINS
+Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.
 
-- **File:** `eliza/packages/core/src/features/plugin-manager/actions/listEjectedPluginsAction.ts`
-- **Description:** List all ejected plugins currently being managed locally
-- **Validate:** ✅ yes
-- **Handler:** ❌ no
-- **Examples:** ✅ yes
+- **Aliases:** FOLLOW_ROOM, UNFOLLOW_ROOM, MUTE_ROOM, UNMUTE_ROOM, ROOM_FOLLOW, ROOM_MUTE
 
-### SEARCH_PLUGINS
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | yes | string | Room operation: follow, unfollow, mute, or unmute. |
+| `roomId` | no | string | Optional target room id. Defaults to the current room when omitted. |
 
-- **File:** `eliza/packages/core/src/features/plugin-manager/actions/searchPluginAction.ts`
-- **Description:** Search for plugins in the elizaOS registry by functionality, features, and natural language descriptions.
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+### ROLE
 
-## Core / @elizaos/core / secrets
+Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.
 
-### MANAGE_SECRET
+- **Aliases:** UPDATE_ROLE, SET_ROLE, CHANGE_ROLE, ASSIGN_ROLE, MAKE_ADMIN, GRANT_ROLE
 
-- **File:** `eliza/packages/core/src/features/secrets/actions/manage-secret.ts`
-- **Description:** Manage secrets - get, set, delete, or list secrets at various levels
-- **Similes:** `SECRET_MANAGEMENT`, `HANDLE_SECRET`, `SECRET_OPERATION`, `GET_SECRET`, `DELETE_SECRET`, `LIST_SECRETS`, `CHECK_SECRET`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | Role operation. Currently update. |
+| `entityId` | yes | string | Entity id whose role should be updated. |
+| `role` | yes | string | Role to assign. |
 
-### REQUEST_SECRET
+### SEARCH_EXPERIENCES
 
-- **File:** `eliza/packages/core/src/features/secrets/actions/request-secret.ts`
-- **Description:** Request a missing secret from the user or administrator
-- **Similes:** `ASK_FOR_SECRET`, `REQUIRE_SECRET`, `NEED_SECRET`, `MISSING_SECRET`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.
 
-### SET_SECRET
+- **Aliases:** SEARCH_MEMORY, SEARCH_EXPERIENCE, SEARCH_PRIOR_CONTEXT, FIND_EXPERIENCES
 
-- **File:** `eliza/packages/core/src/features/secrets/actions/set-secret.ts`
-- **Description:** Set a secret value (API key, token, password, etc.) for the agent to use
-- **Similes:** `STORE_SECRET`, `SAVE_SECRET`, `SET_API_KEY`, `CONFIGURE_SECRET`, `SET_ENV_VAR`, `STORE_API_KEY`, `SET_TOKEN`, `SAVE_KEY`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `query` | yes | string | Search query. |
+| `limit` | no | integer | Maximum number of results to return. |
 
-## Core / @elizaos/core / advanced-planning
+### CHARACTER
 
-### ANALYZE_INPUT
+Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.
 
-- **File:** `eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts`
-- **Description:** Analyzes user input and extracts key information
-- **Similes:** `PLAN_PROJECT`, `GENERATE_PLAN`, `MAKE_PLAN`, `PROJECT_PLAN`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ❌ no
+- **Aliases:** CHARACTER_MODIFY, CHARACTER_PERSIST, CHARACTER_UPDATE_IDENTITY, UPDATE_CHARACTER, EDIT_CHARACTER
 
-### SCHEDULE_FOLLOW_UP
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | yes | string | Character operation: modify, persist, or update_identity. |
+| `updates` | no | string | Structured or textual character updates. |
 
-- **File:** `eliza/packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts`
-- **Description:** Schedule a follow-up reminder for a contact
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+### CHOOSE_OPTION
 
-## Core / @elizaos/core / advanced-memory
+Select an option for a pending task that has multiple options.
 
-### RESET_SESSION
+- **Aliases:** SELECT_OPTION, PICK_OPTION, SELECT_TASK, PICK_TASK, SELECT, PICK, CHOOSE
 
-- **File:** `eliza/packages/core/src/features/advanced-memory/actions/resetSession.ts`
-- **Description:** Resets the conversation session by creating a compaction point. Messages before this point will not be included in future context. Use when the user wants to start fresh or clear conversation history.
-- **Similes:** `CLEAR_HISTORY`, `NEW_SESSION`, `FORGET`, `START_OVER`, `RESET`
-- **Validate:** ✅ yes
-- **Handler:** ✅ yes
-- **Examples:** ✅ yes
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `taskId` | yes | string | The pending task id. |
+| `option` | yes | string | The selected option name exactly as listed. |
 
----
+### ATTACHMENT
 
-## Gap Findings
+Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.
 
-### Actions Without Tests/Examples
-- **Count:** 8
+- **Aliases:** READ_ATTACHMENT, SAVE_ATTACHMENT_AS_DOCUMENT, OPEN_ATTACHMENT, INSPECT_ATTACHMENT, READ_URL, OPEN_URL, READ_WEBPAGE
 
-Notable actions without examples (first 10):
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | Attachment operation: read or save_as_document. |
+| `attachmentId` | no | string | Optional attachment ID to read or save. Omit to use the current or most recent attachment. |
+| `addToClipboard` | no | boolean | When true with action=read, store the attachment content in bounded task clipboard state. |
+| `title` | no | string | Optional title when saving attachment content as a document. |
 
-  - `ANALYZE_INPUT` (core/advanced-planning)
-  - `BROWSER_ACTION` (plugin-computeruse)
-  - `FILE_ACTION` (plugin-computeruse)
-  - `MANAGE_WINDOW` (plugin-computeruse)
-  - `TERMINAL_ACTION` (plugin-computeruse)
-  - `UPDATE_OWNER_PROFILE` (app-app-lifeops)
+### GENERATE_MEDIA
 
-### Actions Without Validate Function
-- **Count:** 12
+Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.
 
-### Actions Without Handler Function
-- **Count:** 12
+- **Aliases:** GENERATE_IMAGE, GENERATE_VIDEO, GENERATE_AUDIO, GENERATE_MEDIA_IMAGE, DRAW, CREATE_IMAGE, RENDER_IMAGE, VISUALIZE, MAKE_IMAGE, PAINT, IMAGE, CREATE_VIDEO, MAKE_VIDEO, ANIMATE, COMPOSE, MAKE_MUSIC, TEXT_TO_SPEECH, SOUND_EFFECT
 
-### Actions Without Description
-- **Count:** 22
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `mediaType` | yes | string | The kind of media to generate. |
+| `prompt` | yes | string | Detailed generation prompt describing the desired media. |
+| `audioKind` | no | string | For audio generation, choose music, sfx, or tts. |
+| `duration` | no | number | Optional target duration in seconds for video or audio. |
+| `aspectRatio` | no | string | Optional video aspect ratio such as 16:9, 9:16, or 1:1. |
+| `size` | no | string | Optional image size or image provider size preset. |
 
-  - `ADD_CONTACT` (core/advanced-capabilities)
-  - `CHOOSE_OPTION` (core/basic-capabilities)
-  - `CLIPBOARD_APPEND` (core/advanced-capabilities)
-  - `CLIPBOARD_DELETE` (core/advanced-capabilities)
-  - `CLIPBOARD_LIST` (core/advanced-capabilities)
-  - `CLIPBOARD_READ` (core/advanced-capabilities)
-  - `CLIPBOARD_SEARCH` (core/advanced-capabilities)
-  - `CLIPBOARD_WRITE` (core/advanced-capabilities)
-  - `FOLLOW_ROOM` (core/advanced-capabilities)
-  - `GENERATE_IMAGE` (core/advanced-capabilities)
+### PAYMENT
 
-### Files That Could Not Parse
-- **Count:** 24
+Payment operations. Use action=create_request to create a payment request, deliver_link to send a payment link, verify_payload to verify a provider proof, settle to finalize a payment, await_callback to wait for settlement, and cancel_request to void a pending request.
 
-  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-digest.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-respond.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox-triage.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/inbox.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/life-goal-extractor.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/life-param-extractor.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/life-recent-context.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/life-update-extractor.ts`
-  - `eliza/plugins/plugin-personal-assistant/src/actions/life.extractor.ts`
+- **Aliases:** NEW_PAYMENT_REQUEST, OPEN_PAYMENT_REQUEST, SEND_PAYMENT_LINK, DISPATCH_PAYMENT_LINK, VERIFY_PAYMENT_PROOF, CHECK_PAYMENT_PROOF, FINALIZE_PAYMENT, CONFIRM_PAYMENT, WAIT_FOR_PAYMENT, AWAIT_PAYMENT_SETTLEMENT, VOID_PAYMENT_REQUEST, ABORT_PAYMENT_REQUEST
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | yes | string | Payment operation: create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request. |
+| `provider` | no | string | For action=create_request, provider key: stripe, oxapay, x402, or wallet_native. |
+| `amountCents` | no | number | For action=create_request, amount in minor currency units. |
+| `currency` | no | string | For action=create_request, ISO 4217 currency. |
+| `paymentContext` | no | object | For action=create_request, payer constraint. kind can be any_payer, verified_payer, or specific_payer; scope can be one_time, session, or recurring. |
+| `reason` | no | string | For action=create_request or cancel_request, payment or cancellation reason. |
+| `expiresInMs` | no | number | For action=create_request, optional time-to-live override in milliseconds. |
+| `paymentRequestId` | no | string | For deliver_link, verify_payload, settle, await_callback, and cancel_request: payment request ID. |
+| `target` | no | string | For action=deliver_link, delivery channel. |
+| `targetChannelId` | no | string | For action=deliver_link, optional delivery channel override. |
+| `proof` | no | object | For action=verify_payload or settle, provider proof payload. |
+| `strategy` | no | string | For action=settle, optional settler strategy hint. |
+| `timeoutMs` | no | number | For action=await_callback, wait timeout in milliseconds. Default is 600000. |
+
+### TRUST
+
+Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.
+
+- **Aliases:** TRUST_MANAGEMENT, TRUST_OPERATION, TRUST_PROFILE, TRUST_INTERACTION, ELEVATE_PERMISSIONS, ASSIGN_ROLE, CHANGE_ROLE, MAKE_ADMIN, SET_PERMISSIONS
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | yes | string | Action: evaluate \| record_interaction \| request_elevation \| update_role. |
+| `entityId` | no | string | Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent). |
+| `entityName` | no | string | Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible. |
+| `detailed` | no | boolean | Whether evaluate should return detailed dimensions (default false). |
+| `type` | no | string | Trust evidence type (record_interaction). |
+| `impact` | no | number | Numerical trust impact (record_interaction). Default 10. |
+| `description` | no | string | Optional interaction description (record_interaction). |
+| `permissionAction` | no | string | Permission action being requested (request_elevation). |
+| `resource` | no | string | Resource scope for elevation (request_elevation). |
+| `justification` | no | string | Reason elevation is needed (request_elevation). |
+| `duration` | no | number | Requested duration in hours (request_elevation). Defaults to 60. |
+| `roleAssignments` | no | array | Role assignments (update_role). |
+
+### COMPACT_COMMAND
+
+Compact conversation history
+
+- **Aliases:** /compact
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `instructions` | no | string | Optional compaction instructions |
+
+### CONTEXT_COMMAND
+
+Show current context information
+
+- **Aliases:** /context, /ctx
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `mode` | no | string | Output mode (list, detail, json) |
+
+### ELEVATED_COMMAND
+
+Set elevated permission mode
+
+- **Aliases:** /elevated, /elev
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `level` | no | string | off, on, ask, full |
+
+### MODEL_COMMAND
+
+Set or show current model
+
+- **Aliases:** /model, /m
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `model` | no | string | provider/model or alias |
+
+### QUEUE_COMMAND
+
+Set queue mode
+
+- **Aliases:** /queue, /q
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `mode` | no | string | steer, followup, collect, interrupt, or options |
+
+### REASONING_COMMAND
+
+Set reasoning visibility
+
+- **Aliases:** /reasoning, /reason
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `level` | no | string | off, on, stream |
+
+### THINK_COMMAND
+
+Set thinking level
+
+- **Aliases:** /think, /thinking, /t
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `level` | no | string | off, minimal, low, medium, high, xhigh |
+
+### TTS_COMMAND
+
+Text-to-speech settings
+
+- **Aliases:** /tts, /voice
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | on, off, status, provider, limit, audio |
+
+### VERBOSE_COMMAND
+
+Set verbose output level
+
+- **Aliases:** /verbose, /v
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `level` | no | string | off, on, full |
+
+## Providers
+
+### ACTIONS
+
+Possible response actions
+
+- **Position:** -1
+- **Dynamic:** no
+
+### CHARACTER
+
+Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations
+
+- **Position:** -
+- **Dynamic:** no
+
+### RECENT_MESSAGES
+
+Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity
+
+- **Position:** 100
+- **Dynamic:** yes
+
+### ACTION_STATE
+
+Provides information about the current action state and available actions
+
+- **Position:** -
+- **Dynamic:** yes
+
+### ATTACHMENTS
+
+Media attachments in the current message
+
+- **Position:** -
+- **Dynamic:** yes
+
+### CAPABILITIES
+
+Agent capabilities including models, services, and features
+
+- **Position:** -
+- **Dynamic:** no
+
+### CHOICE
+
+Available choice options for selection when there are pending tasks or decisions
+
+- **Position:** -
+- **Dynamic:** yes
+
+### CONTACTS
+
+Provides contact information from the relationships including categories and preferences
+
+- **Position:** -
+- **Dynamic:** yes
+
+### CONTEXT_BENCH
+
+Benchmark/task context injected by a benchmark harness
+
+- **Position:** 5
+- **Dynamic:** yes
+
+### ENTITIES
+
+Provides information about entities in the current context including users, agents, and participants
+
+- **Position:** -
+- **Dynamic:** yes
+
+### FACTS
+
+Provides known facts about entities learned through conversation
+
+- **Position:** -
+- **Dynamic:** yes
+
+### FOLLOW_UPS
+
+Provides information about upcoming follow-ups and reminders scheduled for contacts
+
+- **Position:** -
+- **Dynamic:** yes
+
+### DOCUMENTS
+
+Provides relevant snippets and recent entries from the agent document store
+
+- **Position:** -
+- **Dynamic:** yes
+
+### PROVIDERS
+
+Available context providers
+
+- **Position:** -
+- **Dynamic:** no
+
+### RELATIONSHIPS
+
+Relationships between entities observed by the agent including tags and metadata
+
+- **Position:** -
+- **Dynamic:** yes
+
+### ROLES
+
+Roles assigned to entities in the current context (Admin, Owner, Member, None)
+
+- **Position:** -
+- **Dynamic:** yes
+
+### SETTINGS
+
+Current settings for the agent/server (filtered for security, excludes sensitive keys)
+
+- **Position:** -
+- **Dynamic:** yes
+
+### TIME
+
+Provides the current date and time in UTC for time-based operations or responses
+
+- **Position:** -
+- **Dynamic:** yes
+
+### WORLD
+
+Provides information about the current world context including settings and members
+
+- **Position:** -
+- **Dynamic:** yes
+
+### LONG_TERM_MEMORY
+
+Persistent facts and preferences about the user learned and remembered across conversations
+
+- **Position:** 50
+- **Dynamic:** no
+
+### SUMMARIZED_CONTEXT
+
+Provides summarized context from previous conversations for optimized context usage
+
+- **Position:** 96
+- **Dynamic:** no
+
+### AGENT_SETTINGS
+
+Provides the agent's current configuration settings (filtered for security)
+
+- **Position:** -
+- **Dynamic:** yes
+
+### CURRENT_TIME
+
+Provides current time and date information in various formats
+
+- **Position:** -
+- **Dynamic:** yes

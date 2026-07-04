@@ -91,4 +91,4 @@ Configure in `~/.local/state/eliza/eliza.json`:
 ## Related
 
 - [Bluesky plugin reference](/connectors/bluesky)
-- [Connectors overview](/guides/connectors#bluesky)
+- [Connectors overview](/connectors/bluesky)
