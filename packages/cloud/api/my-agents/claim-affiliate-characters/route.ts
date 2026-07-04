@@ -1,3 +1,4 @@
+// Handles cloud API my agents claim affiliate characters route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import {
   participantsRepository,

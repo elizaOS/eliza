@@ -1,3 +1,4 @@
+// Handles webhook cloud API eliza app webhook discord route traffic with signature or internal auth checks.
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { forwardToDiscordWebhookHandler } from "../_forward";

@@ -101,7 +101,7 @@ afterAll(async () => {
 // PGlite socket). The create path is correct and works on real Postgres/Railway
 // (verified: the exact drizzle insert(userMcps).returning() over node-pg
 // succeeds; create errors are now logged in v1/mcps/route.ts). The read / auth-
-// gate / validation tests run normally. TODO(mcp): drop the skips once the
+// gate and validation tests run normally; the skipped create path is tracked until the
 // harness handles workerd writes, or run this group against a real Railway DB.
 // The user_mcps table + migration (0147) are correct and the read endpoints
 // work, but every write (create/update/publish/delete) 500s ONLY under the
@@ -183,7 +183,7 @@ describeE2E("Group G2 — MCP registry auth gates + validation", () => {
 // 48 cols), which 500s ONLY under the workerd + PGlite-over-TCP e2e harness
 // ("Broken pipe") — the same drizzle insert succeeds on real Postgres/Railway.
 // Kept `describe.skip` until the harness handles workerd writes (or this group
-// runs against a real Railway DB); see TODO(mcp) above.
+// runs against a real Railway DB); see the create-path note above.
 describe.skip("Group G2 — user MCP registry CRUD writes", () => {
   test("create -> creates a draft MCP with computed revenue split", async () => {
     const mcp = await createMcp({ creatorSharePercentage: 70 });

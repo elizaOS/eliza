@@ -1,3 +1,4 @@
+// Exercises cloud API test e2e group k affiliate.test behavior with deterministic Worker route fixtures.
 import { afterAll, describe, expect, test } from "bun:test";
 
 import {

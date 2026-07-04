@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 cron node autoscale route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 /**

@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 telegram scan chats route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { Telegraf } from "telegraf";
 import type { Update } from "telegraf/types";
@@ -220,7 +221,7 @@ app.post("/", async (c) => {
             });
           }
         } catch {
-          // Bot might have been removed from this chat - leave as is for now
+          // Preserve chats when the bot may already have been removed
         }
       }
     }

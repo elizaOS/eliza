@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id chat stream refund route traffic with route-local auth expectations.
 import { logger } from "@/lib/utils/logger";
 
 /**

@@ -97,10 +97,10 @@ app.post("/", async (c) => {
   let fileCount = 0;
   let voiceName = "";
 
-  // Track partial state so the catch branch can clean up R2 + DB orphans
+  // Track partial state so the catch branch can delete R2 and DB orphans
   // when the clone fails before we've successfully persisted a `user_voices`
   // row. Once `userVoicePersisted` flips, the voice clone is committed and
-  // the cleanup branch must NOT delete those samples or R2 objects.
+  // the deletion branch must NOT delete those samples or R2 objects.
   const uploadedR2Keys: string[] = [];
   let userVoicePersisted = false;
 
@@ -249,7 +249,7 @@ app.post("/", async (c) => {
 
     // 1) Upload samples to R2 in parallel. Persisted alongside the DB row so
     //    we have a backup independent of ElevenLabs. Failure here aborts the
-    //    clone (same behaviour as the legacy service when a token was set).
+    //    clone, matching the compatibility service behavior when a token was set.
     const r2Host = c.env.R2_PUBLIC_HOST || DEFAULT_R2_PUBLIC_HOST;
     const sampleRecords = await Promise.all(
       files.map(async (file) => {
@@ -413,11 +413,11 @@ app.post("/", async (c) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    // Cleanup pass — runs only when we have partial state to undo (i.e.
+    // Deletion pass runs only when we have partial state to undo (i.e.
     // the user_voices row was never written). Once that row is committed,
     // the voice clone is real and we must not delete its samples or R2
     // objects, even if a later step (billing, usage tracking) throws.
-    // Each cleanup operation is wrapped in its own try/catch so a cleanup
+    // Each deletion operation is wrapped in its own try/catch so a deletion
     // failure does not mask the original error from the client.
     if (jobId) {
       if (!userVoicePersisted) {

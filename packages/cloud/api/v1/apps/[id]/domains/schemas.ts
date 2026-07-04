@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id domains schemas route traffic with route-local auth expectations.
 import { z } from "zod";
 
 /**

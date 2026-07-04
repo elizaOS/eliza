@@ -1,3 +1,4 @@
+// Exercises cloud API tests stripe connect webhook route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // The REAL Stripe SDK — used (un-mocked) in the "real crypto" suite below to
 // prove the actual signature verification the route relies on rejects forgeries.

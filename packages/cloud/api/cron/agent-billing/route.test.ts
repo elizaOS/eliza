@@ -1,3 +1,4 @@
+// Exercises cloud API cron agent billing route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { createHmac } from "node:crypto";
 

@@ -1,3 +1,4 @@
+// Handles cloud API feedback route traffic with route-local auth expectations.
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
 /**
  * POST /api/feedback

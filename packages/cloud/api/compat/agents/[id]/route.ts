@@ -1,3 +1,4 @@
+// Handles compatibility cloud API compat agents id route traffic through route-local auth checks.
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
@@ -184,8 +185,8 @@ async function __hono_DELETE(
     > | null;
     const reusesExistingCharacter = reusesExistingElizaCharacter(sandboxConfig);
 
-    // Clean up the linked character row so the token_address unique constraint
-    // is released. Best-effort: log but don't fail the delete if cleanup fails.
+    // Deletes the linked character row so the token_address unique constraint
+    // is released. Best-effort: log but do not fail the delete if character deletion fails.
     if (characterId && !reusesExistingCharacter) {
       try {
         await userCharactersRepository.delete(characterId);

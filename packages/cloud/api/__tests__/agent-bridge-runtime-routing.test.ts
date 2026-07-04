@@ -1,3 +1,4 @@
+// Exercises cloud API tests agent bridge runtime routing.test behavior with deterministic Worker route fixtures.
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
 const requireAuthOrApiKeyWithOrg =

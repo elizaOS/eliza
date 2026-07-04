@@ -1,3 +1,4 @@
+// Exercises cloud API tests cloud files route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";

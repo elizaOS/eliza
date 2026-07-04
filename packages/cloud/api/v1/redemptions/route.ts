@@ -27,7 +27,7 @@ const CreateRedemptionSchema = z.object({
     .max(100000, "Maximum redemption is 100,000 points ($1,000.00)"),
   network: z.enum(["ethereum", "base", "bnb", "bsc", "solana"]),
   // Payout asset (#10732). Defaults to USDC (Solana/Base); `eliza` keeps the
-  // legacy elizaOS-token payout on its multi-chain set.
+  // compatibility elizaOS-token payout on its multi-chain set.
   asset: z.enum(["eliza", "usdc"]).optional().default("usdc"),
   payoutAddress: z.string().min(20).max(100),
   signature: z.string().optional(),

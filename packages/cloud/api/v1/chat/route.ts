@@ -144,7 +144,7 @@ app.post("/", async (c) => {
       user = authedUser;
       apiKey = await getRequestApiKey(c);
       // SECURITY: a NON-anonymous authed user must belong to an org. Without this
-      // guard an org-less authed user (legacy/edge data) would fall through to the
+      // guard an org-less authed user from compatibility or edge data would fall through to the
       // no-op anonymous reservation (createAnonymousReservation) and be billed to
       // org "anonymous" = free inference on any model, exempt from the anon
       // free-tier cap. Every sibling inference route enforces org via

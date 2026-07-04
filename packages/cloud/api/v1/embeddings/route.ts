@@ -494,7 +494,7 @@ app.post("/", async (c) => {
             billingSource,
             // #11588: the server-generated requestId keys the affiliate
             // earnings dedupe sourceId (`ai_billing:usage:<requestId>`);
-            // without it billUsage falls back to a legacy-random sourceId and
+            // without it billUsage falls back to a compatibility-random sourceId and
             // the dedupe can never fire.
             requestId,
             // Affiliate revenue-share: when the calling app sets X-Affiliate-Code,

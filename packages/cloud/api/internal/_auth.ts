@@ -1,3 +1,4 @@
+// Handles internal cloud API internal auth route traffic with service-to-service auth.
 import type { Context } from "hono";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
 import {

@@ -1,3 +1,4 @@
+// Exercises cloud API tests elizaos core stub.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
 
 import {

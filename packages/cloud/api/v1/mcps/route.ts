@@ -152,7 +152,7 @@ app.post("/", async (c) => {
 
     return c.json({ mcp }, 201);
   } catch (error) {
-    // TODO(mcp): the create path 500s in the cloud-api e2e (the user_mcps table
+    // MCP create path currently 500s in the cloud-api e2e because the user_mcps table
     // exists — migration 0147 applies — but the worker INSERT fails against
     // PGlite with a "Broken pipe" connection error). Log the real cause so the
     // next run / prod (Railway) hit is debuggable instead of an opaque 500.

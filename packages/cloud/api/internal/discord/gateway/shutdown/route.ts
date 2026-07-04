@@ -1,3 +1,4 @@
+// Handles internal cloud API internal discord gateway shutdown route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { z } from "zod";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";

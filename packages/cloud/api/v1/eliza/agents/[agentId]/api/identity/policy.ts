@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api identity policy route traffic with route-local auth expectations.
 import type { Address } from "viem";
 import type { ERC8004ChainId } from "@/lib/services/erc8004/identity-client";
 

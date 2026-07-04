@@ -1,3 +1,4 @@
+// Exercises cloud API tests wallet proxy steward agent id.test behavior with deterministic Worker route fixtures.
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 // Spread the real module into the partial mock below — `mock.module` is
 // process-global, so dropping the other real exports breaks every later

@@ -1,3 +1,4 @@
+// Handles cloud API eliza app auth connection success route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";

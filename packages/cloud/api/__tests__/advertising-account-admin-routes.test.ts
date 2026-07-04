@@ -1,3 +1,4 @@
+// Exercises cloud API tests advertising account admin routes.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";

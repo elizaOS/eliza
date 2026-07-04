@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 browser sessions id navigate route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

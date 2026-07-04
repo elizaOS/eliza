@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 oauth generic callback route traffic with route-local auth expectations.
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import {
   getDefaultPlatformRedirectOrigins,

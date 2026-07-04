@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid github connect flow route traffic with route-local auth expectations.
 export const GITHUB_DEVICE_CONNECT_EXPIRES_IN_SECONDS = 600;
 export const GITHUB_DEVICE_CONNECT_POLL_INTERVAL_SECONDS = 2;
 

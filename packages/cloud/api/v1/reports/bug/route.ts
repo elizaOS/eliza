@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 reports bug route traffic with route-local auth expectations.
 import { escapeHtml } from "@elizaos/cloud-shared/lib/utils/html";
 /**
  * POST /api/v1/reports/bug

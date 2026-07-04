@@ -1,3 +1,4 @@
+// Exercises cloud API tests advertising campaign dayparting route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";

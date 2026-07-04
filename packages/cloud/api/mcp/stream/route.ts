@@ -1,3 +1,4 @@
+// Handles MCP cloud API mcp stream route traffic with transport-specific auth expectations.
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";

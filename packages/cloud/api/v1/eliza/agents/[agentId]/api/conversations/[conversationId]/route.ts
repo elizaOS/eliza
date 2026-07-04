@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api conversations conversationid route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";

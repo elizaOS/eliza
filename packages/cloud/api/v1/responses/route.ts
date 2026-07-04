@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 responses route traffic with route-local auth expectations.
 import { type Context, Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

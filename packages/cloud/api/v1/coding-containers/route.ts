@@ -353,7 +353,7 @@ async function createCodingContainer(
       sandboxId: sandbox.id,
       error: message,
     });
-    // ── BLOCKING FIX: orphan cleanup on enqueue failure ──────────────────
+    // ── Orphan deletion on enqueue failure ───────────────────────────────
     // Delete the sandbox row we just created to prevent accumulating
     // pending/unknown rows on transient failures (e.g. DB contention,
     // job table unavailable). Best-effort — log but don't mask the original error.

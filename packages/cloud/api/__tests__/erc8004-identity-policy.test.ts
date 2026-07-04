@@ -1,3 +1,4 @@
+// Exercises cloud API tests erc8004 identity policy.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
 import { ERC8004_IDENTITY_REGISTRY_ADDRESSES } from "@/lib/services/erc8004/identity-client";
 import {

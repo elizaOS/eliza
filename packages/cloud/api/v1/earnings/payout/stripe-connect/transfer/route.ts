@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 earnings payout stripe connect transfer route traffic with route-local auth expectations.
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { transferToConnectAccount } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import { Hono } from "hono";

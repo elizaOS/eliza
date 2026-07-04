@@ -328,7 +328,7 @@ app.post("/", async (c) => {
     rawTenant.length > 0 ? rawTenant : envTenant.length > 0 ? envTenant : null;
   // PKCE verifier for `response_type=code`. The SPA stashes it before the
   // /authorize redirect and replays it here; we forward it to Steward, which
-  // checks it against the challenge bound at /authorize. Absent for the legacy
+  // checks it against the challenge bound at /authorize. Absent for compatibility
   // (pre-PKCE) and wallet flows — forward only when present.
   const codeVerifier =
     typeof body.codeVerifier === "string"

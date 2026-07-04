@@ -1,3 +1,4 @@
+// Handles v1 cloud API pending document blob retention with route-local auth expectations.
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

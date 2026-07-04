@@ -265,7 +265,7 @@ const updateMonetizationSettings = mock(
   },
 );
 
-// Toggle to simulate partial-cleanup errors from the cleanup service.
+// Toggle simulates partial deletion errors from the app deletion service.
 let cleanupErrors: string[] = [];
 
 const deleteAppWithCleanup = mock(

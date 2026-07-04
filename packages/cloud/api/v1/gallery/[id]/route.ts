@@ -31,7 +31,7 @@ app.delete("/", async (c) => {
         await deleteBlob(generation.storage_url);
       } catch (error) {
         // Log and proceed with the soft delete so the row is removed from
-        // the gallery even if the R2 object cleanup fails. An out-of-band
+        // the gallery even if R2 object deletion fails. An out-of-band
         // sweeper can reconcile orphaned objects later.
         logger.error(
           "[GALLERY API] R2 delete failed; marking generation deleted only",

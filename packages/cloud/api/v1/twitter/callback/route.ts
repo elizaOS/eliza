@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 twitter callback route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { cache } from "@/lib/cache/client";
 import {

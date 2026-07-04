@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 mcps mcpid publish route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";

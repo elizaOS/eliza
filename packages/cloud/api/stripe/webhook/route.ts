@@ -1,3 +1,4 @@
+// Handles webhook cloud API stripe webhook route traffic with signature or internal auth checks.
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";

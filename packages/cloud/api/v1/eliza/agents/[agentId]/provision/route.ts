@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid provision route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
@@ -17,7 +18,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 // Reduced from 120s — async path returns 202 immediately.
-// Sync fallback (?sync=true) still needs headroom for legacy callers.
+// Sync fallback (?sync=true) still needs headroom for compatibility callers.
 
 const CORS_METHODS = "POST, OPTIONS";
 
@@ -212,7 +213,7 @@ async function __hono_POST(
       }
     }
 
-    // ── Sync fallback (legacy) ────────────────────────────────────────
+    // ── Sync compatibility fallback ───────────────────────────────────
     if (sync) {
       const result = await elizaSandboxService.provision(
         agentId,

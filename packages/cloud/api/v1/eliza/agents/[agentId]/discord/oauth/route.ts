@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid discord oauth route traffic with route-local auth expectations.
 import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";

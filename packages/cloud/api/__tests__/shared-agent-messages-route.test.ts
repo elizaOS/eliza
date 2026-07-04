@@ -1,3 +1,4 @@
+// Exercises cloud API tests shared agent messages route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";

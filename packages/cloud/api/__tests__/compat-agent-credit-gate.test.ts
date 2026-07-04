@@ -1,3 +1,4 @@
+// Exercises cloud API tests compat agent credit gate.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 

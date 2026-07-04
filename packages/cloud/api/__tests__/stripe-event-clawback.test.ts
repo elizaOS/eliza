@@ -1,3 +1,4 @@
+// Exercises cloud API tests stripe event clawback.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 type MockCreditTransaction = {

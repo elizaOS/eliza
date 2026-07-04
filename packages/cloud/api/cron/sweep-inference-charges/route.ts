@@ -1,3 +1,4 @@
+// Handles scheduled cloud API cron sweep inference charges route traffic with cron auth expectations.
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

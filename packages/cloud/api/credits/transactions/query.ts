@@ -1,3 +1,4 @@
+// Handles cloud API credits transactions query route traffic with route-local auth expectations.
 export interface CreditTransactionsQuery {
   limit: number;
   hours: number | null;

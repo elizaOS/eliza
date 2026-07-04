@@ -1,3 +1,4 @@
+// Handles admin cloud API v1 admin docker nodes capacity route traffic with privileged auth expectations.
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";

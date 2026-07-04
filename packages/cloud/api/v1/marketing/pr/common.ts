@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 marketing pr common route traffic with route-local auth expectations.
 import { z } from "zod";
 
 export const PressReleaseAssetSchema = z.object({

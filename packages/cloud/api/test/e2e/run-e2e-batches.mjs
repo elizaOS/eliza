@@ -1,3 +1,4 @@
+// Exercises cloud API test e2e run e2e batches behavior with deterministic Worker route fixtures.
 import { spawn, spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { createConnection } from "node:net";
@@ -155,7 +156,7 @@ function listenerPidsOnPort(port) {
 
 // Reclaim a port held by an orphaned listener. Self-hosted CI runners are
 // persistent: when Actions cancels a run mid-flight it SIGKILLs the job, so the
-// `finally` cleanup below never runs and the spawned pglite-server child is left
+// `finally` release below never runs and the spawned pglite-server child is left
 // holding the port — wedging every subsequent run with "already running".
 // Kill the orphan and wait for the port to free so the next run self-heals.
 async function reclaimPort(host, port) {

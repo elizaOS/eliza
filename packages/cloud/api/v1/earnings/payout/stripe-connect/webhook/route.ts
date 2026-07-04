@@ -1,3 +1,4 @@
+// Handles webhook cloud API v1 earnings payout stripe connect webhook route traffic with signature or internal auth checks.
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import { mapConnectWebhookEvent } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";

@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 chain transfers chain address route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";

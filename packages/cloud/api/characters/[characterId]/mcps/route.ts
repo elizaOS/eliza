@@ -1,3 +1,4 @@
+// Handles cloud API characters characterid mcps route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

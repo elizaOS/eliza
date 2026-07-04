@@ -1,3 +1,4 @@
+// Exercises cloud API tests headscale ip route.test behavior with deterministic Worker route fixtures.
 import { describe, expect, mock, test } from "bun:test";
 // Spread the real modules into the partial mocks below — `mock.module` is
 // process-global in bun test, so dropping the other real exports breaks every

@@ -1,3 +1,4 @@
+// Exercises cloud API tests stripe queue route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 // Spread the real module into the partial mock below — `mock.module` is
 // process-global, so dropping `isInvoiceExpanded` (and the other real exports)

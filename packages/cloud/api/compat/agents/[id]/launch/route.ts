@@ -1,3 +1,4 @@
+// Handles compatibility cloud API compat agents id launch route traffic through route-local auth checks.
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 

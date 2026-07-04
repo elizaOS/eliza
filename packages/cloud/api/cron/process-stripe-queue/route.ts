@@ -1,3 +1,4 @@
+// Handles scheduled cloud API cron process stripe queue route traffic with cron auth expectations.
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { processStripeEvent } from "@/api-queue/stripe-event";

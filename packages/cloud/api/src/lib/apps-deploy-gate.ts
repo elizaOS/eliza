@@ -1,3 +1,4 @@
+// Boots cloud API src lib apps deploy gate Worker infrastructure under Cloudflare runtime constraints.
 type EnvLike = Record<string, unknown>;
 
 export type AppsDeployGateReason =

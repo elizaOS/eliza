@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id discord automation route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 

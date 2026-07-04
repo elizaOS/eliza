@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid lifeops schedule observations route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";

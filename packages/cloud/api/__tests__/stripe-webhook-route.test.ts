@@ -1,3 +1,4 @@
+// Exercises cloud API tests stripe webhook route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // Capture audit emits through the REAL singleton (setAuditDispatcher) rather
 // than mock.module'ing getAuditDispatcher — a module mock here is process-global

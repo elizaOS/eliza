@@ -1,3 +1,4 @@
+// Exercises cloud API tests apps deploy gate.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
 
 import {

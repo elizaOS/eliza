@@ -52,7 +52,7 @@ if (!serverReachable) {
 // (These tests need no API key — they assert unauthenticated contracts.)
 const describeE2E = describe.skipIf(!serverReachable);
 
-// No cleanup needed — these tests do not create persistent state.
+// No deletion is needed because these tests do not create persistent state.
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -343,7 +343,7 @@ describeE2E("POST /api/eliza-app/webhook/whatsapp", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId — legacy route contract
+// /api/eliza/rooms/:roomId compatibility route contract
 // ---------------------------------------------------------------------------
 
 describeE2E("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
@@ -351,13 +351,13 @@ describeE2E("GET/POST /api/eliza/rooms/:roomId (legacy route)", () => {
     const res = await api.get("/api/eliza/rooms/room-test-001");
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error?: string; success?: boolean };
-    // Handler returns the legacy unsupported-route body.
+    // Handler returns the compatibility unsupported-route body.
     expect(body.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId/messages — legacy route contract
+// /api/eliza/rooms/:roomId/messages compatibility route contract
 // ---------------------------------------------------------------------------
 
 describeE2E("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
@@ -372,7 +372,7 @@ describeE2E("POST /api/eliza/rooms/:roomId/messages (legacy route)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /api/eliza/rooms/:roomId/messages/stream — legacy route contract
+// /api/eliza/rooms/:roomId/messages/stream compatibility route contract
 // ---------------------------------------------------------------------------
 
 describeE2E(
@@ -392,7 +392,7 @@ describeE2E(
 
     test("GET without auth (public path) → not 401", async () => {
       // The /api/eliza prefix is public — global auth does not block it.
-      // The handler itself returns the legacy 501 contract for all methods.
+      // The handler returns the compatibility 501 contract for all methods.
       const res = await api.get(
         "/api/eliza/rooms/room-test-001/messages/stream",
       );

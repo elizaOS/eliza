@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api identity register route traffic with route-local auth expectations.
 import { type Context, Hono } from "hono";
 import { type Address, isAddress } from "viem";
 import { dbWrite } from "@/db/helpers";

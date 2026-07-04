@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 documents id route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import { memoriesRepository } from "@/db/repositories/agents/memories";

@@ -1,3 +1,4 @@
+// Exercises cloud API tests credit transactions query.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
 
 import { parseCreditTransactionsQuery } from "../credits/transactions/query";

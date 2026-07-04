@@ -1,3 +1,4 @@
+// Handles internal cloud API internal identity resolve route traffic with service-to-service auth.
 import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";

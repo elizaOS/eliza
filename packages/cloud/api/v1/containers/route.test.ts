@@ -1,3 +1,4 @@
+// Exercises cloud API v1 containers route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { type Context, Hono } from "hono";
 

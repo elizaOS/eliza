@@ -1,3 +1,4 @@
+// Boots cloud API src steward embedded Worker infrastructure under Cloudflare runtime constraints.
 import type { MiddlewareHandler } from "hono";
 import { STEWARD_AUTH_UPSTREAM_TIMEOUT_MS } from "@/lib/auth/steward-client";
 import { logger } from "@/lib/utils/logger";

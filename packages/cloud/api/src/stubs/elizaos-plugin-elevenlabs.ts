@@ -1,3 +1,4 @@
+// Provides workerd-safe src stubs elizaos plugin elevenlabs stubs for Cloudflare Worker bundling.
 const elevenLabsPlugin = {
   name: "elevenlabs",
   description:

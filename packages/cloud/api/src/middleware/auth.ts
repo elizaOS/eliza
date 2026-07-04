@@ -74,7 +74,7 @@ const publicPathPrefixes = [
   "/api/v1/market/preview",
   "/api/stripe/credit-packs",
   "/api/stripe/webhook",
-  // Unified payment_requests settlement webhook. Public like the legacy
+  // Unified payment_requests settlement webhook. Public like the compatibility
   // /api/stripe/webhook above; the handler enforces the stripe-signature and
   // fails closed (400) without it. The `=== p || startsWith(p+"/")` match keeps
   // this from exposing the authed /api/v1/stripe/checkout sibling. Without this
@@ -117,7 +117,7 @@ const publicPathPrefixes = [
   // Public SSP ad-serve + click tracking, consumed by miniapp ad tags.
   "/api/v1/marketing/inventory/serve",
   "/api/v1/marketing/inventory/click",
-  // Legacy birdeye proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
+  // The birdeye compatibility proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
   // redirect itself is public so unauthenticated clients learn the new URL;
   // the target /api/v1/apis/birdeye is still auth-gated.
   "/api/v1/proxy/birdeye",

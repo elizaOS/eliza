@@ -1,3 +1,4 @@
+// Exercises cloud API tests provisioning agent default image.test behavior with deterministic Worker route fixtures.
 import { describe, expect, mock, test } from "bun:test";
 
 // Mock containersEnv BEFORE any import of the route module — DEFAULT_DOCKER_IMAGE

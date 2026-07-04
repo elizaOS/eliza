@@ -1,3 +1,4 @@
+// Exercises cloud API webhooks blooio orgid route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const handleBlueBubblesWebhook = mock(async () =>

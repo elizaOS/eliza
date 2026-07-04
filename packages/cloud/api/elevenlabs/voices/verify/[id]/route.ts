@@ -1,3 +1,4 @@
+// Handles cloud API elevenlabs voices verify id route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";

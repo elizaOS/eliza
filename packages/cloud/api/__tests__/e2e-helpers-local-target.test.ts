@@ -1,3 +1,4 @@
+// Exercises cloud API tests e2e helpers local target.test behavior with deterministic Worker route fixtures.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getBaseUrl, isLocalTarget } from "../test/e2e/_helpers/api";
 

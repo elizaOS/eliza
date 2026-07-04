@@ -1,3 +1,4 @@
+// Exercises cloud API agent orphan deletion behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { AgentQuotaExceededError } from "@/lib/services/eliza-sandbox";
 
@@ -215,8 +216,8 @@ describe("POST /api/v1/eliza/agents — orphan cleanup", () => {
     prepareManagedElizaEnvironment.mockImplementationOnce(async () => {
       throw new Error("KMS key mint failed");
     });
-    // The best-effort cleanup itself throws: withOrphanCleanup's nested catch
-    // logs cleanupErr but must rethrow the ORIGINAL err, not the cleanup error.
+    // The best-effort deletion itself throws: withOrphanCleanup's nested catch
+    // logs deletionErr but must rethrow the original error, not the deletion error.
     deleteSandbox.mockImplementationOnce(async () => {
       throw new Error("delete failed too");
     });

@@ -1,3 +1,4 @@
+// Exercises cloud API tests pairing token bridge url.test behavior with deterministic Worker route fixtures.
 import { describe, expect, it } from "vitest";
 
 // Replicate the helper chain under test (the helpers are non-exported in

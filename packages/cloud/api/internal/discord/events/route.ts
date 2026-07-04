@@ -1,3 +1,4 @@
+// Handles internal cloud API internal discord events route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { routeDiscordEvent } from "@/lib/services/gateway-discord/event-router";

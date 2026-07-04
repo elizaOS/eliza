@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 telegram chats route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

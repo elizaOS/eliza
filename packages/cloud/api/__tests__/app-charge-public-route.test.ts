@@ -1,3 +1,4 @@
+// Exercises cloud API tests app charge public route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Context } from "hono";
 import { Hono } from "hono";

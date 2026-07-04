@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 container control plane forward route traffic with route-local auth expectations.
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AuthedUser } from "@/types/cloud-worker-env";
 

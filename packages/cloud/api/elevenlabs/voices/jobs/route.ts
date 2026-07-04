@@ -1,3 +1,4 @@
+// Handles cloud API elevenlabs voices jobs route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";

@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid workflows shared route traffic with route-local auth expectations.
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { buildRedisClient } from "@/lib/cache/redis-factory";

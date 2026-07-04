@@ -1,3 +1,4 @@
+// Handles compatibility cloud API compat agents id logs route traffic through route-local auth checks.
 import { Hono } from "hono";
 /**
  * GET /api/compat/agents/[id]/logs

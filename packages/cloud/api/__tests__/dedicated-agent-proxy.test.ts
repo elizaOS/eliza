@@ -1,3 +1,4 @@
+// Exercises cloud API tests dedicated agent proxy.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 /**

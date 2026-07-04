@@ -1,3 +1,4 @@
+// Handles cloud API elevenlabs voices user route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { z } from "zod";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";

@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api identity onchain route traffic with route-local auth expectations.
 import { type Context, Hono } from "hono";
 import { type Address, isAddress } from "viem";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";

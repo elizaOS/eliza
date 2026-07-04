@@ -1,3 +1,4 @@
+// Handles internal cloud API internal discord eliza app messages route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

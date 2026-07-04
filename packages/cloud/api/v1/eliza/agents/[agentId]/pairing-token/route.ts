@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid pairing token route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";

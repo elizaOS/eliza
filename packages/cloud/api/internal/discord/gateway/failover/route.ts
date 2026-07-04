@@ -1,3 +1,4 @@
+// Handles internal cloud API internal discord gateway failover route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { discordConnectionsRepository } from "@/db/repositories/discord-connections";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";

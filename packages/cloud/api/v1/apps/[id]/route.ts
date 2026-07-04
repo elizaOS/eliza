@@ -128,7 +128,7 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   // Re-review on material change (#10732): if a review-relevant field changed on
   // an app that went through the automated review (has a snapshot hash), drop it
   // back to `draft` so it must be re-submitted before it can keep monetizing.
-  // Grandfathered apps (no hash) keep their legacy approval. (Enforcement is
+  // Grandfathered apps without a hash keep their compatibility approval. (Enforcement is
   // airtight regardless via the content-hash check in isAppMonetizationApproved.)
   //
   // DECISION (explicit, not an accident): resetting review_status blocks NEW

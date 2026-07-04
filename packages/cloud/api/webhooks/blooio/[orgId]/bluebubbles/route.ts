@@ -1,3 +1,4 @@
+// Handles webhook cloud API webhooks blooio orgid bluebubbles route traffic with signature or internal auth checks.
 import type { Hono } from "hono";
 import { Hono as HonoApp } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";

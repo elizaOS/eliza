@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid wallet route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -71,7 +72,7 @@ async function __hono_GET(
       );
     }
 
-    // DB fallback (legacy wallet rows linked by character_id, kept until
+    // DB fallback for compatibility wallet rows linked by character_id, kept until
     if (agent.character_id) {
       const walletRecord = await db.query.agentServerWallets.findFirst({
         where: eq(agentServerWallets.character_id, agent.character_id),

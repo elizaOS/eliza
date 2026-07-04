@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api identity uri route traffic with route-local auth expectations.
 import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { dbWrite } from "@/db/helpers";

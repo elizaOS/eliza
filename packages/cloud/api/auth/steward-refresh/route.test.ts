@@ -1,3 +1,4 @@
+// Exercises cloud API auth steward refresh route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 type VerifiedStewardClaims = {

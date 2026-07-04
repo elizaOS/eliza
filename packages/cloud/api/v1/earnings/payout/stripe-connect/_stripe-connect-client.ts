@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 earnings payout stripe connect stripe connect client route traffic with route-local auth expectations.
 import type { StripeConnectClient } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import type Stripe from "stripe";
 

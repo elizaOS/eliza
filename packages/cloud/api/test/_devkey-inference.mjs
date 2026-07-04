@@ -1,3 +1,4 @@
+// Exercises cloud API test devkey inference behavior with deterministic Worker route fixtures.
 import { readFileSync } from "node:fs";
 
 const KEY = readFileSync("/tmp/view-work/dev-key.txt", "utf8").trim();

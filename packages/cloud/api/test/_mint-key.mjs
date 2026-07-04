@@ -1,3 +1,4 @@
+// Exercises cloud API test mint key behavior with deterministic Worker route fixtures.
 import { writeFileSync } from "node:fs";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";

@@ -1,3 +1,4 @@
+// Handles internal cloud API internal webhook config route traffic with service-to-service auth.
 import { Hono } from "hono";
 import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";

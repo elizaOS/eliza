@@ -1,3 +1,4 @@
+// Exercises cloud API tests steward embedded signing.test behavior with deterministic Worker route fixtures.
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppEnv } from "@/types/cloud-worker-env";

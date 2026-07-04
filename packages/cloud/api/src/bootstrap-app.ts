@@ -154,7 +154,7 @@ export function createApp(): Hono<AppEnv> {
   // Apps (Product 2): when enabled, wire the deploy trigger so
   // POST /api/v1/apps/:id/deploy enqueues a real isolated APP_DEPLOY job (the
   // provisioning-worker daemon runs it). Gated OFF by default — until
-  // APPS_DEPLOY_ENABLED=1, createDeployment keeps its legacy stub behavior.
+  // APPS_DEPLOY_ENABLED=1, createDeployment keeps its compatibility stub behavior.
   // Production also requires APPS_DEPLOY_ALLOWED_ORG_IDS so a cutover cannot
   // accidentally arm every org at once.
   const appsDeployDecision = appsDeployTriggerDecision(process.env);
@@ -333,7 +333,7 @@ export function createApp(): Hono<AppEnv> {
   app.all("/steward", embeddedStewardHandler);
   app.all("/steward/*", embeddedStewardHandler);
 
-  // Legacy `/api/v1/proxy/birdeye/*` mount — emit 308 to canonical
+  // Compatibility `/api/v1/proxy/birdeye/*` mount emits 308 to canonical
   // `/api/v1/apis/birdeye/*`. Registered before `mountRoutes` so the
   // redirect fires regardless of how the file-based router resolves the
   // splat-mounted sub-app.

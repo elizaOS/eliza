@@ -1,3 +1,4 @@
+// Exercises cloud API tests chat reservation.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_ESTIMATED_OUTPUT_TOKENS,

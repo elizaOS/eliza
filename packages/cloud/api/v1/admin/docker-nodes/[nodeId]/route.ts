@@ -1,3 +1,4 @@
+// Handles admin cloud API v1 admin docker nodes nodeid route traffic with privileged auth expectations.
 import { Hono } from "hono";
 import type { RouteContext } from "@/lib/api/hono-next-style-params";
 

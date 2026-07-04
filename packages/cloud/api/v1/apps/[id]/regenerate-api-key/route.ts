@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id regenerate api key route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";

@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 browser sessions id snapshot route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";

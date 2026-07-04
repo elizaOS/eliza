@@ -427,7 +427,7 @@ app.delete("/", async (c) => {
     }
 
     // Async delete via the same job-queue path agent_provision uses. This
-    // moves the SSH stop, Neon cleanup, and per-agent key revoke off the
+    // moves the SSH stop, Neon deletion, and per-agent key revoke off the
     // request thread so a slow / unreachable Hetzner core can no longer
     // make the API hang or silently return 200 while the container lives
     // on. Idempotent: a second DELETE while a job is in flight reuses

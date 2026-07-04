@@ -1,3 +1,4 @@
+// Exercises cloud API stuck provisioning sweep behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 /**

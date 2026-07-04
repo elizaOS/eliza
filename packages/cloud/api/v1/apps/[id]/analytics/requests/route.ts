@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id analytics requests route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";

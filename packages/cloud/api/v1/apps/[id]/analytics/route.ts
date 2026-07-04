@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id analytics route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";

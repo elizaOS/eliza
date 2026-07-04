@@ -1,3 +1,4 @@
+// Provides workerd-safe src stubs elizaos plugin sql stubs for Cloudflare Worker bundling.
 import {
   boolean,
   jsonb,

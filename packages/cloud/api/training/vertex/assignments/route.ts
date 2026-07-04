@@ -1,3 +1,4 @@
+// Handles cloud API training vertex assignments route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { requireAdmin, requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";

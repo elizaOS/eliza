@@ -1,3 +1,4 @@
+// Exercises cloud API tests stripe event waifu.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const agentId = "123e4567-e89b-12d3-a456-426614174000";

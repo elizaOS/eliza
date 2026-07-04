@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 twitter token route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

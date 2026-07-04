@@ -1,3 +1,4 @@
+// Exercises cloud API auth create anonymous session route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Count how many anonymous users actually get minted (DB rows inserted).

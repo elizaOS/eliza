@@ -17,7 +17,7 @@ const CORS_METHODS = "GET, OPTIONS";
 
 async function canViewNodeTopology(c: AppContext): Promise<boolean> {
   try {
-    // The legacy helpers expect a Request. They only read headers, so
+    // The compatibility helpers expect a Request. They only read headers, so
     // pass through the underlying Request — Hono's `c.req.raw` is a Fetch
     // Request which both helpers accept.
     const req = c.req.raw;

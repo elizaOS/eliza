@@ -1,3 +1,4 @@
+// Handles webhook cloud API webhooks bluebubbles bridgeid route traffic with signature or internal auth checks.
 import type { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import app from "../route";

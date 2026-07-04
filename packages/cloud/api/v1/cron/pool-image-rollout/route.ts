@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 cron pool image rollout route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";

@@ -1,3 +1,4 @@
+// Handles admin cloud API v1 admin warm pool route traffic with privileged auth expectations.
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireAdmin } from "@/lib/auth";

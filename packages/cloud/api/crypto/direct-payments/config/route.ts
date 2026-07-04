@@ -1,3 +1,4 @@
+// Handles cloud API crypto direct payments config route traffic with route-local auth expectations.
 import { Hono } from "hono";
 
 import {

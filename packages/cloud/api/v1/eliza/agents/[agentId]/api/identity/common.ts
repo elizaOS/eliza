@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 eliza agents agentid api identity common route traffic with route-local auth expectations.
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { type Address, encodeFunctionData, type Hash, isAddress } from "viem";

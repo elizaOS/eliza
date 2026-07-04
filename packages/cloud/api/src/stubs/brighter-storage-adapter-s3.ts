@@ -1,3 +1,4 @@
+// Provides workerd-safe src stubs brighter storage adapter s3 stubs for Cloudflare Worker bundling.
 const notConfigured =
   "@brighter/storage-adapter-s3 is unavailable in the Cloudflare Worker bundle. Configure the native R2 binding or S3 route adapter before using this path.";
 

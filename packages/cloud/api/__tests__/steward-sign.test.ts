@@ -1,3 +1,4 @@
+// Exercises cloud API tests steward sign.test behavior with deterministic Worker route fixtures.
 import {
   buildStewardCanonicalRequest,
   signStewardMutatingRequest,

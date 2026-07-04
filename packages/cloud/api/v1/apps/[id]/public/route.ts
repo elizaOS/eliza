@@ -1,3 +1,4 @@
+// Handles v1 cloud API v1 apps id public route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { appsRepository } from "@/db/repositories/apps";
 import {

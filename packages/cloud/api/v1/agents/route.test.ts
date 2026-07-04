@@ -1,3 +1,4 @@
+// Exercises cloud API v1 agents route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const requireServiceKey = mock(async () => ({
