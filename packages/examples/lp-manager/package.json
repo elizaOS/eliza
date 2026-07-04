@@ -6,11 +6,13 @@
   "scripts": {
     "start": "bun run src/agent.ts",
     "dev": "bun --watch run src/agent.ts",
-    "test": "bun test --pass-with-no-tests",
+    "test": "bun test smoke.test.js",
     "test:watch": "bun test --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsgo --noEmit",
-    "build": "bun run typecheck"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
