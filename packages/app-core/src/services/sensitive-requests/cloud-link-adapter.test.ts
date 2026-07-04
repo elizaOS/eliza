@@ -12,11 +12,18 @@ import type {
   SensitiveRequestKind,
   SensitiveRequestTarget,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 
 const EXPIRES_AT = "2099-01-01T00:00:00.000Z";
 const CREATED_AT = "2024-01-01T00:00:00.000Z";
+const SAVED_ENV_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_BASE_URL",
+] as const;
 function makeRequest(
   kind: SensitiveRequestKind,
   overrides: {
@@ -80,6 +87,24 @@ function makeRequest(
 }
 
 describe("cloudLinkSensitiveRequestAdapter", () => {
+  const savedConfig = getBootConfig();
+  let savedEnv: Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(
+      SAVED_ENV_KEYS.map((key) => [key, process.env[key]]),
+    ) as Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
+  });
+
+  afterEach(() => {
+    setBootConfig(savedConfig);
+    for (const key of SAVED_ENV_KEYS) {
+      const value = savedEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
   it("declares the cloud_authenticated_link target", () => {
     const adapter = createCloudLinkSensitiveRequestAdapter();
     expect(adapter.target).toBe("cloud_authenticated_link");
@@ -200,5 +225,33 @@ describe("cloudLinkSensitiveRequestAdapter", () => {
     expect(result.url).toBe(
       "https://www.elizacloud.ai/sensitive-requests/req%20with%20spaces",
     );
+  });
+
+  it("resolves cloud pairing from aliased env values without mutating canonical keys", async () => {
+    setBootConfig({
+      ...savedConfig,
+      envAliases: [
+        ["ELIZA_CLOUD_API_KEY", "ELIZAOS_CLOUD_API_KEY"],
+        ["ELIZA_CLOUD_BASE_URL", "ELIZAOS_CLOUD_BASE_URL"],
+      ],
+    });
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    process.env.ELIZA_CLOUD_API_KEY = "legacy-key";
+    process.env.ELIZA_CLOUD_BASE_URL = "https://legacy.example.com/api/v1/";
+
+    const adapter = createCloudLinkSensitiveRequestAdapter();
+    const result = await adapter.deliver({
+      request: makeRequest("secret", { id: "req-legacy" }),
+      runtime: null,
+    });
+
+    expect(result.delivered).toBe(true);
+    if (!result.delivered) throw new Error("expected success");
+    expect(result.url).toBe(
+      "https://legacy.example.com/sensitive-requests/req-legacy",
+    );
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
 });
