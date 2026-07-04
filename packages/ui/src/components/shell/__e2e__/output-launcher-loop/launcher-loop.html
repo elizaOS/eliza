@@ -19985,7 +19985,7 @@
             })));
           }
         }
-        
+
         if (${id}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
@@ -19993,7 +19993,7 @@
         } else {
           newResult[${k}] = ${id}.value;
         }
-        
+
       `);
         } else if (!isOptionalIn) {
           doc.write(`
@@ -20030,7 +20030,7 @@
             path: iss.path ? [${k}, ...iss.path] : [${k}]
           })));
         }
-        
+
         if (${id}.value === undefined) {
           if (${k} in input) {
             newResult[${k}] = undefined;
@@ -20038,7 +20038,7 @@
         } else {
           newResult[${k}] = ${id}.value;
         }
-        
+
       `);
         }
       }
