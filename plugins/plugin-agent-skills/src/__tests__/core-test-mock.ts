@@ -92,6 +92,7 @@ vi.mock("@elizaos/core", () => {
 			}
 			async stop() {}
 		},
+		resolveStateDir: vi.fn(() => "/tmp/elizaos-test-state"),
 		logger,
 	};
 });
