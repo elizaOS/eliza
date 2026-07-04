@@ -731,12 +731,25 @@ final class GestureSemanticsUITests: XCTestCase {
             ))
     }
 
+    /// The last USER bubble. User and assistant turns carry the SAME
+    /// "Show/Hide message actions" label (the text child is name-hidden), so
+    /// alignment is the only AX-visible discriminator: user turns are
+    /// right-aligned, assistant turns left-aligned. When a live agent replies
+    /// before the tap lands, the last bubble by index is the assistant's —
+    /// whose action row has no Edit affordance — so prefer the last bubble
+    /// whose center sits right of the window midline, falling back to the
+    /// plain last bubble on a reply-less (model-less) boot.
     private func lastMessageBubble(in app: XCUIApplication) throws -> XCUIElement {
         let bubbles = messageBubbles(in: app)
         let count = bubbles.count
         guard count > 0 else {
             attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-bubble")
             throw XCTSkip("no message bubble exposed in the AX tree")
+        }
+        let windowMidX = app.windows.firstMatch.frame.midX
+        for index in stride(from: count - 1, through: 0, by: -1) {
+            let bubble = bubbles.element(boundBy: index)
+            if bubble.frame.midX > windowMidX { return bubble }
         }
         return bubbles.element(boundBy: count - 1)
     }
