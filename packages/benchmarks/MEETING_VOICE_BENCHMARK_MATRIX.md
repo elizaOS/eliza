@@ -4,9 +4,12 @@ Research matrix for issue #13352. This file records which external meeting,
 speech, and voice-assistant benchmarks are already covered by elizaOS, which
 ones need legal or infrastructure review, and where an adapter should land.
 
-Status is based on repo inspection plus public source pages on 2026-07-04. Do
-not commit raw external data unless the allowed-use column explicitly permits a
-repo fixture and the source license is rechecked in the adapter PR.
+Status is based on repo inspection plus public source pages on 2026-07-04. The
+source review checked the QMSum, MeetingBank, ELITR-Bench, VoiceCodeBench,
+VoiceBench, and Sierra 3-Bench primary pages directly; the remaining P1/P2 rows
+are conservative until their adapter PRs recheck license/access terms. Do not
+commit raw external data unless the allowed-use column explicitly permits a repo
+fixture and the source license is rechecked in the adapter PR.
 
 ## Existing elizaOS Coverage
 
@@ -73,25 +76,54 @@ Allowed-use values:
 
 ## Recommended P0 Implementation Issues
 
-1. VoiceCodeBench exact-token ASR gate
+1. VoiceCodeBench exact-token ASR gate: #13358
    - Target: `packages/training` plus `packages/benchmarks/registry`.
    - Metrics: CTEM/TSR, URL/path/ID exact recovery, punctuation-critical WER.
    - Evidence: real Eliza-1 or configured ASR provider run over a downloaded slice, score JSON, and manually reviewed failures.
 
-2. QMSum and MeetingBank meeting artifact adapter
+2. QMSum and MeetingBank meeting artifact adapter: #13359
    - Target: `packages/benchmarks/meeting-transcription-proof` with scenario-runner export.
    - Metrics: query answer correctness, quote grounding, action-item extraction, agenda/topic coverage, summary faithfulness.
    - Evidence: real provider run over a tiny downloaded slice and `elizaos.meeting_artifact.v1` outputs inspected by hand.
 
-3. VoiceBench coverage closeout
+3. VoiceBench coverage closeout: #13360
    - Target: existing `voicebench_quality` and `voicebench` registry entries.
    - Metrics: current suite coverage vs public VoiceBench subsets, per-suite score, STT provider, judge model, mock-result rejection.
    - Evidence: real `voicebench_quality` run with non-mock STT and Cerebras judge, plus report JSON.
 
-4. Sierra-style tau-Knowledge/tau-Voice eliza-owned fixtures
+4. Sierra-style tau-Knowledge/tau-Voice eliza-owned fixtures: #13361
    - Target: `lifeops-bench` and scenario-runner live voice.
    - Metrics: deterministic backend state success, knowledge-source grounding, interruption recovery, dropped-frame robustness, task pass-at-1.
    - Evidence: eliza-owned synthetic domain only; no Sierra data unless license/access is confirmed.
+
+## Source And Repo Review Notes
+
+- QMSum's primary repository describes 1,808 query-summary pairs over 232
+  meetings across Academic, Product, and Committee domains and carries an MIT
+  repository license, but adapter PRs still need corpus-level provenance review.
+- MeetingBank's project page describes 1,366 city-council meetings, more than
+  3,579 hours of video, transcripts, minutes, agendas, and 6,892 segment-level
+  summarization instances; adapters should download by manifest rather than
+  commit raw data.
+- ELITR-Bench includes password-protected JSON archives with manually crafted
+  questions, ground-truth answers, metadata, and generated responses. GitHub
+  reports mixed code/data licenses, including CC BY 4.0 for data, so keep it P1
+  and recheck upstream ELITR terms before fixtures.
+- VoiceCodeBench's Hugging Face card reports MIT licensing, 300 test rows, audio
+  modality, and structured entities; it is the cleanest P0 exact-token ASR slice.
+- VoiceBench's GitHub repository and Hugging Face dataset report Apache-2.0
+  licensing, public data, and 20,554 rows. elizaOS already registers
+  `voicebench` and `voicebench_quality`, so the P0 work is coverage closeout, not
+  a greenfield benchmark.
+- Sierra's 3-Bench blog describes tau-Voice as realistic full-duplex voice with
+  interruptions, noisy/compressed audio, dropped frames, and task pass@1
+  failures. The P0 value is methodology and eliza-owned fixtures until public
+  code/data/license status is reviewed.
+- Local repo inspection found existing benchmark registry coverage for
+  `voicebench`, `voicebench_quality`, `mmau`, and `tau_bench`, plus
+  meeting-transcription-proof, voice-speaker-validation, LifeOpsBench, and
+  Eliza-1 training/eval surfaces. No direct QMSum, MeetingBank, VoiceCodeBench,
+  ELITR-Bench, or TCR adapter exists today.
 
 ## Follow-Up Triage
 
