@@ -1,3 +1,13 @@
+/**
+ * elizaOS's standard structured logger, built on Adze. Exposes the `Logger`
+ * interface and the `createLogger` factory (plus the default `logger` /
+ * `elizaLogger` singletons) as a Pino-shaped API extended with custom
+ * `success`/`progress` levels. Redacts sensitive fields via fast-redact, keeps
+ * an in-memory ring buffer with real-time listeners for WebSocket streaming,
+ * and lazily opens optional file sinks (`output.log`, `prompts.log`,
+ * `chat.log`) with prompt/response/chat instrumentation helpers. Adapts between
+ * node and a console-based browser path.
+ */
 export declare const __loggerTestHooks: {
     clearEnvCacheForTests: () => void;
 };
