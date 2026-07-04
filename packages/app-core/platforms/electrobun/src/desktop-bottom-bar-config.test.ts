@@ -166,8 +166,12 @@ describe("desktop bottom-bar config", () => {
     });
 
     it("re-anchors on a width/height change (dock or resolution change)", () => {
-      expect(shouldReanchorBottomBar(base, { ...base, width: 1440 })).toBe(true);
-      expect(shouldReanchorBottomBar(base, { ...base, height: 900 })).toBe(true);
+      expect(shouldReanchorBottomBar(base, { ...base, width: 1440 })).toBe(
+        true,
+      );
+      expect(shouldReanchorBottomBar(base, { ...base, height: 900 })).toBe(
+        true,
+      );
     });
 
     it("re-anchors on an origin change (display plug/unplug, monitor swap)", () => {

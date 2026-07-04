@@ -2096,8 +2096,7 @@ X-GNOME-Autostart-enabled=true
     try {
       const display = Screen.getPrimaryDisplay();
       if (display?.workArea) workArea = display.workArea;
-      primaryHeight =
-        display?.bounds?.height ?? workArea.y + workArea.height;
+      primaryHeight = display?.bounds?.height ?? workArea.y + workArea.height;
     } catch (err) {
       logger.warn(
         `[Desktop] tray popover Screen.getPrimaryDisplay() failed; using default anchor: ${err instanceof Error ? err.message : String(err)}`,

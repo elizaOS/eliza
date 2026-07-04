@@ -28,9 +28,7 @@ export interface TrayPopoverSize {
 }
 
 function isZeroRect(rect: Rect): boolean {
-  return (
-    rect.x === 0 && rect.y === 0 && rect.width === 0 && rect.height === 0
-  );
+  return rect.x === 0 && rect.y === 0 && rect.width === 0 && rect.height === 0;
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -90,12 +90,7 @@ describe("computeTrayPopoverFrame", () => {
   it("honors the work-area origin on a secondary display (multi-monitor)", () => {
     const secondary = { x: 1920, y: 24, width: 1920, height: 1056 };
     const trayBounds = { x: 3200, y: 1058, width: 30, height: 22 };
-    const frame = computeTrayPopoverFrame(
-      trayBounds,
-      secondary,
-      SIZE,
-      1080,
-    );
+    const frame = computeTrayPopoverFrame(trayBounds, secondary, SIZE, 1080);
     // x centered: 3200 + 15 - 180 = 3035, inside [1928, 3552].
     expect(frame.x).toBe(3035);
     expect(frame.x).toBeGreaterThanOrEqual(secondary.x + SIZE.margin);
