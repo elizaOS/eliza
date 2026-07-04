@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import type { HandlerRegistration } from "./handler-registry";
 import type { LiveDeviceSignals } from "./live-signals";
-import { policyEngine } from "./routing-policy";
+import { assessVoiceModality, policyEngine } from "./routing-policy";
 import type { AgentModelSlot, HardwareProbe } from "./types";
 
 function registration(
@@ -341,5 +341,27 @@ describe("PolicyEngine — prefer-local capability soft-hint", () => {
 			deviceTier: strongDevice,
 		});
 		expect(pick?.provider).toBe("eliza-local-inference");
+	});
+});
+
+describe("assessVoiceModality (#12253 voice-modality visibility)", () => {
+	it("is viable on a MAX-tier device that can run the local voice stack", () => {
+		const result = assessVoiceModality(strongDevice);
+		expect(result.viable).toBe(true);
+		expect(result.reason).toBe("device-can-run-local-voice");
+	});
+
+	it("is not viable on a tier that cannot run local voice, with a reason", () => {
+		expect(okayDesktop.canRunLocalVoice).toBe(false);
+		const result = assessVoiceModality(okayDesktop);
+		expect(result.viable).toBe(false);
+		expect(result.reason).toContain("cannot-run-local-voice");
+		expect(result.reason).toContain(okayDesktop.tier.toLowerCase());
+	});
+
+	it("is not viable with an explicit reason when the tier is unknown", () => {
+		const result = assessVoiceModality(null);
+		expect(result.viable).toBe(false);
+		expect(result.reason).toBe("device-tier-unknown");
 	});
 });

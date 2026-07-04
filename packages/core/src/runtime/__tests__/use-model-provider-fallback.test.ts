@@ -93,6 +93,49 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		expect(backup).not.toHaveBeenCalled();
 	});
 
+	it("does NOT fall over for TEXT_TO_SPEECH, even on a transient-looking error (voice fails closed #12253)", async () => {
+		const runtime = makeRuntime();
+		// A Kokoro model-download failure surfaces as "fetch failed", which the
+		// transient heuristic matches for text slots — but a voice swap is never
+		// transient-recoverable, so TTS must fail closed rather than rotate to a
+		// different voice engine.
+		const kokoroFails = vi.fn(async () => {
+			throw new Error("fetch failed: kokoro artifacts unreachable");
+		});
+		const edgeTts = vi.fn(async () => new Uint8Array([1, 2, 3]));
+
+		runtime.registerModel(
+			ModelType.TEXT_TO_SPEECH,
+			kokoroFails,
+			"eliza-local-inference",
+			100,
+		);
+		runtime.registerModel(ModelType.TEXT_TO_SPEECH, edgeTts, "edge-tts", 10);
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_TO_SPEECH, { text: "hello" }),
+		).rejects.toThrow("fetch failed");
+		expect(kokoroFails).toHaveBeenCalledTimes(1);
+		expect(edgeTts).not.toHaveBeenCalled();
+	});
+
+	it("still falls over for a text slot on the same fetch-failed error (heuristic intact)", async () => {
+		const runtime = makeRuntime();
+		const primary = vi.fn(async () => {
+			throw new Error("fetch failed");
+		});
+		const backup = vi.fn(async () => "backup-response");
+
+		runtime.registerModel(ModelType.TEXT_LARGE, primary, "claude-sdk", 100);
+		runtime.registerModel(ModelType.TEXT_LARGE, backup, "eliza-cloud", 10);
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hello" }),
+		).resolves.toBe("backup-response");
+		expect(primary).toHaveBeenCalledTimes(1);
+		expect(backup).toHaveBeenCalledTimes(1);
+	});
+
 	it("honors an explicitly pinned provider instead of trying another provider", async () => {
 		const runtime = makeRuntime();
 		const cliSdkFails = vi.fn(async () => {
