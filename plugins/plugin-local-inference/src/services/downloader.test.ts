@@ -1036,7 +1036,9 @@ describe("local inference downloader status", () => {
 
 		// And it survives the terminal-status persistence round-trip: a fresh
 		// Downloader reading the on-disk status still exposes the coded failure.
-		const rehydrated = new Downloader({ probeDeviceCaps: async () => cpuOnlyCaps })
+		const rehydrated = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+		})
 			.snapshot()
 			.find((j) => j.modelId === base.id);
 		expect(rehydrated?.errorCode).toBe("HF_GATED_REPO");
