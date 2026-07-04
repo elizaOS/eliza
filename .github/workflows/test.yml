@@ -105,7 +105,7 @@ jobs:
     name: Server Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
@@ -235,7 +235,7 @@ jobs:
     name: Client Tests
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -338,7 +338,7 @@ jobs:
     name: XR harness e2e
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -396,7 +396,7 @@ jobs:
     name: Plugin Tests (${{ matrix.shard }}/4)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 95
     strategy:
       fail-fast: false
@@ -479,7 +479,7 @@ jobs:
       - changes
       - plugin-tests
     if: ${{ !cancelled() && always() }}
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     steps:
       - name: Check plugin shard results
         shell: bash
@@ -510,7 +510,7 @@ jobs:
     name: Integration Lane (personal-assistant)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.server == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 45
     env:
       PGLITE_WASM_MODE: node
@@ -548,7 +548,7 @@ jobs:
     name: Electrobun Desktop Contract
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -578,7 +578,7 @@ jobs:
     name: Zero-Key unit + UI coverage
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -638,7 +638,7 @@ jobs:
     name: Zero-Key app browser
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 35
     env:
       TEST_LANE: "pr"
@@ -713,7 +713,7 @@ jobs:
     name: Zero-Key diagnostics
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -772,7 +772,7 @@ jobs:
     name: Zero-Key scenario runner
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 30
     env:
       TEST_LANE: "pr"
@@ -841,7 +841,7 @@ jobs:
     name: Zero-Key harness E2E
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 15
     env:
       TEST_LANE: "pr"
@@ -897,7 +897,7 @@ jobs:
       - zero-key-scenario-runner
       - zero-key-harness-e2e
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true')
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     steps:
       - name: Check zero-key slices
         shell: bash
@@ -927,7 +927,7 @@ jobs:
     name: Cloud Live E2E (Eliza Cloud)
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.cloud == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 60
     outputs:
       skip: ${{ steps.cloud.outputs.skip }}
@@ -1056,7 +1056,7 @@ jobs:
 
   provider-live-e2e:
     name: Remote Capability Provider Live E2E
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 45
     outputs:
       skip: ${{ steps.providers.outputs.skip }}
@@ -1179,7 +1179,7 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
     if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (needs.cloud-live-e2e.outputs.capability_skip != 'true' || needs.provider-live-e2e.outputs.skip != 'true')
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1233,7 +1233,7 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
       - github-live-artifact-validate
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, hetzner-robot]
     steps:
       - name: Check test results
         shell: bash
