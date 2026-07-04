@@ -1,3 +1,10 @@
+/**
+ * TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH handlers: POST to an OpenAI-compatible
+ * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), validate the
+ * returned vector width against the configured VECTOR_DIMS dimension, and emit a
+ * MODEL_USED event. Input is capped at MAX_EMBEDDING_CHARS. Registered by the
+ * plugin in ../index.ts; see the package CLAUDE.md for the routing priority.
+ */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 

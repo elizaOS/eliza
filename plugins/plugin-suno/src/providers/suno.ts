@@ -1,3 +1,9 @@
+/**
+ * Suno API client and status provider. `SunoProvider` wraps the Suno REST
+ * endpoints (keyed by SUNO_API_KEY) for generate/extend/custom flows and routes
+ * calls through recordLlmCall for usage accounting; `sunoStatusProvider` surfaces
+ * key-presence and reachability as prompt context.
+ */
 import {
     type IAgentRuntime,
     type Memory,

@@ -1,3 +1,8 @@
+/**
+ * Verifies the Groq text-handler request plumbing against a mocked ai /
+ * @ai-sdk/groq layer: settings resolve to the right model and the handler wires
+ * the request without a live Groq API call.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

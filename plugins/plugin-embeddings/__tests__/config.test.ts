@@ -1,3 +1,4 @@
+/** Unit tests for EMBEDDING_* config resolution (base URL, key, model, dimensions) against a stubbed runtime. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 

@@ -1,3 +1,8 @@
+/**
+ * Vitest setup module that mocks @elizaos/core for the Groq unit suite, so the
+ * plugin's model handlers can be exercised without booting a runtime. Loaded via
+ * setupFiles in vitest.config.ts.
+ */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", () => {

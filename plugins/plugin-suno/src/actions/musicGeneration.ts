@@ -1,3 +1,10 @@
+/**
+ * Suno music-generation handler behind the MUSIC umbrella action. Resolves the
+ * subaction (generate | custom_generate | extend) from planner-emitted enum or
+ * structured params — never from English keywords (#10471) — and calls the
+ * SunoProvider. Responses are truncated to MAX_SUNO_RESPONSE_BYTES and calls are
+ * bounded by SUNO_ACTION_TIMEOUT_MS.
+ */
 import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { SunoProvider } from '../providers/suno';
 

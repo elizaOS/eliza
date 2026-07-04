@@ -1,3 +1,4 @@
+/** Unit tests for the Suno plugin's exports and auto-enable predicate (no live API). */
 import { describe, expect, it } from 'vitest';
 
 import sunoPlugin, { SunoProvider, sunoStatusProvider } from './index';

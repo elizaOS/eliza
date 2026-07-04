@@ -1,3 +1,4 @@
+/** tsup build config for the Suno plugin (CJS + ESM, @elizaos/core external). */
 import { defineConfig } from 'tsup';
 
 export default defineConfig({

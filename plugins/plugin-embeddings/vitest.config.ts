@@ -1,3 +1,4 @@
+/** Vitest config for the embeddings plugin unit tests (node environment). */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,9 @@
+/**
+ * xAI Grok plugin: registers TEXT_SMALL, TEXT_LARGE, and TEXT_EMBEDDING model
+ * handlers backed by the xAI OpenAI-compatible API (api.x.ai/v1). Auto-enables
+ * when XAI_API_KEY or GROK_API_KEY is present; the handlers live in
+ * ./models/grok.
+ */
 import {
   type IAgentRuntime,
   logger,

@@ -1,3 +1,8 @@
+/**
+ * Behavior tests for the Suno generation handler against a stubbed runtime with
+ * recordLlmCall mocked to a pass-through — exercises subaction routing and
+ * usage-accounting wiring without a live Suno API.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { IAgentRuntime, Memory, State } from '@elizaos/core';
 import { recordLlmCall } from '@elizaos/core';

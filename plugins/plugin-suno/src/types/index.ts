@@ -1,3 +1,4 @@
+/** Request parameter shapes for the Suno generate / custom-generate / extend flows. */
 export interface GenerateParams {
     prompt: string;
     duration?: number;

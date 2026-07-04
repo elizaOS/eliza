@@ -1,3 +1,7 @@
+/**
+ * Unit tests for classifyRetryError: maps AI SDK APICallError status codes and
+ * flags into the plugin's rate-limit / transient / fatal retry categories.
+ */
 import { APICallError } from "ai";
 import { describe, expect, it } from "vitest";
 import { classifyRetryError } from "../index";
