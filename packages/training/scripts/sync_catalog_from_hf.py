@@ -4,7 +4,7 @@ The local-inference catalog (`packages/app-core/src/services/local-inference/cat
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
-  1. Lists the Eliza-1 bundle repo under the elizalabs HF org.
+  1. Lists the Eliza-1 bundle repo under the elizaos HF org.
   2. Reads each `bundles/<tier>/eliza-1.manifest.json` plus legacy
      per-tier `eliza-1-*` manifests when present.
      and the GGUF metadata (via the `huggingface_hub` repo_info API;
@@ -19,7 +19,7 @@ schema is intentionally tiny:
     {
       "version": 1,
       "generatedAt": "<UTC ISO>",
-      "org": "elizalabs",
+      "org": "elizaos",
       "entries": [
         {
           "id": "eliza-1-2b",
@@ -40,12 +40,12 @@ Usage::
 
     # No HF_TOKEN required for public repos.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizalabs \\
+        --org elizaos \\
         --out reports/porting/2026-05-10/catalog-diff.json
 
     # Limit to a specific naming convention.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizalabs \\
+        --org elizaos \\
         --filter-prefix eliza-1- \\
         --out diff.json
 """
@@ -393,7 +393,7 @@ def write_diff(entries: list[CatalogEntry], out_path: Path, *, org: str) -> None
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
-        "--org", default="elizalabs", help="HF org to scan (default: elizalabs)."
+        "--org", default="elizaos", help="HF org to scan (default: elizaos)."
     )
     ap.add_argument(
         "--filter-prefix",
