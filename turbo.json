@@ -374,10 +374,17 @@
       "dependsOn": [
         "@elizaos/plugin-blocker#build",
         "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-calendly#build",
         "@elizaos/plugin-finances#build",
         "@elizaos/plugin-goals#build",
+        "@elizaos/plugin-health#build",
         "@elizaos/plugin-inbox#build",
-        "@elizaos/plugin-reminders#build"
+        "@elizaos/plugin-reminders#build",
+        "@elizaos/plugin-remote-desktop#build",
+        "@elizaos/plugin-x#build",
+        "@elizaos/capacitor-mobile-signals#build",
+        "@elizaos/macosreminders#build",
+        "@elizaos/native-activity-tracker#build"
       ],
       "outputs": []
     },
@@ -400,11 +407,7 @@
       "outputs": []
     },
     "@elizaos/plugin-capacitor-bridge#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": []
     },
     "@elizaos/example-autonomous#typecheck": {

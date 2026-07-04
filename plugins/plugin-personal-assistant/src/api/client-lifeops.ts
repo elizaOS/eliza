@@ -24,7 +24,6 @@ import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
-  DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,

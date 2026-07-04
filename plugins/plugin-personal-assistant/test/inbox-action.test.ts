@@ -179,7 +179,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       };
       expect(data.totalBeforeDedupe).toBe(2);
       expect(data.items).toHaveLength(1);
-      expect(data.items[0]!.id).toBe("g-2");
+      expect(data.items[0]?.id).toBe("g-2");
     });
   });
 
@@ -204,7 +204,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       });
       expect(result.success).toBe(true);
       expect(gmailFetcher).toHaveBeenCalledTimes(1);
-      const fetcherArgs = gmailFetcher.mock.calls[0]![0];
+      const fetcherArgs = gmailFetcher.mock.calls[0]?.[0];
       expect(fetcherArgs.query).toBe("launch plan");
     });
   });

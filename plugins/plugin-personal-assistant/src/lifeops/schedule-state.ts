@@ -937,7 +937,7 @@ export function isFreshCloudMergedState(
   state: LifeOpsScheduleMergedState | null | undefined,
   now: Date,
 ): boolean {
-  if (!state || state.scope !== "cloud") {
+  if (state?.scope !== "cloud") {
     return false;
   }
   const ageMs = freshnessMs(state, now.getTime());

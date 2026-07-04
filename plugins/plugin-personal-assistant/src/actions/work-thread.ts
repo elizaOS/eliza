@@ -274,7 +274,7 @@ function normalizeSourceWorkThreadIds(value: unknown): string[] {
   ];
 }
 
-function mergedMetadata(
+function _mergedMetadata(
   current: WorkThread,
   sourceWorkThreadIds: string[],
 ): Record<string, unknown> {

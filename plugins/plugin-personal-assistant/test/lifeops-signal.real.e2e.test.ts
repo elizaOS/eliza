@@ -301,7 +301,7 @@ async function startLifeOpsRouteServer(
   });
 }
 
-async function waitFor<T>(
+async function _waitFor<T>(
   label: string,
   read: () => Promise<T>,
   predicate: (value: T) => boolean,

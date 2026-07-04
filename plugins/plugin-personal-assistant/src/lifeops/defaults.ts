@@ -3,11 +3,7 @@
  * adaptive window policy that reminder scheduling and check-ins anchor to, plus
  * a re-export of the shared time-zone helpers.
  */
-import {
-  isValidTimeZone,
-  normalizeTimeZone,
-  resolveDefaultTimeZone,
-} from "@elizaos/shared";
+import { normalizeTimeZone } from "@elizaos/shared";
 import type { ActivityProfile } from "../activity-profile/types";
 import type {
   LifeOpsReminderStep,

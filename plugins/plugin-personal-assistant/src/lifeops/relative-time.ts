@@ -37,7 +37,7 @@ type RelativeTimeScheduleFields = Pick<
   | "firstActiveAt"
 >;
 
-function defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
+function _defaultAwakeProbability(computedAt: string): LifeOpsAwakeProbability {
   return {
     pAwake: 0,
     pAsleep: 0,

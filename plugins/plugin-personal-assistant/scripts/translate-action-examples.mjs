@@ -222,7 +222,7 @@ function extractFromActionFile(filePath, actionNameOverride) {
     for (const prop of actionLiteral.getProperties()) {
       if (prop.getKind() !== SyntaxKind.PropertyAssignment) continue;
       const nameNode = prop.getNameNode?.();
-      if (!nameNode || nameNode.getText() !== "name") continue;
+      if (nameNode?.getText() !== "name") continue;
       const init = prop.getInitializer?.();
       if (!init) continue;
       const resolved = resolveStringValue(init, project);
@@ -294,7 +294,7 @@ function locateExamplesPropertyAssignment(sourceFile) {
     if (node.getKind() !== SyntaxKind.PropertyAssignment) return;
     const prop = node;
     const nameNode = prop.getNameNode?.();
-    if (!nameNode || nameNode.getText() !== "examples") return;
+    if (nameNode?.getText() !== "examples") return;
     const init = prop.getInitializer?.();
     if (!init) return;
 
@@ -558,7 +558,7 @@ function resolveExpressionToInitializer(expression, project) {
  * cross-file source files to the project so symbol resolution can follow
  * imports.
  */
-function unwrapToVariableInitializer(node, project) {
+function unwrapToVariableInitializer(node, _project) {
   let current = node;
   for (let hops = 0; hops < 5 && current; hops++) {
     const kind = current.getKind?.();

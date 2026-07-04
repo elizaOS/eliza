@@ -263,7 +263,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
       async () => {},
     );
 
-    if (!result || result.success !== true) {
+    if (result?.success !== true) {
       // eslint-disable-next-line no-console
       console.error("update prefs result:", JSON.stringify(result, null, 2));
     }

@@ -34,10 +34,7 @@
 import type { DispatchResult, ScheduledTask } from "@elizaos/plugin-scheduling";
 import { describe, expect, it } from "vitest";
 import type { InboundMessage } from "../src/inbox/types.js";
-import {
-  normalizeInboxChannel,
-  toInboxMessages,
-} from "../src/lifeops/domains/inbox-service.js";
+import { toInboxMessages } from "../src/lifeops/domains/inbox-service.js";
 import { createLifeOpsScheduledTaskSimulationHarness } from "./helpers/lifeops-scheduled-task-simulation.js";
 
 const WEDNESDAY_ISO = "2026-07-01T12:00:00.000Z";

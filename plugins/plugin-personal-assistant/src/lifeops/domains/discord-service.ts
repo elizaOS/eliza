@@ -480,7 +480,7 @@ function parseSessionProbe(
 }
 
 function sessionError(session: LifeOpsBrowserSession | null): string | null {
-  if (!session || session.status !== "failed") return null;
+  if (session?.status !== "failed") return null;
   const result = asRecord(session.result);
   const error = result?.error;
   return typeof error === "string" && error.trim().length > 0

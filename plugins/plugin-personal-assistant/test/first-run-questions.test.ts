@@ -92,8 +92,8 @@ describe("nextUnansweredQuestion", () => {
     expect(first).not.toBeNull();
     expect(typeof first?.id).toBe("string");
     // Answering the first question must not return that same question again.
-    const next = nextUnansweredQuestion({ [first!.id]: "answered" });
-    expect(next?.id).not.toBe(first!.id);
+    const next = nextUnansweredQuestion({ [first?.id]: "answered" });
+    expect(next?.id).not.toBe(first?.id);
   });
 });
 

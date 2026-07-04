@@ -50,7 +50,6 @@ import type {
   CreateLifeOpsGoalRequest,
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
-  DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
@@ -855,7 +854,7 @@ async function runFinancesRoute(
   }
 }
 
-function parseConnectorRefreshDetailFromQuery(
+function _parseConnectorRefreshDetailFromQuery(
   ctx: LifeOpsRouteContext,
   defaults: {
     side: LifeOpsConnectorSide;

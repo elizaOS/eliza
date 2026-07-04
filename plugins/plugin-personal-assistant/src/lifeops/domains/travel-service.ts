@@ -219,7 +219,7 @@ function finalArrivalAt(order: DuffelOrder): string {
  */
 export class TravelDomain {
   constructor(
-    private readonly ctx: LifeOpsContext,
+    readonly _ctx: LifeOpsContext,
     private readonly deps: TravelDeps,
   ) {}
 

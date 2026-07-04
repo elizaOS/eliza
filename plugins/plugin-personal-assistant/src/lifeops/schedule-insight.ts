@@ -176,7 +176,7 @@ function windowsFromActivityEvents(
   const windows: LifeOpsActivityWindow[] = [];
   for (let index = 0; index < events.length; index += 1) {
     const current = events[index];
-    if (!current || current.eventKind !== "activate") {
+    if (current?.eventKind !== "activate") {
       continue;
     }
     if (isSystemInactivityApp(current)) {

@@ -29,7 +29,7 @@ interface MockExecuteCapture {
   sql: string;
 }
 
-function buildMockRuntime(capture: MockExecuteCapture[]): unknown {
+function _buildMockRuntime(capture: MockExecuteCapture[]): unknown {
   const db = {
     execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
       const sqlText = extractSqlText(raw).trim().toUpperCase();
