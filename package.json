@@ -166,8 +166,6 @@
     "test:remote-capabilities:source-build": "bun run --cwd packages/agent test:remote-capabilities:source-build",
     "test:remote-capabilities:docker": "bun run --cwd packages/agent test:remote-capabilities:docker",
     "browser-bridge:package:release": "cd packages/browser-extension && bun run package:release",
-    "test:browser-bridge": "cd packages/browser-extension && bun run test:ci",
-    "test:browser-bridge:safari": "cd packages/browser-extension && bun run test:smoke:safari",
     "dev:cloud": "concurrently -n api,web -c blue,magenta \"bun run dev:cloud:api\" \"bun run dev:cloud:web\"",
     "dev:cloud:api": "bun run --cwd packages/cloud/api dev",
     "dev:cloud:web": "bun run --cwd packages/app dev",

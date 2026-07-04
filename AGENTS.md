@@ -52,7 +52,7 @@ bun run cloud:mock     # boot the full local cloud stack with mocks
 ```
 
 Scope any command to one package with `--cwd`:
-`bun run --cwd packages/core test`. The repo has 205 root scripts; the list
+`bun run --cwd packages/core test`. The repo has 203 root scripts; the list
 above is the day-to-day set. Use `bun run` with no args to print them all.
 
 ### Removed Root Command Migrations
@@ -65,6 +65,8 @@ above is the day-to-day set. Use `bun run` with no args to print them all.
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
 | `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
 | `bun run audit:e2e-coverage:test` | `bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts` |
+| `bun run test:browser-bridge` | `bun run --cwd packages/browser-extension test` |
+| `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-extension test:smoke:safari` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 
