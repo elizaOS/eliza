@@ -6,7 +6,11 @@
  * unreachable endpoint degrades to an empty list so Launcher still renders.
  */
 
-import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
+import type {
+  AppShellBackgroundPolicy,
+  ViewHeaderPolicy,
+  ViewKind,
+} from "@elizaos/core";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
@@ -62,6 +66,12 @@ export interface ViewRegistryEntry {
   available: boolean;
   /** Screen background policy for this view. Defaults to `"opaque"`. */
   backgroundPolicy?: AppShellBackgroundPolicy;
+  /**
+   * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
+   * the shared `ViewHeader` on every `normal` view. `fullscreen`/`modal`/
+   * `immersive` opt a view out of the uniform top bar.
+   */
+  headerPolicy?: ViewHeaderPolicy;
   /** The plugin that provides this view. */
   pluginName: string;
   /** Freeform tags used for search and filtering. */
@@ -315,6 +325,7 @@ function appShellPageToViewEntry(
     order: page.order,
     group: page.group,
     backgroundPolicy: page.backgroundPolicy,
+    headerPolicy: page.headerPolicy,
     visibleInManager: true,
     builtin: false,
   };

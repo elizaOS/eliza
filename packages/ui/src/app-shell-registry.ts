@@ -2,7 +2,11 @@
  * Runtime registry of app-shell nav pages: registerAppShellPage / listAppShellPages.
  * Plugins and the host contribute nav tabs; the shell renders the snapshot.
  */
-import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
+import type {
+  AppShellBackgroundPolicy,
+  ViewHeaderPolicy,
+  ViewKind,
+} from "@elizaos/core";
 import type { ComponentType } from "react";
 import { getUiRegistryStore } from "./registry-host";
 
@@ -54,6 +58,12 @@ export interface AppShellPageRegistration {
   fullBleed?: boolean;
   /** Screen background policy for this page. Defaults to `"opaque"`. */
   backgroundPolicy?: AppShellBackgroundPolicy;
+  /**
+   * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
+   * the shared `ViewHeader` on every `normal` page. `fullscreen`/`modal`/
+   * `immersive` opt a page out of the uniform top bar.
+   */
+  headerPolicy?: ViewHeaderPolicy;
   /**
    * The React component the shell mounts when this page is active.
    * Prefer `loader` for heavy pages so boot only pays metadata cost.

@@ -477,6 +477,20 @@ export interface PluginAppBridge {
 export type AppShellBackgroundPolicy = "opaque" | "shared";
 
 /**
+ * How the app shell frames a view's top bar (#13586).
+ *
+ * - `normal` (default): the shell requires the shared `ViewHeader` (icon-only
+ *   back + centered title). The uniform-top-bar audit fails any `normal` view
+ *   that does not render it.
+ * - `fullscreen`: the view owns its full window and supplies its own chrome
+ *   (e.g. an immersive browser/workbench toolbar); no shared header enforced.
+ * - `modal`: the view is presented as a modal/sheet with its own dismiss
+ *   affordance; the shared header is not enforced.
+ * - `immersive`: a chrome-free surface (e.g. launcher/background); no header.
+ */
+export type ViewHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
+
+/**
  * A nav-tab declaration so an app/plugin can register its own page in the
  * shell's main navigation without app-core hard-coding it. Resolved by the
  * shell at startup from the loaded plugin's `app.navTabs` field.
@@ -515,6 +529,12 @@ export interface PluginAppNavTab {
 	group?: string;
 	/** Screen background policy for this tab. Defaults to `"opaque"`. */
 	backgroundPolicy?: AppShellBackgroundPolicy;
+	/**
+	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
+	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
+	 * for surfaces that own their own chrome.
+	 */
+	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
 	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
@@ -817,6 +837,12 @@ export interface ViewDeclaration {
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */
 	backgroundPolicy?: AppShellBackgroundPolicy;
+	/**
+	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
+	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
+	 * for surfaces that own their own chrome (browser workbench, launcher, etc.).
+	 */
+	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Platforms this view supports. Omit to support all platforms.
 	 * Dynamic plugin install is disabled on restricted store builds (ios, android).

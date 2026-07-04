@@ -2,53 +2,41 @@
  * Wallet section navigation renders sub-tabs from app-shell pages that declare
  * the wallet group. The wallet inventory page owns the root `/wallet` tab while
  * plugin pages join or leave the section through their own registration data.
+ *
+ * As of #13586 this is a thin Wallet-specific wrapper over the generalized
+ * `SectionNav` primitive: it supplies the `wallet` group + the canonical-root
+ * rewrite (inventory → `/wallet`), and lands the doctrine geometry — a centered
+ * "Wallet" `ViewHeader` (icon-only launcher back) ABOVE the secondary tab strip,
+ * rather than a tabs-only header with no title.
  */
 
 import { useSyncExternalStore } from "react";
 import {
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,
-  listAppShellPages,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
-import { cn } from "../../lib/utils";
+import {
+  isSectionPath,
+  normalizeSectionPath,
+  SectionNav,
+  type SectionPathRewrite,
+  type SectionTab,
+  sectionTabs,
+} from "../shared/SectionNav";
 import { ViewHeader } from "../shared/ViewHeader";
-import { Button } from "../ui/button";
-
-interface WalletSectionTab {
-  id: string;
-  label: string;
-  path: string;
-  /** Extra paths that should also mark this tab active. */
-  aliases?: string[];
-}
 
 const WALLET_SECTION_GROUP = "wallet";
 const WALLET_ROOT_PATH = "/wallet";
 
-function normalizePath(path: string): string {
-  const trimmed = (path || "/").split(/[?#]/, 1)[0].toLowerCase();
-  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-  return withSlash.length > 1 && withSlash.endsWith("/")
-    ? withSlash.slice(0, -1)
-    : withSlash;
-}
-
-function compareWalletRegistrations(
-  a: AppShellPageRegistration,
-  b: AppShellPageRegistration,
-): number {
-  return (
-    (a.order ?? 100) - (b.order ?? 100) ||
-    a.label.localeCompare(b.label) ||
-    a.id.localeCompare(b.id)
-  );
-}
-
-function walletRegistrationToTab(
+/**
+ * Canonical-root rewrite for the Wallet section: the inventory page registers
+ * under `/inventory` but owns the `/wallet` root tab, so alias both routes.
+ */
+const walletRewrite: SectionPathRewrite = (
   registration: AppShellPageRegistration,
-): WalletSectionTab {
-  const registrationPath = normalizePath(registration.path);
+): SectionTab | null => {
+  const registrationPath = normalizeSectionPath(registration.path);
   if (registrationPath === "/inventory") {
     return {
       id: registration.id,
@@ -57,54 +45,25 @@ function walletRegistrationToTab(
       aliases: [registrationPath],
     };
   }
-  return {
-    id: registration.id,
-    label: registration.label,
-    path: registrationPath,
-  };
-}
+  return null;
+};
 
-export function walletSectionTabs(): WalletSectionTab[] {
-  return listAppShellPages()
-    .filter((registration) => registration.group === WALLET_SECTION_GROUP)
-    .sort(compareWalletRegistrations)
-    .map(walletRegistrationToTab);
-}
-
-function walletSectionPathSet(): Set<string> {
-  return new Set(
-    walletSectionTabs().flatMap((tab) => [tab.path, ...(tab.aliases ?? [])]),
-  );
+/** The Wallet section tabs, sorted and path-normalized. */
+export function walletSectionTabs(): SectionTab[] {
+  return sectionTabs(WALLET_SECTION_GROUP, walletRewrite);
 }
 
 /** True when a route belongs to the Wallet section (wallet + its sub-views). */
 export function isWalletSectionPath(path: string): boolean {
-  return walletSectionPathSet().has(normalizePath(path));
+  return isSectionPath(WALLET_SECTION_GROUP, path, walletRewrite);
 }
 
-function activeTabId(path: string, tabs: readonly WalletSectionTab[]): string {
-  const normalized = normalizePath(path);
-  const match = tabs.find(
-    (tab) =>
-      tab.path === normalized || (tab.aliases ?? []).includes(normalized),
-  );
-  return match?.id ?? tabs[0]?.id ?? "";
-}
-
-function navigate(path: string): void {
-  try {
-    if (typeof window === "undefined") return;
-    if (window.location.protocol === "file:") {
-      window.location.hash = path;
-    } else {
-      window.history.pushState(null, "", path);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    }
-  } catch {
-    // Sandboxed navigation is best-effort.
-  }
-}
-
+/**
+ * The Wallet family header: a centered "Wallet" title with the icon-only
+ * launcher back (doctrine top bar) ABOVE the secondary section-tab strip. The
+ * strip self-hides when the section has a single member (`SectionNav` returns
+ * null), leaving just the header.
+ */
 export function WalletSectionNav({
   activePath,
 }: {
@@ -115,48 +74,16 @@ export function WalletSectionNav({
     getAppShellPageRegistrySnapshot,
     getAppShellPageRegistrySnapshot,
   );
-  const tabs = walletSectionTabs();
-  const active = activeTabId(activePath, tabs);
-  // The Wallet family adopts the uniform header geometry (#13451/#13592): a
-  // centered "Wallet" title with the icon-only launcher back button, matching
-  // every other top-level view instead of the old left-aligned tab strip.
-  const header = <ViewHeader title="Wallet" />;
-  // With a single group member (the current in-tree state) there is nothing to
-  // switch between, so the secondary strip is suppressed — just the header. The
-  // group mechanism stays intact; when a sibling (perps/predictions) registers
-  // the strip returns automatically UNDER the header.
-  if (tabs.length < 2) return header;
   return (
-    <div data-testid="wallet-section-nav">
-      {header}
-      <nav
-        aria-label="Wallet sections"
-        data-testid="wallet-section-tabs"
-        className="flex shrink-0 items-center justify-center gap-1 border-b border-border/45 px-3 py-2"
-      >
-        {tabs.map((tab) => {
-          const isActive = tab.id === active;
-          return (
-            <Button
-              key={tab.id}
-              aria-current={isActive ? "page" : undefined}
-              onClick={() => {
-                if (!isActive) navigate(tab.path);
-              }}
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-auto rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-accent/15 text-accent"
-                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-              )}
-            >
-              {tab.label}
-            </Button>
-          );
-        })}
-      </nav>
+    <div className="flex shrink-0 flex-col border-b border-border/45">
+      <ViewHeader title="Wallet" />
+      <SectionNav
+        group={WALLET_SECTION_GROUP}
+        activePath={activePath}
+        rewrite={walletRewrite}
+        ariaLabel="Wallet sections"
+        className="pt-0"
+      />
     </div>
   );
 }
