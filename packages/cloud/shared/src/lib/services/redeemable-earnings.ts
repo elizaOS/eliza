@@ -23,6 +23,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { normalizeLedgerSourceId } from "../utils/ledger-source-id";
 import { logger } from "../utils/logger";
+import { parseRedeemableEarningsNumber } from "./redeemable-earnings-numeric";
 
 // ============================================================================
 // TYPES
@@ -158,15 +159,28 @@ class RedeemableEarningsService {
       return null;
     }
 
+    // Fail-closed NUMERIC boundary: a corrupt row (`'NaN'::numeric`) must throw
+    // rather than surface a `NaN` balance. `availableBalance` gates money-out in
+    // the secure token-redemption pre-check
+    // (`new Decimal(balance.availableBalance).lt(deductionAmount)` — `Decimal(NaN).lt(x)`
+    // is `false`, i.e. the insufficient-balance check would FAIL OPEN over a
+    // corrupt row). Throwing here propagates to the redemption route's catch,
+    // which fails closed (denies) instead of authorizing against garbage.
     return {
-      availableBalance: Number(earnings.available_balance),
-      totalEarned: Number(earnings.total_earned),
-      totalRedeemed: Number(earnings.total_redeemed),
-      totalPending: Number(earnings.total_pending),
+      availableBalance: parseRedeemableEarningsNumber(
+        earnings.available_balance,
+        "available_balance",
+      ),
+      totalEarned: parseRedeemableEarningsNumber(earnings.total_earned, "total_earned"),
+      totalRedeemed: parseRedeemableEarningsNumber(earnings.total_redeemed, "total_redeemed"),
+      totalPending: parseRedeemableEarningsNumber(earnings.total_pending, "total_pending"),
       breakdown: {
-        miniapps: Number(earnings.earned_from_miniapps),
-        agents: Number(earnings.earned_from_agents),
-        mcps: Number(earnings.earned_from_mcps),
+        miniapps: parseRedeemableEarningsNumber(
+          earnings.earned_from_miniapps,
+          "earned_from_miniapps",
+        ),
+        agents: parseRedeemableEarningsNumber(earnings.earned_from_agents, "earned_from_agents"),
+        mcps: parseRedeemableEarningsNumber(earnings.earned_from_mcps, "earned_from_mcps"),
       },
     };
   }
