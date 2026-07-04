@@ -3,6 +3,7 @@
 import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { canOfferLocalRemoteOnboarding } from "../config/cloud-only";
 import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 
 export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
@@ -67,6 +68,7 @@ export function canRunLocal(): boolean {
  * a bundled local agent, so they only see Cloud + Remote.
  */
 export function canSelectLocalRuntime(): boolean {
+  if (!canOfferLocalRemoteOnboarding()) return false;
   return canRunLocal() || isElizaOS();
 }
 

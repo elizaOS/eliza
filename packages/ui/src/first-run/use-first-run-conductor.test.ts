@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
     }),
   },
   autoDownloadRecommendedLocalModelInBackground: vi.fn(async () => undefined),
+  canOfferLocalRemoteOnboarding: vi.fn(() => true),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -55,6 +56,14 @@ vi.mock("./auto-download-recommended", () => ({
   autoDownloadRecommendedLocalModelInBackground:
     mocks.autoDownloadRecommendedLocalModelInBackground,
 }));
+
+vi.mock("../config/cloud-only", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../config/cloud-only")>();
+  return {
+    ...actual,
+    canOfferLocalRemoteOnboarding: mocks.canOfferLocalRemoteOnboarding,
+  };
+});
 
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { __setAppValueForTests } from "../state/app-store";
@@ -212,6 +221,7 @@ beforeEach(() => {
     success: true,
     data: [],
   });
+  mocks.canOfferLocalRemoteOnboarding.mockReturnValue(true);
   localStorage.setItem("steward_session_token", "cloud-token");
 });
 
@@ -387,6 +397,27 @@ describe("useFirstRunConductor", () => {
     expect(transcript.current.some((m) => m.id === "first-run:provider")).toBe(
       false,
     );
+    unmount();
+  });
+
+  it("cloud-only onboarding offers only Eliza Cloud and consumes stale local/remote picks as no-ops", async () => {
+    mocks.canOfferLocalRemoteOnboarding.mockReturnValue(false);
+    seedAppStore();
+    const { turn, transcript, unmount } = renderConductor();
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+
+    expect(greeting.text).toContain("__first_run__:runtime:cloud=");
+    expect(greeting.text).not.toContain("__first_run__:runtime:local=");
+    expect(greeting.text).not.toContain("__first_run__:runtime:remote=");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
+    expect(transcript.current.some((m) => m.id === "first-run:provider")).toBe(
+      false,
+    );
+    expect(
+      transcript.current.some((m) => m.id === "first-run:remote-connect"),
+    ).toBe(false);
     unmount();
   });
 

@@ -44,6 +44,7 @@ import { client } from "../api";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { startTutorial } from "../components/pages/tutorial/tutorial-controller";
 import { getBootConfig } from "../config/boot-config";
+import { canOfferLocalRemoteOnboarding } from "../config/cloud-only";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { preOpenWindow } from "../utils";
@@ -138,13 +139,18 @@ function newestLocalBackup(
 // runtime with `configure-later` and hands off provider setup to Settings via
 // the finish path's banner. Remote picks an already-running agent by URL +
 // token; it owns its own provider, so it skips the provider sub-step.
-const RUNTIME_CHOICE = [
-  "[CHOICE:first-run id=runtime]",
-  `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
-  `${FIRST_RUN_ACTION_PREFIX}runtime:remote=Connect to a remote agent`,
-  "[/CHOICE]",
-].join("\n");
+function runtimeChoice(): string {
+  const choices = [
+    `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Eliza Cloud (managed)`,
+  ];
+  if (canOfferLocalRemoteOnboarding()) {
+    choices.push(
+      `${FIRST_RUN_ACTION_PREFIX}runtime:local=On this device`,
+      `${FIRST_RUN_ACTION_PREFIX}runtime:remote=Connect to a remote agent`,
+    );
+  }
+  return ["[CHOICE:first-run id=runtime]", ...choices, "[/CHOICE]"].join("\n");
+}
 
 const BACKUP_RESTORE_CHOICE = [
   "[CHOICE:first-run id=backup-restore]",
@@ -284,7 +290,7 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
   // runtime widget locked itself on first tap).
   const connectTurn = makeTurn(
     "first-run:cloud-oauth",
-    `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${RUNTIME_CHOICE}`,
+    `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${runtimeChoice()}`,
     { secretRequest: cloudOAuthSecretRequest("failed") },
   );
   writer.seedTurn(connectTurn);
@@ -408,7 +414,7 @@ export function useFirstRunConductor(): void {
 
   const seedRuntimeChoice = React.useCallback(() => {
     seedTurn(
-      makeTurn("first-run:greeting", `${GREETING}\n\n${RUNTIME_CHOICE}`),
+      makeTurn("first-run:greeting", `${GREETING}\n\n${runtimeChoice()}`),
     );
   }, [seedTurn]);
 
@@ -678,6 +684,7 @@ export function useFirstRunConductor(): void {
 
       if (group === "runtime") {
         if (id !== "cloud" && id !== "local" && id !== "remote") return true;
+        if (id !== "cloud" && !canOfferLocalRemoteOnboarding()) return true;
         if (id === "cloud") {
           draftRef.current = {
             ...draftRef.current,
@@ -859,7 +866,7 @@ export function useFirstRunConductor(): void {
           // runtime widget locked itself on its first pick).
           seedFreshChoiceTurn(
             "first-run:greeting",
-            `${GREETING}\n\n${RUNTIME_CHOICE}`,
+            `${GREETING}\n\n${runtimeChoice()}`,
           );
           return true;
         }
@@ -937,7 +944,8 @@ export function useFirstRunConductor(): void {
           : erroredRef.current
             ? FIRST_RUN_TEXT_REPLY.error
             : FIRST_RUN_TEXT_REPLY.choosing;
-      const seq = (textTurnSeqRef.current += 1);
+      textTurnSeqRef.current += 1;
+      const seq = textTurnSeqRef.current;
       seedTurn({
         id: `first-run:user:${seq}`,
         role: "user",
