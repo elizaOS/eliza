@@ -145,6 +145,7 @@ export const hyperliquidPlugin: Plugin = {
         "Hyperliquid perpetual markets — positions, trading status, and market data",
       icon: "TrendingUp",
       path: "/hyperliquid",
+      group: "wallet",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "HyperliquidView",

@@ -23,7 +23,13 @@ function fixturePlugin(): Plugin {
       { id: "vk-system", label: "Sys", viewKind: "system", bundleUrl: "x" },
       { id: "vk-release", label: "Rel", viewKind: "release", bundleUrl: "x" },
       { id: "vk-dev", label: "Dev", viewKind: "developer", bundleUrl: "x" },
-      { id: "vk-preview", label: "Prev", viewKind: "preview", bundleUrl: "x" },
+      {
+        id: "vk-preview",
+        label: "Prev",
+        viewKind: "preview",
+        group: "wallet",
+        bundleUrl: "x",
+      },
       // legacy gate still maps to developer
       { id: "vk-legacy", label: "Legacy", developerOnly: true, bundleUrl: "x" },
     ],
@@ -105,5 +111,13 @@ describe("listViews kind filtering", () => {
       "vk-release",
       "vk-system",
     ]);
+  });
+
+  it("preserves app-shell grouping metadata for client launcher curation", async () => {
+    await register();
+    const grouped = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "vk-preview",
+    );
+    expect(grouped?.group).toBe("wallet");
   });
 });

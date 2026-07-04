@@ -123,6 +123,7 @@ export const polymarketPlugin: Plugin = {
         "Polymarket prediction markets — market discovery, orderbook, and positions",
       icon: "BarChart2",
       path: "/polymarket",
+      group: "wallet",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "PolymarketView",

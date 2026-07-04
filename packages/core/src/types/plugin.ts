@@ -754,6 +754,8 @@ export interface ViewDeclaration {
 	path?: string;
 	/** Sort priority in the view manager — lower appears first. Default 100. */
 	order?: number;
+	/** Optional named group shared with app-shell page registrations. */
+	group?: string;
 	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
 	tags?: string[];
 	/**
