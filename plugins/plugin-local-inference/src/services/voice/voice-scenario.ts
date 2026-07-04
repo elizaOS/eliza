@@ -77,6 +77,19 @@ export interface VoiceScenarioTurn {
 	 * genuine reply string, not a circular self-reference.
 	 */
 	agentReplyText?: string;
+	/**
+	 * This turn arrives WHILE the agent is mid-TTS (a barge-in). The speaker-gated
+	 * barge-in scorer measures whether the agent's playback was correctly cancelled
+	 * (or correctly held). Set on wake-word interjections, bystander cross-talk, and
+	 * agent-echo bleed-back that occur during agent speech (#12255).
+	 */
+	bargeIn?: boolean;
+	/**
+	 * Ground truth for a {@link bargeIn} turn: SHOULD it hard-stop the agent's TTS?
+	 * A wake-word / owner interjection must (`true`); the agent's own echo and an
+	 * unenrolled bystander must not (`false`). Only meaningful when `bargeIn` is set.
+	 */
+	expectBargeInCancel?: boolean;
 }
 
 /** Scenario-level pass/fail thresholds the benchmark layer enforces. */
@@ -104,6 +117,20 @@ export interface VoiceScenarioAssertions {
 	minEchoRejectionRate?: number;
 	/** Min owner-vs-intruder accuracy for security scenarios. */
 	minOwnerAccuracy?: number;
+	/**
+	 * Max barge-in cancel latency (ms) for a turn that MUST hard-stop the agent's
+	 * TTS. Settled ceiling: 250 ms (parent decision #10). The speaker-gated
+	 * barge-in scorer also fails any turn that cancelled when it should have held
+	 * (echo / bystander), independent of this budget.
+	 */
+	maxBargeInCancelMs?: number;
+	/**
+	 * Min echo-return-loss-enhancement (dB) on AEC scenarios — the residual after
+	 * cancellation must be at least this far below the near-end echo. Settled floor:
+	 * 18 dB (parent decision #10). Consumes the runtime AEC/ERLE telemetry the echo
+	 * sub-issue (#12256) exposes; honestly unscored in lanes without an AEC feed.
+	 */
+	minErleDb?: number;
 }
 
 export type VoiceScenarioClass =
@@ -128,7 +155,19 @@ export type VoiceScenarioClass =
 	// bind to exactly their own entity — never a near-miss neighbor.
 	| "name-disambiguation"
 	// Two voices overlapping / interrupting each other.
-	| "overlapping-speech";
+	| "overlapping-speech"
+	// Streaming-ASR partial hypotheses: the committed prefix never retracts.
+	| "streaming-partials"
+	// Speech-end → commit latency under the tuned end-of-turn hangover.
+	| "endpoint-latency"
+	// Filler / mid-clause pauses that must NOT be treated as a turn boundary.
+	| "tail-off"
+	// Barge-in gated by speaker: wake-word cancels TTS; echo / bystander do not.
+	| "speaker-gated-barge-in"
+	// Desktop speak-back echo scored for ERLE + self-voice rejection.
+	| "desktop-aec"
+	// Long multi-speaker turn, windowed incrementally, DER within the meeting budget.
+	| "long-turn-diarization";
 
 export interface VoiceScenario {
 	/** Stable id (also the corpus subdirectory name). */
