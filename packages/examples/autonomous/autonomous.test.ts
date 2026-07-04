@@ -1,3 +1,7 @@
+/**
+ * Deterministic coverage for the autonomous example decision parser, command
+ * allowlist, and prompt scaffolding.
+ */
 import { expect, test } from "bun:test";
 import { decisionPrompt, isCommandAllowed, parseDecision } from "./autonomous";
 

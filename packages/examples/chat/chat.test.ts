@@ -1,3 +1,7 @@
+/**
+ * Deterministic coverage for chat example provider priority and missing-key
+ * behavior before any live model plugin is imported.
+ */
 import { afterEach, expect, test } from "bun:test";
 import { detectLLMPlugin, hasValidApiKey, LLM_PROVIDERS } from "./chat";
 

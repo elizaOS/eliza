@@ -1,8 +1,8 @@
+/**
+ * Monitoring service for the liquidity-position manager example, coordinating
+ * wallet, DEX, profile, and yield services around rebalance decisions.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-
-// =============================================================================
-// Type Definitions (mirrors @elizaos/plugin-wallet's LP types)
-// =============================================================================
 
 interface TokenBalance {
   address: string;
@@ -61,7 +61,6 @@ interface TransactionResult {
   tokensReceived?: TokenBalance[];
 }
 
-// Service interfaces
 interface DexInteractionService {
   getAllUserLpPositions(userId: string): Promise<LpPositionDetails[]>;
   addLiquidity(config: {
@@ -110,10 +109,6 @@ interface VaultService {
   getBalances(publicKey: string): Promise<TokenBalance[]>;
   getVaultKeypair(userId: string, encryptedSecretKey: string): Promise<unknown>;
 }
-
-// =============================================================================
-// Monitoring Types
-// =============================================================================
 
 interface MonitoredPosition {
   position: LpPositionDetails;
@@ -175,10 +170,6 @@ export interface LpMonitoringStatus {
   config: LpMonitoringConfig;
 }
 
-// =============================================================================
-// Constants
-// =============================================================================
-
 const SERVICE_NAMES = {
   DEX: "dex-interaction",
   PROFILE: "UserLpProfileService",
@@ -198,10 +189,6 @@ const DEFAULTS = {
   POSITION_AGE_MS: 3600000,
   MAX_RECENT_REBALANCES: 20,
 } as const;
-
-// =============================================================================
-// LpMonitoringService
-// =============================================================================
 
 export class LpMonitoringService extends Service {
   public static readonly serviceType = "LpMonitoringService";

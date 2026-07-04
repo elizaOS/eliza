@@ -1,3 +1,7 @@
+/**
+ * Command-line chat example that boots an Eliza runtime with the first
+ * configured live model provider and routes stdin messages through it.
+ */
 import "dotenv/config";
 import * as readline from "node:readline";
 import {

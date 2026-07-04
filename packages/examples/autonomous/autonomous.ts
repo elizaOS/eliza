@@ -1,3 +1,7 @@
+/**
+ * Runnable autonomous-agent example that lets an Eliza agent decide between
+ * bounded shell actions, sleeps, and stopping while recording each decision.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
