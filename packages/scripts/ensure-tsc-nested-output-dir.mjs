@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
 import path from "node:path";
+import { findWorkspaceRoot } from "./lib/repo-root.mjs";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
@@ -10,23 +11,7 @@ if (!packageDirArg) {
   process.exit(1);
 }
 
-async function findWorkspaceRoot(startDir) {
-  let current = path.resolve(startDir);
-  while (true) {
-    try {
-      const raw = await fs.readFile(path.join(current, "package.json"), "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed?.workspaces) return current;
-    } catch {
-      // keep walking
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return process.cwd();
-    current = parent;
-  }
-}
-
-const root = await findWorkspaceRoot(process.cwd());
+const root = findWorkspaceRoot(process.cwd());
 const packageDir = path.resolve(root, packageDirArg);
 const relPackageDir = path.relative(root, packageDir);
 

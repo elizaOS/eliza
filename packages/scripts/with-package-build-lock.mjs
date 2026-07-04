@@ -3,6 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { findWorkspaceRoot } from "./lib/repo-root.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,23 +16,7 @@ if (!packageDirArg || separator !== "--" || command.length === 0) {
   process.exit(1);
 }
 
-async function findWorkspaceRoot(startDir) {
-  let current = path.resolve(startDir);
-  while (true) {
-    try {
-      const raw = await fs.readFile(path.join(current, "package.json"), "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed?.workspaces) return current;
-    } catch {
-      // keep walking
-    }
-    const parent = path.dirname(current);
-    if (parent === current) return process.cwd();
-    current = parent;
-  }
-}
-
-const root = await findWorkspaceRoot(process.cwd());
+const root = findWorkspaceRoot(process.cwd());
 const packageDir = path.resolve(root, packageDirArg);
 // Keep transient lock state out of package directories so cancelled Turbo builds
 // do not leave untracked `.build-lock` folders across the workspace.
