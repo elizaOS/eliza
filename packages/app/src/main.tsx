@@ -704,11 +704,13 @@ async function writeIosMixedContentSmokeResult(
   );
 }
 
-
 async function writeIosAuthCallbackSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
-  await writeIosPreferenceSmokeResult(IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY, result);
+  await writeIosPreferenceSmokeResult(
+    IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+    result,
+  );
 }
 
 async function writeIosPreferenceSmokeResult(
@@ -2041,11 +2043,15 @@ async function recordIosAuthCallbackSmoke(
   if (!isIOS) return;
   let rawRequest: string | null = null;
   try {
-    rawRequest = window.localStorage.getItem(IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY);
+    rawRequest = window.localStorage.getItem(
+      IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
+    );
   } catch {
     rawRequest = null;
   }
-  rawRequest ??= await boundedPreferenceGet(IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY);
+  rawRequest ??= await boundedPreferenceGet(
+    IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY,
+  );
   if (!rawRequest) return;
 
   let request: Record<string, unknown> = {};

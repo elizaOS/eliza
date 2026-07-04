@@ -95,7 +95,6 @@ describe("mobile-auth-simulator-smoke: callback URL + args", () => {
     ).toBe("elizaos://auth/callback?state=s&code=c");
   });
 
-
   it("extracts expected iOS auth callback handling fields from the opened URL", () => {
     expect(
       expectedAuthCallbackFromUrl(

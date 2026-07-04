@@ -247,7 +247,6 @@ function runCommand(command, args, label) {
   }
 }
 
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -304,7 +303,13 @@ function readIosPreference(device, appId, key) {
   if (domainPath) {
     const plist = `${domainPath}.plist`;
     if (fs.existsSync(plist)) {
-      const json = tryRunCommand("plutil", ["-convert", "json", "-o", "-", plist]);
+      const json = tryRunCommand("plutil", [
+        "-convert",
+        "json",
+        "-o",
+        "-",
+        plist,
+      ]);
       if (json) {
         try {
           const parsed = JSON.parse(json);
@@ -402,11 +407,12 @@ function armIosAuthCallbackSmoke(device, app, url) {
 async function pollIosAuthCallbackSmoke(device, app, expected) {
   let lastRaw = "";
   for (let attempt = 1; attempt <= IOS_AUTH_CALLBACK_ATTEMPTS; attempt += 1) {
-    lastRaw = readIosPreference(
-      device,
-      app.appId,
-      IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
-    ) ?? "";
+    lastRaw =
+      readIosPreference(
+        device,
+        app.appId,
+        IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+      ) ?? "";
     if (lastRaw) {
       let parsed = null;
       try {
