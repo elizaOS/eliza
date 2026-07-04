@@ -248,6 +248,7 @@ export function handleAndroidCoreRoute(
 				mode: "local",
 				passwordConfigured: false,
 				ownerConfigured: false,
+				role: "OWNER",
 			},
 		});
 	}

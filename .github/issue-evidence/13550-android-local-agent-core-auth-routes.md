@@ -4,6 +4,9 @@
 
 - `GET /api/auth/status` now answers in the Android in-process core route shim before falling through to the plugin-route kernel.
 - `GET /api/auth/me` now mirrors the trusted local machine-session response used by app-core/iOS local transports.
+- The Android local machine response includes `access.role: "OWNER"`, matching
+  the canonical agent auth route's trusted-local boundary role instead of
+  relying on UI fallback role derivation.
 - Existing `/api/first-run/status` and `/api/first-run` behavior is unchanged.
 
 ## Verification

@@ -285,6 +285,7 @@ describe("android core routes (first-run)", () => {
 				mode: "local",
 				passwordConfigured: false,
 				ownerConfigured: false,
+				role: "OWNER",
 			},
 		});
 		expect(calls).toHaveLength(0);
