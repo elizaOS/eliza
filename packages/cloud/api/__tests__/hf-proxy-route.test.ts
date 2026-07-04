@@ -256,7 +256,12 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     });
 
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({
+    const body = (await res.json()) as {
+      error: string;
+      code: string;
+      repo: string;
+    };
+    expect(body).toEqual({
       error: "HuggingFace repo is gated or unauthorized.",
       code: "HF_GATED",
       repo: "elizaos/eliza-1",
