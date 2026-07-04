@@ -42,6 +42,26 @@ const liveActivityBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
   "utf8",
 );
+const keyboardViewControllerSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaKeyboard/KeyboardViewController.swift"),
+  "utf8",
+);
+const keyboardDictationStateSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaKeyboard/ElizaKeyboardDictationState.swift"),
+  "utf8",
+);
+const keyboardInfoPlist = readFileSync(
+  path.join(iosAppRoot, "App/ElizaKeyboard/Info.plist"),
+  "utf8",
+);
+const keyboardEntitlements = readFileSync(
+  path.join(iosAppRoot, "App/ElizaKeyboard/ElizaKeyboard.entitlements"),
+  "utf8",
+);
+const keyboardBridgeSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaKeyboardBridge.swift"),
+  "utf8",
+);
 const mobileBuildScript = readFileSync(
   path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
   "utf8",
@@ -323,6 +343,80 @@ describe("native assistant entry contracts", () => {
     expect(mobileBuildScript).toMatch(
       /CURRENT_PROJECT_VERSION = \$\{versionCode\};/,
     );
+  });
+
+  it("builds the ElizaKeyboard voice-first keyboard extension target (#12185)", () => {
+    // Target + product type + embed: a keyboard extension is a distinct appex
+    // embedded in the App bundle, exactly like ElizaWidgets.
+    expect(pbxproj).toContain('PBXNativeTarget "ElizaKeyboard"');
+    expect(pbxproj).toContain("KeyboardViewController.swift in Sources");
+    expect(pbxproj).toContain("ElizaKeyboardDictationState.swift in Sources");
+    expect(pbxproj).toContain("ElizaKeyboard.appex in Embed App Extensions");
+    expect(pbxproj).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaKeyboard;",
+    );
+    // The keyboard-service extension point + RequestsOpenAccess (App Group reads
+    // require Full Access) + the shared app group.
+    expect(keyboardInfoPlist).toContain("com.apple.keyboard-service");
+    expect(keyboardInfoPlist).toContain("RequestsOpenAccess");
+    expect(keyboardEntitlements).toContain("group.ai.elizaos.app");
+
+    // No-mic-in-extensions constraint (the Wispr pattern): the keyboard opens
+    // the containing app via the elizaos:// spine with a distinct source tag,
+    // never records audio itself.
+    expect(keyboardViewControllerSwift).toContain("UIInputViewController");
+    expect(keyboardViewControllerSwift).toContain("keyboard-dictation");
+    expect(keyboardViewControllerSwift).toContain("ios-keyboard");
+    expect(keyboardViewControllerSwift).toContain("extensionContext");
+    expect(keyboardViewControllerSwift).toContain("openURL:"); // responder-chain fallback
+    // Explicit user-facing states — no silent nothing when the app-side ASR
+    // engine is not running or returns empty.
+    expect(keyboardViewControllerSwift).toContain("needsFullAccess");
+    expect(keyboardViewControllerSwift).toContain("textDocumentProxy.insertText");
+    expect(keyboardViewControllerSwift).toContain("empty transcript");
+
+    // The App-Group handoff record is the only cross-process channel; keyed by
+    // a versioned store key with a freshness window so stale text never inserts.
+    expect(keyboardDictationStateSwift).toContain(
+      'enum ElizaKeyboardDictationState',
+    );
+    expect(keyboardDictationStateSwift).toContain(
+      'storeKey = "keyboard_dictation_state_v1"',
+    );
+    expect(keyboardDictationStateSwift).toContain("freshnessWindowMs");
+    expect(keyboardDictationStateSwift).toContain("UserDefaults(suiteName");
+
+    // App-target Capacitor bridge the JS dictation session publishes through;
+    // rejects ready-with-empty-transcript rather than inserting silence.
+    expect(keyboardBridgeSwift).toContain(
+      "class ElizaKeyboardPlugin: CAPPlugin, CAPBridgedPlugin",
+    );
+    expect(keyboardBridgeSwift).toContain('jsName = "ElizaKeyboard"');
+    expect(keyboardBridgeSwift).toContain('name: "setDictationState"');
+    expect(keyboardBridgeSwift).toContain('name: "clearDictationState"');
+    expect(keyboardBridgeSwift).toContain('name: "getDictationState"');
+    expect(keyboardBridgeSwift).toContain(
+      "requires a non-empty transcript",
+    );
+
+    // ElizaKeyboardDictationState.swift is a member of BOTH the App target
+    // (bridge writes) and the ElizaKeyboard target (keyboard reads) — the shared
+    // #12503 dual-target file pattern.
+    const stateFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* ElizaKeyboardDictationState\.swift \*\/ = \{isa = PBXFileReference/,
+    )?.[1];
+    expect(stateFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(`isa = PBXBuildFile; fileRef = ${stateFileRef} `, "g"),
+      )?.length,
+    ).toBe(2);
+
+    // Brand rewrite covers the new target: bundle-id suffix, app-group
+    // entitlements file, and fastlane target ids.
+    expect(mobileBuildScript).toContain('"ElizaKeyboard",');
+    expect(mobileBuildScript).toMatch(/\$\{appId\}\.ElizaKeyboard/);
+    expect(mobileBuildScript).toContain('"ElizaKeyboard.entitlements"');
   });
 
   it("preserves Android assistant and voice-command text when launching Eliza", () => {

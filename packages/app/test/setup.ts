@@ -152,6 +152,19 @@ function createBridgeMock(extraExports: Record<string, unknown> = {}) {
     initializeStorageBridge: async () => {},
     scanProviderCredentials: vi.fn(async () => []),
     ElectrobunRendererRpc: {},
+    // src/app-config.ts calls this at module load; any test that transitively
+    // imports app-config (e.g. keyboard-dictation) needs it on the mock.
+    resolveAppBranding: (appConfig: {
+      appName: string;
+      orgName?: string;
+      repoName?: string;
+      branding?: Record<string, unknown>;
+    }) => ({
+      appName: appConfig.appName,
+      orgName: appConfig.orgName,
+      repoName: appConfig.repoName,
+      ...appConfig.branding,
+    }),
     ...extraExports,
   };
 }
