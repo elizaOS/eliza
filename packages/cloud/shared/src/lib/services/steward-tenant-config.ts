@@ -124,13 +124,11 @@ export async function ensureStewardTenant(
     body: JSON.stringify({ id: tenantId, name: tenantName }),
   });
 
-  const stewardData = (await stewardRes.json().catch(() => ({}))) as {
-    ok?: boolean;
-    apiKey?: string;
-    data?: { apiKey?: string };
-    error?: string;
-  };
-
+  // A 409 ("already exists") is a recovery path that only needs the STATUS,
+  // not the response body: it links the org to the deterministic tenant id.
+  // Handle it BEFORE parsing so an empty/non-JSON conflict body (common for
+  // 409 responses) still links the org instead of failing the parse guard
+  // below.
   if (stewardRes.status === 409) {
     logger.warn(
       `[steward-tenants] Tenant ${tenantId} already exists in Steward, linking org ${organizationId}`,
@@ -145,6 +143,35 @@ export async function ensureStewardTenant(
     };
   }
 
+  // error-policy:J1 A provisioning POST is a fail-closed boundary: an
+  // unparseable body must NOT be collapsed into `{}` — doing so let a 2xx
+  // response with a corrupt/empty body slip past the `ok === false` gate
+  // below (undefined !== false) and be treated as a successful provision. Use
+  // a distinct PARSE_FAILED sentinel so a genuine empty object `{}` (which is
+  // a legitimate, if apiKey-less, backend shape) stays distinguishable from a
+  // body we could not read at all.
+  const PARSE_FAILED = Symbol("steward-tenant-parse-failed");
+  const parsed = (await stewardRes.json().catch(() => PARSE_FAILED)) as
+    | {
+        ok?: boolean;
+        apiKey?: string;
+        data?: { apiKey?: string };
+        error?: string;
+      }
+    | typeof PARSE_FAILED;
+
+  if (parsed === PARSE_FAILED) {
+    // A response whose body we cannot parse is NOT a success we can act on: we
+    // have no provisioned apiKey and cannot confirm `ok`. Fail closed rather
+    // than persist a tenant id with a null key. Reuse the caller-recognized
+    // message prefix so the route maps it to a 502.
+    throw new Error(
+      `Failed to provision Steward tenant for org ${organizationId}: HTTP ${stewardRes.status} with unreadable response body`,
+    );
+  }
+
+  const stewardData = parsed;
+
   if (!stewardRes.ok || stewardData.ok === false) {
     throw new Error(
       `Failed to provision Steward tenant for org ${organizationId}: ${
@@ -155,6 +182,20 @@ export async function ensureStewardTenant(
 
   const apiKey = normalizeOptionalValue(stewardData.apiKey ?? stewardData.data?.apiKey);
 
+  if (!apiKey) {
+    // error-policy:J1 A fresh-provision success MUST return a tenant-scoped
+    // apiKey. Previously a 2xx-but-keyless response persisted
+    // `steward_tenant_api_key: undefined` AND committed `steward_tenant_id` —
+    // permanently marking the org provisioned (so `ensureStewardTenant` never
+    // retries) while every downstream call silently fell back to the shared
+    // platform env key instead of the tenant-scoped key (a tenant-isolation
+    // degradation). Fail closed BEFORE writing the org row so a retry can
+    // re-provision cleanly.
+    throw new Error(
+      `Failed to provision Steward tenant for org ${organizationId}: HTTP ${stewardRes.status} returned no tenant apiKey`,
+    );
+  }
+
   await organizationsRepository.update(organizationId, {
     steward_tenant_id: tenantId,
     steward_tenant_api_key: apiKey,
@@ -164,7 +205,7 @@ export async function ensureStewardTenant(
 
   return {
     tenantId,
-    apiKey: apiKey || getEnvStewardApiKey(),
+    apiKey,
     isNew: true,
   };
 }
