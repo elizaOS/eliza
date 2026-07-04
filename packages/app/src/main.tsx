@@ -372,6 +372,10 @@ const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
   "eliza:ios-onboarding-relaunch-smoke:request";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_RESULT_KEY =
   "eliza:ios-onboarding-relaunch-smoke:result";
+const IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY =
+  "eliza:ios-mixed-content-smoke:request";
+const IOS_MIXED_CONTENT_SMOKE_RESULT_KEY =
+  "eliza:ios-mixed-content-smoke:result";
 const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
@@ -388,6 +392,7 @@ let keyboardListenersRegistered = false;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
 let iosOnboardingRelaunchSmokeStarted = false;
+let iosMixedContentSmokeStarted = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -688,6 +693,15 @@ async function writeIosOnboardingRelaunchSmokeResult(
   );
 }
 
+async function writeIosMixedContentSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(
+    IOS_MIXED_CONTENT_SMOKE_RESULT_KEY,
+    result,
+  );
+}
+
 async function writeIosPreferenceSmokeResult(
   key: string,
   result: Record<string, unknown>,
@@ -776,6 +790,30 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
   }
 }
 
+async function readIosMixedContentSmokeRequest(
+  fallbackApiBase?: string,
+): Promise<{ apiBase: string } | null> {
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(
+      IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY,
+    );
+  } catch {
+    // error-policy:J3 unavailable storage reads as "no request"; the
+    // Preferences fallback below still serves the simulator harness
+    rawRequest = null;
+  }
+  if (!rawRequest) {
+    rawRequest = await boundedPreferenceGet(
+      IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY,
+    );
+  }
+  if (!rawRequest && !fallbackApiBase) return null;
+  return parseIosOnboardingSmokeRequest(
+    rawRequest ?? JSON.stringify({ apiBase: fallbackApiBase }),
+  );
+}
+
 async function waitForIosOnboardingElement<T extends Element>(
   selector: string,
   options?: { timeoutMs?: number; visible?: boolean },
@@ -839,6 +877,151 @@ async function waitForIosOnboardingSmokeStorageSnapshot(
   );
 }
 
+async function fetchIosMixedContentHealth(apiBase: string): Promise<
+  | {
+      ok: boolean;
+      status: number;
+      url: string;
+      body: unknown;
+    }
+  | {
+      ok: false;
+      status?: number;
+      url: string;
+      error: string;
+    }
+> {
+  const url = new URL("/api/health", apiBase).href;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    let body: unknown = null;
+    try {
+      body = await response.clone().json();
+    } catch {
+      try {
+        body = await response.text();
+      } catch {
+        body = null;
+      }
+    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      url,
+      body,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      url,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function runIosMixedContentSmokeIfRequested(options?: {
+  apiBase?: string;
+}): Promise<boolean> {
+  if (!isIOS || iosMixedContentSmokeStarted) {
+    return iosMixedContentSmokeStarted;
+  }
+  const request = await readIosMixedContentSmokeRequest(options?.apiBase);
+  if (!request) return false;
+
+  iosMixedContentSmokeStarted = true;
+  await writeIosMixedContentSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+    apiBase: request.apiBase,
+  });
+
+  const wsConstructorCalls: string[] = [];
+  const originalWebSocket = window.WebSocket;
+  const clientBaseUrl =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+  try {
+    window.WebSocket = new Proxy(originalWebSocket, {
+      construct(target, args) {
+        wsConstructorCalls.push(String(args[0] ?? ""));
+        return Reflect.construct(target, args);
+      },
+    }) as typeof WebSocket;
+
+    client.connectWs();
+    const connectionState =
+      typeof client.getConnectionState === "function"
+        ? client.getConnectionState()
+        : null;
+    const restHealth = await fetchIosMixedContentHealth(request.apiBase);
+    const bodyText = document.body?.innerText ?? "";
+    const lostBackendOverlayAbsent =
+      !/Lost backend connection/i.test(bodyText) &&
+      !document.querySelector('[data-testid="connection-lost-overlay"]');
+
+    await writeIosMixedContentSmokeResult({
+      ok:
+        restHealth.ok === true &&
+        wsConstructorCalls.length === 0 &&
+        connectionState?.state === "connected" &&
+        lostBackendOverlayAbsent,
+      phase: "complete",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      webViewOrigin: window.location.origin,
+      webViewProtocol: window.location.protocol,
+      clientBaseUrl,
+      expectedInsecureWebSocketUrl: new URL(
+        "/ws",
+        request.apiBase,
+      ).href.replace(/^http:/, "ws:"),
+      mixedContentWouldBlockWebSocket:
+        window.location.protocol === "https:" &&
+        request.apiBase.startsWith("http://"),
+      webSocketConstructorCalls: wsConstructorCalls,
+      connectionState,
+      lostBackendOverlayAbsent,
+      restHealth,
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } catch (error) {
+    await writeIosMixedContentSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      apiBase: request.apiBase,
+      webViewOrigin: window.location.origin,
+      clientBaseUrl,
+      webSocketConstructorCalls: wsConstructorCalls,
+      connectionState:
+        typeof client.getConnectionState === "function"
+          ? client.getConnectionState()
+          : null,
+      error: error instanceof Error ? error.message : String(error),
+      storage: readIosOnboardingSmokeStorageSnapshot(),
+    });
+  } finally {
+    window.WebSocket = originalWebSocket;
+    try {
+      window.localStorage.removeItem(IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY);
+    } catch {
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative for the simulator harness
+    }
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY }),
+    );
+  }
+  return true;
+}
+
 async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
   if (!isIOS || iosOnboardingSmokeStarted) return iosOnboardingSmokeStarted;
   let rawRequest: string | null = null;
@@ -887,6 +1070,7 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     const storage = await waitForIosOnboardingSmokeStorageSnapshot(
       request.apiBase,
     );
+    await runIosMixedContentSmokeIfRequested({ apiBase: request.apiBase });
 
     await writeIosOnboardingSmokeResult({
       ok: true,
