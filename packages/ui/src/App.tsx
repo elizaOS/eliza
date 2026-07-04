@@ -2426,6 +2426,23 @@ export function App() {
               "max(calc(var(--safe-area-top, 0px) - 1.25rem), 1.25rem)",
           }}
         >
+          {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling
+              dark background-token floor mounted on EVERY route, behind the
+              shader (z-0) and every other layer. html/body/#root paint the
+              orange launch guard (--launch-bg #ef5a1f) as a FOUC color, and on
+              shared-background routes (home/chat) the AppBackground shader was
+              the ONLY thing hiding it. On iOS the composer overlay is anchored
+              by the visualViewport-derived `bottom`, so in the home-indicator
+              safe-area the shader coverage can fall short and the orange host
+              color bled through as a band under the composer. This floor makes
+              the bottom inset (and every unpainted zone) the dark BACKGROUND
+              token — never accent — regardless of route or shader state. The
+              shader/wallpaper renders on top of it unchanged on shared routes. */}
+          <div
+            aria-hidden="true"
+            data-testid="app-safe-area-floor"
+            className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
+          />
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the
               background event channel mounted for the whole session, but only
