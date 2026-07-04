@@ -4,6 +4,7 @@ import {
   ensureServerName,
   getAdvertisedServerUrl,
   normalizeServerName,
+  validateStartupEnv,
 } from "../../src/config";
 
 describe("normalizeServerName", () => {
@@ -41,6 +42,58 @@ describe("ensureServerName", () => {
 
     expect(ensureServerName(env)).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
     expect(env.SERVER_NAME).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
+  });
+});
+
+describe("validateStartupEnv", () => {
+  const baseEnv = {
+    SERVER_NAME: "shared-eliza",
+    REDIS_URL: "redis://localhost:6379",
+    DATABASE_URL: "postgres://user:pass@localhost:5432/eliza",
+    CAPACITY: "2",
+    TIER: "standard",
+    AGENT_SERVER_SHARED_SECRET: "secret",
+  };
+
+  test("requires the cloud pod startup variables", () => {
+    expect(() =>
+      validateStartupEnv({
+        ...baseEnv,
+        DATABASE_URL: "",
+      }),
+    ).toThrow("Missing required env var: DATABASE_URL");
+  });
+
+  test("returns explicit auto-start config from AGENT_ID and CHARACTER_REF", () => {
+    expect(
+      validateStartupEnv({
+        ...baseEnv,
+        AGENT_ID: "agent-123",
+        CHARACTER_REF: "casey",
+      }),
+    ).toEqual({
+      agentId: "agent-123",
+      characterRef: "casey",
+    });
+  });
+
+  test("does not treat CHARACTER as a cloud character override", () => {
+    expect(() =>
+      validateStartupEnv({
+        ...baseEnv,
+        AGENT_ID: "agent-123",
+        CHARACTER: "casey",
+      }),
+    ).toThrow("CHARACTER_REF is required when AGENT_ID is set");
+  });
+
+  test("ignores CHARACTER when no explicit auto-start agent is configured", () => {
+    expect(
+      validateStartupEnv({
+        ...baseEnv,
+        CHARACTER: "casey",
+      }),
+    ).toEqual({});
   });
 });
 

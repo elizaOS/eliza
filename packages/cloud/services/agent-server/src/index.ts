@@ -1,7 +1,18 @@
-// Runs the hosted agent-server index boundary for cloud runtime containers.
+/**
+ * Process entrypoint for hosted agent-server containers.
+ *
+ * It validates pod configuration before accepting traffic, starts the runtime
+ * manager, optionally auto-starts one explicit character reference, and drains
+ * in-flight agent work on SIGTERM.
+ */
 import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
-import { ensureServerName, getRequiredEnv } from "./config";
+import {
+  ensureServerName,
+  getRequiredEnv,
+  type StartupConfig,
+  validateStartupEnv,
+} from "./config";
 import { logger } from "./logger";
 import { getRedis } from "./redis";
 import { createRoutes } from "./routes";
@@ -13,25 +24,15 @@ if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
 
 ensureServerName();
 
-const required = [
-  "SERVER_NAME",
-  "REDIS_URL",
-  "DATABASE_URL",
-  "CAPACITY",
-  "TIER",
-  "AGENT_SERVER_SHARED_SECRET",
-];
-for (const key of required) {
-  try {
-    getRequiredEnv(key);
-  } catch {
-    logger.error("Missing required env var", { key });
-    process.exit(1);
-  }
-}
-
-if (process.env.AGENT_ID && !process.env.CHARACTER_REF) {
-  logger.error("CHARACTER_REF is required when AGENT_ID is set");
+let startupConfig: StartupConfig;
+try {
+  startupConfig = validateStartupEnv();
+} catch (err) {
+  // error-policy:J1 process startup boundary translates invalid pod config into
+  // a fail-fast exit before the HTTP server accepts traffic.
+  logger.error("Invalid startup environment", {
+    error: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 }
 
@@ -42,8 +43,7 @@ const manager = new AgentManager();
 // Initialize manager before accepting connections
 await manager.initialize();
 
-const agentId = process.env.AGENT_ID;
-const characterRef = process.env.CHARACTER_REF;
+const { agentId, characterRef } = startupConfig;
 if (agentId && characterRef) {
   await manager.startAgent(agentId, characterRef);
   logger.info("Auto-started agent", {

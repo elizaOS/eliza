@@ -1,5 +1,26 @@
-// Runs the hosted agent-server config boundary for cloud runtime containers.
+/**
+ * Runtime configuration helpers for hosted agent-server containers.
+ *
+ * The startup contract is intentionally explicit: cloud pods may auto-start an
+ * agent only from AGENT_ID plus CHARACTER_REF. The legacy process-wide
+ * CHARACTER override is not a cloud runtime API and must not satisfy auto-start
+ * validation.
+ */
 type Env = Record<string, string | undefined>;
+
+export const REQUIRED_STARTUP_ENV = [
+  "SERVER_NAME",
+  "REDIS_URL",
+  "DATABASE_URL",
+  "CAPACITY",
+  "TIER",
+  "AGENT_SERVER_SHARED_SECRET",
+] as const;
+
+export interface StartupConfig {
+  agentId?: string;
+  characterRef?: string;
+}
 
 export function normalizeServerName(
   value: string | undefined,
@@ -40,6 +61,24 @@ export function getRequiredEnv(name: string, env: Env = process.env): string {
     throw new Error(`Missing required env var: ${name}`);
   }
   return value;
+}
+
+export function validateStartupEnv(env: Env = process.env): StartupConfig {
+  for (const key of REQUIRED_STARTUP_ENV) {
+    getRequiredEnv(key, env);
+  }
+
+  const agentId = env.AGENT_ID?.trim();
+  const characterRef = env.CHARACTER_REF?.trim();
+
+  if (agentId && !characterRef) {
+    throw new Error("CHARACTER_REF is required when AGENT_ID is set");
+  }
+
+  return {
+    ...(agentId ? { agentId } : {}),
+    ...(agentId && characterRef ? { characterRef } : {}),
+  };
 }
 
 function withoutTrailingSlash(value: string): string {
