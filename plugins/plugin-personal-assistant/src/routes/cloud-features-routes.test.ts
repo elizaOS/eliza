@@ -7,21 +7,33 @@
  * (no live Cloud) — the parse boundary under test is deterministic.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   type CloudFeaturesRouteState,
   fetchCloudFeatures,
 } from "./cloud-features-routes.js";
 
 const BASE_STATE: CloudFeaturesRouteState = {
-  config: { cloud: { apiKey: "test-cloud-key", baseUrl: "https://cloud.example.com" } },
+  config: {
+    cloud: { apiKey: "test-cloud-key", baseUrl: "https://cloud.example.com" },
+  },
   runtime: null,
 };
 
 let originalFetch: typeof globalThis.fetch;
 let originalElizaDev: string | undefined;
 
-function stubFetch(response: Partial<Response> & { json?: () => Promise<unknown> }) {
+function stubFetch(
+  response: Partial<Response> & { json?: () => Promise<unknown> },
+) {
   const mock = vi.fn(async () => response as unknown as Response);
   globalThis.fetch = mock as unknown as typeof globalThis.fetch;
   return mock;
@@ -66,9 +78,7 @@ describe("fetchCloudFeatures", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        features: [
-          { featureKey: "not_a_real_feature", enabled: true },
-        ],
+        features: [{ featureKey: "not_a_real_feature", enabled: true }],
       }),
     });
 

@@ -126,10 +126,13 @@ export function extractExplicitTimeZoneFromText(
     return null;
   }
 
-  let match: RegExpExecArray | null;
   const ianaPattern = new RegExp(IANA_TIME_ZONE_PATTERN);
   ianaPattern.lastIndex = 0;
-  while ((match = ianaPattern.exec(value)) !== null) {
+  for (
+    let match = ianaPattern.exec(value);
+    match !== null;
+    match = ianaPattern.exec(value)
+  ) {
     const normalized = normalizeExplicitTimeZoneToken(match[1] ?? match[0]);
     if (normalized) {
       return normalized;
