@@ -18,7 +18,7 @@ const PROBE_TIMEOUT_MS = 1_000;
 let inFlight: Promise<boolean> | null = null;
 
 async function probeCloud(): Promise<boolean> {
-  const baseUrl = resolveCloudApiBaseUrl(process.env.ELIZAOS_CLOUD_BASE_URL);
+  const baseUrl = resolveCloudApiBaseUrl();
   try {
     const response = await fetch(baseUrl, {
       method: "HEAD",
