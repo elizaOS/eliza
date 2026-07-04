@@ -23,6 +23,7 @@ export * from "./useRenderGuard";
 export * from "./useRole.tsx";
 export * from "./useRuntimeMode";
 export * from "./useSignalPairing";
+export * from "./useThreadAutoScroll";
 export * from "./useTimeout";
 export * from "./useViewEvent";
 export * from "./useVoiceChat";
