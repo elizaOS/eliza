@@ -1,10 +1,8 @@
-import { logger } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { getDailySummary, getDataPoints } from "./health-bridge.js";
-
 /**
- * Regression coverage for #12798 (fallback-slop LifeOps/health):
+ * Real-fetch regression coverage for the health-bridge Google Fit REST
+ * fallback: spies on the global `fetch` and drives the actual
+ * `getDailySummary`/`getDataPoints` code paths (no connector stub) to pin the
+ * fix for #12798 (fallback-slop LifeOps/health).
  *
  * Google Fit daily summaries fetch steps/active-minutes with one aggregate
  * call and sleep with a second, dedicated call. Previously a failure of the
@@ -17,6 +15,10 @@ import { getDailySummary, getDataPoints } from "./health-bridge.js";
  * observable, and omits those days from sleep data-point series instead of
  * emitting fabricated zero-sleep points.
  */
+import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getDailySummary, getDataPoints } from "./health-bridge.js";
 
 type FetchArgs = Parameters<typeof fetch>;
 
