@@ -275,9 +275,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
     const { ElizaSandboxService, BRIDGE_INSUFFICIENT_CREDITS_CODE } = await import(
       "./eliza-sandbox.ts?actual"
     );
-    const { InsufficientCreditsError: InsufficientCreditsApiError } = await import(
-      "../api/errors"
-    );
+    const { InsufficientCreditsError: InsufficientCreditsApiError } = await import("../api/errors");
     const sandbox = sharedSandbox();
     const findRunningSandboxSpy = spyOn(
       agentSandboxesRepository,

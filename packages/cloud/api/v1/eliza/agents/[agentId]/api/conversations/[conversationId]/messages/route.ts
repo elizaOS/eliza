@@ -79,6 +79,7 @@ app.post("/", async (c) => {
       r.agentName,
     );
   } catch (error) {
+    // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
     // Insufficient credits is a PERMANENT condition until the org tops up —
     // hiding it behind the generic retryable 503 below reads as "try again"
     // forever to every welcome-bonus-withheld signup and drained org. Return

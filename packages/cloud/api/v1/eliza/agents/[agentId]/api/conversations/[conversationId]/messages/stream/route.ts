@@ -90,6 +90,7 @@ app.post("/", async (c) => {
   try {
     upstream = await elizaSandboxService.bridgeStream(r.agentId, r.orgId, rpc);
   } catch (error) {
+    // error-policy:J1 route boundary translates pre-stream bridge failures to HTTP responses.
     // Insufficient credits is rejected before any SSE bytes exist, so answer
     // with the same canonical 402 as the non-stream send — not an SSE error
     // frame inside a 200 stream, which the app cannot distinguish from a
