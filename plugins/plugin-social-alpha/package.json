@@ -25,7 +25,7 @@
 	],
 	"scripts": {
 		"build": "bun run build:js && bun run build:views && bun run build:types",
-		"test": "vitest run --passWithNoTests",
+		"test": "vitest run",
 		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check src",
 		"lint:check": "bun run lint",

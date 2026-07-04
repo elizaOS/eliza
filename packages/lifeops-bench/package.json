@@ -9,7 +9,7 @@
     "benchmark:server": "node --import tsx src/server.ts",
     "normalize-capture": "node --import tsx scripts/normalize-eliza-capture.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build": "bun run typecheck"
   },
   "dependencies": {
