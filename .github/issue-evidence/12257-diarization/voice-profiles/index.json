@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "nextLruRank": 4,
+  "entries": [
+    {
+      "profileId": "vp_4eb23a4ddc41cdab1aa469dcf33e9bd8",
+      "entityId": null,
+      "imprintClusterId": "cluster_9bd058d7-b577-45f2-8c21-d6d91f68f42c",
+      "embeddingModel": "mfcc-timbre-13d",
+      "embeddingDim": 13,
+      "lastObservedAt": "2026-07-04T02:10:32.399Z",
+      "sampleCount": 2,
+      "lruRank": 3
+    },
+    {
+      "profileId": "vp_d3e12de75840f2eb47750ad6dc3b3ff7",
+      "entityId": null,
+      "imprintClusterId": "cluster_6c24b5bb-ae11-4f8b-9fc9-a29a0a19d37e",
+      "embeddingModel": "mfcc-timbre-13d",
+      "embeddingDim": 13,
+      "lastObservedAt": "2026-07-04T02:10:32.301Z",
+      "sampleCount": 1,
+      "lruRank": 2
+    }
+  ]
+}

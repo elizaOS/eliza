@@ -1,0 +1,44 @@
+{
+  "issue": 12257,
+  "generatedAt": "2026-07-04T02:10:32.441Z",
+  "encoder": "mfcc-timbre-13d (real MFCC DSP; WeSpeaker GGUF unstaged in worktree)",
+  "profilesDir": ".github/issue-evidence/12257-diarization/voice-profiles",
+  "turns": [
+    {
+      "turn": "A-1 (speaker A, 3s one-shot)",
+      "profileId": "vp_4eb23a4ddc41cdab1aa469dcf33e9bd8",
+      "clusterId": "cluster_9bd058d7-b577-45f2-8c21-d6d91f68f42c",
+      "newCluster": true
+    },
+    {
+      "turn": "B-1 (speaker B, 3s one-shot)",
+      "profileId": "vp_d3e12de75840f2eb47750ad6dc3b3ff7",
+      "clusterId": "cluster_6c24b5bb-ae11-4f8b-9fc9-a29a0a19d37e",
+      "distinctFromA": true
+    },
+    {
+      "turn": "A-2 (speaker A, 14s WINDOWED)",
+      "windowsDiarizedDuringCapture": 2,
+      "postEndpointWindowSeconds": 4,
+      "speechStartSpeculativeMatch": "vp_4eb23a4ddc41cdab1aa469dcf33e9bd8",
+      "profileId": "vp_4eb23a4ddc41cdab1aa469dcf33e9bd8",
+      "reidentifiedAsSpeakerA": true
+    }
+  ],
+  "diskProfiles": [
+    {
+      "profileId": "vp_4eb23a4ddc41cdab1aa469dcf33e9bd8",
+      "sampleCount": 2,
+      "totalDurationMs": 17000,
+      "embeddingModel": "mfcc-timbre-13d",
+      "embeddingDim": 13
+    },
+    {
+      "profileId": "vp_d3e12de75840f2eb47750ad6dc3b3ff7",
+      "sampleCount": 1,
+      "totalDurationMs": 3000,
+      "embeddingModel": "mfcc-timbre-13d",
+      "embeddingDim": 13
+    }
+  ]
+}
