@@ -1042,6 +1042,13 @@ export class Downloader {
 			} else {
 				this.updateState(record, "failed");
 				record.job.error = err instanceof Error ? err.message : String(err);
+				// Propagate a typed failure so the consumer (download-status /
+				// UI) can key recovery off a machine-readable code instead of
+				// string-matching `error`. A stringified message loses the code.
+				if (err instanceof GatedRepoError) {
+					record.job.errorCode = err.code;
+					record.job.errorHttpStatus = err.httpStatus;
+				}
 				this.rememberTerminalDownload(record.job);
 				this.emit({ type: "failed", job: { ...record.job } });
 			}

@@ -44,6 +44,39 @@ describe("local inference text readiness", () => {
 		);
 	});
 
+	it("surfaces a typed gated-repo failure code in the download DTO (C9 consumer boundary)", () => {
+		// A 403 gated-repo download must reach the status DTO the UI reads as a
+		// machine-readable `errorCode`, not only as a stringified `errors` line —
+		// otherwise the UI has to pattern-match prose to offer the "link to Eliza
+		// Cloud" recovery.
+		const gatedDownload: DownloadJob = {
+			jobId: "job-gated",
+			modelId: "eliza-1-2b",
+			state: "failed",
+			received: 0,
+			total: 0,
+			bytesPerSec: 0,
+			etaMs: null,
+			startedAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			error:
+				"HuggingFace repo test/gated is gated or private (HTTP 403). Link this device to Eliza Cloud and retry.",
+			errorCode: "HF_GATED_REPO",
+			errorHttpStatus: 403,
+		};
+
+		const readiness = buildTextGenerationReadiness({
+			assignments: { TEXT_LARGE: "eliza-1-2b" },
+			installed: [],
+			active: activeIdle,
+			downloads: [gatedDownload],
+		});
+
+		expect(readiness.slots.TEXT_LARGE.download.state).toBe("failed");
+		expect(readiness.slots.TEXT_LARGE.download.errorCode).toBe("HF_GATED_REPO");
+		expect(readiness.slots.TEXT_LARGE.download.errorHttpStatus).toBe(403);
+	});
+
 	it("marks a downloaded active assignment ready", () => {
 		const installed: InstalledModel[] = [
 			{

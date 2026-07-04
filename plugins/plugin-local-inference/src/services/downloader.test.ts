@@ -1008,25 +1008,39 @@ describe("local inference downloader status", () => {
 			probeDeviceCaps: async () => cpuOnlyCaps,
 			probeHardware: async () => fakeProbe(100),
 		});
-		const capturedError = new Promise<string | undefined>((resolve) => {
+		// Capture the whole failed DownloadJob at the CONSUMER boundary (the
+		// emitted event / status snapshot the UI reads) — not just at the throw
+		// site. C9 is only real if the structured code survives to here.
+		const failedJob = new Promise<DownloadJob>((resolve) => {
 			const unsub = downloaderErr.subscribe((event) => {
 				if (event.job.modelId === base.id && event.type === "failed") {
 					unsub();
-					resolve(event.job.error);
+					resolve(event.job);
 				}
 			});
 		});
 
-		// Assert the runtime throws the structured, code-carrying error — not a
-		// generic HTTP failure — so the UI can key recovery off HTTP evidence.
+		// GatedRepoError carries the machine-readable code + HTTP status.
 		const gated = new GatedRepoError("probe", 403);
 		expect(gated.code).toBe("HF_GATED_REPO");
 		expect(gated.httpStatus).toBe(403);
 
 		await downloaderErr.start(singleFileSpec);
-		const error = await capturedError;
-		expect(error).toContain("gated or private");
-		expect(error).toContain("403");
+		const job = await failedJob;
+		// The typed code reaches the consumer as a structured field, not just as
+		// a stringified message the UI would have to pattern-match.
+		expect(job.errorCode).toBe("HF_GATED_REPO");
+		expect(job.errorHttpStatus).toBe(403);
+		expect(job.error).toContain("gated or private");
+		expect(job.error).toContain("403");
+
+		// And it survives the terminal-status persistence round-trip: a fresh
+		// Downloader reading the on-disk status still exposes the coded failure.
+		const rehydrated = new Downloader({ probeDeviceCaps: async () => cpuOnlyCaps })
+			.snapshot()
+			.find((j) => j.modelId === base.id);
+		expect(rehydrated?.errorCode).toBe("HF_GATED_REPO");
+		expect(rehydrated?.errorHttpStatus).toBe(403);
 	});
 
 	it("forwards the Eliza Cloud bearer on a single-file download when cloud-linked", async () => {

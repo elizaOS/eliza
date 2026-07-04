@@ -85,6 +85,9 @@ function statusFromJobs(
 			.map((job) => job.updatedAt)
 			.sort((left, right) => right.localeCompare(left))[0] ?? null;
 	const errors = relevantJobs.flatMap((job) => (job.error ? [job.error] : []));
+	// Carry the first typed failure code up to the DTO so the UI can key a
+	// recovery flow off a machine-readable code instead of string-matching.
+	const coded = relevantJobs.find((job) => job.errorCode);
 	return {
 		state,
 		receivedBytes,
@@ -100,6 +103,10 @@ function statusFromJobs(
 		etaMs,
 		updatedAt,
 		errors,
+		...(coded?.errorCode ? { errorCode: coded.errorCode } : {}),
+		...(coded?.errorHttpStatus !== undefined
+			? { errorHttpStatus: coded.errorHttpStatus }
+			: {}),
 	};
 }
 

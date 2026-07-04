@@ -581,6 +581,17 @@ export interface DownloadJob {
   updatedAt: string;
   /** Set when state === "failed". */
   error?: string;
+  /**
+   * Machine-readable failure code when the failure is a typed, structured error
+   * (currently `"HF_GATED_REPO"` from a 401/403 on a gated HuggingFace repo).
+   * The UI keys recovery flows off this instead of string-matching `error`.
+   */
+  errorCode?: string;
+  /**
+   * Upstream HTTP status that produced a coded failure (e.g. 403 for
+   * `errorCode === "HF_GATED_REPO"`). Absent for non-HTTP failures.
+   */
+  errorHttpStatus?: number;
 }
 
 export interface LocalInferenceDownloadStatus {
@@ -592,6 +603,15 @@ export interface LocalInferenceDownloadStatus {
   etaMs: number | null;
   updatedAt: string | null;
   errors: string[];
+  /**
+   * Machine-readable failure code carried up from a typed download error
+   * (currently `"HF_GATED_REPO"`). Lets the UI drive a specific recovery flow
+   * (e.g. "link this device to Eliza Cloud") off a code instead of matching the
+   * human-readable `errors` strings. Absent for untyped or success states.
+   */
+  errorCode?: string;
+  /** Upstream HTTP status behind a coded failure (e.g. 403 for a gated repo). */
+  errorHttpStatus?: number;
 }
 
 export interface ActiveModelState {
