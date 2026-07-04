@@ -12,5 +12,14 @@
       "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
     ]
   },
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "traveler-biological-night-meeting-flag",
+      "pack": "C1",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge+delta): converted 2pm US Eastern to 3am JST, flagged the biological-night conflict, created the reminder."
+    }
+  ]
 }

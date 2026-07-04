@@ -1,0 +1,85 @@
+{
+  "runId": "738794a7-3215-4d7f-9220-8151289f73db",
+  "startedAtIso": "2026-07-04T06:04:54.924Z",
+  "completedAtIso": "2026-07-04T06:04:58.678Z",
+  "providerName": "openai",
+  "scenarios": [
+    {
+      "id": "comms-flood-urgency-importance-matrix-explain",
+      "title": "Comms flood: explain urgent vs important when triaging",
+      "domain": "lifeops.inbox",
+      "tags": [
+        "lifeops",
+        "comms-flood",
+        "personas",
+        "12283"
+      ],
+      "status": "passed",
+      "durationMs": 1278,
+      "turns": [
+        {
+          "name": "dre asks how urgency vs importance is decided",
+          "kind": "message",
+          "text": "my inbox is a firehose. when you triage all this for me, how do you actually decide what's urgent versus what's just important? walk me through your thinking.",
+          "responseText": "When I triage a high‑volume inbox, I first scan each message for signals that indicate urgency—things like deadlines that are today or tomorrow, requests marked \"ASAP,\" or emails from key stakeholders (e.g., your manager, major clients, or critical partners). Those items get top priority.\n\nNext, I look for importance cues: topics that affect core projects, strategic goals, or long‑term outcomes, even if they don’t need an immediate response. I tag those as important and schedule time to handle them after the urgent items are cleared.\n\nThe process usually goes like this:\n1. **Quick scan for urgency cues** – deadline, \"urgent,\" \"ASAP,\" or sender priority.\n2. **Flag urgent items** and move them to a dedicated \"Urgent\" folder or list.\n3. **Assess importance** – relevance to key projects, strategic impact, or recurring responsibilities.\n4. **Tag as important** and place in an \"Important\" queue for later review.\n5. **Defer or archive** low‑priority, informational, or newsletters that don’t require action.\n\nBy separating urgency (time‑sensitive) from importance (impact‑driven), I can focus on what truly needs your immediate attention while still making progress on the broader, high‑value work.",
+          "actionsCalled": [
+            {
+              "actionName": "REPLY",
+              "result": {
+                "text": "When I triage a high‑volume inbox, I first scan each message for signals that indicate urgency—things like deadlines that are today or tomorrow, requests marked \"ASAP,\" or emails from key stakeholders (e.g., your manager, major clients, or critical partners). Those items get top priority.\n\nNext, I look for importance cues: topics that affect core projects, strategic goals, or long‑term outcomes, even if they don’t need an immediate response. I tag those as important and schedule time to handle them after the urgent items are cleared.\n\nThe process usually goes like this:\n1. **Quick scan for urgency cues** – deadline, \"urgent,\" \"ASAP,\" or sender priority.\n2. **Flag urgent items** and move them to a dedicated \"Urgent\" folder or list.\n3. **Assess importance** – relevance to key projects, strategic impact, or recurring responsibilities.\n4. **Tag as important** and place in an \"Important\" queue for later review.\n5. **Defer or archive** low‑priority, informational, or newsletters that don’t require action.\n\nBy separating urgency (time‑sensitive) from importance (impact‑driven), I can focus on what truly needs your immediate attention while still making progress on the broader, high‑value work.",
+                "data": {
+                  "source": "synthesized-reply"
+                }
+              }
+            }
+          ],
+          "durationMs": 1039,
+          "failedAssertions": []
+        }
+      ],
+      "finalChecks": [
+        {
+          "label": "explains-urgency-vs-importance-distinction",
+          "type": "judgeRubric",
+          "status": "passed",
+          "detail": "score 1.00 ≥ 0.6",
+          "score": 1
+        }
+      ],
+      "actionsCalled": [
+        {
+          "actionName": "REPLY",
+          "result": {
+            "text": "When I triage a high‑volume inbox, I first scan each message for signals that indicate urgency—things like deadlines that are today or tomorrow, requests marked \"ASAP,\" or emails from key stakeholders (e.g., your manager, major clients, or critical partners). Those items get top priority.\n\nNext, I look for importance cues: topics that affect core projects, strategic goals, or long‑term outcomes, even if they don’t need an immediate response. I tag those as important and schedule time to handle them after the urgent items are cleared.\n\nThe process usually goes like this:\n1. **Quick scan for urgency cues** – deadline, \"urgent,\" \"ASAP,\" or sender priority.\n2. **Flag urgent items** and move them to a dedicated \"Urgent\" folder or list.\n3. **Assess importance** – relevance to key projects, strategic impact, or recurring responsibilities.\n4. **Tag as important** and place in an \"Important\" queue for later review.\n5. **Defer or archive** low‑priority, informational, or newsletters that don’t require action.\n\nBy separating urgency (time‑sensitive) from importance (impact‑driven), I can focus on what truly needs your immediate attention while still making progress on the broader, high‑value work.",
+            "data": {
+              "source": "synthesized-reply"
+            }
+          }
+        }
+      ],
+      "failedAssertions": [],
+      "providerName": "openai",
+      "judgeScore": 1
+    }
+  ],
+  "totals": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flakyPassed": 0,
+    "costUsd": 0,
+    "finalChecksSkipped": 0
+  },
+  "totalCount": 1,
+  "passedCount": 1,
+  "failedCount": 0,
+  "skippedCount": 0,
+  "flakyPassedCount": 0,
+  "totalCostUsd": 0,
+  "artifactPaths": {
+    "runDir": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-comms-flood-urgency-importance-matrix-explain",
+    "matrixJson": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-comms-flood-urgency-importance-matrix-explain/matrix.json",
+    "viewerIndex": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-comms-flood-urgency-importance-matrix-explain/viewer/index.html",
+    "viewerData": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/vigilant-moser-707cf0/reports/scenarios/live-comms-flood-urgency-importance-matrix-explain/viewer/data.js"
+  }
+}

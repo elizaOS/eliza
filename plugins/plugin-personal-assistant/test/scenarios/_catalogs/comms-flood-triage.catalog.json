@@ -12,5 +12,14 @@
       "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
     ]
   },
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "comms-flood-urgency-importance-matrix-explain",
+      "pack": "D1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): explained the urgency-vs-importance distinction clearly as separate axes."
+    }
+  ]
 }
