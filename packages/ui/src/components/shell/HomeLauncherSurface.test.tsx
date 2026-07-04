@@ -129,6 +129,32 @@ describe("HomeLauncherSurface", () => {
     ).toBe("launcher");
   });
 
+  it("moves focus out of the half that becomes inert on a rail flip (#12179)", () => {
+    act(() => goHome());
+    render(
+      <HomeLauncherSurface
+        home={
+          <button type="button" data-testid="home-focusable">
+            home control
+          </button>
+        }
+        launcher={<LauncherProbe />}
+      />,
+    );
+
+    const control = screen.getByTestId("home-focusable");
+    act(() => control.focus());
+    expect(document.activeElement).toBe(control);
+
+    // Flip to the launcher: the home half becomes `inert`; focus must not linger
+    // inside it (the browser does not auto-blur an inert descendant).
+    act(() => goLauncher());
+    expect(
+      document.activeElement instanceof HTMLElement &&
+        document.activeElement.closest("[inert]"),
+    ).toBeFalsy();
+  });
+
   it("hides rail edge buttons when the pointer is coarse", () => {
     mockDesktopPagingMedia({ finePointer: false });
     render(

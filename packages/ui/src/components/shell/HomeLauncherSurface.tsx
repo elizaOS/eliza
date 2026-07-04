@@ -38,6 +38,26 @@ export function HomeLauncherSurface({
     setShellSurfacePage(initialPage);
   }, [initialPage]);
 
+  // When the rail flips, the outgoing half becomes `inert`. The browser does not
+  // blur a focused descendant when `inert` is applied, so a keyboard user's focus
+  // would linger in the now-offscreen, non-interactive half — the focus trap the
+  // loop's `activeElementInInert` invariant guards. Move focus out on every flip.
+  React.useEffect(() => {
+    const inertHalf = document.querySelector(
+      page === "home"
+        ? '[data-testid="home-launcher-launcher-page"]'
+        : '[data-testid="home-launcher-home-page"]',
+    );
+    const active = document.activeElement;
+    if (
+      inertHalf &&
+      active instanceof HTMLElement &&
+      inertHalf.contains(active)
+    ) {
+      active.blur();
+    }
+  }, [page]);
+
   // The rail owns the single horizontal gesture on BOTH halves — the Launcher
   // is a single scrolling page with no inner pager, so a swipe right on the
   // launcher tracks the finger 1:1 (home slides in live, iOS-style) instead of
