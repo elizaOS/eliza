@@ -84,6 +84,8 @@ function normalizeOriginHost(value: string | undefined): string | null {
     }
     return normalizeHostname(origin.host);
   } catch {
+    // error-policy:J3 untrusted origin header parse; null = reject (unparseable
+    // origin is not a valid host and must not be matched against the allowlist).
     return null;
   }
 }

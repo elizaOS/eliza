@@ -141,7 +141,10 @@ function resolveStewardUpstream(
         continue;
       }
       return trimTrailingSlash(url.toString());
-    } catch {}
+    } catch {
+      // error-policy:J3 malformed configured upstream candidate; skip it and
+      // try the next. All-invalid falls through to null (no upstream).
+    }
   }
   return null;
 }

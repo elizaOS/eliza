@@ -345,6 +345,9 @@ async function forwardWithRetry(
     if (targets.length === 0) {
       if (!woken) {
         woken = true;
+        // error-policy:J5 fire-and-forget wake; wakeServer catches and logs
+        // every real failure internally (server-router.ts:191-214), so this
+        // only suppresses a residual pre-guard rejection.
         wakeServer(serverName, serverUrl).catch(() => {});
       }
       lastError = new Error("No pods available (scaled to zero)");
@@ -363,6 +366,9 @@ async function forwardWithRetry(
     lastError = result.error;
     if (!woken && result.isConnectionError) {
       woken = true;
+      // error-policy:J5 fire-and-forget wake; wakeServer catches and logs
+      // every real failure internally (server-router.ts:191-214), so this
+      // only suppresses a residual pre-guard rejection.
       wakeServer(serverName, serverUrl).catch(() => {});
     }
   }

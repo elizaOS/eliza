@@ -83,6 +83,9 @@ export async function reconciler(instance: Server) {
 
     Log.info(`Server ${name}: reconciliation complete`);
   } catch (err) {
+    // error-policy:J1 outermost handler for the Pepr reconcile callback; any
+    // failure below (apply, Redis routing, corrupt-annotation throw) surfaces
+    // as a structured operator error instead of a silent partial reconcile.
     Log.error(err, `Server ${name}: reconciliation failed`);
   }
 }
@@ -100,15 +103,31 @@ export async function finalizer(instance: Server) {
   Log.info(`Server ${name}: Redis cleanup complete`);
 }
 
-function getPreviousAgentIds(instance: Server): string[] {
+export function getPreviousAgentIds(instance: Server): string[] {
   const annotation =
     instance.metadata?.annotations?.["eliza.ai/previous-agents"];
+  // Absent annotation legitimately means "no prior agents" (first reconcile).
   if (!annotation) return [];
+  let parsed: unknown;
   try {
-    return JSON.parse(annotation);
-  } catch {
-    return [];
+    parsed = JSON.parse(annotation);
+  } catch (err) {
+    // A corrupt annotation must NOT read as "no previous agents": that would
+    // silently skip removeAgentServer() for agents dropped since the last
+    // reconcile, leaking stale Redis routing keys. Throw to the reconcile
+    // loop's J1 boundary (below) so the failure is logged and the annotation
+    // is not overwritten with a lie.
+    throw new Error(
+      `Server ${instance.metadata?.name ?? "<unknown>"}: corrupt eliza.ai/previous-agents annotation`,
+      { cause: err },
+    );
   }
+  if (!Array.isArray(parsed) || parsed.some((id) => typeof id !== "string")) {
+    throw new Error(
+      `Server ${instance.metadata?.name ?? "<unknown>"}: eliza.ai/previous-agents annotation is not a string array`,
+    );
+  }
+  return parsed;
 }
 
 async function updateStatus(instance: Server, status: Server["status"]) {
