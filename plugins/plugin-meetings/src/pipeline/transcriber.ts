@@ -27,6 +27,8 @@ export interface AsrTranscribeOptions {
   language?: string;
   /** Previously confirmed text — decoding context for streaming continuity. */
   prompt?: string;
+  /** Repeated overlap windows are interim; terminal flushes are final. */
+  purpose?: "interim" | "final";
   signal?: AbortSignal;
 }
 
@@ -56,6 +58,7 @@ export interface RuntimeModelAsrBackendConfig {
 /** Whisper-style non-speech markers, e.g. "[BLANK_AUDIO]", "(silence)". */
 const NON_SPEECH_PATTERN =
   /^[\s[(]*(?:blank[\s_]*audio|silence|no[\s_]*speech|inaudible|music)[\s\])]*$/i;
+const LOCAL_INFERENCE_PROVIDER = "eliza-local-inference";
 
 function isNonSpeech(text: string): boolean {
   return text.length === 0 || NON_SPEECH_PATTERN.test(text);
@@ -92,8 +95,18 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       audioUrl: `data:audio/wav;base64,${wav.toString("base64")}`,
       ...(opts.language ? { language: opts.language } : {}),
       ...(opts.prompt ? { prompt: opts.prompt } : {}),
+      transcriptionPurpose: opts.purpose ?? "final",
+      billing: {
+        billable: opts.purpose !== "interim",
+        reason:
+          opts.purpose === "interim"
+            ? "meeting-local-agreement-overlap"
+            : "meeting-final-window",
+      },
       ...(opts.signal ? { signal: opts.signal } : {}),
     };
+    const provider =
+      opts.purpose === "interim" ? LOCAL_INFERENCE_PROVIDER : undefined;
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -102,6 +115,7 @@ export class RuntimeModelAsrBackend implements AsrBackend {
         const raw = await this.runtime.useModel(
           ModelType.TRANSCRIPTION,
           params,
+          provider,
         );
         const text = typeof raw === "string" ? raw.trim() : "";
         return isNonSpeech(text) ? { text: "" } : { text };

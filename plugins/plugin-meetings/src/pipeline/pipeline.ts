@@ -101,8 +101,13 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
       now: () => Date.now() - this.sessionEpochMs,
     });
 
-    this.manager.onSegmentReady = (speakerKey, _speakerName, audio) => {
-      this.transcribeWindow(speakerKey, audio);
+    this.manager.onSegmentReady = (
+      speakerKey,
+      _speakerName,
+      audio,
+      purpose,
+    ) => {
+      this.transcribeWindow(speakerKey, audio, purpose);
     };
 
     this.manager.onSegmentConfirmed = (event) => {
@@ -255,7 +260,11 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     return fallback;
   }
 
-  private transcribeWindow(speakerKey: string, audio: Float32Array): void {
+  private transcribeWindow(
+    speakerKey: string,
+    audio: Float32Array,
+    purpose: "interim" | "final",
+  ): void {
     const wav = float32ToWav(audio, MEETING_AUDIO_SAMPLE_RATE);
     const prompt = this.manager.getLastConfirmedText(speakerKey);
     const durationSec = audio.length / MEETING_AUDIO_SAMPLE_RATE;
@@ -265,6 +274,7 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
         const result = await this.backend.transcribe(wav, {
           ...(this.options.language ? { language: this.options.language } : {}),
           ...(prompt ? { prompt } : {}),
+          purpose,
         });
         const segments =
           result.words && result.words.length > 0

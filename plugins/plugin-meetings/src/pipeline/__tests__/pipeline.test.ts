@@ -93,6 +93,7 @@ describe("createMeetingTranscriptionPipeline", () => {
     expect(backend.calls[0].wav.toString("ascii", 0, 4)).toBe("RIFF");
     expect(backend.calls[0].opts.language).toBe("en");
     expect(backend.calls[0].opts.prompt).toBeUndefined();
+    expect(backend.calls[0].opts.purpose).toBe("interim");
 
     pipeline.pushSpeakerAudio("t0", seconds(2));
     await tick(2000);
@@ -102,6 +103,7 @@ describe("createMeetingTranscriptionPipeline", () => {
     pipeline.pushSpeakerAudio("t0", seconds(2));
     await tick(2000);
     expect(backend.calls[2].opts.prompt).toBe("welcome to the standup");
+    expect(backend.calls[2].opts.purpose).toBe("interim");
 
     const segments = await pipeline.finalize();
     expect(segments.map((s) => s.text)).toContain("welcome to the standup");
@@ -228,11 +230,28 @@ describe("createMeetingTranscriptionPipeline", () => {
       "beta speaks second",
     ]);
     expect(segments[0].startMs).toBeLessThanOrEqual(segments[1].startMs);
+    expect(backend.calls.map((call) => call.opts.purpose)).toEqual([
+      "interim",
+      "interim",
+    ]);
 
     // Finalized pipeline ignores new audio and returns the same segments.
     pipeline.pushSpeakerAudio("a", seconds(2));
     await tick(4000);
     expect(await pipeline.finalize()).toHaveLength(2);
+  });
+
+  it("marks a terminal no-transcript flush as a final ASR submission", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue({ text: "short closing thought" });
+    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+
+    pipeline.pushSpeakerAudio("a", seconds(1)); // below cadence minimum
+
+    const segments = await pipeline.finalize();
+    expect(segments.map((s) => s.text)).toEqual(["short closing thought"]);
+    expect(backend.calls).toHaveLength(1);
+    expect(backend.calls[0].opts.purpose).toBe("final");
   });
 
   it("drops a window whose ASR fails and keeps the stream moving", async () => {

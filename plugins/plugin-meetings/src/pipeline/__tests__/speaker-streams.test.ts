@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AsrSegment,
+  type AsrSubmissionPurpose,
   type ConfirmedSegmentEvent,
   SpeakerStreamManager,
 } from "../speaker-streams";
@@ -21,7 +22,11 @@ const seg = (text: string, startSec: number, endSec: number): AsrSegment => ({
 
 interface Harness {
   manager: SpeakerStreamManager;
-  submissions: Array<{ speakerKey: string; samples: number }>;
+  submissions: Array<{
+    speakerKey: string;
+    samples: number;
+    purpose: AsrSubmissionPurpose;
+  }>;
   confirmed: ConfirmedSegmentEvent[];
 }
 
@@ -31,8 +36,8 @@ function harness(
   const manager = new SpeakerStreamManager(config);
   const submissions: Harness["submissions"] = [];
   const confirmed: ConfirmedSegmentEvent[] = [];
-  manager.onSegmentReady = (speakerKey, _name, audio) => {
-    submissions.push({ speakerKey, samples: audio.length });
+  manager.onSegmentReady = (speakerKey, _name, audio, purpose) => {
+    submissions.push({ speakerKey, samples: audio.length, purpose });
   };
   manager.onSegmentConfirmed = (event) => {
     confirmed.push(event);
@@ -59,7 +64,9 @@ describe("SpeakerStreamManager", () => {
 
     h.manager.feedAudio("a", seconds(1.5));
     vi.advanceTimersByTime(2000);
-    expect(h.submissions).toEqual([{ speakerKey: "a", samples: 2.5 * SR }]);
+    expect(h.submissions).toEqual([
+      { speakerKey: "a", samples: 2.5 * SR, purpose: "interim" },
+    ]);
 
     // In-flight — no double submission
     vi.advanceTimersByTime(2000);
@@ -85,6 +92,7 @@ describe("SpeakerStreamManager", () => {
       h.manager.feedAudio("a", seconds(2));
       vi.advanceTimersByTime(2000);
       expect(h.submissions[1].samples).toBe(4 * SR); // nothing trimmed yet
+      expect(h.submissions[1].purpose).toBe("interim");
       h.manager.handleTranscriptionResult("a", "hello world how are", 2.4, [
         seg("hello world", 0, 1.0),
         seg("how are", 1.0, 2.4),
@@ -104,6 +112,7 @@ describe("SpeakerStreamManager", () => {
       h.manager.feedAudio("a", seconds(1));
       vi.advanceTimersByTime(2000);
       expect(h.submissions[2].samples).toBe(4 * SR); // (4s+1s) - 1.0s confirmed
+      expect(h.submissions[2].purpose).toBe("interim");
     });
 
     it("does not emit a corrected (unstable) tail", () => {
@@ -196,7 +205,9 @@ describe("SpeakerStreamManager", () => {
     h.manager.addSpeaker("a", "Alice");
     h.manager.feedAudio("a", seconds(1)); // below cadence minimum
     vi.advanceTimersByTime(16_000); // > 15s idle
-    expect(h.submissions).toEqual([{ speakerKey: "a", samples: SR }]);
+    expect(h.submissions).toEqual([
+      { speakerKey: "a", samples: SR, purpose: "final" },
+    ]);
 
     h.manager.handleTranscriptionResult("a", "short final remark");
     expect(h.confirmed).toHaveLength(1);

@@ -15,6 +15,8 @@ interface CapturedParams {
   audioUrl: string;
   language?: string;
   prompt?: string;
+  transcriptionPurpose?: "interim" | "final";
+  billing?: { billable: boolean; reason?: string };
   signal?: AbortSignal;
 }
 
@@ -51,6 +53,36 @@ describe("RuntimeModelAsrBackend", () => {
     );
     expect(params.language).toBe("en");
     expect(params.prompt).toBe("previously confirmed text");
+    expect(params.transcriptionPurpose).toBe("final");
+    expect(params.billing).toEqual({
+      billable: true,
+      reason: "meeting-final-window",
+    });
+  });
+
+  it("routes interim LocalAgreement windows to local inference as non-billable", async () => {
+    const useModel = vi.fn().mockResolvedValue("partial window");
+    const backend = new RuntimeModelAsrBackend(runtimeWith(useModel));
+
+    await expect(
+      backend.transcribe(WAV, { purpose: "interim" }),
+    ).resolves.toEqual({
+      text: "partial window",
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    const [modelType, params, provider] = useModel.mock.calls[0] as [
+      string,
+      CapturedParams,
+      string,
+    ];
+    expect(modelType).toBe("TRANSCRIPTION");
+    expect(provider).toBe("eliza-local-inference");
+    expect(params.transcriptionPurpose).toBe("interim");
+    expect(params.billing).toEqual({
+      billable: false,
+      reason: "meeting-local-agreement-overlap",
+    });
   });
 
   it("maps blank-audio / non-speech markers and empty output to silence", async () => {

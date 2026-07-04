@@ -36,6 +36,8 @@ export interface AsrSegmentWord {
   endSec: number;
 }
 
+export type AsrSubmissionPurpose = "interim" | "final";
+
 /** A confirmed utterance, times in ms on the manager's clock. */
 export interface ConfirmedSegmentEvent {
   speakerKey: string;
@@ -106,7 +108,12 @@ export class SpeakerStreamManager {
 
   /** Called when unconfirmed audio needs transcription. */
   onSegmentReady:
-    | ((speakerKey: string, speakerName: string, audio: Float32Array) => void)
+    | ((
+        speakerKey: string,
+        speakerName: string,
+        audio: Float32Array,
+        purpose: AsrSubmissionPurpose,
+      ) => void)
     | null = null;
 
   /** Called when a segment is confirmed and should be published. */
@@ -398,7 +405,7 @@ export class SpeakerStreamManager {
           this.unconfirmedSamples(buffer) / this.sampleRate
         ).toFixed(1)}s audio, no transcript yet)`,
       );
-      this.submitBuffer(buffer);
+      this.submitBuffer(buffer, "final");
       return;
     }
 
@@ -451,7 +458,7 @@ export class SpeakerStreamManager {
         logger.debug(
           `[MeetingPipeline] Idle submit for "${buffer.speakerName}" (${(idleMs / 1000).toFixed(1)}s idle)`,
         );
-        this.submitBuffer(buffer);
+        this.submitBuffer(buffer, "final");
         return;
       }
       if (!buffer.inFlight) {
@@ -482,12 +489,15 @@ export class SpeakerStreamManager {
     }
 
     if (unconfirmedSec >= this.minAudioDurationSec) {
-      this.submitBuffer(buffer);
+      this.submitBuffer(buffer, "interim");
     }
   }
 
   /** Submit only the unconfirmed window to the ASR callback. */
-  private submitBuffer(buffer: SpeakerBuffer): void {
+  private submitBuffer(
+    buffer: SpeakerBuffer,
+    purpose: AsrSubmissionPurpose,
+  ): void {
     const unconfirmed = this.unconfirmedSamples(buffer);
     if (unconfirmed === 0 || !this.onSegmentReady) return;
 
@@ -510,7 +520,12 @@ export class SpeakerStreamManager {
     this.submitGeneration.set(buffer.speakerKey, buffer.generation);
 
     try {
-      this.onSegmentReady(buffer.speakerKey, buffer.speakerName, combined);
+      this.onSegmentReady(
+        buffer.speakerKey,
+        buffer.speakerName,
+        combined,
+        purpose,
+      );
     } catch (err) {
       buffer.inFlight = false;
       logger.error({ err }, "[MeetingPipeline] onSegmentReady threw");

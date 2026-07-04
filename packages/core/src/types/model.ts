@@ -939,8 +939,21 @@ export interface ImageGenerationResult {
  */
 export interface TranscriptionParams {
 	audioUrl: string;
+	/** Raw audio bytes for providers that accept in-process media. */
+	audio?: Uint8Array | ArrayBuffer;
+	mimeType?: string;
 	prompt?: string;
 	signal?: AbortSignal;
+	/**
+	 * Call-site intent for providers and metering gateways. "interim" denotes
+	 * repeated, overlapping ASR windows used to stabilize a live transcript and
+	 * must not be counted as a user-visible billable transcription result.
+	 */
+	transcriptionPurpose?: "interim" | "final";
+	billing?: {
+		billable: boolean;
+		reason?: string;
+	};
 	/**
 	 * Reserved for incremental ASR providers. Current first-party local handlers
 	 * are buffered and ignore this field.
