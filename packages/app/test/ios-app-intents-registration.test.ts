@@ -30,8 +30,28 @@ const widgetsEntitlements = readFileSync(
   path.join(iosAppRoot, "App/ElizaWidgets/ElizaWidgets.entitlements"),
   "utf8",
 );
+const dictationAttributesSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/ElizaDictationAttributes.swift"),
+  "utf8",
+);
+const dictationLiveActivitySwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaWidgets/ElizaDictationLiveActivity.swift"),
+  "utf8",
+);
+const liveActivityBridgeSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
+  "utf8",
+);
 const mobileBuildScript = readFileSync(
   path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
+  "utf8",
+);
+const appCoreIosPlist = readFileSync(
+  path.join(repoRoot, "packages/app-core/scripts/mobile/ios-plist.mjs"),
+  "utf8",
+);
+const appPatchIosPlist = readFileSync(
+  path.join(repoRoot, "packages/app/scripts/patch-ios-plist.mjs"),
   "utf8",
 );
 const androidAssistActivity = readFileSync(
@@ -220,6 +240,72 @@ describe("native assistant entry contracts", () => {
     expect(widgetControlsSwift).toContain("static var openAppWhenRun = true");
     expect(widgetControlsSwift).toContain("OpenURLIntent");
     expect(widgetControlsSwift).toContain("@available(iOS 18.0, *)");
+  });
+
+  it("adds a dictation Live Activity to the ElizaWidgets extension target", () => {
+    // Shared ActivityAttributes: compiled into BOTH the App target (bridge) and
+    // the ElizaWidgets extension (rendering), so ActivityKit can deliver the
+    // content state to the widget process.
+    expect(dictationAttributesSwift).toContain("import ActivityKit");
+    expect(dictationAttributesSwift).toContain(
+      "struct ElizaDictationAttributes: ActivityAttributes",
+    );
+    expect(dictationAttributesSwift).toContain("struct ContentState");
+    expect(dictationAttributesSwift).toContain("@available(iOS 16.1, *)");
+
+    // Live Activity rendering: ActivityConfiguration + Dynamic Island + the
+    // interactive Stop/Save buttons routing the elizaos:// spine.
+    expect(dictationLiveActivitySwift).toContain(
+      "struct ElizaDictationLiveActivity: Widget",
+    );
+    expect(dictationLiveActivitySwift).toContain("ActivityConfiguration");
+    expect(dictationLiveActivitySwift).toContain("DynamicIsland");
+    expect(dictationLiveActivitySwift).toContain("StopElizaDictationIntent");
+    expect(dictationLiveActivitySwift).toContain("SaveElizaDictationIntent");
+    expect(dictationLiveActivitySwift).toContain(
+      'ElizaWidgetDeepLink.dictation(action: "stop")',
+    );
+
+    // The bundle registers the Live Activity behind the iOS 16.1 gate.
+    expect(widgetsSwift).toContain("ElizaDictationLiveActivity()");
+    expect(widgetsSwift).toContain('case liveActivity = "ios-live-activity"');
+
+    // App-side ActivityKit bridge in the App target (first-party, D2).
+    expect(liveActivityBridgeSwift).toContain("import ActivityKit");
+    expect(liveActivityBridgeSwift).toContain(
+      "class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin",
+    );
+    expect(liveActivityBridgeSwift).toContain('jsName = "ElizaLiveActivity"');
+    expect(liveActivityBridgeSwift).toContain("Activity.request");
+
+    // pbxproj: the shared attributes file is a member of BOTH the App and the
+    // ElizaWidgets Sources phases; the render + bridge files land in their
+    // respective targets.
+    expect(pbxproj).toContain("ElizaDictationAttributes.swift in Sources");
+    expect(pbxproj).toContain("ElizaDictationLiveActivity.swift in Sources");
+    expect(pbxproj).toContain("ElizaLiveActivityBridge.swift in Sources");
+    // The shared attributes fileRef backs exactly two PBXBuildFile entries —
+    // one per target (App + ElizaWidgets) — i.e. dual-target membership.
+    const attributesFileRef = pbxproj.match(
+      /([A-Z0-9]+) \/\* ElizaDictationAttributes\.swift \*\/ = \{isa = PBXFileReference/,
+    )?.[1];
+    expect(attributesFileRef).toBeTruthy();
+    expect(
+      pbxproj.match(
+        new RegExp(`isa = PBXBuildFile; fileRef = ${attributesFileRef} `, "g"),
+      )?.length,
+    ).toBe(2);
+  });
+
+  it("aligns the iOS audio background mode and Live Activities plist keys", () => {
+    // D10: both plist patchers must add `audio` (voice/dictation survives
+    // screen-lock) and NSSupportsLiveActivities (Live Activities opt-in).
+    expect(appCoreIosPlist).toContain('"audio"');
+    expect(appCoreIosPlist).toContain("NSSupportsLiveActivities");
+    expect(appCoreIosPlist).toContain("ensurePlistTrueBool");
+
+    expect(appPatchIosPlist).toContain('value: ["audio"]');
+    expect(appPatchIosPlist).toContain("NSSupportsLiveActivities");
   });
 
   it("wires ElizaWidgets and version threading through the iOS build pipeline", () => {
