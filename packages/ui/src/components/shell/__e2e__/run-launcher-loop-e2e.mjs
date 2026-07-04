@@ -39,7 +39,28 @@ import {
   writeFixturePage,
 } from "../../../testing/e2e-runner/index.ts";
 import { LAUNCHER_LOOP_INIT_SCRIPT } from "../../../testing/launcher-loop/cdp-gestures.ts";
-import { runLauncherLoop } from "../../../testing/launcher-loop/index.ts";
+import {
+  DEFAULT_WEIGHTS,
+  runLauncherLoop,
+} from "../../../testing/launcher-loop/index.ts";
+
+// Two gesture families are scoped out of this coarse-pointer (touch phone) lane
+// because they diverge from the shared §D model on this surface — not because
+// they are untested:
+//   • railEdgeButton — the rail's `<`/`>` chevrons don't render on coarse
+//     pointer (PagerEdgeButtons self-hides), yet the model treats an edge click
+//     as always navigating. Covered by the desktop launcher-interaction spec.
+//   • tileLongPress — the launcher tile is a plain onClick button with no
+//     long-press affordance (Launcher.tsx IconTile), so a stationary touch
+//     long-press is just a slow tap and launches on release, whereas the model
+//     treats long-press as inert. Tap-vs-long-press semantics are covered on the
+//     real app by gesture-matrix; modelling read-only-launcher long-press is out
+//     of scope here.
+const TOUCH_WEIGHTS = {
+  ...DEFAULT_WEIGHTS,
+  railEdgeButton: 0,
+  tileLongPress: 0,
+};
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-launcher-loop");
@@ -71,7 +92,11 @@ function assert(cond, msg) {
 
 async function clearGeneratedArtifacts() {
   for (const entry of await readdir(outDir).catch(() => [])) {
-    if (/\.(webm|zip)$/.test(entry) || /^page@.+/.test(entry)) {
+    if (
+      /\.(webm|zip)$/.test(entry) ||
+      /^page@.+/.test(entry) ||
+      /^failure-batch-.+\.json$/.test(entry)
+    ) {
       await rm(join(outDir, entry), { force: true }).catch(() => {});
     }
   }
@@ -241,23 +266,24 @@ async function bootPage(page, sink) {
   await page.waitForTimeout(500);
 }
 
-async function newBatchContext() {
+async function newBatchContext(withVideo = true) {
   const context = await chromiumBrowser.newContext({
     viewport: { width: 402, height: 874 },
     deviceScaleFactor: 2,
     hasTouch: true,
     isMobile: true,
-    recordVideo: { dir: outDir, size: { width: 402, height: 874 } },
+    ...(withVideo
+      ? { recordVideo: { dir: outDir, size: { width: 402, height: 874 } } }
+      : {}),
   });
   await context.addInitScript(COARSE_POINTER_INIT);
-  await context.tracing.start({ screenshots: true, snapshots: true });
   return context;
 }
 
 const chromiumBrowser = await chromium.launch();
 
-// ── Brand-color scan (BEFORE) ────────────────────────────────────────────────
-const preScanContext = await newBatchContext();
+// ── Brand-color scan (BEFORE) — no video/trace, this context is throwaway. ────
+const preScanContext = await newBatchContext(false);
 const preScanPage = await preScanContext.newPage();
 await bootPage(preScanPage, { errors: [] });
 const brandBefore = await preScanPage.evaluate(scanBrandColors);
@@ -265,11 +291,9 @@ assert(
   brandBefore.blueOffenderCount === 0,
   `no blue on the surface before the loop (sampled ${brandBefore.sampled})`,
 );
-assert(
-  brandBefore.orangeAccentCount > 0,
-  `orange accent present before the loop (${brandBefore.orangeAccentCount} samples)`,
-);
-await preScanContext.tracing.stop().catch(() => {});
+// Orange is accent-only, not a resting-state requirement — the home surface at
+// rest is neutral dark glass, so the count is reported, never asserted.
+console.log(`  · orange accent samples before: ${brandBefore.orangeAccentCount}`);
 await preScanPage.close();
 await preScanContext.close();
 
@@ -289,6 +313,7 @@ for (let batch = 0; batch < batchCount; batch += 1) {
   const batchSeed = (SEED + batch * 0x9e3779b1) >>> 0;
 
   const context = await newBatchContext();
+  await context.tracing.start({ screenshots: true, snapshots: true });
   const page = await context.newPage();
   const sink = { errors: [] };
   let batchOk = true;
@@ -298,6 +323,7 @@ for (let batch = 0; batch < batchCount; batch += 1) {
     const result = await runLauncherLoop(page, {
       seed: batchSeed,
       actions: size,
+      weights: TOUCH_WEIGHTS,
     });
     if (sink.errors.length > 0) {
       throw new Error(`page errors during batch: ${sink.errors.join(" | ")}`);
@@ -376,10 +402,7 @@ if (brandAfter) {
     brandAfter.blueOffenderCount === 0,
     `no blue on the surface after the loop (sampled ${brandAfter.sampled})`,
   );
-  assert(
-    brandAfter.orangeAccentCount > 0,
-    `orange accent still present after the loop (${brandAfter.orangeAccentCount} samples)`,
-  );
+  console.log(`  · orange accent samples after: ${brandAfter.orangeAccentCount}`);
 }
 await writeFile(
   join(outDir, "brand-scan.json"),

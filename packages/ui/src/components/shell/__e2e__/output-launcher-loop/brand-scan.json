@@ -1,0 +1,15 @@
+{
+  "seed": 12375,
+  "before": {
+    "sampled": 394,
+    "blueOffenderCount": 0,
+    "blueOffenders": [],
+    "orangeAccentCount": 0
+  },
+  "after": {
+    "sampled": 394,
+    "blueOffenderCount": 0,
+    "blueOffenders": [],
+    "orangeAccentCount": 0
+  }
+}
