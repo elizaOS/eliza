@@ -1,3 +1,7 @@
+/**
+ * Runtime hook tests for capturing and clearing current-view state.
+ */
+
 import type { PipelineHookContextForPhase } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyCurrentViewComposeHook } from "./current-view-hook.js";
@@ -77,3 +81,6 @@ describe("applyCurrentViewComposeHook (#8788)", () => {
 		).toHaveLength(1);
 	});
 });
+/**
+ * Runtime hook tests for capturing and clearing current-view state.
+ */

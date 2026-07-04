@@ -1,6 +1,8 @@
-// Unit coverage for the MODEL_SWITCH action: intent parsing, sanctioned-model
-// enforcement, and the handler driving a mocked loopback switch client (no
-// network). The route's real HTTP behavior is covered in packages/agent.
+/**
+ * Unit coverage for MODEL_SWITCH intent parsing, sanctioned models, and loopback dispatch.
+ *
+ * The route's real HTTP behavior is covered in packages/agent.
+ */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";

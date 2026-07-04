@@ -1,3 +1,7 @@
+/**
+ * Live-model BACKGROUND scenario for broadcasting a named color payload.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
 	jsonResponse,
@@ -5,14 +9,6 @@ import {
 	registerAppControlHttpHandler,
 	resetAppControlHttpLoopback,
 } from "../../../../packages/scenario-runner/test/scenarios/_helpers/app-control-http-loopback";
-
-/**
- * Live-model BACKGROUND coverage (#10694): the model must choose the
- * BACKGROUND action from natural phrasing, and the handler must broadcast the
- * exact `background:apply` payload the renderer consumes ("teal" resolves to
- * the curated #0891b2 hex). The loopback handler stands in for the dashboard
- * broadcast route only — routing and payload both come from the real pipeline.
- */
 
 function normalizedBackgroundBroadcasts() {
 	return readAppControlHttpRequests(

@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for APP relaunch sub-mode targeting.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

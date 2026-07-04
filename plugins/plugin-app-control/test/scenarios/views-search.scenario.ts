@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for VIEWS search sub-mode selection.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

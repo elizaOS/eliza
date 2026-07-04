@@ -1,12 +1,9 @@
+/**
+ * Live-only scenario for APP create when no installed app fuzzy-matches the intent.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * Single-turn create when no installed app fuzzy-matches the intent. The
- * APP action skips the picker and goes straight to the scaffold + dispatch
- * path. The orchestrator is not actually exercised in this scenario — we
- * only assert the action selection and that the assistant's response makes
- * sense.
- */
 export default scenario({
   lane: "live-only",
 	id: "app-create-no-existing",

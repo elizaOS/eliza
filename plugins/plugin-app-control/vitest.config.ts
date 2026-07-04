@@ -1,3 +1,7 @@
+/**
+ * Vitest configuration for app-control unit, jsdom, and source-alias test lanes.
+ */
+
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";

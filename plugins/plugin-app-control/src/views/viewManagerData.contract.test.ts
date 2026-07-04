@@ -1,14 +1,9 @@
-// Contract test: runs the plugin's REAL parser (fetchViewEntries) over a
-// response shaped exactly like the live GET /api/views payload.
-//
-// The canonical entry shape is ViewRegistryEntry in
-// packages/ui/src/hooks/useAvailableViews.ts (the type the /api/views endpoint
-// serves). The fixture below mirrors every field of that interface so the
-// parser is exercised against the real DTO contract, not a trimmed stub. If the
-// /api/views contract changes, update useAvailableViews.ts AND this fixture
-// together. fetchViewEntries must tolerate the full shape and surface the
-// fields the ViewManager UI reads (id/label/viewType/path/available/pluginName/
-// heroImageUrl).
+/**
+ * Contract tests for parsing the live GET /api/views payload shape.
+ *
+ * The fixture mirrors ViewRegistryEntry from packages/ui so fetchViewEntries is
+ * exercised against the real DTO contract, not a trimmed stub.
+ */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

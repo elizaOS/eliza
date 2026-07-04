@@ -1,15 +1,9 @@
-// Manifest + source-shape contract for the collapsed views-manager declaration.
-//
-// The catalog ("the views view") collapsed its three gui/xr/tui declarations to
-// ONE entry that draws every surface from the single ViewManagerView source
-// (modalities ["gui","xr","tui"], componentExport "ViewManagerView"); the
-// terminal surface renders ViewManagerSpatialView via the spatial registry.
-//
-// This pins: exactly one views-manager declaration, the collapsed `modalities`
-// literal, no `viewType` (the duplicate-per-surface escape hatch is gone), the
-// componentExport, and that ViewManagerView.tsx is the thin data wrapper that
-// renders the single ViewManagerSpatialView inside a SpatialSurface (no
-// hand-rolled rich-DOM chrome).
+/**
+ * Manifest contract tests for the collapsed views-manager declaration.
+ *
+ * One manifest entry draws gui, xr, and tui surfaces from ViewManagerView while
+ * terminal rendering is delegated through the spatial registry.
+ */
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -74,3 +68,6 @@ describe("views-manager manifest (collapsed tri-modal declaration)", () => {
 		expect(viewSource).not.toContain("rgba(");
 	});
 });
+/**
+ * View manager manifest tests for exported view registrations and metadata.
+ */

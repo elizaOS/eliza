@@ -1,12 +1,9 @@
+/**
+ * Live-only scenario for the app-create picker cancellation path.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * Multi-turn create-then-cancel flow.
- *   Turn 1 — "build a calculator app" → picker shown with new/edit-N/cancel.
- *   Turn 2 — "cancel" → APP action validates the choice reply against the
- *            pending intent, deletes the intent task, replies with a cancel
- *            confirmation. No scaffold should occur.
- */
 export default scenario({
   lane: "live-only",
 	id: "app-create-cancel",

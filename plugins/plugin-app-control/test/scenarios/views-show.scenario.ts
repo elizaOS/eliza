@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for dashboard-visible VIEWS show navigation.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

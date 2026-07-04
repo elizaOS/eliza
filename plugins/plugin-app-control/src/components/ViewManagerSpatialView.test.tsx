@@ -1,3 +1,7 @@
+/**
+ * Spatial view-manager render tests for TUI and XR surface output.
+ */
+
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

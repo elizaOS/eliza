@@ -1,7 +1,9 @@
-// Unit coverage for the AGENT_SWITCH action: profile-query parsing, the OWNER
-// role gate, and the handler driving a mocked loopback switch client. The
-// client-side trust gate + real switch live in packages/ui; the route
-// round-trip lives in packages/agent.
+/**
+ * Unit coverage for AGENT_SWITCH profile parsing, owner gating, and loopback dispatch.
+ *
+ * The client-side trust gate lives in packages/ui; the route round trip lives in
+ * packages/agent.
+ */
 
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

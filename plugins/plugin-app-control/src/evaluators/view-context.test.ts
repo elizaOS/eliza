@@ -1,3 +1,7 @@
+/**
+ * View context evaluator tests for model-guided navigation from situational cues.
+ */
+
 import type {
 	EvaluatorPromptContext,
 	EvaluatorRunContext,

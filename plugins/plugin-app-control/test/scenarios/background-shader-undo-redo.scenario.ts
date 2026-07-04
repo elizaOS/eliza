@@ -1,3 +1,7 @@
+/**
+ * Live-model BACKGROUND scenario for shader set, undo, redo, and reset routing.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
 	jsonResponse,
@@ -5,15 +9,6 @@ import {
 	registerAppControlHttpHandler,
 	resetAppControlHttpLoopback,
 } from "../../../../packages/scenario-runner/test/scenarios/_helpers/app-control-http-loopback";
-
-/**
- * Live-model BACKGROUND round trip (#10694): a natural-language ask for a
- * lava-lamp style animated background must land on the programmable GLSL
- * shader path (lava preset), then undo, redo, and reset must each be routed
- * back through BACKGROUND. The exact ordered `background:apply` broadcast
- * ledger proves the emitted op sequence the renderer's undo/redo history
- * consumes — not just that the action ran four times.
- */
 
 function normalizedBackgroundBroadcasts() {
 	return readAppControlHttpRequests(

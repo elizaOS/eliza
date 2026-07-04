@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for APP list sub-mode selection and response content.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

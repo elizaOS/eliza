@@ -1,3 +1,7 @@
+/**
+ * Verification-room bridge tests for relaying verification outcomes into chat rooms.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.ts";
@@ -430,3 +434,6 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		await service.stop();
 	});
 });
+/**
+ * Verification-room bridge tests for relaying verification outcomes into chat rooms.
+ */

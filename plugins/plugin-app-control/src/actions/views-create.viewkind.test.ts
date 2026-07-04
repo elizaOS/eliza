@@ -1,10 +1,10 @@
+/**
+ * Prompt contract tests for assigning ViewKind on created plugin views.
+ */
+
 import { describe, expect, it } from "vitest";
 import { buildCreatePrompt } from "./views-create";
 
-/**
- * #8917: the view-create prompt must instruct the sub-agent to set a ViewKind on
- * the Plugin.views entry (release by default, developer for tooling, never system).
- */
 describe("buildCreatePrompt viewKind contract (#8917)", () => {
 	const prompt = buildCreatePrompt(
 		"a dashboard for X",

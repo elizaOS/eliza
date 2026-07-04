@@ -1,3 +1,7 @@
+/**
+ * View-switch signal tests for tracking recent navigation events.
+ */
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	__resetViewSwitchSignal,
@@ -39,3 +43,6 @@ describe("view-switch-signal", () => {
 		expect(hasFreshViewSwitch("room-1", 1_000)).toBe(false);
 	});
 });
+/**
+ * View-switch signal tests for tracking recent navigation events.
+ */

@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for APP load_from_directory sub-mode selection.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

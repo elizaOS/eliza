@@ -1,3 +1,7 @@
+/**
+ * BACKGROUND action tests for plan inference and renderer broadcast payloads.
+ */
+
 import type { IAgentRuntime, Media, Memory } from "@elizaos/core";
 import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { describe, expect, it, vi } from "vitest";

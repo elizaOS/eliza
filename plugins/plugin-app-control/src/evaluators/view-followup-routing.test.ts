@@ -1,3 +1,7 @@
+/**
+ * Follow-up routing tests for view capability create, delete, and update intents.
+ */
+
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewFollowupRoutingEvaluator } from "./view-followup-routing.js";

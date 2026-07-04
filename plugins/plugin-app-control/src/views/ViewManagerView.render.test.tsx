@@ -1,11 +1,11 @@
-// @vitest-environment jsdom
-//
-// Behavior tests for the consolidated ViewManagerView wrapper. It owns the live
-// GET /api/views fetch and the open→navigate handoff, and renders the single
-// presentational ViewManagerSpatialView inside a <SpatialSurface> (the SAME
-// export drives gui and xr — see src/index.ts views[]). These drive the real
-// wrapper against a stubbed `fetch` and assert the populated list renders and
-// that each control fires the correct loopback request.
+/**
+ * Behavior tests for the consolidated ViewManagerView wrapper.
+ *
+ * The wrapper owns GET /api/views fetching and open-to-navigate handoff while
+ * rendering the shared ViewManagerSpatialView inside a SpatialSurface.
+ *
+ * @vitest-environment jsdom
+ */
 
 import { emitViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import {
@@ -278,3 +278,6 @@ describe("ViewManagerView (gui/xr) wrapper", () => {
 		expect(calls[0].url).not.toContain("?viewType");
 	});
 });
+/**
+ * View manager render tests for populated, empty, and interaction states.
+ */

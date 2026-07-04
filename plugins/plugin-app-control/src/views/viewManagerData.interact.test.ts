@@ -1,8 +1,8 @@
-// Coverage for the TUI interact() capability layer (the data layer exported from
-// viewManagerData.ts and surfaced as the plugin's terminal-open-view /
-// terminal-list-views capabilities in src/index.ts). Pins both the happy paths
-// (list + open) and the failure paths: missing viewId, unknown viewId, and an
-// unsupported capability.
+/**
+ * TUI interact capability tests for listing and opening terminal views.
+ *
+ * These cover happy paths plus missing, unknown, and unsupported capability inputs.
+ */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { interact } from "./viewManagerData";

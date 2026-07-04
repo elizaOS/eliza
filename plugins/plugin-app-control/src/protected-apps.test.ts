@@ -1,11 +1,9 @@
+/**
+ * Protected-app resolution tests for first-party slug spoofing boundaries.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isProtected, resolveProtectedApps } from "./protected-apps.js";
-
-/**
- * Protected-apps resolution stops a foreign package from registering under a
- * first-party slug (e.g. spoofing knowledge) — a security boundary, so the
- * name-form matching (full / basename / app-stripped, case-insensitive) is pinned.
- */
 
 let savedEnv: string | undefined;
 beforeEach(() => {

@@ -1,3 +1,7 @@
+/**
+ * Scaffold environment tests for template discovery and coding-dispatch preflight.
+ */
+
 import {
 	chmodSync,
 	existsSync,

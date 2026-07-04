@@ -1,14 +1,9 @@
+/**
+ * Live-only scenario for APP create picker selection of an existing app.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * Multi-turn create flow:
- *   Turn 1 — user asks to "create a 3D scene viewer app". The APP action
- *            should fire in `mode=create` and respond with a [CHOICE:app-create
- *            ...] block listing existing scene/viewer apps for editing.
- *   Turn 2 — user replies "edit-1". The action validates again because the
- *            choice reply matches a pending intent task; mode is still
- *            `create` and the choice is resolved to an edit dispatch.
- */
 export default scenario({
   lane: "live-only",
 	id: "app-create-with-existing-picker",

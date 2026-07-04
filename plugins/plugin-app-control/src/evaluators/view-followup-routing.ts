@@ -1,3 +1,7 @@
+/**
+ * Response-handler evaluator that routes follow-up intent to focused view capabilities.
+ */
+
 import type {
 	ResponseHandlerEvaluator,
 	ResponseHandlerEvaluatorContext,

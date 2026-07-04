@@ -1,3 +1,7 @@
+/**
+ * Evaluator that maps user context to registered views and dispatches navigation.
+ */
+
 import type { Evaluator, EvaluatorProcessor } from "@elizaos/core";
 import {
 	logger,

@@ -1,3 +1,7 @@
+/**
+ * Views client tests for loopback API normalization and request construction.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createViewsClient } from "./views-client.js";
 

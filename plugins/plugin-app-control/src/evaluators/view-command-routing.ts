@@ -1,3 +1,7 @@
+/**
+ * Pre-LLM view-command routing helper for explicit navigation utterances.
+ */
+
 import { matchViewCommand } from "../actions/view-command-matcher.js";
 
 export const VIEWS_ACTION_NAME = "VIEWS";

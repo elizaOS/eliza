@@ -1,3 +1,7 @@
+/**
+ * Natural-language shortcut tests for direct view navigation commands.
+ */
+
 import { matchShortcut } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { appControlPlugin } from "./index.ts";
@@ -68,3 +72,6 @@ describe("viewNavigationShortcuts (#8791)", () => {
 		).toBeNull();
 	});
 });
+/**
+ * Natural-language shortcut tests for direct view navigation commands.
+ */

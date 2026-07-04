@@ -1,3 +1,7 @@
+/**
+ * Live-only scenario for single-word voice navigation through VIEWS show mode.
+ */
+
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

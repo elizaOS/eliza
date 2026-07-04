@@ -1,3 +1,7 @@
+/**
+ * Shortcut evaluator tests for routing explicit view commands before tool planning.
+ */
+
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { viewCommandShortcutEvaluator } from "./view-command-shortcut.ts";

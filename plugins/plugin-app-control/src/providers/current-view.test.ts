@@ -1,3 +1,7 @@
+/**
+ * Current-view provider tests for exposing active renderer state to agent context.
+ */
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -138,3 +142,6 @@ describe("current_view acknowledgement provider (#8788)", () => {
 		expect(r.values?.currentViewSubview).toBe("voice");
 	});
 });
+/**
+ * Current-view provider tests for exposing active renderer state to agent context.
+ */

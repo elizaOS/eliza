@@ -1,3 +1,7 @@
+/**
+ * Parameter normalization tests for app launch and close target extraction.
+ */
+
 import type { Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,12 +10,6 @@ import {
 	normalizeActionOptions,
 	readStringOption,
 } from "./params.js";
-
-/**
- * Target extraction is the input boundary for launch/close — options take
- * precedence over free-text, and filler-word peeling must not let an empty or
- * filler-only phrase resolve to a bogus app name.
- */
 
 const msg = (text: string): Memory =>
 	({ content: { text } }) as unknown as Memory;

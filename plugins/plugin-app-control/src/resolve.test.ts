@@ -1,3 +1,7 @@
+/**
+ * App and run-name resolution tests for exact, fuzzy, and ambiguous targets.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	formatAppCandidates,
@@ -94,3 +98,6 @@ describe("candidate formatting", () => {
 		).toBe("- Calculator [runId: r-1, status: running]");
 	});
 });
+/**
+ * App and run-name resolution tests for exact, fuzzy, and ambiguous targets.
+ */

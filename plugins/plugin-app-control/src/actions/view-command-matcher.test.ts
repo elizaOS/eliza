@@ -1,3 +1,7 @@
+/**
+ * Deterministic view-command matcher tests for explicit navigation phrases.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	__matcherData,

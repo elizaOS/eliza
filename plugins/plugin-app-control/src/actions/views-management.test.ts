@@ -1,3 +1,7 @@
+/**
+ * Views management tests for create, edit, delete, and follow-up routing flows.
+ */
+
 import {
 	mkdirSync,
 	mkdtempSync,
