@@ -28,13 +28,17 @@ const LOG_PREFIX = "[BridgeFrameRecorder]";
 
 function logInfo(message: string, context?: Record<string, unknown>): void {
   console.log(
-    context ? `${LOG_PREFIX} ${message} ${JSON.stringify(context)}` : `${LOG_PREFIX} ${message}`,
+    context
+      ? `${LOG_PREFIX} ${message} ${JSON.stringify(context)}`
+      : `${LOG_PREFIX} ${message}`,
   );
 }
 
 function logWarn(message: string, context?: Record<string, unknown>): void {
   console.warn(
-    context ? `${LOG_PREFIX} ${message} ${JSON.stringify(context)}` : `${LOG_PREFIX} ${message}`,
+    context
+      ? `${LOG_PREFIX} ${message} ${JSON.stringify(context)}`
+      : `${LOG_PREFIX} ${message}`,
   );
 }
 
@@ -50,10 +54,35 @@ export interface BridgeFrameRecorderOptions {
   frameDir: string;
   /** Output MP4 path. */
   mp4Path: string;
-  /** Target capture rate. Clamped to the 8-12 fps band the bridge can sustain. */
+  /**
+   * Target capture rate (clamped to 3-12 fps). The single-threaded bridge shares
+   * the webview with the driving `eval` calls, so a lower rate leaves headroom
+   * for the walkthrough's DOM probes; the timestamp-based stitch resamples
+   * whatever real rate is achieved back to a smooth real-time clip.
+   */
   fps?: number;
+  /**
+   * Minimum gap between the END of one capture and the START of the next. Forces
+   * a breather on the shared webview thread so concurrent bridge `eval` calls are
+   * not starved by back-to-back screenshots.
+   */
+  minFrameGapMs?: number;
   /** Constant output frame rate the variable-interval frames are resampled to. */
   outputFps?: number;
+  /**
+   * Caps the on-screen duration of any single frame. Without a cap, a `pause()`
+   * gap (during which the caller runs eval-heavy work with capture suspended)
+   * would hold the last frame for the whole gap — a multi-second freeze. Capping
+   * keeps the clip moving: paused time is elided, not frozen. Default 0.6s.
+   */
+  maxFrameDurationSeconds?: number;
+  /**
+   * Physical-pixel rectangle to crop each frame to before stitching. The bridge
+   * screenshot on macOS captures the whole display; cropping to the app window's
+   * bounds (× devicePixelRatio) keeps the clip focused on the app. Omit to keep
+   * the full frame.
+   */
+  cropRect?: { x: number; y: number; width: number; height: number };
   /** Consecutive capture failures tolerated before the recording fails loudly. */
   maxConsecutiveFailures?: number;
   /** ffmpeg binary (defaults to `ffmpeg` resolved from PATH). */
@@ -73,6 +102,13 @@ export interface BridgeFrameRecordingResult {
 }
 
 export interface BridgeFrameRecording {
+  /**
+   * Suspends capture without ending the recording. Use around eval-heavy work on
+   * a single-threaded bridge so screenshots do not starve the driving RPCs.
+   */
+  pause(): void;
+  /** Resumes capture after {@link pause}. */
+  resume(): void;
   /** Stops the pump, stitches the MP4, and resolves with the recording stats. */
   stop(): Promise<BridgeFrameRecordingResult>;
 }
@@ -99,7 +135,9 @@ function resolveFfmpeg(explicit: string | undefined): string {
 
 function runFfmpeg(ffmpegPath: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpegPath, args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(ffmpegPath, args, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
     let stderr = "";
     child.stderr?.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
@@ -129,9 +167,14 @@ function runFfmpeg(ffmpegPath: string, args: string[]): Promise<void> {
 export function startBridgeFrameRecording(
   options: BridgeFrameRecorderOptions,
 ): BridgeFrameRecording {
-  const fps = Math.min(12, Math.max(8, options.fps ?? 10));
+  const fps = Math.min(12, Math.max(3, options.fps ?? 10));
   const outputFps = options.outputFps ?? 30;
   const intervalMs = 1000 / fps;
+  const minFrameGapMs = Math.max(0, options.minFrameGapMs ?? 0);
+  const maxFrameDurationSeconds = Math.max(
+    0.05,
+    options.maxFrameDurationSeconds ?? 0.6,
+  );
   const maxConsecutiveFailures = options.maxConsecutiveFailures ?? 12;
   const ffmpegPath = resolveFfmpeg(options.ffmpegPath);
   const label = options.label ?? "desktop-bridge";
@@ -142,6 +185,7 @@ export function startBridgeFrameRecording(
   let totalFailures = 0;
   let fatalError: Error | null = null;
   let stopped = false;
+  let paused = false;
   let recordingStartedAt: number | null = null;
   let inFlight: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -186,6 +230,12 @@ export function startBridgeFrameRecording(
 
   function scheduleNext(): void {
     if (stopped) return;
+    // While paused, hold off capture entirely (leave the bridge free for evals)
+    // and re-check on the interval.
+    if (paused) {
+      timer = setTimeout(scheduleNext, intervalMs);
+      return;
+    }
     timer = setTimeout(() => {
       const tickStartedAt = Date.now();
       inFlight = captureOnce().then(() => {
@@ -193,8 +243,10 @@ export function startBridgeFrameRecording(
         const elapsed = Date.now() - tickStartedAt;
         // Self-scheduling (not setInterval): a slow bridge screenshot cannot
         // stack up overlapping captures; the next frame fires as soon as the
-        // remaining interval elapses (immediately if capture overran it).
-        const wait = Math.max(0, intervalMs - elapsed);
+        // remaining interval elapses (immediately if capture overran it), but
+        // never before `minFrameGapMs` so the shared webview thread always gets
+        // a window for the walkthrough's concurrent `eval` calls.
+        const wait = Math.max(minFrameGapMs, intervalMs - elapsed);
         if (!stopped) {
           timer = setTimeout(scheduleNext, wait);
         }
@@ -202,7 +254,12 @@ export function startBridgeFrameRecording(
     }, 0);
   }
 
-  logInfo("recording started", { label, fps, outputFps, frameDir: options.frameDir });
+  logInfo("recording started", {
+    label,
+    fps,
+    outputFps,
+    frameDir: options.frameDir,
+  });
   scheduleNext();
 
   async function stop(): Promise<BridgeFrameRecordingResult> {
@@ -223,15 +280,19 @@ export function startBridgeFrameRecording(
       );
     }
 
-    // Per-frame display durations from the real capture offsets. The concat
+    // Per-frame display durations from the real capture offsets, clamped to
+    // `maxFrameDurationSeconds` so a paused gap (eval-heavy work with capture
+    // suspended) is elided rather than frozen on the last frame. The concat
     // demuxer ignores the LAST entry's duration, so the final frame is repeated
     // with a synthetic tail equal to the median interval.
     const intervals: number[] = [];
     for (let i = 1; i < frames.length; i += 1) {
-      intervals.push(Math.max(0.001, frames[i].offsetSeconds - frames[i - 1].offsetSeconds));
+      const raw = frames[i].offsetSeconds - frames[i - 1].offsetSeconds;
+      intervals.push(Math.min(maxFrameDurationSeconds, Math.max(0.001, raw)));
     }
     const sorted = [...intervals].sort((a, b) => a - b);
-    const medianInterval = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 1 / fps;
+    const medianInterval =
+      sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 1 / fps;
     const tailSeconds = Math.max(0.05, medianInterval);
 
     const listPath = path.join(options.frameDir, "frames.concat");
@@ -259,9 +320,19 @@ export function startBridgeFrameRecording(
       "-i",
       listPath,
       "-vf",
-      // Even dims (yuv420p requires them) + resample the variable-interval frames
-      // to a constant output rate so the clip plays at real wall-clock speed.
-      `scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=${outputFps},format=yuv420p`,
+      // Optional crop to the app window, then even dims (yuv420p requires them)
+      // + resample the variable-interval frames to a constant output rate so the
+      // clip plays at real wall-clock speed.
+      [
+        options.cropRect
+          ? `crop=${Math.round(options.cropRect.width)}:${Math.round(options.cropRect.height)}:${Math.round(options.cropRect.x)}:${Math.round(options.cropRect.y)}`
+          : null,
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+        `fps=${outputFps}`,
+        "format=yuv420p",
+      ]
+        .filter(Boolean)
+        .join(","),
       "-c:v",
       "libx264",
       "-preset",
@@ -274,10 +345,13 @@ export function startBridgeFrameRecording(
     ]);
 
     if (!existsSync(options.mp4Path)) {
-      throw new Error(`${LOG_PREFIX} ffmpeg reported success but produced no MP4 at ${options.mp4Path}`);
+      throw new Error(
+        `${LOG_PREFIX} ffmpeg reported success but produced no MP4 at ${options.mp4Path}`,
+      );
     }
 
-    const capturedFps = durationSeconds > 0 ? frames.length / durationSeconds : frames.length;
+    const capturedFps =
+      durationSeconds > 0 ? frames.length / durationSeconds : frames.length;
     const result: BridgeFrameRecordingResult = {
       mp4Path: options.mp4Path,
       frameDir: options.frameDir,
@@ -296,5 +370,12 @@ export function startBridgeFrameRecording(
     return result;
   }
 
-  return { stop };
+  function pause(): void {
+    paused = true;
+  }
+  function resume(): void {
+    paused = false;
+  }
+
+  return { pause, resume, stop };
 }
