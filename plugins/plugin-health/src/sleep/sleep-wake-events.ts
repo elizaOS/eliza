@@ -57,6 +57,40 @@ export interface LifeOpsDerivedEvent {
   payload: LifeOpsDerivedEventPayload;
 }
 
+/**
+ * ActivitySignalBus family carried for each derived circadian event kind.
+ * Values are members of `HEALTH_BUS_FAMILIES` (`../connectors/index.ts`);
+ * kept as literals here so the sleep domain stays import-free of the
+ * connector registration module. `lifeops.sleep.onset_candidate` maps to
+ * nothing on purpose: it has no registered bus family and always fires
+ * paired with `lifeops.sleep.detected`, which does.
+ */
+const HEALTH_BUS_FAMILY_BY_DERIVED_EVENT_KIND: Partial<
+  Record<LifeOpsDerivedEvent["kind"], string>
+> = {
+  "lifeops.sleep.detected": "health.sleep.detected",
+  "lifeops.sleep.ended": "health.sleep.ended",
+  "lifeops.wake.observed": "health.wake.observed",
+  "lifeops.wake.confirmed": "health.wake.confirmed",
+  "lifeops.nap.detected": "health.nap.detected",
+  "lifeops.bedtime.imminent": "health.bedtime.imminent",
+  "lifeops.regularity.changed": "health.regularity.changed",
+};
+
+/**
+ * Resolves the bus family a derived circadian event publishes under, or
+ * `null` for kinds that intentionally do not reach the bus. The production
+ * publisher (`plugin-personal-assistant`'s circadian tick) and the
+ * observed-anchor resolvers read/write the SAME families, which is what
+ * makes the anchors and `health_signal_observed` completion checks agree
+ * on one source of truth (#12284 WI-1 + WI-4).
+ */
+export function healthBusFamilyForDerivedEventKind(
+  kind: LifeOpsDerivedEvent["kind"],
+): string | null {
+  return HEALTH_BUS_FAMILY_BY_DERIVED_EVENT_KIND[kind] ?? null;
+}
+
 function buildEvent(args: {
   kind: LifeOpsDerivedEvent["kind"];
   occurredAt: string;

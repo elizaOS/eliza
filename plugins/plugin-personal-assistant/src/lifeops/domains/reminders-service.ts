@@ -223,6 +223,8 @@ import {
   requireNonEmptyString,
 } from "../service-normalize.js";
 import type { ReminderActivityProfileSnapshot } from "../service-types.js";
+import { getActivitySignalBus } from "../signals/bus.js";
+import { publishDerivedHealthSignals } from "../signals/health-signal-publisher.js";
 import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
@@ -5294,6 +5296,29 @@ export class RemindersDomain {
               payload: event.payload,
             };
             await this.ctx.runtime.emitEvent(event.kind, eventPayload);
+          }
+        }
+        // Mirror the newly inserted transitions onto the ActivitySignalBus
+        // under their `health.*` families (#12284 WI-4) so the ScheduledTask
+        // spine sees them: `health_signal_observed` completion checks and the
+        // plugin-health observed-anchor resolvers read these envelopes. Only
+        // inserted events publish — the audit dedup above already filtered
+        // restart replays. The emitEvent dispatch above stays: event
+        // workflows (`runDueEventWorkflows`) and the scheduled-task event
+        // bridge consume it.
+        if (insertedEvents.length > 0) {
+          const activityBus = getActivitySignalBus(this.ctx.runtime);
+          if (activityBus) {
+            publishDerivedHealthSignals(activityBus, insertedEvents);
+          } else {
+            logger.warn(
+              {
+                src: "lifeops:reminders-service",
+                agentId: this.ctx.agentId(),
+                eventKinds: insertedEvents.map((event) => event.kind),
+              },
+              "ActivitySignalBus not registered; circadian transitions were not published to the bus (health_signal_observed checks and observed anchors will fall back)",
+            );
           }
         }
         return {

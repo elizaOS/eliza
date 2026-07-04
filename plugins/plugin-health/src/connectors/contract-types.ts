@@ -106,6 +106,25 @@ export interface BusFamilyRegistry {
   list(): BusFamilyContribution[];
 }
 
+/** A single signal envelope as read back from the `ActivitySignalBus`. */
+export interface ActivitySignalRecord {
+  family: string;
+  occurredAt: string;
+  payload?: unknown;
+}
+
+/**
+ * Read-side view of the host's `ActivitySignalBus` — the minimum surface the
+ * observed-anchor resolvers need ("which transitions of family X happened
+ * since Y?"). Structural on purpose: the concrete bus lives in
+ * `@elizaos/plugin-personal-assistant` (`lifeops/signals/bus.ts`), which
+ * plugin-health must not import (the dependency points the other way). The
+ * host exposes its bus on the runtime as `activitySignalBus`.
+ */
+export interface ActivitySignalReader {
+  recent(args: { sinceIso: string; family?: string }): ActivitySignalRecord[];
+}
+
 export interface BusFamilyContribution {
   family: string;
   description: string;
@@ -121,4 +140,12 @@ export interface RuntimeWithHealthRegistries {
   connectorRegistry?: ConnectorRegistry;
   anchorRegistry?: AnchorRegistry;
   busFamilyRegistry?: BusFamilyRegistry;
+  /**
+   * Read-side of the host's `ActivitySignalBus`. The observed-anchor
+   * resolvers registered by `registerHealthAnchors` read wake/sleep/nap
+   * transition envelopes through this seam; when absent, every anchor
+   * resolves `null` and `relative_to_anchor` falls back to the static
+   * owner-window defaults in the scheduling spine.
+   */
+  activitySignalBus?: ActivitySignalReader;
 }

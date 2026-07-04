@@ -19,7 +19,9 @@
 
 import { logger } from "@elizaos/core";
 import { getHealthProviderSpec } from "../health-bridge/health-provider-registry.js";
+import { getLocalDateKey, getZonedDateParts } from "../util/time.js";
 import type {
+  ActivitySignalReader,
   AnchorContribution,
   AnchorRegistry,
   BusFamilyContribution,
@@ -186,7 +188,111 @@ function buildConnectorContribution(
   };
 }
 
-function buildAnchorContribution(anchorKey: string): AnchorContribution {
+/**
+ * Where each health anchor reads its observation from, and how freshness is
+ * judged. `observation` anchors point at a transition that already happened
+ * (a wake or nap edge); `target` anchors point at a resolved future/near
+ * instant (the bedtime target carried on the `health.bedtime.imminent`
+ * edge, whose `occurredAt` IS the target instant).
+ */
+const OBSERVED_ANCHOR_SOURCES: Record<
+  (typeof HEALTH_ANCHORS)[number],
+  {
+    family: (typeof HEALTH_BUS_FAMILIES)[number];
+    semantics: "observation" | "target";
+  }
+> = {
+  "wake.observed": {
+    family: "health.wake.observed",
+    semantics: "observation",
+  },
+  "wake.confirmed": {
+    family: "health.wake.confirmed",
+    semantics: "observation",
+  },
+  "bedtime.target": {
+    family: "health.bedtime.imminent",
+    semantics: "target",
+  },
+  "nap.start": { family: "health.nap.detected", semantics: "observation" },
+};
+
+/**
+ * Bus read window. Wider than any freshness rule below so the rules — not
+ * the query bound — decide staleness; the bus itself retains only 24h.
+ */
+const ANCHOR_SIGNAL_QUERY_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+
+/** Clock-skew tolerance for "an observation must not be in the future". */
+const OBSERVATION_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * Freshness bound for `target`-semantics anchors: a bedtime target is usable
+ * from 12h before to 12h after the instant it names. Beyond that the static
+ * `eveningWindow.end` default is more trustworthy than the stale target.
+ */
+const TARGET_FRESHNESS_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Local calendar-day key for an instant, degrading to UTC when the
+ * owner-fact timezone is not a valid IANA id.
+ */
+function localDayKey(ms: number, timeZone: string): string | null {
+  try {
+    return getLocalDateKey(getZonedDateParts(new Date(ms), timeZone));
+  } catch (error) {
+    // error-policy:J3 — ownerFacts.timezone is owner-supplied input; an
+    // invalid IANA id degrades the same-local-day comparison to UTC instead
+    // of throwing out of the scheduler tick that calls resolve().
+    if (timeZone === "UTC") {
+      logger.warn(
+        { src: "plugin:health", error },
+        "Anchor freshness day-key computation failed even in UTC",
+      );
+      return null;
+    }
+    return localDayKey(ms, "UTC");
+  }
+}
+
+function anchorTimezone(ownerFacts: unknown): string {
+  if (
+    typeof ownerFacts === "object" &&
+    ownerFacts !== null &&
+    "timezone" in ownerFacts &&
+    typeof (ownerFacts as { timezone?: unknown }).timezone === "string" &&
+    (ownerFacts as { timezone: string }).timezone.length > 0
+  ) {
+    return (ownerFacts as { timezone: string }).timezone;
+  }
+  return "UTC";
+}
+
+/**
+ * Observed-anchor resolver (#12284 WI-1). Reads the most recent transition
+ * envelope for the anchor's bus family and returns its instant, so
+ * `relative_to_anchor("wake.confirmed", offset)` anchors to the ACTUAL
+ * observed wake instead of the configured morning window.
+ *
+ * Freshness rules (documented for the tests that pin them):
+ *   - `observation` anchors (wake.observed / wake.confirmed / nap.start):
+ *     the transition must have occurred on the SAME local calendar day as
+ *     `nowIso` in the owner's timezone, and not in the future beyond clock
+ *     skew. Same-local-day is deliberately tighter than the issue's 24-48h
+ *     staleness bound: after local midnight yesterday's wake must never
+ *     anchor today's schedule.
+ *   - `target` anchors (bedtime.target): usable within ±12h of now.
+ *
+ * Returning `null` is the designed degrade — the spine's `nextAnchorIso` /
+ * `resolveAnchorIso` fall through to the static owner-window defaults
+ * (`morningWindow.start`, `eveningWindow.end`/22:30). resolve() never
+ * throws: a broken reader must not break the scheduler tick.
+ */
+function buildAnchorContribution(
+  anchorKey: (typeof HEALTH_ANCHORS)[number],
+  readSignals: () => ActivitySignalReader | null,
+): AnchorContribution {
+  const signalSource = OBSERVED_ANCHOR_SOURCES[anchorKey];
   return {
     anchorKey,
     description: `plugin-health anchor: ${anchorKey}`,
@@ -195,7 +301,70 @@ function buildAnchorContribution(anchorKey: string): AnchorContribution {
       label: `plugin-health anchor: ${anchorKey}`,
       provider: "plugin-health",
     },
-    resolve: async () => null,
+    resolve: async (context: unknown): Promise<{ atIso: string } | null> => {
+      const nowIso =
+        typeof context === "object" &&
+        context !== null &&
+        "nowIso" in context &&
+        typeof (context as { nowIso?: unknown }).nowIso === "string"
+          ? (context as { nowIso: string }).nowIso
+          : null;
+      const nowMs = nowIso === null ? Number.NaN : Date.parse(nowIso);
+      if (!Number.isFinite(nowMs)) return null;
+
+      let latestMs: number | null = null;
+      try {
+        const reader = readSignals();
+        if (!reader) return null;
+        const envelopes = reader.recent({
+          sinceIso: new Date(
+            nowMs - ANCHOR_SIGNAL_QUERY_LOOKBACK_MS,
+          ).toISOString(),
+          family: signalSource.family,
+        });
+        for (const envelope of envelopes) {
+          // Defensive family re-check: readers are only obligated to treat
+          // `family` as a filter hint, and a mixed result must not let a
+          // sleep edge masquerade as a wake anchor.
+          if (envelope.family !== signalSource.family) continue;
+          const occurredMs = Date.parse(envelope.occurredAt);
+          if (!Number.isFinite(occurredMs)) continue;
+          if (latestMs === null || occurredMs > latestMs) {
+            latestMs = occurredMs;
+          }
+        }
+      } catch (error) {
+        // error-policy:J4 — anchor resolution is a designed degrade: a
+        // failed signal read falls back to the static owner-window default
+        // instead of breaking the scheduler tick. The warn keeps the
+        // failure observable.
+        logger.warn(
+          { src: "plugin:health", anchorKey, error },
+          "Observed-anchor signal read failed; falling back to static anchor default",
+        );
+        return null;
+      }
+      if (latestMs === null) return null;
+
+      if (signalSource.semantics === "target") {
+        if (Math.abs(latestMs - nowMs) > TARGET_FRESHNESS_MS) return null;
+      } else {
+        if (latestMs > nowMs + OBSERVATION_FUTURE_SKEW_MS) return null;
+        const timeZone = anchorTimezone(
+          (context as { ownerFacts?: unknown }).ownerFacts,
+        );
+        const observedDay = localDayKey(latestMs, timeZone);
+        const currentDay = localDayKey(nowMs, timeZone);
+        if (
+          observedDay === null ||
+          currentDay === null ||
+          observedDay !== currentDay
+        ) {
+          return null;
+        }
+      }
+      return { atIso: new Date(latestMs).toISOString() };
+    },
   };
 }
 
@@ -263,11 +432,16 @@ export function registerHealthAnchors(
     );
     return;
   }
+  // Late-bound reader: the host may attach its ActivitySignalBus after the
+  // anchors register (boot-order tolerance, same posture as the registries
+  // themselves). resolve() re-reads the runtime property on every call.
+  const readSignals = (): ActivitySignalReader | null =>
+    runtime.activitySignalBus ?? null;
   for (const anchorKey of HEALTH_ANCHORS) {
     if (registry.get(anchorKey)) {
       continue;
     }
-    registry.register(buildAnchorContribution(anchorKey));
+    registry.register(buildAnchorContribution(anchorKey, readSignals));
   }
   logger.info(
     {

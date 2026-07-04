@@ -1099,6 +1099,16 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const activitySignalBus = createActivitySignalBus({ familyRegistry });
     registerActivitySignalBus(runtime, activitySignalBus);
+    // Structural runtime property (same pattern as anchorRegistry /
+    // busFamilyRegistry above): plugin-health's observed-anchor resolvers
+    // read wake/sleep transition envelopes back through
+    // `runtime.activitySignalBus` (its `ActivitySignalReader` contract)
+    // without importing this plugin.
+    (
+      runtime as IAgentRuntime & {
+        activitySignalBus?: typeof activitySignalBus;
+      }
+    ).activitySignalBus = activitySignalBus;
 
     await ensureLifeOpsHealthPluginRegistered(runtime);
 
