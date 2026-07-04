@@ -89,7 +89,10 @@ function send(params: Record<string, unknown>, messageText?: string) {
 
 // Owner chat (not "autonomy") exercises the confirmation gate — unlike `send`,
 // an unconfirmed create here previews instead of persisting immediately.
-function sendFromOwnerChat(params: Record<string, unknown>, messageText?: string) {
+function sendFromOwnerChat(
+  params: Record<string, unknown>,
+  messageText?: string,
+) {
   return runLifeOperationHandler(
     runtime,
     {
@@ -175,9 +178,11 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     // Unconfirmed, from owner chat (not "autonomy") -> a PREVIEW, not a save.
     const preview = await sendFromOwnerChat(recurring);
     expect(preview).toMatchObject({ success: false });
-    expect(
-      (preview as { data?: Record<string, unknown> }).data,
-    ).toMatchObject({ deferred: true, saved: false, requiresConfirmation: true });
+    expect((preview as { data?: Record<string, unknown> }).data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
 
     // Confirming the same recurring create persists a real definition.
     const saved = await sendFromOwnerChat({
