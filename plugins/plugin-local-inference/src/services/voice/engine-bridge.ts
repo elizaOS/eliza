@@ -556,6 +556,16 @@ export class FfiOmniVoiceBackend implements TtsBackend, StreamingTtsBackend {
 	}
 }
 
+/** Warn once per process when the fused speaker runtime is absent (#12257). */
+let speakerAttributionUnavailableWarned = false;
+function warnSpeakerAttributionUnavailableOnce(reason: string): void {
+	if (speakerAttributionUnavailableWarned) return;
+	speakerAttributionUnavailableWarned = true;
+	logger.warn(
+		`[EngineVoiceBridge] Speaker attribution requested but ${reason}. Voice continues without attribution.`,
+	);
+}
+
 export interface EngineVoiceBridgeOptions {
 	/**
 	 * Bundle root on disk. Must contain `cache/voice-preset-default.bin`
@@ -1189,99 +1199,100 @@ export class EngineVoiceBridge {
 		// attribution pipeline wraps the fused encoder + diarizer + profile-store.
 		// Both run through the ONE fused `libelizainference` handle via its
 		// `eliza_inference_speaker_*` / `_diariz_*` ABI — there is no standalone
-		// `libvoice_classifier` runtime.
+		// `libvoice_classifier` runtime. The speaker ABI is probed synchronously
+		// here (`FusedSpeakerEncoder.isSupported`); the native session `load()`
+		// runs lazily on first encode/diarize.
 		//
-		// Fail-fast at ARM time: the fused speaker ABI is probed synchronously
-		// here (`FusedSpeakerEncoder.isSupported`). When the build does not
-		// advertise it, this throws `VoiceStartupError` rather than silently
-		// degrading attribution to "unknown speaker" on the first turn. The
-		// native session `load()` runs lazily on first encode/diarize, but the
-		// capability is decided up front.
+		// Degradation contract (#12257): when the fused speaker runtime is
+		// absent — no fused handle (e.g. the Kokoro-only TTS path) or a build
+		// without the speaker ABI — keep voice working WITHOUT attribution and
+		// warn exactly once. This is configured-absence, not silent error
+		// recovery (loud-fail invariant): voice still runs and the operator is
+		// told once, rather than crashing the session or attributing every turn
+		// to "unknown speaker" behind their back.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const fusedFfi = ffiHandle;
 			const fusedCtx = ffiContextRef;
 			if (!fusedFfi || !fusedCtx) {
-				throw new VoiceStartupError(
-					"missing-fused-build",
-					"[voice] Speaker-attribution requires the fused libelizainference handle (useFfiBackend). No standalone speaker runtime exists.",
+				warnSpeakerAttributionUnavailableOnce(
+					"the fused libelizainference handle is absent (useFfiBackend=false); no standalone speaker runtime exists",
 				);
-			}
-			if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
-				throw new VoiceStartupError(
-					"missing-fused-build",
-					"[voice] The loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0). Rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols).",
+			} else if (!FusedSpeakerEncoder.isSupported(fusedFfi)) {
+				warnSpeakerAttributionUnavailableOnce(
+					"the loaded libelizainference build lacks the speaker ABI (eliza_inference_speaker_supported() == 0); rebuild with the WeSpeaker forward graph linked in (eliza_inference_speaker_* symbols)",
 				);
-			}
-			// Fused encoder: probe passed above; the native session opens lazily
-			// on first encode() so voice-off does not keep the model resident.
-			let resolvedEncoder: SpeakerEncoder | null = null;
-			let encoderLoadError: Error | null = null;
-			const lazyEncoder: SpeakerEncoder = {
-				embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
-				sampleRate: SPEAKER_GGML_SAMPLE_RATE,
-				async encode(pcm: Float32Array): Promise<Float32Array> {
-					if (encoderLoadError) throw encoderLoadError;
-					if (!resolvedEncoder) {
-						try {
-							resolvedEncoder = await FusedSpeakerEncoder.load({
-								ffi: fusedFfi,
-								ctx: () => fusedCtx.ensure(),
-							});
-						} catch (err) {
-							encoderLoadError =
-								err instanceof Error ? err : new Error(String(err));
-							throw encoderLoadError;
-						}
-					}
-					return resolvedEncoder.encode(pcm);
-				},
-				async dispose(): Promise<void> {
-					await resolvedEncoder?.dispose();
-				},
-			};
-			selfVoiceImprint = new AgentSelfVoiceImprint({
-				encoder: lazyEncoder,
-			});
-			// Fused diarizer (optional). When the build does not advertise the
-			// diarizer ABI, attribution runs without it — a single-speaker turn
-			// collapses to one segment (the attribution-pipeline localSpeakerId=0
-			// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
-			// it refines multi-speaker windows, it is not required to attribute a
-			// single speaker.
-			let lazyDiarizer: Diarizer | undefined;
-			if (FusedDiarizer.isSupported(fusedFfi)) {
-				let resolvedDiarizer: Diarizer | null = null;
-				let diarizerLoadError: Error | null = null;
-				lazyDiarizer = {
-					modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+			} else {
+				// Fused encoder: probe passed above; the native session opens lazily
+				// on first encode() so voice-off does not keep the model resident.
+				let resolvedEncoder: SpeakerEncoder | null = null;
+				let encoderLoadError: Error | null = null;
+				const lazyEncoder: SpeakerEncoder = {
+					embeddingDim: SPEAKER_GGML_EMBEDDING_DIM,
 					sampleRate: SPEAKER_GGML_SAMPLE_RATE,
-					async diarizeWindow(pcm: Float32Array) {
-						if (diarizerLoadError) throw diarizerLoadError;
-						if (!resolvedDiarizer) {
+					async encode(pcm: Float32Array): Promise<Float32Array> {
+						if (encoderLoadError) throw encoderLoadError;
+						if (!resolvedEncoder) {
 							try {
-								resolvedDiarizer = await FusedDiarizer.load({
+								resolvedEncoder = await FusedSpeakerEncoder.load({
 									ffi: fusedFfi,
 									ctx: () => fusedCtx.ensure(),
 								});
 							} catch (err) {
-								diarizerLoadError =
+								encoderLoadError =
 									err instanceof Error ? err : new Error(String(err));
-								throw diarizerLoadError;
+								throw encoderLoadError;
 							}
 						}
-						return resolvedDiarizer.diarizeWindow(pcm);
+						return resolvedEncoder.encode(pcm);
 					},
 					async dispose(): Promise<void> {
-						await resolvedDiarizer?.dispose();
+						await resolvedEncoder?.dispose();
 					},
 				};
+				selfVoiceImprint = new AgentSelfVoiceImprint({
+					encoder: lazyEncoder,
+				});
+				// Fused diarizer (optional). When the build does not advertise the
+				// diarizer ABI, attribution runs without it — a single-speaker turn
+				// collapses to one segment (the attribution-pipeline localSpeakerId=0
+				// path). The diarizer is NOT a fail-fast gate (unlike the encoder):
+				// it refines multi-speaker windows, it is not required to attribute a
+				// single speaker.
+				let lazyDiarizer: Diarizer | undefined;
+				if (FusedDiarizer.isSupported(fusedFfi)) {
+					let resolvedDiarizer: Diarizer | null = null;
+					let diarizerLoadError: Error | null = null;
+					lazyDiarizer = {
+						modelId: PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+						sampleRate: SPEAKER_GGML_SAMPLE_RATE,
+						async diarizeWindow(pcm: Float32Array) {
+							if (diarizerLoadError) throw diarizerLoadError;
+							if (!resolvedDiarizer) {
+								try {
+									resolvedDiarizer = await FusedDiarizer.load({
+										ffi: fusedFfi,
+										ctx: () => fusedCtx.ensure(),
+									});
+								} catch (err) {
+									diarizerLoadError =
+										err instanceof Error ? err : new Error(String(err));
+									throw diarizerLoadError;
+								}
+							}
+							return resolvedDiarizer.diarizeWindow(pcm);
+						},
+						async dispose(): Promise<void> {
+							await resolvedDiarizer?.dispose();
+						},
+					};
+				}
+				attributionPipeline = new VoiceAttributionPipeline({
+					encoder: lazyEncoder,
+					...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
+					profileStore: opts.profileStore,
+				});
 			}
-			attributionPipeline = new VoiceAttributionPipeline({
-				encoder: lazyEncoder,
-				...(lazyDiarizer ? { diarizer: lazyDiarizer } : {}),
-				profileStore: opts.profileStore,
-			});
 		}
 
 		// W3-9 / F1 — construct the cancellation coordinator + optimistic policy
