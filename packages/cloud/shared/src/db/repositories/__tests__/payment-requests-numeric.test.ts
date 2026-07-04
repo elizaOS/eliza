@@ -63,6 +63,18 @@ describe("parsePaymentAmountCents", () => {
     expect(parsePaymentAmountCents("0", "amount_cents")).toBe(0);
   });
 
+  test("throws on fractional cents instead of materializing a corrupt money value", () => {
+    expect(() => parsePaymentAmountCents(12.3, "amount_cents")).toThrow(/not an integer/);
+    expect(() => parsePaymentAmountCents("12.3", "amount_cents")).toThrow(/not an integer/);
+    expect(() => parsePaymentAmountCents("-5.5", "amount_cents")).toThrow(/not an integer/);
+  });
+
+  test("throws on negative cents; zero is the only non-positive domain value", () => {
+    expect(() => parsePaymentAmountCents(-1n, "amount_cents")).toThrow(/negative/);
+    expect(() => parsePaymentAmountCents(-1, "amount_cents")).toThrow(/negative/);
+    expect(() => parsePaymentAmountCents("-1", "amount_cents")).toThrow(/negative/);
+  });
+
   test("throws on null / undefined instead of fabricating 0", () => {
     expect(() => parsePaymentAmountCents(null, "amount_cents")).toThrow(/amount_cents/);
     expect(() => parsePaymentAmountCents(undefined, "amount_cents")).toThrow(/empty or missing/);

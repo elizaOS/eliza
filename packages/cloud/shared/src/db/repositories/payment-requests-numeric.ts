@@ -37,6 +37,9 @@ export function parsePaymentAmountCents(
         `Unable to read payment ${fieldName}: value ${value} exceeds safe integer range`,
       );
     }
+    if (value < 0n) {
+      throw new Error(`Unable to read payment ${fieldName}: value is negative`);
+    }
     return Number(value);
   }
 
@@ -47,6 +50,12 @@ export function parsePaymentAmountCents(
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     throw new Error(`Unable to read payment ${fieldName}: value is not a finite number`);
+  }
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Unable to read payment ${fieldName}: value is not an integer`);
+  }
+  if (parsed < 0) {
+    throw new Error(`Unable to read payment ${fieldName}: value is negative`);
   }
   return parsed;
 }
