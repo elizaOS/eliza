@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   ensureServerName,
   getAdvertisedServerUrl,
+  getAutoStartAgentConfig,
   normalizeServerName,
 } from "../../src/config";
 
@@ -41,6 +42,33 @@ describe("ensureServerName", () => {
 
     expect(ensureServerName(env)).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
     expect(env.SERVER_NAME).toBe("8baf830a-2dc3-465d-b7ed-725fae3eaa56");
+  });
+});
+
+describe("getAutoStartAgentConfig", () => {
+  test("does not treat CHARACTER as a cloud character override", () => {
+    expect(getAutoStartAgentConfig({ CHARACTER: "Nyx" })).toBeUndefined();
+  });
+
+  test("requires CHARACTER_REF when AGENT_ID requests auto-start", () => {
+    expect(() =>
+      getAutoStartAgentConfig({
+        AGENT_ID: "agent-1",
+        CHARACTER: "Nyx",
+      }),
+    ).toThrow("CHARACTER_REF is required when AGENT_ID is set");
+  });
+
+  test("uses explicit AGENT_ID and CHARACTER_REF for auto-start", () => {
+    expect(
+      getAutoStartAgentConfig({
+        AGENT_ID: " agent-1 ",
+        CHARACTER_REF: " character-template-1 ",
+      }),
+    ).toEqual({
+      agentId: "agent-1",
+      characterRef: "character-template-1",
+    });
   });
 });
 

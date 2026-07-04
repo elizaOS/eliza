@@ -1,7 +1,11 @@
 // Runs the hosted agent-server index boundary for cloud runtime containers.
 import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
-import { ensureServerName, getRequiredEnv } from "./config";
+import {
+  ensureServerName,
+  getAutoStartAgentConfig,
+  getRequiredEnv,
+} from "./config";
 import { logger } from "./logger";
 import { getRedis } from "./redis";
 import { createRoutes } from "./routes";
@@ -30,8 +34,11 @@ for (const key of required) {
   }
 }
 
-if (process.env.AGENT_ID && !process.env.CHARACTER_REF) {
-  logger.error("CHARACTER_REF is required when AGENT_ID is set");
+let autoStartAgent: ReturnType<typeof getAutoStartAgentConfig>;
+try {
+  autoStartAgent = getAutoStartAgentConfig();
+} catch (err) {
+  logger.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
 
@@ -42,9 +49,8 @@ const manager = new AgentManager();
 // Initialize manager before accepting connections
 await manager.initialize();
 
-const agentId = process.env.AGENT_ID;
-const characterRef = process.env.CHARACTER_REF;
-if (agentId && characterRef) {
+if (autoStartAgent) {
+  const { agentId, characterRef } = autoStartAgent;
   await manager.startAgent(agentId, characterRef);
   logger.info("Auto-started agent", {
     agentId,
