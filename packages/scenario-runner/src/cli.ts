@@ -375,6 +375,9 @@ async function main(): Promise<number> {
     startedAtIso,
     completedAtIso,
     effectiveRunId,
+    // Sum real per-trajectory spend from <runDir>/trajectories/ so
+    // matrix.json's totalCostUsd reflects the run instead of a hardcoded 0.
+    effectiveRunDir,
   );
 
   if (parsed.exportNativePath && effectiveRunDir) {

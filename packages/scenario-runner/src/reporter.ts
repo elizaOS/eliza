@@ -16,18 +16,55 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
+/**
+ * Walk `<runDir>/trajectories/**\/*.json` and sum the real per-trajectory LLM
+ * spend so the aggregate report's `totalCostUsd` reflects what the run actually
+ * cost instead of a hardcoded `0`.
+ *
+ * Each persisted trajectory carries a top-level `metrics.totalCostUsd` (summed
+ * by the recorder from every model stage); we prefer that and fall back to
+ * summing `stages[].model.costUsd` directly when a trajectory predates the
+ * rolled-up metric. Only finite, non-negative values are counted — a corrupt
+ * or unreadable trajectory contributes `0` rather than poisoning the total with
+ * `NaN`. Returns `0` when no run dir / no trajectories exist (honest absence,
+ * not a fabricated spend of `0` on a real live run — callers pass a runDir only
+ * when trajectories were actually recorded).
+ */
+export function sumTrajectoryCostUsd(runDir: string | undefined): number {
+  if (!runDir) return 0;
+  const trajectoriesDir = path.join(runDir, "trajectories");
+  if (!existsSync(trajectoriesDir)) return 0;
+  let total = 0;
+  for (const file of collectFiles(trajectoriesDir)) {
+    if (!file.endsWith(".json")) continue;
+    const payload = asRecord(readJsonFile(file));
+    const rolled = asNumber(asRecord(payload.metrics).totalCostUsd);
+    if (rolled !== null && rolled >= 0) {
+      total += rolled;
+      continue;
+    }
+    // Fallback: sum stage-level costs for trajectories without a rolled metric.
+    const stages = Array.isArray(payload.stages) ? payload.stages : [];
+    for (const stage of stages) {
+      const stageCost = asNumber(asRecord(asRecord(stage).model).costUsd);
+      if (stageCost !== null && stageCost >= 0) total += stageCost;
+    }
+  }
+  return total;
+}
+
 export function buildAggregate(
   scenarios: ScenarioReport[],
   providerName: string | null,
   startedAtIso: string,
   completedAtIso: string,
   runId: string,
+  runDir?: string,
 ): AggregateReport {
   const totals = {
     passed: 0,
     failed: 0,
     skipped: 0,
-    flakyPassed: 0,
     costUsd: 0,
     finalChecksSkipped: 0,
   };
@@ -39,6 +76,7 @@ export function buildAggregate(
       if (check.status === "skipped") totals.finalChecksSkipped += 1;
     }
   }
+  totals.costUsd = sumTrajectoryCostUsd(runDir);
   return {
     runId,
     startedAtIso,
@@ -50,7 +88,6 @@ export function buildAggregate(
     passedCount: totals.passed,
     failedCount: totals.failed,
     skippedCount: totals.skipped,
-    flakyPassedCount: totals.flakyPassed,
     totalCostUsd: totals.costUsd,
   };
 }
