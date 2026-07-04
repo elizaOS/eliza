@@ -33,9 +33,6 @@ const { values: args } = parseArgs({
 const outputJson = args.json ?? false;
 const windowHours = Math.max(1, Number.parseInt(args.hours ?? "24", 10));
 
-// ---------------------------------------------------------------------------
-// Thresholds
-// ---------------------------------------------------------------------------
 const STALE_NPC_POST_MIN = 30; // no NPC post in this many minutes → STALE
 const STALE_ORG_POST_MIN = 15; // no org post in this many minutes → STALE
 const ARTICLES_PER_HOUR_WARN = 6; // more than this per hour → flood
@@ -48,9 +45,6 @@ const FIRST_WORDS_DUPE_WINDOW_MIN = 30; // look for first-N-word dupes
 const FIRST_WORDS_N = 8; // words to compare for near-dupe check
 const SAME_AUTHOR_DUPE_WINDOW_MIN = 30; // same author near-dupe window
 
-// ---------------------------------------------------------------------------
-// Color helpers
-// ---------------------------------------------------------------------------
 const reset = "\x1b[0m";
 const bold = "\x1b[1m";
 const red = "\x1b[31m";
@@ -349,9 +343,6 @@ async function run(): Promise<FeedHealthReport> {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // 5. Group chat quality
-  // -------------------------------------------------------------------------
   const chatWindowStart = new Date(now.getTime() - 60 * 60 * 1000); // last 1h
   const groupChatIds = await db
     .select({ id: chats.id })

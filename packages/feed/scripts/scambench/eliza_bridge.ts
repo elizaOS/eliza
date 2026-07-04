@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * ScamBench bridge for running benchmark prompts through a Feed/elizaOS agent.
+ * It adapts stdin bridge messages into runtime memories and returns model responses for the benchmark harness.
+ */
+
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import {

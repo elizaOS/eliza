@@ -1,10 +1,13 @@
+/**
+ * User profile-picture generator for Feed seed users.
+ * It creates deterministic prompt combinations and writes generated image metadata for manual selection.
+ */
+
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-// ── Subjects (animals, mythical creatures, characters) ───────────────
 export const SUBJECTS = [
-  // Animals — dignified and striking
   "a cat",
   "a wolf",
   "a fox",
@@ -21,7 +24,6 @@ export const SUBJECTS = [
   "a snow leopard",
   "an eagle",
   "a red panda",
-  // Mythical
   "a dragon",
   "a phoenix",
   "a griffin",
@@ -30,7 +32,6 @@ export const SUBJECTS = [
   "a celestial kirin",
   "a sea serpent",
   "a nine-tailed fox",
-  // Characters & archetypes — polished versions
   "a robot head",
   "an astronaut helmet",
   "a samurai helmet",
@@ -39,7 +40,6 @@ export const SUBJECTS = [
   "a space explorer",
   "a scholar with books",
   "a captain at the helm",
-  // Symbols & objects — elegant
   "a diamond",
   "a crown",
   "an hourglass",
@@ -50,7 +50,6 @@ export const SUBJECTS = [
   "a glowing lantern",
   "a golden coin",
   "a key",
-  // Abstract
   "a fractal flower",
   "a DNA helix",
   "a geometric eye",
@@ -58,16 +57,13 @@ export const SUBJECTS = [
   "a lotus flower",
 ];
 
-// ── Backgrounds ──────────────────────────────────────────────────────
 const BACKGROUNDS = [
-  // Abstract & pattern
   "a soft geometric gradient",
   "concentric circles in muted tones",
   "a mandala pattern",
   "liquid marble in deep blue and gold",
   "a topographic map in sepia",
   "a clean studio gradient",
-  // Color fields
   "a deep midnight blue",
   "a rich forest green",
   "a warm amber and gold gradient",
@@ -77,7 +73,6 @@ const BACKGROUNDS = [
   "an iridescent sheen",
   "a stark white minimalist backdrop",
   "a deep navy with stars",
-  // Environments
   "a dense jungle canopy",
   "an underwater coral reef",
   "a mountain range at dusk",
@@ -90,7 +85,6 @@ const BACKGROUNDS = [
   "a bamboo forest in mist",
 ];
 
-// ── Themes / moods — polished and appealing ──────────────────────────
 const THEMES = [
   "elegant and regal",
   "ethereal and dreamlike",
@@ -114,7 +108,6 @@ const THEMES = [
   "sophisticated and refined",
 ];
 
-// ── Art styles — polished, not meme-y ────────────────────────────────
 export const STYLES = [
   "3D Pixar render",
   "hand-drawn ink illustration",
@@ -143,7 +136,6 @@ export const STYLES = [
   "soft pastel illustration",
 ];
 
-// ── Prompt builder ───────────────────────────────────────────────────
 interface PfpSpec {
   index: number;
   subject: string;
@@ -162,7 +154,6 @@ export function buildPrompt(
   return `A polished profile picture avatar: ${subject}, ${theme} mood, rendered in ${style} style. Background: ${background}. Centered composition, close-up portrait framing, square crop. High quality, clean edges, no text, no watermarks, no logos.`;
 }
 
-// ── Deterministic shuffle ────────────────────────────────────────────
 function seededRandom(seed: number) {
   let s = seed;
   return () => {
@@ -180,7 +171,6 @@ function shuffle<T>(arr: T[], rand: () => number): T[] {
   return a;
 }
 
-// ── Generate 150 unique combos ──────────────────────────────────────
 function generateSpecs(): PfpSpec[] {
   const rand = seededRandom(777);
   const specs: PfpSpec[] = [];
@@ -224,7 +214,6 @@ function generateSpecs(): PfpSpec[] {
   return specs;
 }
 
-// ── Main ─────────────────────────────────────────────────────────────
 const CONCURRENCY = 20;
 const TIMEOUT_MS = 120_000;
 const OUTPUT_DIR = join(import.meta.dir, "..", "output", "user-pfps");

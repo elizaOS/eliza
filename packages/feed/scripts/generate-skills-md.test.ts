@@ -1,3 +1,8 @@
+/**
+ * Deterministic tests for Feed skill documentation generation.
+ * They exercise parser and markdown grouping behavior without network or runtime services.
+ */
+
 import { describe, expect, test } from "bun:test";
 import {
   generateSkillsMarkdown,

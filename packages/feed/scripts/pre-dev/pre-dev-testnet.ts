@@ -170,7 +170,6 @@ if (redisRunning.trim() !== "feed-redis") {
   console.info("✅ Redis is running", undefined, "Script");
 }
 
-// Run database migrations
 import {
   actorState,
   checkDatabaseHealth,

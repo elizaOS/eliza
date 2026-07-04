@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Trust-experiment matrix runner for Feed agents.
+ * It builds seeded agent cohorts, runs optional simulations, and writes comparative trust artifacts for training review.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";

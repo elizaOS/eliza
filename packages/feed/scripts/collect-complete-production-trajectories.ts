@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Production trajectory collector for validated Feed runs.
+ * It samples recent agents, verifies minimum trajectory and model-call coverage, and writes the reviewed corpus manifest.
+ */
+
 import { existsSync, promises as fs, mkdirSync } from "node:fs";
 import path from "node:path";
 import { config as loadEnvFile } from "dotenv";

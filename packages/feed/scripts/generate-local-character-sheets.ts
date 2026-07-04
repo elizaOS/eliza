@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Local character-sheet generator for Feed roster data.
+ * It materializes canonical character sheets and prints a concise roster summary for simulation setup.
+ */
+
 import path from "node:path";
 import { config } from "dotenv";
 import {

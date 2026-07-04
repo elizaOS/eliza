@@ -228,7 +228,6 @@ if (minioRunning.trim() !== MINIO_CONTAINER) {
   console.info("✅ MinIO is running");
 }
 
-// 8. Run database migrations and seed
 const LOCAL_DATABASE_URL =
   "postgresql://feed:feed_dev_password@localhost:5433/feed";
 process.env.DATABASE_URL = LOCAL_DATABASE_URL;

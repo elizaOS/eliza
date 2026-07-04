@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Integration-test launcher for Feed against a running web server.
+ * It manages server readiness, isolated workspaces, and optional test discovery for the app integration lane.
+ */
+
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import {
   cpSync,

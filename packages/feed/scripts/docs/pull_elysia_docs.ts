@@ -1,18 +1,11 @@
 #!/usr/bin/env bun
-import { mkdir } from "node:fs/promises";
 
 /**
- * Fetch Elysia documentation into local markdown files using Bun/TypeScript.
- *
- * Strategy:
- * - Read the public VitePress hashmap at https://elysiajs.com/hashmap.json to discover pages.
- * - Skip blog/playground/4koma.
- * - Try to download the `.md` source for each page.
- * - If `.md` is missing, fall back to HTML and do a lightweight HTML -> markdown pass.
- *
- * Usage:
- *   bun run scripts/pull_elysia_docs.ts [--base-url https://elysiajs.com] [--output elysia] [--workers 16]
+ * Elysia documentation mirror for Feed's local vendor references.
+ * It discovers public VitePress pages, skips non-reference areas, and writes markdown snapshots for offline use.
  */
+
+import { mkdir } from "node:fs/promises";
 
 const BASE_URL = "https://elysiajs.com";
 const HASHMAP_PATH = "/hashmap.json";

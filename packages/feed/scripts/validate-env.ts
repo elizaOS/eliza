@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Environment validation entrypoint for Feed deployments.
+ * It checks required service, database, cache, and game variables before local or deployed startup.
+ */
+
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 

@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Typecheck orchestrator for Feed workspace packages.
+ * It runs package-specific TypeScript projects in dependency order and builds declarations needed by downstream apps.
+ */
+
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 

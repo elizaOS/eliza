@@ -1,9 +1,13 @@
+/**
+ * Avatar profile-picture generator for Feed actor assets.
+ * It combines visual subject, place, and style prompts before sending image jobs to the configured generation service.
+ */
+
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fal } from "@fal-ai/client";
 
-// ── Cute Animals ──────────────────────────────────────────────────────
 const ANIMALS = [
   "dragon",
   "red panda",
@@ -57,7 +61,6 @@ const ANIMALS = [
   "ember cat",
 ];
 
-// ── San Francisco Landmarks ──────────────────────────────────────────
 const SF_LANDMARKS = [
   "the Golden Gate Bridge",
   "Alcatraz Island",
@@ -91,7 +94,6 @@ const SF_LANDMARKS = [
   "the San Francisco City Hall dome",
 ];
 
-// ── Occupations / Archetypes (from the hat matrix) ──────────────────
 const OCCUPATIONS = [
   // Black Hat
   "evil scammer",
@@ -125,7 +127,6 @@ const OCCUPATIONS = [
   "relationship builder",
 ];
 
-// ── Prompt builder ───────────────────────────────────────────────────
 interface AvatarSpec {
   index: number;
   animal: string;
@@ -142,7 +143,6 @@ function buildPrompt(
   return `a close-up portrait profile picture of a cute little ${animal} who is a ${occupation}, waist-up shot focused on their face, with ${landmark} in the background, drawn in a 3D pixar style, centered composition`;
 }
 
-// ── Deterministic shuffle (Fisher-Yates with seeded PRNG) ───────────
 function seededRandom(seed: number) {
   let s = seed;
   return () => {
@@ -160,13 +160,11 @@ function shuffle<T>(arr: T[], rand: () => number): T[] {
   return a;
 }
 
-// ── Generate 150 unique combos ──────────────────────────────────────
 function generateSpecs(): AvatarSpec[] {
   const rand = seededRandom(42);
   const specs: AvatarSpec[] = [];
   const seen = new Set<string>();
 
-  // Shuffle each list independently
   const animals = shuffle(ANIMALS, rand);
   const landmarks = shuffle(SF_LANDMARKS, rand);
   const occupations = shuffle(OCCUPATIONS, rand);
@@ -201,7 +199,6 @@ function generateSpecs(): AvatarSpec[] {
   return specs;
 }
 
-// ── Main ─────────────────────────────────────────────────────────────
 const CONCURRENCY = 20;
 const TIMEOUT_MS = 120_000; // 2 min per image max
 const OUTPUT_DIR = join(import.meta.dir, "..", "output", "avatar-pfps");

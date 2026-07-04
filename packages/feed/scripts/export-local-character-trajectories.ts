@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Local character trajectory exporter for Feed development databases.
+ * It matches canonical roster agents to recent trajectory rows and writes review artifacts for simulation tuning.
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";

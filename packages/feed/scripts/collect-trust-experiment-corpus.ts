@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Trust-experiment corpus collector for Feed trajectory outputs.
+ * It runs matrix/export cycles until configured corpus targets are met and records the aggregate collection manifest.
+ */
+
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";

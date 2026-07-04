@@ -342,12 +342,10 @@ async function takeLeaderboardSnapshot(): Promise<void> {
     }
   }
 
-  // Insert new snapshots
   for (let i = 0; i < topUsers.length; i++) {
     const user = topUsers[i]!;
     const rank = i + 1;
 
-    // Skip if user has already minted
     if (mintedUserIds.has(user.id)) {
       continue;
     }

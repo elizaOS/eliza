@@ -1,3 +1,8 @@
+/**
+ * Next.js server sourcemap pruning script for Feed deployments.
+ * It strips server sourcemap references from standalone output while leaving client assets intact.
+ */
+
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 

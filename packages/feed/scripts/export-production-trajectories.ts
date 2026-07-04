@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Production trajectory batch exporter for Feed training data.
+ * It pages through Postgres trajectory rows, writes JSONL batches, and records cursor metadata for resumable exports.
+ */
+
 import {
   createWriteStream,
   existsSync,

@@ -88,8 +88,7 @@ async function main() {
     try {
       const tiers = await TieredGroupService.ensureAllTiersExist(npc.id);
 
-      // Count new vs existing
-      const newTiers = tiers.filter((t) => t.memberCount === 1); // Only NPC owner = new
+      const newTiers = tiers.filter((t) => t.memberCount === 1);
 
       if (newTiers.length > 0) {
         logger.info(

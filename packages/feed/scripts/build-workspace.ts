@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Workspace build orchestrator for Feed packages and apps.
+ * It runs package builds in dependency order so local checks exercise the same artifacts used by integration lanes.
+ */
+
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 

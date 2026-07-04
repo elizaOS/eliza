@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+/**
+ * Testing skip inventory auditor for Feed.
+ * It scans source files for skipped tests and reports undocumented unconditional skips as tracked test debt.
+ */
+
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

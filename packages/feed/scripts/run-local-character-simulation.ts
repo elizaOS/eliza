@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Local character simulation runner for Feed.
+ * It creates roster-backed agents, executes world and agent ticks, and writes trajectory artifacts for behavior review.
+ */
+
 import path from "node:path";
 import { parseArgs } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";

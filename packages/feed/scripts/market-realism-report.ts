@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Market realism report for Feed prediction and perpetual markets.
+ * It reads recent market history, computes realism metrics, and emits either text diagnostics or JSON.
+ */
+
 import { parseArgs } from "node:util";
 import { db } from "@feed/db";
 import {

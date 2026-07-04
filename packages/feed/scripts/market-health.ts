@@ -37,9 +37,6 @@ const outputJson = args.json ?? false;
 const watchMode = args.watch ?? false;
 const intervalSec = Math.max(5, Number.parseInt(args.interval ?? "30", 10));
 
-// ---------------------------------------------------------------------------
-// Thresholds (named so they're easy to tune)
-// ---------------------------------------------------------------------------
 const PRED_EXTREME_LOW = 0.05; // odds below this → EXTREME
 const PRED_EXTREME_HIGH = 0.95; // odds above this → EXTREME
 const PRED_THIN_LIQUIDITY = 5_000; // USD below this → THIN
@@ -50,9 +47,6 @@ const PERP_STALE_INDEX_PCT = 0.1; // |current - index| / index → STALE_INDEX
 const PERP_HIGH_FUNDING_APR = 0.3; // annual funding rate magnitude → HIGH_FUNDING
 const PERP_STALE_QUOTE_MIN = 30; // minutes since quoteUpdatedAt → STALE_QUOTE
 
-// ---------------------------------------------------------------------------
-// Color helpers
-// ---------------------------------------------------------------------------
 const reset = "\x1b[0m";
 const bold = "\x1b[1m";
 const red = "\x1b[31m";

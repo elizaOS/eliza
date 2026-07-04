@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
 
+/**
+ * Environment-variable audit for Feed workspaces.
+ * It compares declared, referenced, and platform-provided keys so runtime env contract drift is visible.
+ */
+
 import {
   existsSync,
   readdirSync,
