@@ -5,10 +5,11 @@
  *
  * The store holds `LifeOpsOwnerProfile` plus the facts
  * (`travelBookingPreferences`, `quietHours`, `morningWindow`,
- * `eveningWindow`, `preferredNotificationChannel`, `locale`). Each entry
- * carries a provenance record so call sites can distinguish a value the user
- * typed in first-run customize from one the agent inferred from a connector
- * — and so audits can trace the origin.
+ * `eveningWindow`, `preferredNotificationChannel`, `locale`, and the learned
+ * `scheduleStyle`/`chronotype` classifications). Each entry carries a
+ * provenance record so call sites can distinguish a value the user typed in
+ * first-run customize from one the agent inferred from a connector — and so
+ * audits can trace the origin.
  *
  * Reminder intensity and escalation policy flows write into the store's policy
  * entries.
@@ -99,6 +100,20 @@ export type ReminderIntensity =
   | "persistent"
   | "high_priority_only";
 
+/**
+ * Learned classification of the owner's day-to-day schedule shape, derived
+ * from observed sleep regularity (`owner/schedule-style.ts`). `rotating`
+ * means the wake times cluster into two distinct, internally-tight bands
+ * (shift-work pattern) rather than being merely noisy.
+ */
+export type OwnerScheduleStyle = "regular" | "irregular" | "rotating";
+
+/**
+ * Learned chronotype label derived from the owner's mid-sleep point
+ * (`owner/schedule-style.ts`). Thresholds approximate MCTQ terciles.
+ */
+export type OwnerChronotype = "early" | "intermediate" | "late";
+
 export interface EscalationRule {
   /** Optional definition id this rule scopes to; null = global default. */
   definitionId: string | null;
@@ -133,6 +148,10 @@ export interface OwnerFacts {
   locale?: OwnerFactEntry<string>;
   timezone?: OwnerFactEntry<string>;
 
+  // Learned rhythm classification (written by owner/schedule-style-writer.ts)
+  scheduleStyle?: OwnerFactEntry<OwnerScheduleStyle>;
+  chronotype?: OwnerFactEntry<OwnerChronotype>;
+
   // Policies (writable via the policy-aware setters; read-only here)
   reminderIntensity?: OwnerFactEntry<ReminderIntensity>;
   escalationRules?: OwnerFactEntry<EscalationRule[]>;
@@ -153,6 +172,8 @@ export interface OwnerFactsPatch {
   preferredNotificationChannel?: string;
   locale?: string;
   timezone?: string;
+  scheduleStyle?: OwnerScheduleStyle;
+  chronotype?: OwnerChronotype;
 }
 
 export interface PolicyPatchReminderIntensity {
@@ -272,6 +293,14 @@ function isReminderIntensity(value: unknown): value is ReminderIntensity {
   );
 }
 
+function isScheduleStyle(value: unknown): value is OwnerScheduleStyle {
+  return value === "regular" || value === "irregular" || value === "rotating";
+}
+
+function isChronotype(value: unknown): value is OwnerChronotype {
+  return value === "early" || value === "intermediate" || value === "late";
+}
+
 function isProvenanceSource(
   value: unknown,
 ): value is OwnerFactProvenanceSource {
@@ -368,6 +397,17 @@ function normalizeReminderIntensityEntry(
   return { value: value.value, provenance };
 }
 
+function normalizeEnumEntry<T>(
+  value: unknown,
+  guard: (candidate: unknown) => candidate is T,
+): OwnerFactEntry<T> | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  if (!guard(value.value)) return undefined;
+  const provenance = normalizeProvenance(value.provenance);
+  if (!provenance) return undefined;
+  return { value: value.value, provenance };
+}
+
 function normalizeEscalationRule(value: unknown): EscalationRule | null {
   if (!isPlainRecord(value)) return null;
   const definitionId =
@@ -436,6 +476,13 @@ function normalizeRecord(value: unknown): PersistedRecord {
   if (quiet) facts.quietHours = quiet;
   const activeTravel = normalizeActiveTravelEntry(stored.activeTravel);
   if (activeTravel) facts.activeTravel = activeTravel;
+  const scheduleStyle = normalizeEnumEntry(
+    stored.scheduleStyle,
+    isScheduleStyle,
+  );
+  if (scheduleStyle) facts.scheduleStyle = scheduleStyle;
+  const chronotype = normalizeEnumEntry(stored.chronotype, isChronotype);
+  if (chronotype) facts.chronotype = chronotype;
   const intensity = normalizeReminderIntensityEntry(stored.reminderIntensity);
   if (intensity) facts.reminderIntensity = intensity;
   const escalation = normalizeEscalationRulesEntry(stored.escalationRules);
@@ -478,6 +525,8 @@ interface NormalizedPatch {
   morningWindow?: OwnerFactWindow;
   eveningWindow?: OwnerFactWindow;
   quietHours?: OwnerQuietHours;
+  scheduleStyle?: OwnerScheduleStyle;
+  chronotype?: OwnerChronotype;
 }
 
 function normalizePatch(patch: OwnerFactsPatch): NormalizedPatch {
@@ -523,6 +572,12 @@ function normalizePatch(patch: OwnerFactsPatch): NormalizedPatch {
       endLocal: patch.quietHours.endLocal,
       timezone: patch.quietHours.timezone,
     };
+  }
+  if (isScheduleStyle(patch.scheduleStyle)) {
+    result.scheduleStyle = patch.scheduleStyle;
+  }
+  if (isChronotype(patch.chronotype)) {
+    result.chronotype = patch.chronotype;
   }
   return result;
 }
@@ -577,7 +632,9 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
       !hasStringPatch &&
       !normalized.morningWindow &&
       !normalized.eveningWindow &&
-      !normalized.quietHours
+      !normalized.quietHours &&
+      !normalized.scheduleStyle &&
+      !normalized.chronotype
     ) {
       const current = await this.read();
       return current;
@@ -620,6 +677,18 @@ class CacheBackedOwnerFactStore implements OwnerFactStore {
     if (normalized.quietHours) {
       next.quietHours = {
         value: { ...normalized.quietHours },
+        provenance: { ...provenance },
+      };
+    }
+    if (normalized.scheduleStyle) {
+      next.scheduleStyle = {
+        value: normalized.scheduleStyle,
+        provenance: { ...provenance },
+      };
+    }
+    if (normalized.chronotype) {
+      next.chronotype = {
+        value: normalized.chronotype,
         provenance: { ...provenance },
       };
     }
@@ -773,6 +842,18 @@ function cloneFacts(facts: OwnerFacts): OwnerFacts {
   }
   if (facts.locale) next.locale = cloneStringEntry(facts.locale);
   if (facts.timezone) next.timezone = cloneStringEntry(facts.timezone);
+  if (facts.scheduleStyle) {
+    next.scheduleStyle = {
+      value: facts.scheduleStyle.value,
+      provenance: { ...facts.scheduleStyle.provenance },
+    };
+  }
+  if (facts.chronotype) {
+    next.chronotype = {
+      value: facts.chronotype.value,
+      provenance: { ...facts.chronotype.provenance },
+    };
+  }
   if (facts.reminderIntensity) {
     next.reminderIntensity = {
       value: facts.reminderIntensity.value,

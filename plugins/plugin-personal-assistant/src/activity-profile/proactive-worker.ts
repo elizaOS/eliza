@@ -35,6 +35,7 @@ import {
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { learnScheduleStyleFacts } from "../lifeops/owner/schedule-style-writer.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import {
   PROACTIVE_TASK_NAME,
@@ -216,6 +217,25 @@ export async function executeProactiveTask(
         error: error instanceof Error ? error.message : String(error),
       },
       "[proactive] rhythm-window learning failed; continuing tick (best-effort learning)",
+    );
+  }
+
+  // Schedule-style learning (#12284 WI-5): classify the observed sleep
+  // regularity into the queryable scheduleStyle/chronotype owner facts.
+  // Same best-effort contract as the window learner above — idempotent, so
+  // an unchanged classification writes nothing.
+  // error-policy:J7 learning is a diagnostic side-effect of the maintenance
+  // tick; a transient store/DB failure must not abort the tick loop.
+  try {
+    await learnScheduleStyleFacts(runtime, now);
+  } catch (error) {
+    logger.warn(
+      {
+        src: "lifeops:activity-profile:proactive-worker",
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[proactive] schedule-style learning failed; continuing tick (best-effort learning)",
     );
   }
 

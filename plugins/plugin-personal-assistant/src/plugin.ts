@@ -1419,11 +1419,13 @@ export {
 export {
   type EscalationRule,
   getOwnerFactStore,
+  type OwnerChronotype,
   type OwnerFactEntry,
   type OwnerFactProvenance,
   type OwnerFactProvenanceSource,
   type OwnerFactWindow,
   type OwnerQuietHours,
+  type OwnerScheduleStyle,
   ownerFactsToView,
   type PolicyPatchEscalationRule,
   type PolicyPatchReminderIntensity,
