@@ -36,6 +36,7 @@ import { MusicLibraryCharacterWidget } from "../components/character/MusicLibrar
 import { AgentActivityWidget } from "../components/chat/widgets/agent-activity";
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { AGENT_PROVISIONING_HOME_WIDGET } from "../components/chat/widgets/agent-provisioning";
+import { AutomationsWidget } from "../components/chat/widgets/automations";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status.helpers";
 import { CALENDAR_HOME_WIDGET } from "../components/chat/widgets/calendar-upcoming";
 import { FINANCES_HOME_WIDGET } from "../components/chat/widgets/finances-alerts";
@@ -50,7 +51,6 @@ import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
-import { AutomationsWidget } from "../components/chat/widgets/automations";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 

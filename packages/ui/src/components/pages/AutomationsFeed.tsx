@@ -226,7 +226,8 @@ export function AutomationsFeed({
     role: "button",
     label: t("automationsfeed.new", { defaultValue: "New" }),
     group: "automations-actions",
-    description: "Focus Automations chat to create a workflow or prompt automation",
+    description:
+      "Focus Automations chat to create a workflow or prompt automation",
     onActivate: focusAutomationChat,
   });
 
@@ -536,7 +537,8 @@ export function AutomationsFeed({
                 </p>
                 <p className="text-xs text-muted-strong">
                   {t("automationsfeed.emptySub", {
-                    defaultValue: "Workflows and prompt automations you create run here.",
+                    defaultValue:
+                      "Workflows and prompt automations you create run here.",
                   })}
                 </p>
               </div>

@@ -109,8 +109,13 @@ describe("AutomationsWidget", () => {
     );
     render(<AutomationsWidget />);
     await screen.findByText("Daily digest");
-    expect(screen.getByText("Automations")).toBeTruthy();
-    expect(screen.queryByText("Tasks")).toBeNull();
+    // The label is folded into the card's hover title + aria-label (icon-only
+    // card), never rendered as visible text — so assert the accessible name.
+    const card = screen.getByTestId("chat-widget-workflows");
+    expect(card.getAttribute("title")).toBe("Automations");
+    const ariaLabel = card.getAttribute("aria-label") ?? "";
+    expect(ariaLabel).toContain("Running automations");
+    expect(ariaLabel).not.toContain("Running tasks");
   });
 
   it("surfaces a boot-seeded scheduled task as the running task", async () => {
