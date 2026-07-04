@@ -68,8 +68,8 @@ function isLoopbackHostname(hostname: string): boolean {
 
 function setInjectedGlobal(key: string, value: string): void {
   try {
-    const w = window as unknown as Record<string, unknown>;
-    w[key] = value;
+    // Reflect.set gives a typed dynamic-key write without casting `window`.
+    Reflect.set(window, key, value);
   } catch {
     // best-effort — never block boot
   }
@@ -141,13 +141,11 @@ function injectedWsBaseIsForeignLoopback(value: unknown): boolean {
  */
 export function repairWebSameOriginWsBase(): void {
   if (!isPlainWebSameOriginContext()) return;
-  const w = window as unknown as {
-    __ELIZA_WS_BASE__?: unknown;
-    __ELIZAOS_WS_BASE__?: unknown;
-  };
+  // Reflect.get reads the injected globals without casting `window`; the
+  // values flow into injectedWsBaseIsForeignLoopback's `unknown` parameter.
   const anyForeign =
-    injectedWsBaseIsForeignLoopback(w.__ELIZA_WS_BASE__) ||
-    injectedWsBaseIsForeignLoopback(w.__ELIZAOS_WS_BASE__);
+    injectedWsBaseIsForeignLoopback(Reflect.get(window, "__ELIZA_WS_BASE__")) ||
+    injectedWsBaseIsForeignLoopback(Reflect.get(window, "__ELIZAOS_WS_BASE__"));
   if (!anyForeign) return;
 
   // 1) WS base → same-origin wss://<host>.
@@ -155,11 +153,10 @@ export function repairWebSameOriginWsBase(): void {
   setInjectedGlobal("__ELIZA_WS_BASE__", wsTarget);
   setInjectedGlobal("__ELIZAOS_WS_BASE__", wsTarget);
   try {
-    const wRecord = window as unknown as Record<string, unknown>;
-    for (const key of Object.keys(wRecord)) {
+    for (const key of Object.keys(window)) {
       if (
         /^__[A-Z0-9]+_WS_BASE__$/.test(key) &&
-        injectedWsBaseIsForeignLoopback(wRecord[key])
+        injectedWsBaseIsForeignLoopback(Reflect.get(window, key))
       ) {
         setInjectedGlobal(key, wsTarget);
       }
