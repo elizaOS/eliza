@@ -5,20 +5,32 @@ Real-hardware counterpart to the simulator/emulator lifecycle lane
 `.github/issue-evidence/12185-device-lifecycle/`). Everything here was run
 against ONE owner-authorized physical device and nothing else.
 
-## TL;DR outcome
+## TL;DR outcome — EXECUTED (USB-cabled)
 
 - **Device build + code-sign: SUCCEEDED** on real A18 Pro hardware (full-Bun
   engine, `** BUILD SUCCEEDED **`, `codesign --verify --deep --strict` OK).
-- **Install on MoonCycles: BLOCKED** — the device is paired over a wireless
-  (localNetwork) tunnel with **no USB cable**, and CoreDevice does not offer the
-  `installapp` capability over wireless. First install requires a cable, which a
-  headless environment cannot provide. This is the exact blocker; it is a
-  transport limitation, not a signing or code failure.
-- **Lifecycle events: not executed this session** (install is their
-  prerequisite). The committed `AppUITests/DeviceLifecycleUITests` harness is
-  ready and every event's backing CoreDevice/XCUITest primitive is confirmed
-  present on the device — see `matrix.md` (authoritative) and
-  `device-capabilities-wireless.txt`.
+- **Install on MoonCycles: SUCCEEDED — via the usbmux `installation_proxy`
+  (`ideviceinstaller`), not devicectl.** The USB cable made the transport `wired`
+  but did **not** restore CoreDevice's `installapp` capability (absent from the
+  device's capability list even USB-cabled), so `devicectl device install app`
+  still fails with `CoreDeviceError 1001`. The classic usbmux installer — which
+  bypasses CoreDevice — installed the signed app cleanly (`InstallComplete
+  (100%)`; `ideviceinstaller list → ai.elizaos.app, "1.0", "Eliza"`). See
+  `install-run-usb.log`. The prior "wireless-only" diagnosis was incomplete: the
+  block is a CoreDevice/Xcode-side capability gap, not a transport one.
+- **Lifecycle events: EXECUTED — all PASS.** Launch, app-switch (Settings), real
+  Camera switch, orientation (real landscape reflow), suspend/resume, memory-pressure
+  warning, and true process death (terminate → fresh-PID recovery) were driven
+  against the running app via `devicectl device process …` + `devicectl device
+  orientation set`, with real-device screenshots via `pymobiledevice3 developer dvt
+  screenshot --userspace` and a RunningBoard syslog timeline. Process identity was
+  tracked to prove **survive** (PID 1151 held) vs **recover** (fresh PID 1173 after
+  the kill). See `matrix.md` (authoritative) + `lifecycle-capture/`.
+- **Committed `AppUITests/DeviceLifecycleUITests` harness: NOT runnable headless.**
+  `xcodebuild build-for-testing -allowProvisioningUpdates` cannot sign the test
+  runner without an Xcode Apple ID account (`No Accounts`), and the appexes trip
+  App-Group entitlement errors a test build cannot strip. See `harness-capture.log`.
+  The direct `devicectl` drive reaches the same OS lifecycle transitions.
 
 ## Device under test (the only device touched)
 
@@ -77,22 +89,36 @@ device build; none are code changes to the app:
    `ios-attachment-smoke.ts`) was missing from the shared parent node_modules
    (installed before the dependency was added) — installed targeted.
 
-## What is drivable on real hardware vs simulator-only
+## What was driven on real hardware vs simulator-only
 
-The honest delta is captured in `matrix.md`. The XCUITest driver
-(`AppUITests/DeviceLifecycleUITests`, committed) delivers the events the
-simulator lane must mark N/A — Home-button backgrounding, the real Camera app,
-orientation, and true process death — screenshotting the real pixels via
-`XCUIScreen` and hard-asserting foreground + live-renderer recovery after each.
-The events a physical battery / ringer switch / lock button do not expose to the
-public XCUITest API stay honest N/A rows with the precise reason.
+The honest delta is captured in `matrix.md`. The committed XCUITest driver
+(`AppUITests/DeviceLifecycleUITests`) is the intended vehicle, but it cannot
+build headless (no Xcode account to sign the `.xctrunner` test runner). The same
+events the simulator lane must mark N/A — real-app backgrounding, the real Camera
+app, real orientation change, and true process death — were instead driven
+directly against the installed app via `devicectl device process …` +
+`devicectl device orientation set`, with real-device screenshots
+(`pymobiledevice3 developer dvt screenshot --userspace`) and a RunningBoard
+syslog timeline. Every event PASSED: the app returned foreground with a live
+renderer, and process identity proved survive (PID 1151) vs recover (fresh PID
+1173). The events a physical battery / ringer switch / lock button do not expose
+to any driver stay honest N/A rows with the precise hardware-truth reason.
 
 ## Files
 
-- `matrix.md` — the per-event real-hardware matrix (drivable? → pass/fail/N-A).
-- `device-capabilities-wireless.txt` — the CoreDevice capability list captured
-  over the wireless tunnel, including the missing `installapp` capability.
-- `device-info-mooncycles.json` — device identity and transport metadata for
-  the single owner-authorized iPhone targeted by this run.
-- `signed-app-verification.txt` — `codesign` inspection and strict verification
-  of the signed device app that was prepared for install.
+- `matrix.md` — the per-event real-hardware matrix (how driven → executed result).
+- `install-run-usb.log` — the devicectl `CoreDeviceError 1001` (installapp absent
+  even wired) + the successful usbmux `ideviceinstaller` install.
+- `harness-capture.log` — the `xcodebuild build-for-testing` runner-signing block
+  (`No Accounts` + appex App-Group entitlements) that makes the XCUITest harness
+  unrunnable headless.
+- `deploy-build.log`, `signed-app-verification.txt` — build/sign of the staged app.
+- `device-info-mooncycles.json` — device identity + transport metadata for the one
+  owner-authorized iPhone; `device-capabilities-wireless.txt` — a CoreDevice
+  capability list documenting the missing `installapp` capability.
+- `lifecycle-capture/` — the 12 real-device screenshots (one per event, foreground +
+  refocus) and `device-console-timeline.log` (curated RunningBoard jetsam/launch/
+  terminate timeline for `ai.elizaos.app`: 100=foreground, 40=background, 0=suspended;
+  PID 1151 survive vs PID 1173 recover). The in-process full-Bun agent has no TCP
+  port, so this RunningBoard timeline + the fresh-PID relaunch is the agent-recovery
+  evidence (replacing the sim lane's `:31337` loopback probe).

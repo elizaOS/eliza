@@ -1,0 +1,37 @@
+[0m[2m[35m$[0m [2m[1mnode scripts/ios-device-deploy.mjs --device "00008140-0006491E2E90801C" --skip-build --skip-appexes[0m
+Failed to load provisioning paramter list due to error: Error Domain=com.apple.dt.CoreDeviceError Code=1002 "No provider was found." UserInfo={NSLocalizedDescription=No provider was found.}.
+`devicectl manage create` may support a reduced set of arguments.
+[ios-device-deploy] device: MoonCycles (identifier 59EBB356-BC44-5AA2-91F1-E6AAE756BB86, udid 00008140-0006491E2E90801C)
+[ios-device-deploy] --skip-build: reusing existing build products
+[ios-device-deploy] staged /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-ada83a1efd792e4c5/packages/app/ios/build/device-deploy-dd/Build/Products/Debug-iphoneos/App.app → /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-ada83a1efd792e4c5/packages/app/ios/build/device-deploy-stage/App.app
+[ios-device-deploy] --skip-appexes: stripped 5 extension(s): DeviceActivityMonitorExtension.appex, DeviceActivityReportExtension.appex, ElizaKeyboard.appex, ElizaWidgets.appex, WebsiteBlockerContentExtension.appex — widgets/keyboard/device-activity surfaces will be MISSING from this install
+[ios-device-deploy] scanned 1 provisioning profile(s)
+[ios-device-deploy] app profile: iOS Team Provisioning Profile: ai.elizaos.app (/Users/shawwalters/Library/MobileDevice/Provisioning Profiles/0b619c06-f72a-4ab1-bd84-c767919bf594.mobileprovision), expires 2027-06-22T21:10:32.000Z
+[ios-device-deploy] signing identity: Apple Development: Shaw Walters (UT5K5Q5EVF) (96A036FCADC6BCD189190DD30D8AA4988C6F76B8)
+[ios-device-deploy] codesign plan: 6 step(s) (3 frameworks, 2 nested dylibs, 0 appexes, 1 app)
+[ios-device-deploy] codesign --verify --deep --strict: OK
+[ios-device-deploy] installing via devicectl…
+Failed to load provisioning paramter list due to error: Error Domain=com.apple.dt.CoreDeviceError Code=1002 "No provider was found." UserInfo={NSLocalizedDescription=No provider was found.}.
+`devicectl manage create` may support a reduced set of arguments.
+14:40:17  Enabling developer disk image services.
+14:40:17  Acquired usage assertion.
+ERROR: The capability "Install Application" is not supported by this device. (com.apple.dt.CoreDeviceError error 1001 (0x3E9))
+       CapabilityFeatureIdentifier = com.apple.coredevice.feature.installapp
+       CapabilityName = Install Application
+       DeviceIdentifier = 59EBB356-BC44-5AA2-91F1-E6AAE756BB86
+[ios-device-deploy] ERROR: xcrun devicectl device install app --device 59EBB356-BC44-5AA2-91F1-E6AAE756BB86 /Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/agent-ada83a1efd792e4c5/packages/app/ios/build/device-deploy-stage/App.app exited with 1
+[0m[31merror[0m[2m:[0m script [1m"ios:device:deploy"[0m exited with code 1[0m
+Uploading App.app package contents... DONE.
+Installing 'ai.elizaos.app'
+Install: CreatingStagingDirectory (5%)
+Install: ExtractingPackage (15%)
+Install: InspectingPackage (20%)
+Install: PreflightingApplication (30%)
+Install: VerifyingApplication (40%)
+Install: CreatingContainer (50%)
+Install: InstallingApplication (60%)
+Install: PostflightingApplication (70%)
+Install: SandboxingApplication (80%)
+Install: GeneratingApplicationMap (90%)
+Install: InstallComplete (100%)
+Install: Complete

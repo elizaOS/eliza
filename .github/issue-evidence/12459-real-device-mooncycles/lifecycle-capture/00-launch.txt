@@ -1,0 +1,5 @@
+Failed to load provisioning paramter list due to error: Error Domain=com.apple.dt.CoreDeviceError Code=1002 "No provider was found." UserInfo={NSLocalizedDescription=No provider was found.}.
+`devicectl manage create` may support a reduced set of arguments.
+14:51:20  Enabling developer disk image services.
+14:51:21  Acquired usage assertion.
+Launched application with ai.elizaos.app bundle identifier.
