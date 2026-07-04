@@ -3,7 +3,7 @@
  * needed, and routes speech through the runtime transcription model.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type { XRAudioHeader } from "../protocol/xr.ts";
 
 // Whisper expects raw Float32 PCM to arrive in a WAV container.
@@ -110,8 +110,14 @@ export class AudioPipeline {
 				await this.onTranscript(connectionId, text);
 			}
 		} catch (err) {
-			// log but don't crash the pipeline
-			console.error("[plugin-facewear/xr] transcription error:", err);
+			// error-policy:J7 transcription runs in a fire-and-forget flush loop
+			// (timer + close handlers); surface the failure observably without
+			// killing the loop.
+			logger.warn(
+				{ err, connectionId },
+				"[AudioPipeline] transcription failed",
+			);
+			this.runtime.reportError("AudioPipeline.flush", err, { connectionId });
 		}
 	}
 

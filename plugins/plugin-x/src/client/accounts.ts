@@ -198,7 +198,10 @@ async function readRuntimeAccountRecord(
         },
       };
     }
-  } catch {}
+  } catch {
+    // error-policy:J4 this account source did not resolve; fall through to the
+    // next lookup strategy below.
+  }
 
   try {
     const store = accountRuntime.getConnectorAccountStore?.("x");

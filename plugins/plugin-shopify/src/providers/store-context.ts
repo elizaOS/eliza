@@ -48,8 +48,23 @@ export const storeContextProvider: Provider = {
     try {
       const [shop, productCount, orderCount] = await Promise.all([
         svc.getShop(),
-        svc.getProductCount().catch(() => null),
-        svc.getOrderCount().catch(() => null),
+        // error-policy:J7 counts are supplementary context enrichment; surface a
+        // fetch failure via reportError and omit the line rather than blocking
+        // the whole provider on a secondary metric.
+        svc.getProductCount().catch((error) => {
+          runtime.reportError(
+            "ShopifyStoreContextProvider.getProductCount",
+            error,
+          );
+          return null;
+        }),
+        svc.getOrderCount().catch((error) => {
+          runtime.reportError(
+            "ShopifyStoreContextProvider.getOrderCount",
+            error,
+          );
+          return null;
+        }),
       ]);
 
       const contextText = [

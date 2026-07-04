@@ -912,7 +912,10 @@ export class ClientBase {
         this.formatTweetToInteraction(tweet),
       );
     } catch (error) {
-      logger.error("Error fetching Twitter interactions:", errorDetail(error));
+      // error-policy:J7 a mentions/interactions fetch failure must surface to the
+      // agent rather than reading as no interactions; degrade to an empty list
+      // after reporting.
+      this.runtime.reportError("XClientBase.getInteractions", error);
       return [];
     }
   }

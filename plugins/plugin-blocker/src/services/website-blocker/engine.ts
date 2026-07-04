@@ -1502,6 +1502,9 @@ async function lookupResolvedAddressesForWebsiteBlock(
     });
     return [...new Set(results.map((entry) => entry.address))];
   } catch {
+    // error-policy:J4 resolved-IP sinkholing is supplementary; the hostname block
+    // in the hosts file is the primary mechanism, so an unresolvable name degrades
+    // to no extra IP rules rather than failing the whole block.
     return [];
   }
 }

@@ -107,8 +107,11 @@ export class AudioPipeline {
 				await this.onTranscript(connectionId, text);
 			}
 		} catch (err) {
-			// log but don't crash the pipeline
-			console.error("[plugin-xr] transcription error:", err);
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — one utterance's
+			// TRANSCRIPTION failure must not tear down the streaming audio pipeline,
+			// but a systemic model misconfiguration must not stay invisible (it was
+			// only console.error before). Surface it so it reaches the error surface.
+			this.runtime.reportError("AudioPipeline.flush", err, { connectionId });
 		}
 	}
 

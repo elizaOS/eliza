@@ -43,16 +43,14 @@ export class VisionPipeline {
 
 		const dataUrl = `data:image/${frame.header.format};base64,${frame.data.toString("base64")}`;
 
-		try {
-			const description = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-				imageUrl: dataUrl,
-				prompt: prompt ?? "Describe what you see in this image concisely.",
-			});
-			return typeof description === "string" ? description : null;
-		} catch (err) {
-			console.error("[plugin-facewear/xr] vision error:", err);
-			return null;
-		}
+		// A model failure must surface as an action error via the planner loop, not
+		// be swallowed into `null` — which the caller renders as "no recent frame"
+		// and hides the real failure. A `null` return means only "no fresh frame".
+		const description = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+			imageUrl: dataUrl,
+			prompt: prompt ?? "Describe what you see in this image concisely.",
+		});
+		return typeof description === "string" ? description : null;
 	}
 
 	clear(connectionId: string): void {

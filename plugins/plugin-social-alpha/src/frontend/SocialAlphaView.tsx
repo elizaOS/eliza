@@ -154,6 +154,7 @@ export function SocialAlphaView(props: SocialAlphaViewProps = {}): ReactNode {
 						prev.kind === "ready" ? { kind: "ready", entries } : prev,
 					);
 				})
+				// error-policy:J5 transient background-poll failure; errors surface via the explicit load()/Retry path above
 				.catch(() => {});
 		}, POLL_INTERVAL_MS);
 		return () => clearInterval(id);

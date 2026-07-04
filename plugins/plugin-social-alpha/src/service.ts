@@ -25,6 +25,7 @@ function logValue(value: unknown): string {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// error-policy:J3 value may be non-serializable (circular); String() is a valid representation
 		return String(value);
 	}
 }
@@ -140,6 +141,7 @@ function parseJsonObject<T extends Record<string, unknown>>(
 			? (parsed as T)
 			: null;
 	} catch {
+		// error-policy:J3 untrusted LLM/string input; malformed JSON is an invalid result, not a failure
 		return null;
 	}
 }
@@ -961,8 +963,18 @@ export class CommunityInvestorService
 			}
 			throw new Error(`Chain ${chain} not supported for price fetching`);
 		} catch (error) {
-			logger.error(`Error fetching current price for ${tokenAddress}:`, error);
-			return 0;
+			// A fabricated 0 here silently corrupts P&L/trust scoring (it reads as a
+			// -100% return in calculatePositionPerformance). Surface the failure to
+			// the agent and rethrow so the caller's boundary handles it.
+			this.runtime.reportError(
+				"CommunityInvestorService.getCurrentPrice",
+				error,
+				{
+					chain,
+					tokenAddress,
+				},
+			);
+			throw error;
 		}
 	}
 

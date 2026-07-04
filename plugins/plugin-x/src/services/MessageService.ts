@@ -123,7 +123,9 @@ export class TwitterMessageService implements IMessageService {
 
       return messages;
     } catch (error) {
-      logger.error("Error fetching messages:", this.errorDetail(error));
+      // error-policy:J7 a DM fetch failure must surface to the agent (RECENT_ERRORS)
+      // rather than reading as an empty inbox; degrade to no messages after reporting.
+      this.client.runtime.reportError("XMessageService.getMessages", error);
       return [];
     }
   }
@@ -208,7 +210,9 @@ export class TwitterMessageService implements IMessageService {
 
       return message;
     } catch (error) {
-      logger.error("Error fetching message:", this.errorDetail(error));
+      // error-policy:J7 a message-fetch failure must surface to the agent rather
+      // than reading as "no such message"; degrade to null after reporting.
+      this.client.runtime.reportError("XMessageService.getMessage", error);
       return null;
     }
   }

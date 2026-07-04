@@ -236,7 +236,9 @@ export class TwitterPostService implements IPostService {
 
       return post;
     } catch (error) {
-      logger.error("Error fetching post:", this.errorDetail(error));
+      // error-policy:J7 a post-fetch failure must surface to the agent rather than
+      // reading as "no such post"; degrade to null after reporting.
+      this.client.runtime.reportError("XPostService.getPost", error);
       return null;
     }
   }
@@ -301,7 +303,9 @@ export class TwitterPostService implements IPostService {
 
       return posts;
     } catch (error) {
-      logger.error("Error fetching posts:", this.errorDetail(error));
+      // error-policy:J7 a posts-fetch failure must surface to the agent rather than
+      // reading as an empty timeline; degrade to no posts after reporting.
+      this.client.runtime.reportError("XPostService.getPosts", error);
       return [];
     }
   }
@@ -380,7 +384,9 @@ export class TwitterPostService implements IPostService {
 
       return posts;
     } catch (error) {
-      logger.error("Error fetching mentions:", this.errorDetail(error));
+      // error-policy:J7 a mentions-fetch failure must surface to the agent rather
+      // than reading as no mentions; degrade to an empty list after reporting.
+      this.client.runtime.reportError("XPostService.getMentions", error);
       return [];
     }
   }

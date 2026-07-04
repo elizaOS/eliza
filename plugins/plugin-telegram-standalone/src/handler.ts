@@ -261,6 +261,8 @@ export async function handleTelegramStandaloneMessage(
     });
   } catch (outerErr) {
     logger.warn(`[telegram-standalone] Telegram handler error: ${formatError(outerErr)}`);
+    // error-policy:J6 best-effort user-facing error notice; the underlying
+    // failure is already logged above, so a failed reply has nowhere left to go.
     await ctx.reply("Sorry, I encountered an error processing your message.").catch(() => {});
   }
 }

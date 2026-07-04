@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import BigNumber from "bignumber.js";
 import * as dotenv from "dotenv";
 import { BTC_ADDRESS, ETH_ADDRESS, SOL_ADDRESS } from "./config";
@@ -180,15 +180,16 @@ export const http = {
 					const delay = calculateDelay(attempt, retryOptions);
 					const errorMessage =
 						error instanceof Error ? error.message : String(error);
-					console.warn(
-						`Request failed with error: ${errorMessage}. ` +
+					logger.warn(
+						`[http] Request failed with error: ${errorMessage}. ` +
 							`Retrying in ${delay}ms (attempt ${attempt}/${retryOptions.maxRetries})`,
 					);
 					await sleep(delay);
 					attempt++;
 					continue;
 				}
-				console.error(`Request failed after ${attempt} attempts:`, error);
+				// error-policy:J2 add attempt context, then rethrow to the caller
+				logger.error(`[http] Request failed after ${attempt} attempts:`, error);
 
 				throw error;
 			}
@@ -363,27 +364,18 @@ export class DexscreenerClient {
 		address: string,
 		options?: DexscreenerOptions,
 	): Promise<DexScreenerData> {
-		try {
-			const data = await this.request<DexScreenerData>(
-				"latest/dex/search",
-				{
-					q: address,
-				},
-				options,
-			);
+		// A transport/HTTP failure propagates (masking it as an empty result would
+		// make a failed lookup indistinguishable from a token that has no pairs).
+		// Only a successful response with no pairs is a genuine empty result.
+		const data = await this.request<DexScreenerData>(
+			"latest/dex/search",
+			{
+				q: address,
+			},
+			options,
+		);
 
-			if (!data?.pairs) {
-				throw new Error("No DexScreener data available");
-			}
-
-			return data;
-		} catch (error) {
-			console.error("Error fetching DexScreener data:", error);
-			return {
-				schemaVersion: "1.0.0",
-				pairs: [],
-			};
-		}
+		return data?.pairs ? data : { schemaVersion: "1.0.0", pairs: [] };
 	}
 
 	/**
@@ -526,8 +518,11 @@ export class HeliusClient {
 
 			return holders;
 		} catch (error) {
-			console.error("Error fetching holder list from Helius:", error);
-			throw new Error("Failed to fetch holder list from Helius.");
+			// error-policy:J2 add context and preserve cause on rethrow
+			logger.error("[HeliusClient] Error fetching holder list:", error);
+			throw new Error("Failed to fetch holder list from Helius.", {
+				cause: error,
+			});
 		}
 	}
 }
@@ -760,7 +755,8 @@ export class BirdeyeClient {
 		);
 
 		if (!res.success || !res.data) {
-			console.error({ res });
+			// error-policy:J1 boundary — Birdeye HTTP envelope indicates failure
+			logger.error("[BirdeyeClient] request failed", { path, res });
 			throw new Error(`Birdeye request failed:${path}`);
 		}
 
@@ -1006,7 +1002,8 @@ export class BirdeyeClient {
 
 			return portfolio;
 		} catch (error) {
-			console.error("Error fetching portfolio:", error);
+			// error-policy:J2 add context, then rethrow to the caller
+			logger.error("[BirdeyeClient] Error fetching portfolio:", error);
 			throw error;
 		}
 	}

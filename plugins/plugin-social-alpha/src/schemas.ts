@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { z } from "zod";
 import type {
 	TransactionType as DomainTransactionType,
@@ -413,7 +414,8 @@ export function transformTokenRecommendation(
 			),
 		});
 	} catch (error) {
-		console.error("Error transforming token recommendation:", error);
-		throw error; // Re-throw the error instead of returning null
+		// error-policy:J2 add context, then rethrow (never return a null/partial record)
+		logger.error("[schemas] Error transforming token recommendation:", error);
+		throw error;
 	}
 }

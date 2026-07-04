@@ -26,6 +26,7 @@ function logValue(value: unknown): string {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// error-policy:J3 value may be non-serializable (circular); String() is a valid representation
 		return String(value);
 	}
 }
@@ -96,6 +97,7 @@ function parseJsonObject<T extends Record<string, unknown>>(
 			? (parsed as T)
 			: null;
 	} catch {
+		// error-policy:J3 untrusted LLM/string input; malformed JSON is an invalid result, not a failure
 		return null;
 	}
 }

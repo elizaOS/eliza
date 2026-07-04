@@ -1279,10 +1279,12 @@ ${tweet.text}`;
 
         await createMemorySafe(this.runtime, responseMemory, "messages");
 
-        // Return the created memory
         return [responseMemory];
       } catch (error) {
-        logger.error("Error in tweet reply callback:", errorMessage(error));
+        // error-policy:J7 the reply was already sent; a failure recording its
+        // memory must surface to the agent rather than vanishing. Degrade to no
+        // recorded memory after reporting.
+        this.runtime.reportError("XInteractions.replyCallback", error);
         return [];
       }
     };

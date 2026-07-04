@@ -8,6 +8,7 @@ import type {
 import {
 	ChannelType,
 	createMessageMemory,
+	logger,
 	ModelType,
 	Service,
 } from "@elizaos/core";
@@ -69,11 +70,13 @@ export class XRSessionService extends Service {
 
 		this.wss.on("connection", (ws: WebSocket) => this.onConnect(runtime, ws));
 		this.wss.on("error", (err: Error) =>
-			console.error("[plugin-xr] WebSocket server error:", err),
+			// A server-level socket error (e.g. port already in use) is systemic and
+			// must surface to the agent/owner, not just a log line.
+			runtime.reportError("XRSessionService.wss", err),
 		);
 
-		console.info(
-			`[plugin-xr] WebSocket server listening on ws://localhost:${port}`,
+		logger.info(
+			`[XRSessionService] WebSocket server listening on ws://localhost:${port}`,
 		);
 	}
 
@@ -194,7 +197,10 @@ export class XRSessionService extends Service {
 					this.handleTextMessage(runtime, connId, ws, raw);
 				}
 			} catch (err) {
-				console.error("[plugin-xr] message handler error:", err);
+				// error-policy:J1 boundary translation — the WS message transport
+				// boundary. A single malformed/failed frame from an untrusted headset
+				// client must not kill the connection, but the failure must surface.
+				runtime.reportError("XRSessionService.onMessage", err, { connId });
 			}
 		});
 
@@ -203,11 +209,14 @@ export class XRSessionService extends Service {
 			this.audioPipeline.clear(connId);
 			this.visionPipeline.clear(connId);
 			this.connections.delete(connId);
-			console.info(`[plugin-xr] device disconnected: ${connId}`);
+			logger.info(`[XRSessionService] device disconnected: ${connId}`);
 		});
 
 		ws.on("error", (err: Error) =>
-			console.error(`[plugin-xr] ws error on ${connId}:`, err),
+			// error-policy:J5 unhandled-rejection suppression — a per-connection ws
+			// transport error (ECONNRESET etc.) precedes 'close'; the session is torn
+			// down there. Log so it is observable without escalating benign drops.
+			logger.warn(`[XRSessionService] ws error on ${connId}:`, err),
 		);
 	}
 
@@ -233,7 +242,7 @@ export class XRSessionService extends Service {
 			this.connections.set(connId, conn);
 			ws.send(JSON.stringify({ type: "ready", sessionId: connId }));
 			void this.ensureEntities(runtime, conn);
-			console.info(`[plugin-xr] ${msg.deviceType} connected: ${connId}`);
+			logger.info(`[XRSessionService] ${msg.deviceType} connected: ${connId}`);
 			return;
 		}
 
@@ -243,18 +252,18 @@ export class XRSessionService extends Service {
 		}
 
 		if (msg.type === "view_ready") {
-			console.info(`[plugin-xr] view ready on ${connId}: ${msg.viewId}`);
+			logger.info(`[XRSessionService] view ready on ${connId}: ${msg.viewId}`);
 			return;
 		}
 
 		if (msg.type === "view_closed") {
-			console.info(`[plugin-xr] view closed on ${connId}: ${msg.viewId}`);
+			logger.info(`[XRSessionService] view closed on ${connId}: ${msg.viewId}`);
 			return;
 		}
 
 		if (msg.type === "view_event") {
-			console.info(
-				`[plugin-xr] view event on ${connId}:`,
+			logger.info(
+				`[XRSessionService] view event on ${connId}:`,
 				msg.viewId,
 				msg.event,
 			);
@@ -338,7 +347,10 @@ export class XRSessionService extends Service {
 					: Buffer.from(audio as ArrayBuffer);
 				this.sendAudio(connectionId, audioBuf);
 			} catch (err) {
-				console.error("[plugin-xr] TTS error:", err);
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — TEXT_TO_SPEECH
+				// failure must not drop the (already-sent) text response, but a
+				// systemic model misconfiguration must not stay invisible.
+				runtime.reportError("XRSessionService.tts", err, { connectionId });
 			}
 
 			// Persist agent response as memory
@@ -382,7 +394,12 @@ export class XRSessionService extends Service {
 			await runtime.addParticipant(conn.entityId, conn.roomId);
 			await runtime.addParticipant(runtime.agentId, conn.roomId);
 		} catch (err) {
-			console.error("[plugin-xr] entity setup error:", err);
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — entity/room setup
+			// runs fire-and-forget off the hello handshake; a failure here silently
+			// breaks memory persistence for the session, so it must surface.
+			runtime.reportError("XRSessionService.ensureEntities", err, {
+				connId: conn.id,
+			});
 		}
 	}
 }

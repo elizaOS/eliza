@@ -25,6 +25,7 @@ function logValue(value: unknown): string {
 	try {
 		return JSON.stringify(value);
 	} catch {
+		// error-policy:J3 value may be non-serializable (circular); String() is a valid representation
 		return String(value);
 	}
 }
@@ -247,6 +248,8 @@ export const socialAlphaProvider: Provider = {
 					senderProfile = component.data as UserTrustProfile;
 				}
 			} catch (err) {
+				// error-policy:J4 optional context section degrades to omitted; the
+				// outer handler is the boundary that reports a real generation failure
 				logger.debug(
 					`[socialAlphaProvider] No profile for sender ${senderId}: ${err}`,
 				);
@@ -283,6 +286,8 @@ export const socialAlphaProvider: Provider = {
 			try {
 				leaderboard = await service.getLeaderboardData(runtime);
 			} catch (err) {
+				// error-policy:J4 leaderboard section is optional context; degrades to
+				// omitted rather than failing the whole provider render
 				logger.debug(
 					`[socialAlphaProvider] Error fetching leaderboard: ${err}`,
 				);
@@ -343,10 +348,9 @@ export const socialAlphaProvider: Provider = {
 				values,
 			};
 		} catch (error) {
-			logger.error(
-				"[socialAlphaProvider] Error generating provider data:",
-				error,
-			);
+			// error-policy:J4 provider boundary — degrade to empty context rather than
+			// failing the agent turn; reportError surfaces it to the agent/owner
+			runtime.reportError("socialAlphaProvider", error);
 			return { text: "", values: {} };
 		}
 	},

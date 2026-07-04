@@ -126,11 +126,11 @@ export async function loadWalletTuiState() {
     walletNfts,
     marketOverview,
   ] = await Promise.all([
-    client.getWalletAddresses().catch(() => null),
-    client.getWalletConfig().catch(() => null),
-    client.getWalletBalances().catch(() => null),
-    client.getWalletNfts().catch(() => null),
-    client.getWalletMarketOverview().catch(() => null),
+    client.getWalletAddresses(),
+    client.getWalletConfig(),
+    client.getWalletBalances(),
+    client.getWalletNfts(),
+    client.getWalletMarketOverview(),
   ]);
   const summary = summarizeWalletBalances(walletBalances);
   return {

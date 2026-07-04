@@ -2,6 +2,7 @@
  * Facewear settings registration adds the wearables section to GUI hosts and
  * terminal view renderers to Node hosts.
  */
+import { logger } from "@elizaos/core";
 import { registerSettingsSection } from "@elizaos/ui/components/settings/settings-section-registry";
 import { Glasses } from "lucide-react";
 import { WearablesSettingsSection } from "./components/WearablesSettingsSection.tsx";
@@ -29,7 +30,9 @@ if (typeof window === "undefined") {
 			m.registerFacewearTerminalView();
 			m.registerSmartglassesTerminalView();
 		})
-		.catch(() => {
-			// Terminal rendering is best-effort; never block plugin load.
+		.catch((err) => {
+			// error-policy:J6 terminal rendering is best-effort and must never
+			// block plugin load; log so a genuine import failure stays visible.
+			logger.warn({ err }, "[facewear] terminal view registration failed");
 		});
 }

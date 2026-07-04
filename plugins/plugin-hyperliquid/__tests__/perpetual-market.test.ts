@@ -266,6 +266,22 @@ describe("perpetualMarketAction handler", () => {
 		expect(data.target).toBe("hyperliquid");
 	});
 
+	it("surfaces a failure when a 200 response carries a non-JSON body instead of fabricating an empty read", async () => {
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response("<html>gateway error</html>", {
+					status: 200,
+					headers: { "content-type": "text/html" },
+				}),
+		) as unknown as typeof fetch;
+		const service = await startService();
+		const { result } = await invoke(
+			{ action: "read", kind: "status" },
+			service,
+		);
+		expect(result.success).toBe(false);
+	});
+
 	it("place_order reports read-only app execution", async () => {
 		installFetchMock({
 			"/api/hyperliquid/status": {

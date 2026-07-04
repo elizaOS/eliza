@@ -189,15 +189,19 @@ async function fetchHyperliquidJson<T>(path: string): Promise<T> {
 		headers: { accept: "application/json", ...buildAuthHeaders() },
 		signal: AbortSignal.timeout(ACTION_TIMEOUT_MS),
 	});
-	const payload = (await response.json().catch(() => null)) as T;
 	if (!response.ok) {
+		// error-policy:J3 error bodies are untrusted and often non-JSON; parse
+		// best-effort only to lift an error message, then fail.
+		const errorPayload = await response.json().catch(() => null);
 		const message =
-			payload && typeof payload === "object" && "error" in payload
-				? String((payload as { error?: unknown }).error)
+			errorPayload &&
+			typeof errorPayload === "object" &&
+			"error" in errorPayload
+				? String((errorPayload as { error?: unknown }).error)
 				: `Hyperliquid API request failed with ${response.status}`;
 		throw new Error(message);
 	}
-	return payload;
+	return (await response.json()) as T;
 }
 
 async function emit(
@@ -476,6 +480,9 @@ async function handlePlaceOrderOperation(
 			"/api/hyperliquid/status",
 		);
 	} catch {
+		// error-policy:J4 status probe only enriches the disabled-order message;
+		// placement is read-only regardless, so a missing status degrades to the
+		// default reason without hiding a trade result.
 		status = null;
 	}
 	const reason = status?.executionBlockedReason ?? PLACE_ORDER_DISABLED_REASON;

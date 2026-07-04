@@ -57,6 +57,8 @@ export async function hasWalletConfigured(): Promise<boolean> {
 		const addresses = await client.getWalletAddresses();
 		return Boolean(addresses?.evmAddress || addresses?.solanaAddress);
 	} catch {
+		// error-policy:J4 wallet gate degrades closed — an unreachable API reads as
+		// "not configured" and shows the wallet-required state (never a false-open)
 		return false;
 	}
 }

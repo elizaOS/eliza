@@ -6,6 +6,7 @@ import { AudioPipeline } from "../services/audio-pipeline.ts";
 function makeRuntime(transcriptResult = "hello world"): IAgentRuntime {
 	return {
 		useModel: vi.fn().mockResolvedValue(transcriptResult),
+		reportError: vi.fn(),
 	} as unknown as IAgentRuntime;
 }
 
@@ -67,6 +68,28 @@ describe("AudioPipeline", () => {
 		pipeline.push("conn1", header, Buffer.alloc(1024));
 		await pipeline.flush("conn1");
 
+		expect(onTranscript).not.toHaveBeenCalled();
+	});
+
+	it("surfaces a transcription failure via runtime.reportError instead of swallowing it", async () => {
+		const boom = new Error("TRANSCRIPTION model unavailable");
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(boom);
+		const header = {
+			type: "audio" as const,
+			ts: 0,
+			sampleRate: 16000,
+			encoding: "webm-opus" as const,
+		};
+		pipeline.push("conn1", header, Buffer.alloc(1024, 0x55));
+
+		// flush must not throw — the streaming loop keeps running…
+		await expect(pipeline.flush("conn1")).resolves.toBeUndefined();
+		// …but the failure must surface observably, not read as "no speech".
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"AudioPipeline.flush",
+			boom,
+			{ connectionId: "conn1" },
+		);
 		expect(onTranscript).not.toHaveBeenCalled();
 	});
 

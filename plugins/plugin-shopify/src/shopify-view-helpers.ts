@@ -14,15 +14,17 @@ import type {
 export async function fetchShopifyTuiJson<T>(url: string): Promise<T | null> {
   const response = await fetch(url);
   if (response.status === 404) return null;
-  const data = await response.json().catch(() => null);
   if (!response.ok) {
+    // error-policy:J3 error bodies may be non-JSON; parse best-effort only to
+    // lift an error message, then fail.
+    const errorData = await response.json().catch(() => null);
     const message =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
+      errorData && typeof errorData === "object" && "error" in errorData
+        ? String((errorData as { error?: unknown }).error)
         : `Shopify request failed with ${response.status}`;
     throw new Error(message);
   }
-  return data as T;
+  return (await response.json()) as T;
 }
 
 export async function postShopifyTuiJson(

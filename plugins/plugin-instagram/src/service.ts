@@ -250,6 +250,9 @@ export class InstagramService extends Service {
         getUserContext: serviceInstance.getConnectorUserContext.bind(serviceInstance),
         getUser: async (handlerRuntime, params) => {
           if (params.username || params.handle) {
+            // error-policy:J4 no concrete Instagram client backend is bundled, so
+            // the username lookup throws by design; treat it as an unresolved
+            // user and fall through to the local entity lookup below.
             const user = await accountService
               .getUserByUsername(String(params.username ?? params.handle))
               .catch(() => null);
@@ -276,6 +279,8 @@ export class InstagramService extends Service {
           if (!entityId) {
             return null;
           }
+          // error-policy:J4 an unresolved entity degrades to the connector user
+          // context lookup below; a null here means "not found in the store".
           const entity =
             typeof handlerRuntime.getEntityById === "function"
               ? await handlerRuntime.getEntityById(entityId as UUID).catch(() => null)
@@ -750,6 +755,9 @@ export class InstagramService extends Service {
         .slice(0, limit);
     }
 
+    // error-policy:J4 this package ships the connector surface without a concrete
+    // Instagram client backend, so a platform fetch throws by design; degrade to
+    // the local message cache below rather than treating it as a hard failure.
     const platformMessages = await this.getThreadMessages(threadId).catch(() => []);
     if (platformMessages.length > 0) {
       const roomId =

@@ -12,6 +12,7 @@ import type {
 import {
 	ChannelType,
 	createMessageMemory,
+	logger,
 	ModelType,
 	Service,
 } from "@elizaos/core";
@@ -78,11 +79,11 @@ export class XRSessionService extends Service {
 
 		this.wss.on("connection", (ws) => this.onConnect(runtime, ws));
 		this.wss.on("error", (err) =>
-			console.error("[plugin-facewear/xr] WebSocket server error:", err),
+			runtime.reportError("XRSessionService.wss", err),
 		);
 
-		console.info(
-			`[plugin-facewear/xr] WebSocket server listening on ws://localhost:${port}`,
+		logger.info(
+			`[XRSessionService] WebSocket server listening on ws://localhost:${port}`,
 		);
 	}
 
@@ -202,7 +203,10 @@ export class XRSessionService extends Service {
 					this.handleTextMessage(runtime, connId, ws, data.toString("utf8"));
 				}
 			} catch (err) {
-				console.error("[plugin-facewear/xr] message handler error:", err);
+				// error-policy:J1 per-message transport boundary — a single
+				// malformed/failed frame must not tear down the ws message loop;
+				// reportError surfaces it to the agent/owner.
+				runtime.reportError("XRSessionService.message", err, { connId });
 			}
 		});
 
@@ -211,11 +215,11 @@ export class XRSessionService extends Service {
 			this.audioPipeline.clear(connId);
 			this.visionPipeline.clear(connId);
 			this.connections.delete(connId);
-			console.info(`[plugin-facewear/xr] device disconnected: ${connId}`);
+			logger.info(`[XRSessionService] device disconnected: ${connId}`);
 		});
 
 		ws.on("error", (err) =>
-			console.error(`[plugin-facewear/xr] ws error on ${connId}:`, err),
+			logger.warn({ err, connId }, "[XRSessionService] ws connection error"),
 		);
 	}
 
@@ -241,9 +245,7 @@ export class XRSessionService extends Service {
 			this.connections.set(connId, conn);
 			ws.send(JSON.stringify({ type: "ready", sessionId: connId }));
 			void this.ensureEntities(runtime, conn);
-			console.info(
-				`[plugin-facewear/xr] ${msg.deviceType} connected: ${connId}`,
-			);
+			logger.info(`[XRSessionService] ${msg.deviceType} connected: ${connId}`);
 			return;
 		}
 
@@ -263,24 +265,19 @@ export class XRSessionService extends Service {
 		}
 
 		if (msg.type === "view_ready") {
-			console.info(
-				`[plugin-facewear/xr] view ready on ${connId}: ${msg.viewId}`,
-			);
+			logger.info(`[XRSessionService] view ready on ${connId}: ${msg.viewId}`);
 			return;
 		}
 
 		if (msg.type === "view_closed") {
-			console.info(
-				`[plugin-facewear/xr] view closed on ${connId}: ${msg.viewId}`,
-			);
+			logger.info(`[XRSessionService] view closed on ${connId}: ${msg.viewId}`);
 			return;
 		}
 
 		if (msg.type === "view_event") {
-			console.info(
-				`[plugin-facewear/xr] view event on ${connId}:`,
-				msg.viewId,
-				msg.event,
+			logger.info(
+				{ connId, viewId: msg.viewId, event: msg.event },
+				"[XRSessionService] view event",
 			);
 			return;
 		}
@@ -422,7 +419,11 @@ export class XRSessionService extends Service {
 					: Buffer.from(audio as ArrayBuffer);
 				this.sendAudio(connectionId, audioBuf);
 			} catch (err) {
-				console.error("[plugin-facewear/xr] TTS error:", err);
+				// error-policy:J7 the text reply is already delivered; TTS is a
+				// background enhancement whose failure must surface but must not
+				// block persisting the agent response memory below.
+				logger.warn({ err, connectionId }, "[XRSessionService] TTS failed");
+				runtime.reportError("XRSessionService.tts", err, { connectionId });
 			}
 
 			// Persist agent response as memory
@@ -465,7 +466,12 @@ export class XRSessionService extends Service {
 			await runtime.addParticipant(conn.entityId, conn.roomId);
 			await runtime.addParticipant(runtime.agentId, conn.roomId);
 		} catch (err) {
-			console.error("[plugin-facewear/xr] entity setup error:", err);
+			// error-policy:J7 fire-and-forget bootstrap (called via `void`); a
+			// failure here breaks downstream memory writes for this session, so
+			// surface it observably rather than swallowing it silently.
+			runtime.reportError("XRSessionService.ensureEntities", err, {
+				connId: conn.id,
+			});
 		}
 	}
 }

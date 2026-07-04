@@ -188,4 +188,13 @@ describe("wallet interact capabilities", () => {
   it("rejects unknown interact capabilities", async () => {
     await expect(interact("nope")).rejects.toThrow(/Unsupported capability/);
   });
+
+  it("surfaces a wallet-balance load failure instead of rendering an empty $0 wallet", async () => {
+    walletClient.getWalletBalances.mockRejectedValue(
+      new Error("wallet RPC unavailable"),
+    );
+    await expect(
+      interact("terminal-wallet-state", { limit: 2 }),
+    ).rejects.toThrow(/wallet RPC unavailable/);
+  });
 });

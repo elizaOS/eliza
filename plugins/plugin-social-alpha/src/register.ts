@@ -8,10 +8,13 @@
  * a no-op (a DOM is present), so the same import is safe everywhere.
  */
 
+import { logger } from "@elizaos/core";
+
 if (typeof window === "undefined") {
 	void import("./register-terminal-view.js")
 		.then((m) => m.registerSocialAlphaTerminalView())
-		.catch(() => {
-			// Terminal rendering is best-effort; never block plugin load.
+		// error-policy:J5 optional terminal-view registration; suppression is observed via this debug log and never blocks plugin load
+		.catch((err) => {
+			logger.debug(`[social-alpha] Terminal view registration skipped: ${err}`);
 		});
 }

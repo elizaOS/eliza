@@ -1000,7 +1000,15 @@ export class XService extends Service {
     const messages = await this.listRecentDirectMessages(
       accountId,
       clampLimit(params.limit, 25, 50),
-    ).catch(() => []);
+    ).catch((error) => {
+      // error-policy:J7 a DM fetch failure (expired token, rate limit) must
+      // surface to the agent rather than reading as an empty inbox; degrade to
+      // no messages after reporting.
+      runtime.reportError("XService.fetchConnectorMessages", error, {
+        accountId,
+      });
+      return [];
+    });
 
     return messages
       .filter((message) => !targetUserId || message.senderId === targetUserId)
@@ -1053,7 +1061,15 @@ export class XService extends Service {
   ): Promise<MessageConnectorTarget[]> {
     const accountId = this.resolveAccountId(_context.target, _context);
     const messages = await this.listRecentDirectMessages(accountId, 25).catch(
-      () => [],
+      (error) => {
+        // error-policy:J7 a DM fetch failure must surface to the agent rather
+        // than reading as no recent targets; degrade to an empty list after
+        // reporting.
+        this.runtime.reportError("XService.listRecentConnectorTargets", error, {
+          accountId,
+        });
+        return [];
+      },
     );
     const seen = new Set<string>();
     const targets: MessageConnectorTarget[] = [];
@@ -1106,6 +1122,8 @@ export class XService extends Service {
         metadata: { xUserId: profile.id, bio: profile.bio, accountId },
       };
     } catch {
+      // error-policy:J4 an unresolved handle (unknown user) yields no context;
+      // fetchProfile throwing IS the "not found" answer for this lookup.
       return null;
     }
   }
