@@ -70,6 +70,80 @@ test.describe("confused-user onboarding", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
+  test("typing free text during onboarding gets an in-transcript reply and never reaches the server", async ({
+    page,
+  }) => {
+    await injectFullCapabilityHost(page);
+    const state = await installHomeRoutes(page);
+    await seedAppStorage(page, { "eliza:first-run-complete": "" });
+    const leaks = trackSentinelLeaks(page);
+    // The confused user types instead of tapping. Every keystroke-send must be
+    // answered locally by the conductor and NEVER reach the agent as a chat
+    // POST — capture any body that carries the typed sentence.
+    const chatSends: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() !== "POST") return;
+      const body = request.postData();
+      if (body?.includes("does this thing even work")) {
+        chatSends.push(`${request.url()} :: ${body.slice(0, 200)}`);
+      }
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expectChatFirstOnboarding(page);
+
+    // Type a question BEFORE picking a runtime: the "choosing" persona answers.
+    const composer = page.getByTestId("chat-composer-textarea");
+    await composer.fill("does this thing even work?");
+    await composer.press("Enter");
+
+    // The typed sentence appears as a local user turn, and the conductor's
+    // deterministic not-ready reply appears within the transcript.
+    await expect(
+      page.getByText("does this thing even work?", { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText("pick one of the options above", { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+    await screenshot(page, "typed-free-text-reply");
+
+    // A second impatient send is acknowledged too (monotonic ids — never deduped).
+    await composer.fill("hello?? are you there");
+    await composer.press("Enter");
+    await expect(
+      page.getByText("hello?? are you there", { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Nothing was POSTed to /api/first-run, and no typed text leaked as a send.
+    expect(
+      state.firstRunPosts.length,
+      "typing free text must not trigger any first-run POST",
+    ).toBe(0);
+    expect(
+      chatSends,
+      "typed free text must never reach the server before completion",
+    ).toEqual([]);
+    expect(leaks).toEqual([]);
+
+    // The user can still finish by tapping through — proving the composer never
+    // blocked the flow. One POST at the end, still zero leaks.
+    await page.getByTestId(RUNTIME_CHOICE("local")).click();
+    const onDevice = page.getByTestId(PROVIDER_CHOICE("on-device"));
+    await expect(onDevice).toBeVisible({ timeout: 15_000 });
+    await onDevice.click();
+    const skip = page.getByTestId(TUTORIAL_CHOICE("skip"));
+    await expect(skip).toBeVisible({ timeout: 30_000 });
+    await skip.click();
+
+    await expectOnboardingAutoCollapse(page);
+    await settleHomeEntrance(page);
+    await screenshot(page, "typed-then-tapped-home");
+
+    expect(state.firstRunPosts.length).toBe(1);
+    expect(chatSends).toEqual([]);
+    expect(leaks).toEqual([]);
+  });
+
   test("double-clicking every choice still yields exactly one POST and no sentinel leaks", async ({
     page,
   }) => {
@@ -184,7 +258,7 @@ test.describe("confused-user onboarding", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
 
     // Nothing was persisted (no POST yet) → the conductor re-seeds a fresh,
-    // fully interactive onboarding: locked composer, unlocked runtime CHOICE.
+    // fully interactive onboarding: unlocked composer + unlocked runtime CHOICE.
     await expectChatFirstOnboarding(page);
     await screenshot(page, "after-reload-fresh-onboarding");
 
