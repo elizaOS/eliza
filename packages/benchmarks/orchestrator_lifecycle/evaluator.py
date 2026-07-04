@@ -125,6 +125,7 @@ class LifecycleEvaluator:
         return ScenarioResult(
             scenario_id=scenario.scenario_id,
             title=scenario.title,
+            category=scenario.category,
             passed=passed,
             score=score,
             checks_passed=checks_passed,
@@ -138,23 +139,18 @@ class LifecycleEvaluator:
         passed = sum(1 for r in results if r.passed)
         overall = (sum(r.score for r in results) / total) if total > 0 else 0.0
 
-        def _rate(tag: str) -> float:
-            tagged = [r for r in results if tag in r.scenario_id]
+        def _category_rate(category: str) -> float:
+            tagged = [r for r in results if r.category == category]
             if not tagged:
                 return 0.0
             return sum(r.score for r in tagged) / len(tagged)
 
-        clarification = _rate("clarification")
-        status = _rate("status")
-        interruption = (
-            _rate("pause")
-            + _rate("resume")
-            + _rate("cancel")
-            + _rate("interrupt")
-        ) / 4
+        clarification = _category_rate("clarification")
+        status = _category_rate("status")
+        interruption = _category_rate("interrupt")
         # No inflation fallback: a category with no scenarios (or all-failing
         # scenarios) reports its real rate, never the overall score.
-        summary = _rate("summary")
+        summary = _category_rate("completion_summary")
         return LifecycleMetrics(
             overall_score=overall,
             scenario_pass_rate=(passed / total) if total > 0 else 0.0,
