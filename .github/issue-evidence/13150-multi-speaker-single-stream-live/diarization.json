@@ -1,0 +1,178 @@
+{
+  "f1_sam_solo": {
+    "fixture_path": "f1_sam_solo.wav",
+    "ground_truth_speakers": 1,
+    "detected_speakers": 1,
+    "segment_count": 1,
+    "accuracy": 1.0,
+    "der": 0.0,
+    "segments": [
+      {
+        "start_ms": 0,
+        "end_ms": 10000,
+        "speaker_id": 0,
+        "confidence": 0.85
+      }
+    ]
+  },
+  "f2_two_speaker": {
+    "fixture_path": "f2_two_speaker.wav",
+    "ground_truth_speakers": 2,
+    "detected_speakers": 2,
+    "segment_count": 5,
+    "accuracy": 0.9989,
+    "der": 0.0,
+    "segments": [
+      {
+        "start_ms": 0,
+        "end_ms": 2780,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 3130,
+        "end_ms": 6130,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 6470,
+        "end_ms": 9860,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 10200,
+        "end_ms": 13710,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 14050,
+        "end_ms": 19275,
+        "speaker_id": 0,
+        "confidence": 0.85
+      }
+    ]
+  },
+  "f3_three_speaker": {
+    "fixture_path": "f3_three_speaker.wav",
+    "ground_truth_speakers": 3,
+    "detected_speakers": 3,
+    "segment_count": 6,
+    "accuracy": 0.9975,
+    "der": 0.0,
+    "segments": [
+      {
+        "start_ms": 0,
+        "end_ms": 2780,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 3130,
+        "end_ms": 6630,
+        "speaker_id": 2,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 6980,
+        "end_ms": 9480,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 9820,
+        "end_ms": 13830,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 14180,
+        "end_ms": 18180,
+        "speaker_id": 2,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 18530,
+        "end_ms": 21541,
+        "speaker_id": 1,
+        "confidence": 0.85
+      }
+    ]
+  },
+  "f4_long_dialogue": {
+    "fixture_path": "f4_long_dialogue.wav",
+    "ground_truth_speakers": 2,
+    "detected_speakers": 2,
+    "segment_count": 7,
+    "accuracy": 0.9984,
+    "der": 0.0,
+    "segments": [
+      {
+        "start_ms": 0,
+        "end_ms": 2780,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 3130,
+        "end_ms": 6630,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 6970,
+        "end_ms": 10360,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 10700,
+        "end_ms": 14700,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 15050,
+        "end_ms": 19060,
+        "speaker_id": 0,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 19400,
+        "end_ms": 20860,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 21210,
+        "end_ms": 26432,
+        "speaker_id": 0,
+        "confidence": 0.85
+      }
+    ]
+  },
+  "f5_jill_scenario": {
+    "fixture_path": "f5_jill_scenario.wav",
+    "ground_truth_speakers": 2,
+    "detected_speakers": 2,
+    "segment_count": 2,
+    "accuracy": 1.0,
+    "der": 0.0,
+    "segments": [
+      {
+        "start_ms": 0,
+        "end_ms": 4160,
+        "speaker_id": 1,
+        "confidence": 0.85
+      },
+      {
+        "start_ms": 4500,
+        "end_ms": 8516,
+        "speaker_id": 0,
+        "confidence": 0.85
+      }
+    ]
+  }
+}

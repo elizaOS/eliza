@@ -13,6 +13,7 @@ orchestrator — run directly via pytest.
 ```bash
 # From this directory — runs the full test suite
 pip install -e .
+python fixture_generator.py
 pytest tests/ -v
 ```
 
@@ -20,6 +21,7 @@ pytest tests/ -v
 
 ```bash
 pip install -e .
+python fixture_generator.py
 pytest tests/ -v
 ```
 
@@ -57,8 +59,9 @@ python voice_profile_lifecycle.py          # write artifacts/voice-profile-lifec
 ## Notes
 
 - Fixtures (f1–f5 WAV files) are **not committed** — they must be generated or
-  provided before running. The manifest defines expected paths and ground-truth
-  boundaries.
+  provided before running. Use `python fixture_generator.py` or let the pytest
+  manifest fixture create missing WAVs automatically. The manifest defines
+  expected paths and ground-truth boundaries.
 - `tests/test_single_stream_gate.py` is an artifact-level smoke/gate for #12493
   and does not require WAV fixtures or model downloads.
 - The diarizer in tests uses energy-VAD + ECAPA-TDNN clustering (no Hugging Face

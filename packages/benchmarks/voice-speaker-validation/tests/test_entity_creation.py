@@ -348,7 +348,7 @@ class TestEntityCreation:
         # Set up stores
         entity_store = InMemoryEntityStore()
         rel_store = InMemoryRelationshipStore()
-        profile_store = InMemoryVoiceProfileStore(match_threshold=0.35)
+        profile_store = InMemoryVoiceProfileStore(match_threshold=0.60)
 
         # Pre-create the OWNER entity (happens during onboarding)
         owner = Entity(

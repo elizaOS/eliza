@@ -17,6 +17,9 @@ pip install -e .
 # Run full suite (requires audio fixtures in fixtures/)
 pytest tests/ -v
 
+# Generate deterministic synthetic WAV fixtures explicitly
+python fixture_generator.py
+
 # Run a single module
 pytest tests/test_diarization.py -v
 

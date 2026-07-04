@@ -11,7 +11,6 @@ dependencies = [
     "numpy>=1.26",
     "scipy>=1.11",
     "soundfile>=0.12",
-    "librosa>=0.10",
     "torch>=2.4,<2.5",
     "torchaudio>=2.4,<2.5",
     "speechbrain>=1.0",
@@ -35,4 +34,4 @@ addopts = [
 ]
 
 [tool.setuptools]
-py-modules = ["single_stream_gate", "voice_profile_lifecycle"]
+py-modules = ["fixture_generator", "single_stream_gate", "voice_profile_lifecycle"]

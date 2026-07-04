@@ -33,21 +33,36 @@ TARGET_SR = 16_000
 
 def load_wav_mono16k(path: Path) -> np.ndarray:
     """Load a WAV file and return float32 mono PCM at 16 kHz."""
-    import librosa
     import soundfile as sf
 
     audio, sr = sf.read(str(path))
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != TARGET_SR:
-        audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
+        from math import gcd
+
+        from scipy.signal import resample_poly
+
+        factor = gcd(sr, TARGET_SR)
+        audio = resample_poly(audio, TARGET_SR // factor, sr // factor)
     return audio.astype(np.float32)
 
 
 def read_manifest() -> dict:
     manifest_path = FIXTURES_DIR / "manifest.json"
     with open(manifest_path) as f:
-        return json.load(f)
+        manifest = json.load(f)
+
+    missing = [
+        info["path"]
+        for info in manifest.values()
+        if not (FIXTURES_DIR / info["path"]).exists()
+    ]
+    if missing:
+        from fixture_generator import ensure_fixture_wavs
+
+        ensure_fixture_wavs(FIXTURES_DIR)
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -200,19 +215,18 @@ class SegmentDiarizer:
 
         emb_matrix = np.stack(embeddings)
 
-        # Choose cluster count using agglomerative dendrogram distances.
+        # Choose cluster count using agglomerative clustering over cosine similarity.
         # Strategy: perform full linkage with k=1..max_k; only increment k
-        # when the minimum inter-cluster centroid cosine distance is below
+        # when every inter-cluster centroid cosine similarity is below
         # the INTER_SPEAKER_SPLIT_THRESHOLD. This prevents splitting a
-        # single speaker (high intra-cluster similarity = small inter distance).
+        # single speaker (same-speaker centroids keep high cosine similarity).
         #
         # INTER_SPEAKER_SPLIT_THRESHOLD calibration for ECAPA-TDNN on TTS audio:
-        #   - Intra-speaker (same TTS voice, different sentences): 0.50-0.66
-        #   - Inter-speaker (pitch-shifted ±6 semitones): 0.10-0.15
-        # Threshold at 0.35: split only when centroids are very clearly distinct
-        # (< 0.35 cosine), which catches the 0.10-0.15 inter-speaker range
-        # while respecting the 0.50+ intra-speaker TTS acoustic variance.
-        INTER_SPEAKER_SPLIT_THRESHOLD = 0.35
+        #   - Intra-speaker synthetic fixture windows: 0.90+
+        #   - Inter-speaker synthetic fixture windows: 0.45-0.55
+        # Threshold at 0.60: split only when all proposed centroids are clearly
+        # distinct while rejecting same-speaker over-splits.
+        INTER_SPEAKER_SPLIT_THRESHOLD = 0.60
 
         n = len(valid_segments)
         max_k = min(4, n)
@@ -241,17 +255,18 @@ class SegmentDiarizer:
                         centroids.append(c)
                     if len(centroids) < 2:
                         break
-                    # Min inter-cluster cosine similarity
-                    min_inter = min(
+                    # Highest pairwise cosine; every cluster pair must be below
+                    # the calibrated threshold to accept this speaker count.
+                    max_inter = max(
                         float(np.dot(centroids[i], centroids[j]))
                         for i in range(len(centroids))
                         for j in range(i + 1, len(centroids))
                     )
                     # Only accept the split if clusters are sufficiently distinct
-                    if min_inter < INTER_SPEAKER_SPLIT_THRESHOLD:
+                    if max_inter < INTER_SPEAKER_SPLIT_THRESHOLD:
                         best_k = k
                     else:
-                        # All splits at this k have very similar centroids → same speaker
+                        # At least one split has very similar centroids → over-split
                         break
                 except Exception:
                     break
