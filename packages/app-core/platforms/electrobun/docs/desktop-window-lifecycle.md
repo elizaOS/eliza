@@ -97,6 +97,46 @@ dedicated window:
 the Dock icon at rest) · `ELIZA_DESKTOP_TRAY_POPOVER` · kiosk shell mode. All
 default to the chat-first, dockless-on-macOS, tray-enabled experience above.
 
+## Phase 2 fork capabilities and the version-bump path (#12184)
+
+The remaining pill/tray gaps need native changes that live in the Electrobun
+fork (`upstreams/electrobun`, github.com/elizaOS/electrobun), not in this
+package. They are implemented on the fork branch
+`feat/12184-panel-hotkeys-win-tray` and reach the app **only through a
+published `electrobun` version bump** — never via `patches/` (that mechanism is
+reserved for the small CLI patch) and never by editing `node_modules`.
+
+What the fork adds:
+
+- **macOS non-activating panels (G1):** a window created with
+  `styleMask: { NonactivatingPanel: true }` is now an `ElectrobunPanel :
+  NSPanel` — floating level, joins all Spaces, shows over full-screen apps,
+  takes key status for typing **without activating the app** (the
+  previously-active app keeps menu-bar ownership; the Wispr/Raycast behavior).
+- **macOS global hotkeys via Carbon `RegisterEventHotKey` (G2):** registration
+  no longer needs Accessibility permission, and a registered chord is
+  **consumed** system-wide instead of also reaching the focused app. The
+  accelerator grammar and `GlobalShortcut` API are unchanged.
+- **Windows tray/flyout enablement (G3+G4, code-only until a Windows lane
+  verifies it):** `Tray.getBounds()` returns the real icon rect
+  (`Shell_NotifyIconGetRect`); `styleMask.NonactivatingPanel` maps to
+  `WS_EX_NOACTIVATE + WS_EX_TOOLWINDOW + WS_EX_TOPMOST` (no focus steal, no
+  taskbar button) and `styleMask.UtilityWindow` to `WS_EX_TOOLWINDOW`.
+
+Integration sequence when cutting the bump (the consumed npm `electrobun@1.18.1`
+predates the fork's Rust port, so this is a coordinated upgrade):
+
+1. Merge the fork branch into fork `develop`, tag (`v1.18.5-beta.x`+), and
+   publish from `upstreams/electrobun/package` (`bun npm:publish:beta`).
+2. Bump the `electrobun` dependency in this package's `package.json` and
+   rebase `patches/electrobun@<version>.patch` (CLI patch) onto the new
+   version; `bun install` to refresh `bun.lock`.
+3. Flip the pill and tray popover to `styleMask: { NonactivatingPanel: true }`
+   on darwin in `createMainWindow()` / the popover creation path, and re-run
+   `desktop-experience-contract.test.ts` + per-OS captures. Until that bump,
+   the app keeps the 1.18.1 behavior (activating summon; listen-only macOS
+   hotkey that needs Accessibility trust).
+
 ## Contract tests
 
 `desktop-experience-contract.test.ts` pins the defaults this doc promises
