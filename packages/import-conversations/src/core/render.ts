@@ -34,6 +34,7 @@ const SOURCE_LABELS: Record<string, string> = {
   chatgpt: "ChatGPT",
   claude: "Claude",
   hermes: "Hermes",
+  openclaw: "OpenClaw",
 };
 
 export interface RenderedPart {
