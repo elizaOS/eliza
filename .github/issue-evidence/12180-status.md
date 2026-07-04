@@ -1,11 +1,44 @@
 # Issue #12180 — Foundation slice (D1–D5) status
 
-Branch: `feat/12180-local-agent-transport-foundation` (off develop tip
-`03dbd8c501e`). This PR implements the **behavior-neutral foundation slice**
+Branch: `feat/12180-local-agent-transport-foundation` (rebased onto develop tip
+`f02f9fc8810`). This PR implements the **behavior-neutral foundation slice**
 (plan §D, items 2 + 1 + 3). Nothing device-gated is included. Port-gating is
 opt-in and unused by any caller; the desktop transport resolver is dormant
 (inert until a future item-4 RPC handler exists). Every default boot path is
 byte-for-byte identical to today.
+
+## Review round (post-adversarial-review fixes)
+
+Five confirmed findings were addressed after the first review:
+
+1. **biome format** — all new/edited files reformatted to their package's biome
+   config (plugin → TAB, agent/shared/app-core/ui → 2-space + array wrapping).
+   `biome format .` exits **0** for `plugin-capacitor-bridge`; every file this
+   change touches passes `biome format`. The one agent format red is a
+   pre-existing, out-of-scope `.d.ts` — see "biome format" below.
+2. **skipApiListen correctness** — `syncResolvedApiPort` + the "listening on
+   http://…" / "Control UI:" log/console lines now run only `if (!skipApiListen)`
+   in `eliza.ts`, so no never-bound port is synced into env and no false
+   "listening" URL is emitted; the IPC branch logs "route kernel ready (no TCP
+   listener bound)".
+3. **removed speculative stub** — the unused `requestStream` surface
+   (`StdioBridgeStreamHandler`, `requestStream?` option, `defaultRequestStream`,
+   the returned field, and its 2 placeholder tests) was stripped from
+   `stdio-bridge.ts`. Streaming will be added with its real consumer in item 5/6.
+4. **single source of truth for frame types** — `ios/bridge.ts` now imports the
+   shared `StdioBridgeRequestFrame`/`StdioBridgeResponseFrame` (aliased to the
+   local `BridgeRequest`/`BridgeResponse` names) and drops the byte-for-byte
+   duplicate interfaces + the two casts at the `createStdioBridge` call site.
+5. **real behavioral test for skipListen** — `server.ts` cannot be imported into
+   the agent vitest lane (app-core subpath alias → ENOTDIR), but it DOES load
+   under a plain Bun runtime. A Bun child-process harness
+   (`__fixtures__/skip-listen-boot-harness.ts`) now boots the REAL
+   `startApiServer` and the test asserts `skipListen: true` → port NOT bound AND
+   (non-vacuous control) unset → port bound. Verified locally: the boot runs
+   (~13s, two real boots) and passes. When the module graph can't load (sparse
+   checkout without built dist/generated i18n), the harness reports the failure
+   and the behavioral case skips explicitly with a warning rather than
+   false-passing — the source-level assertions still hold.
 
 ## What was implemented
 
@@ -33,11 +66,14 @@ short-circuits before `server.listen(...)`, returning the un-bound server with
 routes + `dispatchRoute` wired and the same
 `{ port, close, updateRuntime, updateStartup }` contract. Shared connector/stream
 teardown factored into `stopServerSideResources()` and reused by both close
-paths. `skipListen` unset → identical to today. Test:
-`packages/agent/src/api/server-skip-listen.test.ts` (source-level; `server.ts`
-cannot boot in the vitest lane — the `@elizaos/app-core` subpath alias → ENOTDIR,
-per the existing `health-routes.canRespond-ws.test.ts` note — so this mirrors the
-established `public-route-audit.test.ts` static-analysis pattern).
+paths. `skipListen` unset → identical to today. In local-agent IPC mode the
+port-sync + "listening" logs are suppressed (review fix #2). Test:
+`packages/agent/src/api/server-skip-listen.test.ts` — source-level assertions
+(`server.ts` can't be imported into the vitest lane; the `@elizaos/app-core`
+subpath alias → ENOTDIR, per `health-routes.canRespond-ws.test.ts`) PLUS a real
+Bun-subprocess behavioral test (`__fixtures__/skip-listen-boot-harness.ts`) that
+boots the actual `startApiServer` and asserts port-not-bound with `skipListen`
+and port-bound without it.
 
 ### D4 — `createStdioBridge` shared NDJSON kernel
 New `plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.ts` extracts the
@@ -47,11 +83,13 @@ in-order dispatch, error→frame). `runIosBridgeCli` in
 buffering/dispatch to it via `createStdioBridge({ request, writeFrame,
 interceptLine })`, keeping iOS ownership of host-call interleaving
 (`interceptLine = tryHandleHostResultLine`), the runtime host, stdout
-reservation, and status shims. **Buffered only** — `requestStream` is a clear
-not-implemented throw (device-side streaming = item 5/6). `ios-bridge --stdio`
-behavior unchanged; existing `ios/bridge.routes.test.ts` stays green (15/15).
-Test: `plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.test.ts` (9 cases,
-incl. `/api/health` buffered round-trip).
+reservation, and status shims. **Buffered only** — no `requestStream` surface at
+all (the speculative stub was removed, review fix #3); streaming is added with
+its real consumer in item 5/6. `ios/bridge.ts` imports the shared frame types as
+the single source of truth (review fix #4). `ios-bridge --stdio` behavior
+unchanged; existing `ios/bridge.routes.test.ts` stays green (15/15). Test:
+`plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.test.ts` (7 cases, incl.
+`/api/health` buffered round-trip).
 
 ### D5 — Dormant desktop local-agent transport resolver
 New `packages/ui/src/api/desktop-local-agent-transport.ts`:
@@ -75,15 +113,17 @@ Run via the parent worktree's vitest binary (the sparse worktree `node_modules`
 resolves `@elizaos/*` and vitest from the shared parent tree).
 
 ```
-packages/shared           89 files, 1098 tests — ALL PASS
-  runtime-env.expose-port.test.ts               17 pass
-packages/agent            server-skip-listen.test.ts 5 pass;
-                          health-routes.canRespond-ws.test.ts 8 pass (13 total)
-packages/app-core         eliza-local-agent-port-gate.test.ts 8 pass
-plugins/plugin-capacitor-bridge  12 files, 78 pass / 2 fail*
-  shared/stdio-bridge.test.ts                    9 pass
-  ios/bridge.routes.test.ts                     15 pass (regression green)
-packages/ui               desktop-local-agent-transport.test.ts 8 pass;
+packages/shared           runtime-env.expose-port.test.ts             17 pass
+packages/agent            server-skip-listen.test.ts                   7 pass
+                            (5 source-level + 2 real Bun-subprocess boot; the
+                             behavioral boot runs ~13s and asserts
+                             skip→unbound, control→bound)
+packages/app-core         eliza-local-agent-port-gate.test.ts          8 pass
+plugins/plugin-capacitor-bridge
+  shared/stdio-bridge.test.ts                                          7 pass
+  ios/bridge.routes.test.ts                                           15 pass (regression green)
+  (full suite: 76 pass / 2 fail* — the 2 are pre-existing, see below)
+packages/ui               desktop-local-agent-transport.test.ts        8 pass;
                           + desktop-http/ios/android/native-cloud transport 28 pass;
                           + client-base* 21 pass; csrf-client.test.ts 4 pass
 ```
@@ -114,6 +154,22 @@ packages/ui                     0 errors in touched files; 1 UNRELATED error:
 
 No committed code fails typecheck.
 
+## biome format (CI `format:check` gate)
+
+```
+plugins/plugin-capacitor-bridge   `biome format .`  →  EXIT 0  (34 files, clean)
+packages/agent                    every file THIS change touches passes
+                                  `biome format` (server.ts, server-skip-listen
+                                  .test.ts, __fixtures__/skip-listen-boot-harness
+                                  .ts → EXIT 0)
+packages/shared / app-core / ui   every touched/new file passes `biome format`
+```
+
+One agent format red exists — `packages/agent/src/external-modules.d.ts` — but
+it is **NOT in this change's diff, is also red on `origin/develop`**, and the
+agent package has no `format:check` script (only `format`), so it is not a
+regression introduced here. Left untouched per scope discipline.
+
 ## Regression-safety of D2/D3 (default path still binds the port)
 
 The default boot path passes no `localAgentMode`, so `skipApiListen` is `false`
@@ -130,13 +186,15 @@ sparse worktree. **Deferred to CI / a build host** (see below).
 ## Environment limits (why some proofs are CI-gated even for pure-TS code)
 
 - This is a `.claude/worktrees/*` sparse checkout sharing the parent tree's
-  `node_modules`; it has no per-package `dist`, no generated i18n data by
-  default (generated on the fly for the app-core lane), and cannot boot
-  `server.ts` / `eliza.ts` (their module graphs need the full build +
-  `@elizaos/app-core` non-aliased resolution). Hence D2/D3 tests are
-  source-level + predicate-level, matching the repo's own established pattern for
+  `node_modules`; it has no per-package `dist` and no generated i18n data by
+  default. `server.ts` / `eliza.ts` cannot be imported into the vitest lane
+  (the `@elizaos/app-core` subpath alias → ENOTDIR), so the D2/D3 tests carry
+  source-level + predicate-level assertions matching the repo's own pattern for
   un-bootable modules (`public-route-audit.test.ts`,
-  `health-routes.canRespond-ws.test.ts`).
+  `health-routes.canRespond-ws.test.ts`). NOTE: under a plain Bun runtime the
+  `server.ts` module graph DOES load once the generated i18n data exists — which
+  is exactly how the D3 real behavioral subprocess test (review fix #5) boots the
+  actual `startApiServer` and proves the no-bind guarantee here, not just in CI.
 - `bun run verify` repo-wide (turbo typecheck+lint across all workspaces) needs
   the full install/dist; run it in CI. Per-package `tsgo` was run here instead
   (results above).
