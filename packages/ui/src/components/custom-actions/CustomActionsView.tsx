@@ -99,8 +99,8 @@ export function CustomActionsView() {
           ),
         );
       } catch {
-        // The switch is not flipped optimistically, so the row still reflects
-        // server-confirmed state.
+        // error-policy:J4 explicit row error; the switch is not flipped
+        // optimistically, so the row still reflects server-confirmed state.
         setActionError(
           t("customactionspanel.UpdateFailed", {
             defaultValue: "Couldn't update this action. Try again.",
@@ -129,7 +129,8 @@ export function CustomActionsView() {
         await client.deleteCustomAction(id);
         setActions((prev) => prev.filter((action) => action.id !== id));
       } catch {
-        // The item stays visible for retry because deletion was not confirmed.
+        // error-policy:J4 explicit row error; the item stays visible for retry
+        // because deletion was not confirmed.
         setActionError(
           t("customactionspanel.DeleteFailed", {
             defaultValue: "Couldn't delete this action. Try again.",
