@@ -11,8 +11,8 @@ Benchmarks: swe_bench, terminal_bench
 Adapters: elizaos
 Max tasks: 1
 Timeout seconds: 3600
-SWE-bench Pro evaluator backend: 
-SWE-bench Pro eval workers: 
+SWE-bench Pro evaluator backend:
+SWE-bench Pro eval workers:
 Enforce comparable: False
 Enforce coverage: False
 Enforce token evidence: False
@@ -142,8 +142,8 @@ Blocking benchmarks: (none)
 
 Status: ok
 Enforced: False
-Summary: 
-Latest dir: 
+Summary:
+Latest dir:
 Message: quality guardrail is advisory without a summary
 
 ## Trajectory Review Gate
