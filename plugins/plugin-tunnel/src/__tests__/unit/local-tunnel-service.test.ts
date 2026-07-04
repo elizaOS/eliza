@@ -182,6 +182,51 @@ describe('plugin-tunnel stop/status/provider/config behavior', () => {
     });
   });
 
+  it('reports a structured failure (not a fabricated "stopped") when the service fails to tear down (#12746)', async () => {
+    const service = tunnelService({
+      isActive: mock(() => true),
+      getStatus: mock(() => ({
+        active: true,
+        url: 'https://device.example.ts.net',
+        port: 8080,
+        startedAt: new Date('2026-01-01T00:00:00.000Z'),
+        provider: 'tailscale',
+        backend: 'local-cli',
+      })),
+      stopTunnel: mock(async () => {
+        throw new Error(
+          'tailscale serve reset exited with code 1: tailscaled offline. Tunnel may still be exposed on https://device.example.ts.net.'
+        );
+      }),
+    });
+    const callback = mock(async () => {}) as HandlerCallback;
+
+    const result = await handleStopTunnel(
+      runtime(service),
+      message,
+      undefined,
+      undefined,
+      callback
+    );
+
+    expect(service.stopTunnel).toHaveBeenCalledTimes(1);
+    expect(result.success).toBe(false);
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        action: 'tunnel_stop_failed',
+        previousUrl: 'https://device.example.ts.net',
+        previousPort: 8080,
+      },
+    });
+    expect(result.error).toContain('tunnel stop failed');
+    // The user is warned the tunnel may still be exposed, never told it stopped.
+    const callbackArg = (callback as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][0] as { text: string };
+    expect(callbackArg.text).toContain('may still be exposed');
+    expect(callbackArg.text).not.toContain('Tunnel stopped');
+  });
+
   it('reports status and provider state without mutating inactive services', async () => {
     const service = tunnelService({
       isActive: mock(() => false),

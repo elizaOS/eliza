@@ -39,7 +39,30 @@ export async function handleStopTunnel(
   const previousUrl = status.url;
   const previousPort = status.port;
 
-  await tunnelService.stopTunnel();
+  try {
+    await tunnelService.stopTunnel();
+  } catch (error) {
+    // The tunnel service failed to tear down (e.g. `tailscale serve reset`
+    // returned non-zero). The tunnel may still be EXPOSED, so surface a
+    // structured failure instead of fabricating a "stopped" success — the
+    // model/user must not believe a live public tunnel is closed.
+    const detail = error instanceof Error ? error.message : String(error);
+    elizaLogger.error(`[stop-tunnel] failed to stop tunnel: ${detail}`);
+    if (callback) {
+      await callback({
+        text: `Failed to stop the tunnel. It may still be exposed on port ${previousPort} (${previousUrl}). ${detail}`,
+      });
+    }
+    return {
+      success: false,
+      error: `tunnel stop failed: ${detail}`,
+      data: {
+        action: 'tunnel_stop_failed',
+        previousUrl: previousUrl ?? '',
+        previousPort: previousPort ?? 0,
+      },
+    };
+  }
 
   if (callback) {
     await callback({

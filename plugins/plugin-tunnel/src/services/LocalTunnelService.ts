@@ -173,10 +173,39 @@ export class LocalTunnelService extends Service implements ITunnelService {
     this.isShuttingDown = true;
     elizaLogger.info('[LocalTunnelService] stopping tunnel');
 
-    if (this.useFunnel) {
-      await runCommand('tailscale', ['funnel', 'reset']);
-    } else {
-      await runCommand('tailscale', ['serve', 'reset']);
+    const resetVerb = this.useFunnel ? 'funnel' : 'serve';
+
+    let result: SpawnResult;
+    try {
+      result = await runCommand('tailscale', [resetVerb, 'reset']);
+    } catch (error) {
+      // Fail closed: the reset never ran (e.g. the tailscale binary vanished or
+      // the process errored before exit), so the tunnel is almost certainly
+      // STILL EXPOSED on the network. Do NOT cleanup()/report success — that
+      // would fabricate a teardown of a live public tunnel. Leave state intact
+      // (url/port preserved, isActive() true again) so the caller surfaces the
+      // failure and can retry.
+      this.isShuttingDown = false;
+      const detail = error instanceof Error ? error.message : String(error);
+      elizaLogger.error(
+        `[LocalTunnelService] tailscale ${resetVerb} reset failed to spawn: ${detail}`
+      );
+      throw new Error(
+        `tailscale ${resetVerb} reset failed to spawn: ${detail}. Tunnel may still be exposed on ${this.tunnelUrl ?? 'the tailnet'}.`
+      );
+    }
+
+    if (result.code !== 0) {
+      // The reset command ran but the tailscale daemon rejected it (non-zero
+      // exit). The serve/funnel config was not torn down, so the tunnel is
+      // still live. Fail closed instead of masquerading as "stopped".
+      this.isShuttingDown = false;
+      elizaLogger.error(
+        `[LocalTunnelService] tailscale ${resetVerb} reset exited with code ${result.code}: ${result.stderr.trim()}`
+      );
+      throw new Error(
+        `tailscale ${resetVerb} reset exited with code ${result.code}: ${result.stderr.trim()}. Tunnel may still be exposed on ${this.tunnelUrl ?? 'the tailnet'}.`
+      );
     }
 
     this.cleanup();
