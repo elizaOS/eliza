@@ -7,17 +7,20 @@ import { describe, expect, it, vi } from "vitest";
 // Control the framework-state probe so we can drive its failure path
 // deterministically without touching the filesystem / env discovery it does.
 const getTaskAgentFrameworkStateMock = vi.fn();
-vi.mock("../../src/services/task-agent-frameworks.js", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("../../src/services/task-agent-frameworks.js")
-    >();
-  return {
-    ...actual,
-    getTaskAgentFrameworkState: (...args: unknown[]) =>
-      getTaskAgentFrameworkStateMock(...args),
-  };
-});
+vi.mock(
+  "../../src/services/task-agent-frameworks.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/task-agent-frameworks.js")
+      >();
+    return {
+      ...actual,
+      getTaskAgentFrameworkState: (...args: unknown[]) =>
+        getTaskAgentFrameworkStateMock(...args),
+    };
+  },
+);
 
 import { availableAgentsProvider } from "../../src/providers/available-agents.js";
 import {
