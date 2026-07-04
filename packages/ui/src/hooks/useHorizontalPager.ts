@@ -73,119 +73,9 @@ interface DragState {
   hadButtons: boolean;
 }
 
-/**
- * Cross-pager gesture arbitration (nested pagers).
- *
- * The home↔launcher rail nests the launcher's grid pager and both attach
- * pointer handlers along the same bubble path, so without arbitration one
- * horizontal drag is tracked — and painted — by BOTH pagers at once, and for
- * mouse/pen the outer handler's later `setPointerCapture` steals the pointer
- * from the inner pager mid-drag. This registry makes a swipe claimed by two
- * pagers structurally impossible (the shell-surface store invariant): every
- * pager that sees a pointerdown registers as a tracker in bubble order
- * (innermost first), and the first pager that commits a horizontal axis AND
- * can move in the drag direction claims the pointer exclusively, evicting
- * every other tracker on the spot.
- */
-interface PagerPointerTracker {
-  /**
-   * Called when another pager claims the pointer. Eviction is pushed (not
-   * polled) because once the winner holds mouse capture the losers may never
-   * receive another pointer event to learn from.
-   */
-  onEvicted: () => void;
-}
-
-interface PagerPointerGesture {
-  /** The pointerdown that opened this gesture — tells a fresh gesture apart
-   *  from a stale entry when the browser reuses a pointer id. */
-  downEvent: Event;
-  /** Trackers in bubble order: index 0 is the innermost pager. */
-  trackers: PagerPointerTracker[];
-  /** Exclusive owner of the horizontal gesture, once claimed. */
-  owner: PagerPointerTracker | null;
-}
-
-const pagerPointerGestures = new Map<number, PagerPointerGesture>();
-
-function registerPagerPointerTracker(
-  pointerId: number,
-  downEvent: Event,
-  tracker: PagerPointerTracker,
-): void {
-  const gesture = pagerPointerGestures.get(pointerId);
-  // A different pointerdown under a reused pointer id is a NEW gesture — the
-  // old entry is stale (its pointerup never reached us), so replace it.
-  if (!gesture || gesture.downEvent !== downEvent) {
-    pagerPointerGestures.set(pointerId, {
-      downEvent,
-      trackers: [tracker],
-      owner: null,
-    });
-    return;
-  }
-  if (!gesture.trackers.includes(tracker)) gesture.trackers.push(tracker);
-}
-
-function unregisterPagerPointerTracker(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): void {
-  const gesture = pagerPointerGestures.get(pointerId);
-  if (!gesture) return;
-  gesture.trackers = gesture.trackers.filter((t) => t !== tracker);
-  if (gesture.owner === tracker) gesture.owner = null;
-  if (gesture.trackers.length === 0) pagerPointerGestures.delete(pointerId);
-}
-
-/** True when a DIFFERENT pager holds the exclusive claim on this pointer. */
-function isPagerPointerOwnedElsewhere(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const owner = pagerPointerGestures.get(pointerId)?.owner ?? null;
-  return owner !== null && owner !== tracker;
-}
-
-/**
- * Claim the pointer for `tracker` (first claim wins) and evict every other
- * tracker. Returns whether `tracker` owns the pointer after the call.
- */
-function claimPagerPointer(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const gesture = pagerPointerGestures.get(pointerId);
-  // An untracked pointer means this pager is the only one listening.
-  if (!gesture) return true;
-  if (gesture.owner === tracker) return true;
-  if (gesture.owner !== null) return false;
-  gesture.owner = tracker;
-  // Iterate a snapshot: eviction unregisters, which replaces the array.
-  for (const other of [...gesture.trackers]) {
-    if (other !== tracker) other.onEvicted();
-  }
-  return true;
-}
-
-/**
- * True when `tracker` sits closest to the original event target among the
- * pagers still tracking this pointer. An UNOWNED horizontal drag (every pager
- * at its edge) paints its rubber-band on the innermost pager only, so two
- * nested rails never translate for the same finger.
- */
-function isInnermostPagerPointerTracker(
-  pointerId: number,
-  tracker: PagerPointerTracker,
-): boolean {
-  const gesture = pagerPointerGestures.get(pointerId);
-  return !gesture || gesture.trackers[0] === tracker;
-}
-
 export interface UseHorizontalPagerOptions {
   page: number;
   pageCount: number;
-  enabled?: boolean;
   onPageChange: (page: number) => void;
 }
 
@@ -333,7 +223,6 @@ export function useHorizontalPager<
 >({
   page,
   pageCount,
-  enabled = true,
   onPageChange,
 }: UseHorizontalPagerOptions): HorizontalPagerBinding<TViewport> {
   const viewportRef = React.useRef<TViewport | null>(null);
@@ -356,18 +245,10 @@ export function useHorizontalPager<
   const mountedRef = React.useRef(false);
   const pageRef = React.useRef(page);
   const pageCountRef = React.useRef(pageCount);
-  const enabledRef = React.useRef(enabled);
   const onPageChangeRef = React.useRef(onPageChange);
-  // This pager's identity in the shared pointer-claim registry. `onEvicted`
-  // dispatches through a ref so the registry never holds a stale closure.
-  const abandonDragRef = React.useRef<() => void>(() => {});
-  const pointerTrackerRef = React.useRef<PagerPointerTracker>({
-    onEvicted: () => abandonDragRef.current(),
-  });
 
   pageRef.current = page;
   pageCountRef.current = pageCount;
-  enabledRef.current = enabled;
   onPageChangeRef.current = onPageChange;
 
   const measureWidth = React.useCallback(() => {
@@ -454,12 +335,10 @@ export function useHorizontalPager<
   }, []);
 
   /**
-   * Stand down mid-gesture: another pager claimed this pointer (or this pager
-   * is unmounting). Dropping the drag immediately — rather than waiting for a
-   * pointerup that may never arrive once the winner holds capture — re-arms
-   * the ResizeObserver resync and the controlled-page layout effect, and
-   * settles the rail back to its resting page so a half-painted rubber-band
-   * never sticks.
+   * Stand down mid-gesture: a mouse/pen press ended off-surface (so no pointerup
+   * will arrive). Dropping the drag immediately re-arms the ResizeObserver
+   * resync and the controlled-page layout effect, and settles the rail back to
+   * its resting page so a half-painted rubber-band never sticks.
    */
   const abandonDrag = React.useCallback(() => {
     const state = dragRef.current;
@@ -467,13 +346,11 @@ export function useHorizontalPager<
     cancelScheduledOffset();
     dragRef.current = null;
     releaseCapture(state);
-    unregisterPagerPointerTracker(state.pointerId, pointerTrackerRef.current);
     // Re-measure: a viewport resize DURING the drag makes state.width stale, so
     // settling to pageOffset(page, staleWidth) would leave the rail permanently
     // mis-offset.
     writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
   }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
-  abandonDragRef.current = abandonDrag;
 
   React.useLayoutEffect(() => {
     const width = measureWidth();
@@ -513,10 +390,6 @@ export function useHorizontalPager<
 
   React.useEffect(() => cancelScheduledOffset, [cancelScheduledOffset]);
 
-  // Unmounting mid-gesture must not leave a dead tracker (or a stale claim)
-  // in the shared registry.
-  React.useEffect(() => () => abandonDragRef.current(), []);
-
   const finish = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
       const state = dragRef.current;
@@ -524,7 +397,6 @@ export function useHorizontalPager<
       cancelScheduledOffset();
       dragRef.current = null;
       releaseCapture(state);
-      unregisterPagerPointerTracker(event.pointerId, pointerTrackerRef.current);
 
       // Settle geometry uses the CURRENT width (a mid-drag resize makes
       // state.width stale); the commit decision below keeps state.width so the
@@ -560,16 +432,9 @@ export function useHorizontalPager<
           momentumSettleMs(Math.abs(offset - lastVisual), velocity),
         );
 
-      // A page only advances for the gesture's exclusive owner. Claiming here
-      // covers a release whose direction flipped after the last move: the
-      // first pager to claim wins and evicts the rest, so two nested pagers
-      // can never both advance off one pointerup.
-      if (
-        cancelled ||
-        state.axis !== "horizontal" ||
-        !canMove(state, dx) ||
-        !claimPagerPointer(event.pointerId, pointerTrackerRef.current)
-      ) {
+      // A page only advances for a committed horizontal drag that can actually
+      // move in the drag direction; anything else settles back.
+      if (cancelled || state.axis !== "horizontal" || !canMove(state, dx)) {
         settleTo(base);
         return;
       }
@@ -646,7 +511,6 @@ export function useHorizontalPager<
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (
-        !enabledRef.current ||
         pageCountRef.current <= 0 ||
         event.isPrimary === false ||
         // Only the primary (left) button starts a drag. A right/middle-button
@@ -659,14 +523,6 @@ export function useHorizontalPager<
         return;
       }
       cancelScheduledOffset();
-      // Enter the shared claim registry. Handlers run innermost-first in the
-      // bubble phase, so registration order records which pager sits closest
-      // to the finger.
-      registerPagerPointerTracker(
-        event.pointerId,
-        event.nativeEvent,
-        pointerTrackerRef.current,
-      );
       const currentPage = clampPage(pageRef.current, pageCountRef.current);
       const width = measureWidth();
       const restingOffset = pageOffset(currentPage, width);
@@ -717,16 +573,6 @@ export function useHorizontalPager<
         return;
       }
 
-      // Another pager already owns this pointer's horizontal gesture — stand
-      // down instead of double-tracking it. (Eviction usually beat us to it;
-      // this guards any event that still slips through.)
-      if (
-        isPagerPointerOwnedElsewhere(event.pointerId, pointerTrackerRef.current)
-      ) {
-        abandonDrag();
-        return;
-      }
-
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
       if (state.axis === "pending") {
@@ -736,26 +582,6 @@ export function useHorizontalPager<
         state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
       }
       if (state.axis !== "horizontal") return;
-
-      // A pager that can actually move in the drag direction claims the
-      // pointer exclusively. Handlers run innermost-first in the bubble phase,
-      // so a movable inner grid pager wins the gesture before the outer rail
-      // ever sees the move.
-      const owned = canMove(state, dx)
-        ? claimPagerPointer(event.pointerId, pointerTrackerRef.current)
-        : false;
-      // An unowned drag (every pager at its edge) rubber-bands on the
-      // innermost pager only — the outer rail must not paint edge resistance
-      // for a gesture it does not own.
-      if (
-        !owned &&
-        !isInnermostPagerPointerTracker(
-          event.pointerId,
-          pointerTrackerRef.current,
-        )
-      ) {
-        return;
-      }
 
       // Touch pointers are IMPLICITLY captured to the target on pointerdown, so
       // an explicit setPointerCapture is redundant — and on Android WebView it
@@ -785,7 +611,7 @@ export function useHorizontalPager<
       }
       scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
-    [abandonDrag, canMove, scheduleOffset, visualDragOffset],
+    [abandonDrag, scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(
