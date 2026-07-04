@@ -133,11 +133,15 @@ export async function extractAndPersistFirstRunApiKey(
   );
 
   // If the key is masked (from IPC) or missing, try to resolve the real
-  // key from local credential stores (files, keychain, env).
+  // key from local credential stores (files, keychain, env). A "****xxxx"
+  // value is the server's own GET-response masking echoed back by the
+  // client — never a real credential — so it must be replaced by a resolved
+  // key or dropped, not persisted (persisting it clobbers a working key
+  // with an unusable placeholder).
+  const llmApiKeyMasked = Boolean(llmSelection?.apiKey?.startsWith("****"));
   if (
     llmSelection?.transport === "direct" &&
-    llmSelection.backend !== "elizacloud" &&
-    !llmSelection.apiKey?.startsWith("****")
+    llmSelection.backend !== "elizacloud"
   ) {
     const resolved = resolveProviderCredential(llmSelection.backend);
     if (resolved && resolved.authType === "subscription") {
@@ -164,9 +168,9 @@ export async function extractAndPersistFirstRunApiKey(
       logger.info(
         `[first-run] Resolved real key for ${llmSelection.backend} via credential-resolver`,
       );
-    } else if (!llmSelection.apiKey) {
+    } else if (!llmSelection.apiKey || llmApiKeyMasked) {
       logger.warn(
-        `[first-run] No key found for ${llmSelection.backend} — cannot persist`,
+        `[first-run] No real key available for ${llmSelection.backend} (input key ${llmApiKeyMasked ? "masked" : "missing"}) — cannot persist`,
       );
       return null;
     }

@@ -221,16 +221,7 @@ export class AccountPool {
       if (!account.enabled) return false;
       if (exclude.has(account.id)) return false;
       if (explicit && !explicit.has(account.id)) return false;
-      if (account.health === "ok") return true;
-      // Allow rate-limited accounts back in once their reset has passed.
-      if (
-        account.health === "rate-limited" &&
-        typeof account.healthDetail?.until === "number" &&
-        account.healthDetail.until < now
-      ) {
-        return true;
-      }
-      return false;
+      return isAccountSelectableNow(account, now);
     });
   }
 
@@ -244,7 +235,11 @@ export class AccountPool {
 
     switch (strategy) {
       case "round-robin": {
-        const sorted = [...eligible].sort(byPriorityThenAge);
+        // The ring MUST have a stable order: byPriorityThenAge tiebreaks on
+        // lastUsedAt, which recordCall bumps between selects, so the ring
+        // would reshuffle under the cursor and serve the same account
+        // back-to-back (a,a,b,b,…) in the normal select→record→select flow.
+        const sorted = [...eligible].sort(byPriorityThenStableIdentity);
         const cursor = (this.roundRobinCursor.get(providerId) ?? -1) + 1;
         const index = cursor % sorted.length;
         this.roundRobinCursor.set(providerId, index);
@@ -526,6 +521,28 @@ export class AccountPool {
   }
 }
 
+/**
+ * Health half of the eligibility gate, shared with the coding-agent bridge's
+ * `describe()` so availability reporting can never disagree with what
+ * `select()` would actually serve: `ok` is selectable, and a rate-limited
+ * account is selectable again once its `healthDetail.until` reset has elapsed
+ * (`invalid` / `needs-reauth` never re-admit on their own). Counting only
+ * `health === "ok"` here used to report `healthy: 0` for a pool whose
+ * rate-limit window had already elapsed — making the orchestrator's failover
+ * gate refuse a respawn that `select()` would have served.
+ */
+export function isAccountSelectableNow(
+  account: LinkedAccountConfig,
+  now: number = Date.now(),
+): boolean {
+  if (account.health === "ok") return true;
+  return (
+    account.health === "rate-limited" &&
+    typeof account.healthDetail?.until === "number" &&
+    account.healthDetail.until < now
+  );
+}
+
 function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
   return `${providerId}:${accountId}`;
 }
@@ -558,6 +575,18 @@ function byPriorityThenAge(
   const aLast = accountLastUsedAt(a);
   const bLast = accountLastUsedAt(b);
   return aLast - bLast; // older first
+}
+
+/** Mutation-free ordering for the round-robin ring: identity fields only
+ * (priority, createdAt, id), so the cursor walks the same sequence no matter
+ * how usage recording mutates `lastUsedAt` between selects. */
+function byPriorityThenStableIdentity(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 function _byLeastUsedThenPriority(

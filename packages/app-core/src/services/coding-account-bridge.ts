@@ -47,6 +47,7 @@ import {
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
+  isAccountSelectableNow,
   type Strategy,
   selectionForProvider,
 } from "./account-pool.js";
@@ -322,6 +323,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
   return {
     describe() {
       const out: Record<string, CodingProviderAvailability[]> = {};
+      const now = Date.now();
       for (const [agentType, providers] of Object.entries(
         AGENT_PROVIDER_CANDIDATES,
       )) {
@@ -331,8 +333,13 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             providerId,
             total: accounts.length,
             enabled: accounts.filter((a) => a.enabled).length,
-            healthy: accounts.filter((a) => a.enabled && a.health === "ok")
-              .length,
+            // `healthy` must match select()'s own eligibility gate — the
+            // SubAgentRouter's failover gate and the readiness verdicts read
+            // this count, so a rate-limited account whose reset has elapsed
+            // (selectable again) must not be reported as unavailable.
+            healthy: accounts.filter(
+              (a) => a.enabled && isAccountSelectableNow(a, now),
+            ).length,
           };
         });
       }
