@@ -1,6 +1,11 @@
 // Runs the hosted agent-server config boundary for cloud runtime containers.
 type Env = Record<string, string | undefined>;
 
+export interface AutoStartAgentConfig {
+  agentId: string;
+  characterRef: string;
+}
+
 export function normalizeServerName(
   value: string | undefined,
 ): string | undefined {
@@ -40,6 +45,20 @@ export function getRequiredEnv(name: string, env: Env = process.env): string {
     throw new Error(`Missing required env var: ${name}`);
   }
   return value;
+}
+
+export function getAutoStartAgentConfig(
+  env: Env = process.env,
+): AutoStartAgentConfig | undefined {
+  const agentId = env.AGENT_ID?.trim();
+  if (!agentId) return undefined;
+
+  const characterRef = env.CHARACTER_REF?.trim();
+  if (!characterRef) {
+    throw new Error("CHARACTER_REF is required when AGENT_ID is set");
+  }
+
+  return { agentId, characterRef };
 }
 
 function withoutTrailingSlash(value: string): string {
