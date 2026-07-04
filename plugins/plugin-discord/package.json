@@ -49,7 +49,7 @@
 		"clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo && node ../../packages/scripts/clean-stray-dts.mjs",
 		"test": "vitest run",
 		"test:harness": "vitest run --config ./vitest.harness.config.ts",
-		"typecheck": "tsgo --noEmit",
+		"typecheck": "tsgo --noEmit -p tsconfig.json",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",

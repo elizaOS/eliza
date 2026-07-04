@@ -71,6 +71,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
     "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",

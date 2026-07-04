@@ -52,8 +52,9 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup && tsc --project tsconfig.build.json",
+    "build": "tsup && tsc --project tsconfig.build.json --noCheck",
     "dev": "tsup --watch",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:harness": "bunx vitest run --config vitest.harness.config.ts",
     "test:watch": "vitest",

@@ -54,7 +54,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint:check": "bunx @biomejs/biome check .",
     "build:ts": "bun run build",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "publishConfig": {
     "access": "public"

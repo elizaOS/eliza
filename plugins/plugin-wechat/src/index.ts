@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type MessageConnectorTarget,
+  type Plugin,
   stringToUuid,
   type TargetInfo,
   type UUID,
@@ -47,28 +48,6 @@ export function isWechatConnectorConfigured(
   }
 
   return false;
-}
-
-export interface Plugin {
-  name: string;
-  description: string;
-  init?: (
-    config: Record<string, unknown>,
-    runtime: unknown,
-  ) => Promise<void | (() => Promise<void>)>;
-  dispose?: () => Promise<void> | void;
-  /**
-   * Declarative auto-enable conditions consumed by the runtime's
-   * plugin-auto-enable engine. Mirrors the shape on `@elizaos/core` Plugin.
-   */
-  autoEnable?: {
-    envKeys?: string[];
-    connectorKeys?: string[];
-    shouldEnable?: (
-      env: Record<string, string | undefined>,
-      config: Record<string, unknown>,
-    ) => boolean;
-  };
 }
 
 let channel: WechatChannel | null = null;
@@ -381,7 +360,7 @@ const wechatPlugin: Plugin = {
     connectorKeys: ["wechat"],
   },
 
-  async init(config: Record<string, unknown>, runtime: unknown) {
+  async init(config: Record<string, string>, runtime: IAgentRuntime) {
     try {
       const manager = getConnectorAccountManager(runtime as IAgentRuntime);
       manager.registerProvider(
@@ -426,15 +405,6 @@ const wechatPlugin: Plugin = {
     await channel.start();
     registerWechatMessageConnector(runtime, wechatConfig);
     console.log("[wechat] Plugin initialized");
-
-    // Return cleanup function
-    return async () => {
-      if (channel) {
-        await channel.stop();
-        channel = null;
-        console.log("[wechat] Plugin stopped");
-      }
-    };
   },
   async dispose() {
     if (channel) {
