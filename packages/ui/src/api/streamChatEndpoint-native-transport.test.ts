@@ -105,7 +105,9 @@ describe("streamChatEndpoint over a native IPC streaming transport", () => {
     // second event fired.
     fake.emit("agentStreamChunk", {
       streamId: "chat-stream",
-      dataBase64: b64('data: {"type":"token","text":"Hel","fullText":"Hel"}\n\n'),
+      dataBase64: b64(
+        'data: {"type":"token","text":"Hel","fullText":"Hel"}\n\n',
+      ),
     });
     await flush();
     expect(tokens).toEqual([{ token: "Hel", accumulated: "Hel" }]);
@@ -156,7 +158,8 @@ describe("streamChatEndpoint over a native IPC streaming transport", () => {
     await flush();
     fake.emit("agentStreamResponse", { streamId: "chat-stream", status: 200 });
 
-    const doneFrame = 'data: {"type":"done","fullText":"Hi","agentName":"Eliza"}\n\n';
+    const doneFrame =
+      'data: {"type":"done","fullText":"Hi","agentName":"Eliza"}\n\n';
     const split = 20;
     fake.emit("agentStreamChunk", {
       streamId: "chat-stream",
