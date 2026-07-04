@@ -15,6 +15,7 @@ import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
+import { resolveMutedTargetFlags } from "../../../services/message/mute-state.ts";
 import type {
 	Action,
 	ActionExample,
@@ -2801,15 +2802,23 @@ async function handleListChannels(
 			);
 		}
 		const targets = await listRooms(context);
+		// Muted visibility: without the flag "which channels are you muted in"
+		// is unanswerable — the participant/world mute state is queryable
+		// nowhere else.
+		const mutedFlags = await resolveMutedTargetFlags(runtime, targets);
+		const mutedCount = mutedFlags.filter(Boolean).length;
 		return opSuccess(
 			"list_channels",
-			`Listed ${targets.length} channels from ${connector.label}.`,
+			`Listed ${targets.length} channels from ${connector.label}${
+				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
+			}.`,
 			{
 				source: connector.source,
-				channels: targets.map((t) => ({
+				channels: targets.map((t, index) => ({
 					label: t.label,
 					kind: t.kind,
 					target: t.target,
+					muted: mutedFlags[index] === true,
 				})),
 			},
 		);
@@ -2894,6 +2903,7 @@ async function handleListConnections(
 		label: string;
 		accountId: string | undefined;
 		roomCount: number;
+		mutedRoomCount: number;
 	}> = [];
 
 	for (const connector of connectors) {
@@ -2911,9 +2921,13 @@ async function handleListConnections(
 			connector,
 		);
 		let roomCount = 0;
+		let mutedRoomCount = 0;
 		try {
 			const targets = (await connector.listRooms?.(context)) ?? [];
 			roomCount = targets.length;
+			mutedRoomCount = (
+				await resolveMutedTargetFlags(runtime, targets)
+			).filter(Boolean).length;
 		} catch (error) {
 			logger.debug(
 				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${
@@ -2926,6 +2940,7 @@ async function handleListConnections(
 			label: connector.label,
 			accountId: connector.accountId,
 			roomCount,
+			mutedRoomCount,
 		});
 	}
 

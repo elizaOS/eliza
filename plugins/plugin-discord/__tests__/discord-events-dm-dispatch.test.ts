@@ -68,6 +68,11 @@ function makeService() {
 			emitEvent: vi.fn(),
 			getSetting: vi.fn(() => undefined),
 			logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+			reportError: vi.fn(),
+			// The inbound mute gate consults these; no mute state seeded here.
+			getParticipantUserState: vi.fn(async () => null),
+			getRoom: vi.fn(async () => null),
+			getWorld: vi.fn(async () => null),
 		},
 		slashCommands: [],
 		timeouts: [],

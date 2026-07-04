@@ -9,6 +9,11 @@ import {
 	shouldUnfollowRoomTemplate,
 	shouldUnmuteRoomTemplate,
 } from "../../../prompts.ts";
+import {
+	setRoomMuteUntil,
+	setWorldMuteState,
+	worldMuteActive,
+} from "../../../services/message/mute-state.ts";
 import type {
 	Action,
 	ActionExample,
@@ -32,10 +37,11 @@ import {
  * Replaces MUTE_ROOM / UNMUTE_ROOM / FOLLOW_ROOM / UNFOLLOW_ROOM (core) and
  * the connector-targeted CHAT_THREAD action (app-lifeops). Defaults to the
  * current room when `roomId` / `chatName` are omitted; supports cross-room
- * targeting by `platform` + `chatName` lookup, and an optional
- * `durationMinutes` mute window that surfaces a scheduling hint for the
- * connector layer (auto-unmute scheduling lives in app-lifeops'
- * scheduled-trigger-task plumbing — core does not import outer plugins).
+ * targeting by `platform` + `chatName` lookup, `scope=server` mute/unmute of
+ * the whole guild the target room belongs to (world.metadata, consulted by
+ * the same inbound mute gate), and an optional `durationMinutes` mute window
+ * persisted as `agentMuteUntilIso` — services/message/mute-state.ts unmutes
+ * on the first inbound message at/after that ISO time.
  */
 
 const ROOM_OPS = ["follow", "unfollow", "mute", "unmute"] as const;
@@ -52,7 +58,10 @@ type RoomOpParams = {
 	platform?: string;
 	chatName?: string;
 	durationMinutes?: number;
+	scope?: string;
 };
+
+type RoomOpScope = "room" | "server";
 
 type RuntimeLike = IAgentRuntime & {
 	getRoomsForParticipant?: (entityId: UUID) => Promise<UUID[]>;
@@ -165,6 +174,22 @@ function normalizeString(value: unknown): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizeScope(value: unknown): RoomOpScope {
+	if (typeof value !== "string") return "room";
+	const normalized = value.trim().toLowerCase();
+	return normalized === "server" || normalized === "guild"
+		? "server"
+		: "room";
+}
+
+function muteUntilIsoFromDuration(
+	durationMinutes: number | undefined,
+): string | undefined {
+	return durationMinutes && durationMinutes > 0
+		? new Date(Date.now() + durationMinutes * 60_000).toISOString()
+		: undefined;
+}
+
 function normalizePlatform(value: unknown): string | undefined {
 	const trimmed = normalizeString(value);
 	return trimmed ? trimmed.toLowerCase() : undefined;
@@ -269,6 +294,16 @@ async function validateRoomOpAvailability(
 	}
 
 	roomId = (roomId ?? message.roomId) as UUID;
+
+	if (normalizeScope(params.scope) === "server") {
+		if (op !== "mute" && op !== "unmute") return false;
+		const room = await runtime.getRoom(roomId);
+		if (!room?.worldId) return false;
+		const world = await runtime.getWorld(room.worldId);
+		const active = worldMuteActive(world);
+		return op === "mute" ? !active : active;
+	}
+
 	const current = (await runtime.getParticipantUserState(
 		roomId,
 		runtime.agentId,
@@ -408,6 +443,7 @@ async function applyOp(args: {
 	roomId: UUID;
 	roomName: string;
 	cfg: OpConfig;
+	durationMinutes?: number;
 }): Promise<ActionResult> {
 	try {
 		await args.runtime.updateParticipantUserState(
@@ -415,6 +451,17 @@ async function applyOp(args: {
 			args.runtime.agentId,
 			args.cfg.nextState,
 		);
+		// Timed-mute expiry lives on room.metadata so the inbound due-check
+		// (services/message/mute-state.ts) can auto-unmute at the ISO time.
+		// An untimed mute clears any stale expiry from a previous timed one;
+		// unmute always clears it.
+		let untilIso: string | undefined;
+		if (args.op === "mute") {
+			untilIso = muteUntilIsoFromDuration(args.durationMinutes);
+			await setRoomMuteUntil(args.runtime, args.roomId, untilIso ?? null);
+		} else if (args.op === "unmute") {
+			await setRoomMuteUntil(args.runtime, args.roomId, null);
+		}
 		await args.runtime.createMemory(
 			{
 				entityId: args.message.entityId,
@@ -442,6 +489,12 @@ async function applyOp(args: {
 				roomId: args.roomId,
 				roomName: args.roomName,
 				[args.cfg.dataKey]: true,
+				...(untilIso
+					? {
+							durationMinutes: args.durationMinutes,
+							scheduleAutoUnmuteIso: untilIso,
+						}
+					: {}),
 			},
 			success: true,
 		};
@@ -472,6 +525,105 @@ async function applyOp(args: {
 	}
 }
 
+// Server-wide mute/unmute: writes world.metadata (the same record the inbound
+// mute gate consults) instead of per-room participant state, so one op covers
+// every room of the guild — including rooms created after the mute. Skips the
+// model-decision gate: an explicit structured `scope` parameter is already an
+// explicit instruction, same rationale as the connector-targeted path.
+async function applyServerScopedOp(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	op: "mute" | "unmute";
+	room: Awaited<ReturnType<IAgentRuntime["getRoom"]>>;
+	cfg: OpConfig;
+	durationMinutes?: number;
+}): Promise<ActionResult> {
+	const { runtime, message, op, room, cfg } = args;
+	const failure = (error: string, text: string): ActionResult => ({
+		text,
+		values: { success: false, error },
+		data: { actionName: "ROOM", op, scope: "server", error },
+		success: false,
+	});
+
+	if (!room?.worldId) {
+		return failure(
+			"ROOM_SERVER_NOT_FOUND",
+			"That room does not belong to a server I can mute.",
+		);
+	}
+	const world = await runtime.getWorld(room.worldId);
+	if (!world) {
+		return failure(
+			"ROOM_SERVER_NOT_FOUND",
+			"That room does not belong to a server I can mute.",
+		);
+	}
+	const active = worldMuteActive(world);
+	if (op === "mute" ? active : !active) {
+		return failure(
+			`ROOM_${op.toUpperCase()}_PRECONDITION_FAILED`,
+			`Cannot ${op} server from state ${active ? "MUTED" : "NONE"}`,
+		);
+	}
+
+	const untilIso =
+		op === "mute" ? muteUntilIsoFromDuration(args.durationMinutes) : undefined;
+	await setWorldMuteState(
+		runtime,
+		world.id,
+		op === "mute" ? { ...(untilIso ? { untilIso } : {}) } : null,
+	);
+	const serverName = world.name ?? `Server-${String(world.id).substring(0, 8)}`;
+	await runtime.createMemory(
+		{
+			entityId: message.entityId,
+			agentId: message.agentId,
+			roomId: message.roomId,
+			content: {
+				thought:
+					op === "mute"
+						? `I muted the entire server ${serverName}`
+						: `I unmuted the entire server ${serverName}`,
+				actions: [cfg.startAction],
+			},
+		},
+		"messages",
+	);
+	return {
+		text:
+			op === "mute"
+				? `Server muted: ${serverName}${
+						args.durationMinutes
+							? ` for ${args.durationMinutes} minutes`
+							: ""
+					}`
+				: `Server unmuted: ${serverName}`,
+		values: {
+			success: true,
+			[cfg.resultKey]: true,
+			worldId: world.id,
+			serverName,
+			scope: "server",
+		},
+		data: {
+			actionName: "ROOM",
+			op,
+			scope: "server",
+			worldId: world.id,
+			serverName,
+			[cfg.dataKey]: true,
+			...(untilIso
+				? {
+						durationMinutes: args.durationMinutes,
+						scheduleAutoUnmuteIso: untilIso,
+					}
+				: {}),
+		},
+		success: true,
+	};
+}
+
 export const roomOpAction: Action = {
 	name: "ROOM",
 	contexts: [...ROOM_CONTEXTS],
@@ -490,12 +642,14 @@ export const roomOpAction: Action = {
 		"JOIN_ROOM",
 		"LEAVE_ROOM",
 		"CHAT_THREAD",
+		"MUTE_SERVER",
+		"UNMUTE_SERVER",
 		"ROOM",
 	],
 	description:
-		"Room mute/unmute/follow/unfollow. Default current room. Use roomId or platform+chatName for connector chat. mute+durationMinutes returns auto-unmute hint.",
+		"Room mute/unmute/follow/unfollow. Default current room. Use roomId or platform+chatName for connector chat. scope=server mutes/unmutes the whole server/guild. mute+durationMinutes auto-unmutes at the ISO time.",
 	descriptionCompressed:
-		"room mute|unmute|follow|unfollow; roomId or platform+chatName; durationMinutes",
+		"room mute|unmute|follow|unfollow; roomId or platform+chatName; scope room|server; durationMinutes",
 	routingHint:
 		"mute/unmute/follow/unfollow or join/leave a chat, channel, group, or thread -> ROOM; do NOT use to send/read messages in it -> MESSAGE, to reply in the current chat -> REPLY, or to publish to a public feed/timeline -> POST",
 	parameters: [
@@ -531,9 +685,19 @@ export const roomOpAction: Action = {
 		{
 			name: "durationMinutes",
 			description:
-				"For action=mute: temporary mute minutes. Returns scheduleAutoUnmuteIso hint.",
+				"For action=mute: temporary mute minutes; auto-unmutes at the returned scheduleAutoUnmuteIso time.",
 			required: false,
 			schema: { type: "number" as const },
+		},
+		{
+			name: "scope",
+			description:
+				"For mute/unmute: room (default) targets one room; server mutes/unmutes the entire server/guild the room belongs to.",
+			required: false,
+			schema: {
+				type: "string" as const,
+				enum: ["room", "server"],
+			},
 		},
 	],
 	examples: [
@@ -628,6 +792,42 @@ export const roomOpAction: Action = {
 		const explicitRoomId = normalizeString(params.roomId);
 		const chatName = normalizeString(params.chatName);
 		const durationMinutes = normalizeDurationMinutes(params.durationMinutes);
+		const scope = normalizeScope(params.scope);
+
+		if (scope === "server") {
+			if (op !== "mute" && op !== "unmute") {
+				return {
+					text: "scope=server only supports mute and unmute.",
+					values: { success: false, error: "ROOM_SCOPE_INVALID" },
+					data: {
+						actionName: "ROOM",
+						op,
+						scope,
+						error: "ROOM_SCOPE_INVALID",
+					},
+					success: false,
+				};
+			}
+			const room =
+				platform && (explicitRoomId || chatName)
+					? await resolveTargetRoom({
+							runtime: runtime as RuntimeLike,
+							platform,
+							roomId: explicitRoomId,
+							chatName,
+						})
+					: await runtime.getRoom(
+							(explicitRoomId ?? message.roomId) as UUID,
+						);
+			return applyServerScopedOp({
+				runtime,
+				message,
+				op,
+				room,
+				cfg,
+				durationMinutes,
+			});
+		}
 
 		// Connector-targeted path (replaces CHAT_THREAD).
 		// Skip the model gate and act directly on the named room; preserves
@@ -676,26 +876,19 @@ export const roomOpAction: Action = {
 				roomId: targetRoom.id,
 				roomName,
 				cfg,
+				durationMinutes,
 			});
 			if (
 				op === "mute" &&
 				result.success &&
 				durationMinutes &&
-				durationMinutes > 0 &&
 				typeof result.data === "object" &&
 				result.data !== null
 			) {
 				return {
 					...result,
 					text: `Muted ${roomName} on ${platform} for ${durationMinutes} minutes.`,
-					data: {
-						...result.data,
-						platform,
-						durationMinutes,
-						scheduleAutoUnmuteIso: new Date(
-							Date.now() + durationMinutes * 60_000,
-						).toISOString(),
-					},
+					data: { ...result.data, platform },
 				};
 			}
 			return result;
@@ -776,6 +969,7 @@ export const roomOpAction: Action = {
 			roomId,
 			roomName,
 			cfg,
+			durationMinutes,
 		});
 	},
 };

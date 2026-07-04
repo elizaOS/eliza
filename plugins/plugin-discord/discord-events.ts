@@ -8,6 +8,7 @@ import {
 	createUniqueUuid,
 	type ChannelType as ElizaChannelType,
 	type EventPayload,
+	resolveEffectiveMuteState,
 	type UUID,
 } from "@elizaos/core";
 import {
@@ -360,6 +361,56 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				message.channel.id,
 				message.id,
 			);
+		}
+
+		// Persisted mute gate. Consults the same participant/world mute state
+		// the ROOM action writes (and the core message service enforces), but
+		// BEFORE ingestion: a muted channel costs zero memory writes and zero
+		// model calls, and — unlike the boot-frozen CHANNEL_IDS whitelist —
+		// the muted set is runtime-mutable and survives restarts. Drops even a
+		// direct @mention: on mention-gated deployments every processed turn
+		// is a mention, so any mention bypass makes mute a no-op. Threads
+		// inherit their parent channel's mute.
+		try {
+			const muteRoomIds = [
+				createUniqueUuid(service.runtime, message.channel.id),
+			];
+			const parentChannelId =
+				"parentId" in message.channel &&
+				typeof message.channel.parentId === "string"
+					? message.channel.parentId
+					: undefined;
+			if (parentChannelId) {
+				muteRoomIds.push(createUniqueUuid(service.runtime, parentChannelId));
+			}
+			const muteState = await resolveEffectiveMuteState(service.runtime, {
+				roomIds: muteRoomIds,
+				// Same world derivation as the message manager: guild id, or the
+				// channel id itself for DMs (messages.ts ensureConnection).
+				worldId: createUniqueUuid(
+					service.runtime,
+					message.guildId ?? message.channel.id,
+				),
+			});
+			if (muteState.muted) {
+				service.runtime.logger.debug(
+					{
+						src: "plugin:discord",
+						agentId: service.runtime.agentId,
+						channelId: message.channel.id,
+						scope: muteState.scope,
+					},
+					"Dropping message for muted channel",
+				);
+				return;
+			}
+		} catch (error) {
+			// error-policy:J7 a broken mute lookup must not take down inbound
+			// message handling; surface it and fail open (core's own mute check
+			// still guards the planner).
+			service.runtime.reportError("discord:mute-gate", error, {
+				channelId: message.channel.id,
+			});
 		}
 
 		if (listenCids.includes(message.channel.id) && message) {
