@@ -251,6 +251,7 @@ const RouteDescriptorSchema = z
     name: z.string().optional(),
     public: z.boolean().optional(),
     publicReason: z.string().optional(),
+    publicWrite: z.string().optional(),
     isMultipart: z.boolean().optional(),
   })
   .passthrough();
@@ -872,6 +873,9 @@ export class RemotePluginBridge {
         public: true,
         name: descriptor.name,
         publicReason: descriptor.publicReason,
+        ...(descriptor.publicWrite
+          ? { publicWrite: descriptor.publicWrite }
+          : {}),
       };
     }
     return {

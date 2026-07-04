@@ -517,6 +517,13 @@ export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
  *
  * Returns an empty string when unconfigured, in which case the X-Server-Token
  * path is disabled and existing Bearer / loopback auth is unaffected.
+ *
+ * Security: a matching `X-Server-Token` grants full authority (`isAuthorized`),
+ * so this secret is a bearer credential — it MUST be a high-entropy random
+ * value of at least 32 bytes (≥256 bits; e.g. `openssl rand -hex 32`). Never a
+ * human-chosen or dictionary string. The comparison is timing-safe
+ * (`tokenMatches`), but that does not protect a low-entropy secret from being
+ * guessed offline; entropy is the only defense here. (#12228 L11)
  */
 function getServerSharedSecret(): string {
   const raw = process.env.AGENT_SERVER_SHARED_SECRET;

@@ -111,12 +111,15 @@ function buildRouteContext(
 
 const COMPANION_ROUTE_REASON =
   "Browser companion callbacks use companion session identifiers as capability tokens.";
+const COMPANION_WRITE_REASON =
+  "Companion callback POST authenticated by the unguessable companion session id, not the local gate.";
 
 const STATIC_ROUTES: Array<{
   type: string;
   path: string;
   public?: boolean;
   publicReason?: string;
+  publicWrite?: string;
 }> = [
   { type: "GET", path: "/api/browser-bridge/sessions" },
   { type: "GET", path: "/api/browser-bridge/settings" },
@@ -129,6 +132,7 @@ const STATIC_ROUTES: Array<{
     path: "/api/browser-bridge/companions/revoke",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
   },
   { type: "GET", path: "/api/browser-bridge/packages" },
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
@@ -137,6 +141,7 @@ const STATIC_ROUTES: Array<{
     path: "/api/browser-bridge/companions/sync",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
   },
   { type: "GET", path: "/api/browser-bridge/tabs" },
   { type: "GET", path: "/api/browser-bridge/current-page" },
@@ -149,6 +154,7 @@ const DYNAMIC_ROUTES: Array<{
   path: string;
   public?: boolean;
   publicReason?: string;
+  publicWrite?: string;
 }> = [
   { type: "GET", path: "/api/browser-bridge/sessions/:id" },
   { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
@@ -160,12 +166,14 @@ const DYNAMIC_ROUTES: Array<{
     path: "/api/browser-bridge/companions/sessions/:id/progress",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
   },
   {
     type: "POST",
     path: "/api/browser-bridge/companions/sessions/:id/complete",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
   },
   { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
   {
@@ -200,7 +208,11 @@ const browserBridgePluginRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         ...(r.public
-          ? ({ public: true, publicReason: r.publicReason ?? "" } as const)
+          ? ({
+              public: true,
+              publicReason: r.publicReason ?? "",
+              ...(r.publicWrite ? { publicWrite: r.publicWrite } : {}),
+            } as const)
           : {}),
         handler: routeHandler(),
       }) as Route,
@@ -212,7 +224,11 @@ const browserBridgePluginRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         ...(r.public
-          ? ({ public: true, publicReason: r.publicReason ?? "" } as const)
+          ? ({
+              public: true,
+              publicReason: r.publicReason ?? "",
+              ...(r.publicWrite ? { publicWrite: r.publicWrite } : {}),
+            } as const)
           : {}),
         handler: routeHandler(),
       }) as Route,

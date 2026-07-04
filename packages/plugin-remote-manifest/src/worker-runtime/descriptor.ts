@@ -110,6 +110,7 @@ export type WorkerPluginShape = {
     path: string;
     public?: boolean;
     publicReason?: string;
+    publicWrite?: string;
     isMultipart?: boolean;
     routeHandler?: AnyHandler;
   }>;
@@ -307,6 +308,7 @@ export function buildAnnounceDescriptor(
       if (route.name) entry.name = route.name;
       if (route.public !== undefined) entry.public = route.public;
       if (route.publicReason) entry.publicReason = route.publicReason;
+      if (route.publicWrite) entry.publicWrite = route.publicWrite;
       if (route.isMultipart !== undefined)
         entry.isMultipart = route.isMultipart;
       if (route.routeHandler) {

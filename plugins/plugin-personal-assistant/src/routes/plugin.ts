@@ -255,6 +255,8 @@ interface PublicRouteSpec {
   public: true;
   name: string;
   publicReason: string;
+  /** Required for non-GET public routes: names the out-of-band auth. */
+  publicWrite?: string;
 }
 
 type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
@@ -499,6 +501,8 @@ const GOOGLE_CONNECTOR_ACCOUNT_ROUTES: RouteSpec[] = [
     name: "connectors.google.oauth.callback.post",
     publicReason:
       "Google OAuth callback POST must accept provider redirect exchanges.",
+    publicWrite:
+      "Provider redirect exchange POST authenticated by the OAuth state/code, not the local gate.",
   },
   { type: "GET", path: "/api/connectors/google/audit/events" },
 ];
@@ -549,6 +553,7 @@ function buildRawRoutes(
         public: true,
         name: spec.name,
         publicReason: spec.publicReason,
+        ...(spec.publicWrite ? { publicWrite: spec.publicWrite } : {}),
         handler,
       };
     }

@@ -41,6 +41,8 @@ describe("isPublicRuntimePluginRoute", () => {
         public: true,
         name: "whatsapp-webhook",
         publicReason: "WhatsApp webhook callback is externally delivered.",
+        publicWrite:
+          "Inbound Meta webhook POST authenticated by the WhatsApp payload signature, not the local gate.",
       },
       {
         type: "POST",
@@ -48,6 +50,8 @@ describe("isPublicRuntimePluginRoute", () => {
         public: true,
         name: "bluebubbles-webhook",
         publicReason: "BlueBubbles webhook callback is externally delivered.",
+        publicWrite:
+          "Inbound BlueBubbles webhook POST authenticated by payload validation, not the local gate.",
       },
     ] as Route[]);
 

@@ -439,6 +439,8 @@ export const whatsappSetupRoutes: Route[] = [
     rawPath: true,
     public: true, // Meta webhook delivery must bypass auth
     publicReason: "Meta webhook delivery is authenticated by WhatsApp signature checks.",
+    publicWrite:
+      "Inbound Meta webhook POST authenticated by the WhatsApp payload signature, not the local gate.",
   },
   {
     type: "POST",

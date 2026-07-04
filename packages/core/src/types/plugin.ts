@@ -195,6 +195,17 @@ interface PublicRoute extends BaseRoute {
 	 * dispatchers.
 	 */
 	publicReason: string;
+	/**
+	 * A public route is unauthenticated by the central gate, so it defaults to
+	 * read-only (`GET`/`STATIC`): defense-in-depth against a mutating endpoint
+	 * being shipped world-reachable. A non-GET public route (an inbound webhook,
+	 * an OAuth redirect exchange, a companion-bridge callback) is authenticated
+	 * out-of-band instead of by the gate, so it must opt in here by naming that
+	 * mechanism (signature check, unguessable capability token, …). Without this,
+	 * a `public: true` route with a write method is rejected at registration and
+	 * dispatch. GET/STATIC public routes never need it.
+	 */
+	publicWrite?: string;
 }
 
 interface PrivateRoute extends BaseRoute {
@@ -204,13 +215,25 @@ interface PrivateRoute extends BaseRoute {
 
 export type Route = PublicRoute | PrivateRoute;
 
+/** Write methods a public route may only use when it self-authenticates. */
+const PUBLIC_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export function assertPublicRouteIntent(route: Route, source = "plugin"): void {
 	if (route.public !== true) return;
 	const reason = (route as { publicReason?: unknown }).publicReason;
-	if (typeof reason === "string" && reason.trim().length > 0) return;
-	throw new Error(
-		`[RouteAuth] Public route ${source}:${route.type} ${route.path} must declare publicReason`,
-	);
+	if (typeof reason !== "string" || reason.trim().length === 0) {
+		throw new Error(
+			`[RouteAuth] Public route ${source}:${route.type} ${route.path} must declare publicReason`,
+		);
+	}
+	if (PUBLIC_WRITE_METHODS.has(route.type)) {
+		const publicWrite = (route as { publicWrite?: unknown }).publicWrite;
+		if (typeof publicWrite !== "string" || publicWrite.trim().length === 0) {
+			throw new Error(
+				`[RouteAuth] Public ${route.type} route ${source}:${route.path} is unauthenticated by the central gate; a write-method public route must declare publicWrite naming its out-of-band auth (signature, capability token, …). Make it GET, gate it, or declare publicWrite.`,
+			);
+		}
+	}
 }
 
 /** Route that may include x402 payment fields (alias for authoring clarity) */

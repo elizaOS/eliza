@@ -65,6 +65,8 @@ export const oauthLocalCallbackRoute: Route = {
 	public: true,
 	publicReason:
 		"OAuth provider callback uses the unguessable intent id as capability.",
+	publicWrite:
+		"Provider redirect POSTs the bind result; the unguessable oauthIntentId is the capability token.",
 	rawPath: true,
 	handler: async (req, res, runtime) => {
 		const body = (req.body ?? {}) as Record<string, unknown>;

@@ -3617,6 +3617,8 @@ describe("remote plugin adapter", () => {
                   name: "localhost-route",
                   publicReason:
                     "Remote adapter localhost fixture public route.",
+                  publicWrite:
+                    "Remote capability POST authenticated by the endpoint's own bearer token, not the local gate.",
                 },
               ],
               views: [

@@ -217,6 +217,7 @@ export type RemotePluginRouteManifest = {
 	name?: string;
 	public?: boolean;
 	publicReason?: string;
+	publicWrite?: string;
 	description?: string;
 };
 
@@ -3312,6 +3313,7 @@ function requireRemotePluginRoute(
 	const name = optionalString(object, "name", method);
 	const isPublic = optionalBoolean(object, "public", method);
 	const publicReason = optionalString(object, "publicReason", method);
+	const publicWrite = optionalString(object, "publicWrite", method);
 	const description = optionalString(object, "description", method);
 	const path = requireNonEmptyString(object, "path", method);
 	validateRemotePluginPath(path, "path", method);
@@ -3327,6 +3329,7 @@ function requireRemotePluginRoute(
 		...(name === undefined ? {} : { name }),
 		...(isPublic === undefined ? {} : { public: isPublic }),
 		...(publicReason === undefined ? {} : { publicReason }),
+		...(publicWrite === undefined ? {} : { publicWrite }),
 		...(description === undefined ? {} : { description }),
 	};
 }

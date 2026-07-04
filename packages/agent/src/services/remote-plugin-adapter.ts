@@ -255,6 +255,9 @@ export function createRemoteCapabilityPlugin(
         public: true,
         name: route.name ?? `${module.name}:${route.path}`,
         publicReason: route.publicReason,
+        ...(route.publicWrite === undefined
+          ? {}
+          : { publicWrite: route.publicWrite }),
       };
     }
     return {
