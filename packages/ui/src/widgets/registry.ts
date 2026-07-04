@@ -10,6 +10,7 @@
  */
 
 import type { PluginInfo } from "../api/client-types-config";
+import { buildDefaultHomeWidgetDeclarations } from "./default-home-widget-sink-optins";
 import {
   getWidgetComponent,
   markWidgetRegistryChanged,
@@ -127,178 +128,15 @@ for (const w of [
   registerWidgetComponent(w.pluginId, w.id, w.Component);
 }
 
-const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = (
-  [
-    {
-      pluginId: "birdclaw",
-      label: "Birdclaw",
-      icon: "Bird",
-      defaultWidget: "activity",
-      signalKinds: ["activity", "notification"],
-    },
-    {
-      pluginId: "blocker",
-      label: "Focus",
-      icon: "Shield",
-      defaultWidget: "notifications",
-      signalKinds: ["blocked", "reminder", "notification"],
-    },
-    {
-      pluginId: "contacts",
-      label: "Contacts",
-      icon: "Contact",
-      defaultWidget: "activity",
-      signalKinds: ["nudge", "activity"],
-    },
-    {
-      pluginId: "device-settings",
-      label: "Device Settings",
-      icon: "Settings",
-      defaultWidget: "notifications",
-      signalKinds: ["notification", "activity"],
-    },
-    {
-      pluginId: "documents",
-      label: "Documents",
-      icon: "FileText",
-      defaultWidget: "activity",
-      signalKinds: ["approval", "workflow", "activity"],
-    },
-    // The `feed` plugin owns the real `feed.agent-activity` home tile (declared
-    // below), so it no longer opts into the shared messages sink here.
-    {
-      pluginId: "form",
-      label: "Forms",
-      icon: "ClipboardList",
-      defaultWidget: "activity",
-      signalKinds: ["approval", "workflow", "activity"],
-    },
-    {
-      pluginId: "hyperliquid",
-      label: "Hyperliquid",
-      icon: "ChartCandlestick",
-      defaultWidget: "notifications",
-      signalKinds: ["escalation", "notification", "activity"],
-    },
-    {
-      pluginId: "model-tester",
-      label: "Model Tester",
-      icon: "Gauge",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
-    {
-      pluginId: "native-settings",
-      label: "Native Settings",
-      icon: "Settings",
-      defaultWidget: "notifications",
-      signalKinds: ["notification", "activity"],
-    },
-    {
-      pluginId: "personal-assistant",
-      label: "Personal Assistant",
-      icon: "Sparkles",
-      defaultWidget: "notifications",
-      signalKinds: ["reminder", "check-in", "notification"],
-    },
-    {
-      // The @elizaos/plugin-messages app plugin no longer ships its own home
-      // tile — the standalone Messages widget was removed as redundant with the
-      // always-present chat overlay (#10697). Follow-up-worthy messages surface
-      // as `category: "message"` notifications, so it folds into that rail.
-      pluginId: "messages",
-      label: "Messages",
-      icon: "MessageSquare",
-      defaultWidget: "notifications",
-      signalKinds: ["message", "notification"],
-    },
-    {
-      pluginId: "phone",
-      label: "Phone",
-      icon: "Phone",
-      // Follow-up messages fold into the notification rail (#10697); the
-      // standalone Messages tile was removed as redundant with the chat overlay.
-      defaultWidget: "notifications",
-      signalKinds: ["message", "notification"],
-    },
-    {
-      pluginId: "polymarket",
-      label: "Polymarket",
-      icon: "ChartNoAxesCombined",
-      defaultWidget: "notifications",
-      signalKinds: ["escalation", "notification", "activity"],
-    },
-    {
-      pluginId: "screenshare",
-      label: "Screen Share",
-      icon: "MonitorUp",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
-    {
-      pluginId: "shopify",
-      label: "Shopify",
-      icon: "ShoppingBag",
-      defaultWidget: "notifications",
-      signalKinds: ["approval", "notification", "activity"],
-    },
-    {
-      pluginId: "task-coordinator",
-      label: "Task Coordinator",
-      icon: "ListChecks",
-      defaultWidget: "activity",
-      signalKinds: ["blocked", "workflow", "activity"],
-    },
-    {
-      pluginId: "todos",
-      label: "Todos",
-      icon: "ListTodo",
-      defaultWidget: "activity",
-      signalKinds: ["reminder", "check-in", "nudge"],
-    },
-    {
-      pluginId: "training",
-      label: "Fine Tuning",
-      icon: "Brain",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
-    {
-      pluginId: "trajectory-logger",
-      label: "Trajectory Logger",
-      icon: "Route",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
-    {
-      pluginId: "vector-browser",
-      label: "Vector Browser",
-      icon: "Search",
-      defaultWidget: "activity",
-      signalKinds: ["workflow", "activity"],
-    },
-    {
-      pluginId: "wallet-ui",
-      label: "Wallet",
-      icon: "Wallet",
-      defaultWidget: "notifications",
-      signalKinds: ["approval", "escalation", "notification"],
-    },
-    {
-      pluginId: "wifi",
-      label: "WiFi",
-      icon: "Wifi",
-      defaultWidget: "notifications",
-      signalKinds: ["notification", "activity"],
-    },
-  ] as const
-).map((declaration, index) => ({
-  id: `${declaration.pluginId}.default-home`,
-  slot: "home" as const,
-  order: 300 + index,
-  defaultEnabled: true,
-  ...declaration,
-}));
+// App-manifest plugins that do not ship an owned home card opt into one of the
+// shared default sinks. The opt-in rows now live in the co-located, explicitly-
+// marked legacy host-owned fallback table
+// (`LEGACY_DEFAULT_HOME_WIDGET_SINK_OPTINS`) instead of a second hand-maintained
+// declaration literal in this trunk (#12089 item 35). A plugin migrating to its
+// own `Plugin.widgets` declaration drops its row there — no edit here — and a
+// plugin-owned/server declaration wins over its legacy fallback row.
+const APP_HOME_DEFAULT_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] =
+  buildDefaultHomeWidgetDeclarations();
 
 /**
  * Public API for plugins outside app-core to append widget declarations to the
@@ -803,6 +641,31 @@ export function resolveWidgetsForSlot(
     }
   }
 
+  // Home-slot plugins that resolve to their OWN renderable home card (a bundled
+  // component or a `uiSpec`) — used to suppress a plugin's generic default-sink
+  // fallback row once it ships a real card, so a plugin migrating its opt-in
+  // onto its own `Plugin.widgets` doesn't render two home tiles (the owned card
+  // AND the stale `.default-home` sink) side by side.
+  //
+  // Only a card THIS host can actually render counts: a declaration with no
+  // registered component and no `uiSpec` (e.g. a remote/componentExport-only
+  // server declaration this build can't render) is dropped downstream by the
+  // `Component || uiSpec` gate, so it must NOT suppress the shared sink — doing
+  // so would leave the plugin with no home tile at all (a regression vs. the
+  // pre-refactor behavior, where the sink still rendered).
+  const pluginsWithOwnHomeCard = new Set<string>();
+  if (slot === "home") {
+    for (const { declaration } of declarationMap.values()) {
+      if (declaration.slot !== "home") continue;
+      const rendersViaOwnCard =
+        !!declaration.uiSpec ||
+        !!getWidgetComponent(declaration.pluginId, declaration.id);
+      if (rendersViaOwnCard) {
+        pluginsWithOwnHomeCard.add(declaration.pluginId);
+      }
+    }
+  }
+
   const results: ResolvedWidget[] = [];
 
   for (const { declaration, source } of declarationMap.values()) {
@@ -821,6 +684,24 @@ export function resolveWidgetsForSlot(
       declaration.slot === "home" &&
       declaration.defaultWidget
     ) {
+      // Suppress the generic default-sink fallback for a plugin that already
+      // resolves to its own renderable home card. This is the migration guard:
+      // the legacy `.default-home` sink row stands in ONLY while the plugin
+      // ships no real card, so it must not double up with an owned card under a
+      // different id. Scope is deliberately narrow:
+      //   - `source === "builtin"`: only the built-in legacy fallback rows are
+      //     suppressible. A SERVER-provided sink declaration is an intentional
+      //     plugin choice (a plugin may ship an owned card AND a separate shared
+      //     sink widget) and must still render.
+      //   - `!declaration.uiSpec`: a `uiSpec`-carrying declaration is a real card
+      //     that renders its own spec below, never the sink-only fallback.
+      if (
+        source === "builtin" &&
+        !declaration.uiSpec &&
+        pluginsWithOwnHomeCard.has(declaration.pluginId)
+      ) {
+        continue;
+      }
       const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
       Component = getWidgetComponent(sink.pluginId, sink.id);
       if (Component) {
