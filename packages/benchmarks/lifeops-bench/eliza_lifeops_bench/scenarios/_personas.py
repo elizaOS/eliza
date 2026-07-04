@@ -260,6 +260,38 @@ PERSONA_MARCUS_SHIFT = Persona(
     patience_turns=14,
 )
 
+PERSONA_CASEY_ADHD = Persona(
+    id="casey_adhd",
+    name="Casey Brennan",
+    traits=["adhd", "idea-jumping", "apologetic-about-forgetting", "bursts-of-hyperfocus"],
+    background=(
+        "Product designer diagnosed with ADHD in adulthood. Medication coverage is "
+        "inconsistent. Loses tasks that leave the screen, underestimates how long "
+        "everything takes, and abandons tools that make her feel judged."
+    ),
+    communication_style=(
+        "rapid, fragmentary, lowercase, mid-sentence topic switches, buries the actual "
+        "request in the middle of a ramble, types 'wait no' self-corrections"
+    ),
+    patience_turns=10,
+)
+
+PERSONA_TARA_LOW = Persona(
+    id="tara_low",
+    name="Tara Vance",
+    traits=["night-owl", "burned-out", "low-activation", "self-critical"],
+    background=(
+        "The existing tara_night persona in a depressive/burnout period: knows what she "
+        "'should' do, cannot start, goes quiet for days, reads any nudge as criticism "
+        "when it is phrased as a missed obligation."
+    ),
+    communication_style=(
+        "short, flat, self-deprecating ('I know I keep failing at this'), long silences, "
+        "responds better to one tiny concrete option than to a plan"
+    ),
+    patience_turns=8,
+)
+
 PERSONA_DEL_LOW = Persona(
     id="del_low",
     name="Del Ferreira",
@@ -302,5 +334,7 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_DRE_FLOOD,
     PERSONA_NOOR_NIGHT,
     PERSONA_MARCUS_SHIFT,
+    PERSONA_CASEY_ADHD,
+    PERSONA_TARA_LOW,
     PERSONA_DEL_LOW,
 ]

@@ -16,6 +16,7 @@ from dataclasses import replace
 
 from ..types import Domain, Scenario
 from ._smoke_scenarios import SMOKE_SCENARIOS
+from .adhd_capture import ADHD_CAPTURE_SCENARIOS
 from .calendar import CALENDAR_SCENARIOS
 from .comms_flood_triage import COMMS_FLOOD_TRIAGE_SCENARIOS
 from .contacts import CONTACTS_SCENARIOS
@@ -24,6 +25,7 @@ from .finance import FINANCE_SCENARIOS
 from .focus import FOCUS_SCENARIOS
 from .health import HEALTH_SCENARIOS
 from .live import ALL_LIVE_SCENARIOS
+from .low_activation import LOW_ACTIVATION_SCENARIOS
 from .mail import MAIL_SCENARIOS
 from .messages import MESSAGES_SCENARIOS
 from .neurotypical_control import NEUROTYPICAL_CONTROL_SCENARIOS
@@ -57,6 +59,7 @@ if len(EDGE_VARIANTS) != EDGE_EXPANSION_MULTIPLIER:
 
 CORE_SCENARIOS: list[Scenario] = [
     *SMOKE_SCENARIOS,
+    *ADHD_CAPTURE_SCENARIOS,
     *CALENDAR_SCENARIOS,
     *COMMS_FLOOD_TRIAGE_SCENARIOS,
     *MAIL_SCENARIOS,
@@ -70,6 +73,7 @@ CORE_SCENARIOS: list[Scenario] = [
     *TRAVEL_SCENARIOS,
     *TRAVELER_TIMEZONE_SCENARIOS,
     *HEALTH_SCENARIOS,
+    *LOW_ACTIVATION_SCENARIOS,
     *SLEEP_SCENARIOS,
     *FOCUS_SCENARIOS,
     *ALL_LIVE_SCENARIOS,
@@ -171,6 +175,7 @@ def validate_lifeops_scenarios() -> dict[str, object]:
 
 
 __all__ = [
+    "ADHD_CAPTURE_SCENARIOS",
     "ALL_LIVE_SCENARIOS",
     "ALL_SCENARIOS",
     "CALENDAR_SCENARIOS",
@@ -182,6 +187,7 @@ __all__ = [
     "FINANCE_SCENARIOS",
     "FOCUS_SCENARIOS",
     "HEALTH_SCENARIOS",
+    "LOW_ACTIVATION_SCENARIOS",
     "MAIL_SCENARIOS",
     "MESSAGES_SCENARIOS",
     "NEUROTYPICAL_CONTROL_SCENARIOS",
