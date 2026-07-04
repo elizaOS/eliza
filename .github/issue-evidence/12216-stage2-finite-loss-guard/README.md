@@ -15,6 +15,11 @@ Slice covered here:
 - Extends CPU-only registry/default-merge tests so the per-tier clip is
   explicit, large tiers do not inherit HF defaults accidentally, and an
   explicit `--max-grad-norm` still wins over the registry.
+- Adds a post-finetune checkpoint finite-tensor scan in `run_pipeline.py`.
+  A checkpoint containing NaN/Inf tensors now aborts before benchmark,
+  quantization, or publish stages.
+- Extends finite-guard tests with tiny local checkpoint shards covering finite
+  checkpoints, non-finite tensors, and missing tensor-shard failures.
 
 Verification run from repo root:
 
@@ -42,6 +47,16 @@ python3 -m py_compile \
   packages/training/scripts/training/model_registry.py \
   packages/training/scripts/training/test_model_registry.py \
   packages/training/scripts/test_train_local_low_vram_smoke.py
+# exit 0
+
+python3 -m pytest packages/training/scripts/training/test_finite_guard.py \
+  -q -k 'finite_loss or finite_weights or callback or checkpoint_scan'
+# 8 passed, 2 skipped
+
+python3 -m py_compile \
+  packages/training/scripts/run_pipeline.py \
+  packages/training/scripts/training/instrumentation.py \
+  packages/training/scripts/training/test_finite_guard.py
 # exit 0
 ```
 

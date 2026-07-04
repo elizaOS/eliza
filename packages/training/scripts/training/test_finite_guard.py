@@ -19,6 +19,7 @@ from torch import nn
 from scripts.training.instrumentation import (
     FiniteWeightsCallback,
     InstrumentationConfig,
+    assert_finite_checkpoint,
     assert_finite_loss,
     assert_finite_step,
     make_finite_weights_callback,
@@ -74,6 +75,39 @@ def test_raises_on_inf_loss_vector() -> None:
     loss = torch.tensor([0.1, float("inf"), float("nan")])
     with pytest.raises(RuntimeError, match="2/3 non-finite"):
         assert_finite_loss(loss, context="vector loss")
+
+
+def test_checkpoint_scan_passes_on_finite_torch_shard(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    torch.save({"model.layers.0.weight": torch.ones(2, 3)}, ckpt / "pytorch_model.bin")
+
+    result = assert_finite_checkpoint(ckpt)
+
+    assert result["passed"] is True
+    assert result["tensor_files"] == 1
+    assert result["tensors"] == 1
+
+
+def test_checkpoint_scan_raises_on_non_finite_torch_shard(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    torch.save(
+        {"model.layers.0.weight": torch.tensor([[1.0, float("nan")]])},
+        ckpt / "pytorch_model.bin",
+    )
+
+    with pytest.raises(RuntimeError, match="pytorch_model.bin:model.layers.0.weight"):
+        assert_finite_checkpoint(ckpt)
+
+
+def test_checkpoint_scan_requires_tensor_shards(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    (ckpt / "config.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="no tensor shards"):
+        assert_finite_checkpoint(ckpt)
 
 
 def test_raises_on_nan_weight() -> None:

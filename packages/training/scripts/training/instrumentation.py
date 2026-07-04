@@ -419,6 +419,97 @@ def assert_finite_loss(loss: Any, *, context: str = "training loss") -> None:
     )
 
 
+def _checkpoint_tensor_files(checkpoint_dir: Path) -> list[Path]:
+    patterns = ("*.safetensors", "*.bin", "*.pt", "*.pth")
+    return sorted(
+        path
+        for pattern in patterns
+        for path in checkpoint_dir.rglob(pattern)
+        if path.is_file()
+    )
+
+
+def _load_checkpoint_tensors(path: Path) -> dict[str, Any]:
+    if path.suffix == ".safetensors":
+        try:
+            from safetensors.torch import load_file
+        except ImportError as exc:
+            raise RuntimeError(
+                f"cannot scan {path}: safetensors is not installed"
+            ) from exc
+        return load_file(str(path), device="cpu")
+
+    import torch
+
+    try:
+        loaded = torch.load(path, map_location="cpu", weights_only=True)
+    except TypeError:
+        loaded = torch.load(path, map_location="cpu")
+    if isinstance(loaded, dict):
+        return loaded
+    return {"<root>": loaded}
+
+
+def assert_finite_checkpoint(
+    checkpoint_dir: Path | str,
+    *,
+    max_reported: int = 10,
+) -> dict[str, Any]:
+    """Scan a saved checkpoint directory and fail on any non-finite tensor.
+
+    This is the publish-blocking post-train gate for ``run_pipeline.py``:
+    even if a trainer process exits zero, a NaN/Inf tensor in the saved HF
+    checkpoint aborts before benchmark, quantization, or publish stages.
+    """
+    import torch
+
+    root = Path(checkpoint_dir)
+    if not root.is_dir():
+        raise RuntimeError(f"checkpoint finite scan target is not a directory: {root}")
+
+    files = _checkpoint_tensor_files(root)
+    if not files:
+        raise RuntimeError(
+            f"checkpoint finite scan found no tensor shards under {root}"
+        )
+
+    scanned_tensors = 0
+    offenders: list[str] = []
+    for file_path in files:
+        state = _load_checkpoint_tensors(file_path)
+        for name, tensor in state.items():
+            if not torch.is_tensor(tensor):
+                continue
+            scanned_tensors += 1
+            if torch.isfinite(tensor).all():
+                continue
+            finite = torch.isfinite(tensor)
+            bad_count = int((~finite).sum().item())
+            offenders.append(
+                f"{file_path.relative_to(root)}:{name} "
+                f"({bad_count}/{tensor.numel()} non-finite)"
+            )
+            if len(offenders) >= max_reported:
+                break
+        if len(offenders) >= max_reported:
+            break
+
+    if offenders:
+        raise RuntimeError(
+            "non-finite (NaN/Inf) checkpoint tensor(s): "
+            + "; ".join(offenders)
+            + (" …" if len(offenders) >= max_reported else "")
+            + ". Training diverged — aborting before benchmark, quantize, or publish."
+        )
+
+    return {
+        "checkpoint": str(root),
+        "tensor_files": len(files),
+        "tensors": scanned_tensors,
+        "passed": True,
+    }
+
+
 class FiniteWeightsCallback:
     """HF Trainer callback that hard-fails a divergent run.
 
@@ -475,6 +566,7 @@ __all__ = [
     "InstrumentationConfig",
     "MemorySnapshot",
     "assert_finite_loss",
+    "assert_finite_checkpoint",
     "assert_finite_step",
     "gpu_memory",
     "log_environment",
