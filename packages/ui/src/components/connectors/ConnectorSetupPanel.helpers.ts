@@ -6,7 +6,6 @@
  */
 
 import type React from "react";
-import { getBootConfig } from "../../config/boot-config";
 import { parseConnectorAccountManagementPanelPluginId } from "./connector-account-options";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 
@@ -17,11 +16,11 @@ export function normalizePluginId(pluginId: string): string {
     .replace(/[^a-z0-9]/g, "");
 }
 
-// ---------------------------------------------------------------------------
-// Connector setup panel registry — allows plugins to register their own
-// setup panels at runtime without modifying the hardcoded switch statement.
-// ---------------------------------------------------------------------------
-
+// Runtime registry of plugin-provided setup panel components, keyed by
+// normalized connector id. Plugins register their own panel here so the setup
+// UI resolves it without any connector-id knowledge in this helper; built-in
+// panels resolve through the separate token registry in
+// connector-setup-panel-registry.ts.
 export const connectorSetupRegistry = new Map<string, React.ComponentType>();
 
 /**
@@ -44,12 +43,6 @@ export function hasConnectorSetupPanel(pluginId: string): boolean {
   // Plugin-registered panels take precedence over the built-in registry.
   if (connectorSetupRegistry.has(normalized)) {
     return true;
-  }
-  if (
-    normalized.includes("lifeopsbrowser") ||
-    normalized.includes("browserbridg")
-  ) {
-    return Boolean(getBootConfig().lifeOpsBrowserSetupPanel);
   }
   return resolveConnectorSetupPanelToken(normalized) !== null;
 }

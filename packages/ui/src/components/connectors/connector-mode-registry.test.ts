@@ -4,7 +4,9 @@
  * fully working mode selector. In-memory registry, no runtime.
  */
 
-import { describe, expect, it } from "vitest";
+import type { ComponentType } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
   getConnectorModes,
   getDefaultConnectorModeId,
@@ -15,6 +17,7 @@ import {
   type ConnectorModeDeclaration,
   registerConnectorModes,
 } from "./connector-mode-registry";
+import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 
 /**
  * Seam test for #12094 item 1: the connector setup mode list and copy must come
@@ -101,5 +104,46 @@ describe("connector mode registry seam", () => {
     // A connector with no built-in panel and no declared modes stays false.
     expect(hasConnectorSetupPanel("acmechat")).toBe(false);
     expect(getConnectorModes("farcaster", {})).toHaveLength(0);
+  });
+});
+
+/**
+ * The LifeOps browser-bridge panel is host-provided (a boot-config slot), not a
+ * statically bundled panel. Its presence gating must live in the setup-panel
+ * registry — not as a per-connector branch in ConnectorSetupPanel.helpers.ts.
+ * These tests drive the real getBootConfig/setBootConfig path.
+ */
+describe("browser-bridge panel availability gating", () => {
+  const StubBrowserPanel: ComponentType<Record<string, never>> = () => null;
+
+  afterEach(() => {
+    const { lifeOpsBrowserSetupPanel: _drop, ...rest } = getBootConfig();
+    void _drop;
+    setBootConfig(rest);
+  });
+
+  it("hides the browser-bridge panel until the host supplies it", () => {
+    // No host panel: the registry rule's `available` gate blocks the token, so
+    // both id forms report no setup panel.
+    expect(resolveConnectorSetupPanelToken("lifeopsbrowser")).toBeNull();
+    expect(hasConnectorSetupPanel("lifeopsbrowser")).toBe(false);
+    expect(hasConnectorSetupPanel("@elizaos/plugin-browser-bridge")).toBe(
+      false,
+    );
+  });
+
+  it("resolves the browser-bridge token once the host provides the panel", () => {
+    setBootConfig({
+      ...getBootConfig(),
+      lifeOpsBrowserSetupPanel: StubBrowserPanel,
+    });
+
+    // Both the namespaced and short connector ids now resolve to the token,
+    // and the boolean helper agrees — with zero connector-id code in the helper.
+    expect(resolveConnectorSetupPanelToken("lifeopsbrowser")).toBe(
+      "lifeops-browser",
+    );
+    expect(hasConnectorSetupPanel("lifeopsbrowser")).toBe(true);
+    expect(hasConnectorSetupPanel("@elizaos/plugin-browser-bridge")).toBe(true);
   });
 });

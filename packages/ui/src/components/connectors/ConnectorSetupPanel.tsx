@@ -66,14 +66,13 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
   }
 
   // Fall back to the built-in panels resolved from the setup-panel registry.
-  if (
-    normalized.includes("lifeopsbrowser") ||
-    normalized.includes("browserbridg")
-  ) {
-    const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
-    return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
-  }
   switch (resolveConnectorSetupPanelToken(normalized)) {
+    case "lifeops-browser": {
+      // The registry only yields this token while the host has supplied the
+      // panel (its rule's `available` gate), so the component is present here.
+      const BrowserBridgeSetupPanel = getBootConfig().lifeOpsBrowserSetupPanel;
+      return BrowserBridgeSetupPanel ? <BrowserBridgeSetupPanel /> : null;
+    }
     case "telegram-account":
       return <TelegramAccountConnectorPanel />;
     case "telegram-bot":

@@ -1,3 +1,5 @@
+import { getBootConfig } from "../../config/boot-config";
+
 /**
  * Registry that resolves a connector setup-plugin id to the token of the
  * built-in setup panel that renders it. This replaces the per-connector-id
@@ -14,6 +16,14 @@
  *    checks that catch namespaced plugin ids such as
  *    `@elizaos/plugin-telegram` → `elizaosplugintelegram`).
  * Rules are evaluated in registration order; the first match wins.
+ *
+ * A rule may carry an optional `available` predicate for panels whose backing
+ * component is supplied at runtime rather than statically bundled (e.g. the
+ * host-provided LifeOps browser-bridge panel). When present, the rule only
+ * matches while the predicate returns true — this is what keeps the boolean
+ * `hasConnectorSetupPanel` gate connector-id-free in the helper: the id → panel
+ * knowledge (including its availability condition) lives entirely in this
+ * registry, not in a per-connector branch in `ConnectorSetupPanel.helpers.ts`.
  */
 export type ConnectorSetupPanelToken =
   | "telegram-account"
@@ -22,7 +32,8 @@ export type ConnectorSetupPanelToken =
   | "signal"
   | "discord-local"
   | "bluebubbles"
-  | "imessage";
+  | "imessage"
+  | "lifeops-browser";
 
 type MatchKind = "exact" | "substring";
 
@@ -30,6 +41,11 @@ interface ConnectorSetupPanelRule {
   token: ConnectorSetupPanelToken;
   needle: string;
   match: MatchKind;
+  /**
+   * Optional gate for runtime-provided panels. When set, the rule only resolves
+   * while it returns true; omitted for statically bundled panels (always on).
+   */
+  available?: () => boolean;
 }
 
 const rules: ConnectorSetupPanelRule[] = [];
@@ -52,7 +68,7 @@ export function resolveConnectorSetupPanelToken(
       rule.match === "exact"
         ? normalizedId === rule.needle
         : normalizedId.includes(rule.needle);
-    if (matched) return rule.token;
+    if (matched && (rule.available?.() ?? true)) return rule.token;
   }
   return null;
 }
@@ -99,4 +115,21 @@ registerConnectorSetupPanelRule({
   token: "imessage",
   needle: "imessage",
   match: "exact",
+});
+
+// The LifeOps browser-bridge panel is a host-provided component (boot-config
+// slot), not a statically bundled one, so its rule only resolves while the host
+// has supplied it. Both namespaced (`lifeopsbrowser`) and short (`browserbridg`)
+// connector ids route to it — matching the ids the previous helper branch tested.
+registerConnectorSetupPanelRule({
+  token: "lifeops-browser",
+  needle: "lifeopsbrowser",
+  match: "substring",
+  available: () => Boolean(getBootConfig().lifeOpsBrowserSetupPanel),
+});
+registerConnectorSetupPanelRule({
+  token: "lifeops-browser",
+  needle: "browserbridg",
+  match: "substring",
+  available: () => Boolean(getBootConfig().lifeOpsBrowserSetupPanel),
 });
