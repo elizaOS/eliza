@@ -226,6 +226,9 @@ describe("ci-full-matrix-proof", () => {
 on:
   workflow_call:
   pull_request:
+concurrency:
+  group: reusable-\${{ github.ref }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
 jobs:
   x:
     runs-on: ubuntu-24.04
@@ -236,6 +239,20 @@ jobs:
   const NON_CALLABLE_WORKFLOW = `name: Reusable
 on:
   pull_request:
+jobs:
+  x:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo ok
+`;
+
+  const CANCELLING_CALLABLE_WORKFLOW = `name: Reusable
+on:
+  workflow_call:
+  pull_request:
+concurrency:
+  group: reusable-\${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   x:
     runs-on: ubuntu-24.04
@@ -298,6 +315,24 @@ jobs:
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("reusable workflow not callable");
+    expect(result.stderr).toContain("scenario-pr.yml");
+  });
+
+  test("fails when a reusable workflow can cancel scheduled exhaustive coverage", () => {
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan: HEALTHY_PLAN,
+      orchestrator: orchestrator(["windows-ci.yml", "scenario-pr.yml"]),
+      reusables: {
+        "windows-ci.yml": CALLABLE_WORKFLOW,
+        "scenario-pr.yml": CANCELLING_CALLABLE_WORKFLOW,
+      },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "reusable workflow can cancel scheduled coverage",
+    );
     expect(result.stderr).toContain("scenario-pr.yml");
   });
 

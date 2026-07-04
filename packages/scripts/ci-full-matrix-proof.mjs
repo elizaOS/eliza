@@ -13,9 +13,10 @@
  *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
  *      must still invoke every manifest `reusableWorkflows` lane via
  *      `workflow_call`, and each of those workflows must still declare a
- *      `workflow_call` trigger. A dropped `uses:` or a removed trigger silently
- *      strips a platform lane (Windows/mobile/scenario/UI/desktop) from the
- *      exhaustive matrix and fails the job.
+ *      `workflow_call` trigger without unconditional concurrency cancellation.
+ *      A dropped `uses:`, removed trigger, or reusable lane that can cancel a
+ *      prior scheduled run silently strips platform coverage (Windows/mobile/
+ *      scenario/UI/desktop) from the exhaustive matrix and fails the job.
  *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
  *      manifest floors (total tasks/packages, per-script-lane presence, and the
  *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
@@ -228,26 +229,49 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
       violations.push(
         `missing reusable lane: ${manifest.exhaustiveOrchestrator} does not invoke ${usesRef} (${reusable.name})`,
       );
-      laneReport.push({ lane: basename, name: reusable.name, status: "NOT-WIRED" });
+      laneReport.push({
+        lane: basename,
+        name: reusable.name,
+        status: "NOT-WIRED",
+      });
       continue;
     }
+    let reusableText;
     let declaresWorkflowCall = false;
     try {
-      declaresWorkflowCall = /^\s{2}workflow_call:/m.test(
-        readFileSync(resolve(repoRoot, reusable.workflow), "utf8"),
-      );
+      reusableText = readFileSync(resolve(repoRoot, reusable.workflow), "utf8");
+      declaresWorkflowCall = /^\s{2}workflow_call:/m.test(reusableText);
     } catch {
       violations.push(
         `missing reusable workflow: ${reusable.workflow} (${reusable.name}) not found`,
       );
-      laneReport.push({ lane: basename, name: reusable.name, status: "MISSING" });
+      laneReport.push({
+        lane: basename,
+        name: reusable.name,
+        status: "MISSING",
+      });
       continue;
     }
     if (!declaresWorkflowCall) {
       violations.push(
         `reusable workflow not callable: ${reusable.workflow} does not declare a workflow_call trigger, so ${manifest.exhaustiveOrchestrator} cannot invoke it`,
       );
-      laneReport.push({ lane: basename, name: reusable.name, status: "NO-CALL" });
+      laneReport.push({
+        lane: basename,
+        name: reusable.name,
+        status: "NO-CALL",
+      });
+      continue;
+    }
+    if (/^\s{2}cancel-in-progress:\s*true\s*$/m.test(reusableText)) {
+      violations.push(
+        `reusable workflow can cancel scheduled coverage: ${reusable.workflow} has unconditional cancel-in-progress: true; gate cancellation to pull_request so ${manifest.exhaustiveOrchestrator} remains uncancellable`,
+      );
+      laneReport.push({
+        lane: basename,
+        name: reusable.name,
+        status: "CANCELS",
+      });
       continue;
     }
     laneReport.push({ lane: basename, name: reusable.name, status: "OK" });
