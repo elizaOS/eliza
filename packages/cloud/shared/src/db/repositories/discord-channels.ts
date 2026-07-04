@@ -1,3 +1,4 @@
+// Persists discord channels records for cloud services through the shared DB boundary.
 import { and, asc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import {

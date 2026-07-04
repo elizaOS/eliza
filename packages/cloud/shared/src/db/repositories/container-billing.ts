@@ -1,3 +1,4 @@
+// Persists container billing records for cloud services through the shared DB boundary.
 import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { containerBillingRecords, containers } from "../schemas/containers";

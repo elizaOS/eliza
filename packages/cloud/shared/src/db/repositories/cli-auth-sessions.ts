@@ -1,3 +1,4 @@
+// Persists cli auth sessions records for cloud services through the shared DB boundary.
 import { and, eq, gt, lt } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

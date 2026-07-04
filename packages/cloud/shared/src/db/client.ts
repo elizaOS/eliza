@@ -229,7 +229,7 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   });
   // Long-running Node services (agent-server, gateways) hold pooled connections
   // on the shared Postgres. A checkout that's never released, or a transaction
-  // left open, would otherwise sit forever and eventually exhaust
+  // abandoned open, would otherwise sit forever and can exhaust
   // max_connections ("too many clients already"). The pool reaps its OWN idle
   // connections within seconds, so these server-side timeouts only ever fire on
   // genuinely leaked/abandoned sessions — reclaiming the slot. Skip on Workers

@@ -1,3 +1,4 @@
+// Exercises cloud DB organizations behavior with deterministic repository fixtures.
 import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";

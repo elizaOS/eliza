@@ -1,3 +1,4 @@
+// Exercises cloud DB jobs behavior with deterministic repository fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../lib/storage/r2-runtime-binding";
 import { prepareJobInsertData } from "./jobs";

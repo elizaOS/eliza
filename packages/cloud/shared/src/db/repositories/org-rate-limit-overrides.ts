@@ -1,3 +1,4 @@
+// Persists org rate limit overrides records for cloud services through the shared DB boundary.
 import { eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

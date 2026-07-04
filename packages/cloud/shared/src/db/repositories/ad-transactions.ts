@@ -1,3 +1,4 @@
+// Persists ad transactions records for cloud services through the shared DB boundary.
 import { and, desc, eq, sql, sum } from "drizzle-orm";
 import { db } from "../client";
 import {

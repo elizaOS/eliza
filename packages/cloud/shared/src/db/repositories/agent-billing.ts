@@ -1,3 +1,4 @@
+// Persists agent billing records for cloud services through the shared DB boundary.
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

@@ -1,3 +1,4 @@
+// Persists affiliates records for cloud services through the shared DB boundary.
 import { asc, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import {

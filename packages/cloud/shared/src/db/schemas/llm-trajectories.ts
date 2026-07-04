@@ -1,3 +1,4 @@
+// Defines the llm trajectories Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   boolean,

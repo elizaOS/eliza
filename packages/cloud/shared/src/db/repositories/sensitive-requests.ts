@@ -1,3 +1,4 @@
+// Persists sensitive requests records for cloud services through the shared DB boundary.
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

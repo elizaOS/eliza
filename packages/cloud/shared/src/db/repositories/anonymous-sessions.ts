@@ -1,3 +1,4 @@
+// Persists anonymous sessions records for cloud services through the shared DB boundary.
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

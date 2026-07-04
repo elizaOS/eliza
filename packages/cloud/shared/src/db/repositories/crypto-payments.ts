@@ -1,3 +1,4 @@
+// Persists crypto payments records for cloud services through the shared DB boundary.
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

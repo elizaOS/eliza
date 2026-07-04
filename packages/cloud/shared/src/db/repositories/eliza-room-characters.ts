@@ -1,3 +1,4 @@
+// Persists eliza room characters records for cloud services through the shared DB boundary.
 import { count, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { sqlRows } from "../execute-helpers";

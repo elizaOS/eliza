@@ -1,3 +1,4 @@
+// Coordinates cloud DB database url behavior shared by repositories and services.
 import path from "node:path";
 
 type EnvLike = Record<string, string | undefined>;

@@ -1,3 +1,4 @@
+// Persists agent events records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";

@@ -1,3 +1,4 @@
+// Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import {

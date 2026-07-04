@@ -1,3 +1,4 @@
+// Defines the ad report shares Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { adCampaigns } from "./ad-campaigns";

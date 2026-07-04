@@ -1,3 +1,4 @@
+// Persists analytics alert events records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

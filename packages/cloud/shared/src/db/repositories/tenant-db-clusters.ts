@@ -1,3 +1,4 @@
+// Persists tenant db clusters records for cloud services through the shared DB boundary.
 import { and, eq, sql } from "drizzle-orm";
 import type { ClusterCandidate, ClusterPoolStore } from "../../lib/services/tenant-db/cluster-pool";
 import { dbRead, dbWrite } from "../helpers";

@@ -1,3 +1,4 @@
+// Persists identity links records for cloud services through the shared DB boundary.
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

@@ -1,3 +1,4 @@
+// Coordinates cloud DB local pg query behavior shared by repositories and services.
 import { escapeLiteral, type Pool as PgPool, type PoolClient } from "pg";
 
 type PgConnectCallback = (

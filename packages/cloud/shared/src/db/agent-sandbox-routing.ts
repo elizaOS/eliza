@@ -1,3 +1,4 @@
+// Coordinates cloud DB agent sandbox routing behavior shared by repositories and services.
 import { eq } from "drizzle-orm";
 import { dbRead } from "./client";
 import { type AgentSandbox, agentSandboxes } from "./schemas/agent-sandboxes";

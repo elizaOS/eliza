@@ -1,3 +1,4 @@
+// Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
 import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";

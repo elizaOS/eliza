@@ -1,3 +1,4 @@
+// Persists webhook events records for cloud services through the shared DB boundary.
 import { and, eq, lt } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type NewWebhookEvent, type WebhookEvent, webhookEvents } from "../schemas/webhook-events";

@@ -1,3 +1,4 @@
+// Coordinates cloud DB ensure agent sandbox schema behavior shared by repositories and services.
 import { sql } from "drizzle-orm";
 import { getCloudAwareEnv } from "../lib/runtime/cloud-bindings";
 import { applyDatabaseUrlFallback } from "./database-url";

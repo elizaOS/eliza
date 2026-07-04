@@ -1,3 +1,4 @@
+// Persists secrets records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

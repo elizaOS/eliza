@@ -1,3 +1,4 @@
+// Persists api keys records for cloud services through the shared DB boundary.
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";

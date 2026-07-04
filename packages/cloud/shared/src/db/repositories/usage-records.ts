@@ -1,3 +1,4 @@
+// Persists usage records records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, lte, type SQL, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { organizations } from "../schemas/organizations";

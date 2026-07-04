@@ -1,3 +1,4 @@
+// Persists usage quotas records for cloud services through the shared DB boundary.
 import { and, eq, lte, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type NewUsageQuota, type UsageQuota, usageQuotas } from "../schemas/usage-quotas";

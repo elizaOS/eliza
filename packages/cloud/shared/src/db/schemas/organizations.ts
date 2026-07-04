@@ -1,3 +1,4 @@
+// Defines the organizations Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
@@ -57,7 +58,7 @@ export const organizations = pgTable(
 
     // When true, container daily-billing debits the org owner's
     // redeemable_earnings before falling through to credit_balance.
-    // When false, hosting is paid purely from credits (legacy behavior),
+    // When false, hosting is paid purely from credits for compatibility,
     // leaving earnings untouched for token cashout.
     pay_as_you_go_from_earnings: boolean("pay_as_you_go_from_earnings").default(true).notNull(),
 

@@ -1,3 +1,4 @@
+// Persists apps records for cloud services through the shared DB boundary.
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
@@ -827,7 +828,7 @@ export class AppsRepository {
     appId: string,
     assetUrl: string,
   ): Promise<{ app: App | undefined; removedAsset: unknown }> {
-    // First get the asset we're about to remove (for blob cleanup)
+    // Reads the asset before removal so blob deletion can follow
     const config = await dbRead.query.appConfig.findFirst({
       where: eq(appConfig.app_id, appId),
     });

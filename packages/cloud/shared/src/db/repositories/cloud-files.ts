@@ -1,3 +1,4 @@
+// Persists cloud files records for cloud services through the shared DB boundary.
 import { and, desc, eq, ilike, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type CloudFile, cloudFiles, type NewCloudFile } from "../schemas/cloud-files";

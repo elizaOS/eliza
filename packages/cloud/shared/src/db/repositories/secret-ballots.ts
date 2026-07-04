@@ -1,3 +1,4 @@
+// Persists secret ballots records for cloud services through the shared DB boundary.
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

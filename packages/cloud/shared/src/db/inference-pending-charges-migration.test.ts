@@ -1,3 +1,4 @@
+// Exercises cloud DB inference pending charges migration behavior with deterministic repository fixtures.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";

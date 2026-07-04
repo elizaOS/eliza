@@ -1,3 +1,4 @@
+// Exercises cloud DB retry transient behavior with deterministic repository fixtures.
 import { describe, expect, it } from "vitest";
 import { isTransientDbError, retryOnTransientDbError } from "./retry-transient";
 

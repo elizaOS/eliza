@@ -1,3 +1,4 @@
+// Defines the eliza room characters Drizzle table shape used by cloud repositories and services.
 import { pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { userCharacters } from "./user-characters";
 

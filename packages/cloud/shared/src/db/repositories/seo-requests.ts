@@ -1,3 +1,4 @@
+// Persists seo requests records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";

@@ -1,3 +1,4 @@
+// Persists payment requests records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

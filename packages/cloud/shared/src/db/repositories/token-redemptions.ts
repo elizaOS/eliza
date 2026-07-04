@@ -1,3 +1,4 @@
+// Persists token redemptions records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

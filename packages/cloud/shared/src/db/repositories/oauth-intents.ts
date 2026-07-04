@@ -1,3 +1,4 @@
+// Persists oauth intents records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {

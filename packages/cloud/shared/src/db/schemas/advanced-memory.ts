@@ -1,3 +1,4 @@
+// Defines the advanced memory Drizzle table shape used by cloud repositories and services.
 import { sql } from "drizzle-orm";
 import {
   index,

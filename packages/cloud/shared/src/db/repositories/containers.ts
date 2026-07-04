@@ -1,3 +1,4 @@
+// Persists containers records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import {
   and,

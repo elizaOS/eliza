@@ -1,3 +1,4 @@
+// Defines the ad creatives Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { adCampaigns } from "./ad-campaigns";

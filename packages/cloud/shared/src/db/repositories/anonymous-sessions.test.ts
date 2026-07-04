@@ -1,3 +1,4 @@
+// Exercises cloud DB anonymous sessions behavior with deterministic repository fixtures.
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 

@@ -1,3 +1,4 @@
+// Defines the daily metrics Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   index,

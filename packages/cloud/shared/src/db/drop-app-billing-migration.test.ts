@@ -1,3 +1,4 @@
+// Exercises cloud DB drop app billing migration behavior with deterministic repository fixtures.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

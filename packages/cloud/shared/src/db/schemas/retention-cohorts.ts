@@ -1,3 +1,4 @@
+// Defines the retention cohorts Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { MetricsPlatform } from "./daily-metrics";

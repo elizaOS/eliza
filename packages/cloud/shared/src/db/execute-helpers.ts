@@ -1,3 +1,4 @@
+// Coordinates cloud DB execute helpers behavior shared by repositories and services.
 import type { SQLWrapper } from "drizzle-orm";
 
 export interface SqlExecutor {

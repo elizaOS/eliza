@@ -1,3 +1,4 @@
+// Persists ad creatives records for cloud services through the shared DB boundary.
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../client";
 import {

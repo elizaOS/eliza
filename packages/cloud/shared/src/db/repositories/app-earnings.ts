@@ -1,3 +1,4 @@
+// Persists app earnings records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

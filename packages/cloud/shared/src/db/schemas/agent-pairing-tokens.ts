@@ -1,3 +1,4 @@
+// Defines the agent pairing tokens Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { agentSandboxes } from "./agent-sandboxes";

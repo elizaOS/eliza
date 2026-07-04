@@ -1,3 +1,4 @@
+// Persists docker nodes records for cloud services through the shared DB boundary.
 import { and, asc, eq, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";

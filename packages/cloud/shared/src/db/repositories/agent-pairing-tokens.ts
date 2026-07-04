@@ -1,3 +1,4 @@
+// Persists agent pairing tokens records for cloud services through the shared DB boundary.
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../helpers";

@@ -1,3 +1,4 @@
+// Persists telegram chats records for cloud services through the shared DB boundary.
 import { and, desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import { type NewTelegramChat, type TelegramChat, telegramChats } from "../schemas/telegram-chats";

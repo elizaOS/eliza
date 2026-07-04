@@ -1,3 +1,4 @@
+// Defines the webhook events Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
@@ -32,7 +33,7 @@ export const webhookEvents = pgTable(
   (table) => ({
     provider_idx: index("webhook_events_provider_idx").on(table.provider),
     processed_at_idx: index("webhook_events_processed_at_idx").on(table.processed_at),
-    // Composite index for cleanup queries
+    // Composite index for webhook retention queries
     provider_processed_idx: index("webhook_events_provider_processed_idx").on(
       table.provider,
       table.processed_at,

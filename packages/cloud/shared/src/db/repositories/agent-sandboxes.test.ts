@@ -1,3 +1,4 @@
+// Exercises cloud DB agent sandboxes behavior with deterministic repository fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";

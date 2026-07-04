@@ -1,3 +1,4 @@
+// Persists characters records for cloud services through the shared DB boundary.
 import { and, desc, eq, inArray, or, SQL, sql } from "drizzle-orm";
 import type { SearchFilters, SortOptions } from "../../lib/types/my-agents";
 import { normalizeTokenAddress } from "../../lib/utils/token-address";

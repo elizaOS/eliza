@@ -1,3 +1,4 @@
+// Persists press releases records for cloud services through the shared DB boundary.
 import { and, desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
 import {

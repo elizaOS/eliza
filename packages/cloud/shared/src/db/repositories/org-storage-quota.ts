@@ -1,3 +1,4 @@
+// Persists org storage quota records for cloud services through the shared DB boundary.
 import { eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

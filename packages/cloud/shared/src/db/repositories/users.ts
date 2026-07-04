@@ -1,3 +1,4 @@
+// Persists users records for cloud services through the shared DB boundary.
 import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

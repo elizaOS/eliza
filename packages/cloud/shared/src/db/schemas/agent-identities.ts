@@ -1,3 +1,4 @@
+// Defines the agent identities Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agentSandboxes } from "./agent-sandboxes";

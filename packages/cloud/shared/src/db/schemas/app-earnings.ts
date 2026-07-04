@@ -1,3 +1,4 @@
+// Defines the app earnings Drizzle table shape used by cloud repositories and services.
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   index,

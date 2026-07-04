@@ -1,3 +1,4 @@
+// Persists ad campaigns records for cloud services through the shared DB boundary.
 import { and, count, desc, eq, ne, sql, sum } from "drizzle-orm";
 import { db } from "../client";
 import { type AdPlatform, adAccounts } from "../schemas/ad-accounts";

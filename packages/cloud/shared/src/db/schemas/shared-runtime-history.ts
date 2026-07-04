@@ -1,3 +1,4 @@
+// Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */

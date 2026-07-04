@@ -1,3 +1,4 @@
+// Defines the org storage quota Drizzle table shape used by cloud repositories and services.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { bigint, index, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";

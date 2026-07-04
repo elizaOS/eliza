@@ -1,3 +1,4 @@
+// Persists model pricing records for cloud services through the shared DB boundary.
 import { and, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ModelPricing, modelPricing, type NewModelPricing } from "../schemas/model-pricing";

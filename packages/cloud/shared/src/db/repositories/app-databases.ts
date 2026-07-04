@@ -1,3 +1,4 @@
+// Persists app databases records for cloud services through the shared DB boundary.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   type AllocatedCluster,

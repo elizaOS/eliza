@@ -1,3 +1,4 @@
+// Persists dashboard records for cloud services through the shared DB boundary.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../helpers";
 import { containers } from "../schemas/containers";

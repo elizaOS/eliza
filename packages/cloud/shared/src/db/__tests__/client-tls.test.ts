@@ -1,3 +1,4 @@
+// Exercises cloud DB client tls behavior with deterministic repository fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import { enforceTlsForRemote, shouldSkipTlsVerification } from "../client";
 

@@ -1,3 +1,4 @@
+// Persists ad conversions records for cloud services through the shared DB boundary.
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

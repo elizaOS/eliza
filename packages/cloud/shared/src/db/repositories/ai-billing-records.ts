@@ -1,3 +1,4 @@
+// Persists ai billing records records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";

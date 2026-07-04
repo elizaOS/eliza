@@ -1,3 +1,4 @@
+// Persists ai pricing records for cloud services through the shared DB boundary.
 import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import type { PricingBillingSource } from "../../lib/services/ai-pricing-definitions";
 import { dbRead, dbWrite } from "../helpers";

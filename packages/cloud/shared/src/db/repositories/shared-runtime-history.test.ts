@@ -1,3 +1,4 @@
+// Exercises cloud DB shared runtime history behavior with deterministic repository fixtures.
 import { describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";

@@ -1,3 +1,4 @@
+// Persists pooled credentials records for cloud services through the shared DB boundary.
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import {

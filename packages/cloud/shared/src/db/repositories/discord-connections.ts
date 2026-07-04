@@ -1,3 +1,4 @@
+// Persists discord connections records for cloud services through the shared DB boundary.
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { logger } from "../../lib/utils/logger";
