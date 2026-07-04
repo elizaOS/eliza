@@ -1,3 +1,8 @@
+/**
+ * Canonical, channel-scoped log of central messages — the shared message-bus
+ * store, distinct from per-agent `memories`.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

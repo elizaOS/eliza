@@ -1,3 +1,9 @@
+/**
+ * Covers the `NativeRuntimeFeature` registry: that every feature has a matching
+ * plugin and name, the plugin-name→feature lookup round-trips, and advancedPlanning
+ * /advancedMemory default OFF while documents/relationships/trajectories default
+ * ON. Pure registry assertions — no runtime boot.
+ */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,11 +13,6 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./native-features.ts";
 
-// #12092 item 32: advancedPlanning/advancedMemory were bespoke if-blocks in
-// `_initializeCore`; they now live in the NativeRuntimeFeature registry so the
-// boot loop iterates ONE registry. These assert the registry is complete and
-// self-consistent (which is what makes the generic loop pick the features up),
-// and that the two folded-in features default OFF (flag is an explicit override).
 describe("native runtime feature registry (#12092 item 32)", () => {
 	const features = Object.keys(nativeRuntimeFeatureDefaults) as Array<
 		keyof typeof nativeRuntimeFeatureDefaults
@@ -20,7 +21,7 @@ describe("native runtime feature registry (#12092 item 32)", () => {
 	it("includes advancedPlanning and advancedMemory, defaulting OFF", () => {
 		expect(nativeRuntimeFeatureDefaults.advancedPlanning).toBe(false);
 		expect(nativeRuntimeFeatureDefaults.advancedMemory).toBe(false);
-		// the always-on core features are unchanged
+		// the always-on core features remain default ON
 		expect(nativeRuntimeFeatureDefaults.documents).toBe(true);
 		expect(nativeRuntimeFeatureDefaults.relationships).toBe(true);
 		expect(nativeRuntimeFeatureDefaults.trajectories).toBe(true);

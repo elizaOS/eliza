@@ -5,6 +5,7 @@ import {
   ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
+  eliza1TierPublishStatus,
   isOnDeviceTier,
   MODEL_CATALOG,
 } from "./catalog.js";
@@ -51,6 +52,28 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
       expect(entry?.params).toBe(EXPECTED_CHAT_PARAMS[id]);
       expect(entry?.ggufFile).toContain(id);
+    }
+  });
+
+  it("does not allow env overrides to publish pending qwen tiers", () => {
+    const previous = process.env.ELIZA_PUBLISH_STATUS_OVERRIDES;
+    process.env.ELIZA_PUBLISH_STATUS_OVERRIDES = JSON.stringify({
+      "eliza-1-9b": "published",
+      "eliza-1-27b": "published",
+      "eliza-1-27b-256k": "published",
+    });
+    try {
+      expect(eliza1TierPublishStatus("eliza-1-2b")).toBe("published");
+      expect(eliza1TierPublishStatus("eliza-1-4b")).toBe("published");
+      expect(eliza1TierPublishStatus("eliza-1-9b")).toBe("pending");
+      expect(eliza1TierPublishStatus("eliza-1-27b")).toBe("pending");
+      expect(eliza1TierPublishStatus("eliza-1-27b-256k")).toBe("pending");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ELIZA_PUBLISH_STATUS_OVERRIDES;
+      } else {
+        process.env.ELIZA_PUBLISH_STATUS_OVERRIDES = previous;
+      }
     }
   });
 

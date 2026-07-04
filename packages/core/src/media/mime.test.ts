@@ -1,3 +1,7 @@
+/**
+ * Tests for filename-extension extraction (`getFileExtension`) and its use in
+ * extension-based MIME detection (`detectMime`). Deterministic, no network.
+ */
 import { describe, expect, it } from "vitest";
 import { detectMime, getFileExtension } from "./mime.ts";
 
@@ -12,20 +16,20 @@ describe("getFileExtension", () => {
 	});
 
 	it("returns undefined for extensionless URL pathnames", () => {
-		// Previously returned "./download" (the whole pathname).
+		// An extensionless pathname yields undefined, never the whole pathname ("./download").
 		expect(getFileExtension("https://example.com/download")).toBeUndefined();
 		expect(getFileExtension("https://example.com/")).toBeUndefined();
 	});
 
 	it("ignores dots in directory names", () => {
-		// Previously returned ".2/notes" / ".name/readme".
+		// A dot in a directory name is not an extension (not ".2/notes" / ".name/readme").
 		expect(getFileExtension("https://example.com/v1.2/notes")).toBeUndefined();
 		expect(getFileExtension("/home/user.name/README")).toBeUndefined();
 		expect(getFileExtension("/releases/v1.2/notes.txt")).toBe(".txt");
 	});
 
 	it("returns undefined for a trailing dot", () => {
-		// Previously returned "." for "archive.".
+		// A bare trailing dot is not an extension (not ".").
 		expect(getFileExtension("archive.")).toBeUndefined();
 	});
 

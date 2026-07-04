@@ -352,8 +352,15 @@ export class MessageManager {
 				default:
 					return content.text || "";
 			}
-		} catch {
-			return "";
+		} catch (err) {
+			// error-policy:J3 unparseable platform message content → explicit invalid
+			// marker (never fabricate empty text the agent would answer to nothing), and
+			// report so repeated malformed payloads from Feishu become observable.
+			this.runtime.reportError("Feishu.parseMessageContent", err, {
+				msgType: message.msgType,
+				messageId: message.messageId,
+			});
+			return `[unparseable ${message.msgType} message]`;
 		}
 	}
 

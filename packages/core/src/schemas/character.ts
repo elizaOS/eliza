@@ -1,3 +1,18 @@
+/**
+ * Zod schema and validators for character/agent definitions — the runtime
+ * boundary that decides whether raw config (a JSON file, env, or an in-process
+ * object) is accepted as a `Character` (`types/agent`). Exports `characterSchema`
+ * plus its sub-schemas (media, content, message examples, style, settings,
+ * secrets) and the `validateCharacter` / `parseAndValidateCharacter` /
+ * `isValidCharacter` entry points.
+ *
+ * The top-level object is `.strict()` (unknown top-level keys are rejected) while
+ * `content` and `settings` `.passthrough()`; unknown `settings` keys are folded
+ * into `extra`. `knowledge` is a back-compat alias — the transform uses it to
+ * populate `documents` only when `documents` is empty. `templates` accept a
+ * string or a `({ state }) => string` callback, but callbacks survive only from
+ * in-process character objects; JSON-loaded characters carry strings.
+ */
 import z from "zod";
 import type { Character, TemplateType } from "../types/agent";
 import type { JsonValue } from "../types/primitives";

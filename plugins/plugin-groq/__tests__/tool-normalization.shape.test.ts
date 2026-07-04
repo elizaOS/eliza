@@ -84,6 +84,11 @@ describe("Groq core ToolDefinition[] normalization", () => {
 
 describe("Groq 429 cooldown parsing (extractRetryDelay)", () => {
   it("parses Go-style compound durations from Groq rate-limit messages", async () => {
+    vi.doMock("@ai-sdk/groq", () => ({
+      createGroq: () => ({
+        languageModel: (modelName: string) => ({ modelName }),
+      }),
+    }));
     const { extractRetryDelay } = await import("../index");
     expect(extractRetryDelay("Rate limit reached. Please try again in 7m30s.")).toBe(451_000);
     expect(extractRetryDelay("Rate limit reached. Please try again in 2m59.56s.")).toBe(180_560);

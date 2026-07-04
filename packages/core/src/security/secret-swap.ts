@@ -1,3 +1,21 @@
+/**
+ * Session-scoped secret-swap layer that sits between the agent and the model:
+ * on ingress it detects secrets/PII in text and structured params and replaces
+ * each with a per-session nonce'd placeholder (`__ELIZA_SECRET_<nonce>_<n>__`)
+ * so the raw value never reaches the model; on egress it restores the originals
+ * at the execution boundary (tool call / outbound request).
+ *
+ * Ingress draws assignment-style secrets from the shared redact pattern set
+ * (`./redact`) and validated PII/token classes from `./pii-detectors`; a generic
+ * length floor gates the former while proven-sensitive PII swaps at a lower floor.
+ *
+ * The per-session nonce makes placeholders unforgeable: restore and assertion
+ * scope only to THIS session's nonce, so a placeholder-shaped token from user
+ * input or model output can never resolve to a real secret. A this-session
+ * placeholder that should resolve but does not (e.g. a model that fabricated
+ * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
+ * silently leak.
+ */
 import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
 

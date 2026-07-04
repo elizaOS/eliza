@@ -1,3 +1,9 @@
+/**
+ * Secret-key alias resolution maps legacy/provider env names onto canonical
+ * keys. Resolution must be exact (a wrong canonical key reads the wrong
+ * credential), and lookups must round-trip alias ⇄ canonical. Asserted against
+ * the live maps so the test tracks the data rather than hardcoding it.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	CANONICAL_SECRET_KEYS,
@@ -12,13 +18,6 @@ import {
 	resolveSecretKeyAlias,
 	SECRET_KEY_ALIASES,
 } from "./secrets.ts";
-
-/**
- * Secret-key alias resolution maps legacy/provider env names onto canonical
- * keys. Resolution must be exact (a wrong canonical key reads the wrong
- * credential), and lookups must round-trip alias ⇄ canonical. Asserted against
- * the live maps so the test tracks the data rather than hardcoding it.
- */
 
 const [firstAlias, canonicalForFirstAlias] =
 	Object.entries(SECRET_KEY_ALIASES)[0];

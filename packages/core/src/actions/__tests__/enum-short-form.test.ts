@@ -1,3 +1,10 @@
+/**
+ * Unit tests for enum short-form completion in
+ * `runtime/execute-planned-tool-call`: a single-enum-parameter action may
+ * receive `{ parameters: "<enum>" }`, which is expanded to the canonical
+ * `{ <param>: "<enum>" }` shape before strict tool-arg validation. Runs on
+ * hand-built actions and a fake runtime — no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
 	executePlannedToolCall,

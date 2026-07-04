@@ -1,3 +1,10 @@
+/**
+ * Exercises the entity recognizers feeding the PII pseudonymizer: regex
+ * (addresses/emails/phones, with a ReDoS backtracking guard), gazetteer
+ * (whole-word, longest-term-wins), the composite merge/overlap/blocklist pass,
+ * and `canonicalKind` label normalization. Deterministic — no ONNX/NER model.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	CompositeEntityRecognizer,

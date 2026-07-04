@@ -129,10 +129,8 @@ export function isDefaultEligibleId(id: string): boolean {
  * `CatalogModel`) before recommending a first-run default — see
  * `recommendForFirstRun` and elizaOS/eliza#7629.
  *
- * Set the override env var `ELIZA_PUBLISH_STATUS_OVERRIDES` to a JSON
- * object like `{"eliza-1-2b":"published","eliza-1-9b":"pending"}` to
- * override at runtime without changing the static map (useful for QA
- * and for installs that depend on a private HF mirror).
+ * This is intentionally not runtime-overridable: the qwen35 tiers below are
+ * blocked until the published bytes pass the Gemma text-architecture gate.
  *
  * W3-12 audit (2026-05-14): the following areas require publish attention:
  *   - 2B vision: enabled in the catalog and canonical vision tier set;
@@ -163,8 +161,6 @@ export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,
 ): "published" | "pending" {
-  const override = readPublishStatusOverride(id);
-  if (override) return override;
   const hint = (
     ELIZA_1_TIER_PUBLISH_STATUS as Record<
       string,
@@ -172,25 +168,6 @@ export function eliza1TierPublishStatus(
     >
   )[id];
   return hint ?? "published";
-}
-
-function readPublishStatusOverride(
-  id: string,
-): "published" | "pending" | undefined {
-  const raw =
-    typeof process !== "undefined"
-      ? process.env.ELIZA_PUBLISH_STATUS_OVERRIDES
-      : undefined;
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const value = parsed[id];
-    if (value === "published" || value === "pending") return value;
-  } catch {
-    // Malformed override JSON is non-fatal — fall back to the static
-    // publish-status hint and the catalog's own `publishStatus` field.
-  }
-  return undefined;
 }
 
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(

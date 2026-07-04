@@ -1,3 +1,10 @@
+/**
+ * Covers `PseudonymSession`, the turn-scoped layer that swaps recognized PII
+ * entities for deterministic surrogates before a model call and restores them
+ * after — consistency, bijection, brand blocklist, recursive tool-arg and
+ * boundary/prefix safety, and salt determinism vs unlinkability. Deterministic.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	GazetteerEntityRecognizer,

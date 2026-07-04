@@ -1,3 +1,10 @@
+/**
+ * Tests for the shared image-description cache helpers — cache key, response
+ * normalization, and the cached describe path (hit reuse, miss-then-cache,
+ * error/empty-URL fallbacks, and reportError surfacing on a broken cache).
+ * Deterministic: `createMockRuntime` backs the cache with an in-memory Map and
+ * stubs `useModel`; no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../testing/mock-runtime";
 import type { IAgentRuntime } from "../types/index.ts";

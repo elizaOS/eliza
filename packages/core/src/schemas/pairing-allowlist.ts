@@ -1,3 +1,8 @@
+/**
+ * Allowlist of (channel, sender) pairs an agent has approved for pairing —
+ * backs the runtime pairing service.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

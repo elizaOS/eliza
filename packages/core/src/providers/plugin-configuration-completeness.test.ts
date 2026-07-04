@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the PLUGIN_CONFIGURATION_COMPLETENESS provider, which reports
+ * per-plugin readiness (and missing config keys) from the PluginConfigClient
+ * service. The harness is deterministic: a hand-rolled fake client and a stub
+ * plugin list drive a stub runtime's getService, with no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { pluginConfigurationCompletenessProvider } from "./plugin-configuration-completeness";
 

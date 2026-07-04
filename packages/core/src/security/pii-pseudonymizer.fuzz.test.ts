@@ -1,7 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { GazetteerEntityRecognizer } from "./entity-recognizer";
-import { PseudonymSession } from "./pii-pseudonymizer";
-
 /**
  * Property-based fuzz over the PII pseudonymization layer (#10469 / #7007).
  * Seeded mulberry32 PRNG (fast-check v4 is unstable under Bun) so every run is
@@ -19,6 +15,10 @@ import { PseudonymSession } from "./pii-pseudonymizer";
  *                              (originals are gone; surrogates are not re-swapped)
  *   (P5) deterministic:        same salt + same doc ⇒ identical output
  */
+
+import { describe, expect, it } from "vitest";
+import { GazetteerEntityRecognizer } from "./entity-recognizer";
+import { PseudonymSession } from "./pii-pseudonymizer";
 
 function mulberry32(seed: number): () => number {
 	let a = seed >>> 0;

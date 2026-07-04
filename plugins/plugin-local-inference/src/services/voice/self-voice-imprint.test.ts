@@ -1,6 +1,13 @@
-/** Covers `AgentSelfVoiceImprint` building the agent's own voice centroid from TTS output. Deterministic, fake encoder. */
-import { describe, expect, it } from "vitest";
-import { AgentSelfVoiceImprint } from "./self-voice-imprint";
+/** Covers `AgentSelfVoiceImprint`: TTS-centroid building, the agent-specific
+ * self-voice decision gate, and the shared #12255 handle. Deterministic, fake encoder. */
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	__resetAgentSelfVoiceImprintsForTest,
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	AgentSelfVoiceImprint,
+	getAgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint";
 import type { SpeakerEncoder } from "./speaker/encoder";
 
 function unitEmbedding(index: number): Float32Array {
@@ -56,5 +63,56 @@ describe("AgentSelfVoiceImprint", () => {
 		diagonal[0] = Math.SQRT1_2;
 		diagonal[1] = Math.SQRT1_2;
 		await expect(imprint.similarity(diagonal)).resolves.toBeCloseTo(1);
+	});
+});
+
+describe("AgentSelfVoiceImprint decision gate (#12256)", () => {
+	it("decides self-voice at the agent-specific threshold, not the 0.78 human bar", async () => {
+		const imprint = new AgentSelfVoiceImprint({
+			encoder: queuedEncoder([unitEmbedding(0)]),
+			minSamples: 16_000,
+		});
+		await imprint.observeAudio(new Float32Array(16_000).fill(0.1), 16_000);
+		expect(imprint.ready).toBe(true);
+		expect(imprint.threshold).toBe(AGENT_SELF_VOICE_IMPRINT_THRESHOLD);
+
+		// The measured production margins: agent-self cosine ~0.37, human ~0.15.
+		const selfLike = new Float32Array(256);
+		selfLike[0] = 0.37;
+		selfLike[2] = Math.sqrt(1 - 0.37 ** 2);
+		const humanLike = new Float32Array(256);
+		humanLike[0] = 0.15;
+		humanLike[3] = Math.sqrt(1 - 0.15 ** 2);
+		await expect(imprint.isAgentSelfVoice(selfLike)).resolves.toBe(true);
+		await expect(imprint.isAgentSelfVoice(humanLike)).resolves.toBe(false);
+	});
+
+	it("returns null (fail-open) before any centroid exists", async () => {
+		const imprint = new AgentSelfVoiceImprint({
+			encoder: queuedEncoder([unitEmbedding(0)]),
+		});
+		expect(imprint.ready).toBe(false);
+		await expect(
+			imprint.isAgentSelfVoice(unitEmbedding(0)),
+		).resolves.toBeNull();
+	});
+});
+
+describe("shared imprint handle (#12255 contract)", () => {
+	afterEach(() => __resetAgentSelfVoiceImprintsForTest());
+
+	it("prefers the speak-back loop's registration over live-frames", () => {
+		expect(getAgentSelfVoiceImprint()).toBeNull();
+		const liveFrames = new AgentSelfVoiceImprint({
+			encoder: queuedEncoder([unitEmbedding(0)]),
+		});
+		registerAgentSelfVoiceImprint("live-frames", liveFrames);
+		expect(getAgentSelfVoiceImprint()).toBe(liveFrames);
+
+		const speakBack = new AgentSelfVoiceImprint({
+			encoder: queuedEncoder([unitEmbedding(1)]),
+		});
+		registerAgentSelfVoiceImprint("speak-back-loop", speakBack);
+		expect(getAgentSelfVoiceImprint()).toBe(speakBack);
 	});
 });

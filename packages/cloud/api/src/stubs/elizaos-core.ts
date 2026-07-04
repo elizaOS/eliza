@@ -259,11 +259,11 @@ export function runWithTrajectoryContext<T>(
 }
 
 /**
- * Worker-safe stand-in for `runWithTrajectoryPurpose` (same rationale as
- * `runWithTrajectoryContext` above): with no trajectory manager in the Worker
- * bundle there is no ambient context to preserve or purpose-tag, so just run
- * the function. (Pulled in transitively via `@elizaos/shared`
- * email-classification — not invoked on a Worker route.)
+ * Worker-safe pass-through for core's `runWithTrajectoryPurpose`. The Worker
+ * build has no AsyncLocalStorage trajectory-context manager (node-only), so
+ * trajectory-purpose tracking is a no-op here. Pulled into the bundle via
+ * `@elizaos/shared` email-classification (#11580) — not invoked on a Worker
+ * route, but the export must exist for the bundle to link.
  */
 export function runWithTrajectoryPurpose<T>(
   _purpose: string,
@@ -824,6 +824,15 @@ export function redactSensitiveRequestMetadata(value: unknown): unknown {
   return redacted;
 }
 
+// Log-redaction helpers consumed by the cloud-shared Worker logger on every
+// log call. Re-exported from the REAL core module — `security/redact.ts` is a
+// zero-import pure leaf, so it is Worker-safe, and single-sourcing it here
+// keeps Worker-side secret masking from drifting behind core's.
+export {
+  isSensitiveKeyName,
+  redactLogArgs,
+} from "../../../../core/src/security/redact";
+
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",
   TEXT_LARGE: "TEXT_LARGE",
@@ -849,7 +858,13 @@ export const ServiceType = {
   PDF: "PDF",
   REMOTE_FILES: "REMOTE_FILES",
   MEDIA_GENERATION: "MEDIA_GENERATION",
+  CLOUD_AUTH: "CLOUD_AUTH",
 } as const;
+
+// Mirrors core's `CLOUD_AUTH_SERVICE_TYPE = ServiceType.CLOUD_AUTH`. Imported
+// by plugin-elizacloud's cloud-auth service, which the Worker bundles for its
+// shared constants; the sidecar owns the actual service registration.
+export const CLOUD_AUTH_SERVICE_TYPE = ServiceType.CLOUD_AUTH;
 
 export const VECTOR_DIMS = {
   SMALL: 384,
@@ -905,6 +920,40 @@ export const getEntityDetails = throwingExport("getEntityDetails");
 export const splitChunks = throwingExport("splitChunks");
 export const createMessageMemory = throwingExport("createMessageMemory");
 export const executePlannedToolCall = throwingExport("executePlannedToolCall");
+
+/**
+ * Host-bridge setters (core `account-pool-bridge.ts`). The real
+ * implementations write to a host-app global slot that nothing in the Worker
+ * ever reads, and they already no-op when the slot is absent — so faithful
+ * Worker stand-ins are no-ops, not throws (app-core service modules install
+ * these bridges at import time).
+ */
+export function setAnthropicAccountPoolBridge(_bridge: unknown): void {}
+export function setCodingAgentSelectorBridge(_bridge: unknown): void {}
+
+/**
+ * Subscription-auth provider registry (core `features/subscription-auth`).
+ * `@elizaos/auth` registers built-in descriptors at module init, so the
+ * Worker needs a real (tiny) registry, not a throwing stand-in. Semantics
+ * mirror core: last registration per id wins.
+ */
+const subscriptionAuthProviders = new Map<string, { id: string }>();
+
+export function registerSubscriptionAuthProvider(provider: {
+  id: string;
+}): void {
+  subscriptionAuthProviders.set(provider.id, provider);
+}
+
+export function getSubscriptionAuthProvider(
+  id: string,
+): { id: string } | undefined {
+  return subscriptionAuthProviders.get(id);
+}
+
+export function hasSubscriptionAuthProvider(id: string): boolean {
+  return subscriptionAuthProviders.has(id);
+}
 
 function renderSystemPromptBio(value: unknown): string {
   if (typeof value === "string") return value.trim();

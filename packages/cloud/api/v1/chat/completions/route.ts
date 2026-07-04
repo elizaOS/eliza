@@ -1206,8 +1206,17 @@ export async function handleChatCompletionsPOST(
       // so it does not need the KV org-balance hint or a writable cache.
       let optimisticReady = false;
       const optimisticBillingEnabled = isOptimisticBillingEnabled();
+      // #12749: affiliate-marked requests must take the synchronous reserve.
+      // Both optimistic branches admit on the base/platform estimate only, while
+      // affiliate markup is resolved inside reserveCredits. The later billUsage
+      // call does not receive a reservation, so the collected-earnings clamp is
+      // inert on an optimistic path. Falling through keeps the affiliate math
+      // single-sourced in reserveCredits and 402s upfront when base+markup is
+      // not covered.
+      const optimisticAllowedForRequest =
+        optimisticBillingEnabled && affiliateCode === null;
       const useDbLedger =
-        optimisticBillingEnabled && resolveInferenceBillingLedger() === "db";
+        optimisticAllowedForRequest && resolveInferenceBillingLedger() === "db";
 
       if (useDbLedger) {
         const { totalCost } = await calculateCost(
@@ -1253,7 +1262,7 @@ export async function handleChatCompletionsPOST(
       let estimatedCostUsd = 0;
       if (
         !optimisticReady &&
-        optimisticBillingEnabled &&
+        optimisticAllowedForRequest &&
         !useDbLedger &&
         isOptimisticBackstopAvailable()
       ) {

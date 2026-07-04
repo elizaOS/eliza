@@ -1,3 +1,23 @@
+/**
+ * Connector-account service: the runtime-side registry and policy engine for
+ * external-account connectors (chat/social/OAuth providers). The
+ * `ConnectorAccountManager` Service holds registered `ConnectorAccountProvider`s,
+ * brokers their OAuth start/complete flows, and persists accounts + flow state
+ * through a `ConnectorAccountStorage` backend — the in-memory fallback, or the
+ * `DatabaseConnectorAccountStorage` bridge when a compatible database adapter is
+ * installed on the runtime.
+ *
+ * `evaluateConnectorAccountPolicies` gates actions that carry a
+ * `connectorAccountPolicy`: an action runs only when a stored or
+ * provider-listed account satisfies the required status, role, purpose, and
+ * access-gate. Role strings collapse to the canonical OWNER / AGENT / TEAM
+ * triad (`types/connector-account-policy`); privacy levels live alongside in
+ * `privacy.ts`.
+ *
+ * OAuth PKCE code verifiers are never persisted — they are held in a
+ * process-local map and referenced by an opaque `codeVerifierRef` written to
+ * flow metadata, so stored rows never carry the raw secret.
+ */
 import type { Action, ActionParameters } from "../types/components";
 import type {
 	ConnectorAccountAccessGate,
@@ -15,7 +35,7 @@ import type {
 } from "../types/runtime";
 import { Service } from "../types/service";
 
-// Re-export so existing imports from this module continue to work.
+// Re-export the policy types whose canonical home is types/connector-account-policy.
 export type {
 	ConnectorAccountAccessGate,
 	ConnectorAccountPolicy,
@@ -1524,7 +1544,7 @@ export class ConnectorAccountManager extends Service {
 		// rather than storage directly: those merge provider-registered accounts
 		// (e.g. connectors that expose accounts via registerProvider instead of
 		// persisting them), so a policy on an explicit accountId can actually find
-		// it. Reading storage directly here silently missed provider accounts.
+		// it. Reading storage directly would silently miss provider accounts.
 		const accounts = explicitAccountId
 			? [await this.getAccount(providerId, explicitAccountId)].filter(Boolean)
 			: await this.listAccounts(providerId);

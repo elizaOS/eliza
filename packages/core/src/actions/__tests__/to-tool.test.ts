@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `actions/to-tool`: converting an `Action`'s parameters into a
+ * strict provider-native (function-calling) tool, expanding a Tier-A parent's
+ * sub-actions into first-class planner tools, the core terminal tools, and the
+ * HANDLE_RESPONSE tool description. Deterministic — hand-built actions, no live
+ * model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type {
 	Action,
@@ -423,7 +430,7 @@ describe("createHandleResponseTool descriptions", () => {
 		for (const field of required) {
 			// The strict tool schema requires each of these fields, so the
 			// instruction list in the description must tell the model to fill
-			// them — the direct-message variant used to omit `topics`.
+			// them — including `topics` in the direct-message variant.
 			expect(standard, `standard description missing '${field}'`).toContain(
 				field,
 			);

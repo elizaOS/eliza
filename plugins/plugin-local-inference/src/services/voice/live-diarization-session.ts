@@ -26,7 +26,8 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
+import { StreamingEchoDelayCalibrator } from "@elizaos/shared/voice/aec";
 import {
 	type AttributedTurn,
 	type AttributionPipelineLike,
@@ -37,19 +38,22 @@ import {
 	decodeAudioFramePcm,
 	type EchoReferenceProvider,
 	type RuntimeEventSink,
+	type SelfVoiceSimilarityResolver,
 	type TurnTranscriber,
 	type VadSegmenter,
 } from "./audio-frame-consumer.js";
-import {
-	estimateEchoDelaySamples,
-	platformPlaybackDelaySamples,
-} from "./echo-delay.js";
+import { platformPlaybackDelaySamples } from "./echo-delay.js";
 import { EchoReferenceBuffer } from "./echo-reference-buffer.js";
+import { resolveResidualSuppression } from "./far-end-reference.js";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
 } from "./ffi-bindings.js";
 import { loadElizaInferenceFfi } from "./ffi-bindings.js";
+import {
+	AgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint.js";
 import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline.js";
 import { FusedDiarizer } from "./speaker/diarizer-fused.js";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused.js";
@@ -172,6 +176,10 @@ export interface LiveDiarizationConsumerDepsInput {
 	runtime: RuntimeEventSink;
 	transcribe?: TurnTranscriber | null;
 	echoReference?: EchoReferenceProvider | null;
+	/** Live agent-TTS self-voice matcher (#12256 layer 3) + its decision
+	 * threshold (WeSpeaker-embedding scale — see AGENT_SELF_VOICE_IMPRINT_THRESHOLD). */
+	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver | null;
+	selfVoiceThreshold?: number;
 }
 
 export function buildLiveDiarizationConsumerDeps({
@@ -180,6 +188,8 @@ export function buildLiveDiarizationConsumerDeps({
 	runtime,
 	transcribe,
 	echoReference,
+	resolveSelfVoiceSimilarity,
+	selfVoiceThreshold,
 }: LiveDiarizationConsumerDepsInput): AudioFrameConsumerDeps {
 	return {
 		vad,
@@ -187,6 +197,8 @@ export function buildLiveDiarizationConsumerDeps({
 		runtime,
 		...(transcribe ? { transcribe } : {}),
 		...(echoReference ? { echoReference } : {}),
+		...(resolveSelfVoiceSimilarity ? { resolveSelfVoiceSimilarity } : {}),
+		...(selfVoiceThreshold !== undefined ? { selfVoiceThreshold } : {}),
 	};
 }
 
@@ -239,40 +251,6 @@ function encodePcm16Base64(chunks: Float32Array[]): string {
 	return bytes.toString("base64");
 }
 
-/** Echo-delay self-calibration (#9583/#9586). */
-/** Accumulate this many playback-active samples before estimating the delay
- * (1 s @16 kHz — enough correlated echo overlap for a stable cross-correlation
- * even when the transport lag eats several hundred ms of the window). */
-const ECHO_CAL_TARGET_SAMPLES = 16_000;
-/** Bound the rolling calibration window so a long talk-over doesn't grow it. */
-const ECHO_CAL_MAX_SAMPLES = 24_000;
-/** Accept a calibrated delay only above this normalized cross-correlation; below
- * it the near/far are independent (user talking, no echo) — keep the seed. */
-const ECHO_CAL_MIN_CONFIDENCE = 0.3;
-/** Largest playback→mic delay to search (500 ms @16 kHz). The Pixel 6a WebView
- * pump path measured ~381–408 ms end-to-end (#11373 device evidence) — beyond
- * the previous 300 ms ceiling, which made the one-shot calibration lock a
- * wrong cap-edge lag (~298 ms) and permanently misalign the NLMS reference. */
-const ECHO_CAL_MAX_LAG_SAMPLES = 8_000;
-/** Reject locks within one frame of the search ceiling: a cap-edge peak means
- * the true delay is likely beyond the searched range, and a one-shot lock on
- * it would pin a wrong alignment forever. Keep observing instead. */
-const ECHO_CAL_CAP_EDGE_SAMPLES = 320;
-/** Far-end mean-square floor below which a frame is "no playback" (skip). */
-const ECHO_CAL_FAR_ENERGY_FLOOR = 1e-7;
-
-function concatFloat32(chunks: Float32Array[]): Float32Array {
-	let total = 0;
-	for (const c of chunks) total += c.length;
-	const out = new Float32Array(total);
-	let off = 0;
-	for (const c of chunks) {
-		out.set(c, off);
-		off += c.length;
-	}
-	return out;
-}
-
 /**
  * Playback→mic transport delay used to time-align the far-end echo reference,
  * in samples @ 16 kHz. Device-tunable via `ELIZA_VOICE_ECHO_DELAY_MS`:
@@ -309,24 +287,6 @@ function resolveEchoDelaySamples(): number {
 }
 
 /**
- * Opt-in residual-echo suppressor, off by default (#9583/#9649). Device-tunable
- * via `ELIZA_VOICE_RESIDUAL_SUPPRESSION`:
- *   - `"1"` / `"true"` / `"on"` → enable with the canceller's default gain;
- *   - a number in (0,1] → enable with that residual gain (lower = stronger);
- *   - unset / anything else → disabled (the canceller does linear NLMS only).
- * Left off until validated with real device audio, per #9649 item 2.
- */
-function resolveResidualSuppression(): boolean | { gain: number } | undefined {
-	const raw =
-		process.env.ELIZA_VOICE_RESIDUAL_SUPPRESSION?.trim().toLowerCase();
-	if (!raw) return undefined;
-	if (raw === "1" || raw === "true" || raw === "on") return true;
-	const gain = Number(raw);
-	if (Number.isFinite(gain) && gain > 0 && gain <= 1) return { gain };
-	return undefined;
-}
-
-/**
  * Owns the single live diarization consumer for the agent process. Built
  * lazily on first frame batch so it does not load voice models at boot.
  */
@@ -354,15 +314,15 @@ export class LiveDiarizationSession {
 	 */
 	private readonly echoBuffer = new EchoReferenceBuffer();
 	/**
-	 * Playback→mic delay applied when reading the far-end reference. Seeded from
-	 * `ELIZA_VOICE_ECHO_DELAY_MS` (default 0) and then SELF-CALIBRATED on the live
-	 * path: once enough playback-active echo is observed, `estimateEchoDelaySamples`
-	 * (#9586) recovers the bulk transport lag by cross-correlation and replaces the
-	 * seed (#9583). Mutable for that reason.
+	 * Playback→mic delay calibration. Seeded from `ELIZA_VOICE_ECHO_DELAY_MS`
+	 * (default 0) and then SELF-CALIBRATED on the live path by the shared
+	 * `StreamingEchoDelayCalibrator` (#9583/#9586): once enough playback-active
+	 * echo is observed, cross-correlation recovers the bulk transport lag and
+	 * replaces the seed — one-shot lock, same constants as the desktop path.
 	 */
-	private echoDelaySamples = resolveEchoDelaySamples();
-	private echoDelayConfidence = 0;
-	private echoDelayCalibrated = false;
+	private readonly delayCalibrator = new StreamingEchoDelayCalibrator(
+		resolveEchoDelaySamples(),
+	);
 	/**
 	 * Far-end delivery evidence (#9583): frames/samples actually pushed through
 	 * {@link pushPlayback} and the wall-clock time of the last one. These drive
@@ -373,12 +333,10 @@ export class LiveDiarizationSession {
 	private playbackFramesReceived = 0;
 	private playbackSamplesReceived = 0;
 	private lastPlaybackFrameAt: number | null = null;
-	/** Rolling near/far windows accumulated only while the far-end is active, used
-	 * once to estimate the playback→mic delay. Cleared after a confident estimate
-	 * and on {@link resetPlayback}. */
-	private calNear: Float32Array[] = [];
-	private calFar: Float32Array[] = [];
-	private calSampleCount = 0;
+	/** Agent self-voice imprint (#12256 layer 3): built with the fused encoder,
+	 * fed the agent's rendered playback (the same frames the AEC reference
+	 * consumes), and threaded into the consumer as the live self-voice gate. */
+	private selfVoiceImprint: AgentSelfVoiceImprint | null = null;
 	/** Bounded AEC evidence capture (#11373): while armed, every ingested mic
 	 * frame (near) and the delay-0 far-end reference at its timestamp are
 	 * buffered so real on-device ERLE/double-talk measurements can replay the
@@ -448,6 +406,13 @@ export class LiveDiarizationSession {
 		});
 		const encoder = await FusedSpeakerEncoder.load({ ffi, ctx });
 		this.encoder = encoder;
+		// Agent self-voice imprint (#12256 layer 3): the same fused encoder that
+		// embeds mic turns embeds the agent's rendered playback, so the cosine
+		// between them is meaningful. Registered under "live-frames" for the
+		// shared #12255 handle (the speak-back loop's imprint takes precedence).
+		const selfVoiceImprint = new AgentSelfVoiceImprint({ encoder });
+		this.selfVoiceImprint = selfVoiceImprint;
+		registerAgentSelfVoiceImprint("live-frames", selfVoiceImprint);
 		const diarizer = await FusedDiarizer.load({ ffi, ctx });
 		this.diarizer = diarizer;
 		// One shared store per state dir so Pipeline A (here) and Pipeline B
@@ -484,6 +449,13 @@ export class LiveDiarizationSession {
 					this.options.echoReference ??
 					((timestampMs, samples) =>
 						this.echoReferenceFrame(timestampMs, samples)),
+				// Embedding self-voice (#12256 layer 3): match each turn's WeSpeaker
+				// embedding against the agent's TTS centroid so the ambient gate can
+				// hard-suppress the agent hearing itself, at the agent-specific
+				// threshold (NOT the 0.78/0.7 human bars).
+				resolveSelfVoiceSimilarity: (embedding) =>
+					selfVoiceImprint.similarity(embedding),
+				selfVoiceThreshold: selfVoiceImprint.threshold,
 			}),
 			config,
 		);
@@ -548,7 +520,7 @@ export class LiveDiarizationSession {
 		return this.echoBuffer.referenceAt(
 			timestampMs,
 			samples,
-			this.echoDelaySamples,
+			this.delayCalibrator.delaySamples,
 		);
 	}
 
@@ -558,61 +530,20 @@ export class LiveDiarizationSession {
 		confidence: number;
 		calibrated: boolean;
 	} {
-		return {
-			delaySamples: this.echoDelaySamples,
-			confidence: this.echoDelayConfidence,
-			calibrated: this.echoDelayCalibrated,
-		};
+		return this.delayCalibrator.state();
 	}
 
 	/**
-	 * Self-calibrate the playback→mic delay (#9583/#9586) from real echo. Called
-	 * per mic frame while uncalibrated: when the far-end is active (the agent is
-	 * playing TTS), accumulate the time-aligned near/far windows; once ~0.75 s of
-	 * playback-active audio is buffered, recover the bulk transport lag by
-	 * cross-correlation and, if confident, replace the static seed. One-shot — the
-	 * device's speaker→mic path is stable, so we lock the first confident estimate
-	 * and stop re-measuring. Public so it can be unit-tested without the fused FFI.
+	 * Self-calibrate the playback→mic delay (#9583/#9586) from real echo via the
+	 * shared `StreamingEchoDelayCalibrator`. Called per mic frame while
+	 * uncalibrated; reads the RAW far-end at this frame (delay 0 — calibration
+	 * must not pre-apply the value it is trying to measure). Public so it can be
+	 * unit-tested without the fused FFI.
 	 */
 	observeForDelayCalibration(nearPcm: Float32Array, timestampMs: number): void {
-		if (this.echoDelayCalibrated || nearPcm.length === 0) return;
-		// Read the RAW far-end at this frame (delay 0) — calibration recovers the
-		// delay, so it must not pre-apply the value it is trying to measure.
+		if (this.delayCalibrator.calibrated || nearPcm.length === 0) return;
 		const far = this.echoBuffer.referenceAt(timestampMs, nearPcm.length, 0);
-		let farEnergy = 0;
-		for (let i = 0; i < far.length; i++) farEnergy += far[i] * far[i];
-		if (farEnergy / Math.max(1, far.length) < ECHO_CAL_FAR_ENERGY_FLOOR) {
-			return; // no playback → nothing to calibrate against
-		}
-
-		this.calNear.push(nearPcm.slice());
-		this.calFar.push(far);
-		this.calSampleCount += nearPcm.length;
-		while (
-			this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
-			this.calNear.length > 1
-		) {
-			this.calSampleCount -= (this.calNear.shift() as Float32Array).length;
-			this.calFar.shift();
-		}
-		if (this.calSampleCount < ECHO_CAL_TARGET_SAMPLES) return;
-
-		const near = concatFloat32(this.calNear);
-		const farWin = concatFloat32(this.calFar);
-		const est = estimateEchoDelaySamples(near, farWin, {
-			maxLagSamples: ECHO_CAL_MAX_LAG_SAMPLES,
-		});
-		if (
-			est.confidence >= ECHO_CAL_MIN_CONFIDENCE &&
-			est.lagSamples < ECHO_CAL_MAX_LAG_SAMPLES - ECHO_CAL_CAP_EDGE_SAMPLES
-		) {
-			this.echoDelaySamples = est.lagSamples;
-			this.echoDelayConfidence = est.confidence;
-			this.echoDelayCalibrated = true;
-		}
-		this.calNear = [];
-		this.calFar = [];
-		this.calSampleCount = 0;
+		this.delayCalibrator.observe(nearPcm, far);
 	}
 
 	/**
@@ -657,9 +588,9 @@ export class LiveDiarizationSession {
 			sampleRate: AUDIO_FRAME_SAMPLE_RATE,
 			nearPcm16: encodePcm16Base64(this.aecCaptureNear),
 			farPcm16: encodePcm16Base64(this.aecCaptureFar),
-			echoDelaySamples: this.echoDelaySamples,
-			echoDelayConfidence: this.echoDelayConfidence,
-			echoDelayCalibrated: this.echoDelayCalibrated,
+			echoDelaySamples: this.delayCalibrator.delaySamples,
+			echoDelayConfidence: this.delayCalibrator.confidence,
+			echoDelayCalibrated: this.delayCalibrator.calibrated,
 		};
 	}
 
@@ -701,6 +632,21 @@ export class LiveDiarizationSession {
 			this.playbackFramesReceived += 1;
 			this.playbackSamplesReceived += pcm.length;
 			this.lastPlaybackFrameAt = Date.now();
+			// The same rendered-playback PCM is the agent's own voice — feed the
+			// self-voice imprint (#12256 layer 3) so future mic turns can be gated
+			// against the agent's TTS centroid. The imprint exists only once the
+			// fused consumer built (it needs the encoder); frames before that are
+			// AEC-reference-only.
+			if (this.selfVoiceImprint) {
+				void this.selfVoiceImprint
+					.observeAudio(pcm, AUDIO_FRAME_SAMPLE_RATE)
+					.catch((err: unknown) => {
+						logger.warn(
+							{ error: err instanceof Error ? err.message : String(err) },
+							"[LiveDiarizationSession] self-voice imprint update failed",
+						);
+					});
+			}
 		}
 	}
 
@@ -709,9 +655,7 @@ export class LiveDiarizationSession {
 	 * playback gap); the already-learned delay is kept. */
 	resetPlayback(): void {
 		this.echoBuffer.reset();
-		this.calNear = [];
-		this.calFar = [];
-		this.calSampleCount = 0;
+		this.delayCalibrator.resetWindow();
 	}
 
 	/** Feed a batch of WebView-captured frames; resolves once VAD has processed them. */
@@ -732,10 +676,10 @@ export class LiveDiarizationSession {
 		}
 		for (const frame of frames) {
 			this.framesReceived += 1;
-			if (!this.echoDelayCalibrated || this.aecCaptureArmed) {
+			if (!this.delayCalibrator.calibrated || this.aecCaptureArmed) {
 				try {
 					const near = decodeAudioFramePcm(frame);
-					if (!this.echoDelayCalibrated) {
+					if (!this.delayCalibrator.calibrated) {
 						this.observeForDelayCalibration(near, frame.timestamp);
 					}
 					this.captureAecFrame(near, frame.timestamp);
@@ -779,8 +723,8 @@ export class LiveDiarizationSession {
 				playbackFramesReceived: this.playbackFramesReceived,
 				playbackSamplesReceived: this.playbackSamplesReceived,
 				lastPlaybackFrameAt: this.lastPlaybackFrameAt,
-				echoDelaySamples: this.echoDelaySamples,
-				echoDelayConfidence: this.echoDelayConfidence,
+				echoDelaySamples: this.delayCalibrator.delaySamples,
+				echoDelayConfidence: this.delayCalibrator.confidence,
 			},
 			recentTurns: [...this.recentTurns],
 			...(this.buildError ? { error: this.buildError } : {}),

@@ -18,7 +18,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 import { generateThumbnailBytes } from "./media-thumbnail.ts";
 
@@ -249,7 +249,8 @@ function maybeEvict(): void {
         if (!stat.isFile()) continue;
         files.push({ name, size: stat.size, mtimeMs: stat.mtimeMs });
       } catch {
-        // file vanished mid-scan — ignore
+        // error-policy:J6 best-effort maintenance — a file vanishing mid-scan
+        // (concurrent GC/eviction) is expected; skip it.
       }
     }
     const evict = selectMediaToEvict(files, maxStoreBytes());
@@ -259,13 +260,17 @@ function maybeEvict(): void {
         fs.unlinkSync(path.join(dir, name));
         evicted += 1;
       } catch {
-        // ignore
+        // error-policy:J6 best-effort maintenance — a file that vanished before
+        // we unlinked it is already gone; nothing to do.
       }
     }
     if (evicted > 0) {
       logger.info(`[media-store] evicted ${evicted} file(s) over size cap`);
     }
   } catch (err) {
+    // error-policy:J6 best-effort maintenance — eviction is opportunistic
+    // housekeeping throttled off the write path; a failed scan must not fail
+    // the write that triggered it. Surfaced via warn.
     logger.warn(
       `[media-store] eviction scan failed: ${
         err instanceof Error ? err.message : String(err)
@@ -319,10 +324,20 @@ export function persistMediaBytes(
 export function readStoredMediaBytes(fileName: string): Buffer | null {
   const filePath = path.join(mediaDir(), fileName);
   if (path.dirname(filePath) !== mediaDir()) return null;
+  // Absence is a valid answer — the file may have been evicted/GC'd since it was
+  // referenced. A genuine read failure (EACCES/EIO) is NOT: swallowing it as
+  // null silently drops referenced bytes from a backup/export, so it throws.
+  if (!fs.existsSync(filePath)) return null;
   try {
-    return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
-  } catch {
-    return null;
+    return fs.readFileSync(filePath);
+  } catch (err) {
+    // error-policy:J2 context-adding rethrow — an unreadable stored file is a
+    // real I/O failure, distinct from absence; surface it to the export boundary.
+    throw new ElizaError(`media read failed for ${fileName}`, {
+      code: "MEDIA_STORE_READ_FAILED",
+      cause: err,
+      context: { fileName },
+    });
   }
 }
 
@@ -333,13 +348,22 @@ export function readStoredMediaBytes(fileName: string): Buffer | null {
  */
 export function writeStoredMediaFile(fileName: string, bytes: Buffer): boolean {
   const filePath = path.join(mediaDir(), fileName);
+  // A traversal-rejecting name is invalid input, not a failure — return false so
+  // the caller skips it. A write that then fails (ENOSPC/EACCES) is a real
+  // failure and must not be swallowed into a silent "restored fewer files".
   if (path.dirname(filePath) !== mediaDir()) return false;
   try {
     fs.mkdirSync(mediaDir(), { recursive: true });
     if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, bytes);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    // error-policy:J2 context-adding rethrow — a failed restore write is data
+    // loss; surface it to the import boundary instead of returning false.
+    throw new ElizaError(`media write failed for ${fileName}`, {
+      code: "MEDIA_STORE_WRITE_FAILED",
+      cause: err,
+      context: { fileName },
+    });
   }
 }
 
@@ -385,6 +409,9 @@ export function persistDataUrl(dataUrl: string): PersistedMedia | null {
       ? Buffer.from(payload, "base64")
       : Buffer.from(decodeURIComponent(payload), "utf8");
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed data: URL
+    // payload (bad percent-encoding) is not a valid attachment; null is the
+    // explicit "not a data URL" signal, not a fabricated success.
     return null;
   }
   if (buffer.length === 0) return null;
@@ -431,6 +458,10 @@ export function readBackgroundPins(): string[] {
         typeof name === "string" && MEDIA_FILE_NAME.test(name),
     );
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — the pins ledger is absent on
+    // first run (ENOENT) or may be hand-corrupted JSON; both mean "no pins".
+    // Empty is the correct absence signal; the GC grace window still protects
+    // recently-persisted wallpapers.
     return [];
   }
 }
@@ -447,6 +478,8 @@ export function pinBackgroundMedia(url: string): void {
       JSON.stringify(pins.slice(-MAX_BACKGROUND_PINS)),
     );
   } catch (err) {
+    // error-policy:J6 best-effort — the pin ledger is a GC hint, not a source of
+    // truth; a failed write only risks an early GC of a replaced wallpaper.
     logger.warn(
       `[media-store] could not pin background media ${name}: ${
         err instanceof Error ? err.message : String(err)
@@ -487,10 +520,13 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
         fs.unlinkSync(path.join(dir, name));
         removed += 1;
       } catch {
-        // ignore individual file errors
+        // error-policy:J6 best-effort — a file that vanished mid-GC (concurrent
+        // eviction) is already collected; skip it and keep scanning.
       }
     }
   } catch (err) {
+    // error-policy:J6 best-effort — orphan GC is opportunistic housekeeping; a
+    // failed directory scan must not fail the caller. Surfaced via warn.
     logger.warn(
       `[media-store] GC scan failed: ${
         err instanceof Error ? err.message : String(err)
@@ -543,10 +579,14 @@ export function listMediaFiles(): MediaFileInfo[] {
           createdAt: stat.mtimeMs,
         });
       } catch {
-        // file vanished mid-scan — skip
+        // error-policy:J6 best-effort — a file vanishing mid-scan (concurrent
+        // eviction/GC) is expected; skip it and list the rest.
       }
     }
   } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — the Files surface renders
+    // an empty list when the store dir is unreadable rather than erroring the
+    // whole dashboard; the failure is surfaced via warn.
     logger.warn(
       `[media-store] list failed: ${
         err instanceof Error ? err.message : String(err)
@@ -587,7 +627,8 @@ function touchOnServe(filePath: string): void {
     const stamp = new Date(now);
     fs.utimesSync(filePath, stamp, stamp);
   } catch {
-    // best-effort — atime/mtime updates can fail on some filesystems
+    // error-policy:J6 best-effort — the mtime bump is an LRU hint; failing to
+    // touch (read-only fs, unsupported utimes) only degrades eviction ordering.
   }
 }
 
@@ -610,6 +651,8 @@ function resolveMediaFile(
   try {
     name = decodeURIComponent(pathname.slice(MEDIA_URL_PREFIX.length));
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a malformed percent-encoded
+    // request path is rejected with an explicit 400, not a fabricated hit.
     return { error: 400 };
   }
   if (!MEDIA_FILE_NAME.test(name)) return { error: 400 };
@@ -621,6 +664,9 @@ function resolveMediaFile(
     stat = fs.statSync(filePath);
     if (!stat.isFile()) throw new Error("not a file");
   } catch {
+    // error-policy:J4 explicit user-facing degrade — a missing/non-regular
+    // stored file resolves to an explicit HTTP 404 (the designed not-found
+    // state for a served, content-addressed asset).
     return { error: 404 };
   }
   touchOnServe(filePath);
@@ -827,6 +873,9 @@ export async function persistImageThumbnail(
     if (!thumb) return null;
     return persistMediaBytes(thumb.buffer, thumb.mimeType).url;
   } catch {
+    // error-policy:J4 explicit user-facing degrade — a thumbnail is an optional
+    // enhancement; when the resizer is unavailable or the bytes aren't an image
+    // the caller renders the full-size media (null = "no thumbnail").
     return null;
   }
 }
@@ -846,6 +895,9 @@ export async function ensureThumbnailForStoredFile(
   try {
     buffer = fs.readFileSync(path.join(mediaDir(), fileName));
   } catch {
+    // error-policy:J4 explicit user-facing degrade — thumbnail precompute is
+    // optional; if the source bytes can't be read the UI falls back to the
+    // full-size media (null = "no thumbnail"), no data is lost.
     return null;
   }
   return persistImageThumbnail(buffer, srcMime);
@@ -858,6 +910,9 @@ export function persistAttachmentUrlIfInline(url: string): string {
     const persisted = persistDataUrl(url);
     return persisted?.url ?? url;
   } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — if the inline bytes can't
+    // be moved into the store, the original functional data: URL is returned
+    // (the attachment still renders inline); the failure is surfaced via warn.
     logger.warn(
       `[media-store] failed to persist inline data URL: ${
         err instanceof Error ? err.message : String(err)

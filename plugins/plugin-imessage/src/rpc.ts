@@ -414,6 +414,8 @@ export async function probeIMessageRpc(params: {
     await client.stop();
     return { ok: true };
   } catch (err) {
+    // error-policy:J6 best-effort teardown after a failed probe; the real failure is
+    // returned as the structured result below, so a stop() error here is irrelevant.
     await client.stop().catch(() => {});
     return {
       ok: false,

@@ -1,3 +1,13 @@
+/**
+ * Post-hoc validation of model-produced tool arguments against an Action's
+ * parameter JSON Schema (from `actionToJsonSchema`). Checks type / enum / numeric
+ * bounds / string pattern, enforces required fields and the additionalProperties
+ * policy, and fills declared defaults, collecting human-readable error strings
+ * rather than throwing. `validateSchema` is exported for verifying whole
+ * structured outputs (e.g. remote-model planner JSON) too. Untrusted plugin
+ * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
+ * since a JS regex runs synchronously and cannot be interrupted.
+ */
 import type { Action } from "../types";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { actionToJsonSchema, type JsonSchema } from "./action-schema";

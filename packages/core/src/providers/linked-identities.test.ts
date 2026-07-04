@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the LINKED_IDENTITIES provider, which surfaces a user's linked
+ * identities from the IdentityLinkClient service. The harness is deterministic:
+ * a hand-rolled fake client is returned from a stub runtime's getService, with
+ * no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { linkedIdentitiesProvider } from "./linked-identities";
 

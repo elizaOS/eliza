@@ -1,3 +1,9 @@
+/**
+ * Core copy of the i18n keyword matcher (a hand-written sibling of the
+ * @elizaos/shared one). Pinning it independently guards against drift: ASCII
+ * word-boundary matching (so "cat" ≠ "category"), normalization, and
+ * longest-term-first selection must behave identically.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	collectKeywordTermMatches,
@@ -6,13 +12,6 @@ import {
 	splitKeywordDoc,
 	textIncludesKeywordTerm,
 } from "./validation-keywords.ts";
-
-/**
- * Core copy of the i18n keyword matcher (a hand-written sibling of the
- * @elizaos/shared one). Pinning it independently guards against drift: ASCII
- * word-boundary matching (so "cat" ≠ "category"), normalization, and
- * longest-term-first selection must behave identically.
- */
 
 describe("normalizeKeywordMatchText / splitKeywordDoc", () => {
 	it("normalizes and de-duplicates", () => {

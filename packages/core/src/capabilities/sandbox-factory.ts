@@ -1,3 +1,11 @@
+/**
+ * Remote-sandbox factory contract: the `e2b-sandbox-factory` service slot a
+ * vendor plugin registers under, plus the transport-neutral sandbox client and
+ * factory interfaces the host capability router drives (filesystem, command,
+ * git) regardless of backend (E2B SDK, eliza-cloud / home HTTP runners). Kept
+ * interface-only so the contract stays browser-safe; the concrete class lives
+ * in the vendor plugin. Re-exported from the capabilities barrel.
+ */
 import type { Service } from "../types/service";
 
 /**

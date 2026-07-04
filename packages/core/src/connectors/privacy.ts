@@ -1,3 +1,10 @@
+/**
+ * Privacy-level vocabulary and comparison helpers for connector accounts — the
+ * ordered `owner_only < team_visible < semi_public < public` scale that gates
+ * whether an account's data may surface in providers, summaries, and public
+ * posts. Stored on `account.metadata.privacy`; consumed alongside the
+ * role/access-gate checks in `account-manager.ts`.
+ */
 import type { ConnectorAccount } from "./account-manager";
 
 /**

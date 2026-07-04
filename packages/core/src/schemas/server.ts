@@ -1,3 +1,8 @@
+/**
+ * Message-server records — the top-level tenant owner that worlds and rooms
+ * are scoped under.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

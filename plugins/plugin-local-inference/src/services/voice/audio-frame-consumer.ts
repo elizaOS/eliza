@@ -243,6 +243,12 @@ export interface AudioFrameConsumerDeps {
 	 */
 	resolveSelfVoiceSimilarity?: SelfVoiceSimilarityResolver;
 	/**
+	 * Decision threshold for the resolver's similarity, forwarded with the value
+	 * so the gate compares it on the right scale (a WeSpeaker-embedding cosine
+	 * sits far below the MFCC default — see AGENT_SELF_VOICE_IMPRINT_THRESHOLD).
+	 */
+	selfVoiceThreshold?: number;
+	/**
 	 * Optional agent-playback (far-end) reference for acoustic echo cancellation
 	 * (#9455). Given a mic frame's clock timestamp and sample count, returns the
 	 * agent's TTS playback PCM for that exact window (Float32 16 kHz), or null
@@ -317,6 +323,7 @@ export class AudioFrameConsumer {
 	private readonly runtime: RuntimeEventSink;
 	private readonly transcribe: TurnTranscriber | null;
 	private readonly resolveSelfVoiceSimilarity: SelfVoiceSimilarityResolver | null;
+	private readonly selfVoiceThreshold: number | null;
 	private readonly echoReference: EchoReferenceProvider | null;
 	/** NLMS echo canceller, instantiated only when an `echoReference` is wired. */
 	private readonly echoCanceller: NlmsEchoCanceller | null;
@@ -374,6 +381,7 @@ export class AudioFrameConsumer {
 		this.runtime = deps.runtime;
 		this.transcribe = deps.transcribe ?? null;
 		this.resolveSelfVoiceSimilarity = deps.resolveSelfVoiceSimilarity ?? null;
+		this.selfVoiceThreshold = deps.selfVoiceThreshold ?? null;
 		this.echoReference = deps.echoReference ?? null;
 		this.echoCanceller = this.echoReference
 			? new NlmsEchoCanceller(
@@ -716,7 +724,13 @@ export class AudioFrameConsumer {
 				output,
 			);
 			if (typeof similarity === "number" && Number.isFinite(similarity)) {
-				options = { ...options, selfVoiceSimilarity: similarity };
+				options = {
+					...options,
+					selfVoiceSimilarity: similarity,
+					...(this.selfVoiceThreshold !== null
+						? { selfVoiceThreshold: this.selfVoiceThreshold }
+						: {}),
+				};
 			}
 		}
 		return options;

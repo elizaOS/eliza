@@ -1,3 +1,8 @@
+/**
+ * Directed, agent-scoped edges between two entities — the relationship graph
+ * the relationships service reads and writes.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

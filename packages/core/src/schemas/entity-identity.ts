@@ -1,3 +1,14 @@
+/**
+ * Table descriptors for the entity-resolution subsystem: strengthened identity
+ * claims (`entity_identities`), pending entity-merge proposals
+ * (`entity_merge_candidates`), and fact-refinement candidates (`fact_candidates`).
+ * These back the identity-merge engine and its human-review surfaces —
+ * observations, collisions, and fact contradictions the runtime cannot resolve
+ * automatically land here for a human (or an auto-merge threshold) to accept or
+ * reject. Portable `SchemaTable` shapes assembled by `buildBaseTables` and
+ * materialized by the plugin-sql / localdb adapters.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

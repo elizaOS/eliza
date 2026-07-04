@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `actions/validate-tool-args`: validating planner-supplied tool
+ * arguments against an action's parameter schema — types, required fields,
+ * nested objects/arrays, enums, unexpected keys, default application — plus
+ * `testSchemaPattern`, the ReDoS-hardened pattern tester. Runs on hand-built
+ * actions and the real `messageAction`; no live model.
+ */
 import { describe, expect, it } from "vitest";
 import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";

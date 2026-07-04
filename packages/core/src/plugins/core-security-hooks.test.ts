@@ -1,3 +1,10 @@
+/**
+ * Covers `createCoreSecurityHooksPlugin`: that its `init` registers both core
+ * message-path security pipeline hooks (incoming-message-security and
+ * should-respond injection-risk) on the correct phases. Verified against a
+ * hand-rolled runtime stub and a real `AgentRuntime` boot (in-memory DB,
+ * migrations skipped).
+ */
 import { describe, expect, it } from "vitest";
 
 import { AgentRuntime } from "../runtime.ts";
@@ -8,12 +15,6 @@ import {
 	createCoreSecurityHooksPlugin,
 } from "./core-security-hooks.ts";
 
-// #12091 item 23: the two always-on core security defenses used to be wired via
-// lazy `await import()` calls inside `AgentRuntime.initialize`, invisible to
-// plugin bookkeeping and with no dispose. They now register through a plugin's
-// `init`, so `registerPlugin` owns their lifecycle. These assert the plugin
-// registers BOTH pipeline hooks through the plugin `init` path — i.e. the same
-// `registerPipelineHook` calls now flow through `registerPlugin`.
 describe("core security hooks plugin (#12091 item 23)", () => {
 	it("registers both message-path security hooks through plugin init", async () => {
 		const registered: PipelineHookSpec[] = [];
@@ -46,10 +47,8 @@ describe("core security hooks plugin (#12091 item 23)", () => {
 	});
 
 	it("registers through the real boot path into plugin bookkeeping", async () => {
-		// Boot a real runtime the way `initialize` does — no dynamic feature
-		// imports left in that path (they moved onto this plugin). The security
-		// plugin must land in `runtime.plugins`, proving `registerPlugin` owns its
-		// lifecycle instead of the old lazy `await import()`.
+		// Boot a real runtime the way `initialize` does; the security plugin must
+		// land in `runtime.plugins`, proving `registerPlugin` owns its lifecycle.
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 		try {

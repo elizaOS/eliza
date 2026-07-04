@@ -1,3 +1,8 @@
+/**
+ * Behavioral suite for the SSRF fetch guard (fetchWithSsrfGuard): literal-host
+ * blocking, DNS-pinned transport hand-off, and manual-redirect credential
+ * stripping + method/body rewriting. Deterministic — stub fetch/lookup, no network.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { fetchWithSsrfGuard } from "./fetch-guard.ts";
 import { SsrfBlockedError } from "./ssrf.ts";

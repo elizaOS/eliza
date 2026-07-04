@@ -1,13 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { isBlockedSpawnEnvKey, sanitizeSpawnEnv } from "./spawn-env-policy.ts";
-
 /**
  * The spawn env denylist is the only thing standing between attacker-supplied
  * env (MCP server config, shell spawns) and code injection into every child
- * process. The loader/interpreter hijack keys below are the same primitive as
- * the long-blocked LD_PRELOAD / NODE_OPTIONS: they make the dynamic linker or
+ * process. The loader/interpreter hijack keys it blocks are the same primitive
+ * as the long-blocked LD_PRELOAD / NODE_OPTIONS: they make the dynamic linker or
  * a spawned python/perl/ruby load attacker-controlled code.
  */
+
+import { describe, expect, it } from "vitest";
+import { isBlockedSpawnEnvKey, sanitizeSpawnEnv } from "./spawn-env-policy.ts";
+
 describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 	it.each([
 		"LD_AUDIT",

@@ -131,6 +131,16 @@ export interface BuildVoiceTurnSignalContext extends ShouldRespondContext {
    * guard misses (a mis-transcribed echo whose words don't match the reply).
    */
   selfVoiceSimilarity?: number;
+  /**
+   * Decision threshold for `selfVoiceSimilarity`. The threshold is a property
+   * of the MEASUREMENT SOURCE, so it travels with the value: the MFCC-timbre
+   * workbench measure clears {@link AGENT_SELF_VOICE_THRESHOLD} (the default),
+   * while a WeSpeaker-embedding cosine against the agent's TTS centroid sits on
+   * a much lower scale (self ~0.37 vs human ~0.15) and must be gated at
+   * {@link AGENT_SELF_VOICE_IMPRINT_THRESHOLD} instead — at the 0.7 bar the
+   * production imprint could never fire.
+   */
+  selfVoiceThreshold?: number;
 }
 
 /** Server SUPPRESS threshold for EOT — below this reads as "user still talking". */
@@ -144,6 +154,16 @@ export const BYSTANDER_SUPPRESS_CONFIDENCE = 0.7;
  * safe and catches echo the transcript guard cannot.
  */
 export const AGENT_SELF_VOICE_THRESHOLD = 0.7;
+/**
+ * Agent-specific decision threshold for a **WeSpeaker-embedding** cosine
+ * against the agent's own TTS-voice centroid (`AgentSelfVoiceImprint`).
+ * Measured margins (`research/VOICE_8785_ASSESSMENT.md` §6, real on-device
+ * encoder): the agent's synthesized voice embeds ~0.37 self-similar while
+ * human speech lands ~0.15 (down to −0.13) — a clear but LOW-scale margin, so
+ * the 0.78 human-enrollment bar (and the 0.7 MFCC bar above) can never fire on
+ * it. 0.28 splits the measured margin; the documented safe range is 0.25–0.30.
+ */
+export const AGENT_SELF_VOICE_IMPRINT_THRESHOLD = 0.28;
 
 export function buildVoiceTurnSignal(
   transcript: string,
@@ -187,7 +207,8 @@ export function buildVoiceTurnSignal(
     (context.replyAgeMs ?? Number.POSITIVE_INFINITY) <= ECHO_WINDOW_MS;
   const isSelfVoice =
     context.selfVoiceSimilarity !== undefined &&
-    context.selfVoiceSimilarity >= AGENT_SELF_VOICE_THRESHOLD &&
+    context.selfVoiceSimilarity >=
+      (context.selfVoiceThreshold ?? AGENT_SELF_VOICE_THRESHOLD) &&
     replyRecent;
   if (isSelfVoice) agentShouldSpeak = false;
 

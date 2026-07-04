@@ -1,3 +1,9 @@
+/**
+ * Covers the markdown fence parser (`parseFenceSpans` / `findFenceSpanAt` /
+ * `isSafeFenceBreak`): backtick vs tilde markers, unclosed and info-string
+ * fences, indentation limits, and safe-break detection — deterministic cases
+ * plus a fast-check fuzz asserting ordered, in-bounds spans.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { findFenceSpanAt, isSafeFenceBreak, parseFenceSpans } from "./fences";

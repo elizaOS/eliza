@@ -44,6 +44,9 @@ export function verifyWhatsAppWebhookSignature(
     }
     return crypto.timingSafeEqual(expectedBuffer, computedBuffer);
   } catch {
+    // error-policy:J3 untrusted webhook signature; a malformed/non-hex header cannot
+    // pass verification, so any decode failure is an explicit "signature invalid" (false),
+    // not a swallowed error.
     return false;
   }
 }

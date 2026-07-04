@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { isValidCharacter, parseAndValidateCharacter } from "./character";
 
 /**
- * Tests for character config validation (#8801 / #9943). parseAndValidateCharacter
- * and isValidCharacter gate whether an agent definition is accepted; they (and
- * the underlying validateCharacter) were untested. The key behaviors: a valid
- * character passes, malformed JSON is reported DISTINCTLY from schema errors, and
- * non-objects / missing name are rejected.
+ * Unit tests for the character-config validators (`parseAndValidateCharacter`,
+ * `isValidCharacter`, over the underlying `validateCharacter`) that gate whether
+ * an agent definition is accepted — pure synchronous zod validation, no model or
+ * DB. Covers a valid character passing, malformed JSON reported distinctly from
+ * schema errors, and non-object / missing-name rejection. (#8801 / #9943)
  */
 describe("parseAndValidateCharacter", () => {
 	it("accepts a minimal valid character", () => {

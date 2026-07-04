@@ -42,6 +42,7 @@ import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
+import * as billingLedgerActual from "@/lib/services/inference-billing-ledger";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
 
@@ -60,6 +61,7 @@ let backstopAvailable = true;
 let gateBalanceUsd = 100;
 let thresholdUsd = 5;
 let backstopPersists = true;
+let billingLedger: "kv" | "db" = "kv";
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(async () => backstopPersists);
@@ -69,6 +71,8 @@ const reserveCredits = mock(async () => ({
   reconcile: async () => null,
 }));
 const createOptimisticDebitSettler = mock(() => async () => null);
+const admitInferenceChargeViaLedger = mock(async () => ({ admitted: true }));
+const createLedgerDebitSettler = mock(() => async () => null);
 const createCreditReservationSettler = mock(() => async () => null);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
@@ -131,6 +135,13 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
   createOptimisticDebitSettler,
 }));
 
+mock.module("@/lib/services/inference-billing-ledger", () => ({
+  ...billingLedgerActual,
+  resolveInferenceBillingLedger: () => billingLedger,
+  admitInferenceChargeViaLedger,
+  createLedgerDebitSettler,
+}));
+
 // Synchronous reserve path — spied so we can prove it is the fallback.
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
@@ -177,16 +188,21 @@ afterAll(() => {
     "@/lib/services/inference-billing-fast-path",
     () => fastPathActual,
   );
+  mock.module(
+    "@/lib/services/inference-billing-ledger",
+    () => billingLedgerActual,
+  );
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
 
-function makeRequest(): Request {
+function makeRequest(affiliateCode?: string): Request {
   return new Request("https://api.test/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
+      ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
@@ -196,10 +212,12 @@ function makeRequest(): Request {
   });
 }
 
-async function drive(): Promise<void> {
+async function drive(affiliateCode?: string): Promise<void> {
   // The handler owns its try/catch and always returns a Response (the stubbed
   // model call makes it an error response); we only read the spies.
-  await handleChatCompletionsPOST(makeRequest(), { skipOrgRateLimit: true });
+  await handleChatCompletionsPOST(makeRequest(affiliateCode), {
+    skipOrgRateLimit: true,
+  });
 }
 
 describe("chat/completions optimistic-billing route decision (#9899/#10066)", () => {
@@ -209,9 +227,12 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     gateBalanceUsd = 100;
     thresholdUsd = 5;
     backstopPersists = true;
+    billingLedger = "kv";
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
     createCreditReservationSettler.mockClear();
   });
 
@@ -272,5 +293,40 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     // ...but a non-durable write must fall through to the synchronous reserve.
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+  });
+
+  test("X-Affiliate-Code forces the synchronous reserve even when the KV optimistic path is eligible (#12749)", async () => {
+    await drive("PARTNER1000");
+
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(createOptimisticDebitSettler).not.toHaveBeenCalled();
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
+  });
+
+  test("X-Affiliate-Code also bypasses the DB-ledger optimistic branch (#12749)", async () => {
+    billingLedger = "db";
+
+    await drive();
+    expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
+    expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
+    expect(reserveCredits).not.toHaveBeenCalled();
+
+    admitInferenceChargeViaLedger.mockClear();
+    createLedgerDebitSettler.mockClear();
+    reserveCredits.mockClear();
+
+    await drive("PARTNER1000");
+
+    expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+    expect(createLedgerDebitSettler).not.toHaveBeenCalled();
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserveCredits.mock.calls as unknown as Array<
+      [{ affiliateCode?: string | null }]
+    >;
+    expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
   });
 });

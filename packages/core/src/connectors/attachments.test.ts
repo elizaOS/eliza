@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the connector attachment helpers — `contentTypeForMime`,
+ * `toMedia`, and `resolveAttachmentBytes` — with the SSRF-guarded media fetcher
+ * mocked so the suite makes no real network request.
+ */
 import { Buffer } from "node:buffer";
 import { describe, expect, it, vi } from "vitest";
 

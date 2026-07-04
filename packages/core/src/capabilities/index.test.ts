@@ -1,3 +1,9 @@
+/**
+ * Exercises the capability router (`./index`): the unavailable fallback's
+ * structured errors and the runtime-broker router's request routing plus strict
+ * decode/validation of remote-plugin manifests, assets, and routes. Drives a
+ * stubbed `invokeRuntime` broker — no live host or network.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	CAPABILITY_ROUTER_PROTOCOL_FIXTURE,

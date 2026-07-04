@@ -1,3 +1,16 @@
+/**
+ * Builds the model's tool-calling surface from Actions. Defines the canonical
+ * Stage 1 `HANDLE_RESPONSE` tool (schema + description, with a direct-message
+ * variant) through which the model declares turn intent, and the Stage 2 planner
+ * tools where each Action becomes a native tool named by the action name with its
+ * `parameters` JSON Schema. Tier-aware expansion promotes tier-A parents'
+ * sub-actions to first-class tools; tier-B parents stay parent-only and route
+ * internally. Also emits the always-available REPLY / IGNORE / STOP terminal
+ * sentinels so the planner can end a turn regardless of action narrowing. Sits
+ * between the action catalog and the model layer; parameter schemas come from
+ * `normalizeActionJsonSchema` (`action-schema.ts`). Tool names must match
+ * `NATIVE_TOOL_NAME_PATTERN` or conversion throws.
+ */
 import type { Action } from "../types";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import {
@@ -17,7 +30,7 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  *   may emit a simple-mode reply directly, and may extract durable
  *   facts / relationships for the memory pipeline.
  *
- * Stage 2 (planning) no longer goes through a single wrapper tool. Each
+ * Stage 2 (planning) does not go through a single wrapper tool. Each
  * Action is exposed to the LLM as its own native tool whose name is the
  * action name and whose `parameters` is the action's parameter JSONSchema.
  * The model picks the action by name and calls it directly.

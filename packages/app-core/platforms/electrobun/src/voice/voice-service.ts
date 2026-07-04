@@ -76,6 +76,18 @@ function isTruthy(value: string | undefined): boolean {
   );
 }
 
+/** Default post-TTS echo cooldown (ms) — the VOICE_WORKBENCH.md half-duplex
+ * recommendation, shared with the renderer capture gate. */
+const DEFAULT_POST_TTS_COOLDOWN_MS = 1500;
+
+function resolvePostTtsCooldownMs(
+  env: Record<string, string | undefined>,
+): number {
+  const raw = Number(env.ELIZA_VOICE_POST_TTS_COOLDOWN_MS);
+  if (!Number.isFinite(raw) || raw < 0) return DEFAULT_POST_TTS_COOLDOWN_MS;
+  return raw;
+}
+
 function requireNonEmpty(value: string, field: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -170,6 +182,12 @@ export class VoiceService {
   /** Agent's most recent spoken reply + when it landed — feeds the echo guard. */
   private lastAgentReply: string | undefined;
   private lastAgentReplyAtMs: number | undefined;
+  /** Wall-clock ms of the most recent TTS playback-started mark — anchors the
+   * post-TTS echo cooldown (#12256 layer 1). */
+  private lastPlaybackStartedAtMs: number | undefined;
+  /** Post-TTS cooldown window (ms). `ELIZA_VOICE_POST_TTS_COOLDOWN_MS`, default
+   * 1500 — the VOICE_WORKBENCH.md half-duplex recommendation. */
+  private readonly postTtsCooldownMs: number;
 
   constructor(options: VoiceServiceOptions = {}) {
     this.traceService = options.traceService ?? null;
@@ -196,6 +214,21 @@ export class VoiceService {
       });
     this.pipelineId = this.pipelineIdFactory();
     this.latencyBudget = getVoiceLatencyBudgetFromEnv(this.env);
+    this.postTtsCooldownMs = resolvePostTtsCooldownMs(this.env);
+  }
+
+  /**
+   * True while the agent's TTS is playing, or within the post-TTS cooldown
+   * after the last playback started — the window in which the transcript echo
+   * guard must be forced on so the agent's own tail bleeding into an always-on
+   * mic doesn't self-trigger a turn (#12256 layer 1).
+   */
+  private isPostTtsEchoCooldownActive(): boolean {
+    if (this.lastPlaybackStartedAtMs === undefined) return false;
+    return (
+      this.now().getTime() - this.lastPlaybackStartedAtMs <=
+      this.postTtsCooldownMs
+    );
   }
 
   async status(): Promise<VoicePipelineSnapshot> {
@@ -794,6 +827,10 @@ export class VoiceService {
         this.lastAgentReplyAtMs !== undefined
           ? this.now().getTime() - this.lastAgentReplyAtMs
           : undefined,
+      // Force the echo guard on while TTS is still playing (or just did): a
+      // long reply's playback outlives the age-only ECHO_WINDOW_MS, so without
+      // this an echo captured mid-speech would slip the guard (#12256 layer 1).
+      agentSpeaking: this.isPostTtsEchoCooldownActive(),
     });
     const handoff: VoiceRuntimeHandoffParams = {
       text,
@@ -973,6 +1010,9 @@ export class VoiceService {
     metadata?: Record<string, JsonValue>;
   }): Promise<void> {
     if (!event.started || !this.activeTurn) return;
+    // Anchor the post-TTS echo cooldown (#12256 layer 1): from here the guard
+    // treats a following near-verbatim turn as the agent's own echo.
+    this.lastPlaybackStartedAtMs = this.now().getTime();
     await this.updateTurn("playback_started");
     const playback = await this.mark("playback", "started", event.metadata);
     await this.trace(

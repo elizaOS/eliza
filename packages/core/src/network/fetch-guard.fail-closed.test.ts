@@ -1,3 +1,8 @@
+/**
+ * Fail-closed contract for the SSRF fetch guard when its pinned DNS transport
+ * module cannot be imported on Node: the guard rejects every guarded fetch
+ * rather than downgrade to the unpinned path. Deterministic — import mocked to throw.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { fetchWithSsrfGuard } from "./fetch-guard.ts";
 

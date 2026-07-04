@@ -285,8 +285,19 @@ export class AutonomyService extends Service {
 		].join(":");
 
 		if (typeof this.runtime.getCache === "function") {
-			const cached =
-				await this.runtime.getCache<AutonomyCompactionCacheEntry>(cacheKey);
+			let cached: AutonomyCompactionCacheEntry | undefined;
+			try {
+				cached =
+					await this.runtime.getCache<AutonomyCompactionCacheEntry>(cacheKey);
+			} catch (err) {
+				// error-policy:J7 best-effort read of an optional cache — getCache now
+				// throws on a DB error (#12269); degrade to a cache miss and recompute
+				// below instead of aborting the deterministic compaction.
+				this.runtime.reportError("AutonomyCompaction", err, {
+					cacheKey,
+					step: "getCache",
+				});
+			}
 			if (cached?.summary) {
 				this.autonomyCompactionStats.cacheHits += 1;
 				this.autonomyCompactionStats.lastSourceCount = cached.sourceCount;
@@ -308,9 +319,17 @@ export class AutonomyService extends Service {
 		this.autonomyCompactionStats.lastSummaryChars = summary.length;
 
 		if (typeof this.runtime.setCache === "function") {
-			const stored = await this.runtime.setCache(cacheKey, entry);
-			if (stored !== false) {
+			try {
+				await this.runtime.setCache(cacheKey, entry);
 				this.autonomyCompactionStats.cacheWrites += 1;
+			} catch (err) {
+				// error-policy:J7 best-effort cache write — setCache now throws on a DB
+				// error (#12269); the entry is already computed, so surface the failure
+				// and still return it rather than losing the compaction.
+				this.runtime.reportError("AutonomyCompaction", err, {
+					cacheKey,
+					step: "setCache",
+				});
 			}
 		}
 

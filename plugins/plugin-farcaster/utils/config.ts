@@ -73,6 +73,9 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, RawFarcasterA
       ? (parsed as Record<string, RawFarcasterAccountConfig>)
       : {};
   } catch {
+    // error-policy:J3 malformed FARCASTER_ACCOUNTS JSON is untrusted config input; the
+    // multi-account blob contributes no entries while single-account env settings
+    // still govern — a corrupt blob must not crash account discovery (accounts.test.ts).
     return {};
   }
 }

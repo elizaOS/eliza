@@ -59,7 +59,13 @@ export {
 	platformPlaybackDelayMs,
 	platformPlaybackDelaySamples,
 } from "./echo-delay";
-export { computeErle } from "./echo-metrics";
+export {
+	type AecCaptureReplayInput,
+	type AecCaptureReplayResult,
+	computeErle,
+	computeFarActiveErle,
+	replayAecCaptureErle,
+} from "./echo-metrics";
 export {
 	EchoReferenceBuffer,
 	type EchoReferenceBufferOptions,
@@ -138,6 +144,15 @@ export {
 	turnDetectorGgufForTier,
 } from "./eot-classifier-ggml";
 export { VoiceStartupError } from "./errors";
+export {
+	cancelEchoInWavUtterance,
+	type DesktopAecPassthroughReason,
+	type DesktopAecResult,
+	type DesktopAecUtteranceSummary,
+	FarEndReference,
+	type FarEndReferenceStatus,
+	getSharedFarEndReference,
+} from "./far-end-reference";
 export * from "./ffi-bindings";
 export {
 	_resetSharedFirstLineCacheForTesting,
@@ -255,6 +270,14 @@ export {
 	type SchedulerEvents,
 	VoiceScheduler,
 } from "./scheduler";
+export {
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	AgentSelfVoiceImprint,
+	type AgentSelfVoiceImprintOptions,
+	type AgentSelfVoiceImprintSource,
+	getAgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint";
 export {
 	createMtpDraftHandle,
 	type KernelSet,

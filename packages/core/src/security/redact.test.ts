@@ -1,3 +1,12 @@
+/**
+ * Secret redaction is the last line stopping API keys / tokens / character
+ * secrets from leaking into logs, tool output, or memories. Known secrets are
+ * replaced wholesale by [REDACTED:name] (longest-first so one secret can't be
+ * partially masked), and pattern detection masks common key shapes (sk-, ghp_,
+ * Bearer, PEM) even when the value isn't in the known-secrets map. A full secret
+ * value must never survive in the output.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	createSecretsRedactor,
@@ -9,15 +18,6 @@ import {
 	redactSensitiveText,
 	redactWithSecrets,
 } from "./redact.ts";
-
-/**
- * Secret redaction is the last line stopping API keys / tokens / character
- * secrets from leaking into logs, tool output, or memories. Known secrets are
- * replaced wholesale by [REDACTED:name] (longest-first so one secret can't be
- * partially masked), and pattern detection masks common key shapes (sk-, ghp_,
- * Bearer, PEM) even when the value isn't in the known-secrets map. A full secret
- * value must never survive in the output.
- */
 
 describe("redactSecrets (known values)", () => {
 	it("replaces an exact secret with [REDACTED:name]", () => {

@@ -1,3 +1,12 @@
+/**
+ * Per-call capability governance (issue #9235). An empty manifest is a no-op; a
+ * cpuMs deadline is a real wall-clock bound that rejects an overrunning call;
+ * the host/path allowlists are predicates the network/fs layers consult
+ * (subdomain-aware host match, traversal-rejecting path match); and
+ * withCapabilityGovernance wraps an action additively, preserving every field
+ * but the handler.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../types/components.ts";
 import {
@@ -10,15 +19,6 @@ import {
 	isPathAllowed,
 	withCapabilityGovernance,
 } from "./capability-manifest.ts";
-
-/**
- * Per-call capability governance (issue #9235). An empty manifest is a no-op; a
- * cpuMs deadline is a real wall-clock bound that rejects an overrunning call;
- * the host/path allowlists are predicates the network/fs layers consult
- * (subdomain-aware host match, traversal-rejecting path match); and
- * withCapabilityGovernance wraps an action additively, preserving every field
- * but the handler.
- */
 
 describe("applyCapabilityManifest — deadline", () => {
 	it("returns the value when the task finishes within budget (and with no budget)", async () => {

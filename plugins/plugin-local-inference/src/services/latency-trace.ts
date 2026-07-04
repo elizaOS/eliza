@@ -57,6 +57,10 @@
  */
 
 import { logger } from "@elizaos/core";
+import {
+	type FarEndReferenceStatus,
+	getSharedFarEndReference,
+} from "./voice/far-end-reference.js";
 import type { VadEvent, VadEventSource } from "./voice/types";
 
 // ---------------------------------------------------------------------------
@@ -675,6 +679,14 @@ export interface VoiceLatencyDevPayload {
 	openTurnCount: number;
 	traces: LatencyTrace[];
 	histograms: Record<LatencyDerivedKey, HistogramSummary>;
+	/**
+	 * Desktop-loop AEC observability (#12256): the far-end reference's honest
+	 * wiring flag, playback delivery counters, and per-utterance ERLE results —
+	 * the number the AEC3 escalation decision is gated on (<18 dB measured on
+	 * real hardware → file the webrtc-audio-processing evaluation follow-up;
+	 * do not vendor it preemptively).
+	 */
+	aec: FarEndReferenceStatus;
 }
 
 /** Build the JSON body for `GET /api/dev/voice-latency`. */
@@ -689,6 +701,7 @@ export function buildVoiceLatencyDevPayload(
 		openTurnCount: tracer.openTurnCount,
 		traces: tracer.recentTraces(limit),
 		histograms: tracer.histogramSummaries(),
+		aec: getSharedFarEndReference().status(),
 	};
 }
 

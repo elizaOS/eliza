@@ -41,6 +41,8 @@ import type {
 	AudioFrameEvent,
 	EchoReferenceProvider,
 } from "../services/voice/audio-frame-consumer.js";
+import { replayAecCaptureErle } from "../services/voice/echo-metrics.js";
+import { getSharedFarEndReference } from "../services/voice/far-end-reference.js";
 import {
 	LiveDiarizationSession,
 	type RuntimeEventSink,
@@ -238,7 +240,11 @@ export async function handleLiveDiarizationRoute(
 		// $ELIZA_STATE_DIR, which host tooling pulls with
 		// `devicectl device copy from` — the robust, bridge-free retrieval path.
 		await persistAecEvidence(capture, await current.status());
-		sendJson(res, 200, { ok: true, capture });
+		// On-demand ERLE (#12256): replay the captured near/far window through
+		// the production canceller so the capture read carries the measured
+		// number, not just raw PCM. Null when nothing was captured.
+		const erle = capture.sampleCount > 0 ? replayAecCaptureErle(capture) : null;
+		sendJson(res, 200, { ok: true, capture, erle });
 		return true;
 	}
 
@@ -251,7 +257,10 @@ export async function handleLiveDiarizationRoute(
 		}
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
-		if (body.reset === true) current.resetPlayback();
+		if (body.reset === true) {
+			current.resetPlayback();
+			getSharedFarEndReference().notePlaybackReset();
+		}
 		const rawFrames = body.frames;
 		if (rawFrames !== undefined && !Array.isArray(rawFrames)) {
 			sendJsonError(
@@ -273,6 +282,10 @@ export async function handleLiveDiarizationRoute(
 			return true;
 		}
 		current.pushPlayback(frames);
+		// One ingest, two consumers (#12256): the same rendered-playback frames
+		// feed Pipeline A's per-frame canceller (above) and the desktop
+		// utterance-level far-end reference used by /api/asr/local-inference.
+		getSharedFarEndReference().pushPlayback(frames);
 		sendJson(res, 200, { ok: true, framesPushed: frames.length });
 		return true;
 	}

@@ -1155,6 +1155,8 @@ export class MatrixService extends Service implements IMatrixService {
     const other = request.otherUserId;
     if (!state.settings.verifyAllowlist.includes(other)) {
       logger.warn(`Matrix rejecting verification request from non-allowlisted ${other}`);
+      // error-policy:J6 best-effort teardown of a rejected verification request; the
+      // rejection is already logged and the request is being abandoned.
       await request.cancel().catch(() => {});
       return;
     }
@@ -1165,6 +1167,8 @@ export class MatrixService extends Service implements IMatrixService {
       }
       const verifier = request.verifier ?? (await this.awaitVerifier(request));
       if (!verifier) {
+        // error-policy:J6 best-effort teardown when no verifier materialized; the
+        // request is being abandoned either way.
         await request.cancel().catch(() => {});
         return;
       }

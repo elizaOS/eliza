@@ -1,3 +1,8 @@
+/**
+ * Keyword and regex matchers over recent message history, used by action
+ * `validate()` paths to gate on message content. Both scan the current message
+ * plus the last five recent messages; keyword matching is case-insensitive.
+ */
 import type { Memory } from "../types";
 
 /**
@@ -28,7 +33,6 @@ export function validateActionKeywords(
 	}
 
 	// 2. Recent messages (last 5)
-	// Take the last 5 messages
 	const recentSubset =
 		recentMessages && recentMessages.length > 5
 			? recentMessages.slice(-5)

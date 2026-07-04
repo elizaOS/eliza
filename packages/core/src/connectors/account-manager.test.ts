@@ -1,3 +1,9 @@
+/**
+ * Behavioral tests for `ConnectorAccountManager` — provider registration and
+ * connector dedup, stored/provider account merge, single-use OAuth consumption,
+ * PKCE-secret handling, and owner-binding policy — driven against a stub runtime
+ * and the real `InMemoryDatabaseAdapter` (no live connector, no network).
+ */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import type { TargetInfo } from "../types";

@@ -1,3 +1,9 @@
+/**
+ * Plugin factory for elizaOS's always-on message-path security defenses. Its
+ * `init` wires two pipeline hooks — incoming-message external-content hardening
+ * and should-respond injection-risk stamping — through the plugin lifecycle so
+ * `registerPlugin` owns their registration and disposal.
+ */
 import { registerCoreShouldRespondRiskHook } from "../features/trust/should-respond-risk-gate";
 import { registerCoreIncomingMessageSecurityHook } from "../security/incoming-message-security";
 import type { Plugin } from "../types/plugin";
@@ -14,9 +20,8 @@ export const CORE_SECURITY_HOOKS_PLUGIN_NAME = "core-security-hooks";
  *  - `core:should-respond-injection-risk` (#9949) — deterministic RiskFactors
  *    stamping during the parallel-with-should-respond phase.
  *
- * Both `registerCore*Hook` functions are register-functions that call
- * `runtime.registerPipelineHook`; wrapping them in a plugin `init` is a pure
- * relocation of the same calls onto the plugin path with no behavior change.
+ * Both `registerCore*Hook` functions call `runtime.registerPipelineHook` from
+ * within the plugin `init`.
  */
 export function createCoreSecurityHooksPlugin(): Plugin {
 	return {

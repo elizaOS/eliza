@@ -288,7 +288,14 @@ export class PromptBatcher {
 	invalidateCache(sectionId: string): void {
 		const cacheKey = this._cacheKey(sectionId);
 		this.inMemoryCache.delete(cacheKey);
-		void this.runtime.deleteCache(cacheKey);
+		// error-policy:J7 best-effort DB cache invalidation — the in-memory entry is
+		// already cleared above and a stale DB cache row is harmless, so a delete
+		// failure (deleteCache now throws on DB error, #12269) must NOT become an
+		// unhandled rejection that terminates one-shot CLI / embedded hosts. Surface
+		// via reportError, never rethrow.
+		void this.runtime
+			.deleteCache(cacheKey)
+			.catch((err) => this.runtime.reportError("PromptBatcher", err, { cacheKey }));
 	}
 
 	invalidateAllCaches(): void {

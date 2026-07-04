@@ -14,7 +14,10 @@ import {
 	type OwnerObservation,
 	resolveOwnerCandidate,
 } from "@elizaos/shared/voice/owner-inference";
-import { buildVoiceTurnSignal } from "@elizaos/shared/voice/respond-gate";
+import {
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	buildVoiceTurnSignal,
+} from "@elizaos/shared/voice/respond-gate";
 import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import { resolveFusedLibraryPath } from "../desktop-fused-ffi-backend-runtime";
 import type {
@@ -422,8 +425,13 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				? { recentAgentReply: this.lastAgentReply, replyAgeMs: 500 }
 				: {}),
 			agentSpeaking: args.label.isAgentEcho === true,
+			// WeSpeaker-embedding scale: the agent-specific threshold travels with
+			// the measurement (self ~0.37 vs human ~0.15 — never the 0.7 MFCC bar).
 			...(typeof selfVoiceSimilarity === "number"
-				? { selfVoiceSimilarity }
+				? {
+						selfVoiceSimilarity,
+						selfVoiceThreshold: AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+					}
 				: {}),
 			speaker: {
 				entityId: matchedEntityId,

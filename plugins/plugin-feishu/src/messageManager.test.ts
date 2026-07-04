@@ -17,6 +17,7 @@ function createRuntime() {
 		agentId,
 		ensureConnection: vi.fn().mockResolvedValue(undefined),
 		emitEvent: vi.fn(),
+		reportError: vi.fn(),
 	});
 }
 
@@ -90,7 +91,7 @@ describe("MessageManager inbound event handling", () => {
 		expect(runtime.emitEvent).not.toHaveBeenCalled();
 	});
 
-	it("emits hostile malformed JSON text with a finite timestamp", async () => {
+	it("surfaces hostile malformed JSON as an explicit invalid marker, not fake-empty text", async () => {
 		const runtime = createRuntime();
 		const manager = createManager(runtime);
 
@@ -105,11 +106,20 @@ describe("MessageManager inbound event handling", () => {
 				userId: "ou_sender",
 			}),
 		);
+		// Unparseable content must not silently become "" (the agent would answer to
+		// nothing); it surfaces as an explicit marker and a reported error.
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"Feishu.parseMessageContent",
+			expect.any(Error),
+			expect.objectContaining({ msgType: "text" }),
+		);
 		expect(runtime.emitEvent).toHaveBeenCalledWith(
 			FeishuEventTypes.MESSAGE_RECEIVED,
 			expect.objectContaining({
 				message: expect.objectContaining({
-					content: expect.objectContaining({ text: "" }),
+					content: expect.objectContaining({
+						text: "[unparseable text message]",
+					}),
 					createdAt: expect.any(Number),
 				}),
 			}),

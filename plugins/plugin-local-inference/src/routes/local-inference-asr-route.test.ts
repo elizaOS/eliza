@@ -8,6 +8,12 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AudioFrameEvent } from "../services/voice/audio-frame-consumer";
+import {
+	__resetSharedFarEndReferenceForTest,
+	getSharedFarEndReference,
+} from "../services/voice/far-end-reference";
+import { encodeMonoPcm16Wav } from "../services/voice/wav-codec";
 import type { CompatRuntimeState } from "./compat-helpers";
 import { handleLocalInferenceAsrRoute } from "./local-inference-asr-route";
 import { transcribeWavWithWords } from "./local-inference-asr-transcribe";
@@ -29,7 +35,17 @@ const transcribeWavWithWordsMock = vi.mocked(transcribeWavWithWords);
 beforeEach(() => {
 	vi.clearAllMocks();
 	engineMock.canTranscribeLocally.mockResolvedValue(true);
+	__resetSharedFarEndReferenceForTest();
 });
+
+/** The desktop AEC verdict attached to every WAV transcription response when
+ * no playback reference exists (the honest passthrough case). */
+const AEC_NO_FAR_END = {
+	applied: false,
+	reason: "no-far-end",
+	erleDb: null,
+	confidence: null,
+};
 
 function wavBytes(): Uint8Array {
 	const pcm = new Int16Array([0, 900, -900, 0]);
@@ -225,6 +241,7 @@ describe("local inference ASR route", () => {
 				{ text: "local", startMs: 400, endMs: 700 },
 				{ text: "voice", startMs: 700, endMs: 1000 },
 			],
+			aec: AEC_NO_FAR_END,
 		});
 	});
 
@@ -247,6 +264,94 @@ describe("local inference ASR route", () => {
 		expect(
 			Array.from(transcribeWavWithWordsMock.mock.calls[0]?.[1] as Uint8Array),
 		).toEqual(Array.from(wavBytes()));
-		expect(out.bodyJson()).toEqual({ text: "hello from json", words: [] });
+		expect(out.bodyJson()).toEqual({
+			text: "hello from json",
+			words: [],
+			aec: AEC_NO_FAR_END,
+		});
+	});
+
+	it("cancels the desktop echo before transcription when the far-end reference is live (#12256)", async () => {
+		transcribeWavWithWordsMock.mockResolvedValue({ text: "", words: [] });
+		// 3 s of deterministic pseudo-speech playback, delivered as timestamped
+		// renderer frames; the mic WAV is that playback attenuated + delayed.
+		const SR = 16_000;
+		const speech = (n: number, seed: number): Float32Array => {
+			const outPcm = new Float32Array(n);
+			let state = seed >>> 0 || 1;
+			let lp = 0;
+			for (let i = 0; i < n; i++) {
+				state = (state * 1664525 + 1013904223) >>> 0;
+				lp = 0.85 * lp + 0.15 * (state / 0xffffffff - 0.5);
+				outPcm[i] =
+					(0.55 + 0.45 * Math.sin((2 * Math.PI * 2.3 * i) / SR)) * lp * 2.5;
+			}
+			return outPcm;
+		};
+		const far = speech(48_000, 7);
+		const baseTs = 5_000;
+		const epochOffset = 1_000_000;
+		const farEnd = getSharedFarEndReference();
+		const frames: AudioFrameEvent[] = [];
+		for (let index = 0; (index + 1) * 320 <= far.length; index += 1) {
+			const framePcm = far.subarray(index * 320, (index + 1) * 320);
+			const bytes = Buffer.alloc(320 * 2);
+			for (let i = 0; i < 320; i++) {
+				bytes.writeInt16LE(
+					Math.round(Math.max(-1, Math.min(1, framePcm[i])) * 32767),
+					i * 2,
+				);
+			}
+			frames.push({
+				pcm16: bytes.toString("base64"),
+				sampleRate: SR,
+				channels: 1,
+				samples: 320,
+				rms: 0.1,
+				timestamp: baseTs + index * 20,
+				frameIndex: index,
+			});
+		}
+		for (let i = 0; i < frames.length; i += 12) {
+			const batch = frames.slice(i, i + 12);
+			farEnd.pushPlayback(
+				batch,
+				batch[batch.length - 1].timestamp + epochOffset + 5,
+			);
+		}
+		const nearStartTs = 5_100;
+		const nearLen = 40_000;
+		const near = new Float32Array(nearLen);
+		const srcBase = Math.round(((nearStartTs - 60 - baseTs) / 1000) * SR);
+		for (let i = 0; i < nearLen; i++) {
+			const k = srcBase + i;
+			if (k >= 0 && k < far.length) near[i] = 0.22 * far[k];
+		}
+		const wav = encodeMonoPcm16Wav(near, SR);
+		const nearEndTs = nearStartTs + (nearLen / SR) * 1000;
+		const nowSpy = vi
+			.spyOn(Date, "now")
+			.mockReturnValue(nearEndTs + epochOffset + 15);
+		try {
+			const state: CompatRuntimeState = {
+				current: {} as unknown as CompatRuntimeState["current"],
+			};
+			const out = fakeRes();
+			await handleLocalInferenceAsrRoute(fakeReq(wav), out.res, state);
+
+			expect(out.status()).toBe(200);
+			const body = out.bodyJson() as {
+				aec: { applied: boolean; erleDb: number };
+			};
+			expect(body.aec.applied).toBe(true);
+			expect(body.aec.erleDb).toBeGreaterThanOrEqual(18);
+			// The transcriber received the CANCELLED bytes, not the raw echo.
+			const forwarded = transcribeWavWithWordsMock.mock
+				.calls[0]?.[1] as Uint8Array;
+			expect(forwarded).not.toEqual(wav);
+			expect(forwarded.byteLength).toBe(wav.byteLength);
+		} finally {
+			nowSpy.mockRestore();
+		}
 	});
 });

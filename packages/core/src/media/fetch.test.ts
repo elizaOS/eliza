@@ -1,3 +1,8 @@
+/**
+ * Tests for `fetchRemoteMedia`, the SSRF-guarded remote-media fetch: timeout
+ * signal propagation and RFC 5987 `Content-Disposition` filename decoding.
+ * Deterministic — the DNS `lookupFn` and `fetchImpl` are injected, no network.
+ */
 import { describe, expect, it } from "vitest";
 import { fetchRemoteMedia } from "./fetch.ts";
 
@@ -42,9 +47,9 @@ describe("fetchRemoteMedia", () => {
 	});
 
 	it("decodes RFC 5987 filename* with a language tag", async () => {
-		// Previously the charset/language prefix leaked into the filename
-		// ("UTF-8'en'naïve file.txt") because only the empty-language
-		// `charset''value` form was stripped.
+		// The charset/language prefix must not leak into the filename
+		// (e.g. "UTF-8'en'naïve file.txt"); the language-tagged form needs the
+		// same stripping as the empty-language `charset''value` form.
 		const result = await fetchWithContentDisposition(
 			"attachment; filename*=UTF-8'en'na%C3%AFve%20file.txt",
 		);
