@@ -119,8 +119,6 @@ export interface AppBootConfig {
   vrmAssets?: BundledVrmAsset[];
   /** First-run style presets — replaces window.__APP_FIRST_RUN_STYLES__. */
   firstRunStyles?: unknown[];
-  /** Character editor component — replaces window.__ELIZAOS_CHARACTER_EDITOR__. */
-  characterEditor?: ComponentType<Record<string, unknown>>;
   /**
    * Home screen override provided by the host app. When set, the shell renders
    * this instead of the stock HomeScreen on the /chat home (whitelabel seam for

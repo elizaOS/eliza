@@ -1,17 +1,16 @@
 /**
  * Last-resort boot error surface.
  *
- * `main()` awaits several fallible pre-mount steps (the dynamic `app-core` and
- * `@elizaos/ui/voice` chunks). If any rejects, React never mounts and the user
- * is stranded on a permanent blank page with no recovery — most commonly a
- * stale `index.html` pointing at purged hashed chunks right after a prod
- * redeploy, or a flaky network. The app's root ErrorBoundary can't help
+ * `main()` awaits several fallible pre-mount steps (embed handshake, platform
+ * bridges, route-shell dynamic chunks). If any rejects, React never mounts and
+ * the user is stranded on a permanent blank page with no recovery — most
+ * commonly a stale `index.html` pointing at purged hashed chunks right after a
+ * prod redeploy, or a flaky network. The app's root ErrorBoundary can't help
  * because React was never mounted.
  *
  * Paint a minimal, dependency-free reload card instead. A full reload
- * re-fetches `index.html` and discards the in-session rejected-promise caches
- * (`cachedDynamicImport` / `appModulesInitialized`), so it is the correct
- * recovery path.
+ * re-fetches `index.html` and discards the in-session rejected-promise cache
+ * (`cachedDynamicImport`), so it is the correct recovery path.
  */
 export function renderBootFailure(
   error: unknown,

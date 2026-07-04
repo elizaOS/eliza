@@ -172,11 +172,10 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "./app-shell-registry";
-// CharacterEditor, DesktopTabBar, and FineTuningView stay static: they are
-// already pulled eagerly elsewhere in the app graph (main.tsx / plugin-loader /
-// boot-config), so a lazy() boundary here would only fold back into main. The
-// remaining page views are lazy-split below.
-import { CharacterEditor } from "./components/character/CharacterEditor";
+// DesktopTabBar and FineTuningView stay static: they are already pulled
+// eagerly elsewhere in the app graph (main.tsx / plugin-loader / boot-config),
+// so a lazy() boundary here would only fold back into main. The remaining page
+// views are lazy-split below.
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
 import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
@@ -276,6 +275,10 @@ const RelationshipsView = lazyNamedView(
 const KnowledgeView = lazyNamedView(
   () => import("./components/pages/KnowledgeView"),
   "KnowledgeView",
+);
+const CharacterEditor = lazyNamedView(
+  () => import("./components/character/CharacterEditor"),
+  "CharacterEditor",
 );
 const CharacterExperienceView = lazyNamedView(
   () => import("./components/character/CharacterExperienceView"),

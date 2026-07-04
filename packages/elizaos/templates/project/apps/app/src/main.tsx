@@ -26,7 +26,6 @@ import {
   applyLaunchConnectionFromUrl,
   applyUiTheme,
   type BrandingConfig,
-  CharacterEditor,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   client,
@@ -110,7 +109,6 @@ interface ShareTargetPayload {
 declare global {
   interface Window {
     __ELIZA_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_CHARACTER_EDITOR__?: typeof CharacterEditor;
     __ELIZAOS_APP_BOOT_CONFIG__?: { apiBase?: string };
   }
 }
@@ -143,9 +141,6 @@ if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
 installLocalProviderCloudPreferencePatch(client as never);
 installDesktopPermissionsClientPatch(client as never);
 
-// Register custom character editor for app-core's ViewRouter to pick up
-window.__ELIZA_CHARACTER_EDITOR__ = CharacterEditor;
-
 import { getStylePresets } from "@elizaos/shared";
 
 // Derive VRM roster from STYLE_PRESETS so character names stay in one place.
@@ -164,7 +159,6 @@ const elizaBootConfig: AppBootConfig = {
     (import.meta.env.VITE_CLOUD_BASE as string) ?? "https://elizacloud.ai",
   vrmAssets: ELIZA_VRM_ASSETS,
   firstRunStyles: ELIZA_STYLE_PRESETS,
-  characterEditor: CharacterEditor,
   characterCatalog: ELIZA_CHARACTER_CATALOG,
   envAliases: APP_ENV_ALIASES,
   clientMiddleware: {

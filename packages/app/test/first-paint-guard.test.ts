@@ -1,15 +1,16 @@
 /**
  * First-paint critical-path guard (issue #9565).
  *
- * `initializeAppModules()` blocks the first React mount: `main()` awaits it
- * before `mountReactApp()`. Anything added to its blocking path delays the first
- * visible startup shell on every device boot. The boot config reads no plugin
- * module synchronously, so the initializer must load only `@elizaos/app-core`
- * (the boot-config singleton owner) and never eagerly `import("@elizaos/plugin-…")`.
- * This test fails CI if a future eager plugin import is added to that path
- * instead of riding the deferred idle loaders
- * (BOOT_CONFIG_DEFERRED_MODULE_LOADERS / SIDE_EFFECT_APP_MODULE_LOADERS) after
- * React has had a paint opportunity.
+ * `initializeAppModules()` runs before the first React mount, so anything added
+ * to it delays the first visible startup shell on every device boot. The boot
+ * config reads only statics, so the initializer is fully synchronous — it must
+ * contain NO dynamic import at all. A dynamic `import("@elizaos/app-core")` in
+ * particular is a runtime no-op (the top-level static import already evaluated
+ * the barrel) whose namespace escapes Rollup analysis and anchors the barrel's
+ * entire `@elizaos/ui/browser` re-export surface into the entry chunk (#13187).
+ * This test fails CI if a future eager import is added to that path instead of
+ * riding the deferred idle loaders (BOOT_CONFIG_DEFERRED_MODULE_LOADERS /
+ * SIDE_EFFECT_APP_MODULE_LOADERS) after React has had a paint opportunity.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -33,7 +34,7 @@ const BLOCKING_PLUGIN_PACKAGE_IMPORT_PATTERN =
 function initializeAppModulesSource(): string {
   const start = mainSrc.indexOf("function initializeAppModules(");
   expect(start).toBeGreaterThan(-1);
-  const end = mainSrc.indexOf("return appModulesInitialized;", start);
+  const end = mainSrc.indexOf("setBootConfig(buildAppBootConfig());", start);
   expect(end).toBeGreaterThan(start);
   return mainSrc.slice(start, end);
 }
@@ -47,6 +48,13 @@ describe("first-paint critical path", () => {
     ].map((match) => match[2]);
 
     expect(blockingPluginImports).toEqual([]);
+  });
+
+  it("keeps the initializer free of ANY dynamic import (entry-chunk anchor guard)", () => {
+    // import("@elizaos/app-core") here would be a runtime no-op but forces
+    // Rollup to retain the barrel's whole export surface in the entry chunk.
+    expect(initializeAppModulesSource()).not.toMatch(/\bimport\s*\(/);
+    expect(mainSrc).not.toContain('import("@elizaos/app-core")');
   });
 
   it("keeps the heavy plugin imports on the deferred idle path", () => {
@@ -73,9 +81,9 @@ describe("first-paint critical path", () => {
 
   it("still mounts React only after initializeAppModules in the main boot path", () => {
     // Guards the ordering invariant the whole optimization rests on: the normal
-    // path awaits app modules, then mounts. (Special window-shell paths mount
-    // earlier by design and are out of scope.)
-    const appModulesIdx = mainSrc.indexOf("await initializeAppModules();");
+    // path assembles the boot config, then mounts. (Special window-shell paths
+    // mount earlier by design and are out of scope.)
+    const appModulesIdx = mainSrc.indexOf("\n  initializeAppModules();");
     const mountIdx = mainSrc.indexOf(
       "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();\n  await initializePlatform();",
     );

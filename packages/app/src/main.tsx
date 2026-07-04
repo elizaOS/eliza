@@ -70,7 +70,6 @@ import {
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
-import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -194,7 +193,6 @@ declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 declare global {
   interface Window {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_CHARACTER_EDITOR__?: typeof CharacterEditor;
     __ELIZA_APP_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
@@ -226,13 +224,6 @@ function cachedDynamicImport<T>(
   const promise = loader();
   appModuleCache.set(key, promise);
   return promise;
-}
-
-function importAppCore() {
-  return cachedDynamicImport(
-    "@elizaos/app-core",
-    () => import("@elizaos/app-core"),
-  );
 }
 
 function importPersonalAssistant() {
@@ -301,7 +292,6 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
 
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
-  characterEditor: `__${APP_ENV_PREFIX}_CHARACTER_EDITOR__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
 } as const;
 
@@ -463,16 +453,13 @@ if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
-window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
-Reflect.set(window, BRANDED_WINDOW_KEYS.characterEditor, CharacterEditor);
-
 const APP_STYLE_PRESETS = getStylePresets();
 
 const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   .sort((a, b) => a.avatarIndex - b.avatarIndex)
   .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
-let appModulesInitialized: Promise<void> | null = null;
+let appModulesInitialized = false;
 const SIDE_EFFECT_APP_MODULE_LOAD_CONCURRENCY = 2;
 
 function importSideEffectAppModule(
@@ -576,7 +563,6 @@ function buildAppBootConfig(): AppBootConfig {
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
-    characterEditor: CharacterEditor,
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
@@ -617,17 +603,17 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
     { key: "@elizaos/plugin-training", load: importAppTraining },
   ];
 
-function initializeAppModules(): Promise<void> {
-  appModulesInitialized ??= (async () => {
-    // app-core owns the AppBootConfig singleton, so it must load before the
-    // config is assembled. Everything else exposed through the boot config is a
-    // React.lazy handle that loads on render, so its import is deferred onto the
-    // idle path instead of gating the first visible shell (#9565).
-    await importAppCore();
-    setBootConfig(buildAppBootConfig());
-  })();
-
-  return appModulesInitialized;
+function initializeAppModules(): void {
+  // Fully synchronous: the boot config reads only statics (every plugin
+  // surface is a React.lazy handle), and the top-level static import of
+  // @elizaos/app-core already evaluated the AppBootConfig singleton owner.
+  // A dynamic app-core import here would be a runtime no-op whose
+  // namespace escapes Rollup analysis and anchors the barrel's entire
+  // @elizaos/ui/browser re-export surface into the entry chunk (#13187);
+  // test/first-paint-guard.test.ts enforces the no-dynamic-import invariant.
+  if (appModulesInitialized) return;
+  appModulesInitialized = true;
+  setBootConfig(buildAppBootConfig());
 }
 
 function getShareQueue(): ShareTargetPayload[] {
@@ -2777,7 +2763,7 @@ async function main(): Promise<void> {
   }
 
   markStartup("app-modules:start");
-  await initializeAppModules();
+  initializeAppModules();
   markStartup("app-modules:end");
   measureStartup("app-modules", "app-modules:start", "app-modules:end");
   setupPlatformStyles();

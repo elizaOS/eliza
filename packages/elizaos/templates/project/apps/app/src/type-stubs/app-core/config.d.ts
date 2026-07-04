@@ -21,7 +21,6 @@ export interface AppBootConfig {
   assetBaseUrl?: string;
   branding: Partial<BrandingConfig>;
   characterCatalog?: CharacterCatalogData;
-  characterEditor?: unknown;
   clientMiddleware?: Record<string, unknown>;
   cloudApiBase?: string;
   companionShell?: unknown;
