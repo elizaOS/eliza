@@ -63,8 +63,8 @@ export const DEFAULT_MEETING_AUTO_LEAVE: MeetingAutoLeaveConfig = {
   everyoneLeftTimeoutMs: 2 * 60 * 1000,
 };
 
-/** Default upper bound for a browser-bot meeting session: 2 hours. */
-export const DEFAULT_MEETING_MAX_DURATION_MS = 2 * 60 * 60 * 1000;
+/** Default upper bound for a browser-bot meeting session: 60 minutes. */
+export const DEFAULT_MEETING_MAX_DURATION_MS = 60 * 60 * 1000;
 
 /** Input contract to start a bot (the request side of POST /api/meetings). */
 export interface MeetingJoinRequest {

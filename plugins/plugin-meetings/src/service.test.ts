@@ -3,6 +3,7 @@
  * single-bot-per-meeting enforcement, roster, transcript persistence, and
  * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
  */
+import { DEFAULT_MEETING_MAX_DURATION_MS } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
@@ -135,6 +136,24 @@ describe("MeetingService.requestJoin — validation", () => {
     ).rejects.toMatchObject({ code: "invalid_duration_cap" });
     expect(service.listSessions()).toHaveLength(0);
     expect(adapter.session).toBeNull();
+  });
+
+  it("uses the production default 60-minute cap and accepts lower requested caps", async () => {
+    const { service } = makeService();
+
+    const defaulted = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(defaulted.maxDurationMs).toBe(60 * 60 * 1000);
+    expect(defaulted.maxDurationMs).toBe(DEFAULT_MEETING_MAX_DURATION_MS);
+
+    const lower = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: "https://meet.google.com/aaa-bbbb-ccc",
+      maxDurationMs: 15 * 60 * 1000,
+    });
+    expect(lower.maxDurationMs).toBe(15 * 60 * 1000);
   });
 });
 

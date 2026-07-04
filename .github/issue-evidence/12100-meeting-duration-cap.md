@@ -16,6 +16,7 @@
 ## Contract covered by tests
 
 - Every `MeetingJoinRequest` resolves to a bounded `maxDurationMs`.
+- The production default cap is 60 minutes.
 - Callers may request a lower per-session `maxDurationMs`.
 - Requests above the configured `ELIZA_MEETINGS_MAX_DURATION_MS` fail before a bot launches.
 - When the cap is reached, the service transitions to leaving, aborts the adapter signal, finalizes the pipeline, and records `endReason: "duration_cap_reached"`.
