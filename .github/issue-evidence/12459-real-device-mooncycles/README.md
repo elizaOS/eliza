@@ -90,8 +90,9 @@ public XCUITest API stay honest N/A rows with the precise reason.
 ## Files
 
 - `matrix.md` — the per-event real-hardware matrix (drivable? → pass/fail/N-A).
-- `deploy-build.log` — the build/sign/install/launch log for the run of record.
-- `lifecycle-capture/` — XCUITest screenshots + result bundle summary.
-- `boot-trace*.jsonl` — the in-process agent startup trace pulled from the app
-  data container (agent-recovery evidence; the iOS agent is in-process with no
-  TCP port, so this replaces the sim lane's `:31337` loopback probe).
+- `device-capabilities-wireless.txt` — the CoreDevice capability list captured
+  over the wireless tunnel, including the missing `installapp` capability.
+- `device-info-mooncycles.json` — device identity and transport metadata for
+  the single owner-authorized iPhone targeted by this run.
+- `signed-app-verification.txt` — `codesign` inspection and strict verification
+  of the signed device app that was prepared for install.

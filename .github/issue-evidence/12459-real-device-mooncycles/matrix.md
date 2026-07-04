@@ -12,7 +12,7 @@ iPhone 16 Pro Max · iOS 18.7.8 · UDID `00008140-0006491E2E90801C` · wireless
   `codesign --verify --deep --strict` passed. Signed app:
   `packages/app/ios/build/device-deploy-stage/App.app`
   (`Identifier=ai.elizaos.app`, `TeamIdentifier=25877RY2EH`). See
-  `deploy-build.log`.
+  `signed-app-verification.txt`.
 - **Install on MoonCycles: BLOCKED — wireless-only transport.** `devicectl
   device install app` fails deterministically with
   `CoreDeviceError 1001 (0x3E9)` / `CapabilityFeatureIdentifier =

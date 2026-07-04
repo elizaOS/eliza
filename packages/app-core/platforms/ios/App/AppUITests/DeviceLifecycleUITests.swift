@@ -105,6 +105,10 @@ final class DeviceLifecycleUITests: XCTestCase {
         let camera = XCUIApplication(bundleIdentifier: cameraBundleId)
         camera.activate()
         let cameraForegrounded = camera.wait(for: .runningForeground, timeout: 15)
+        XCTAssertTrue(
+            cameraForegrounded,
+            "Camera did not come to the foreground for the real-camera switch event."
+        )
         Thread.sleep(forTimeInterval: 2.0)
         attachScreenshot(named: "03-camera-foreground-\(cameraForegrounded ? "up" : "blocked")")
         app.activate()
