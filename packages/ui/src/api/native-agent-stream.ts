@@ -102,6 +102,13 @@ export async function createNativeStreamingResponse(
     detached = true;
     for (const handle of handles) void handle.remove();
   };
+  const trackHandle = (handle: NativeStreamListenerHandle): void => {
+    if (detached) {
+      void handle.remove();
+      return;
+    }
+    handles.push(handle);
+  };
 
   const body = new ReadableStream<Uint8Array>({
     start(c) {
@@ -193,9 +200,9 @@ export async function createNativeStreamingResponse(
     void stream.completion.catch(failStream);
   }
 
-  handles.push(await agent.addListener("agentStreamResponse", onResponse));
-  handles.push(await agent.addListener("agentStreamChunk", onChunk));
-  handles.push(await agent.addListener("agentStreamComplete", onComplete));
+  trackHandle(await agent.addListener("agentStreamResponse", onResponse));
+  trackHandle(await agent.addListener("agentStreamChunk", onChunk));
+  trackHandle(await agent.addListener("agentStreamComplete", onComplete));
 
   return head;
 }
