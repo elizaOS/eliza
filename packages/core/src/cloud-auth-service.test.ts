@@ -1,3 +1,8 @@
+/**
+ * Covers `getCloudAuthService` resolving (and rejecting) a cloud-auth service
+ * through a hand-built runtime whose `getService` returns an in-memory stub — no
+ * live runtime or plugin, exercising only the duck-typing guard.
+ */
 import { describe, expect, test } from "vitest";
 import {
 	CLOUD_AUTH_SERVICE_TYPE,

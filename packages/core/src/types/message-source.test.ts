@@ -1,3 +1,7 @@
+/**
+ * Pins the canonical `content.source` sentinel strings and the `MESSAGE_SOURCES`
+ * map. Deterministic assertions with no model or database in the loop.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,

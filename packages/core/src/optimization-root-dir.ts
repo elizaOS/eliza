@@ -1,3 +1,7 @@
+/**
+ * Single source of truth for the default optimization artifacts directory,
+ * shared so the runtime and plugins resolve the same location.
+ */
 import { join } from "node:path";
 import { resolveStateDir } from "./utils/state-dir";
 

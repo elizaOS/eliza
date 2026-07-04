@@ -1,3 +1,16 @@
+/**
+ * Resolves the HTTP API server's environment configuration from a
+ * `RuntimeEnvRecord` (defaulting to `process.env`): bind host, auth token,
+ * allowed origins/hosts, null-origin policy, and the desktop / single-process /
+ * UI port precedence. The API host and boot helpers read through these resolvers
+ * rather than touching `process.env` directly, so one set of precedence and
+ * alias rules (e.g. `ELIZA_API_PORT` then `ELIZA_PORT`) applies everywhere.
+ *
+ * Also classifies a bind host as loopback vs wildcard — the signal for whether
+ * an auth token must be present before binding to a public interface — and
+ * detects mobile (`ELIZA_PLATFORM=android|ios`) embeddings where host
+ * capabilities that shell out are unavailable.
+ */
 import { isTruthyEnvValue } from "./env-utils.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";

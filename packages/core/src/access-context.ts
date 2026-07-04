@@ -1,3 +1,10 @@
+/**
+ * Assembles the {@link AccessContext} DTO — requester entity, world scope, role,
+ * and owner flag — that authorization checks read for a message-driven request.
+ * A thin composition over `roles.ts`: it runs role resolution against the single
+ * world `resolveWorldForMessage` selects, so `worldId`, `role`, and `isOwner`
+ * are always derived together and can never disagree on which world they scope.
+ */
 import {
 	getLiveEntityMetadataFromMessage,
 	resolveEntityRole,

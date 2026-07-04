@@ -1,3 +1,14 @@
+/**
+ * Registry and drain logic for app-route plugins — plugins that expose HTTP
+ * routes but register a loader here (keyed by id) instead of via `Plugin.routes`
+ * so a bundler cannot tree-shake them away. {@link drainAppRoutePluginLoaders}
+ * pulls the loaded plugins' routes onto a runtime's route table idempotently
+ * (keyed by `${type}:${path}`), tolerating both the `@elizaos/agent` and
+ * `@elizaos/app-core` boots draining against the same table. Also owns the
+ * optional-unavailable error contract (matched by `Error.name`, not
+ * `instanceof`) so an intentionally-absent optional plugin is a graceful skip
+ * even across duplicate `@elizaos/core` bundles.
+ */
 import { getAmbientSingleton } from "./ambient-context";
 import { logger } from "./logger";
 import {

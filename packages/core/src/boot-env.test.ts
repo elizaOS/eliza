@@ -1,3 +1,10 @@
+/**
+ * Covers boot-env's env-alias mirroring (branded ↔ ELIZA_ keys with stale-target
+ * clearing) and the write-once boot-config store: a late window mirror cannot
+ * replace an established store, and the singleton is held through the
+ * ambient-context accessor. Deterministic; mutates and restores process.env and
+ * globalThis around each case.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { peekAmbientSingleton } from "./ambient-context";
 import {

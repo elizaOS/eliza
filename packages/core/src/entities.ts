@@ -1,3 +1,19 @@
+/**
+ * Entity resolution, identity formatting, and component-visibility trust for the
+ * agent runtime. `findEntityByName` combines a TEXT_SMALL model call with
+ * recent-interaction and relationship signals to map a natural-language
+ * reference in a message ("me", a name, an `@handle`) onto a known `Entity`;
+ * `getEntityDetails` and `formatEntities` merge and render a room's entities for
+ * prompt context; `createUniqueUuid` derives a stable per-agent UUID from a base
+ * id.
+ *
+ * `resolveTrustedComponentSourceIds` gates which entity components are visible:
+ * a component's data is trusted only when its source is the message sender, the
+ * agent itself, or a source whose RESOLVED role (see roles.ts) is
+ * ADMIN-or-higher — never a raw stored role grant. Sits on the runtime boundary
+ * (getRoom / getWorld / getEntitiesForRoom / getRelationships / useModel) and
+ * imports roles.ts lazily to avoid a cycle with createUniqueUuid.
+ */
 import { logger } from "./logger";
 // Type-only (erased at runtime, so no cycle with roles.ts, which imports
 // createUniqueUuid from this module). The role-resolution values are pulled via a
@@ -23,15 +39,15 @@ type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
 };
 
 /**
- * #12087 Item 16: component-visibility filtering used to trust the raw
- * `world.metadata.roles[sourceEntityId]` literal (OWNER/ADMIN → visible). That
- * bypassed resolveEntityRole's demotion rules — a stored OWNER grant is demoted
- * to GUEST under a configured canonical owner, and connector-admin roles can be
- * revoked — so a stale OWNER grant kept another entity's components trusted.
- * Batch-resolve each source entity's effective role once (resolveEntityRole is
- * async) before the synchronous component filter, and trust only resolved
- * ADMIN-or-higher. Returns the set of source entity ids whose components are
- * trusted for this world.
+ * Component-visibility filtering decides trust from each source entity's
+ * RESOLVED effective role, not the raw `world.metadata.roles[sourceEntityId]`
+ * literal. `resolveEntityRole` demotes a stored OWNER grant to GUEST under a
+ * configured canonical owner and honors connector-admin revocation, so keying
+ * off the literal would keep a stale OWNER grant trusted and leak another
+ * entity's components. Because `resolveEntityRole` is async, each source
+ * entity's role is batch-resolved once before the synchronous component filter;
+ * only resolved ADMIN-or-higher is trusted. Returns the set of source entity ids
+ * whose components are trusted for this world. (#12087 Item 16)
  */
 export async function resolveTrustedComponentSourceIds(
 	runtime: IAgentRuntime,

@@ -1,3 +1,5 @@
+/** Canonical reader for the memory array `recentMessagesProvider` publishes on runtime state; `@elizaos/shared` re-exports it so every caller shares one accessor rather than re-deriving the provider path. */
+
 import type { Memory, State } from "./types";
 
 /**

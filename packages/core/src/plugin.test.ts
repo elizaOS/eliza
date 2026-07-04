@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the plugin loader/resolver surface ({@link loadPlugin},
+ * {@link resolvePlugins}): object plugins pass through, string references route
+ * through an injected {@link PluginResolver} and fail closed (skip, never
+ * install) when none is present, and the supply-chain entry points stay absent.
+ * Deterministic — stub plugin objects, no live resolver.
+ */
 import { describe, expect, it, vi } from "vitest";
 import * as pluginModule from "./plugin";
 import { loadPlugin, type PluginResolver, resolvePlugins } from "./plugin";
@@ -10,8 +17,8 @@ const makePlugin = (name: string): Plugin => ({
 
 describe("core plugin loader — no runtime install / no name imports", () => {
 	it("exposes no auto-install or module-import entry points", () => {
-		// The supply-chain surface (bun add / variable-specifier import) is gone:
-		// core no longer exports tryInstallPlugin or loadAndPreparePlugin.
+		// Core exposes no supply-chain surface (bun add / variable-specifier
+		// import): tryInstallPlugin and loadAndPreparePlugin are not exported.
 		expect(
 			(pluginModule as Record<string, unknown>).tryInstallPlugin,
 		).toBeUndefined();

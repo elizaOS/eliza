@@ -1,3 +1,29 @@
+/**
+ * Installs per-plugin ownership tracking and hot lifecycle (unload / reload /
+ * reconfigure) onto an {@link IAgentRuntime}. {@link installRuntimePluginLifecycle}
+ * wraps the runtime's `register*` methods so that, during a `registerPlugin`
+ * call, every action, provider, evaluator, route, event, model, service,
+ * shortcut, send-handler, and database adapter the plugin contributes is
+ * attributed to it — captured through async-context storage
+ * (`AsyncLocalStorage` on Node, a stack fallback elsewhere) rather than by name.
+ * The resulting {@link PluginOwnership} record is the reverse index that makes
+ * teardown possible.
+ *
+ * It then adds `unloadPlugin`, `reloadPlugin`, `applyPluginConfig`,
+ * `getPluginOwnership`, and `getAllPluginOwnership` to the runtime. Teardown
+ * removes exactly the tracked references by identity, stops owned service
+ * instances and classes, and runs each plugin's optional `dispose` hook; a
+ * failed `registerPlugin` rolls its partial registration back through the same
+ * path.
+ *
+ * Invariants: install is idempotent (guarded by
+ * `__elizaPluginLifecycleInstalled`); a plugin that registers a database adapter
+ * cannot be hot-unloaded and forces a full runtime reload; and an action's
+ * effective role gate is derived through the PER-RUNTIME context registry so
+ * contexts registered at runtime by plugins participate in access control (a
+ * module-level snapshot would silently collapse a stricter gate to USER — a
+ * permission bypass, #12089).
+ */
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
@@ -285,11 +311,11 @@ function applyEffectiveActionContexts(
 /**
  * Derive an action's effective role gate from the role gates declared by the
  * contexts it is tagged with. Resolution goes through the PER-RUNTIME context
- * registry so contexts registered at runtime by plugins
- * via `runtime.contexts.register(...)` participate — not just the first-party
- * defaults. (Previously this read a module-level snapshot of the default
- * contexts, so a plugin-registered context declaring `minRole: OWNER` was
- * invisible and the gate silently collapsed to USER — a permission bypass.)
+ * registry so contexts registered at runtime by plugins via
+ * `runtime.contexts.register(...)` participate — not just the first-party
+ * defaults. Reading a module-level snapshot of only the defaults would leave a
+ * plugin-registered context declaring `minRole: OWNER` invisible and collapse
+ * the gate to USER — a permission bypass (#12089).
  */
 function roleGateForActionContexts(
 	contexts: readonly AgentContext[] | undefined,

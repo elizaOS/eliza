@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the role + permission helpers, driven as pure functions over
+ * hand-built world metadata and a deterministic fake runtime (no live model or
+ * DB). canModifyRole is the privilege-escalation gate: OWNER may change anyone,
+ * ADMIN may only manage strictly-lower ranks and may never grant OWNER, and
+ * USER/GUEST may change no one. normalizeRole must fold unknown input to GUEST
+ * (never silently grant a higher role), and the connector-admin whitelist
+ * matches an entity only on its stable platform id.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	CANONICAL_ROLE_RANK,
@@ -18,14 +27,6 @@ import {
 	satisfiesRoleGate,
 } from "./runtime/context-gates.ts";
 import type { IAgentRuntime, Memory } from "./types";
-
-/**
- * Role + permission helpers. canModifyRole is the privilege-escalation gate:
- * OWNER may change anyone, ADMIN may only manage strictly-lower ranks and may
- * never grant OWNER, and USER/GUEST may change no one. normalizeRole must fold
- * unknown input to GUEST (never silently grant a higher role), and the
- * connector-admin whitelist matches an entity only on its stable platform id.
- */
 
 describe("normalizeRole", () => {
 	it("recognizes the three named roles, else GUEST", () => {

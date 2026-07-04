@@ -1,3 +1,17 @@
+/**
+ * Type vocabulary and pure decision logic for "sensitive requests" — collecting
+ * a secret, payment, OAuth grant, or private-info field from a user without
+ * leaking it. `resolveSensitiveRequestDelivery` maps a request kind + channel +
+ * environment (cloud / tunnel / DM / owner-app availability) to a delivery plan:
+ * an inline owner-app form, a private DM, an authenticated cloud/tunnel link, or
+ * a refusal that keeps the value out of public rooms.
+ *
+ * Security invariants callers depend on: secrets and private info never resolve
+ * to a public link; a tunnel counts only when explicitly authenticated (tunnel
+ * reachability is not an auth boundary); and redactSensitiveRequestMetadata masks
+ * any secret-looking key before metadata is logged or persisted. Everything here
+ * is pure and environment-driven — no runtime, IO, or side effects.
+ */
 import { ChannelType } from "./types/primitives";
 
 export type SensitiveRequestKind =

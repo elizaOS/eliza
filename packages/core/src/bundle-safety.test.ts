@@ -1,3 +1,10 @@
+/**
+ * Covers anchorBundleSafety — stashing values under the exact
+ * `__bundle_safety_<name>__` global key, with a distinct key per name — plus the
+ * repo invariant that every feature barrel routes through the shared helper
+ * instead of hand-rolling the `globalThis` assignment. Deterministic; the
+ * invariant check walks the real `features/` tree on disk.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

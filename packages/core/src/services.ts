@@ -1,3 +1,12 @@
+/**
+ * Fluent, type-safe builder for defining `Service` subclasses at runtime.
+ * `createService(type)` / `defineService(spec)` turn a start/stop/description
+ * spec into a `TypedServiceBuilder` — a constructor carrying the static
+ * `serviceType` and `start(runtime)` members the plugin loader expects — so a
+ * plugin can register a service without hand-authoring a class. Static members
+ * are pinned via `Object.defineProperty` to match the base `ServiceClass` shape
+ * from `types/plugin.ts`, which stays the canonical definition.
+ */
 import type { IAgentRuntime, ServiceTypeName } from "./types";
 import { Service } from "./types";
 

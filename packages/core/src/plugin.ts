@@ -1,3 +1,20 @@
+/**
+ * Plugin load, validation, and dependency resolution for the runtime.
+ *
+ * Turns the `(string | Plugin)[]` list from character config into an ordered,
+ * validated `Plugin[]`: {@link validatePlugin}/{@link isValidPluginShape} enforce
+ * the shape, {@link resolvePluginDependencies} topologically sorts by
+ * `dependencies` (plus `testDependencies` in test mode) with cycle detection, and
+ * {@link normalizePluginName} reconciles scoped (`@elizaos/plugin-x`) and short
+ * (`x`) name forms so aliases dedupe to one entry.
+ *
+ * Core deliberately never imports plugin modules by name and never installs
+ * packages — both are supply-chain concerns owned by the host (the `elizaos` CLI
+ * / `@elizaos/agent`). A {@link PluginResolver} is injected to turn string
+ * references into `Plugin` objects; with no resolver, string references are
+ * skipped (fail closed), never dynamically imported. Browser/edge builds have no
+ * loader and drop string references outright.
+ */
 import { logger } from "./logger";
 
 import type { Plugin } from "./types";

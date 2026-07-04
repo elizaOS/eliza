@@ -1,3 +1,12 @@
+/**
+ * Service contract for the mobile-device inference bridge — the host that
+ * relays on-device GPU inference (llama.cpp over Metal / Vulkan / GPU-delegate)
+ * to a paired phone. Defines the status DTO and the abstract
+ * {@link MobileDeviceBridgeService} that a mobile-host plugin subclasses and
+ * registers through the normal service registry, keyed by
+ * {@link ServiceType.MOBILE_DEVICE_BRIDGE}; consumers resolve it via
+ * `runtime.getService`.
+ */
 import { Service, ServiceType } from "./types/service";
 
 /**

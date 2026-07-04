@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the sensitive-request delivery policy — pure, deterministic, no
+ * IO. Exercises resolveSensitiveRequestDelivery across the security-critical
+ * branches (secrets refused in public rooms, owner-app inline entry, private DM,
+ * authenticated cloud/tunnel links, and an unauthenticated tunnel rejected) plus
+ * sensitiveRequestEnvironmentFromSettings' cloud-availability gating.
+ */
 import { describe, expect, test } from "vitest";
 import {
 	resolveSensitiveRequestDelivery,

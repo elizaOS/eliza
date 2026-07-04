@@ -1,3 +1,25 @@
+/**
+ * The agent's role/permission authorization system: the OWNER > ADMIN > USER >
+ * GUEST tier vocabulary, the canonical rank table every gate compares against,
+ * and the resolution that turns a sender + world into an effective role. A role
+ * is merged here from four sources — an explicit grant stored on world metadata
+ * (`roles`/`roleSources`), the configured or world-recorded canonical owner, a
+ * connector-admin whitelist match on a stable platform id, and confirmed
+ * identity links that let a linked entity inherit the owner/grant. `canModifyRole`
+ * is the privilege-escalation gate (OWNER may change anyone; ADMIN only
+ * strictly-lower ranks and never grants OWNER); `hasRoleAccess` is the read-time
+ * gate callers use to admit or deny an action.
+ *
+ * Consumed by access-context.ts, the runtime context-gates, and plugin-manager
+ * security wrappers. Load-bearing invariants an editor must preserve: rank lives
+ * only in CANONICAL_ROLE_RANK, shared with runtime/context-gates.ts so the two
+ * never drift (#9948); MEMBER is an alias of USER, not a demotion to GUEST, so
+ * both resolution paths agree (#12087 Item 6); resolution trusts ONLY connector
+ * identity stamped into the Memory, never client-supplied content.metadata; and
+ * every access check fails CLOSED — an unknown role ranks below GUEST and an
+ * unresolvable sender is treated as USER, never a higher tier. Owner and role
+ * grants are recorded explicitly with their source so they stay auditable.
+ */
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
@@ -14,10 +36,9 @@ export type RoleGrantSource = "owner" | "manual" | "connector_admin";
  * disagreed: the `NONE` floor and the `MEMBER` alias (`environment.ts` `Role`)
  * plus `USER`/`GUEST` (`RoleName`). `USER` and `MEMBER` are the same tier.
  *
- * Previously `roles.ts` and `runtime/context-gates.ts` each defined their own
- * rank literal with different absolute values — two tables that could silently
- * drift apart was the authz hazard called out in #9948. Both now derive from
- * this constant.
+ * `roles.ts` and `runtime/context-gates.ts` both derive their ranking from this
+ * constant rather than each keeping a private rank literal — two rank tables
+ * that could silently drift apart is the authz hazard #9948 calls out.
  */
 export const CANONICAL_ROLE_RANK = {
 	NONE: 0,

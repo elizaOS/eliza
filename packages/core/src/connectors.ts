@@ -1,3 +1,15 @@
+/**
+ * Connector source registry: canonicalizes and classifies the `source` tag
+ * carried on inbound messages (discord, telegram, farcaster, ...). Owners
+ * register a canonical source with aliases and metadata (`sourceKind`
+ * active/passive, `isPassive`); lookups normalize a raw source to its canonical
+ * form, expand a source filter across all known aliases, and report whether a
+ * source is passive.
+ *
+ * State is process-global and owner-scoped: registrations accumulate per owner
+ * and merge on read, so plugins can contribute aliases without clobbering each
+ * other, and an owner's contributions can be unregistered wholesale.
+ */
 export type ConnectorSourceKind = "passive" | "active";
 
 export interface ConnectorSourceMetadata {

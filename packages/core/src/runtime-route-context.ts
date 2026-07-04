@@ -1,3 +1,11 @@
+/**
+ * Per-runtime "host context" for plugin route handlers: the config load/save,
+ * runtime-restart, and telemetry-span hooks the host process exposes to routes
+ * without those routes importing the host. The context is stashed on the runtime
+ * object under a non-enumerable, `Symbol.for`-keyed holder so it survives across
+ * module instances. `setRuntimeRouteHostContext` returns a restore closure, so a
+ * caller can install a context for the span of a request and roll it back after.
+ */
 export interface RuntimeRouteTelemetrySpan {
 	success: (meta?: Record<string, unknown>) => void;
 	failure: (meta?: Record<string, unknown>) => void;

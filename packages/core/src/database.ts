@@ -1,3 +1,15 @@
+/**
+ * `DatabaseAdapter` — the abstract base every concrete persistence adapter
+ * (plugin-sql's Drizzle adapters, `InMemoryDatabaseAdapter`, …) extends to
+ * satisfy the {@link IDatabaseAdapter} contract declared in `types/database.ts`.
+ * It carries no storage logic: it re-declares the batch-first CRUD surface
+ * (arrays in, arrays out) as `abstract` methods, so a missing override is a
+ * compile-time error, and centralizes the JSDoc adapter authors see in their
+ * IDE. Optional domains an adapter need not support (connector-account and
+ * OAuth-flow storage) default here to throwing a clear adapter-level error
+ * rather than silently succeeding.
+ */
+
 import type {
 	AccessContext,
 	Agent,
@@ -75,11 +87,6 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract initialize(
 		config?: Record<string, string | number | boolean | null>,
 	): Promise<void>;
-
-	/**
-	 * Initialize the database adapter.
-	 * @returns A Promise that resolves when initialization is complete.
-	 */
 
 	/**
 	 * Run plugin schema migrations for all registered plugins

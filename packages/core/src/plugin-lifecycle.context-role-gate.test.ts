@@ -1,3 +1,13 @@
+/**
+ * Regression test (#12089): an action's effective role gate must resolve
+ * plugin-registered contexts through the PER-RUNTIME context registry, so a
+ * context registered at runtime via `runtime.contexts.register(...)` with
+ * `roleGate.minRole = OWNER` participates in the gate. Deriving from a
+ * module-level snapshot of only the first-party defaults would leave the plugin
+ * context invisible and collapse the effective gate to USER — a permission
+ * bypass. Deterministic: a hand-built lifecycle runtime driven through the
+ * planned-tool-call gate, no live model or database.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { ContextRegistry } from "./runtime/context-registry";
@@ -6,15 +16,6 @@ import {
 	executePlannedToolCall,
 } from "./runtime/execute-planned-tool-call";
 import type { Action, IAgentRuntime, Memory, UUID } from "./types";
-
-/**
- * FIX 2 (#12089): an action's effective roleGate must be derived through the
- * PER-RUNTIME context registry so a context registered at runtime by a plugin
- * (via `runtime.contexts.register(...)`) with `roleGate.minRole = OWNER`
- * participates in the gate. Previously the derivation read a module-level
- * snapshot of only the first-party defaults, so a plugin context was invisible
- * and the effective gate silently collapsed to USER — a permission bypass.
- */
 
 const noop = () => undefined;
 

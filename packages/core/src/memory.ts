@@ -1,3 +1,13 @@
+/**
+ * Factory and type guards for {@link Memory} records: `createMessageMemory`
+ * stamps a MESSAGE-metadata memory (scope derived from whether an `agentId` is
+ * present), and the `is*Metadata` / `is*Memory` guards discriminate a record's
+ * kind by its `MemoryType` tag so storage, embedding, and retrieval can branch
+ * on it. `isCustomMetadata` is the catch-all for any type outside the four known
+ * kinds. The types come from `./types` (`types/memory.ts`); this module holds
+ * only the runtime helpers over them.
+ */
+
 import {
 	type Content,
 	type CustomMetadata,

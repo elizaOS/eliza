@@ -1,3 +1,24 @@
+/**
+ * Shared runtime helpers re-exported from `@elizaos/core`: prompt composition,
+ * message/post formatting, structured-response parsing, and deterministic
+ * identity.
+ *
+ * `composePrompt` / `composePromptFromState` render `{{binding}}` templates via
+ * Handlebars — double-brace bindings are rewritten to triple-brace so values are
+ * not HTML-escaped — and fall back to an eval-free replacer under a restricted
+ * CSP (browser-extension) environment. `formatMessages` / `formatPosts` turn
+ * `Memory[]` into the transcript the model reads. `parseKeyValueXml` (legacy
+ * `<response>` XML), `parseToonKeyValue`, and `parseJSONObjectFromText` recover
+ * structured fields from chatty model output, tolerating malformed input by
+ * returning null rather than throwing.
+ *
+ * `stringToUuid` derives a deterministic, RFC-4122-shaped UUID from an arbitrary
+ * string via an in-tree pure-JS SHA-1 (with a WebCrypto-backed cache), so the
+ * same external id always maps to the same entity across Node and browser; it is
+ * idempotent on an already-valid UUID. This module is also the barrel that
+ * `export * from "./utils"` resolves to, so helpers under `utils/` that must be
+ * reachable from the package are re-exported at the bottom.
+ */
 import Handlebars from "handlebars";
 import z from "zod";
 
