@@ -1,3 +1,5 @@
+/** React context + accessor for the shared shell controller (useShellController). */
+
 import * as React from "react";
 
 import type { ShellController } from "./useShellController";

@@ -1,3 +1,11 @@
+/**
+ * Builds the shell commands that mint a one-time pairing code on the agent host,
+ * derived from the app's remote URL. Pure string logic behind
+ * `PairingCommandHint`: parses the URL for host/port, always emits the on-server
+ * `curl`, and — for a non-loopback host — an `ssh`-wrapped form plus the SSH
+ * target to edit. A bare/loopback/unparseable URL yields the local-only form.
+ */
+
 const DEFAULT_PAIRING_PORT = "2138";
 const PAIRING_CODE_PATH = "/api/auth/pair-code";
 const PLACEHOLDER_SSH_TARGET = "user@your-server";

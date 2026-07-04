@@ -1,3 +1,6 @@
+// Stub for the view catalog in the home-screen e2e: reports a single static
+// "weather" app entry (with a generated hero SVG) so gated home tiles render
+// deterministically without hitting the live catalog service.
 import { generateViewHeroSvgFor } from "@elizaos/shared";
 
 const WEATHER_HERO = `data:image/svg+xml,${encodeURIComponent(

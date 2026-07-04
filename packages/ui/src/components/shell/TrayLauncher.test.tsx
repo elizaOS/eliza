@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+//
+// TrayLauncher: one row per desktop launcher entry, and a click dispatches
+// TRAY_ACTION_EVENT with that row's itemId (the shared tray-handling path).
+// Deterministic jsdom render via testing-library — no desktop bridge, no runtime.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
