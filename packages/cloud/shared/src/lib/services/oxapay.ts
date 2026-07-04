@@ -90,6 +90,26 @@ export function isOxaPayConfigured(): boolean {
   return Boolean(process.env.OXAPAY_MERCHANT_API_KEY);
 }
 
+function parseOxaPayDecimalAmount(rawAmount: string | undefined): number | null {
+  const trimmedAmount = rawAmount?.trim();
+  if (!trimmedAmount || !/^(?:\d+|\d+\.\d+|\.\d+)$/.test(trimmedAmount)) {
+    return null;
+  }
+
+  const amount = Number(trimmedAmount);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function parseOxaPayInvoiceAmount(rawAmount: string | undefined): number {
+  const amount = parseOxaPayDecimalAmount(rawAmount);
+  if (amount === null || amount <= 0) {
+    throw new OxaPayApiError(
+      `OxaPay inquiry returned invalid invoice amount ${JSON.stringify(rawAmount ?? null)}`,
+    );
+  }
+  return amount;
+}
+
 class OxaPayService {
   /**
    * Create an invoice payment using OxaPay's merchant request API.
@@ -224,8 +244,27 @@ class OxaPayService {
     // Credit the invoice USD amount for ALL currencies.
     // - Underpayments: Rejected by OxaPay (underPaidCover: 0)
     // - Overpayments: User's responsibility, we credit invoice amount only
-    const invoiceAmount = Number.parseFloat(data.amount) || 0;
-    const nativePayAmount = Number.parseFloat(data.payAmount || "0");
+    //
+    // Fail closed on the invoice amount: every invoice is created with a positive
+    // amount, so a result=100 inquiry whose `amount` is missing, malformed, or
+    // non-positive is a bad provider response. The parser is deliberately
+    // full-string strict; parseFloat would accept corrupt prefixes like "25 USD".
+    let invoiceAmount: number;
+    try {
+      invoiceAmount = parseOxaPayInvoiceAmount(data.amount);
+    } catch (error) {
+      logger.error("[OxaPay] Invalid invoice amount in inquiry response", {
+        trackId: data.trackId,
+        status: data.status,
+        rawAmount: data.amount,
+        error,
+      });
+      throw error;
+    }
+
+    // Native pay amount is audit/debug metadata only (never credited); a
+    // malformed value degrades to undefined instead of failing the inquiry.
+    const nativePayAmount = parseOxaPayDecimalAmount(data.payAmount) ?? undefined;
 
     return {
       trackId: data.trackId,

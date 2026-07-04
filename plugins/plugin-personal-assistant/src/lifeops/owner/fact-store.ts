@@ -22,6 +22,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { isValidTimeZone, resolveDefaultTimeZone } from "../defaults.js";
 import {
   type LifeOpsOwnerProfilePatch,
   persistConfiguredOwnerName,
@@ -992,4 +994,62 @@ export function ownerFactsToView(
   if (facts.scheduleStyle) view.scheduleStyle = facts.scheduleStyle.value;
   if (facts.chronotype) view.chronotype = facts.chronotype.value;
   return view;
+}
+
+/**
+ * Resolve the owner's effective IANA time zone for a given instant, falling
+ * back to the host zone (`resolveDefaultTimeZone()`) only when no owner fact is
+ * stored.
+ *
+ * This is the canonical resolver for any lane that anchors owner-local wall
+ * time (conversational reminder creation, reminder window/dueness processing).
+ * It reads the OwnerFactStore and projects through {@link ownerFactsToView} so
+ * the `activeTravel` destination override is honored: while travel is active
+ * and a destination zone is known, that zone wins over the stored home zone —
+ * matching what the scheduled-task runner already does via
+ * `defaultOwnerFactsProvider`.
+ *
+ * On shared-server / `TZ=UTC` topologies the host fallback is the SERVER zone,
+ * so consulting the owner fact is what keeps "remind me at 9am" anchored to the
+ * owner's wall clock instead of the container's. When no owner fact exists the
+ * host zone remains the honest best-effort default (never fabricated).
+ *
+ * The stored fact (and the active-travel `destinationTimezone` that can
+ * override it) is only guarded by a non-empty-string check on write, so a
+ * malformed/colloquial value could reach the reminder date/window math (which
+ * expects a valid IANA zone and would otherwise throw). We therefore validate
+ * the resolved zone and fall back to the host zone when it is not a usable IANA
+ * identifier, keeping the fix fail-safe rather than fail-hard.
+ *
+ * `now` is required because travel-active is derived against the instant.
+ */
+export async function resolveOwnerTimeZone(
+  runtime: IAgentRuntime,
+  now: Date,
+): Promise<string> {
+  try {
+    const facts = await resolveOwnerFactStore(runtime).read();
+    const view = ownerFactsToView(facts, now);
+    if (view.timezone && isValidTimeZone(view.timezone)) {
+      return view.timezone;
+    }
+    if (view.timezone) {
+      logger.warn(
+        { src: "lifeops:owner:resolve-timezone", storedZone: view.timezone },
+        "Owner timezone fact is not a valid IANA zone; falling back to host zone for time resolution.",
+      );
+    }
+    return resolveDefaultTimeZone();
+  } catch (error) {
+    // error-policy:J4 — a fact-store read failure (missing/unavailable cache
+    // backend) must not break time resolution. Degrade to the host zone, the
+    // same honest best-effort default used when no owner fact exists, and
+    // surface the failure so the operator can see the store is unreachable
+    // rather than silently anchoring to the wrong zone with no signal.
+    logger.warn(
+      { src: "lifeops:owner:resolve-timezone", error },
+      "Failed to read owner timezone fact; falling back to host zone for time resolution.",
+    );
+    return resolveDefaultTimeZone();
+  }
 }

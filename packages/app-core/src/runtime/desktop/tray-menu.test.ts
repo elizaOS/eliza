@@ -49,7 +49,7 @@ describe("desktop tray menu — Notifications entry (#10706)", () => {
   it("DesktopTrayRuntime handles the click by opening the notification center", () => {
     // Same source-level guard style as browser-entry-tray-exports.test.ts:
     // the runtime switch must route the tray id to the surface-agnostic open
-    // dispatch (the headless NotificationCenter is the listener).
+    // dispatch (the headless NotificationsShellBoot is the listener).
     const source = readFileSync(trayRuntimePath, "utf8");
     expect(source).toContain('case "tray-open-notifications"');
     expect(source).toContain("dispatchOpenNotificationCenter()");

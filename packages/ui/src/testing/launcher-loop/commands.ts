@@ -7,8 +7,9 @@
  *
  * The commands ARE the §D `[L]` alphabet — rail swipes (committed + rejected,
  * both directions), edge-button clicks, tile taps + long-presses, grid /
- * widget scrolls, notification pulls (committed + rejected) + dismiss, and a
- * Tab-focus probe. `launcherCommands()` returns the weighted arbitrary
+ * widget scrolls (the home half's scroll covers the pinned notification
+ * center card too), and a Tab-focus probe. `launcherCommands()` returns the
+ * weighted arbitrary
  * `fc.commands` consumes; weights bias the loop toward the high-signal gestures
  * (swipes, taps) while still exercising the edges.
  */
@@ -209,44 +210,6 @@ class WidgetScrollCommand extends LauncherCommandBase {
   }
 }
 
-class NotificationPullCommand extends LauncherCommandBase {
-  constructor(
-    ctx: InvariantContext | undefined,
-    private readonly committed: boolean,
-  ) {
-    super(ctx);
-  }
-  action(): LauncherAction {
-    return { kind: "notification-pull", committed: this.committed };
-  }
-  check(): boolean {
-    return true;
-  }
-  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
-    if (model.page !== "home" || model.notificationOpen) return;
-    await driver.notificationPull(this.committed);
-  }
-  toString(): string {
-    return `notificationPull(${this.committed ? "commit" : "reject"})`;
-  }
-}
-
-class NotificationDismissCommand extends LauncherCommandBase {
-  action(): LauncherAction {
-    return { kind: "notification-dismiss" };
-  }
-  check(): boolean {
-    return true;
-  }
-  async drive(model: LauncherModelState, driver: Driver): Promise<void> {
-    if (!model.notificationOpen) return;
-    await driver.dismissNotification();
-  }
-  toString(): string {
-    return "notificationDismiss";
-  }
-}
-
 class TabFocusCommand extends LauncherCommandBase {
   action(): LauncherAction {
     return { kind: "tab-focus" };
@@ -270,8 +233,6 @@ export interface CommandWeights {
   readonly tileLongPress: number;
   readonly gridScroll: number;
   readonly widgetScroll: number;
-  readonly notificationPull: number;
-  readonly notificationDismiss: number;
   readonly tabFocus: number;
 }
 
@@ -281,9 +242,7 @@ export const DEFAULT_WEIGHTS: CommandWeights = {
   tileTap: 5,
   tileLongPress: 2,
   gridScroll: 2,
-  widgetScroll: 2,
-  notificationPull: 3,
-  notificationDismiss: 2,
+  widgetScroll: 3,
   tabFocus: 2,
 };
 
@@ -339,16 +298,6 @@ export function launcherCommands(
       arbitrary: fc
         .integer({ min: 40, max: 320 })
         .map((dy) => new WidgetScrollCommand(ctx, dy)),
-    },
-    {
-      weight: w.notificationPull,
-      arbitrary: fc
-        .boolean()
-        .map((committed) => new NotificationPullCommand(ctx, committed)),
-    },
-    {
-      weight: w.notificationDismiss,
-      arbitrary: fc.constant(new NotificationDismissCommand(ctx)),
     },
     { weight: w.tabFocus, arbitrary: fc.constant(new TabFocusCommand(ctx)) },
   ];

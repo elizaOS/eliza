@@ -21,10 +21,16 @@ const mocks = vi.hoisted(() => ({
     restoreLocalAgentBackup: vi.fn(async () => undefined),
     getAuthStatus: vi.fn(async () => ({ required: false })),
     getCloudStatus: vi.fn(async () => ({ connected: true })),
-    getCloudCompatAgents: vi.fn(async () => ({
-      success: true as const,
-      data: [] as unknown[],
-    })),
+    getCloudCompatAgents: vi.fn(
+      async (): Promise<{
+        success: boolean;
+        data: unknown[];
+        error?: string;
+      }> => ({
+        success: true,
+        data: [],
+      }),
+    ),
     // Takes the provisioning options so `.mock.calls[0][0]` is inspectable.
     selectOrProvisionCloudAgent: vi.fn(
       async (_options: Record<string, unknown>) => ({
@@ -213,6 +219,10 @@ beforeEach(() => {
     data: [],
   });
   localStorage.setItem("steward_session_token", "cloud-token");
+  // The runtime chooser (local / remote paths) is OFF by default (#13377);
+  // these suites exercise the full chooser, so they opt in via the override.
+  // The cloud-only describe block below removes it per-test.
+  localStorage.setItem("eliza:enable-runtime-chooser", "1");
 });
 
 afterEach(() => {
@@ -1046,6 +1056,251 @@ describe("surfaceCloudLoginRetryTurn", () => {
     expect(messages[0]?.text).toContain("pick how to run your agent again");
     expect(messages[0]?.text).toContain("__first_run__:runtime:local=");
     expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
+  });
+
+  it("cloud-only mode (chooser off) re-offers only the sign-in button — no runtime chooser", () => {
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+    const messages = applyRetry([]);
+
+    expect(messages[0]?.id).toBe("first-run:cloud-oauth");
+    expect(messages[0]?.secretRequest?.status).toBe("failed");
+    expect(messages[0]?.text).toContain("Sign in to Eliza Cloud to continue");
+    expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
+    expect(messages[0]?.text).not.toContain("__first_run__:runtime:local=");
+    expect(messages[0]?.text).not.toContain("__first_run__:runtime:remote=");
+  });
+});
+
+// ── Cloud-only onboarding (#13377): the runtime chooser is OFF by default ────
+
+describe("cloud-only onboarding (runtime chooser off — the production default)", () => {
+  beforeEach(() => {
+    localStorage.removeItem("eliza:enable-runtime-chooser");
+  });
+
+  it("seeds the single sign-in greeting — no local/remote options, no backup probe, no unprompted provisioning", async () => {
+    localStorage.removeItem("steward_session_token");
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+
+    const greeting = await waitForTurn(turn, "first-run:greeting");
+    expect(greeting.text).toContain("Sign in to Eliza Cloud");
+    expect(greeting.text).toContain("__first_run__:runtime:cloud=");
+    expect(greeting.text).not.toContain("__first_run__:runtime:local=");
+    expect(greeting.text).not.toContain("__first_run__:runtime:remote=");
+    expect(greeting.source).toBe("first_run");
+    // Restoring a local agent backup is a chooser-mode concept.
+    expect(mocks.client.listLocalAgentBackups).not.toHaveBeenCalled();
+    // Nothing provisions (and no login window can open) without a session or
+    // a sign-in tap.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("session injection: a usable stored session skips the sign-in ask and provisioning success completes onboarding for real", async () => {
+    // steward_session_token is present via the outer beforeEach.
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:cloud-signin");
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    // Sign-in IS onboarding: no tutorial/accent completion gate.
+    expect(turn("first-run:tutorial")).toBeUndefined();
+    expect(turn("first-run:appearance")).toBeUndefined();
+    await waitForTurn(turn, "first-run:cloud-done");
+    // The sign-in ask never appeared.
+    expect(turn("first-run:greeting")).toBeUndefined();
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("sign-in tap drives the cloud flow to real completion once the session lands", async () => {
+    localStorage.removeItem("steward_session_token");
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // The tap is the user gesture that launches the login flow; the session
+    // (stored token) lands during it.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    await waitForTurn(turn, "first-run:cloud-done");
+    expect(turn("first-run:tutorial")).toBeUndefined();
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("a session landing WITHOUT a tap auto-continues (login from another same-origin tab / injected hosted session)", async () => {
+    localStorage.removeItem("steward_session_token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+
+    localStorage.setItem("steward_session_token", "cloud-token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    await waitForTurn(turn, "first-run:cloud-done");
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("existing cloud agents are auto-adopted — first of the list, no picker turn (#13377)", async () => {
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-newest-running",
+          agent_name: "Newest",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+        {
+          agent_id: "agent-older",
+          agent_name: "Older",
+          status: "stopped",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    await waitForTurn(turn, "first-run:cloud-signin");
+    await waitFor(() => {
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    // No picker was interposed; the bind targeted the first listed agent.
+    expect(turn("first-run:cloud-agent")).toBeUndefined();
+    const provisionArgs = mocks.client.selectOrProvisionCloudAgent.mock
+      .calls[0]?.[0] as { preferAgentId?: string };
+    expect(provisionArgs?.preferAgentId).toBe("agent-newest-running");
+    await waitForTurn(turn, "first-run:cloud-done");
+    unmount();
+  });
+
+  it("a token hydrating AFTER mount (native storage restore) auto-continues without a tap", async () => {
+    localStorage.removeItem("steward_session_token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+
+    // The storage bridge restores the durable token asynchronously on native;
+    // the conductor's 500ms poll must pick it up and skip the sign-in tap.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    await waitFor(
+      () => {
+        expect(turn("first-run:cloud-signin")).toBeTruthy();
+      },
+      { timeout: 3_000 },
+    );
+    await waitFor(
+      () => {
+        expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 3_000 },
+    );
+    await waitForTurn(turn, "first-run:cloud-done");
+    unmount();
+  });
+
+  it("needs-cloud-login re-offers the sign-in button only — never the runtime chooser", async () => {
+    localStorage.removeItem("steward_session_token");
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
+        "failed",
+      );
+    });
+    const retry = turn("first-run:cloud-oauth");
+    expect(retry?.text).toContain("Sign in to Eliza Cloud to continue");
+    expect(retry?.text).toContain("__first_run__:runtime:cloud=");
+    expect(retry?.text).not.toContain("__first_run__:runtime:local=");
+    unmount();
+  });
+
+  it("finish errors offer retry + Settings only — 'choose a different way to run' does not exist", async () => {
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: false,
+      data: [],
+      error: "cloud agent list failed",
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:cloud-signin");
+
+    await waitFor(() => {
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:error:"),
+        ),
+      ).toBe(true);
+    });
+    const error = transcript.current.find((message) =>
+      message.id.startsWith("first-run:error:"),
+    );
+    expect(error?.text).toContain("__first_run__:error:retry=");
+    expect(error?.text).toContain("__first_run__:error:settings=");
+    expect(error?.text).not.toContain("__first_run__:error:restart=");
+    expect(error?.text).not.toContain("different way to run");
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("stale local/remote/provider picks are consumed without starting a flow", async () => {
+    localStorage.removeItem("steward_session_token");
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    expect(tryHandleFirstRunAction("__first_run__:backup-restore:latest")).toBe(
+      true,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(turn("first-run:provider")).toBeUndefined();
+    expect(turn("first-run:remote-connect")).toBeUndefined();
+    expect(mocks.client.getAuthStatus).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("answers free text with the sign-in nudge while no session exists", async () => {
+    localStorage.removeItem("steward_session_token");
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunText("hello?")).toBe(true);
+    const userTurn = await waitForTurn(turn, "first-run:user:1");
+    expect(userTurn.text).toBe("hello?");
+    const reply = await waitForTurn(turn, "first-run:reply:1");
+    expect(reply.text).toContain("sign in to Eliza Cloud");
+    unmount();
   });
 });
 

@@ -133,9 +133,9 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
         setHashRoute("contacts", parsed.searchParams);
         break;
       case "notifications":
-        // Desktop-native entry point (#10706): the "Notifications" menu/tray
-        // item opens the notification center in place (no route change), the
-        // one visible way in where the floating bell is hidden.
+        // Desktop-native entry point (#10706): the notification center is the
+        // dashboard widget on the home surface, so this event navigates there
+        // (NotificationsShellBoot is the listener).
         dispatchOpenNotificationCenter();
         ctx.dispatchDeepLinkCallback(url);
         break;

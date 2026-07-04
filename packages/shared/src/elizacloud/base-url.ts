@@ -2,6 +2,8 @@
  * Pure URL normalizer for Eliza Cloud site/API base URLs. No host-layer deps.
  */
 
+import { readAliasedEnv } from "../utils/env.js";
+
 const DEFAULT_CLOUD_SITE_URL = "https://elizacloud.ai";
 
 const LEGACY_CLOUD_HOST_ALIASES = new Set([
@@ -42,7 +44,7 @@ function normalizeMalformedCandidate(candidate: string): string {
 
 export function normalizeCloudSiteUrl(rawUrl?: string): string {
   // Allow cloud-provisioned containers to override the base URL via env var
-  const envOverride = process.env.ELIZAOS_CLOUD_BASE_URL?.trim();
+  const envOverride = readAliasedEnv("ELIZAOS_CLOUD_BASE_URL");
   const candidate = envOverride || rawUrl?.trim() || DEFAULT_CLOUD_SITE_URL;
 
   try {

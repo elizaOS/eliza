@@ -23,6 +23,7 @@ import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { normalizeLedgerSourceId } from "../utils/ledger-source-id";
 import { logger } from "../utils/logger";
+import { parseRedeemableEarningsNumber } from "./redeemable-earnings-numeric";
 
 // ============================================================================
 // TYPES
@@ -158,15 +159,28 @@ class RedeemableEarningsService {
       return null;
     }
 
+    // Fail-closed NUMERIC boundary: a corrupt row (`'NaN'::numeric`) must throw
+    // rather than surface a `NaN` balance. `availableBalance` gates money-out in
+    // the secure token-redemption pre-check
+    // (`new Decimal(balance.availableBalance).lt(deductionAmount)` — `Decimal(NaN).lt(x)`
+    // is `false`, i.e. the insufficient-balance check would FAIL OPEN over a
+    // corrupt row). Throwing here propagates to the redemption route's catch,
+    // which fails closed (denies) instead of authorizing against garbage.
     return {
-      availableBalance: Number(earnings.available_balance),
-      totalEarned: Number(earnings.total_earned),
-      totalRedeemed: Number(earnings.total_redeemed),
-      totalPending: Number(earnings.total_pending),
+      availableBalance: parseRedeemableEarningsNumber(
+        earnings.available_balance,
+        "available_balance",
+      ),
+      totalEarned: parseRedeemableEarningsNumber(earnings.total_earned, "total_earned"),
+      totalRedeemed: parseRedeemableEarningsNumber(earnings.total_redeemed, "total_redeemed"),
+      totalPending: parseRedeemableEarningsNumber(earnings.total_pending, "total_pending"),
       breakdown: {
-        miniapps: Number(earnings.earned_from_miniapps),
-        agents: Number(earnings.earned_from_agents),
-        mcps: Number(earnings.earned_from_mcps),
+        miniapps: parseRedeemableEarningsNumber(
+          earnings.earned_from_miniapps,
+          "earned_from_miniapps",
+        ),
+        agents: parseRedeemableEarningsNumber(earnings.earned_from_agents, "earned_from_agents"),
+        mcps: parseRedeemableEarningsNumber(earnings.earned_from_mcps, "earned_from_mcps"),
       },
     };
   }
@@ -504,15 +518,21 @@ class RedeemableEarningsService {
       // Fail-closed money-out guard (computed under the row lock, on the
       // primary): never floor-and-pass when the caller requires the full
       // amount to be debitable.
-      if (requireSufficientBalance && new Decimal(earnings.available_balance).lessThan(amount)) {
-        return {
-          earnings: null,
-          ledgerEntryId: "",
-          skipped: false,
-          insufficient: true,
-          deduplicated: false,
-          currentBalance: Number(earnings.available_balance),
-        };
+      if (requireSufficientBalance) {
+        const currentBalance = parseRedeemableEarningsNumber(
+          earnings.available_balance,
+          "available_balance",
+        );
+        if (new Decimal(currentBalance).lessThan(amount)) {
+          return {
+            earnings: null,
+            ledgerEntryId: "",
+            skipped: false,
+            insufficient: true,
+            deduplicated: false,
+            currentBalance,
+          };
+        }
       }
 
       // Determine the source column
@@ -659,7 +679,9 @@ class RedeemableEarningsService {
         throw new Error("No earnings record found");
       }
 
-      const available = new Decimal(earnings.available_balance);
+      const available = new Decimal(
+        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
+      );
       const requested = new Decimal(amountDecimal);
 
       // Check sufficient balance
@@ -903,7 +925,9 @@ class RedeemableEarningsService {
         }
       }
 
-      const available = new Decimal(earnings.available_balance);
+      const available = new Decimal(
+        parseRedeemableEarningsNumber(earnings.available_balance, "available_balance"),
+      );
       if (available.lt(amountDecimal)) {
         throw new Error(
           `Insufficient redeemable balance. Available: $${available.toFixed(4)}, Requested: $${amount.toFixed(4)}`,

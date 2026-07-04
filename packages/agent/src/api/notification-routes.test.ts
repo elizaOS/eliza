@@ -1,15 +1,18 @@
 /**
  * Covers `handleNotificationRoute` — the `/api/notifications` surface (list,
- * create, mark-read, read-all, delete, clear plus filter query params) —
- * driven against a real `NotificationService` over an in-memory cache-backed
- * fake runtime with mocked response helpers, including the service-absent
- * empty-inbox and 503 fallbacks.
+ * create, mark-read, read-all, delete, clear, the dev-only seed, plus filter
+ * query params) — driven against a real `NotificationService` over an
+ * in-memory cache-backed fake runtime with mocked response helpers, including
+ * the service-absent empty-inbox and 503 fallbacks.
  */
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { handleNotificationRoute } from "./notification-routes";
+import {
+  DEV_SEED_NOTIFICATIONS,
+  handleNotificationRoute,
+} from "./notification-routes";
 
 async function makeRuntimeWithService(): Promise<{
   runtime: { getService: (t: string) => unknown };
@@ -207,6 +210,62 @@ describe("handleNotificationRoute", () => {
     );
     expect(helpers.json).toHaveBeenCalledWith(res, { ok: true });
     expect(service.list()).toHaveLength(0);
+  });
+
+  it("POST dev/seed paints the demo spread (groupKey pair collapses)", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const helpers = makeHelpers();
+      await handleNotificationRoute(
+        req("/api/notifications/dev/seed"),
+        res,
+        "/api/notifications/dev/seed",
+        "POST",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.json).toHaveBeenCalledTimes(1);
+      const [, payload, status] = helpers.json.mock.calls[0] as [
+        unknown,
+        { count: number; notifications: Array<{ priority: string }> },
+        number,
+      ];
+      expect(status).toBe(201);
+      expect(payload.count).toBe(DEV_SEED_NOTIFICATIONS.length);
+      // Every priority tier is represented in the seed.
+      const priorities = new Set(payload.notifications.map((n) => n.priority));
+      expect(priorities).toEqual(new Set(["low", "normal", "high", "urgent"]));
+      // The same-groupKey pair collapsed: the inbox holds one fewer row than
+      // the seed emitted, and only the later deploy update survives.
+      const inbox = service.list();
+      expect(inbox).toHaveLength(DEV_SEED_NOTIFICATIONS.length - 1);
+      const deploys = inbox.filter((n) => n.groupKey === "dev-seed:deploy");
+      expect(deploys).toHaveLength(1);
+      expect(deploys[0].body).toContain("Step 5/5");
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it("POST dev/seed is hidden (404) in production", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const helpers = makeHelpers();
+      await handleNotificationRoute(
+        req("/api/notifications/dev/seed"),
+        res,
+        "/api/notifications/dev/seed",
+        "POST",
+        { runtime },
+        helpers,
+      );
+      expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 404);
+      expect(service.list()).toHaveLength(0);
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
   });
 
   it("GET serves an empty inbox when the service is not registered", async () => {

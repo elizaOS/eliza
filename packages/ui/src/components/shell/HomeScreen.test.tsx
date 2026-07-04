@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+// HomeScreen composition: the unified home WidgetHost, the pinned dashboard
+// notification center, and the AOSP-only tile grid, with the notification
+// store driven directly (no network).
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,23 +25,24 @@ vi.mock("../../hooks/useActivityEvents", () => ({
 // HomeScreen now mounts the unified home-slot WidgetHost (#9143) — its ranking +
 // per-widget behavior is covered by the widgets suites. Here we stub it to a
 // marker so HomeScreen's own responsibility (mount the host for slot "home" +
-// the AOSP tiles) is what's asserted, without pulling the whole registry/app
-// store into this unit test.
+// the pinned notification center + the AOSP tiles) is what's asserted, without
+// pulling the whole registry/app store into this unit test.
 vi.mock("../../widgets/WidgetHost", () => ({
   WidgetHost: (props: { slot: string }) => (
     <div data-testid="home-widget-host" data-slot={props.slot} />
   ),
 }));
 
+import type { AgentNotification } from "@elizaos/core";
 import {
-  __getNotificationShellStateForTests,
-  __resetNotificationShellForTests,
-} from "../../state/notifications/notification-shell";
+  __ingestNotificationForTests,
+  __resetNotificationStoreForTests,
+} from "../../state/notifications/notification-store";
 import { HomeScreen } from "./HomeScreen";
 
 afterEach(() => {
   cleanup();
-  __resetNotificationShellForTests();
+  __resetNotificationStoreForTests();
 });
 
 const NATIVE_OS_TILES = ["messages", "phone", "contacts", "camera"];
@@ -46,6 +51,21 @@ function tileIds(container: HTMLElement): string[] {
   return Array.from(
     container.querySelectorAll<HTMLElement>('[data-testid^="home-tile-"]'),
   ).map((el) => el.dataset.testid?.replace("home-tile-", "") ?? "");
+}
+
+function makeNotification(
+  overrides: Partial<AgentNotification> = {},
+): AgentNotification {
+  return {
+    id: "11111111-1111-1111-1111-111111111111" as AgentNotification["id"],
+    title: "Build finished",
+    category: "task",
+    priority: "normal",
+    source: "test",
+    createdAt: Date.now() - 60_000,
+    readAt: null,
+    ...overrides,
+  };
 }
 
 describe("HomeScreen", () => {
@@ -90,121 +110,35 @@ describe("HomeScreen", () => {
     expect(screen.queryByText("Pinned")).toBeNull();
   });
 
-  // The resting pull "pill"/grabber is gone — pulling down from anywhere on the
-  // dashboard is the affordance now, and a bare pill at the top was noise the
-  // redesign removes. There is no separate reveal element either: the real sheet
-  // (rendered by the headless NotificationCenter) fades in and tracks the pull.
-  it("has NO resting notification pill/grabber or reveal affordance", () => {
+  // The pull-down notification sheet is gone: the dashboard notification center
+  // widget is THE notification surface, pinned below the time/weather base.
+  it("has NO pull-down affordance — no pull zone, grabber, or reveal element", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(screen.queryByTestId("home-notification-pull-zone")).toBeNull();
     expect(screen.queryByTestId("home-notification-grabber")).toBeNull();
     expect(screen.queryByTestId("home-notification-reveal")).toBeNull();
-    expect(__getNotificationShellStateForTests().open).toBe(false);
+    expect(screen.queryByTestId("notification-sheet")).toBeNull();
   });
 
-  // Drive a real touch drag on the scroller (the gesture uses touch events, not
-  // pointer events, so it can preventDefault the top-overscroll under
-  // `touch-action: pan-y`). Each waypoint is [clientX, clientY]; the first is
-  // touchstart, the middle are touchmove, the last is touchend.
-  function touchDrag(el: HTMLElement, points: Array<[number, number]>): void {
-    const at = (x: number, y: number) => ({
-      identifier: 1,
-      clientX: x,
-      clientY: y,
-    });
-    const [first, ...rest] = points;
-    fireEvent.touchStart(el, {
-      changedTouches: [at(...first)],
-      touches: [at(...first)],
-    });
-    for (const p of rest.slice(0, -1)) {
-      fireEvent.touchMove(el, {
-        changedTouches: [at(...p)],
-        touches: [at(...p)],
-      });
-    }
-    const end = rest[rest.length - 1];
-    fireEvent.touchMove(el, {
-      changedTouches: [at(...end)],
-      touches: [at(...end)],
-    });
-    fireEvent.touchEnd(el, { changedTouches: [at(...end)], touches: [] });
-  }
-
-  // The iOS-style pull-down: a downward drag ANYWHERE on the dashboard (while the
-  // widget list is at the top) drives the shared shell store so the real sheet
-  // fades in + tracks the finger; a release past threshold settles it OPEN.
-  it("opens the notification center on a downward pull from anywhere on the dashboard", () => {
+  it("hides the notification center widget while the inbox is empty", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // The gesture lives on the scroller itself, not a thin top strip. jsdom keeps
-    // scrollTop at 0, so the surface is "at the top" and the top-overscroll pull
-    // engages. Pull DOWN ~76px past the 60px threshold.
-    touchDrag(screen.getByTestId("home-screen"), [
-      [120, 20],
-      [120, 60],
-      [120, 96],
-    ]);
-
-    expect(__getNotificationShellStateForTests().open).toBe(true);
+    expect(screen.queryByTestId("home-notification-center")).toBeNull();
   });
 
-  it("does NOT open on an UPWARD drag (direction-gated — that is native scroll)", () => {
+  it("pins the notification center widget between the base widgets and the WidgetHost once notifications exist", () => {
+    __ingestNotificationForTests(makeNotification());
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Pull UP: the notification pull is downward-only.
-    touchDrag(screen.getByTestId("home-screen"), [
-      [120, 96],
-      [120, 60],
-      [120, 20],
-    ]);
-
-    const shell = __getNotificationShellStateForTests();
-    expect(shell.open).toBe(false);
-    expect(shell.dragging).toBe(false);
-  });
-
-  it("does NOT open when the list is scrolled down (only a top-overscroll pull opens)", () => {
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    const surface = screen.getByTestId("home-screen");
-    // Simulate a list scrolled away from the top: a downward drag here is a real
-    // scroll-up of content, never the notification pull.
-    Object.defineProperty(surface, "scrollTop", {
-      configurable: true,
-      value: 240,
-    });
-
-    touchDrag(surface, [
-      [120, 20],
-      [120, 60],
-      [120, 96],
-    ]);
-
-    expect(__getNotificationShellStateForTests().open).toBe(false);
-  });
-
-  it("does NOT open on a horizontal swipe (that belongs to the home↔launcher pager)", () => {
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Horizontal-dominant drag: the pull hook rejects it so the pager owns it.
-    touchDrag(screen.getByTestId("home-screen"), [
-      [40, 40],
-      [120, 46],
-      [220, 52],
-    ]);
-
-    expect(__getNotificationShellStateForTests().open).toBe(false);
-  });
-
-  it("keeps a click/keyboard entry point on the top-edge button (desktop/AT)", async () => {
-    // The top-edge button opens via the surface-agnostic event (the headless
-    // NotificationCenter — mounted app-wide, not here — turns it into a store
-    // open), so this asserts the event, the button's public contract.
-    const { OPEN_NOTIFICATION_CENTER_EVENT } = await import("../../events");
-    const onOpen = vi.fn();
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    try {
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      fireEvent.click(screen.getByTestId("home-notification-pull-zone"));
-      expect(onOpen).toHaveBeenCalledTimes(1);
-    } finally {
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    }
+    const center = screen.getByTestId("home-notification-center");
+    expect(center).toBeTruthy();
+    // Order: time/weather base first, then the notification center, then the
+    // ranked WidgetHost grid.
+    const base = screen.getByTestId("default-home-widgets");
+    const host = screen.getByTestId("home-widget-host");
+    expect(
+      base.compareDocumentPosition(center) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      center.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

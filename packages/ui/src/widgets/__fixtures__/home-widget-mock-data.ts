@@ -256,7 +256,8 @@ function inboxPayload() {
   };
 }
 
-/** NotificationsWidget reads the notification store (hydrated from
+/** The pinned dashboard notification center (NotificationsHomeCenter, mounted
+ *  by HomeScreen) reads the notification store (hydrated from
  *  GET /api/notifications). An urgent unread notification ranks at the top. */
 export const HOME_WIDGET_MOCK_NOTIFICATION: AgentNotification = {
   id: "notif-urgent",
@@ -411,8 +412,9 @@ export function installHomeWidgetFetchMock(): () => void {
 
 // ---------------------------------------------------------------------------
 // App-store + notification seeding — the WidgetHost reads the plugins snapshot
-// from the app store (resolveWidgetsForSlot), and the notifications widget reads
-// the notification store. Seed both BEFORE first render.
+// from the app store (resolveWidgetsForSlot), and HomeScreen's pinned
+// NotificationsHomeCenter reads the notification store. Seed both BEFORE first
+// render.
 // ---------------------------------------------------------------------------
 
 const noop = () => {};

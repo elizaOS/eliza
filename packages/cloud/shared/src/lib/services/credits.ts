@@ -207,6 +207,40 @@ function parseNumeric(value: string | number | null | undefined, fieldName: stri
   return parsed;
 }
 
+/**
+ * Parse the org's `auto_top_up_threshold` for the auto-top-up trigger gate.
+ *
+ * `auto_top_up_threshold` is a Drizzle `numeric` column, so it arrives at the
+ * row boundary as a `string` (or `null` when the org never configured one). The
+ * trigger previously coerced it with a bare `Number(org.auto_top_up_threshold ||
+ * 0)`. That silently fails OPEN on a corrupt row: a `numeric` can legitimately
+ * hold `'NaN'::numeric`, which reads back as the string `"NaN"`, and
+ * `Number("NaN")` is `NaN`. Because `newBalance >= NaN` is `false`, the gate's
+ * early-return never fires, so `executeAutoTopUp` (a REAL card charge) is
+ * dispatched unconditionally regardless of the org's actual balance.
+ *
+ * Fail-closed semantics for this money-OUT trigger:
+ *  - `null` / `undefined` (never configured) is a legitimate domain default of
+ *    `0`, preserving the original `|| 0` behaviour (only trigger below $0).
+ *  - a present-but-non-finite or partially numeric value (`"NaN"`, `""`,
+ *    `"abc"`, `"10abc"`, `Infinity`) is a corrupt threshold we cannot reason
+ *    about, so we throw and let the caller SKIP the charge rather than fire an
+ *    unvalidatable auto-top-up.
+ */
+function parseAutoTopUpThreshold(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("[CreditsService] Invalid numeric auto_top_up_threshold");
+  }
+  return parsed;
+}
+
 function parseMetadata(value: CreditMutationRow["metadata"]): Record<string, unknown> {
   if (!value) {
     return {};
@@ -802,7 +836,22 @@ export class CreditsService {
         return;
       }
 
-      const threshold = Number(org.auto_top_up_threshold || 0);
+      // A corrupt `auto_top_up_threshold` NUMERIC (e.g. `'NaN'::numeric`) must
+      // NOT fall through and fire a real auto-top-up charge. Fail closed: skip
+      // the trigger and surface the bad row instead of paying on an
+      // unvalidatable threshold. (#13415)
+      let threshold: number;
+      try {
+        threshold = parseAutoTopUpThreshold(org.auto_top_up_threshold);
+      } catch (error) {
+        logger.error(
+          `[CreditsService] Skipping auto top-up for org ${organizationId}: corrupt auto_top_up_threshold (${String(
+            org.auto_top_up_threshold,
+          )})`,
+          error,
+        );
+        return;
+      }
 
       // Check if balance is below threshold
       if (newBalance >= threshold) {

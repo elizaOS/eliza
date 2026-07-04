@@ -32,6 +32,14 @@
  *   consumed, never acted on and never forwarded to the server.
  * - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
  *   connect-and-resume continuation (`pendingCloudResumeRef`).
+ *
+ * Cloud-only mode (#13377): the runtime chooser (local / remote) is gated by
+ * `isRuntimeChooserEnabled()` and OFF by default. With the chooser off,
+ * onboarding is a single "sign in to Eliza Cloud" step — the greeting IS the
+ * sign-in prompt, an already-usable session (hosted web with a live login, a
+ * durable token, a completed mobile OAuth round trip) skips the ask entirely,
+ * and provisioning success flips the real gate immediately. The tutorial is
+ * never a completion gate in this mode; it stays reachable from its home tile.
  */
 
 import { logger } from "@elizaos/logger";
@@ -47,6 +55,7 @@ import { startTutorial } from "../components/pages/tutorial/tutorial-controller"
 import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
 import {
@@ -68,9 +77,27 @@ import {
   resetFirstRunPersistGuard,
   runFirstRunFinish,
 } from "./first-run-finish";
+import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
 
 const GREETING =
   "Hi — I'm Eliza. Let's get you set up. First, where should your agent run?";
+
+// Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
+// action value on purpose: the tap IS the user gesture that launches the real
+// login flow (handleCloudLogin inside the provision flow, popup-blocker safe
+// via preOpenWindow) — the OAuth secretRequest block alone only opens the
+// cloud site and never completes an in-app login.
+const CLOUD_SIGN_IN_GREETING =
+  "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.";
+const CLOUD_SIGN_IN_CHOICE = [
+  "[CHOICE:first-run id=runtime]",
+  `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Sign in to Eliza Cloud`,
+  "[/CHOICE]",
+].join("\n");
+const CLOUD_WELCOME_BACK =
+  "Welcome back — you're already signed in to Eliza Cloud. Setting up your agent…";
+const CLOUD_ONLY_DONE =
+  "You're all set — ask me anything. Want a quick tour? Open the Tutorial tile on your home screen whenever you like.";
 
 /** User-facing recovery message when a cloud provisioning call rejects. */
 function cloudFailureMessage(err: unknown): string {
@@ -92,6 +119,9 @@ const FIRST_RUN_TEXT_REPLY = {
   // Before a runtime is picked / mid-choice: no agent exists yet.
   choosing:
     "I'm not fully set up yet — pick one of the options above and I'll get your agent running. You can ask me anything the moment I'm ready.",
+  // Cloud-only mode: the only pending step is the Eliza Cloud sign-in.
+  signIn:
+    "I'm not fully set up yet — sign in to Eliza Cloud above and I'll get your agent running. You can ask me anything the moment I'm ready.",
   // A finish/provision call is in flight.
   provisioning:
     "Hang tight — I'm getting your agent ready right now. I'll answer as soon as I'm set up.",
@@ -185,11 +215,22 @@ const ERROR_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
+// Cloud-only recovery: with the runtime chooser off there is no "different way
+// to run", so the restart option would be a dead end — retry and the Settings
+// escape are the two real ways forward.
+const CLOUD_ONLY_ERROR_CHOICE = [
+  "[CHOICE:first-run id=error]",
+  `${FIRST_RUN_ACTION_PREFIX}error:retry=Try again`,
+  `${FIRST_RUN_ACTION_PREFIX}error:settings=Configure in Settings`,
+  "[/CHOICE]",
+].join("\n");
+
 /**
  * Turn a raw finish error into a human sentence. The underlying message can be
  * a terse transport string ("Not found" for a 404, "Failed to fetch", …) that
  * means nothing to a first-run user; lead with a clear framing and keep the raw
- * detail for context.
+ * detail for context. The recovery framing tracks the runtime chooser: with the
+ * chooser off there is no "different way to run" to offer.
  */
 function finishErrorMessage(message: string): string {
   const detail = message.trim();
@@ -199,7 +240,10 @@ function finishErrorMessage(message: string): string {
   const lead = isTerse
     ? `I couldn't finish setting up your agent (${detail}).`
     : `I couldn't finish setting up your agent: ${detail}`;
-  return `${lead}\n\nYou can try again, pick a different way to run your agent, or configure a model provider yourself in Settings.`;
+  const recovery = isRuntimeChooserEnabled()
+    ? "You can try again, pick a different way to run your agent, or configure a model provider yourself in Settings."
+    : "You can try again, or configure a model provider yourself in Settings.";
+  return `${lead}\n\n${recovery}`;
 }
 
 // The "make it yours" accent step. Reuses the shared ACCENT_PRESETS (the same
@@ -282,12 +326,15 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
   // Replacing the turn re-parses its CHOICE block, so the re-offered runtime
   // buttons arrive unlocked even when an earlier pick locked the originals —
   // without this the "pick again" instruction is a dead end (every prior
-  // runtime widget locked itself on first tap).
-  const connectTurn = makeTurn(
-    "first-run:cloud-oauth",
-    `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${RUNTIME_CHOICE}`,
-    { secretRequest: cloudOAuthSecretRequest("failed") },
-  );
+  // runtime widget locked itself on first tap). In cloud-only mode there is no
+  // runtime to re-pick: the retry turn re-offers the single sign-in button
+  // (whose tap re-enters the cloud flow with a fresh user gesture).
+  const retryText = isRuntimeChooserEnabled()
+    ? `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${RUNTIME_CHOICE}`
+    : `Sign in to Eliza Cloud to continue — I'll pick up where we left off.\n\n${CLOUD_SIGN_IN_CHOICE}`;
+  const connectTurn = makeTurn("first-run:cloud-oauth", retryText, {
+    secretRequest: cloudOAuthSecretRequest("failed"),
+  });
   writer.seedTurn(connectTurn);
   writer.replaceTurn("first-run:cloud-oauth", connectTurn);
 }
@@ -413,6 +460,18 @@ export function useFirstRunConductor(): void {
     );
   }, [seedTurn]);
 
+  // Cloud-only completion (#13377): signing in IS onboarding. The moment
+  // provisioning succeeds we flip the real gate — no tutorial/accent pick gates
+  // completion in this mode (the tutorial stays reachable from its home tile).
+  // Latched by completedRef so a double-fired finish can't flip the gate twice.
+  const completeCloudOnly = React.useCallback(() => {
+    if (completedRef.current) return;
+    provisionedRef.current = true;
+    completedRef.current = true;
+    seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
+    completeFirstRun("chat");
+  }, [seedTurn, completeFirstRun]);
+
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
       const latest = newestLocalBackup(backups);
@@ -444,8 +503,9 @@ export function useFirstRunConductor(): void {
   );
 
   // Ports for the headless finish use case. completeFirstRun is INTERCEPTED:
-  // provisioning calls it, we record + offer the tutorial, and only flip the
-  // real gate when the user picks a tutorial option.
+  // with the runtime chooser on, provisioning calls it, we record + offer the
+  // tutorial, and only flip the real gate when the user picks a tutorial
+  // option. In cloud-only mode the intercept completes for real immediately.
   const ports = React.useMemo<FirstRunFinishPorts>(
     () => ({
       uiLanguage,
@@ -458,7 +518,11 @@ export function useFirstRunConductor(): void {
       showActionBanner,
       setTab,
       completeFirstRun: () => {
-        seedTutorial();
+        if (isRuntimeChooserEnabled()) {
+          seedTutorial();
+          return;
+        }
+        completeCloudOnly();
       },
       onStatus: (text) => {
         if (text) {
@@ -474,6 +538,7 @@ export function useFirstRunConductor(): void {
       showActionBanner,
       setTab,
       seedTutorial,
+      completeCloudOnly,
       seedTurn,
     ],
   );
@@ -491,7 +556,7 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           `first-run:error:${Date.now()}`,
-          `${finishErrorMessage(message)}\n\n${ERROR_CHOICE}`,
+          `${finishErrorMessage(message)}\n\n${isRuntimeChooserEnabled() ? ERROR_CHOICE : CLOUD_ONLY_ERROR_CHOICE}`,
         ),
       );
     },
@@ -532,19 +597,42 @@ export function useFirstRunConductor(): void {
   // Armed by a needs-cloud-login outcome; consumed by the auto-resume effect
   // when the cloud connection lands (or cleared by the user's next pick).
   const pendingCloudResumeRef = React.useRef<"cloud" | "hybrid" | null>(null);
+  // Bind tail for a chosen/auto-chosen cloud agent — assigned below (it and
+  // handleOutcome reference each other; the ref breaks the cycle). Its own
+  // in-flight latch exists because the provisioning flow's finally releases
+  // busyRef right after handleOutcome kicks the bind off.
+  const bindCloudAgentByIdRef = React.useRef<((id: string) => void) | null>(
+    null,
+  );
+  const bindInFlightRef = React.useRef(false);
 
   const handleOutcome = React.useCallback(
     (outcome: FirstRunFinishOutcome) => {
       switch (outcome.kind) {
         case "done":
-          // provisioning's completeFirstRun port already seeded the tutorial.
-          if (!provisionedRef.current) seedTutorial();
+          // provisioning's completeFirstRun port already ran the wrap-up
+          // (tutorial offer, or the cloud-only real completion).
+          if (!provisionedRef.current) {
+            if (isRuntimeChooserEnabled()) seedTutorial();
+            else completeCloudOnly();
+          }
           return;
-        case "pick-cloud-agent":
+        case "pick-cloud-agent": {
+          // Cloud-only onboarding (#13377): signing in IS onboarding — never
+          // interpose an agent picker. Adopt the first agent; the list arrives
+          // newest-first with running agents prioritized.
+          if (!isRuntimeChooserEnabled()) {
+            const first = outcome.agents[0]?.agent_id;
+            if (first) {
+              bindCloudAgentByIdRef.current?.(first);
+              return;
+            }
+          }
           seedCloudAgentChoice(
             outcome.agents.map((a) => ({ id: a.agent_id, name: a.agent_name })),
           );
           return;
+        }
         case "needs-cloud-login": {
           pendingCloudResumeRef.current =
             draftRef.current.runtime === "cloud" ? "cloud" : "hybrid";
@@ -556,7 +644,14 @@ export function useFirstRunConductor(): void {
           return;
       }
     },
-    [seedTutorial, seedCloudAgentChoice, seedTurn, replaceTurn, seedError],
+    [
+      seedTutorial,
+      completeCloudOnly,
+      seedCloudAgentChoice,
+      seedTurn,
+      replaceTurn,
+      seedError,
+    ],
   );
 
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
@@ -603,7 +698,13 @@ export function useFirstRunConductor(): void {
   // (the effect fired once before the marker was armed, so it can't self-fire).
   const runCloudResume = React.useCallback(
     (resume: "cloud" | "hybrid") => {
-      if (busyRef.current || provisionedRef.current) return;
+      if (
+        busyRef.current ||
+        bindInFlightRef.current ||
+        provisionedRef.current
+      ) {
+        return;
+      }
       pendingCloudResumeRef.current = null;
       if (resume === "cloud") {
         replaceTurn(
@@ -621,6 +722,39 @@ export function useFirstRunConductor(): void {
     },
     [replaceTurn, startCloudProvisionFlow, startProviderFinish],
   );
+
+  // The one bind tail for a cloud agent, shared by the picker tap (chooser
+  // mode) and the cloud-only auto-adopt of the first agent. Guarded by its own
+  // in-flight latch (see bindCloudAgentByIdRef above) in addition to busyRef.
+  const bindCloudAgentById = React.useCallback(
+    (id: string) => {
+      if (bindInFlightRef.current) return;
+      const authToken = getCloudAuthToken(client) ?? "";
+      if (!authToken) {
+        handleOutcome({ kind: "needs-cloud-login" });
+        return;
+      }
+      cloudPrefsRef.current =
+        id === "new" ? { forceCreate: true } : { preferAgentId: id };
+      bindInFlightRef.current = true;
+      busyRef.current = true;
+      void bindCloudAgent(
+        draftRef.current,
+        authToken,
+        cloudPrefsRef.current,
+        portsRef.current,
+      )
+        .then(handleOutcome)
+        // error-policy:J4 bind failure is surfaced as an onboarding error turn
+        .catch((err: unknown) => seedError(cloudFailureMessage(err)))
+        .finally(() => {
+          bindInFlightRef.current = false;
+          busyRef.current = false;
+        });
+    },
+    [handleOutcome, seedError],
+  );
+  bindCloudAgentByIdRef.current = bindCloudAgentById;
 
   // Auto-resume: when the user connects Eliza Cloud from the retry turn's
   // OAuth block (instead of re-picking a runtime), continue the interrupted
@@ -655,7 +789,7 @@ export function useFirstRunConductor(): void {
       // runtime choice), so a confused user can tap a second option while a
       // finish call is still in flight — consume those as no-ops instead of
       // starting a concurrent flow.
-      if (busyRef.current) return true;
+      if (busyRef.current || bindInFlightRef.current) return true;
       // Once provisioning succeeded only the wrap-up picks (accent + tutorial)
       // are live; taps on leftover runtime/provider/cloud-agent widgets must not
       // re-provision.
@@ -669,6 +803,14 @@ export function useFirstRunConductor(): void {
       // Once the real gate flipped (tutorial pick or the Settings escape),
       // every further first-run pick is a stale-widget no-op.
       if (completedRef.current) return true;
+      // Cloud-only mode: runtime:cloud is the live "Sign in to Eliza Cloud"
+      // button; every other runtime / provider / backup-restore pick can only
+      // be a stale widget from a chooser-mode transcript (or garbage) —
+      // consume those untouched so they can't start a local/remote flow.
+      if (!isRuntimeChooserEnabled()) {
+        if (group === "provider" || group === "backup-restore") return true;
+        if (group === "runtime" && id !== "cloud") return true;
+      }
       // A fresh pick supersedes any armed connect-and-resume continuation —
       // including the durable cloud-resume marker (the cloud/hybrid branches
       // below re-arm it if the new pick is a cloud one) — and clears the error
@@ -824,26 +966,7 @@ export function useFirstRunConductor(): void {
 
       if (group === "cloud-agent") {
         if (!id) return true;
-        const authToken = getCloudAuthToken(client) ?? "";
-        if (!authToken) {
-          handleOutcome({ kind: "needs-cloud-login" });
-          return true;
-        }
-        cloudPrefsRef.current =
-          id === "new" ? { forceCreate: true } : { preferAgentId: id };
-        busyRef.current = true;
-        void bindCloudAgent(
-          draftRef.current,
-          authToken,
-          cloudPrefsRef.current,
-          portsRef.current,
-        )
-          .then(handleOutcome)
-          // error-policy:J4 bind failure is surfaced as an onboarding error turn
-          .catch((err: unknown) => seedError(cloudFailureMessage(err)))
-          .finally(() => {
-            busyRef.current = false;
-          });
+        bindCloudAgentByIdRef.current?.(id);
         return true;
       }
 
@@ -855,11 +978,13 @@ export function useFirstRunConductor(): void {
           exitToSettings();
           return true;
         }
-        if (id === "restart") {
+        if (id === "restart" && isRuntimeChooserEnabled()) {
           // Re-offer a FRESH (unlocked) runtime choice so the user can switch
           // how their agent runs after a failed finish. seedFreshChoiceTurn
           // seeds a retry turn when the greeting already exists (the original
-          // runtime widget locked itself on its first pick).
+          // runtime widget locked itself on its first pick). Cloud-only mode
+          // never offers restart; a stale restart tap falls through to retry
+          // below — the only other way to run doesn't exist there.
           seedFreshChoiceTurn(
             "first-run:greeting",
             `${GREETING}\n\n${RUNTIME_CHOICE}`,
@@ -912,10 +1037,8 @@ export function useFirstRunConductor(): void {
       seedFreshChoiceTurn,
       seedRuntimeChoice,
       replaceTurn,
-      handleOutcome,
       completeFirstRun,
       exitToSettings,
-      seedError,
       startCloudProvisionFlow,
       startProviderFinish,
       setUiAccent,
@@ -933,13 +1056,16 @@ export function useFirstRunConductor(): void {
     (text: string): boolean => {
       const trimmed = text.trim();
       if (!trimmed) return true;
-      const reply = busyRef.current
-        ? FIRST_RUN_TEXT_REPLY.provisioning
-        : provisionedRef.current
-          ? FIRST_RUN_TEXT_REPLY.wrapUp
-          : erroredRef.current
-            ? FIRST_RUN_TEXT_REPLY.error
-            : FIRST_RUN_TEXT_REPLY.choosing;
+      const reply =
+        busyRef.current || bindInFlightRef.current
+          ? FIRST_RUN_TEXT_REPLY.provisioning
+          : provisionedRef.current
+            ? FIRST_RUN_TEXT_REPLY.wrapUp
+            : erroredRef.current
+              ? FIRST_RUN_TEXT_REPLY.error
+              : isRuntimeChooserEnabled()
+                ? FIRST_RUN_TEXT_REPLY.choosing
+                : FIRST_RUN_TEXT_REPLY.signIn;
       textTurnSeqRef.current += 1;
       const seq = textTurnSeqRef.current;
       seedTurn({
@@ -967,6 +1093,68 @@ export function useFirstRunConductor(): void {
     resetFirstRunPersistGuard();
     setFirstRunActionHandler((value) => handleActionRef.current(value));
     setFirstRunTextHandler((value) => handleTextRef.current(value));
+    // Cloud-only onboarding (#13377): sign in to Eliza Cloud is the single
+    // path. An already-usable session (hosted web where the user is logged in
+    // to Eliza Cloud, a durable token from a previous login, or a completed
+    // OAuth round trip after a mobile WebView eviction) skips the sign-in ask
+    // entirely and provisions immediately without a gesture —
+    // launchStewardLogin short-circuits on the stored token, so no sign-in
+    // surface ever appears. Otherwise the greeting offers the one sign-in
+    // button; its tap enters the normal cloud pick path (the gesture the real
+    // login flow needs). A cold relaunch just re-enters this branch, so no
+    // durable resume marker is needed — any stale chooser-mode marker is
+    // dropped. The local-backup restore probe is skipped: restoring a local
+    // agent is a chooser-mode concept.
+    if (!isRuntimeChooserEnabled()) {
+      clearCloudLoginPending();
+      draftRef.current = {
+        ...draftRef.current,
+        runtime: "cloud",
+        localInference: "cloud-inference",
+      };
+      // The resume is armed in BOTH branches: with a usable session it drives
+      // the immediate provision; without one it lets a session that lands
+      // later without a tap (login from another same-origin tab, an injected
+      // hosted-web session) auto-continue via the auto-resume effect.
+      pendingCloudResumeRef.current = "cloud";
+      let tokenPoll: ReturnType<typeof setInterval> | null = null;
+      if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
+        seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
+        runCloudResumeRef.current("cloud");
+      } else {
+        seedTurn(
+          makeTurn(
+            "first-run:greeting",
+            `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`,
+          ),
+        );
+        // A usable session can also LAND after this mount without any
+        // elizaCloudConnected flip: the native storage bridge hydrates the
+        // durable token from Capacitor Preferences asynchronously, and a web
+        // login in another same-origin tab writes it directly. Poll cheaply
+        // (one localStorage read) and upgrade to the welcome-back skip the
+        // moment it appears; a pick already in flight always wins.
+        tokenPoll = setInterval(() => {
+          if (
+            busyRef.current ||
+            bindInFlightRef.current ||
+            provisionedRef.current
+          ) {
+            if (tokenPoll) clearInterval(tokenPoll);
+            return;
+          }
+          if (!hasUsableStoredStewardToken()) return;
+          if (tokenPoll) clearInterval(tokenPoll);
+          seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
+          runCloudResumeRef.current("cloud");
+        }, 500);
+      }
+      return () => {
+        if (tokenPoll) clearInterval(tokenPoll);
+        setFirstRunActionHandler(null);
+        setFirstRunTextHandler(null);
+      };
+    }
     // Cloud-login resume: if the app was cold-launched mid cloud OAuth (the
     // external browser evicted the WebView on a device), rehydrate the
     // interrupted cloud/hybrid flow instead of restarting at the greeting.

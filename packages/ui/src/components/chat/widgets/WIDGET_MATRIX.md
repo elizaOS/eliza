@@ -69,9 +69,14 @@ ChatView today (see divergence D1).
 
 ## Slot widget matrix
 
+Notifications are NOT a slot widget: the dashboard notification center
+(`components/shell/NotificationsHomeCenter.tsx`, reading the notification
+store <- WS `agent_event` `stream:"notification"`) is pinned by HomeScreen
+directly below the time/weather base — a registry entry would double-render
+the inbox.
+
 | Widget id | Slot | Data source / updates | Component | Host mount | Status |
 |---|---|---|---|---|---|
-| `notifications.recent` | home | notification-store <- WS `agent_event` `stream:"notification"` | `notifications.tsx` | ViewCatalog (home) | wired |
 | `agent-orchestrator.activity` | chat-sidebar + home | `useActivityEvents` <- WS `pty-session-event` / `proactive-message` / `agent_event` | `agent-orchestrator.tsx` `OrchestratorActivityWidget` | TasksEventsPanel + ViewCatalog | wired |
 | `agent-orchestrator.apps` | chat-sidebar + home | poll `listAppRuns()` 5s | `agent-orchestrator.tsx` `AppRunsWidget` | TasksEventsPanel + ViewCatalog | wired |
 | `agent-orchestrator.accounts` | chat-sidebar | poll `listAccounts()`/`getOrchestratorAccounts()`/`getOrchestratorRooms()` 15s | `agent-orchestrator-accounts-view.tsx` | TasksEventsPanel | wired |
@@ -164,7 +169,7 @@ the open proposal.
 | Choice | yes | yes | n/a |
 | Followups | yes | yes | n/a |
 | Form | yes | yes | n/a |
-| Notifications | yes | yes (added #9304) | n/a |
+| Notification center (pinned `NotificationsHomeCenter`) | yes | yes | yes, home-screen e2e |
 | Messages | yes | yes (added #9304) | n/a |
 | Orchestrator activity | yes (e2e fixture) | yes | n/a |
 | Orchestrator accounts | yes (e2e fixture) | yes | n/a |

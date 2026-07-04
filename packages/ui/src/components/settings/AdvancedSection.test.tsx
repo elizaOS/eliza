@@ -15,20 +15,25 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { handleReset, appValue, clientMock } = vi.hoisted(() => ({
-  handleReset: vi.fn(),
-  appValue: {} as Record<string, unknown>,
-  clientMock: {
-    listLocalAgentBackups: vi.fn(),
-    createLocalAgentBackup: vi.fn(),
-    restoreLocalAgentBackup: vi.fn(),
-  },
-}));
+const { handleReset, setActionNotice, appValue, clientMock, devMode } =
+  vi.hoisted(() => ({
+    handleReset: vi.fn(),
+    setActionNotice: vi.fn(),
+    appValue: {} as Record<string, unknown>,
+    clientMock: {
+      listLocalAgentBackups: vi.fn(),
+      createLocalAgentBackup: vi.fn(),
+      restoreLocalAgentBackup: vi.fn(),
+      seedDevNotifications: vi.fn(),
+    },
+    devMode: { value: false },
+  }));
 
 vi.mock("../../state", () => {
   Object.assign(appValue, {
     t: (key: string) => key,
     handleReset,
+    setActionNotice,
     exportBusy: false,
     exportPassword: "",
     exportIncludeLogs: false,
@@ -49,7 +54,7 @@ vi.mock("../../state", () => {
       sel(appValue),
     useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
       sel(appValue),
-    useIsDeveloperMode: () => false,
+    useIsDeveloperMode: () => devMode.value,
     setDeveloperMode: vi.fn(),
     useIsPreviewMode: () => false,
     setPreviewMode: vi.fn(),
@@ -64,6 +69,13 @@ import { AdvancedSection } from "./AdvancedSection";
 
 beforeEach(() => {
   handleReset.mockClear();
+  setActionNotice.mockClear();
+  devMode.value = false;
+  clientMock.seedDevNotifications.mockReset();
+  clientMock.seedDevNotifications.mockResolvedValue({
+    count: 8,
+    notifications: [],
+  });
   clientMock.listLocalAgentBackups.mockReset();
   clientMock.listLocalAgentBackups.mockResolvedValue([]);
   clientMock.createLocalAgentBackup.mockReset();
@@ -186,5 +198,48 @@ describe("AdvancedSection agent backups", () => {
     expect(
       screen.getByText("Restored backup. Restart the agent to activate it."),
     ).toBeTruthy();
+  });
+
+  describe("dev notification seeding", () => {
+    it("hides the Developer tools group unless developer mode is on", () => {
+      render(<AdvancedSection />);
+      expect(
+        screen.queryByRole("button", { name: "Seed test notifications" }),
+      ).toBeNull();
+    });
+
+    it("seeds the demo spread and reports the count", async () => {
+      devMode.value = true;
+      render(<AdvancedSection />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Seed test notifications" }),
+      );
+      await waitFor(() =>
+        expect(clientMock.seedDevNotifications).toHaveBeenCalledTimes(1),
+      );
+      await waitFor(() =>
+        expect(setActionNotice).toHaveBeenCalledWith(
+          "Seeded 8 test notifications",
+          "success",
+        ),
+      );
+    });
+
+    it("surfaces a seeding failure as an error notice", async () => {
+      devMode.value = true;
+      clientMock.seedDevNotifications.mockRejectedValue(
+        new Error("notification route not found"),
+      );
+      render(<AdvancedSection />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "Seed test notifications" }),
+      );
+      await waitFor(() =>
+        expect(setActionNotice).toHaveBeenCalledWith(
+          "notification route not found",
+          "error",
+        ),
+      );
+    });
   });
 });

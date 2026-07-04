@@ -75,7 +75,6 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   // ── Background policy: unconditionally "shared" (wallpaper shows through) ──
   { id: "chat", backgroundPolicy: "shared" },
   { id: "background", backgroundPolicy: "shared" },
-  { id: "settings", backgroundPolicy: "shared" },
   // ── Background policy: "shared" only at the tab's launcher root ──
   {
     id: "views",

@@ -12,7 +12,7 @@
  * The two consumers differ ONLY in their policy gates, expressed via
  * {@link LoopbackTrustOptions}:
  *  - app-core: requireLocalAuthEnv + devAuthBypassEnv, cloudCheck "env"
- *    (`ELIZA_CLOUD_PROVISIONED === "1"`).
+ *    (`ELIZA_CLOUD_PROVISIONED === "1"` through the boot alias table).
  *  - agent:    requireLocalAuthEnv (no dev bypass), cloudCheck "container"
  *    (`isCloudProvisionedContainer()` — flag AND a provisioning token).
  *
@@ -30,6 +30,7 @@ import type http from "node:http";
 import { isIP } from "node:net";
 import { isCloudProvisionedContainer } from "./elizacloud/cloud-provisioning.js";
 import { isLoopbackBindHost } from "./runtime-env.js";
+import { readAliasedEnv } from "./utils/env.js";
 
 export interface LoopbackTrustOptions {
   /**
@@ -249,7 +250,7 @@ function isTrustedLocalOrigin(raw: string): boolean {
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {
   if (cloudCheck === "container") return isCloudProvisionedContainer();
-  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
 
 function localAuthRequired(options: LoopbackTrustOptions): boolean {

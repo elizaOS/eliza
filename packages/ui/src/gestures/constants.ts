@@ -10,7 +10,7 @@
  */
 
 /** Movement (px) under which a release is treated as a tap, not a drag. Also the
- *  slop the notification-pull and axis-commit checks share. */
+ *  slop the pull-gesture and axis-commit checks share. */
 export const TAP_SLOP = 8;
 
 /**
@@ -97,8 +97,7 @@ export const PUSH_TO_TALK_HOLD_MS = 200;
 
 /**
  * Linear resistance applied to travel past a rubber-band's soft cap (see
- * recognizers.rubberBand). Shared by the notification reveal's overshoot and
- * the pager's past-the-edge drag.
+ * recognizers.rubberBand). Used by the pager's past-the-edge drag.
  */
 export const OVERSHOOT_RESISTANCE = 0.35;
 /**

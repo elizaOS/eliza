@@ -42,7 +42,12 @@ test("settings exposes computer use capability controls", async ({ page }) => {
 test("first-run starts with setup choices before capability settings", async ({
   page,
 }) => {
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  // This test asserts the full runtime chooser (incl. the Local option), which
+  // is OFF by default (#13377 cloud-only onboarding) — opt in via the override.
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    "eliza:enable-runtime-chooser": "1",
+  });
   await installDefaultAppRoutes(page);
   // #9952: onboarding is in-chat. Boot with first-run NOT complete so the
   // headless conductor seeds the greeting + runtime choice into the live

@@ -35,10 +35,10 @@ export function navigateBackToLauncher(): void {
 
 /**
  * The shared view back button: an icon, nothing else. Deliberately chromeless —
- * no border, no shadow, and a `bg-bg` fill so it reads as the neutral view
- * surface (white in light mode, dark in dark mode), never the accent/orange
- * chip it used to be. On an opaque view the fill is invisible (looks like a
- * bare icon); on a shared-background view it's a subtle neutral chip.
+ * no border, no shadow, and NO rest-state fill so it reads as a bare icon on
+ * every surface (#13451: normal-view header back affordance is icon-only, with
+ * no border/background at rest). A subtle neutral `bg-hover` chip only appears
+ * on hover/focus for affordance, never in the resting state.
  */
 export function ViewBackButton({
   onBack,
@@ -46,6 +46,8 @@ export function ViewBackButton({
   className,
 }: {
   onBack?: () => void;
+  /** Accessible + agent label. Sub-views override this to name their target
+   *  (e.g. a Settings section returning to the hub uses "Back to Settings"). */
   label?: string;
   className?: string;
 }) {
@@ -64,7 +66,7 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-full bg-bg text-txt transition-colors hover:bg-bg-hover",
+        "inline-flex h-9 w-9 items-center justify-center rounded-full bg-transparent text-txt transition-colors hover:bg-bg-hover focus-visible:bg-bg-hover",
         className,
       )}
       {...agentProps}
@@ -86,6 +88,7 @@ export function ViewBackButton({
 export function ViewHeader({
   title,
   onBack,
+  backLabel,
   showBack = true,
   right,
   className,
@@ -93,36 +96,44 @@ export function ViewHeader({
   title: ReactNode;
   /** Override the default (launcher) back target — e.g. a sub-view returning to its hub. */
   onBack?: () => void;
+  /** Accessible + agent label for the back control. Defaults to the launcher
+   *  wording; a sub-view returning to its hub should name that hub (e.g.
+   *  "Back to Settings") so the icon-only button is announced correctly. */
+  backLabel?: string;
   /** Hide the back control entirely (a view with no meaningful "back"). */
   showBack?: boolean;
   /** Optional trailing controls (actions, filters). */
   right?: ReactNode;
   className?: string;
 }) {
-  // A 3-column grid, not absolute positioning: responsive `static`/`relative`
-  // position variants do not survive the app's Tailwind build (the base
-  // `absolute` always won, leaving the back button detached from the row on
-  // desktop), so the layout uses grid tracks + responsive `justify-self`
-  // instead. Mobile: fixed equal side tracks keep the title truly centered
-  // with the back control on the left. ≥sm: auto tracks left-align the title
-  // right after the back button.
+  // Title is centered over the FULL header width, not within a grid track, so
+  // it stays optically centered regardless of how wide the back button or the
+  // trailing actions are (#13451: view title is centered in the header). The
+  // controls float at the edges of a `relative` row and the `<h1>` is a
+  // non-responsive `absolute inset-x-0` centered layer. It uses a single,
+  // static `absolute` (unlike the responsive position variants that
+  // historically did not survive the app's Tailwind build). The title reserves
+  // symmetric side room (`px-12`, wider than the icon back button) and
+  // truncates, so a long title never slides under the edge controls; the flex
+  // controls sit above it (`z-10`, pointer-events on) and stay clickable while
+  // the title layer is `pointer-events-none`.
   return (
     <header
       data-testid="view-header"
       className={cn(
-        "grid min-h-14 shrink-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-1 px-3 py-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-2 sm:px-4",
+        "relative flex min-h-14 shrink-0 items-center justify-between gap-1 px-3 py-2.5 sm:gap-2 sm:px-4",
         className,
       )}
     >
-      {showBack ? <ViewBackButton onBack={onBack} /> : <span aria-hidden />}
-      <h1 className="justify-self-center truncate text-lg font-semibold tracking-tight text-txt-strong sm:justify-self-start">
-        {title}
-      </h1>
-      {right ? (
-        <div className="justify-self-end">{right}</div>
+      {showBack ? (
+        <ViewBackButton onBack={onBack} label={backLabel} />
       ) : (
         <span aria-hidden />
       )}
+      <h1 className="pointer-events-none absolute inset-x-0 mx-auto max-w-[calc(100%-6rem)] truncate px-12 text-center text-lg font-semibold tracking-tight text-txt-strong">
+        {title}
+      </h1>
+      {right ? <div className="relative z-10">{right}</div> : <span aria-hidden />}
     </header>
   );
 }

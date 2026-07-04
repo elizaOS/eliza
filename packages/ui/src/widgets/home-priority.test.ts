@@ -10,9 +10,8 @@ import {
   homeSignalsFromEvents,
   homeSignalsFromNotifications,
   homeSignalWeight,
-  type RankableContentNotification,
+  NOTIFICATION_PRIORITY_RANK,
   type RankableHomeWidget,
-  rankHomeNotifications,
   rankHomeWidgets,
   scoreHomeWidget,
   signalKindForEventType,
@@ -321,8 +320,8 @@ describe("homeSignalsFromEvents", () => {
 describe("homeSignalsFromNotifications", () => {
   const notifDecl: RankableHomeWidget[] = [
     {
-      id: "notifications.recent",
-      pluginId: "notifications",
+      id: "inbox",
+      pluginId: "p",
       order: 50,
       signalKinds: ["notification", "approval", "escalation"],
     },
@@ -361,20 +360,20 @@ describe("rankHomeWidgets — end-to-end with derived signals", () => {
   const decls: RankableHomeWidget[] = [
     { id: "pinned", pluginId: "p", order: 0 }, // highest base, no signals
     {
-      id: "notifications.recent",
-      pluginId: "notifications",
+      id: "inbox",
+      pluginId: "p",
       order: 90,
       signalKinds: ["notification", "approval", "escalation"],
     },
   ];
 
-  it("an urgent notification floats the low-base notifications widget to the top", () => {
+  it("an urgent notification floats a low-base subscribed widget to the top", () => {
     const signals = homeSignalsFromNotifications(
       [{ priority: "urgent", timestamp: NOW }],
       decls,
     );
     const ranked = rankHomeWidgets(decls, signals, { now: NOW });
-    expect(ranked[0].declaration.id).toBe("notifications.recent");
+    expect(ranked[0].declaration.id).toBe("inbox");
   });
 
   it("with no live signals, base order wins (the pinned widget leads)", () => {
@@ -383,43 +382,18 @@ describe("rankHomeWidgets — end-to-end with derived signals", () => {
   });
 });
 
-describe("rankHomeNotifications — content-item priority", () => {
-  const n = (
-    id: string,
-    patch: Partial<RankableContentNotification> = {},
-  ): RankableContentNotification & { id: string } => ({
-    id,
-    priority: "normal",
-    createdAt: NOW,
-    ...patch,
-  });
-
-  it("ranks unread ahead of read regardless of recency", () => {
-    const ranked = rankHomeNotifications([
-      n("read-new", { createdAt: NOW, readAt: NOW }),
-      n("unread-old", { createdAt: NOW - 1_000 }),
-    ]);
-    expect(ranked.map((x) => x.id)).toEqual(["unread-old", "read-new"]);
-  });
-
-  it("ranks higher priority ahead of newer-but-lower priority (attention first)", () => {
-    const ranked = rankHomeNotifications([
-      n("low-new", { priority: "low", createdAt: NOW }),
-      n("urgent-old", { priority: "urgent", createdAt: NOW - 5_000 }),
-    ]);
-    expect(ranked.map((x) => x.id)).toEqual(["urgent-old", "low-new"]);
-  });
-
-  it("breaks priority ties by recency (newest first)", () => {
-    const ranked = rankHomeNotifications([
-      n("older", { priority: "high", createdAt: NOW - 1_000 }),
-      n("newer", { priority: "high", createdAt: NOW }),
-    ]);
-    expect(ranked.map((x) => x.id)).toEqual(["newer", "older"]);
-  });
-
-  it("is stable for fully-equal items (preserves input order)", () => {
-    const ranked = rankHomeNotifications([n("a"), n("b"), n("c")]);
-    expect(ranked.map((x) => x.id)).toEqual(["a", "b", "c"]);
+describe("NOTIFICATION_PRIORITY_RANK — the shared content-priority scale", () => {
+  it("orders urgent > high > normal > low", () => {
+    // The dashboard notification center sorts rows on this scale; every
+    // notification-ordering surface must agree on the same total order.
+    expect(NOTIFICATION_PRIORITY_RANK.urgent).toBeGreaterThan(
+      NOTIFICATION_PRIORITY_RANK.high,
+    );
+    expect(NOTIFICATION_PRIORITY_RANK.high).toBeGreaterThan(
+      NOTIFICATION_PRIORITY_RANK.normal,
+    );
+    expect(NOTIFICATION_PRIORITY_RANK.normal).toBeGreaterThan(
+      NOTIFICATION_PRIORITY_RANK.low,
+    );
   });
 });

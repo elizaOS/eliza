@@ -19,7 +19,7 @@
       "tier": "T1",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Follow-up to #12972: the first live report resolved 2026-07-04T13:00:00Z to 09:00 America/New_York, so it is not verified until recaptured with the structural forbiddenDueLocalTimes check passing."
+      "notes": "Follow-up to #12972: the first live report resolved 2026-07-04T13:00:00Z to 09:00 America/New_York, so it is not verified until recaptured with the structural forbiddenDueLocalTimes check passing. Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: attempt 1 falsely said 'I've set up a reminder' after a failed create and then demanded a fixed time against the any-time-today ask; attempt 2's create failed and the runtime apology fallback swallowed the turn (judge 0.00)."
     },
     {
       "id": "persona.night-owl-anchored-day",
@@ -43,15 +43,15 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. 'Just got up, what's on deck' IS the wake-confirmation anchor and must fire the brief this turn: definitionCountDelta{daily brief, delta:1, forbiddenDueLocalTimes 09:00} proves the anchored (not-9am) brief, judge grades the fire-on-wake + no-wall-clock-question behavior. Live-verify deferred (#12781)."
+      "notes": "Live-only. 'Just got up, what's on deck' IS the wake-confirmation anchor and must fire the brief this turn: definitionCountDelta{daily brief, delta:1, forbiddenDueLocalTimes 09:00} proves the anchored (not-9am) brief, judge grades the fire-on-wake + no-wall-clock-question behavior. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: check widened in this PR to a store-agnostic wake-anchored predicate (the product's own morning brief ships as a ScheduledTask, so definitions-only over-constrained the store; wall-clock bar unchanged). Under it: one sample created a manual trigger (not wake-anchored), one created a correct relative_to_anchor wake rule (structural check green) but delivered an empty brief on the wake signal (judge 0.50 < 0.6). The pre-widen sample had a genuine user_awake event trigger and a fired brief, so the capture is achievable — full wake→brief delivery never landed in a single graded run."
     },
     {
       "id": "night-owl-observed-wake-drift-adaptation",
       "pack": "B1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "Live-only. Reported wake drift (12:10->12:45->1:05) updates the anchor, not a stale 11:30: definitionCountDelta{wake at 11:30, delta:0} proves no new fixed-time definition was minted to paper over the drift; judge grades the anchor-tracks-drift + no-judgment behavior. Live-verify deferred (#12781)."
+      "status": "verified",
+      "notes": "Live-only. Reported wake drift (12:10->12:45->1:05) updates the anchor, not a stale 11:30: definitionCountDelta{wake at 11:30, delta:0} proves no new fixed-time definition was minted to paper over the drift; judge grades the anchor-tracks-drift + no-judgment behavior. Live-verify deferred (#12781). Live Cerebras gpt-oss-120b passed 2026-07-04 (TZ=UTC, judge 1.00): explicitly dropped the 11:30 assumption and adopted the observed 12:10-1:05 wake drift; no wall-clock definition created."
     },
     {
       "id": "night-owl-end-of-evening-nudge",
@@ -59,7 +59,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. End-of-evening stretch nudge follows her pre-sleep boundary, not 5pm/midnight: definitionCountDelta{stretch, delta:1, forbiddenDueLocalTimes 17:00 & 00:00} proves a flexible non-fixed nudge; judge grades the owner-relative day-boundary anchor. Live-verify deferred (#12781)."
+      "notes": "Live-only. End-of-evening stretch nudge follows her pre-sleep boundary, not 5pm/midnight: definitionCountDelta{stretch, delta:1, forbiddenDueLocalTimes 17:00 & 00:00} proves a flexible non-fixed nudge; judge grades the owner-relative day-boundary anchor. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: attempt 1 routed to an unauthenticated calendar create hardcoded at 22:00; attempt 2 pinned the nudge at 5pm and midnight, explicitly ignoring the owner-relative pre-sleep constraint (judge 0.00)."
     },
     {
       "id": "night-owl-contradiction-reconciles-anchor",
@@ -67,7 +67,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only. 'Sleeping earlier now, don't assume 11:30' updates the single quiet-hours rule in place: definitionCountDelta{quiet hours, delta:1} proves convergence to one rule (not a second layered definition); judge grades update-not-stack + stale-baseline-dropped. Live-verify deferred (#12781)."
+      "notes": "Live-only. 'Sleeping earlier now, don't assume 11:30' updates the single quiet-hours rule in place: definitionCountDelta{quiet hours, delta:1} proves convergence to one rule (not a second layered definition); judge grades update-not-stack + stale-baseline-dropped. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: attempt 1 misrouted quiet-hours to the screen-time BLOCK surface and retained the contradicted 11:30 anchor in the updated rule; attempt 2 hit the apology fallback then asked the owner for exact start/end times instead of updating the one rule with the correction it was given (judge 0.00)."
     },
     {
       "id": "night-owl-reject-wall-clock-repair",
@@ -75,7 +75,7 @@
       "tier": "T4",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Live-only rejection trap. A mistaken 9am build-check proposal is rejected and repaired to after-wake: definitionCountDelta{check the build, delta:1, forbiddenDueLocalTimes 09:00} proves NO 9am survives in state; judge grades the non-defensive anchor-relative repair. Live-verify deferred (#12781)."
+      "notes": "Live-only rejection trap. A mistaken 9am build-check proposal is rejected and repaired to after-wake: definitionCountDelta{check the build, delta:1, forbiddenDueLocalTimes 09:00} proves NO 9am survives in state; judge grades the non-defensive anchor-relative repair. Live-verify deferred (#12781). Live-verify attempts 2026-07-04 (Cerebras gpt-oss-120b, TZ=UTC) FAILED — row stays authored: both attempts stored the reminder with dueAt pinned at the exact rejected 09:00 wall-clock time while narrating flexibility (judge 0.00 twice)."
     },
     {
       "id": "nightowl.anchored.wake_relative_deploy_ping",

@@ -7,12 +7,14 @@
  * check the real observation against it.
  *
  * The state mirrors the launcher's single source of truth: which rail half is
- * showing (`shell-surface-store`), whether the notification center is pulled
- * open, where keyboard focus belongs, and a monotone count of tile launches
- * (the telemetry `launch`-count invariant, §D item 10). Rejected gestures — a
- * settle-back drag, a pull that never crosses threshold, a launcher-half left
- * flick with nowhere to go — are modeled as no-ops so the model stays the
- * authority on what a "rejected" gesture means.
+ * showing (`shell-surface-store`), where keyboard focus belongs, and a monotone
+ * count of tile launches (the telemetry `launch`-count invariant, §D item 10).
+ * Rejected gestures — a settle-back drag, a launcher-half left flick with
+ * nowhere to go — are modeled as no-ops so the model stays the authority on
+ * what a "rejected" gesture means. Notifications live in the pinned dashboard
+ * widget (NotificationsHomeCenter) — an ordinary scrolling card on the home
+ * half, covered by `vertical-widget-scroll`, with no modal open/closed state
+ * for the model to track.
  */
 
 export type LauncherPage = "home" | "launcher";
@@ -23,8 +25,6 @@ export type FocusZone = "home" | "launcher";
 export interface LauncherModelState {
   /** Which rail half is showing. Mirrors `shell-surface-store`'s `page`. */
   readonly page: LauncherPage;
-  /** Notification center pulled open on the home half. */
-  readonly notificationOpen: boolean;
   /** The half keyboard focus must stay within (never the inert offscreen half). */
   readonly focusZone: FocusZone;
   /** Monotone count of committed tile launches (telemetry `launch` events). */
@@ -33,7 +33,6 @@ export interface LauncherModelState {
 
 export const INITIAL_MODEL_STATE: LauncherModelState = {
   page: "home",
-  notificationOpen: false,
   focusZone: "home",
   launchCount: 0,
 };
@@ -57,8 +56,6 @@ export type LauncherAction =
   | { readonly kind: "tile-tap"; readonly tileId: string }
   | { readonly kind: "tile-long-press"; readonly tileId: string }
   | { readonly kind: "grid-scroll"; readonly dy: number }
-  | { readonly kind: "notification-pull"; readonly committed: boolean }
-  | { readonly kind: "notification-dismiss" }
   | { readonly kind: "vertical-widget-scroll"; readonly dy: number }
   | { readonly kind: "tab-focus" };
 
@@ -72,8 +69,8 @@ export type LauncherAction =
  * - a left swipe/next commits home→launcher only from home,
  * - a right swipe/prev commits launcher→home only from launcher,
  * - an uncommitted (settle-back) swipe changes nothing,
- * - a rail transition always closes an open notification center and re-homes
- *   focus into the now-visible half (the offscreen half is `inert`).
+ * - a rail transition re-homes focus into the now-visible half (the offscreen
+ *   half is `inert`).
  */
 export function advanceModel(
   state: LauncherModelState,
@@ -105,18 +102,8 @@ export function advanceModel(
     }
     case "grid-scroll":
     case "vertical-widget-scroll":
-      // Vertical scroll never flips the rail or opens the notification center
-      // (axis lock, §D items 6/27/33).
+      // Vertical scroll never flips the rail (axis lock, §D items 6/27/33).
       return state;
-    case "notification-pull": {
-      if (state.page !== "home") return state;
-      if (!action.committed) return state;
-      return { ...state, notificationOpen: true };
-    }
-    case "notification-dismiss":
-      return state.notificationOpen
-        ? { ...state, notificationOpen: false }
-        : state;
     case "tab-focus":
       // Focus is always pulled into the visible half; it can never land in the
       // inert offscreen half.
@@ -136,7 +123,6 @@ function commitPage(
   return {
     ...state,
     page: target,
-    notificationOpen: false,
     focusZone: target,
   };
 }

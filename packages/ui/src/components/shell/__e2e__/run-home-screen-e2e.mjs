@@ -27,7 +27,6 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
-  touchDragHold,
   touchLongPress,
   touchSwipe,
 } from "../../../testing/real-touch-gestures.ts";
@@ -213,15 +212,6 @@ async function touchSwipeRight(page, testId) {
     stepDelayMs: 16,
   });
 }
-// A real downward touch drag — the home notification pull-down (#10706) is a
-// vertical gesture, so this drives it through the same CDP touch path as the
-// horizontal rail swipes.
-async function touchSwipeDown(page, testId, dy = 180) {
-  await touchSwipe(page, `[data-testid="${testId}"]`, 0, dy, {
-    steps: 12,
-    stepDelayMs: 16,
-  });
-}
 
 // A STATIONARY hold past the long-press window. On the curated launcher this
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
@@ -385,7 +375,6 @@ try {
   const WIDGET_CARDS = [
     ["chat-widget-finances-alerts", "Overdrawn"],
     ["widget-goals-attention", "Ship the release"],
-    ["widget-notifications", "Payment failed"],
     ["chat-widget-relationships", null],
     ["chat-widget-calendar-upcoming", "Design review"],
     ["widget-health-sleep", "Irregular"],
@@ -413,6 +402,59 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
+  // The dashboard notification center: HomeScreen pins NotificationsHomeCenter
+  // directly below the base widgets (it is NOT a ranked WidgetHost entry — a
+  // registry declaration would double-render the inbox). The fixture seeds one
+  // urgent unread notification, so the card must render with its populated row,
+  // the unread badge, and its inbox actions.
+  {
+    const center = mobile.getByTestId("home-notification-center");
+    await center.waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await mobile
+        .getByTestId("home-screen")
+        .getByTestId("home-notification-center")
+        .count()) === 1,
+      "the pinned notification center renders inside the home screen",
+    );
+    assert(
+      (await center.getByTestId("notification-row").count()) === 1,
+      "the seeded notification renders as a row",
+    );
+    assert(
+      (await center.getByText("Payment failed", { exact: false }).count()) > 0,
+      "the notification row shows the seeded title",
+    );
+    assert(
+      (await center.getByTestId("notification-unread-dot").count()) === 1 &&
+        (await center.getByTestId("notifications-unread-badge").innerText()) ===
+          "1",
+      "the unread dot + count badge reflect the seeded unread notification",
+    );
+    assert(
+      (await center.getByTestId("notification-row-dismiss").count()) === 1 &&
+        (await center.getByTestId("notifications-mark-all-read").count()) ===
+          1 &&
+        (await center.getByTestId("notifications-clear-all").count()) === 1,
+      "the inbox actions (dismiss / mark-all-read / clear) render on the card",
+    );
+    assert(
+      (await mobile.getByTestId("home-notification-center").count()) === 1 &&
+        (await mobile
+          .getByTestId("widget-host-home")
+          .getByTestId("home-notification-center")
+          .count()) === 0,
+      "the notification center is pinned once, outside the ranked WidgetHost",
+    );
+  }
+  // The gesture-shell notification surfaces are GONE: no pull zone, no
+  // pull-down sheet, no anchored panel. Notifications live on the dashboard.
+  assert(
+    (await mobile.getByTestId("home-notification-pull-zone").count()) === 0 &&
+      (await mobile.getByTestId("notification-sheet").count()) === 0 &&
+      (await mobile.getByTestId("notification-panel").count()) === 0,
+    "no notification pull-zone / sheet / panel exists (dashboard center only)",
+  );
   // No general quick-access tiles anymore — Launcher is the adjacent
   // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
   // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
@@ -507,101 +549,6 @@ try {
     `home settle is layout-stable (CLS ${stability.cls.toFixed(4)} ≤ 0.1, ${stability.shiftCount} shifts)`,
   );
 
-  // The resting notification "pill"/grabber is gone — the redesign removed the
-  // always-visible top indicator (and the pull "tag"); pulling down from
-  // anywhere brings the real sheet down.
-  assert(
-    (await mobile.getByTestId("home-notification-grabber").count()) === 0 &&
-      (await mobile.getByTestId("home-notification-reveal").count()) === 0,
-    "no resting pill/grabber and no pull-tag affordance (removed)",
-  );
-
-  const OPEN_SHEET = '[data-testid="notification-sheet"][data-open]';
-
-  // Mid-pull evidence: hold a partial downward drag from the dashboard body. The
-  // REAL sheet itself fades in and tracks the finger (it is mounted but NOT yet
-  // "open"), so this is what the user sees being pulled down. Screenshot it, then
-  // CANCEL — a short/cancelled pull must retract, leaving nothing open.
-  {
-    const drag = await touchDragHold(
-      mobile,
-      '[data-testid="home-screen"]',
-      0,
-      80,
-      { steps: 8, stepDelayMs: 12 },
-    );
-    await mobile.waitForTimeout(90);
-    assert(
-      (await mobile.getByTestId("notification-sheet").count()) === 1 &&
-        (await mobile.locator(OPEN_SHEET).count()) === 0,
-      "a partial pull reveals the real sheet, tracking the finger (not yet open)",
-    );
-    await snap(mobile, "mobile-notification-pull-reveal");
-    await drag.cancel();
-    await mobile.waitForTimeout(420);
-    assert(
-      (await mobile.getByTestId("notification-sheet").count()) === 0,
-      "a CANCELLED pull retracts the sheet (nothing left open)",
-    );
-  }
-
-  // iOS-style pull-down from ANYWHERE on the dashboard body fades in + pulls down
-  // the NotificationCenter sheet and settles it OPEN — a real touch drag over the
-  // widget list (scrolled to the top), not a thin top strip. This is the headline
-  // of the redesign, driven through the same CDP touch path as the rail swipes.
-  assert(
-    (await mobile.getByTestId("notification-sheet").count()) === 0,
-    "notification sheet starts closed",
-  );
-  await touchSwipeDown(mobile, "home-screen");
-  await mobile.locator(OPEN_SHEET).waitFor({ state: "visible", timeout: 4000 });
-  assert(
-    (await mobile.locator(OPEN_SHEET).count()) === 1,
-    "real-touch pull-down from the dashboard body opens the notification sheet",
-  );
-  // On-screen + horizontally centered: the sheet must sit within the viewport,
-  // not clipped to one side. (A `position: fixed` sheet trapped in the
-  // transformed home↔launcher rail anchors to the 2×-wide rail and renders
-  // half-off-screen to the right — this catches that regression.)
-  {
-    const sheetBox = await mobile.getByTestId("notification-sheet").boundingBox();
-    const vw = mobile.viewportSize().width;
-    const center = (sheetBox?.x ?? 0) + (sheetBox?.width ?? 0) / 2;
-    assert(
-      sheetBox != null &&
-        sheetBox.x >= -2 &&
-        sheetBox.x + sheetBox.width <= vw + 2 &&
-        Math.abs(center - vw / 2) < 24,
-      `notification sheet is on-screen + centered (x ${Math.round(sheetBox?.x ?? -1)}, w ${Math.round(sheetBox?.width ?? -1)}, vw ${vw})`,
-    );
-  }
-  // Visual evidence of the open glass sheet — let the settle finish first so the
-  // capture is the resting sheet, not a mid-animation frame.
-  await mobile.waitForTimeout(450);
-  await snap(mobile, "mobile-notification-sheet");
-  // Close it again (Escape — a documented dismiss) so the rail swipe below starts
-  // from a clean, settled home.
-  await mobile.keyboard.press("Escape");
-  await mobile
-    .getByTestId("notification-sheet")
-    .waitFor({ state: "detached", timeout: 4000 });
-  assert(
-    (await mobile.getByTestId("notification-sheet").count()) === 0,
-    "the notification sheet closes again (Escape)",
-  );
-
-  // The top-edge band (the iOS-natural place to start a pull, and the click /
-  // keyboard entry point) still opens the sheet via a pull too.
-  await touchSwipeDown(mobile, "home-notification-pull-zone");
-  await mobile.locator(OPEN_SHEET).waitFor({ state: "visible", timeout: 4000 });
-  assert(
-    (await mobile.locator(OPEN_SHEET).count()) === 1,
-    "a pull from the top-edge band also opens the notification sheet",
-  );
-  await mobile.keyboard.press("Escape");
-  await mobile
-    .getByTestId("notification-sheet")
-    .waitFor({ state: "detached", timeout: 4000 });
   await waitForSurfacePageSettled(mobile, "home");
 
   // Real touch left-swipe on the home half pages the outer rail to the
@@ -861,6 +808,24 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
+  // Desktop gets the SAME pinned dashboard notification center — there is no
+  // per-surface shell (no anchored panel, no pull-down sheet) any more.
+  await desktop
+    .getByTestId("home-notification-center")
+    .waitFor({ state: "visible", timeout: 5000 });
+  assert(
+    (await desktop
+      .getByTestId("home-notification-center")
+      .getByTestId("notification-row")
+      .count()) === 1,
+    "desktop renders the pinned notification center with the seeded row",
+  );
+  assert(
+    (await desktop.getByTestId("home-notification-pull-zone").count()) === 0 &&
+      (await desktop.getByTestId("notification-sheet").count()) === 0 &&
+      (await desktop.getByTestId("notification-panel").count()) === 0,
+    "desktop has no notification pull-zone / sheet / panel either",
+  );
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));
   await waitForSurfacePageSettled(desktop, "launcher");
@@ -914,49 +879,6 @@ try {
     "desktop fine-pointer: `<` edge button (→ home) present on the launcher",
   );
   await snap(finePointer, "desktop-edge-buttons-launcher");
-
-  // Desktop notification PANEL (#10706 / per-surface shells): page back to home
-  // and open the home notification affordance. On a fine-pointer wide surface
-  // HomeScreen's `variant="auto"` NotificationCenter must render the top-RIGHT
-  // anchored PANEL — not the mobile pull-down sheet. Assert the shell + its
-  // right anchoring, capture it, then dismiss via the transparent backdrop.
-  await finePointer.getByTestId("rail-pager-edge-prev").click();
-  await waitForSurfacePageSettled(finePointer, "home");
-  await finePointer.getByTestId("home-notification-pull-zone").click();
-  await finePointer
-    .getByTestId("notification-panel")
-    .waitFor({ state: "visible", timeout: 4000 });
-  assert(
-    (await finePointer.getByTestId("notification-panel").count()) === 1 &&
-      (await finePointer.getByTestId("notification-sheet").count()) === 0,
-    "desktop fine-pointer opens the PANEL shell (not the mobile sheet)",
-  );
-  {
-    const panelBox = await finePointer
-      .getByTestId("notification-panel")
-      .boundingBox();
-    const vw = finePointer.viewportSize().width;
-    const rightEdge = (panelBox?.x ?? 0) + (panelBox?.width ?? 0);
-    // Right-anchored AND on-screen: the panel's right edge hugs the viewport's
-    // right edge WITHOUT overshooting it. (A `position: fixed` panel trapped in
-    // the transformed home↔launcher rail would anchor to the 2×-wide rail and
-    // land at ~2×vw — off-screen right; this catches that regression.)
-    assert(
-      panelBox != null && rightEdge > vw - 40 && rightEdge <= vw + 2,
-      `desktop notification panel is right-anchored on-screen (right edge ${Math.round(rightEdge)}, vw ${vw})`,
-    );
-  }
-  // Let the fade-in settle before capturing the glass panel.
-  await finePointer.waitForTimeout(300);
-  await snap(finePointer, "desktop-notification-panel");
-  await finePointer.getByTestId("notification-panel-backdrop").click();
-  await finePointer
-    .getByTestId("notification-panel")
-    .waitFor({ state: "detached", timeout: 4000 });
-  assert(
-    (await finePointer.getByTestId("notification-panel").count()) === 0,
-    "desktop notification panel dismisses on outside click (backdrop)",
-  );
 
   await finePointer.close();
 } finally {

@@ -1,16 +1,9 @@
 /**
  * Cross-platform native notification bridge: shows OS/mobile notifications and
  * routes their tap deep-links back into the app.
- */
-import { Capacitor } from "@capacitor/core";
-import { navigateDeepLink } from "../state/notifications/navigate-deep-link";
-import { getNativePlugin } from "./native-plugins";
-
-/**
- * Cross-platform native notification bridge.
  *
- * Surfaces an `AgentNotification` as an OS-level notification on a mobile
- * device. Resolution order (first that succeeds wins):
+ * Surfaces an `AgentNotification` as an OS-level notification. Resolution
+ * order (first that succeeds wins):
  *
  *   1. `@capacitor/local-notifications` (`LocalNotifications`) — the canonical
  *      cross-platform plugin (iOS + Android channels). Used when the native
@@ -24,17 +17,28 @@ import { getNativePlugin } from "./native-plugins";
  * so this module statically imports nothing optional — the web/desktop bundle
  * is unaffected when the native plugins are absent, and every path no-ops
  * gracefully rather than throwing.
+ *
+ * Delivery loudness follows the notification's priority: on Android each
+ * priority tier maps to its own channel (urgent = heads-up + sound, normal =
+ * sound without heads-up, low = silent) because channel importance is fixed at
+ * creation and user-adjustable per channel — one channel for everything would
+ * make backups heads-up or approvals silent, with no way for the user to tune
+ * them apart. Web maps low priority to a silent notification.
  */
+import { Capacitor } from "@capacitor/core";
+import type { NotificationPriority } from "@elizaos/core";
+import { navigateDeepLink } from "../state/notifications/navigate-deep-link";
+import { getNativePlugin } from "./native-plugins";
 
-interface NativeNotificationRequest {
+export interface NativeNotificationRequest {
   /** Stable string id (used to derive a numeric LocalNotifications id). */
   id: string;
   title: string;
   body?: string;
   /** App route / URL to open on tap. */
   deepLink?: string;
-  /** Higher urgency maps to a more interruptive channel/sound. */
-  urgent?: boolean;
+  /** Drives the delivery loudness (Android channel, web silence). */
+  priority: NotificationPriority;
 }
 
 interface LocalNotificationsPluginLike extends Record<string, unknown> {
@@ -83,27 +87,46 @@ function hasMethod<T>(value: unknown, method: keyof T): value is T {
   );
 }
 
-const ANDROID_CHANNEL_ID = "eliza_notifications";
-let channelEnsured = false;
+/**
+ * Android channels, one per loudness tier. Importance is fixed at channel
+ * creation on Android, so tiers must be distinct channels; users can then
+ * tune each tier independently in system settings. Importance scale:
+ * 5 = MAX (heads-up + sound), 4 = HIGH (heads-up), 3 = DEFAULT (sound),
+ * 2 = LOW (no sound). Visibility 1 = public (lockscreen).
+ */
+const ANDROID_CHANNELS: Record<
+  NotificationPriority,
+  { id: string; name: string; importance: number }
+> = {
+  urgent: { id: "eliza_alerts", name: "Eliza alerts", importance: 5 },
+  high: { id: "eliza_notifications", name: "Eliza", importance: 4 },
+  normal: { id: "eliza_updates", name: "Eliza updates", importance: 3 },
+  low: { id: "eliza_quiet", name: "Eliza background", importance: 2 },
+};
+
+const ensuredChannels = new Set<string>();
 
 async function ensureAndroidChannel(
   plugin: LocalNotificationsPluginLike,
-): Promise<void> {
-  if (channelEnsured || Capacitor.getPlatform() !== "android") return;
-  if (typeof plugin.createChannel !== "function") return;
+  priority: NotificationPriority,
+): Promise<string | undefined> {
+  if (Capacitor.getPlatform() !== "android") return undefined;
+  const channel = ANDROID_CHANNELS[priority] ?? ANDROID_CHANNELS.normal;
+  if (ensuredChannels.has(channel.id)) return channel.id;
+  if (typeof plugin.createChannel !== "function") return channel.id;
   try {
-    // importance 4 = HIGH (heads-up), visibility 1 = public.
     await plugin.createChannel({
-      id: ANDROID_CHANNEL_ID,
-      name: "Eliza",
-      importance: 4,
+      id: channel.id,
+      name: channel.name,
+      importance: channel.importance,
       visibility: 1,
     });
-    channelEnsured = true;
+    ensuredChannels.add(channel.id);
   } catch {
-    // error-policy:J4 channel creation is best-effort; the default channel
-    // still delivers the notification.
+    // error-policy:J4 channel creation is best-effort; scheduling against the
+    // (possibly uncreated) id still delivers via the app's default channel.
   }
+  return channel.id;
 }
 
 async function tryLocalNotifications(
@@ -132,7 +155,7 @@ async function tryLocalNotifications(
     }
   }
 
-  await ensureAndroidChannel(plugin);
+  const channelId = await ensureAndroidChannel(plugin, req.priority);
 
   await plugin.schedule({
     notifications: [
@@ -140,7 +163,7 @@ async function tryLocalNotifications(
         id: numericId(req.id),
         title: req.title,
         body: req.body ?? "",
-        channelId: ANDROID_CHANNEL_ID,
+        ...(channelId ? { channelId } : {}),
         ...(req.deepLink ? { extra: { deepLink: req.deepLink } } : {}),
       },
     ],
@@ -161,6 +184,7 @@ async function tryElizaIntent(
     payload: {
       title: req.title,
       body: req.body ?? "",
+      priority: req.priority,
       ...(req.deepLink ? { deepLinkOnTap: req.deepLink } : {}),
     },
     issuedAtIso: new Date().toISOString(),
@@ -175,6 +199,8 @@ function tryWebNotification(req: NativeNotificationRequest): boolean {
     const notification = new Notification(req.title, {
       body: req.body,
       tag: req.id,
+      // Low-priority background chatter must not chime on every delivery.
+      silent: req.priority === "low",
     });
     if (req.deepLink) {
       const deepLink = req.deepLink;
@@ -187,28 +213,29 @@ function tryWebNotification(req: NativeNotificationRequest): boolean {
           navigateDeepLink(deepLink);
         } catch {
           // error-policy:J6 best-effort tap navigation; the app is already
-          // focused and the in-app center still lists the notification.
+          // focused and the dashboard notification center still lists it.
         }
       };
     }
     return true;
   } catch {
     // error-policy:J4 constructor failure reads as "web channel unavailable";
-    // the caller's chain returns "none" and the in-app center still has it.
+    // the caller's chain returns "none" and the dashboard center still has it.
     return false;
   }
 }
 
 /**
  * Show a native OS notification. Returns the channel that handled it, or
- * `"none"` if no native channel was available (the in-app center still has it).
+ * `"none"` if no native channel was available (the dashboard notification
+ * center still has it).
  */
 export async function showNativeNotification(
   req: NativeNotificationRequest,
 ): Promise<"local" | "intent" | "web" | "none"> {
   // error-policy:J4 documented first-that-succeeds channel chain; a failed
   // channel falls through and an all-failed dispatch returns "none" (the
-  // in-app notification center is the source of truth either way).
+  // dashboard notification center is the source of truth either way).
   try {
     if (await tryLocalNotifications(req)) return "local";
   } catch {
@@ -221,33 +248,4 @@ export async function showNativeNotification(
   }
   if (tryWebNotification(req)) return "web";
   return "none";
-}
-
-/** Whether a native local-notification channel is available on this platform. */
-export function hasNativeNotificationChannel(): boolean {
-  if (!Capacitor.isNativePlatform()) return false;
-  const local =
-    getNativePlugin<LocalNotificationsPluginLike>("LocalNotifications");
-  if (hasMethod<LocalNotificationsPluginLike>(local, "schedule")) return true;
-  if (Capacitor.getPlatform() === "ios") {
-    const intent = getNativePlugin<ElizaIntentPluginLike>("ElizaIntent");
-    return hasMethod<ElizaIntentPluginLike>(intent, "receiveIntent");
-  }
-  return false;
-}
-
-/** Request native notification permission up-front (best-effort, idempotent). */
-export async function requestNativeNotificationPermission(): Promise<boolean> {
-  const plugin =
-    getNativePlugin<LocalNotificationsPluginLike>("LocalNotifications");
-  if (typeof plugin.requestPermissions === "function") {
-    try {
-      const status = await plugin.requestPermissions();
-      return status.display === "granted";
-    } catch {
-      // error-policy:J3 a failed permission request reads as "not granted".
-      return false;
-    }
-  }
-  return false;
 }

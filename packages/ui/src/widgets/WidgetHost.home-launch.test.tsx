@@ -4,15 +4,14 @@
  * Launch integration (#9304 / #9143): the home `WidgetHost` is what the /chat
  * launch screen mounts (`HomeScreen` → `<WidgetHost slot="home" layout="grid">`),
  * so this drives the REAL host + REAL registry resolution + REAL widget
- * components — not a stub — to prove the home widgets actually render on the
- * first screen when there is data, and that they self-hide (the #9143 clean-home
- * design) when there is none.
+ * components — not a stub. The curated home-grid tiles (agent activity, …)
+ * render when their core API surface has data and self-hide when it doesn't;
+ * the per-plugin lifeops cards are API-polled and self-hide without a backend,
+ * which is the correct fresh-launch behavior.
  *
- * Notifications are guaranteed on the cold home card. The curated home-grid
- * tiles (recent conversations, agent activity, …) render when their core API
- * surface has data and self-hide when it doesn't. The per-plugin lifeops cards
- * are API-polled and self-hide without a backend, which is the correct
- * fresh-launch behavior.
+ * Notifications are NOT a host widget: HomeScreen pins NotificationsHomeCenter
+ * as a sibling of the host, so the host rendering nothing notification-shaped —
+ * even with a populated store — is itself a contract (double-render guard).
  */
 
 import type { AgentNotification } from "@elizaos/core";
@@ -21,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api/client-types-chat";
 
 // The home WidgetHost reads `s.plugins` (none active on a cold launch). Empty
-// plugins still resolve the always-visible core widgets (notifications).
+// plugins still resolve the always-visible core widgets.
 const DEFAULT_CONVERSATIONS = [
   {
     id: "c1",
@@ -73,6 +72,10 @@ vi.mock("../api/client", () => ({
     getBaseUrl: () => "http://localhost:3000",
     listConversations: async () => ({ conversations: mockState.conversations }),
     getConversationMessages: (id: string) => getConversationMessages(id),
+    // The always-visible Tasks tile (workflow.running) polls these on mount;
+    // empty envelopes make it self-hide, the correct cold-launch render.
+    listAutomations: async () => ({ automations: [] }),
+    listScheduledTasks: async () => ({ tasks: [] }),
   },
 }));
 
@@ -119,7 +122,7 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
     expect(host.getAttribute("data-layout")).toBe("grid");
   });
 
-  it("renders the notifications home widget when there is data", async () => {
+  it("renders NO notifications card even with a populated store (pinned-center double-render guard)", () => {
     __ingestNotificationForTests(notification("n1", "Standup at 10"), 1);
     __ingestNotificationForTests(notification("n2", "PR review requested"), 2);
 
@@ -132,22 +135,11 @@ describe("home WidgetHost on launch (#9304 / #9143)", () => {
       />,
     );
 
-    // Real widgets, resolved by the real registry, rendered into the home host.
-    const notifications = screen.getByTestId("widget-notifications");
-    expect(notifications.textContent).toContain("PR review requested");
-    expect(notifications.textContent).toContain("2");
-  });
-
-  it("self-hides every card when there is no data (the #9143 clean home)", () => {
-    mockState.conversations = [];
-    render(
-      <WidgetHost
-        slot="home"
-        layout="grid"
-        events={[]}
-        clearEvents={() => {}}
-      />,
-    );
+    // The real registry resolves nothing notification-shaped for the home slot;
+    // the seeded store content must not leak into the host under ANY test id.
+    const host = screen.getByTestId("widget-host-home");
     expect(screen.queryByTestId("widget-notifications")).toBeNull();
+    expect(host.textContent).not.toContain("Standup at 10");
+    expect(host.textContent).not.toContain("PR review requested");
   });
 });

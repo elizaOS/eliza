@@ -16,7 +16,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   DashboardErrorState,
   DashboardLoadingState,
-  PageHeaderProvider,
+  EnsurePageHeaderProvider,
 } from "../../cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AnalyticsPageClient } from "./_components/analytics-page-client";
@@ -67,14 +67,17 @@ export default function AnalyticsPage() {
     );
   }
 
-  // AnalyticsPageClient sets the page header; this standalone route has no
-  // ancestor PageHeaderProvider, so supply one here.
+  // AnalyticsPageClient sets the page header. Inside the ConsoleShell its
+  // provider already exists and drives the top-bar title;
+  // EnsurePageHeaderProvider defers to it (supplying one only for the
+  // standalone/native mount) so the title reaches the shell header rather than
+  // a shadowed inner provider.
   return (
-    <PageHeaderProvider>
+    <EnsurePageHeaderProvider>
       <AnalyticsPageClient
         data={breakdown.data}
         projectionsData={projections.data}
       />
-    </PageHeaderProvider>
+    </EnsurePageHeaderProvider>
   );
 }

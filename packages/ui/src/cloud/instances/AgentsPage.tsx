@@ -74,18 +74,10 @@ export default function AgentsPage() {
   return (
     <ElizaAgentsPageWrapper>
       <DashboardPageContainer className="space-y-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="inline-block size-2 bg-[var(--accent)]" />
-            <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
-              {t("cloud.agents.eyebrow", { defaultValue: "Instances" })}
-            </p>
-          </div>
-          <h1 className="text-xl font-semibold text-white md:text-2xl">
-            {t("cloud.agents.title", { defaultValue: "Instances" })}
-          </h1>
-        </div>
-
+        {/* Page title is surfaced in the console top bar by
+            ElizaAgentsPageWrapper (DashboardRoutePage title="Instances" →
+            useSetPageHeader). No inline page-level heading here — a second
+            "Instances" title under the top bar read as a double title. */}
         <ElizaAgentPricingBanner
           runningCount={runningCount}
           idleCount={idleCount}

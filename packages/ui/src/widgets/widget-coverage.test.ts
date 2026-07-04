@@ -16,11 +16,15 @@ import { type PluginWidgetDeclaration, WIDGET_SLOTS } from "./types";
 
 // #9143 — per-plugin home-widget coverage gate.
 //
-// The contract: every plugin with an `elizaos.app` manifest resolves at least
-// one `home`-slot widget (its own bundled component OR a shared `defaultWidget`
-// sink) via `resolveWidgetsForSlot`. This enumerates the manifests directly
-// instead of keeping a hand-written short list, so a future app plugin without
-// a frontpage widget fails CI here.
+// The contract: every plugin with an `elizaos.app` manifest is frontpage-aware
+// — it resolves a rendered `home`-slot widget (its own bundled component OR
+// the shared activity sink) via `resolveWidgetsForSlot`, or it declares a
+// notifications/messages default sink. The notification-sink declarations
+// render no tile of their own (the pinned NotificationsHomeCenter aggregates
+// the notification store for every producer), so for them the declaration is
+// the participation record. This enumerates the manifests directly instead of
+// keeping a hand-written short list, so a future app plugin without a
+// frontpage presence fails CI here.
 //
 // IDs match the plugin list's normalization: strip the npm scope, then strip
 // either `plugin-` or legacy `app-` prefixes.
@@ -97,7 +101,20 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
     expect(appManifestPlugins.length).toBeGreaterThanOrEqual(26);
   });
 
-  it("resolves >=1 home widget for every app-manifest plugin", () => {
+  // A notifications/messages sink declaration renders no tile — its content
+  // surfaces through the pinned NotificationsHomeCenter — so the declaration
+  // itself is the plugin's frontpage participation record.
+  function declaresNotificationSink(pluginId: string): boolean {
+    return BUILTIN_WIDGET_DECLARATIONS.some(
+      (decl) =>
+        decl.pluginId === pluginId &&
+        decl.slot === "home" &&
+        (decl.defaultWidget === "notifications" ||
+          decl.defaultWidget === "messages"),
+    );
+  }
+
+  it("keeps every app-manifest plugin frontpage-aware (rendered widget or notification-sink declaration)", () => {
     const missing: string[] = [];
 
     for (const plugin of appManifestPlugins) {
@@ -105,7 +122,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
         (r) => r.declaration.pluginId === plugin.id,
       );
       const rendered = own.filter((entry) => entry.Component !== null);
-      if (rendered.length === 0) {
+      if (rendered.length === 0 && !declaresNotificationSink(plugin.id)) {
         missing.push(
           `${plugin.id} (${plugin.packageName}, ${plugin.packageDir})`,
         );
@@ -126,6 +143,7 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
         id: plugin.id,
         own: entries.some((entry) => !entry.defaultWidgetSink),
         defaultSink: entries.some((entry) => Boolean(entry.defaultWidgetSink)),
+        notificationSink: declaresNotificationSink(plugin.id),
       };
     });
 
@@ -133,8 +151,13 @@ describe("home-widget per-plugin coverage gate (#9143)", () => {
     const defaultSink = coverage.filter(
       (entry) => !entry.own && entry.defaultSink,
     ).length;
+    const notificationParticipants = coverage.filter(
+      (entry) => !entry.own && !entry.defaultSink && entry.notificationSink,
+    ).length;
 
-    expect(ownWidget + defaultSink).toBe(appManifestPlugins.length);
+    expect(ownWidget + defaultSink + notificationParticipants).toBe(
+      appManifestPlugins.length,
+    );
     expect(ownWidget).toBeGreaterThanOrEqual(5);
   });
 

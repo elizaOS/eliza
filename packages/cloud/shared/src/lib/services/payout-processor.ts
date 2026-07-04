@@ -108,6 +108,59 @@ interface PayoutResult {
   retryable?: boolean;
 }
 
+/**
+ * Thrown when a `token_redemptions` NUMERIC money field (eliza_amount,
+ * eliza_price_usd, usd_value) reads back as a non-finite / unparseable value.
+ *
+ * These columns are Postgres `numeric(...)` and are returned by the driver as
+ * STRINGS. A corrupt/malformed value (`'NaN'::numeric` is a legal store, a
+ * truncated write, a bad manual edit) coerces to `NaN` under bare `Number()`,
+ * or to `0n` under `viem.parseUnits('')`. On a hot-wallet payout path that is
+ * catastrophic:
+ *   - `Number(eliza_price_usd)=NaN` makes the price-slippage guard
+ *     `slippage > MAX` evaluate `NaN > x === false` → the guard FAILS OPEN and
+ *     authorizes a payout against an unvalidatable quote.
+ *   - `parseUnits('', decimals)` returns `0n` and `Number('')*1e9 = 0` →
+ *     a ZERO-token transfer is broadcast, confirmed, and marked `completed`
+ *     with a real tx hash → fabricated success while the user receives nothing
+ *     and their pending balance is still debited.
+ *
+ * Parsing these values through {@link parseRedemptionAmount} converts that
+ * silent fail-open into an explicit, non-retryable failure that routes to
+ * manual review before anything is signed or broadcast.
+ */
+export class CorruptRedemptionAmountError extends Error {
+  constructor(
+    public readonly field: string,
+    public readonly rawValue: unknown,
+  ) {
+    super(`token_redemptions.${field} is not a finite number: ${JSON.stringify(rawValue)}`);
+    this.name = "CorruptRedemptionAmountError";
+  }
+}
+
+/**
+ * Fail-closed boundary for a `token_redemptions` NUMERIC money field.
+ *
+ * Accepts an explicit domain value of `0` (a legitimate zero-value field), but
+ * throws {@link CorruptRedemptionAmountError} for `null`/`undefined`, an empty
+ * or whitespace-only string, or anything that does not coerce to a finite
+ * number. NEVER returns `NaN` and NEVER silently substitutes `0`.
+ */
+export function parseRedemptionAmount(field: string, raw: unknown): number {
+  if (raw === null || raw === undefined) {
+    throw new CorruptRedemptionAmountError(field, raw);
+  }
+  if (typeof raw === "string" && raw.trim() === "") {
+    throw new CorruptRedemptionAmountError(field, raw);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new CorruptRedemptionAmountError(field, raw);
+  }
+  return value;
+}
+
 interface ProcessingStats {
   processed: number;
   succeeded: number;
@@ -501,6 +554,65 @@ export class PayoutProcessorService {
     const config = getPayoutConfig();
     const network = redemption.network as SupportedNetwork;
 
+    // Fail closed on a corrupt NUMERIC payout amount BEFORE anything is signed or
+    // broadcast. A non-finite / empty `eliza_amount` otherwise coerces to a
+    // zero-token transfer (parseUnits('')===0n, Number('')*1e9===0) that is
+    // broadcast and marked `completed` with a real tx hash — fabricated success.
+    // A corrupt row is not transient, so this is non-retryable (→ manual review).
+    let payoutAmount: number;
+    try {
+      payoutAmount = parseRedemptionAmount("eliza_amount", redemption.eliza_amount);
+    } catch (error) {
+      logger.error("[PayoutProcessor] Corrupt eliza_amount; refusing payout", {
+        redemptionId: redemption.id,
+        network,
+        rawElizaAmount: redemption.eliza_amount,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: "Corrupt redemption amount (requires review)",
+        retryable: false,
+      };
+    }
+    if (payoutAmount <= 0) {
+      // A zero/negative payout amount would broadcast a no-op transfer and mark
+      // the redemption completed — same fabricated-success class. Refuse it.
+      logger.error("[PayoutProcessor] Non-positive eliza_amount; refusing payout", {
+        redemptionId: redemption.id,
+        network,
+        elizaAmount: payoutAmount,
+      });
+      return {
+        success: false,
+        error: "Non-positive redemption amount (requires review)",
+        retryable: false,
+      };
+    }
+
+    // Fail closed on a corrupt `usd_value` BEFORE broadcast. markCompleted (which
+    // runs only AFTER a successful on-chain transfer) writes usd_value into the
+    // earnings ledger via `total_pending - usd_value` / `total_redeemed +
+    // usd_value` SQL and a `$${Number(usd_value).toFixed(2)}` description; a
+    // corrupt value would poison the ledger balances (`- 'NaN'`) or log `$NaN`.
+    // Catch it here so a corrupt row is reviewed, never broadcast then
+    // half-recorded post-broadcast (tokens sent, accounting corrupt).
+    try {
+      parseRedemptionAmount("usd_value", redemption.usd_value);
+    } catch (error) {
+      logger.error("[PayoutProcessor] Corrupt usd_value; refusing payout", {
+        redemptionId: redemption.id,
+        network,
+        rawUsdValue: redemption.usd_value,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: "Corrupt redemption USD value (requires review)",
+        retryable: false,
+      };
+    }
+
     if (config.ENFORCE_PRICE_VALIDATION) {
       // Optional compatibility guard for fully automated payout deployments.
       if (new Date() > redemption.price_quote_expires_at) {
@@ -511,7 +623,42 @@ export class PayoutProcessorService {
         };
       }
 
-      const priceValidation = await this.validatePrice(network, Number(redemption.eliza_price_usd));
+      // Fail closed on a corrupt quoted price. A non-finite `eliza_price_usd`
+      // makes the slippage guard `NaN > MAX === false` → fail open, authorizing
+      // a payout against an unvalidatable quote. Refuse (non-retryable) instead.
+      let quotedPriceUsd: number;
+      try {
+        quotedPriceUsd = parseRedemptionAmount("eliza_price_usd", redemption.eliza_price_usd);
+      } catch (error) {
+        logger.error("[PayoutProcessor] Corrupt eliza_price_usd; refusing payout", {
+          redemptionId: redemption.id,
+          network,
+          rawElizaPriceUsd: redemption.eliza_price_usd,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        return {
+          success: false,
+          error: "Corrupt quoted price (requires review)",
+          retryable: false,
+        };
+      }
+      if (quotedPriceUsd <= 0) {
+        // A zero quoted price makes slippage `|current-0|/0 === Infinity`, an
+        // accidental divide-by-zero-shaped rejection rather than an intentional
+        // policy signal. Refuse explicitly so the reason is a corrupt quote.
+        logger.error("[PayoutProcessor] Non-positive eliza_price_usd; refusing payout", {
+          redemptionId: redemption.id,
+          network,
+          quotedPriceUsd,
+        });
+        return {
+          success: false,
+          error: "Non-positive quoted price (requires review)",
+          retryable: false,
+        };
+      }
+
+      const priceValidation = await this.validatePrice(network, quotedPriceUsd);
       if (!priceValidation.valid) {
         return {
           success: false,
@@ -589,6 +736,12 @@ export class PayoutProcessorService {
     const tokenConfig = getPayoutTokenConfig(network, redemption.asset);
     const tokenAddress = tokenConfig.address as Address;
     const toAddress = redemption.payout_address as Address;
+    // Fail-closed parse: viem `parseUnits('', d) === 0n` would build a zero-token
+    // transfer that broadcasts + marks completed with a real tx hash (fabricated
+    // success). processRedemption already gates this, but re-validate here so a
+    // direct call can never silently pay out nothing; parseUnits then does the
+    // precise decimal-string conversion from the (now known-finite) value.
+    parseRedemptionAmount("eliza_amount", redemption.eliza_amount);
     const amount = parseUnits(redemption.eliza_amount.toString(), tokenConfig.decimals);
 
     const account = privateKeyToAccount(this.evmPrivateKey);
@@ -714,7 +867,15 @@ export class PayoutProcessorService {
     const tokenConfig = getPayoutTokenConfig("solana", redemption.asset);
     const mintAddress = new PublicKey(tokenConfig.address);
     const toAddress = new PublicKey(redemption.payout_address);
-    const amount = BigInt(Math.floor(Number(redemption.eliza_amount) * 10 ** tokenConfig.decimals));
+    // Fail-closed parse: bare Number('') === 0 would build a zero-token transfer
+    // that broadcasts + marks completed with a real signature (fabricated
+    // success). processRedemption already gates this, but re-validate here so a
+    // direct call can never silently pay out nothing.
+    const amount = BigInt(
+      Math.floor(
+        parseRedemptionAmount("eliza_amount", redemption.eliza_amount) * 10 ** tokenConfig.decimals,
+      ),
+    );
 
     // Get source token account (hot wallet's ATA)
     const sourceAta = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);
@@ -850,7 +1011,9 @@ export class PayoutProcessorService {
   ): Promise<void> {
     const completedAt = new Date();
     const usdValue = redemption.usd_value.toString();
-    const usdNumber = Number(redemption.usd_value);
+    // Proven finite pre-broadcast in processRedemption; parse fail-closed here
+    // too so a direct call can never write a $NaN ledger description.
+    const usdNumber = parseRedemptionAmount("usd_value", redemption.usd_value);
 
     await dbWrite.transaction(async (tx) => {
       await tx
@@ -1056,10 +1219,25 @@ export class PayoutProcessorService {
         .limit(1);
       if (existingRefund) return;
 
+      let refundAmount: number;
+      try {
+        refundAmount = parseRedemptionAmount("usd_value", row.usdValue);
+      } catch (error) {
+        logger.error(
+          "[PayoutProcessor] Corrupt usd_value on failed redemption; skipping automatic refund",
+          {
+            redemptionId,
+            rawUsdValue: row.usdValue,
+            reason: error instanceof Error ? error.message : String(error),
+          },
+        );
+        return;
+      }
+
       await redeemableEarningsService.refundRedemption({
         userId: row.userId,
         redemptionId,
-        amount: Number(row.usdValue),
+        amount: refundAmount,
         reason,
       });
 

@@ -89,8 +89,11 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     const top3 = order.slice(0, 3);
 
     // The three attention-worthy widgets occupy the front, ahead of every
-    // quiet widget (which rank by static base order only).
-    expect(top3).toContain("notifications/notifications.recent");
+    // quiet widget (which rank by static base order only). Needs-attention
+    // floats purely via the urgent-notification derivation (urgent →
+    // escalation, which it subscribes to); finances/goals ride their own
+    // self-published signals.
+    expect(top3).toContain("needs-attention/needs-attention.pending");
     expect(top3).toContain("finances/finances.alerts");
     expect(top3).toContain("goals/goals.attention");
 
@@ -121,8 +124,9 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     });
 
     const order = rankedKeys(signals);
-    // The workflow-boosted widgets sit at the very front, ahead of the quiet
-    // notifications card.
+    // The workflow-boosted widgets sit at the very front, ahead of a quiet
+    // card (needs-attention has no workflow subscription, so it ranks by its
+    // static base order only).
     expect(order.slice(0, 2)).toEqual(
       expect.arrayContaining([
         "agent-orchestrator/agent-orchestrator.activity",
@@ -131,7 +135,7 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     );
     expect(
       order.indexOf("agent-orchestrator/agent-orchestrator.activity"),
-    ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
+    ).toBeLessThan(order.indexOf("needs-attention/needs-attention.pending"));
   });
 
   it("floats orchestrator errors via workflow, not the escalation rail", () => {
@@ -156,21 +160,21 @@ describe("home priority — real declarations + ranker scenario (#9143)", () => 
     ).toBeLessThan(HOME_SIGNAL_WEIGHTS.blocked);
     // The error lifts the orchestrator card to the front of a quiet home (the
     // curated agent-activity feed tile, also workflow-subscribed, floats with
-    // it), both ahead of the quiet notifications baseline.
+    // it), both ahead of the quiet needs-attention baseline.
     const order = rankedKeys(signals);
     expect(order.slice(0, 2)).toContain(
       "agent-orchestrator/agent-orchestrator.activity",
     );
     expect(
       order.indexOf("agent-orchestrator/agent-orchestrator.activity"),
-    ).toBeLessThan(order.indexOf("notifications/notifications.recent"));
+    ).toBeLessThan(order.indexOf("needs-attention/needs-attention.pending"));
   });
 
   it("with no live signals, ranks purely by base order (quiet home)", () => {
     const order = rankedKeys([]);
-    // notifications (order 50) outranks the per-plugin cards (order ≥ 90).
-    expect(order.indexOf("notifications/notifications.recent")).toBeLessThan(
-      order.indexOf("finances/finances.alerts"),
-    );
+    // needs-attention (order 60) outranks the per-plugin cards (order ≥ 110).
+    expect(
+      order.indexOf("needs-attention/needs-attention.pending"),
+    ).toBeLessThan(order.indexOf("finances/finances.alerts"));
   });
 });

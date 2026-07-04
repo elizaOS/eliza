@@ -1,7 +1,8 @@
 /**
- * Unit coverage for the shared default-widget path: a plugin with live state but
- * no bundled component resolves to the shared frontpage widget (#9143). Pure, no
- * harness.
+ * Unit coverage for the shared default-widget path (#9143): an activity opt-in
+ * resolves to the shared frontpage widget, while the notifications/messages
+ * sink kinds yield no tile (the pinned dashboard notification center owns the
+ * inbox). Pure, no harness.
  */
 import { describe, expect, it } from "vitest";
 import { BUILTIN_WIDGET_DECLARATIONS, resolveWidgetsForSlot } from "./registry";
@@ -9,7 +10,10 @@ import type { PluginWidgetDeclaration } from "./types";
 
 // #9143 — a plugin with live state but no bundled component opts into a shared
 // "default" frontpage widget via `defaultWidget`, and resolves to the shared
-// sink's registered component on the home slot.
+// sink's registered component on the home slot. The notifications/messages sink
+// kinds resolve to NO tile: the dashboard notification center is pinned by
+// HomeScreen and already renders every store notification, so a per-plugin
+// notifications card would double-render the inbox.
 describe("home defaultWidget opt-in sink (#9143)", () => {
   function withTempDeclaration<T>(
     decl: PluginWidgetDeclaration,
@@ -24,7 +28,7 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
     }
   }
 
-  it("resolves a notifications-sink declaration to the shared Notifications component", () => {
+  it("resolves a notifications-sink declaration to NO home tile (pinned center owns the inbox)", () => {
     const decl: PluginWidgetDeclaration = {
       id: "sink-test.notify",
       pluginId: "sink-test",
@@ -36,18 +40,13 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       const resolved = resolveWidgetsForSlot("home", [
         { id: "sink-test", enabled: true, isActive: true },
       ]);
-      const entry = resolved.find(
-        (r) => r.declaration.id === "sink-test.notify",
-      );
-      expect(entry).toBeTruthy();
-      // Borrows the shared sink component but keeps its own pluginId/id.
-      expect(entry?.Component).toBeTruthy();
-      expect(entry?.declaration.pluginId).toBe("sink-test");
-      expect(entry?.defaultWidgetSink).toBe("notifications");
+      expect(
+        resolved.find((r) => r.declaration.id === "sink-test.notify"),
+      ).toBeUndefined();
     });
   });
 
-  it("resolves a messages-sink declaration to a component", () => {
+  it("resolves a messages-sink declaration to NO home tile (folded into the notification rail, #10697)", () => {
     const decl: PluginWidgetDeclaration = {
       id: "sink-test.msgs",
       pluginId: "sink-test",
@@ -59,9 +58,9 @@ describe("home defaultWidget opt-in sink (#9143)", () => {
       const resolved = resolveWidgetsForSlot("home", [
         { id: "sink-test", enabled: true, isActive: true },
       ]);
-      const entry = resolved.find((r) => r.declaration.id === "sink-test.msgs");
-      expect(entry?.Component).toBeTruthy();
-      expect(entry?.defaultWidgetSink).toBe("messages");
+      expect(
+        resolved.find((r) => r.declaration.id === "sink-test.msgs"),
+      ).toBeUndefined();
     });
   });
 

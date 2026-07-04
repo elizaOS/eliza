@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import {
 	buildHuggingFaceResolveUrl,
+	isMobilePlatform,
 	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
@@ -341,8 +342,7 @@ function huggingFaceResolveUrl(model: CatalogModel): string {
 }
 
 function shouldUseMobileDns(): boolean {
-	const platform = process.env.ELIZA_PLATFORM?.toLowerCase();
-	return platform === "android" || platform === "ios";
+	return isMobilePlatform();
 }
 
 const mobileLookup: http.RequestOptions["lookup"] = (

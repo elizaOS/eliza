@@ -10,13 +10,13 @@ The frozen test-id / AX contract every lane keys off (do not rename — design
 decision D5): `home-launcher-surface`, `data-page`, `home-launcher-page-probe`,
 `home-launcher-rail`, `home-launcher-{home,launcher}-page`, `launcher`,
 `launcher-page-window`, `launcher-tile-<id>`, `home-screen`,
-`home-notification-pull-zone`, `rail-pager-edge-{prev,next}`.
+`home-notification-center`, `rail-pager-edge-{prev,next}`.
 
 ## Lanes
 
 | Lane | Kind | Where | Drives |
 |---|---|---|---|
-| **jsdom** | component / composed unit | `HomeLauncherSurface{,.composed}.test.tsx`, `Launcher.test.tsx`, `LauncherSurface.test.tsx`, `launcher-curation.test.ts`, `useHorizontalPager`/`use-notification-pull` tests | React Testing Library + user-event |
+| **jsdom** | component / composed unit | `HomeLauncherSurface{,.composed}.test.tsx`, `Launcher.test.tsx`, `LauncherSurface.test.tsx`, `launcher-curation.test.ts`, `useHorizontalPager` tests | React Testing Library + user-event |
 | **home-e2e** | scripted CDP touch | `__e2e__/run-home-screen-e2e.mjs` | real touch on the composed fixture |
 | **launcher-e2e** | scripted CDP touch | `components/pages/__e2e__/run-launcher-e2e.mjs` | real touch on the launcher grid |
 | **loop-model** | seeded model self-check (jsdom) | `src/testing/launcher-loop/launcher-loop.test.ts` | the `#12373` engine's model + invariants against an in-memory `FakeDriver` |
@@ -65,17 +65,21 @@ printed) and a failure throws with the seed + shrunk command path for replay.
 | 24 | [S] | Deep-link initial page: `/apps`→launcher, `/chat`→home; swipe not clobbered | jsdom (real router covered by loop-android / gesture-matrix) |
 | 25 | [S][L] | Store convergence: `ViewHeader` back, composer swipe, `navigateHome` all flip one rail | jsdom |
 
-## Home screen (`HomeScreen` + `use-notification-pull` + `usePullGesture`)
+## Home screen (`HomeScreen` + the pinned `NotificationsHomeCenter`)
+
+Notifications live ON the dashboard: `NotificationsHomeCenter` is pinned by
+HomeScreen directly below the time/weather base (there is no pull-down sheet,
+anchored panel, or pull zone — no gesture opens a notification shell).
 
 | # | Tags | Interaction | Lanes |
 |---|---|---|---|
-| 26 | [S][L] | Notification pull: engages after 8px slop, tracks finger, ≥60px/≥0.5px·ms⁻¹ opens; short retracts | jsdom, gesture-matrix, loop-* (notificationPull) |
-| 27 | [S][L] | Scrolled-down list: downward drag scrolls, never pulls | jsdom, loop-* |
+| 26 | [S] | Pinned notification center: renders rows for a seeded store, self-hides when empty | jsdom (`NotificationsHomeCenter.test.tsx`, `HomeScreen.test.tsx`), home-e2e |
+| 27 | [S][L] | Downward drag on the home body scrolls the widget list (no notification gesture to steal it) | jsdom, loop-* |
 | 28 | [S] | Upward drag = native scroll | jsdom |
-| 29 | [S] | Horizontal-dominant drag = rail, not pull | jsdom |
-| 30 | [S][L] | Tap on a widget is a tap, not a pull | jsdom, loop-* |
-| 31 | [S] | `touchcancel` mid-pull retracts (no stuck sheet) | jsdom |
-| 32 | [S] | Top-edge button: click/keyboard opens; upward drag does NOT open via stray click | gesture-matrix |
+| 29 | [S] | Horizontal-dominant drag = rail, not scroll | jsdom |
+| 30 | [S][L] | Tap on a widget is a tap, not a drag | jsdom, loop-* |
+| 31 | [S] | Row actions: open marks read (scheme-checked deep link), dismiss removes, mark-all-read / clear-all | jsdom (`NotificationsHomeCenter.test.tsx`) |
+| 32 | [S] | No gesture-shell surface exists: `home-notification-pull-zone` / `notification-sheet` / `notification-panel` render nowhere | jsdom (`HomeScreen.test.tsx`), home-e2e |
 | 33 | [S][L] | Widget list vertical scroll + `overscroll-y-contain` | jsdom, loop-* (gridScroll) |
 | 34 | [S] | Entrance fade plays exactly once (#9304) | jsdom |
 | 35 | [S] | AOSP tiles: hidden off-AOSP, 4 on AOSP | jsdom |
@@ -143,8 +147,7 @@ Every `loop-*` lane checks these after each command (`checkInvariants` against a
   and fixed the `CdpTouchDriver` gaps that its jsdom `FakeDriver` self-check could
   never catch: committing rail swipes coalesced at `stepDelayMs: 2` (Chromium
   dropped the flick — now the proven 16ms/step recipe + a bounded re-dispatch that
-  reads `data-page` to confirm the flick landed); the driver and `observe()`
-  notification-open selectors missed the real `notification-sheet[data-open]`;
+  reads `data-page` to confirm the flick landed);
   `settle()` returned mid-commit (now waits for animations done + the rail parked);
   and `tapTile` tapped off-window tiles after a scroll (now scrolls into view
   first). Three consecutive 500-action seeds run green locally (12375, 424242,

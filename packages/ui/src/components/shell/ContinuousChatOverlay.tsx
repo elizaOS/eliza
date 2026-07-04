@@ -3099,11 +3099,10 @@ export function ContinuousChatOverlay({
       return undefined;
     }
 
-    // Surfaces painted ABOVE the chat glass (notification sheet/panel at
-    // Z_NOTIFICATION_OVERLAY, tutorial at Z_TUTORIAL, any open Radix dialog) must
-    // win the tap — the
-    // swallower otherwise eats their first tap AND collapses the chat under
-    // them. "Tap outside collapses" is only for the background view.
+    // Surfaces painted ABOVE the chat glass (tutorial at Z_TUTORIAL, any open
+    // Radix dialog) must win the tap — the swallower otherwise eats their first
+    // tap AND collapses the chat under them. "Tap outside collapses" is only
+    // for the background view.
     const isAboveShellOverlay = (target: EventTarget | null): boolean =>
       target instanceof Element &&
       !!target.closest('[data-above-shell-overlay], [role="dialog"]');
@@ -3185,14 +3184,11 @@ export function ContinuousChatOverlay({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // An open Radix dialog (data-state="open" — e.g. the command palette)
-        // or a notification surface (the mobile pull-down sheet or the desktop
-        // anchored panel — both mount only while open; the panel carries
-        // role="dialog" with NO data-state="open") sits
-        // above the chat: let ITS Escape handling win — collapsing here too
-        // closed both at once (e.g. an invisible palette + the chat). Scoped
-        // to exactly these; broad role="dialog" would match always-mounted
-        // shell surfaces (AssistantOverlay, tutorial card) and permanently
-        // disable Escape-collapse.
+        // sits above the chat: let ITS Escape handling win — collapsing here
+        // too closed both at once (e.g. an invisible palette + the chat).
+        // Scoped to exactly these; broad role="dialog" would match
+        // always-mounted shell surfaces (AssistantOverlay, tutorial card) and
+        // permanently disable Escape-collapse.
         //
         // Also defer while the transcript viewer is open or a per-message edit
         // is in progress: neither carries `[data-state="open"]`, so Escape must
@@ -3200,7 +3196,7 @@ export function ContinuousChatOverlay({
         // NOT also collapse the whole sheet + discard the in-progress edit.
         if (
           document.querySelector(
-            '[role="dialog"][data-state="open"], [data-testid="notification-sheet"], [data-testid="notification-panel"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
+            '[role="dialog"][data-state="open"], [data-testid="transcript-viewer"], [data-testid="thread-line-edit-input"]',
           )
         ) {
           return;
@@ -3229,17 +3225,6 @@ export function ContinuousChatOverlay({
       const detail = (event as CustomEvent<BackIntentEventDetail>).detail;
       if (!detail || detail.handled) return;
       if (!sheetOpen || firstRunOpen) return;
-      // A notification sheet/panel painted ABOVE the chat is the topmost layer —
-      // let it consume back first (independent of window-listener order), so
-      // Android back never collapses the chat UNDERNEATH an open notification
-      // shell. Mirrors the Escape deferral guard above.
-      if (
-        document.querySelector(
-          '[data-testid="notification-sheet"], [data-testid="notification-panel"]',
-        )
-      ) {
-        return;
-      }
       detail.handled = true;
       collapse();
     };
@@ -3612,17 +3597,41 @@ export function ContinuousChatOverlay({
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
-        // input still sits above the home-gesture bar. Non-full-bleed keeps the
-        // chat lifted off the gesture zone as before.
+        // input still sits above the home-gesture bar. Non-full-bleed anchors the
+        // composer down: it clears the home-gesture inset (max safe-area /
+        // android inset) and nothing more, so it sits low with no dead gap
+        // beneath. The floor layer below paints that inset zone with the home
+        // surface so it reads continuous, not as a black bar.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
+      {/* RECLAIMED BOTTOM FLOOR: the composer is lifted off the home-gesture
+          inset, so the strip between the composer and the true screen bottom
+          used to be an unpainted, transparent zone that read as a DEAD BLACK
+          BAR under the composer. This layer fills the reclaimed zone (and a
+          hair above, so it seats behind the composer with no seam) with the
+          same warm home-surface tone (--launch-bg). Purely cosmetic
+          (pointer-events-none, aria-hidden), back of the overlay stack, only
+          needed at rest. Soft top fade blends it into the field. */}
+      {!fullBleed && !keyboardLiftActive ? (
+        <div
+          aria-hidden="true"
+          data-testid="continuous-chat-bottom-floor"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-0"
+          style={{
+            height:
+              "calc(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 1.5rem)",
+            backgroundImage:
+              "linear-gradient(to bottom, transparent 0%, var(--launch-bg) 55%)",
+          }}
+        />
+      ) : null}
       {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
           but never captures pointer events; outside taps are handled by the
           document-level detector above, and outside drags pass through to the
@@ -3720,8 +3729,11 @@ export function ContinuousChatOverlay({
           See BootStatusIndicator; `showBootBanner` is the grace-gated flag.
           Suppressed once we know no provider is configured: the agent will NEVER
           become ready, so "Waking …" would spin forever — the in-transcript
-          no-provider gate is the honest error surface instead. */}
-      {showBootBanner && !noProviderConfigured ? (
+          no-provider gate is the honest error surface instead. Also suppressed
+          for the whole of onboarding (#13377): the conductor owns every word on
+          that screen, and a floating "Waking …" chip above the sign-in chat
+          read as clutter. */}
+      {showBootBanner && !noProviderConfigured && !firstRunOpen ? (
         <BootStatusIndicator
           agentName={agentName}
           onOpenSettings={openSettings}

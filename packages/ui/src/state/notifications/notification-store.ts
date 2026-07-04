@@ -127,7 +127,7 @@ function deliver(notification: AgentNotification): void {
       title: notification.title,
       body: notification.body,
       deepLink: notification.deepLink,
-      urgent: interruptive,
+      priority: notification.priority,
     }).catch(() => {});
   }
 

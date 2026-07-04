@@ -6,23 +6,25 @@
  * during container boot.
  */
 
+import { readAliasedEnv } from "../utils/env.js";
+
 function hasValue(value: string | undefined): boolean {
   return Boolean(value?.trim());
 }
 
 function hasCompatApiToken(): boolean {
-  return hasValue(process.env.ELIZA_API_TOKEN);
+  return hasValue(readAliasedEnv("ELIZA_API_TOKEN"));
 }
 
 function hasCloudApiKeyProvisioning(): boolean {
   return (
-    process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
-    hasValue(process.env.ELIZAOS_CLOUD_API_KEY)
+    readAliasedEnv("ELIZAOS_CLOUD_ENABLED") === "true" &&
+    hasValue(readAliasedEnv("ELIZAOS_CLOUD_API_KEY"))
   );
 }
 
 export function isCloudProvisionedContainer(): boolean {
-  const hasCloudFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const hasCloudFlag = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 
   return (
     hasCloudFlag &&

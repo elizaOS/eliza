@@ -48,7 +48,6 @@ import { INBOX_HOME_WIDGET } from "../components/chat/widgets/inbox-unread";
 import { MODEL_DOWNLOAD_HOME_WIDGET } from "../components/chat/widgets/model-download";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player.helpers";
 import { NEEDS_ATTENTION_HOME_WIDGET } from "../components/chat/widgets/needs-attention";
-import { NotificationsWidget } from "../components/chat/widgets/notifications";
 import { RELATIONSHIPS_HOME_WIDGET } from "../components/chat/widgets/relationships-attention";
 import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 import { WalletBalanceWidget } from "../components/chat/widgets/wallet-balance";
@@ -65,13 +64,6 @@ registerWidgetComponent(
   "music-library",
   "music-library.playlists",
   MusicLibraryCharacterWidget,
-);
-// Notifications is a core feature (no separate plugin), so its frontpage widget
-// always resolves (its declaration carries `visibility: "always"`). (#9143)
-registerWidgetComponent(
-  "notifications",
-  "notifications.recent",
-  NotificationsWidget,
 );
 // Curated home-grid widgets backed by core API surfaces (conversations, agent
 // activity, wallet, running workflows). Each renders populated data, a
@@ -185,20 +177,10 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
     size: FTU_WELCOME_HOME_WIDGET.size,
     sunset: FTU_WELCOME_HOME_WIDGET.sunset,
   },
-  // Notifications — the first-class "default" frontpage widget (#9143).
-  {
-    id: "notifications.recent",
-    pluginId: "notifications",
-    slot: "home",
-    label: "Notifications",
-    icon: "Bell",
-    order: 50,
-    defaultEnabled: true,
-    // Core NotificationService feature, not a loadable plugin — always-visible.
-    visibility: "always",
-    // Boosted by any notification; urgent ones map to escalation-level weight.
-    signalKinds: ["notification", "approval", "escalation"],
-  },
+  // Notifications are deliberately NOT a ranked home-slot widget: the dashboard
+  // notification center (NotificationsHomeCenter) is pinned by HomeScreen
+  // directly below the time/weather base, so a registry entry here would
+  // double-render the inbox.
   // The standalone Recent-conversations tile was removed (#10697) — it
   // duplicated the always-present chat overlay. Follow-up-worthy messages now
   // surface as `category: "message"` notifications in the notification rail.
@@ -590,17 +572,20 @@ function isWidgetEnabled(
 /**
  * Maps a declaration's `defaultWidget` opt-in (#9143) to the registered shared
  * frontpage sink component (already registered above via
- * `registerWidgetComponent`). A `home`-slot plugin with no own component renders
- * one of these shared widgets instead of shipping its own.
+ * `registerWidgetComponent`), or to `null` when the sink kind produces no home
+ * tile. A `home`-slot plugin with no own component renders the mapped shared
+ * widget instead of shipping its own.
  */
 export const DEFAULT_WIDGET_SINK_COMPONENT: Readonly<
-  Record<DefaultHomeWidgetSink, { pluginId: string; id: string }>
+  Record<DefaultHomeWidgetSink, { pluginId: string; id: string } | null>
 > = {
-  notifications: { pluginId: "notifications", id: "notifications.recent" },
-  // The `messages` sink now folds into the notification rail (#10697) — the
-  // standalone Messages widget was removed as redundant with the chat overlay,
-  // so a plugin declaring `defaultWidget: "messages"` resolves to notifications.
-  messages: { pluginId: "notifications", id: "notifications.recent" },
+  // The notifications sink yields NO tile: the dashboard notification center
+  // (NotificationsHomeCenter, pinned by HomeScreen) already renders every
+  // store notification regardless of producer, so a per-plugin "recent
+  // notifications" card would double-render the inbox. The `messages` sink
+  // folded into the notification rail in #10697, so it resolves the same way.
+  notifications: null,
+  messages: null,
   activity: {
     pluginId: "agent-orchestrator",
     id: "agent-orchestrator.activity",
@@ -703,9 +688,11 @@ export function resolveWidgetsForSlot(
         continue;
       }
       const sink = DEFAULT_WIDGET_SINK_COMPONENT[declaration.defaultWidget];
-      Component = getWidgetComponent(sink.pluginId, sink.id);
-      if (Component) {
-        defaultWidgetSink = declaration.defaultWidget;
+      if (sink) {
+        Component = getWidgetComponent(sink.pluginId, sink.id);
+        if (Component) {
+          defaultWidgetSink = declaration.defaultWidget;
+        }
       }
     }
 

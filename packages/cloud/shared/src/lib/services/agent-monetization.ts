@@ -26,6 +26,59 @@ import { creditsService } from "./credits";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
 // ============================================================================
+// FAIL-CLOSED NUMERIC BOUNDARY (#13415)
+// ============================================================================
+
+/**
+ * A corrupt monetization NUMERIC read (`inference_markup_percentage`,
+ * `total_creator_earnings`) surfaces to JS as a driver string. Postgres accepts
+ * `'NaN'::numeric` as a valid value, so a poisoned row reads back as the string
+ * `"NaN"` and a bare `Number(...)` yields `NaN` — which then poisons the creator
+ * markup math silently: `baseCost * (NaN / 100)` is `NaN`, and every ordering /
+ * threshold comparison against `NaN` is `false`, so no throw ever fires and a
+ * fabricated / garbage charge (or a NaN-poisoned earnings display) sails through.
+ *
+ * This is the money-out fail-open the #13415 sweep hardens: parse at the read
+ * boundary and THROW on a corrupt/non-finite value instead of returning `NaN`.
+ * An explicit domain zero (`"0"`, `"0.00"`) is a legitimate value and is
+ * preserved. Mirrors the merged NUMERIC fail-closed slices
+ * (#13454 / #13474 / #13482 / #13486 / #13503 / #13504 / #13507).
+ */
+export class CorruptAgentMonetizationNumberError extends Error {
+  constructor(
+    readonly field: string,
+    readonly rawValue: unknown,
+  ) {
+    super(`agent-monetization: corrupt NUMERIC value for "${field}": ${JSON.stringify(rawValue)}`);
+    this.name = "CorruptAgentMonetizationNumberError";
+  }
+}
+
+export function parseAgentMonetizationNumber(value: unknown, field: string): number {
+  if (value === null || value === undefined) {
+    throw new CorruptAgentMonetizationNumberError(field, value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new CorruptAgentMonetizationNumberError(field, value);
+    }
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      throw new CorruptAgentMonetizationNumberError(field, value);
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      throw new CorruptAgentMonetizationNumberError(field, value);
+    }
+    return parsed;
+  }
+  throw new CorruptAgentMonetizationNumberError(field, value);
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -92,8 +145,23 @@ class AgentMonetizationService {
       ownerId: agent.user_id,
       organizationId: agent.organization_id,
       monetizationEnabled: agent.monetization_enabled,
-      markupPercentage: Number(agent.inference_markup_percentage || 0),
-      totalEarnings: Number(agent.total_creator_earnings),
+      // Fail closed: a corrupt markup NUMERIC must not read back as NaN and
+      // poison the creator-markup charge math downstream (#13415). A null/blank
+      // read defaults to a legitimate domain 0 (the column is NOT NULL with a
+      // "0.00" default, so this is defensive), but a corrupt "NaN"/garbage value
+      // throws instead of silently disabling the money gate.
+      markupPercentage:
+        agent.inference_markup_percentage === null ||
+        agent.inference_markup_percentage === undefined
+          ? 0
+          : parseAgentMonetizationNumber(
+              agent.inference_markup_percentage,
+              "inference_markup_percentage",
+            ),
+      totalEarnings: parseAgentMonetizationNumber(
+        agent.total_creator_earnings,
+        "total_creator_earnings",
+      ),
       totalRequests: agent.total_inference_requests,
     };
   }
@@ -402,19 +470,26 @@ class AgentMonetizationService {
 
     const monetizedAgents = agents.filter((a) => a.monetization_enabled);
 
-    const totalEarnings = monetizedAgents.reduce(
-      (sum, a) => sum + Number(a.total_creator_earnings),
-      0,
-    );
+    // Fail closed: a corrupt total_creator_earnings row must not silently poison
+    // the summed total (NaN) or the ranking (every NaN comparison is false, so a
+    // corrupt row would sort arbitrarily) — read each earnings value through the
+    // fail-closed boundary once so a poisoned row throws instead of producing a
+    // garbage earnings summary (#13415).
+    const monetizedEarnings = monetizedAgents.map((a) => ({
+      agent: a,
+      earnings: parseAgentMonetizationNumber(a.total_creator_earnings, "total_creator_earnings"),
+    }));
 
-    const topAgents = monetizedAgents
-      .sort((a, b) => Number(b.total_creator_earnings) - Number(a.total_creator_earnings))
+    const totalEarnings = monetizedEarnings.reduce((sum, e) => sum + e.earnings, 0);
+
+    const topAgents = monetizedEarnings
+      .sort((a, b) => b.earnings - a.earnings)
       .slice(0, 5)
-      .map((a) => ({
-        id: a.id,
-        name: a.name,
-        earnings: Number(a.total_creator_earnings),
-        requests: a.total_inference_requests,
+      .map((e) => ({
+        id: e.agent.id,
+        name: e.agent.name,
+        earnings: e.earnings,
+        requests: e.agent.total_inference_requests,
       }));
 
     return {

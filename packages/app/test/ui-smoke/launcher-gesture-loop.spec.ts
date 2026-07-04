@@ -8,10 +8,11 @@
  *
  * Tile taps navigate away and unmount the surface, so this lane drives the
  * navigation-safe alphabet (`tileIds: []`): rail swipes (commit + reject), edge
- * buttons, grid/widget scrolls, notification pull/dismiss, and Tab focus — all
- * through the public test ids (`home-launcher-surface` / `-rail` / `-page-probe`
- * / `-home-page` / `-launcher-page`, `home-notification-pull-zone`,
- * `rail-pager-edge-*`). After each command the engine checks every §D invariant
+ * buttons, grid/widget scrolls (the home half's scroll covers the pinned
+ * notification center card too), and Tab focus — all through the public test
+ * ids (`home-launcher-surface` / `-rail` / `-page-probe` / `-home-page` /
+ * `-launcher-page`, `rail-pager-edge-*`). After each command the engine checks
+ * every §D invariant
  * (page/probe/transform agreement, focus never inert, telemetry launch count,
  * zero console errors, CLS budget, no blue). Tile launch itself is covered by
  * the fixture lane (which can't navigate away) and gesture-matrix's dedicated

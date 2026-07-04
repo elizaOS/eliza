@@ -41,7 +41,10 @@ export type {
   DashboardSidebarLinkRenderProps,
   DashboardSidebarSection,
 } from "./dashboard-sidebar-types";
-export { PageHeaderProvider } from "./page-header-context";
+export {
+  EnsurePageHeaderProvider,
+  PageHeaderProvider,
+} from "./page-header-context";
 export {
   usePageHeader,
   useSetPageHeader,

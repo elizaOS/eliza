@@ -13,6 +13,8 @@ Screenshots:
 - Browser active tab state: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-browser-example-tab.png`
 - Wallet opaque surface: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-inventory.png`
 - Partial plugin capture with host API failure noise: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/contacts-gui.png`
+- Plugin route fallback/global-background debug capture: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/debug-contacts-seeded.png`
+- Plugin sweep manifests: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/desktop-plugin-view-sweep.json`, `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/mobile-plugin-view-sweep.json`
 
 ## Code Evidence
 
@@ -22,6 +24,7 @@ Screenshots:
 - The background event channel is globally mounted via `AppBackground`.
 - Registered plugin views in the visual harness share the host API/websocket surface; without the API server, the views repeatedly emit Vite-proxied `502 Bad Gateway` and websocket connection-refused diagnostics instead of rendering through an intentional offline/capability boundary.
 - Wallet & RPC also leaks backend availability as a raw `HTTP 502` panel inside settings. This is the same boundary problem in a built-in normal view: a child capability failure is exposed as infrastructure text instead of a shell-brokered offline state.
+- The bounded registered-plugin sweep accounted for all 55 plugin view cases at desktop and mobile. Desktop recorded 52 screenshots / 3 capture errors; mobile recorded 42 screenshots / 13 capture errors. Many early captures painted only the shared orange background. Direct seeded debug capture of `/contacts` showed the route rendering the home/launcher surface under the `/contacts` URL while the global body/html background stayed orange.
 
 ## Research Notes
 
@@ -49,7 +52,8 @@ Define a cross-platform view-surface architecture:
 - Add tests that navigate between shared-background and opaque views and assert that the prior view's background does not remain visible.
 - Add a plugin-view offline-state test: when a granted capability/backend is unavailable, the view renders a bounded local failure state rather than leaking host proxy/websocket errors through the shared surface.
 - Add a built-in capability offline-state test for Wallet & RPC/browser bridge/wallet data so normal views show product-grade recovery copy when a backend capability is unavailable.
+- Add a plugin route-readiness test that fails if a registered route paints only the global background or falls back to launcher/home content.
 
 ## Evidence Gaps
 
-This issue is grounded in route screenshots, code inspection, and a partial plugin-view capture. It still needs a runtime mutation test that intentionally has a view attempt to modify global background/root state and verifies the shell blocks or scopes it. Full plugin coverage also needs a clean API-backed capture once local disk/API startup is healthy.
+This issue is grounded in route screenshots, code inspection, a partial plugin-view capture, and a bounded registered-plugin sweep. It still needs a runtime mutation test that intentionally has a view attempt to modify global background/root state and verifies the shell blocks or scopes it. Plugin happy-path UX coverage also needs a clean API-backed/offline-capability-clean capture because several sweep records are fallback/background evidence rather than intended plugin content.

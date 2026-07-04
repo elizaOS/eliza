@@ -5,7 +5,7 @@
  * preview-mode toggles and a confirmed reset-to-defaults action.
  */
 
-import { AlertTriangle, Download, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Bell, Download, Trash2, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type LocalAgentBackupMetadata } from "../../api";
@@ -95,9 +95,10 @@ function BackupOptionList({
 }
 
 export function AdvancedSection() {
-  const { t, handleReset } = useAppSelectorShallow((s) => ({
+  const { t, handleReset, setActionNotice } = useAppSelectorShallow((s) => ({
     t: s.t,
     handleReset: s.handleReset,
+    setActionNotice: s.setActionNotice,
   }));
   const developerMode = useIsDeveloperMode();
   const previewMode = useIsPreviewMode();
@@ -108,6 +109,7 @@ export function AdvancedSection() {
   const [selectedBackupFileName, setSelectedBackupFileName] = useState("");
   const [backupListBusy, setBackupListBusy] = useState(false);
   const [createBackupBusy, setCreateBackupBusy] = useState(false);
+  const [seedNotificationsBusy, setSeedNotificationsBusy] = useState(false);
   const [restoreBackupBusy, setRestoreBackupBusy] = useState(false);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
@@ -193,6 +195,27 @@ export function AdvancedSection() {
       setCreateBackupBusy(false);
     }
   }, [createBackupBusy]);
+
+  // Dev-only: paint the demo notification spread so the dashboard center can
+  // be exercised without waiting for real activity. The server 404s the route
+  // in production builds; surfacing that error here is the designed degrade.
+  const handleSeedDevNotifications = useCallback(async () => {
+    if (seedNotificationsBusy) return;
+    setSeedNotificationsBusy(true);
+    try {
+      const result = await client.seedDevNotifications();
+      setActionNotice(`Seeded ${result.count} test notifications`, "success");
+    } catch (err) {
+      // error-policy:J4 explicit user-facing degrade — the failure surfaces as
+      // an error toast (production builds reject this dev-only route).
+      setActionNotice(
+        backupErrorMessage(err, "Could not seed test notifications."),
+        "error",
+      );
+    } finally {
+      setSeedNotificationsBusy(false);
+    }
+  }, [seedNotificationsBusy, setActionNotice]);
 
   const handleRestoreBackup = useCallback(async () => {
     if (restoreBackupBusy) return;
@@ -310,6 +333,35 @@ export function AdvancedSection() {
             onCheckedChange={(checked) => setPreviewMode(checked)}
           />
         </SettingsGroup>
+
+        {developerMode ? (
+          <SettingsGroup
+            title="Developer tools"
+            description="Utilities for exercising app surfaces while developing. Dev builds only."
+          >
+            <SettingsRow
+              icon={Bell}
+              label="Seed test notifications"
+              description="Fill the dashboard notification center with a demo spread across every priority."
+              stacked
+            >
+              <div className="flex sm:justify-end">
+                <SettingsActionButton
+                  agentId="advanced-seed-test-notifications"
+                  agentLabel="Seed test notifications"
+                  agentGroup="advanced"
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-sm whitespace-nowrap sm:w-auto"
+                  disabled={seedNotificationsBusy}
+                  onClick={() => void handleSeedDevNotifications()}
+                >
+                  {seedNotificationsBusy ? "Seeding…" : "Seed notifications"}
+                </SettingsActionButton>
+              </div>
+            </SettingsRow>
+          </SettingsGroup>
+        ) : null}
 
         <SettingsGroup
           title={

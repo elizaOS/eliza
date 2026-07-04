@@ -11,24 +11,27 @@
  *      launches; a long press must NOT launch on release (regression: the
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
- *   2. Notification pull zone — pull-down opens the center; an UPWARD drag's
- *      trailing compat click must NOT open it (regression: the direction gate
- *      was defeated by the synthesized click in real browsers).
+ *   2. Dashboard notification center (`home-notification-center`, the widget
+ *      pinned on the home dashboard) — a seeded inbox renders its rows; a row
+ *      tap marks it read IN PLACE (order ignores read state, so the row never
+ *      moves under the pointer); the per-row X dismisses; clear-all empties the
+ *      inbox and the whole card self-hides.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
  *      pointer events into (or scroll) the home screen beneath.
- *   5. Click-through prevention — closing the notification sheet via its
- *      backdrop must not activate the pull zone / home surface beneath.
- *   6. (touch) Rail flick home→launcher with a genuine CDP touch swipe must
+ *   5. (touch) Rail flick home→launcher with a genuine CDP touch swipe must
  *      not ghost-launch the tile under the finger.
+ *   6. (touch) A vertical pan inside `home-notification-list` scrolls the LIST
+ *      — it must not flip the home↔launcher rail, scroll the home surface
+ *      beneath, or ghost-tap the row under the finger.
  *
  * Evidence: .github/issue-evidence/ui-interaction-epic/l3-gestures/.
  */
 
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -148,69 +151,196 @@ test("launcher tile: tap launches, long press does NOT ghost-launch on release",
   await evidenceShot(page, "tile-tap-launched");
 });
 
-test("notification pull zone: pull-down opens; an upward drag's trailing click stays closed", async ({
+// ── Dashboard notification center fixtures ──────────────────────────────────
+
+interface SeededNotification {
+  id: string;
+  title: string;
+  body?: string;
+  category: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  source: string;
+  createdAt: number;
+  readAt: number | null;
+}
+
+/**
+ * Eight rows so the capped list (`max-h ≈ 312px`, ~4–5 rows) overflows and the
+ * touch pan test below has real scroll travel. Priority + recency fix the
+ * dashboard order exactly (urgent → high → normals newest-first); the two READ
+ * rows are deliberately interleaved ABOVE unread ones ("Sync report" outranks
+ * "Weekly digest" on recency) to prove read state never participates in the
+ * sort. No row carries a deepLink, so a tap is exactly "mark read".
+ */
+function seedInboxNotifications(): SeededNotification[] {
+  const base = Date.now();
+  const row = (
+    id: string,
+    title: string,
+    priority: SeededNotification["priority"],
+    ageMs: number,
+    readAt: number | null = null,
+  ): SeededNotification => ({
+    id,
+    title,
+    body: `${title} — seeded by gesture-matrix`,
+    category: "system",
+    priority,
+    source: "ui-smoke",
+    createdAt: base - ageMs,
+    readAt,
+  });
+  return [
+    row("n-urgent", "Payment failed", "urgent", 30_000),
+    row("n-high", "Approval needed", "high", 60_000),
+    row("n-1", "Backup finished", "normal", 90_000),
+    row("n-2", "Sync report", "normal", 120_000, base - 100_000),
+    row("n-3", "Weekly digest", "normal", 150_000),
+    row("n-4", "New follower", "normal", 180_000),
+    row("n-5", "Build passed", "normal", 210_000, base - 190_000),
+    row("n-6", "Disk cleanup", "normal", 240_000),
+  ];
+}
+
+const SEEDED_ORDER = [
+  "Payment failed",
+  "Approval needed",
+  "Backup finished",
+  "Sync report",
+  "Weekly digest",
+  "New follower",
+  "Build passed",
+  "Disk cleanup",
+];
+
+/**
+ * Serve the seeded inbox. Registered after `installDefaultAppRoutes` (the
+ * beforeEach), so it wins over the default empty-inbox stub — Playwright
+ * matches the most recently registered route first. The mutation verbs must
+ * answer success: the notification store mutates optimistically and REVERTS on
+ * a failed write, so a 501 from the booted zero-key stack would roll every
+ * mark-read/dismiss/clear back and the assertions below would (correctly) fail.
+ */
+async function installSeededInboxRoutes(
+  page: Page,
+  notifications: SeededNotification[],
+): Promise<void> {
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
+  await page.route("**/api/notifications**", async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const { pathname } = new URL(request.url());
+    if (method === "GET" && pathname === "/api/notifications") {
+      await route.fulfill(json({ notifications, unreadCount }));
+      return;
+    }
+    if (method === "POST" && pathname === "/api/notifications/read-all") {
+      await route.fulfill(json({ changed: unreadCount }));
+      return;
+    }
+    if (
+      method === "POST" &&
+      /^\/api\/notifications\/[^/]+\/read$/.test(pathname)
+    ) {
+      await route.fulfill(json({ ok: true }));
+      return;
+    }
+    if (method === "DELETE" && pathname === "/api/notifications") {
+      await route.fulfill(json({ ok: true }));
+      return;
+    }
+    if (method === "DELETE" && /^\/api\/notifications\/[^/]+$/.test(pathname)) {
+      await route.fulfill(json({ ok: true }));
+      return;
+    }
+    await route.fallback();
+  });
+}
+
+/**
+ * The rendered row order as seeded titles, from DOM order. Row text also holds
+ * body/timestamp, so map each row back to the unique seeded title it contains
+ * — a row matching no seeded title is a hard failure, not a skip.
+ */
+async function rowTitleOrder(center: Locator): Promise<string[]> {
+  const texts = await center.getByTestId("notification-row").allTextContents();
+  return texts.map((text) => {
+    const match = SEEDED_ORDER.find((title) => text.includes(title));
+    if (!match)
+      throw new Error(`notification row with unseeded content: ${text}`);
+    return match;
+  });
+}
+
+test("dashboard notification center: row tap marks read in place, dismiss removes, clear-all hides the card", async ({
   page,
 }) => {
+  await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
-  const zone = page.getByTestId("home-notification-pull-zone");
-  await expect(zone).toBeVisible({ timeout: 15_000 });
 
-  // UPWARD drag on the strip. The gesture is direction-gated (only pull-DOWN
-  // opens) — but a real browser also synthesizes a click from this press,
-  // which used to open the center anyway. It must stay closed. The strip hugs
-  // the top of the viewport, so start at its bottom edge and pull up towards
-  // y=2 (coordinates must stay inside the viewport for CDP mouse input).
-  const zoneStartBox = await zone.boundingBox();
-  if (!zoneStartBox) throw new Error("pull zone has no bounding box");
-  const upFromX = zoneStartBox.x + zoneStartBox.width / 2;
-  const upFromY = zoneStartBox.y + zoneStartBox.height - 3;
-  const upToY = Math.max(2, upFromY - 26);
-  await page.mouse.move(upFromX, upFromY);
-  await page.mouse.down();
-  for (let i = 1; i <= 6; i += 1) {
-    await page.mouse.move(upFromX, upFromY + ((upToY - upFromY) * i) / 6);
-    await page.waitForTimeout(15);
-  }
-  await page.mouse.up();
-  await page.waitForTimeout(300);
-  await expect(page.getByTestId("notification-sheet")).toHaveCount(0);
-  await evidenceShot(page, "pullzone-upward-drag-stays-closed");
-
-  // Pull DOWN past the 56px distance threshold → the center opens.
-  await mousePointerDrag(page, zone, 0, 90, { steps: 6, pauseMs: 15 });
-  await expect(page.getByTestId("notification-sheet")).toBeVisible({
-    timeout: 10_000,
+  // (a) The pinned center renders on the home surface with every seeded row,
+  // in priority-bucket-then-recency order, and the unread badge counts the six
+  // unread rows.
+  const center = page.getByTestId("home-notification-center");
+  await expect(center).toBeVisible({ timeout: 15_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(8, {
+    timeout: 15_000,
   });
-  await evidenceShot(page, "pullzone-pulldown-opened");
-
-  // CLICK-THROUGH: closing via the backdrop must not activate anything on the
-  // layer beneath the tap point. Click the backdrop just BELOW the sheet —
-  // works on every viewport (the top-anchored sheet spans nearly the full
-  // width on phones, so beside-the-sheet points don't exist there) and sits
-  // over the home surface's interactive suggestion chips. If the tap leaked
-  // through the backdrop, a chip would fire and spring the chat overlay open.
-  const backdrop = page.getByTestId("notification-sheet-backdrop");
-  await expect(backdrop).toBeVisible();
-  const sheetBox = await page.getByTestId("notification-sheet").boundingBox();
-  if (!sheetBox) throw new Error("notification sheet has no bounding box");
-  const viewport = page.viewportSize();
-  if (!viewport) throw new Error("no viewport size");
-  await page.mouse.click(
-    sheetBox.x + sheetBox.width / 2,
-    Math.min(viewport.height - 10, sheetBox.y + sheetBox.height + 30),
+  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
+    "6",
   );
-  await expect(page.getByTestId("notification-sheet")).toHaveCount(0, {
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  await evidenceShot(page, "notification-center-seeded");
+
+  // (b) Tapping a row marks it read WITHOUT moving it. The tapped row is the
+  // top (urgent, unread) one — under an unread-first inbox sort it would sink
+  // below the six remaining unread rows, so an identical order is a real
+  // no-reshuffle proof, not a tautology.
+  const urgentRow = center
+    .getByTestId("notification-row")
+    .filter({ hasText: "Payment failed" });
+  await expect(urgentRow).toHaveAttribute("data-unread", "true");
+  await urgentRow.click();
+  await expect(urgentRow).not.toHaveAttribute("data-unread", "true", {
     timeout: 10_000,
   });
-  await page.waitForTimeout(400);
-  await expect(page.getByTestId("notification-sheet")).toHaveCount(0);
-  // Nothing beneath fired: the home is still resting behind a collapsed chat.
+  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
+    "5",
+  );
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  // The tap had no deepLink: the home surface must not have navigated.
   await expect(page.getByTestId("home-screen")).toBeVisible();
   await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
     "data-open",
     "true",
   );
-  await evidenceShot(page, "backdrop-close-no-clickthrough");
+  await evidenceShot(page, "notification-center-row-read-in-place");
+
+  // (c) The per-row X removes exactly that row.
+  await center
+    .locator("li[data-notif-row]")
+    .filter({ hasText: "Approval needed" })
+    .getByTestId("notification-row-dismiss")
+    .click();
+  await expect(
+    center
+      .getByTestId("notification-row")
+      .filter({ hasText: "Approval needed" }),
+  ).toHaveCount(0, { timeout: 10_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(7);
+
+  // (d) Clear-all empties the inbox and the whole card self-hides.
+  await center.getByTestId("notifications-clear-all").click();
+  await expect(page.getByTestId("home-notification-center")).toHaveCount(0, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("home-screen")).toBeVisible();
+  await evidenceShot(page, "notification-center-cleared");
 });
 
 test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, and the drag never leaks under the sheet", async ({
@@ -304,5 +434,67 @@ test.describe("real touch (hasTouch project)", () => {
       timeout: 10_000,
     });
     await evidenceShot(page, "touch-rail-flick-back-home");
+  });
+
+  test("vertical pan inside the notification list scrolls the list — no rail flip, no home scroll, no ghost row-tap", async ({
+    page,
+    browserName,
+  }, testInfo) => {
+    const hasTouch = Boolean(testInfo.project.use?.hasTouch);
+    test.skip(!hasTouch, "requires a touch-enabled project (hasTouch)");
+    test.skip(
+      browserName !== "chromium",
+      "CDP Input.dispatchTouchEvent is Chromium-only; non-Chromium touch runs on the real-device capture lanes",
+    );
+
+    await installSeededInboxRoutes(page, seedInboxNotifications());
+    await openHome(page);
+
+    const center = page.getByTestId("home-notification-center");
+    await expect(center).toBeVisible({ timeout: 15_000 });
+    const list = page.getByTestId("home-notification-list");
+    await expect(list.getByTestId("notification-row")).toHaveCount(8, {
+      timeout: 15_000,
+    });
+    // The 8 seeded rows must overflow the height cap — without real scroll
+    // travel the "list scrolled" assertion below would be unreachable.
+    const overflows = await list.evaluate(
+      (el) => el.scrollHeight > el.clientHeight + 8,
+    );
+    expect(overflows, "seeded list must overflow its height cap").toBe(true);
+
+    const homeScrollBefore = await page
+      .getByTestId("home-screen")
+      .evaluate((el) => el.scrollTop);
+    const badgeBefore = await center
+      .getByTestId("notifications-unread-badge")
+      .textContent();
+
+    // Genuine touch pan UP inside the list (a slight horizontal wobble, like a
+    // real finger) → the list consumes it as a scroll.
+    await cdpTouchDrag(page, list, 4, -140, 10);
+    await expect
+      .poll(async () => list.evaluate((el) => el.scrollTop), {
+        timeout: 10_000,
+        message: "the notification list must scroll internally",
+      })
+      .toBeGreaterThan(0);
+
+    // The pan stayed in the list: the rail did not flip, the home surface
+    // beneath did not scroll, and the scroll's touch release did not ghost-tap
+    // the row under the finger (row count + unread badge unchanged).
+    await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
+      "data-page",
+      "home",
+    );
+    const homeScrollAfter = await page
+      .getByTestId("home-screen")
+      .evaluate((el) => el.scrollTop);
+    expect(homeScrollAfter).toBe(homeScrollBefore);
+    await expect(list.getByTestId("notification-row")).toHaveCount(8);
+    await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
+      badgeBefore ?? "",
+    );
+    await evidenceShot(page, "touch-notification-list-scroll-contained");
   });
 });

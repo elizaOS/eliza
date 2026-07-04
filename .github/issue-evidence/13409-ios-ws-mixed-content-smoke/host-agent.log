@@ -1,0 +1,28 @@
+ Info       [Migration] Starting pre-1.6.5 → 1.6.5+ schema migration...
+ Info       [Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] DatabaseMigrationService initialized
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=1, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr6urymt)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=1)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Info       Starting Documents service for agent: 0e9c0e19-8723-0a78-a906-f058e6ef2488
+ Info       [RelationshipsService] Loaded 0 contacts from components
+ Info       [RelationshipsService] Initialized successfully
+ Info       [FollowUpService] Successfully acquired RelationshipsService via service promise
+ Info       [FollowUpService] Initialized successfully
+ Info       [trajectories] Trajectories service initialized
+ Info       [eliza] Registered edge-tts for runtime TEXT_TO_SPEECH (streaming / swarm voice)
+ Warn       [eliza-api] AGENT_EVENT service not found on runtime — event streaming will be unavailable
+ Warn       #agent:DeviceE2EHostAgent  [AGENT] Send handler already registered, overwriting (handlerSource=client_chat)
+[eliza-api] Listening on http://127.0.0.1:31338
+ Info       [eliza-api] Listening on http://127.0.0.1:31338
+ Info       [eliza-api] upstreamStartApiServer took 103ms
+[device-e2e-host-agent] real API up on :31338 in 1750ms

@@ -474,7 +474,7 @@ export function ApiExplorerSurface() {
                 variant="ghost"
                 type="button"
                 onClick={handleCopyJson}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--accent)] text-white rounded-sm hover:bg-[#e54f00] transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-black rounded-sm hover:bg-[#e54f00] transition-colors"
               >
                 {copied === "json" ? (
                   <Check className="h-3.5 w-3.5" />

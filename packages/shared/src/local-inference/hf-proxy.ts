@@ -74,7 +74,7 @@ export function resolveHfDownloadBases(): HfDownloadBase[] {
 
   const apiKey = cloudApiKey();
   if (apiKey) {
-    const cloudApi = resolveCloudApiBaseUrl(process.env.ELIZAOS_CLOUD_BASE_URL);
+    const cloudApi = resolveCloudApiBaseUrl();
     bases.push({
       base: `${trimTrailingSlash(cloudApi)}/hf-proxy`,
       authHeader: { authorization: `Bearer ${apiKey}` },

@@ -232,13 +232,15 @@ describe("WidgetHost", () => {
         defaultWidgetSink: "activity",
       },
       {
+        // wallet is NOT in FULL_APP_SHELL_WIDGET_PLUGIN_IDS, so it must keep
+        // rendering on the limited base while the shell-bound widgets hide.
         declaration: {
-          id: "notifications.recent",
-          pluginId: "notifications",
+          id: "wallet.balance",
+          pluginId: "wallet",
           slot: "home",
-          label: "Notifications",
+          label: "Wallet",
         },
-        Component: () => <div>Notifications widget</div>,
+        Component: () => <div>Wallet widget</div>,
       },
     ]);
 
@@ -246,6 +248,6 @@ describe("WidgetHost", () => {
 
     expect(screen.queryByText("Apps widget")).toBeNull();
     expect(screen.queryByText("Activity sink")).toBeNull();
-    expect(screen.getByText("Notifications widget")).toBeTruthy();
+    expect(screen.getByText("Wallet widget")).toBeTruthy();
   });
 });

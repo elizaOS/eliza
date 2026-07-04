@@ -61,6 +61,7 @@ import {
   messageText,
   toActionData,
 } from "../lifeops/google/format-helpers.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
@@ -2817,6 +2818,17 @@ export async function runLifeOperationHandler(
         | Record<string, unknown>
         | undefined;
 
+      // Owner's stored timezone fact (travel-aware), used as the fallback zone
+      // for a conversational create when no zone was stated out loud and no
+      // more-specific candidate (explicit detail / planner / deferred draft /
+      // window policy) is present. Without this, "remind me tomorrow at 9am"
+      // resolves 9am against the HOST clock (`resolveDefaultTimeZone()` = UTC
+      // on shared-server / TZ=UTC topologies) instead of the owner's wall
+      // clock (#13509). Read once here; the store call falls back to the host
+      // zone itself when no owner fact is stored, so `ownerFactTimeZone` is
+      // always a concrete zone (never fabricated).
+      const ownerFactTimeZone = await resolveOwnerTimeZone(runtime, new Date());
+
       // Track whether cadence/title came from explicit high-confidence
       // sources so the planner only fills genuine gaps.
       const hadExplicitCadence = Boolean(
@@ -2886,12 +2898,13 @@ export async function runLifeOperationHandler(
             (editingDeferredDefinitionDraft || !hadExplicitCadence) &&
             llmPlan.cadenceKind
           ) {
-            const llmCadenceTimeZone = normalizeLifeTimeZoneToken(
-              detailString(details, "timeZone") ??
-                llmPlan.timeZone ??
-                deferredDefinitionDraft?.request.timezone ??
-                windowPolicy?.timezone,
-            );
+            const llmCadenceTimeZone =
+              normalizeLifeTimeZoneToken(
+                detailString(details, "timeZone") ??
+                  llmPlan.timeZone ??
+                  deferredDefinitionDraft?.request.timezone ??
+                  windowPolicy?.timezone,
+              ) ?? ownerFactTimeZone;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
               intent,
               timeZone: llmCadenceTimeZone ?? undefined,
@@ -2915,12 +2928,13 @@ export async function runLifeOperationHandler(
           }
         }
       }
-      const resolvedTimeZone = normalizeLifeTimeZoneToken(
-        detailString(details, "timeZone") ??
-          llmPlan?.timeZone ??
-          deferredDefinitionDraft?.request.timezone ??
-          windowPolicy?.timezone,
-      );
+      const resolvedTimeZone =
+        normalizeLifeTimeZoneToken(
+          detailString(details, "timeZone") ??
+            llmPlan?.timeZone ??
+            deferredDefinitionDraft?.request.timezone ??
+            windowPolicy?.timezone,
+        ) ?? ownerFactTimeZone;
       const timedRequestKind = llmRequestKind;
       const nativeAppleMetadata =
         timedRequestKind && cadence?.kind === "once"

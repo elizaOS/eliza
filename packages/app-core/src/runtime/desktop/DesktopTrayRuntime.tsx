@@ -217,9 +217,10 @@ export function DesktopTrayRuntime() {
             await showAndFocusWindow();
             return;
           case "tray-open-notifications":
-            // Desktop-native entry (#10706): open the notification center in
-            // place (the always-mounted headless NotificationCenter listens for
-            // the event) instead of navigating a tab.
+            // Desktop-native entry (#10706): the notification center is the
+            // dashboard widget on the home surface, so the always-mounted
+            // headless NotificationsShellBoot answers this event by
+            // navigating there.
             switchShellView("desktop");
             dispatchOpenNotificationCenter();
             await showAndFocusWindow();

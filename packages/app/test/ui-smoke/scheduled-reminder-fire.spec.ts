@@ -1,5 +1,5 @@
 // Live-stack e2e for issue #11792: prove the scheduled-task / reminder
-// create -> fire -> notification-rail pipeline end to end against the REAL app
+// create -> fire -> notification pipeline end to end against the REAL app
 // runtime (no mocks, no component fixture).
 //
 // Enable with ELIZA_UI_SMOKE_LIVE_STACK=1 (the harness boots the real
@@ -17,8 +17,12 @@
 //      (POST /api/background/run-due-tasks) in a bounded loop until the
 //      LIFEOPS_SCHEDULER tick fires the due reminder — asserting the row
 //      transitions out of `scheduled` AND a `reminder` notification is emitted.
-//   4. Prove the notification rail (NotificationCenter / AgentNotification)
-//      renders the fired reminder in the real UI (desktop + mobile).
+//   4. Prove the dashboard notification center (NotificationsHomeCenter, the
+//      widget pinned on the home dashboard — THE in-app notification surface)
+//      renders the fired reminder in the real UI (desktop + mobile). The
+//      `eliza:notifications:open` event navigates to the home dashboard, so
+//      dispatching it both exercises the event contract and lands on the
+//      widget.
 
 import {
   type APIRequestContext,
@@ -128,7 +132,13 @@ async function ensureAutomationsFeed(page: Page): Promise<void> {
   await expect(shell).toBeVisible({ timeout: 15_000 });
 }
 
-async function openNotificationRail(page: Page): Promise<void> {
+/**
+ * Dispatch the surface-agnostic "open notifications" event. Its handler
+ * (notifications-boot) navigates to the home dashboard, where the pinned
+ * NotificationsHomeCenter widget IS the notification center — so the dispatch
+ * covers the event contract AND gets the widget on screen.
+ */
+async function openNotificationsDashboard(page: Page): Promise<void> {
   await page.evaluate((eventName) => {
     window.dispatchEvent(new CustomEvent(eventName));
   }, OPEN_NOTIFICATION_CENTER_EVENT);
@@ -147,13 +157,13 @@ async function shot(
   await testInfo.attach(name, { body: buf, contentType: "image/png" });
 }
 
-test.describe("scheduled reminder create -> fire -> notification rail", () => {
+test.describe("scheduled reminder create -> fire -> dashboard notification center", () => {
   test.skip(
     !LIVE_STACK,
     "set ELIZA_UI_SMOKE_LIVE_STACK=1 (+ ELIZA_UI_SMOKE_PLUGIN_ENTRIES=personal-assistant) to run against the real runtime",
   );
 
-  test("reminder fires through the real runner and renders in the notification rail", async ({
+  test("reminder fires through the real runner and renders in the dashboard notification center", async ({
     page,
     request,
   }, testInfo) => {
@@ -278,8 +288,12 @@ test.describe("scheduled reminder create -> fire -> notification rail", () => {
       firedNotification,
       "firing should emit a reminder notification",
     ).toBeTruthy();
-    expect(firedNotification?.category).toBe("reminder");
-    expect(firedNotification?.body ?? "").toContain(marker);
+    if (!firedNotification) {
+      throw new Error("unreachable: firedNotification asserted above");
+    }
+    expect(firedNotification.category).toBe("reminder");
+    expect(firedNotification.body ?? "").toContain(marker);
+    expect(firedNotification.title, "fired notification title").toBeTruthy();
 
     // Persist the domain artifacts (API truth) as evidence.
     await testInfo.attach("scheduled-task-fired.json", {
@@ -291,7 +305,7 @@ test.describe("scheduled reminder create -> fire -> notification rail", () => {
       contentType: "application/json",
     });
 
-    // ── 5. UI shows the fired feed + the notification rail renders it ──────
+    // ── 5. UI shows the fired feed + the dashboard notification center ─────
     // Reload re-hydrates the notification store from GET /api/notifications
     // (now containing the fired reminder) and refetches the scheduled-tasks.
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -303,27 +317,43 @@ test.describe("scheduled reminder create -> fire -> notification rail", () => {
     ).toBeVisible({ timeout: 30_000 });
     await shot(page, testInfo, "03-automations-feed-after-fire");
 
-    await openNotificationRail(page);
+    // The "open notifications" event navigates to the home dashboard, where
+    // the pinned NotificationsHomeCenter — the app's one notification surface
+    // — must render the fired reminder as a row.
+    await openNotificationsDashboard(page);
+    const center = page.getByTestId("home-notification-center");
     await expect(
-      page.getByText("Notifications", { exact: true }).first(),
-      "notification center panel should open",
+      center,
+      "the open-notifications event should land on the home dashboard with the pinned notification center",
+    ).toBeVisible({ timeout: 15_000 });
+    const reminderRow = center
+      .getByTestId("notification-row")
+      .filter({ hasText: marker })
+      .first();
+    await expect(
+      reminderRow,
+      "the fired reminder should render as a row in the dashboard notification center",
     ).toBeVisible({ timeout: 15_000 });
     await expect(
-      page.getByText(marker, { exact: false }).first(),
-      "the fired reminder should render in the notification rail",
-    ).toBeVisible({ timeout: 15_000 });
-    await shot(page, testInfo, "04-notification-rail-desktop");
+      reminderRow,
+      "the row should carry the reminder notification's title",
+    ).toContainText(firedNotification.title);
+    await shot(page, testInfo, "04-notification-center-desktop");
 
-    // Mobile viewport capture of the same rail.
+    // Mobile viewport capture of the same widget.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload({ waitUntil: "domcontentloaded" });
     await waitAppReady(page);
-    await openNotificationRail(page);
+    await openNotificationsDashboard(page);
     await expect(
-      page.getByText(marker, { exact: false }).first(),
-      "the fired reminder should render in the mobile notification rail",
+      page
+        .getByTestId("home-notification-center")
+        .getByTestId("notification-row")
+        .filter({ hasText: marker })
+        .first(),
+      "the fired reminder should render in the mobile dashboard notification center",
     ).toBeVisible({ timeout: 15_000 });
-    await shot(page, testInfo, "05-notification-rail-mobile");
+    await shot(page, testInfo, "05-notification-center-mobile");
 
     expect(failures, "no uncaught page errors during the flow").toEqual([]);
   });
