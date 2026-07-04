@@ -29,6 +29,7 @@ from .personas import PERSONA_SCENARIOS
 from .reminders import REMINDERS_SCENARIOS
 from .sleep import SLEEP_SCENARIOS
 from .travel import TRAVEL_SCENARIOS
+from .traveler_timezone import TRAVELER_TIMEZONE_SCENARIOS
 
 EDGE_EXPANSION_MULTIPLIER = 10
 EDGE_VARIANTS: tuple[tuple[str, str, str], ...] = (
@@ -59,6 +60,7 @@ CORE_SCENARIOS: list[Scenario] = [
     *REMINDERS_SCENARIOS,
     *FINANCE_SCENARIOS,
     *TRAVEL_SCENARIOS,
+    *TRAVELER_TIMEZONE_SCENARIOS,
     *HEALTH_SCENARIOS,
     *SLEEP_SCENARIOS,
     *FOCUS_SCENARIOS,
@@ -180,6 +182,7 @@ __all__ = [
     "SLEEP_SCENARIOS",
     "SMOKE_SCENARIOS",
     "TRAVEL_SCENARIOS",
+    "TRAVELER_TIMEZONE_SCENARIOS",
     "count_lifeops_scenarios",
     "validate_lifeops_scenarios",
 ]

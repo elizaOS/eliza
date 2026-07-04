@@ -177,6 +177,21 @@ PERSONA_TAO_TRAVEL = Persona(
     patience_turns=16,
 )
 
+PERSONA_ELENA_ROAD = Persona(
+    id="elena_road",
+    name="Elena Vasquez",
+    traits=["frequent-flyer", "timezone-hopping", "itinerary-driven"],
+    background=(
+        "Strategy consultant crossing 2-3 time zones weekly. Burned before by reminders "
+        "firing at 3am local and by meetings booked into her biological night."
+    ),
+    communication_style=(
+        "precise about cities and dates, sloppy about time zones ('9am Tuesday' with no "
+        "zone), expects the assistant to ask which zone when it matters"
+    ),
+    patience_turns=16,
+)
+
 PERSONA_CAM_COMMS = Persona(
     id="cam_comms",
     name="Cam Whitfield",
@@ -237,6 +252,7 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_ARI_ADHD,
     PERSONA_NOA_NIGHTOWL,
     PERSONA_TAO_TRAVEL,
+    PERSONA_ELENA_ROAD,
     PERSONA_CAM_COMMS,
     PERSONA_DEL_LOW,
 ]
