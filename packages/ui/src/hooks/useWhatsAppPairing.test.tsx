@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getWhatsAppStatus = vi.fn();
 const stopWhatsAppPairing = vi.fn();
 const disconnectWhatsApp = vi.fn();
-const onWsEvent = vi.fn(() => () => {});
+const onWsEvent = vi.fn<(...args: unknown[]) => () => void>(() => () => {});
 
 vi.mock("../api/client", () => ({
   client: {
