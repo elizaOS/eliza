@@ -18,7 +18,9 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
+  useMemo,
   useRef,
+  useState,
 } from "react";
 import type { ImageAttachment } from "../api";
 
@@ -50,6 +52,31 @@ export const ChatInputRefCtx = createContext<RefObject<string> | null>(null);
 
 export function useChatComposer(): ChatComposerValue {
   return useContext(ChatComposerCtx);
+}
+
+/**
+ * The composer draft for chat input SURFACES (overlay, ChatSurface): the
+ * shared ChatComposerContext slot when a provider is mounted — so every
+ * surface targeting the app's active conversation edits ONE draft, and
+ * AppContext-level draft persistence/handoff repaints them all — with a
+ * local-state fallback when none is (stories, e2e fixtures, standalone
+ * mounts), where the default context's no-op setters would make typing dead.
+ */
+export function useChatComposerOrLocal(): ChatComposerValue {
+  const ctx = useContext(ChatComposerCtx);
+  const [localInput, setLocalInput] = useState("");
+  const [localImages, setLocalImages] = useState<ImageAttachment[]>([]);
+  const local = useMemo<ChatComposerValue>(
+    () => ({
+      chatInput: localInput,
+      chatSending: false,
+      chatPendingImages: localImages,
+      setChatInput: setLocalInput,
+      setChatPendingImages: setLocalImages,
+    }),
+    [localInput, localImages],
+  );
+  return ctx === DEFAULT_COMPOSER ? local : ctx;
 }
 
 export function useChatInputRef(): RefObject<string> | null {
