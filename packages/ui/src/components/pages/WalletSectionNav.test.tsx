@@ -6,7 +6,13 @@
  * resolution to Wallet, and that a sub-view stops matching when its registration
  * is absent.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../../registry-host";
@@ -94,15 +100,46 @@ describe("isWalletSectionPath", () => {
 });
 
 describe("WalletSectionNav", () => {
+  it("renders a centered Wallet title header with an icon-only back button", () => {
+    render(<WalletSectionNav activePath="/inventory" />);
+    // Uniform ViewHeader geometry (#13451/#13592): centered title + bare back.
+    const header = screen.getByTestId("view-header");
+    expect(
+      within(header).getByRole("heading", { name: "Wallet" }),
+    ).toBeTruthy();
+    expect(
+      within(header).getByRole("button", { name: "Back to launcher" }),
+    ).toBeTruthy();
+  });
+
+  it("suppresses the secondary strip when only one group member is registered", () => {
+    resetUiRegistryHostForTests();
+    registerAppShellPage({
+      id: "test.wallet",
+      pluginId: "test-wallet",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      group: "wallet",
+      order: 10,
+      loader: async () => ({ default: () => null }),
+    });
+    render(<WalletSectionNav activePath="/wallet" />);
+    // Header present, but no switchable strip with a single member.
+    expect(screen.getByTestId("view-header")).toBeTruthy();
+    expect(screen.queryByTestId("wallet-section-tabs")).toBeNull();
+  });
+
   it("marks the active sub-view (aliases resolve to Wallet)", () => {
     render(<WalletSectionNav activePath="/inventory" />);
+    const strip = screen.getByTestId("wallet-section-tabs");
     expect(
-      screen
+      within(strip)
         .getByRole("button", { name: "Wallet" })
         .getAttribute("aria-current"),
     ).toBe("page");
     expect(
-      screen
+      within(strip)
         .getByRole("button", { name: "Perps" })
         .getAttribute("aria-current"),
     ).toBeNull();
@@ -110,8 +147,9 @@ describe("WalletSectionNav", () => {
 
   it("marks Perps active on its registered route", () => {
     render(<WalletSectionNav activePath="/perps" />);
+    const strip = screen.getByTestId("wallet-section-tabs");
     expect(
-      screen
+      within(strip)
         .getByRole("button", { name: "Perps" })
         .getAttribute("aria-current"),
     ).toBe("page");
@@ -119,14 +157,16 @@ describe("WalletSectionNav", () => {
 
   it("navigates to the sub-view route on click", () => {
     render(<WalletSectionNav activePath="/wallet" />);
-    fireEvent.click(screen.getByRole("button", { name: "Predictions" }));
+    const strip = screen.getByTestId("wallet-section-tabs");
+    fireEvent.click(within(strip).getByRole("button", { name: "Predictions" }));
     expect(window.location.pathname).toBe("/predictions");
   });
 
   it("does not renavigate when the active tab is clicked", () => {
     window.history.replaceState(null, "", "/wallet");
     render(<WalletSectionNav activePath="/wallet" />);
-    fireEvent.click(screen.getByRole("button", { name: "Wallet" }));
+    const strip = screen.getByTestId("wallet-section-tabs");
+    fireEvent.click(within(strip).getByRole("button", { name: "Wallet" }));
     expect(window.location.pathname).toBe("/wallet");
   });
 });

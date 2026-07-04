@@ -433,11 +433,13 @@ describe("InventoryView GUI — rail tab switching", () => {
     ).toBeTruthy();
     expect(within(sidebar).queryByText("Agent NFT")).toBeNull();
 
-    // DeFi: no LP-like positions in the fixture -> recommendation empty state.
+    // DeFi: no LP-like positions in the fixture -> calm neutral empty state
+    // (no suggestion chips).
     fireEvent.click(within(sidebar).getByRole("button", { name: "DeFi" }));
+    expect(within(sidebar).getByText("No DeFi positions.")).toBeTruthy();
     expect(
-      within(sidebar).getByText("Where can I stake my tokens?"),
-    ).toBeTruthy();
+      within(sidebar).queryByText("Where can I stake my tokens?"),
+    ).toBeNull();
     expect(
       within(sidebar).queryByText(hasFlatText("100.0000 USDC")),
     ).toBeNull();
@@ -687,14 +689,17 @@ describe("InventoryView GUI — dashboard panels", () => {
 
     // Danger banner.
     expect(screen.getByText("RPC provider unreachable")).toBeTruthy();
-    // Empty panels now recommend a next step instead of showing a dead box.
-    expect(await screen.findByText("How do I provide liquidity?")).toBeTruthy();
-    expect(screen.getByText("What NFT collections are trending?")).toBeTruthy();
+    // Empty panels are calm neutral states now — a plain fact, no chips.
+    expect(await screen.findByText("No liquidity positions.")).toBeTruthy();
+    expect(screen.getByText("No NFTs to preview.")).toBeTruthy();
+    // The removed suggestion chips must not resurface.
+    expect(screen.queryByText("How do I provide liquidity?")).toBeNull();
+    expect(screen.queryByText("What NFT collections are trending?")).toBeNull();
   });
 });
 
-describe("InventoryView GUI — empty wallet / market pulse hero", () => {
-  it("disabled wallet shows the hero, enable button, and market movers", async () => {
+describe("InventoryView GUI — calm empty-wallet hero", () => {
+  it("disabled wallet shows a calm hero + Enable control, no Keys CTA, no market panels", async () => {
     const state = makeAppState({
       walletEnabled: false,
       walletBalances: {
@@ -709,30 +714,32 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
-    // WalletEmptyHero unconfigured variant: motif + keys CTA (no title text).
+    // Calm hero: motif + one neutral line, nothing else.
     expect(await screen.findByLabelText("Empty wallet")).toBeTruthy();
-    const configure = screen.getByRole("button", { name: "Keys" });
-    fireEvent.click(configure);
-    expect(state.setTab).toHaveBeenCalledWith("settings");
-    expect(window.location.hash).toBe("#wallet-rpc");
+    expect(screen.getByText("Your wallet is empty.")).toBeTruthy();
+    // The "Keys" marketing CTA is gone.
+    expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
+    // The empty hero no longer pads itself with a market dashboard.
+    expect(screen.queryByText("Solana")).toBeNull();
+    expect(screen.queryByText("Cap rank #5")).toBeNull();
 
-    // Market movers list rendered with concrete data. Scope to the "Top movers"
-    // section so the chain-cluster "SOL" badge in the sidebar isn't ambiguous.
-    const moverName = screen.getByText("Solana");
-    const moverRow = moverName.closest("div.flex");
-    expect(moverRow).toBeTruthy();
-    expect(within(moverRow as HTMLElement).getByText("SOL")).toBeTruthy();
-    expect(screen.getByText("$150.00")).toBeTruthy();
-    expect(screen.getByText("+7.5%")).toBeTruthy();
-    expect(screen.getByText("Cap rank #5")).toBeTruthy();
-
-    // Enable wallet flips walletEnabled true and reloads.
+    // The one functional setup control (Enable wallet) remains and reloads.
     fireEvent.click(screen.getByRole("button", { name: "Enable wallet" }));
     expect(state.setState).toHaveBeenCalledWith("walletEnabled", true);
     expect(state.loadBalances).toHaveBeenCalled();
   });
 
-  it("shows MarketDataUnavailable when the movers source is unavailable", async () => {
+  it("surfaces MarketDataUnavailable (J4) in the dashboard when the movers feed fails", async () => {
+    // Empty the trading profile so there are no *portfolio* movers, but keep the
+    // fixture token balances so the populated dashboard (not the hero) renders.
+    // Its Movers panel then shows the named unavailable state, not a blank.
+    walletClient.getWalletTradingProfile.mockResolvedValue({
+      ...tradingProfile,
+      summary: { ...tradingProfile.summary, evaluatedTrades: 0 },
+      pnlSeries: [],
+      tokenBreakdown: [],
+      recentSwaps: [],
+    });
     walletClient.getWalletMarketOverview.mockResolvedValue({
       ...marketOverview,
       movers: [],
@@ -746,25 +753,37 @@ describe("InventoryView GUI — empty wallet / market pulse hero", () => {
       },
     });
     appHooks.useApp.mockReturnValue(
-      makeAppState({
-        walletEnabled: false,
-        walletBalances: {
-          evm: { address: EVM_ADDRESS, chains: [] },
-          solana: null,
-        },
-        walletNfts: { evm: [], solana: null },
-        walletAddresses: { evmAddress: null, solanaAddress: null },
-        walletConfig: {
-          ...walletConfig,
-          evmAddress: null,
-          solanaAddress: null,
-        },
-      }),
+      makeAppState({ walletNfts: { evm: [], solana: null } }),
     );
     render(React.createElement(InventoryAppView));
     await screen.findByTestId("wallets-sidebar");
 
     expect(await screen.findByText("Unavailable")).toBeTruthy();
+    expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
+    expect(screen.getByText("CoinGecko rate limited")).toBeTruthy();
+  });
+
+  it("synthesizes an unavailable overview (J4) when the overview fetch throws", async () => {
+    // A rejected fetch must not silently null the overview: the dashboard's
+    // Movers panel should still render MarketDataUnavailable, not a blank.
+    walletClient.getWalletTradingProfile.mockResolvedValue({
+      ...tradingProfile,
+      summary: { ...tradingProfile.summary, evaluatedTrades: 0 },
+      pnlSeries: [],
+      tokenBreakdown: [],
+      recentSwaps: [],
+    });
+    walletClient.getWalletMarketOverview.mockRejectedValue(
+      new Error("network down"),
+    );
+    appHooks.useApp.mockReturnValue(
+      makeAppState({ walletNfts: { evm: [], solana: null } }),
+    );
+    render(React.createElement(InventoryAppView));
+    await screen.findByTestId("wallets-sidebar");
+
+    // The synthesized unavailable overview surfaces the thrown message.
+    expect(await screen.findByText("network down")).toBeTruthy();
     expect(screen.getByTitle("Top movers unavailable")).toBeTruthy();
   });
 });

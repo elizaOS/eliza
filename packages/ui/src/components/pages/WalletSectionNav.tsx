@@ -12,7 +12,7 @@ import {
   subscribeAppShellPages,
 } from "../../app-shell-registry";
 import { cn } from "../../lib/utils";
-import { ViewBackButton } from "../shared/ViewHeader";
+import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 
 interface WalletSectionTab {
@@ -117,39 +117,46 @@ export function WalletSectionNav({
   );
   const tabs = walletSectionTabs();
   const active = activeTabId(activePath, tabs);
+  // The Wallet family adopts the uniform header geometry (#13451/#13592): a
+  // centered "Wallet" title with the icon-only launcher back button, matching
+  // every other top-level view instead of the old left-aligned tab strip.
+  const header = <ViewHeader title="Wallet" />;
+  // With a single group member (the current in-tree state) there is nothing to
+  // switch between, so the secondary strip is suppressed — just the header. The
+  // group mechanism stays intact; when a sibling (perps/predictions) registers
+  // the strip returns automatically UNDER the header.
+  if (tabs.length < 2) return header;
   return (
-    <nav
-      aria-label="Wallet sections"
-      data-testid="wallet-section-nav"
-      className="flex shrink-0 items-center gap-1 border-b border-border/45 px-3 py-2"
-    >
-      {/* Back-to-launcher control — the Wallet family (wallet/perps/predictions)
-       *  renders this shared tab strip as its header instead of a ViewHeader, so
-       *  it owns the launcher back button the other top-level views get from
-       *  ViewHeader. Without it there is no way back to the launcher on mobile. */}
-      <ViewBackButton className="mr-1" />
-      {tabs.map((tab) => {
-        const isActive = tab.id === active;
-        return (
-          <Button
-            key={tab.id}
-            aria-current={isActive ? "page" : undefined}
-            onClick={() => {
-              if (!isActive) navigate(tab.path);
-            }}
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-auto rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              isActive
-                ? "bg-accent/15 text-accent"
-                : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </Button>
-        );
-      })}
-    </nav>
+    <div data-testid="wallet-section-nav">
+      {header}
+      <nav
+        aria-label="Wallet sections"
+        data-testid="wallet-section-tabs"
+        className="flex shrink-0 items-center justify-center gap-1 border-b border-border/45 px-3 py-2"
+      >
+        {tabs.map((tab) => {
+          const isActive = tab.id === active;
+          return (
+            <Button
+              key={tab.id}
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => {
+                if (!isActive) navigate(tab.path);
+              }}
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-auto rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-accent/15 text-accent"
+                  : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </Button>
+          );
+        })}
+      </nav>
+    </div>
   );
 }
