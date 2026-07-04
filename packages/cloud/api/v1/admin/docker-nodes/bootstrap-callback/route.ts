@@ -15,6 +15,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * specified in cloud-init at provision time and stored only in the
  * Hetzner server's user_data, so it leaks no further than that node.
  *
+ * Because that secret is present on every node, it is a weak identity
+ * proof for mutating an EXISTING node: a single node compromise would
+ * let an attacker re-point another node's SSH target. So on re-bootstrap
+ * the server-stored identity (hostname/ssh_user/ssh_port) is
+ * authoritative; changing it requires presenting the pinned host key
+ * fingerprint (#12876).
+ *
  * Required env: `CONTAINERS_BOOTSTRAP_SECRET`.
  */
 
@@ -83,10 +90,50 @@ async function __hono_POST(request: Request) {
   try {
     const existing = await dockerNodesRepository.findByNodeId(nodeId);
     if (existing) {
+      // Re-bootstrap identity guard (#12876). The bootstrap secret lives in
+      // every node's cloud-init user_data, so a single node compromise leaks a
+      // credential that can re-point ANY node by nodeId. Rewriting an existing
+      // node's SSH target (hostname/ssh_user/ssh_port) would let that attacker
+      // aim the control plane's SSH at a MITM host. Identity mutation is
+      // therefore allowed only when the caller proves control of the node by
+      // presenting the pinned host key fingerprint; otherwise the server-stored
+      // identity is authoritative and the mutation is refused.
+      const identityChanged =
+        hostname !== existing.hostname ||
+        sshUser !== existing.ssh_user ||
+        sshPort !== existing.ssh_port;
+
+      if (identityChanged) {
+        const pinned = existing.host_key_fingerprint;
+        const fingerprintMatches =
+          pinned !== null &&
+          hostKeyFingerprint !== undefined &&
+          timingSafeEquals(hostKeyFingerprint, pinned);
+
+        if (!fingerprintMatches) {
+          logger.warn(
+            "[admin/docker-nodes/bootstrap-callback] rejected node-identity mutation without matching host key fingerprint",
+            { nodeId },
+          );
+          return Response.json(
+            {
+              success: false,
+              error:
+                "Node identity (hostname/ssh_user/ssh_port) cannot be changed on re-bootstrap without presenting the pinned host key fingerprint.",
+            },
+            { status: 409 },
+          );
+        }
+      }
+
+      // Identity fields are only ever taken from the request on a
+      // fingerprint-proven re-bootstrap (identityChanged && verified above);
+      // otherwise the server-stored values are preserved verbatim so an
+      // unauthenticated re-bootstrap caller cannot silently rewrite them.
       const updated = await dockerNodesRepository.update(existing.id, {
-        hostname,
-        ssh_port: sshPort,
-        ssh_user: sshUser,
+        hostname: identityChanged ? hostname : existing.hostname,
+        ssh_port: identityChanged ? sshPort : existing.ssh_port,
+        ssh_user: identityChanged ? sshUser : existing.ssh_user,
         capacity,
         host_key_fingerprint:
           hostKeyFingerprint ?? existing.host_key_fingerprint,
@@ -100,12 +147,17 @@ async function __hono_POST(request: Request) {
         "[admin/docker-nodes/bootstrap-callback] re-bootstrapped existing node",
         {
           nodeId,
-          hostname,
+          hostname: updated?.hostname ?? existing.hostname,
         },
       );
       return Response.json({
         success: true,
-        data: { nodeId, hostname, action: "updated", node: updated },
+        data: {
+          nodeId,
+          hostname: updated?.hostname ?? existing.hostname,
+          action: "updated",
+          node: updated,
+        },
       });
     }
 
