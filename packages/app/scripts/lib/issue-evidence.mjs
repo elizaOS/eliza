@@ -84,14 +84,59 @@ export function mirrorToRecordings(suite, srcPath) {
   return dest;
 }
 
+// Built-in default API port for the dev backend console-log endpoint. Mirrors
+// `DEFAULT_DESKTOP_API_PORT` in packages/shared/src/runtime-env.ts — kept inline
+// so this leaf capture lib stays dependency-light (node builtins only). If the
+// canonical default changes, update it there and here.
+export const DEFAULT_BACKEND_LOG_PORT = 31337;
+
+// Env keys, in precedence order, the dev/capture orchestrator uses to advertise
+// the (possibly auto-shifted) backend API port. Mirrors `DESKTOP_API_PORT_KEYS`
+// in packages/shared/src/runtime-env.ts (ELIZA_API_PORT wins over ELIZA_PORT).
+const BACKEND_LOG_PORT_ENV_KEYS = ["ELIZA_API_PORT", "ELIZA_PORT"];
+
+/**
+ * Resolve the dev backend API port the capture run should probe, honoring the
+ * orchestrator's auto-shifted port (agent worktrees run parallel stacks and the
+ * orchestrator advertises the shifted port via ELIZA_API_PORT / ELIZA_PORT).
+ * A bare hardcoded default silently probes 31337, gets nothing on a shifted
+ * stack, and the capture still finishes green with NO backend-log artifact
+ * (#13624). First non-empty valid positive integer wins; else the built-in
+ * default. Never throws — an unparseable/out-of-range env value is ignored.
+ *
+ * @param {Record<string, string | undefined>} [env]
+ * @returns {number}
+ */
+export function resolveBackendLogPort(env = process.env) {
+  for (const key of BACKEND_LOG_PORT_ENV_KEYS) {
+    const raw = env?.[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed === "") continue;
+    // Only a bare positive integer is a valid port; reject "3000abc", "-1",
+    // "0", "99999999", "1.5", etc. rather than silently coercing.
+    if (!/^\d+$/.test(trimmed)) continue;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) {
+      return parsed;
+    }
+  }
+  return DEFAULT_BACKEND_LOG_PORT;
+}
+
 /**
  * Best-effort pull of the dev backend console log (the structured `[ClassName]`
  * stream) so a capture run ships logs alongside the screenshot + recording.
  * Never throws — returns the written path or null when the endpoint is absent.
+ *
+ * The port defaults to the orchestrator-resolved backend port (ELIZA_API_PORT /
+ * ELIZA_PORT / built-in) so a capture run on a port-shifted parallel stack pulls
+ * the log from the RIGHT backend instead of silently probing 31337 and shipping
+ * no log (#13624). An explicit `{ port }` still wins for callers that know it.
  */
 export function captureBackendLog(
   baseName,
-  { port = 31337, maxLines = 400 } = {},
+  { port = resolveBackendLogPort(), maxLines = 400 } = {},
 ) {
   const url = `http://127.0.0.1:${port}/api/dev/console-log?maxLines=${maxLines}`;
   const res = spawnSync("curl", ["-fsS", "--max-time", "5", url], {
