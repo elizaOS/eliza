@@ -42,8 +42,8 @@
     "verify:ios": "cd ios && pod install && xcodebuild -workspace Plugin.xcworkspace -scheme Plugin -destination generic/platform=iOS && cd ..",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "bun run build",
-    "lint": "bunx @biomejs/biome check . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint; fi'",
-    "lint:check": "bunx @biomejs/biome check .",
+    "lint": "bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint --fix; fi'",
+    "lint:check": "bunx @biomejs/biome check . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint; fi'",
     "fmt": "bunx @biomejs/biome check --write --unsafe . && bash -c 'if command -v swiftlint >/dev/null 2>&1; then bun run swiftlint -- lint --fix; fi'",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
@@ -55,7 +55,8 @@
     "test": "vitest run",
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build",
-    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",

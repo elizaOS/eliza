@@ -46,7 +46,12 @@
     "test": "vitest run",
     "validate:ios-screen-time": "node scripts/validate-ios-screen-time.mjs",
     "watch": "tsc --watch",
-    "build:unlocked": "bun run clean && bunx tsc -p tsconfig.json && bunx rollup -c rollup.config.mjs"
+    "build:unlocked": "bun run clean && bunx tsc -p tsconfig.json && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

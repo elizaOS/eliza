@@ -37,7 +37,12 @@
     "prepublishOnly": "bun run build",
     "test": "vitest run",
     "docgen": "docgen --api LocationPlugin --output-readme README.md --output-json dist/docs.json",
-    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "author": "elizaOS",
   "license": "MIT",

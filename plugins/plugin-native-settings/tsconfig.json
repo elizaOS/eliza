@@ -1,32 +1,25 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "composite": false,
-    "jsx": "react-jsx",
+    "target": "ES2022",
+    "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "strict": true,
     "strictNullChecks": true,
-    "skipLibCheck": true,
-    "types": ["node", "bun"],
-    "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
-    "declarationMap": false,
-    "sourceMap": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node", "bun"],
     "paths": {
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/logger": ["../../packages/logger/src/index.ts"],
-      "@elizaos/logger/*": ["../../packages/logger/src/*"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/capacitor-system": [
-        "../../plugins/plugin-native-system/src/index.ts"
-      ],
+      "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/capacitor-system": ["../plugin-native-system/src/index.ts"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
@@ -36,6 +29,14 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**"
+  ]
 }

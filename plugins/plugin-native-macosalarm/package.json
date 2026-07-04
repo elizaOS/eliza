@@ -47,7 +47,11 @@
     "build:helper": "node scripts/build-helper.mjs",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
-    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist bin"
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist bin",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

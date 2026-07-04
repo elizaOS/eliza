@@ -39,7 +39,7 @@
     "url": "https://github.com/elizaOS/eliza"
   },
   "scripts": {
-    "lint": "bunx @biomejs/biome check .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "fmt": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
@@ -49,7 +49,8 @@
     "test": "vitest run",
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build",
-    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs"
+    "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
