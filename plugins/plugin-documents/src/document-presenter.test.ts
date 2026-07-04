@@ -1,7 +1,10 @@
 /** Unit tests for presentDocument: deterministic mapping of document Memory metadata to display cards (no runtime). */
 import type { Memory, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { presentDocument } from "./document-presenter";
+import {
+  getDocumentTitleFromMetadata,
+  presentDocument,
+} from "./document-presenter";
 
 function docMemory(metadata: Record<string, unknown>): Memory {
   return {
@@ -38,5 +41,25 @@ describe("presentDocument — transcript link passthrough", () => {
     );
     expect(dto.transcriptId).toBeUndefined();
     expect(dto.transcriptAudioUrl).toBeUndefined();
+  });
+});
+
+describe("getDocumentTitleFromMetadata — derived-title truncation", () => {
+  it("never splits a surrogate pair at the truncation cut", () => {
+    // The 😀 spans code units 78..79 of the first line, exactly where the
+    // 80-char label cut lands; a blind slice would leave a lone high surrogate
+    // that renders as U+FFFD in the documents view.
+    const line = `${"x".repeat(78)}😀${"y".repeat(20)}`;
+    const title = getDocumentTitleFromMetadata(undefined, line);
+    expect(title.isWellFormed()).toBe(true);
+    expect(title).toBe(`${"x".repeat(78)}...`);
+  });
+
+  it("keeps an astral char that falls fully inside the kept prefix", () => {
+    const line = `😀${"x".repeat(100)}`;
+    const title = getDocumentTitleFromMetadata(undefined, line);
+    expect(title.isWellFormed()).toBe(true);
+    expect(title.startsWith("😀")).toBe(true);
+    expect(title.endsWith("...")).toBe(true);
   });
 });

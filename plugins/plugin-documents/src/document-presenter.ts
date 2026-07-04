@@ -115,9 +115,14 @@ function asNumber(value: unknown): number | undefined {
 }
 
 function truncateLabel(value: string, maxLength = 80): string {
-  return value.length > maxLength
-    ? `${value.slice(0, maxLength - 1).trimEnd()}...`
-    : value;
+  if (value.length <= maxLength) return value;
+  // Back off one code unit when the cut would land between the halves of a
+  // surrogate pair — otherwise the label ends in a lone high surrogate that
+  // renders as U+FFFD in the documents view.
+  let end = maxLength - 1;
+  const lastKept = value.charCodeAt(end - 1);
+  if (lastKept >= 0xd800 && lastKept <= 0xdbff) end -= 1;
+  return `${value.slice(0, end).trimEnd()}...`;
 }
 
 function stripMarkdownPrefix(line: string): string {

@@ -201,4 +201,66 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("throws when the response repeats an index (a hole must never be returned)", async () => {
+    // Count check alone passes (2 items for 2 inputs) but slot 1 stays unfilled;
+    // returning [B, undefined] would silently persist a corrupt vector.
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({
+            object: "list",
+            data: [
+              { object: "embedding", embedding: vectorOf(1536), index: 0 },
+              { object: "embedding", embedding: vectorOf(1536), index: 0 },
+            ],
+            model: "text-embedding-3-small",
+          }),
+          text: async () => "",
+        }) as unknown as Response
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleBatchTextEmbedding(createRuntime(), ["one", "two"])).rejects.toThrow(
+      /duplicate index 0/i
+    );
+  });
+});
+
+describe("plugin-embeddings input truncation", () => {
+  const MAX_EMBEDDING_CHARS = 8_000 * 4;
+
+  it("never splits a surrogate pair at the truncation boundary", async () => {
+    // The 😀 spans code units MAX-1..MAX, so a blind slice(0, MAX) would keep a
+    // lone high surrogate — mojibake (U+FFFD) or a reject at the endpoint.
+    const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 1)}😀tail`;
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await handleTextEmbedding(createRuntime(), text);
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    const sent = body.input as string;
+    expect(sent.isWellFormed()).toBe(true);
+    expect(sent.length).toBeLessThanOrEqual(MAX_EMBEDDING_CHARS);
+    expect(sent).toBe("a".repeat(MAX_EMBEDDING_CHARS - 1));
+  });
+
+  it("keeps an astral char that fits entirely under the cap", async () => {
+    // Here the pair ends exactly at the boundary — no back-off should occur.
+    const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀tail`;
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await handleTextEmbedding(createRuntime(), text);
+
+    const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
+    const sent = body.input as string;
+    expect(sent.isWellFormed()).toBe(true);
+    expect(sent).toBe(`${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀`);
+    expect(sent.length).toBe(MAX_EMBEDDING_CHARS);
+  });
 });

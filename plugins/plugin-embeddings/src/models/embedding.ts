@@ -78,7 +78,13 @@ function truncate(text: string): string {
   logger.warn(
     `[Embeddings] Input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
   );
-  return text.slice(0, MAX_EMBEDDING_CHARS);
+  // Never cut between the halves of a surrogate pair: a trailing lone high
+  // surrogate is not valid Unicode, so it reaches the endpoint as U+FFFD (or a
+  // hard reject on strict JSON parsers) and corrupts the embedded text.
+  const lastKept = text.charCodeAt(MAX_EMBEDDING_CHARS - 1);
+  const end =
+    lastKept >= 0xd800 && lastKept <= 0xdbff ? MAX_EMBEDDING_CHARS - 1 : MAX_EMBEDDING_CHARS;
+  return text.slice(0, end);
 }
 
 /**
@@ -141,6 +147,14 @@ async function requestEmbeddings(
     if (idx === undefined || idx < 0 || idx >= expectedCount) {
       throw new Error(
         `Embedding API returned out-of-range index ${String(item.index)} (expected 0..${expectedCount - 1})`
+      );
+    }
+    // A repeated index passes the count check above yet leaves another slot as
+    // a hole, which the batch path would otherwise silently return (Commandment
+    // 8: throw, never hand back a fabricated/undefined vector).
+    if (vectors[idx] !== undefined) {
+      throw new Error(
+        `Embedding API returned duplicate index ${idx}; a vector slot would be left unfilled`
       );
     }
     if (!Array.isArray(item.embedding) || item.embedding.length !== embeddingDimension) {
