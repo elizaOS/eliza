@@ -12,6 +12,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -29,10 +31,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.net.HttpURLConnection;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -103,8 +101,10 @@ public class ElizaAgentService extends Service {
     private static final String DETACHED_LAUNCH_STAMP_KEY = "detachedLaunchStartedAtMs";
     private static final String EXIT_INFO_LAST_TIMESTAMP = "lastTimestamp";
 
+    // The agent binds no TCP port by default (requests ride the abstract UDS
+    // below). AGENT_PORT is only used when ELIZA_API_EXPOSE_PORT re-opens the
+    // HTTP listener for dev/LAN/e2e, and to advertise the port in status text.
     private static final int AGENT_PORT = 31337;
-    private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
 
     /**
      * Abstract-namespace AF_UNIX socket the in-process bionic GPU inference
@@ -114,7 +114,19 @@ public class ElizaAgentService extends Service {
      * agent reaches it as {@code Bun.connect({unix:"\0" + name})}.
      */
     static final String BIONIC_INFERENCE_SOCKET_NAME = "eliza_bionic_infer_v1";
-    private static final String LOCAL_AGENT_BASE_URL = "http://127.0.0.1:" + AGENT_PORT;
+
+    /**
+     * Abstract-namespace AF_UNIX socket the on-device agent binds to serve the
+     * WebView's local-agent requests (the port-free replacement for the
+     * 127.0.0.1:31337 loopback HTTP path). The bun agent listens (see
+     * android/bridge.ts) and this service connects per request/stream, speaking
+     * the same NDJSON frame protocol the iOS bridge uses. Abstract namespace
+     * (no filesystem path) is the sanctioned priv_app IPC — same reason the
+     * bionic host above uses it. Exported to the agent as
+     * ELIZA_LOCAL_AGENT_SOCKET; Java reaches it via {@link LocalSocketAddress}
+     * with {@code Namespace.ABSTRACT}.
+     */
+    static final String LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1";
     private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
     private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
     // Read-timeout budget applied to slow on-device inference routes (ASR / TTS
@@ -272,6 +284,29 @@ public class ElizaAgentService extends Service {
     }
 
     public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
+        LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+        JSONObject payload = buildRequestPayload(req);
+        return dispatchBufferedOverSocket(payload, req.timeoutMs).toString();
+    }
+
+    /** Parsed, validated, timeout-normalized local-agent request. */
+    private static final class LocalAgentRequest {
+        final String method;
+        final String path;
+        final JSONObject headers;
+        final String body;
+        final int timeoutMs;
+
+        LocalAgentRequest(String method, String path, JSONObject headers, String body, int timeoutMs) {
+            this.method = method;
+            this.path = path;
+            this.headers = headers;
+            this.body = body;
+            this.timeoutMs = timeoutMs;
+        }
+    }
+
+    private static LocalAgentRequest parseLocalAgentRequest(String requestJson) throws JSONException {
         JSONObject request = requestJson == null || requestJson.trim().isEmpty()
             ? new JSONObject()
             : new JSONObject(requestJson);
@@ -279,9 +314,7 @@ public class ElizaAgentService extends Service {
         if (!isSafeLocalAgentPath(path)) {
             throw new IllegalArgumentException("Local agent request requires a path that starts with /");
         }
-        String method = request.optString("method", "GET")
-            .trim()
-            .toUpperCase(Locale.US);
+        String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
         if (!method.matches("^[A-Z]{1,16}$")) {
             throw new IllegalArgumentException("Unsupported HTTP method");
         }
@@ -291,11 +324,10 @@ public class ElizaAgentService extends Service {
         // chat model — is a multi-second synchronous llama load before the agent
         // emits a single byte, and transcription/synthesis/generation on
         // emulated or low-end CPU runs well past 10 s. The WebView transport
-        // sends its generic 10 s fetch timeout for these calls too, which aborts
-        // them mid-decode and surfaces "Local agent request failed" /
-        // local_agent_unavailable, failing the whole voice turn (and every route
-        // that touches inference). FLOOR inference/voice routes at the inference
-        // budget — raise a too-short caller timeout, never lower a longer one.
+        // sends its generic 10 s fetch timeout for these calls too; FLOOR
+        // inference/voice routes at the inference budget so a cold load never
+        // trips a spurious local_agent_unavailable — raise a too-short caller
+        // timeout, never lower a longer one.
         if (isLongRunningInferencePath(path)) {
             timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
         }
@@ -303,26 +335,46 @@ public class ElizaAgentService extends Service {
         JSONObject headers = request.optJSONObject("headers");
         Object rawBody = request.opt("body");
         String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
-
-        return performLocalAgentRequest(
-            method,
-            path,
-            headers == null ? new JSONObject() : headers,
-            body,
-            timeoutMs,
-            currentLocalAgentToken
-        ).toString();
+        return new LocalAgentRequest(method, path, headers == null ? new JSONObject() : headers, body, timeoutMs);
     }
 
     /**
-     * Streaming variant of {@link #requestLocalAgent}. Where that buffers the
-     * whole loopback response into one JSON string (so an SSE body's token
-     * frames arrive all at once and the chat reply never streams on mobile),
-     * this opens the same request and reads the response InputStream
-     * INCREMENTALLY, pushing each fragment to {@code onEvent} as a small JSON
-     * envelope the AgentPlugin maps to Capacitor events:
+     * Build the NDJSON request payload the agent's stdio kernel expects. The
+     * per-boot bearer token is injected (the agent still honors it when
+     * ELIZA_REQUIRE_LOCAL_AUTH=1) and the forwarded-header blocklist strips
+     * hop-by-hop headers that no longer make sense over the socket transport.
+     */
+    private static JSONObject buildRequestPayload(LocalAgentRequest req) throws JSONException {
+        JSONObject headers = filterForwardedHeaders(req.headers);
+        String token = currentLocalAgentToken;
+        if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
+            headers.put("Authorization", "Bearer " + token.trim());
+        }
+        boolean methodTakesBody = !"GET".equals(req.method) && !"HEAD".equals(req.method);
+        if (req.body != null && methodTakesBody && !hasHeader(headers, "content-type")) {
+            headers.put("Content-Type", "application/json; charset=utf-8");
+        }
+        JSONObject payload = new JSONObject()
+            .put("method", req.method)
+            .put("path", req.path)
+            .put("headers", headers);
+        if (req.body != null && methodTakesBody) {
+            byte[] bodyBytes = req.body.getBytes(StandardCharsets.UTF_8);
+            if (bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
+                throw new IllegalArgumentException("Request body is too large");
+            }
+            payload.put("body", req.body);
+        }
+        return payload;
+    }
+
+    /**
+     * Streaming variant of {@link #requestLocalAgent}. Where that returns one
+     * buffered result, this sends an {@code http_request_stream} frame and reads
+     * the agent's response/chunk/complete frames as they arrive, translating each
+     * into the small envelope the AgentPlugin maps to Capacitor events:
      *   {"type":"response","status":..,"statusText":..,"headers":{..}}  (once, first)
-     *   {"type":"chunk","dataBase64":".."}                              (per read)
+     *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
      * Single attempt by design: a connect failure emits a terminal error event
@@ -332,105 +384,69 @@ public class ElizaAgentService extends Service {
      */
     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
         try {
-            JSONObject request = requestJson == null || requestJson.trim().isEmpty()
-                ? new JSONObject()
-                : new JSONObject(requestJson);
-            String path = request.optString("path", "").trim();
-            if (!isSafeLocalAgentPath(path)) {
-                throw new IllegalArgumentException("Local agent request requires a path that starts with /");
-            }
-            String method = request.optString("method", "GET").trim().toUpperCase(Locale.US);
-            if (!method.matches("^[A-Z]{1,16}$")) {
-                throw new IllegalArgumentException("Unsupported HTTP method");
-            }
-            int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
-            if (isLongRunningInferencePath(path)) {
-                timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
-            }
-            timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
-            JSONObject headers = request.optJSONObject("headers");
-            if (headers == null) headers = new JSONObject();
-            Object rawBody = request.opt("body");
-            String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
-            streamLocalAgentRequest(method, path, headers, body, timeoutMs, currentLocalAgentToken, onEvent);
+            LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+            JSONObject payload = buildRequestPayload(req);
+            streamOverSocket(payload, req.timeoutMs, onEvent);
         } catch (Exception error) {
             emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
         }
     }
 
-    private static void streamLocalAgentRequest(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
+    /**
+     * Send a streaming request over the abstract UDS and translate the agent's
+     * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
+     * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
+     * (the agent may not have bound the socket yet); once a frame arrives the
+     * request is in-flight, so a mid-stream failure surfaces as a terminal error
+     * and is never silently re-dialed.
+     */
+    private static void streamOverSocket(
+        JSONObject payload,
         int timeoutMs,
-        String token,
         java.util.function.Consumer<String> onEvent
     ) throws IOException, JSONException {
-        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
-        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
-            throw new IOException("Request body is too large");
-        }
+        JSONObject frame = new JSONObject()
+            .put("id", nextFrameId())
+            .put("method", "http_request_stream")
+            .put("stream", true)
+            .put("payload", payload);
 
-        HttpURLConnection conn = null;
+        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
         try {
-            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method);
-            conn.setConnectTimeout(timeoutMs);
-            conn.setReadTimeout(timeoutMs);
-            conn.setInstanceFollowRedirects(false);
-            conn.setUseCaches(false);
-            applyLocalAgentHeaders(conn, headers);
-            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
-                if (!hasHeader(headers, "content-type")) {
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                }
-                conn.setDoOutput(true);
-                try (OutputStream out = conn.getOutputStream()) {
-                    out.write(bodyBytes);
-                    out.flush();
-                }
-            }
-
-            int status = conn.getResponseCode();
-            JSONObject responseHeaders = new JSONObject();
-            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
-                String key = entry.getKey();
-                List<String> values = entry.getValue();
-                if (key == null || values == null || values.isEmpty()) continue;
-                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
-            }
-            onEvent.accept(new JSONObject()
-                .put("type", "response")
-                .put("status", status)
-                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
-                .put("headers", responseHeaders)
-                .toString());
-
-            // Read the body as it arrives. The agent flushes each SSE frame, so a
-            // blocking read returns per-frame rather than waiting for the whole
-            // body — that is exactly the incremental delivery the WebView needs.
-            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            if (stream != null) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = stream.read(buffer)) != -1) {
-                    if (read == 0) continue;
-                    String dataBase64 = android.util.Base64.encodeToString(
-                        java.util.Arrays.copyOf(buffer, read), android.util.Base64.NO_WRAP);
+            socket.setSoTimeout(timeoutMs);
+            writeFrameLine(socket.getOutputStream(), frame);
+            InputStream in = socket.getInputStream();
+            for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
+                if (line.isEmpty()) continue;
+                JSONObject response = new JSONObject(line);
+                String phase = response.optString("stream", "");
+                if ("response".equals(phase)) {
+                    onEvent.accept(new JSONObject()
+                        .put("type", "response")
+                        .put("status", response.optInt("status"))
+                        .put("statusText", response.optString("statusText"))
+                        .put("headers", response.optJSONObject("headers") != null
+                            ? response.optJSONObject("headers")
+                            : new JSONObject())
+                        .toString());
+                } else if ("chunk".equals(phase)) {
                     onEvent.accept(new JSONObject()
                         .put("type", "chunk")
-                        .put("dataBase64", dataBase64)
+                        .put("dataBase64", response.optString("dataBase64"))
                         .toString());
+                } else if ("complete".equals(phase)) {
+                    emitStreamComplete(onEvent, response.has("error") ? response.optString("error") : null);
+                    return;
+                } else if (response.has("error")) {
+                    // A parse/dispatch error before the stream started.
+                    emitStreamComplete(onEvent, response.optString("error"));
+                    return;
                 }
             }
+            // Socket closed without a terminal frame — treat as completion.
             emitStreamComplete(onEvent, null);
         } finally {
-            if (conn != null) conn.disconnect();
+            closeQuietly(socket);
         }
     }
 
@@ -452,132 +468,113 @@ public class ElizaAgentService extends Service {
             && !path.contains("://");
     }
 
-    private static JSONObject performLocalAgentRequest(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
-        int timeoutMs,
-        String token
-    ) throws IOException, JSONException {
-        // The on-device agent is single-threaded: while bun is inside a long
-        // synchronous FFI call (a cold ASR/TTS model load, or a llama_decode for
-        // a chat reply) its HTTP listener briefly stops accepting connections, so
-        // a concurrent request — e.g. createConversation right after a voice
-        // transcription — can hit "connection refused". The request bytes were
-        // never sent, so it is safe to back off and re-dial rather than surface a
-        // spurious local_agent_unavailable that fails the whole voice turn. Only
-        // connection-establishment failures are retried; a read timeout (request
-        // already sent) propagates so non-idempotent POSTs are never replayed.
-        // The window must outlast the longest event-loop stall: after a voice
-        // transcription the agent evicts + cold-reloads the chat model (a
-        // synchronous ~10-15 s llama load on phone CPU) before generating the
-        // reply, during which the HTTP listener refuses connections.
+    /**
+     * Send one buffered request over the abstract UDS and return the agent's
+     * response envelope ({@code {status,statusText,headers,body,bodyBase64,
+     * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
+     * AgentPlugin + WebView transport are unchanged. The connect (not the sent
+     * request) carries the cold-boot retry: while the agent is inside a long
+     * synchronous FFI call (a cold model load, a chat llama_decode) its accept
+     * loop briefly stalls, so a concurrent request can hit connection-refused.
+     * Only the connect phase is retried; once bytes are written the request is
+     * in-flight and a read failure propagates so non-idempotent POSTs never
+     * replay. The window must outlast the longest event-loop stall (~10-15 s
+     * chat-model cold reload after a voice transcription).
+     */
+    private static JSONObject dispatchBufferedOverSocket(JSONObject payload, int timeoutMs)
+        throws IOException, JSONException {
+        JSONObject frame = new JSONObject()
+            .put("id", nextFrameId())
+            .put("method", "http_request")
+            .put("payload", payload);
+
+        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        try {
+            socket.setSoTimeout(timeoutMs);
+            writeFrameLine(socket.getOutputStream(), frame);
+            String line = readFrameLine(socket.getInputStream());
+            if (line == null || line.isEmpty()) {
+                throw new IOException("local agent closed the connection with no response");
+            }
+            JSONObject response = new JSONObject(line);
+            if (!response.optBoolean("ok", false)) {
+                throw new IOException(response.optString("error", "local agent request failed"));
+            }
+            JSONObject result = response.optJSONObject("result");
+            if (result == null) {
+                throw new IOException("local agent returned no result payload");
+            }
+            return result;
+        } finally {
+            closeQuietly(socket);
+        }
+    }
+
+    /**
+     * Connect to the agent's abstract-namespace request socket, retrying only the
+     * connect phase across the cold-boot window (the bun agent may not have bound
+     * the socket yet, or its accept loop is stalled mid-decode). Returns a
+     * connected {@link LocalSocket}; the caller owns closing it.
+     */
+    private static LocalSocket connectLocalAgentSocket(int timeoutMs) throws IOException {
         final int connectRetries = 15;
-        IOException lastConnectError = null;
+        IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            LocalSocket socket = new LocalSocket();
             try {
-                return performLocalAgentRequestOnce(
-                    method, path, headers, body, timeoutMs, token);
-            } catch (java.net.ConnectException connectError) {
-                lastConnectError = connectError;
-            } catch (java.net.SocketTimeoutException timeoutError) {
-                // Distinguish connect-timeout (never sent → retry) from
-                // read-timeout (sent → must not replay). HttpURLConnection
-                // surfaces both as SocketTimeoutException; the connect phase
-                // message contains "connect".
-                String msg = timeoutError.getMessage();
-                if (msg != null && msg.toLowerCase(Locale.US).contains("connect")) {
-                    lastConnectError = timeoutError;
-                } else {
-                    throw timeoutError;
-                }
+                socket.connect(new LocalSocketAddress(
+                    LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+                return socket;
+            } catch (IOException connectError) {
+                closeQuietly(socket);
+                lastError = connectError;
             }
             if (attempt < connectRetries) {
                 try {
                     Thread.sleep(250L * (attempt + 1));
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
-                    throw lastConnectError;
+                    throw lastError;
                 }
             }
         }
-        throw lastConnectError != null
-            ? lastConnectError
-            : new IOException("local agent unreachable");
+        throw lastError != null ? lastError : new IOException("local agent socket unreachable");
     }
 
-    private static JSONObject performLocalAgentRequestOnce(
-        String method,
-        String path,
-        JSONObject headers,
-        String body,
-        int timeoutMs,
-        String token
-    ) throws IOException, JSONException {
-        byte[] bodyBytes = body == null ? null : body.getBytes(StandardCharsets.UTF_8);
-        if (bodyBytes != null && bodyBytes.length > LOCAL_REQUEST_MAX_BODY_BYTES) {
-            throw new IOException("Request body is too large");
-        }
-
-        HttpURLConnection conn = null;
-        try {
-            URL url = new URL(LOCAL_AGENT_BASE_URL + path);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod(method);
-            conn.setConnectTimeout(timeoutMs);
-            conn.setReadTimeout(timeoutMs);
-            conn.setInstanceFollowRedirects(false);
-            conn.setUseCaches(false);
-            applyLocalAgentHeaders(conn, headers);
-            if (token != null && !token.trim().isEmpty() && !hasHeader(headers, "authorization")) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            if (bodyBytes != null && !"GET".equals(method) && !"HEAD".equals(method)) {
-                if (!hasHeader(headers, "content-type")) {
-                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                }
-                conn.setDoOutput(true);
-                try (OutputStream out = conn.getOutputStream()) {
-                    out.write(bodyBytes);
-                    out.flush();
-                }
-            }
-
-            int status = conn.getResponseCode();
-            InputStream stream = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            // Read the raw response bytes so binary payloads (e.g. local TTS WAV
-            // audio, images) survive the bridge intact. `body` is a best-effort
-            // UTF-8 view for text callers; `bodyBase64` carries the lossless raw
-            // bytes that binary callers decode — encoding the bytes as a UTF-8
-            // String first (the old path) replaced every non-UTF-8 byte with
-            // U+FFFD, corrupting WAV/PNG payloads beyond recovery.
-            byte[] responseBytes = readResponseBytes(stream, LOCAL_REQUEST_MAX_RESPONSE_BYTES);
-            String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
-            JSONObject responseHeaders = new JSONObject();
-            for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {
-                String key = entry.getKey();
-                List<String> values = entry.getValue();
-                if (key == null || values == null || values.isEmpty()) continue;
-                responseHeaders.put(key.toLowerCase(Locale.US), String.join(", ", values));
-            }
-            return new JSONObject()
-                .put("status", status)
-                .put("statusText", conn.getResponseMessage() == null ? "" : conn.getResponseMessage())
-                .put("headers", responseHeaders)
-                .put("body", responseBody)
-                .put(
-                    "bodyBase64",
-                    android.util.Base64.encodeToString(responseBytes, android.util.Base64.NO_WRAP)
-                )
-                .put("bodyEncoding", "base64");
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
+    /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
+    private static void writeFrameLine(OutputStream out, JSONObject frame) throws IOException {
+        byte[] line = (frame.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+        out.write(line);
+        out.flush();
     }
 
-    private static void applyLocalAgentHeaders(HttpURLConnection conn, JSONObject headers) {
-        if (headers == null) return;
+    /**
+     * Read one newline-delimited frame line from the socket. Returns the line
+     * without the trailing newline, or null at end-of-stream. Caps a single
+     * frame at the response-byte budget so a runaway agent can't exhaust memory.
+     */
+    private static String readFrameLine(InputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') {
+                return buffer.toString(StandardCharsets.UTF_8.name());
+            }
+            if (b != '\r') {
+                buffer.write(b);
+                if (buffer.size() > LOCAL_REQUEST_MAX_RESPONSE_BYTES) {
+                    throw new IOException("local agent response frame exceeds size cap");
+                }
+            }
+        }
+        if (buffer.size() == 0) return null;
+        return buffer.toString(StandardCharsets.UTF_8.name());
+    }
+
+    /** Copy request headers into the payload, dropping hop-by-hop headers. */
+    private static JSONObject filterForwardedHeaders(JSONObject headers) throws JSONException {
+        JSONObject out = new JSONObject();
+        if (headers == null) return out;
         java.util.Iterator<String> keys = headers.keys();
         while (keys.hasNext()) {
             String key = keys.next();
@@ -586,8 +583,24 @@ public class ElizaAgentService extends Service {
             if (value == null || value == JSONObject.NULL) continue;
             String stringValue = value.toString();
             if (!stringValue.trim().isEmpty()) {
-                conn.setRequestProperty(key, stringValue);
+                out.put(key, stringValue);
             }
+        }
+        return out;
+    }
+
+    private static long frameIdCounter = 0L;
+
+    private static synchronized long nextFrameId() {
+        return ++frameIdCounter;
+    }
+
+    private static void closeQuietly(LocalSocket socket) {
+        if (socket == null) return;
+        try {
+            socket.close();
+        } catch (IOException ignored) {
+            // Best-effort close; nothing to recover.
         }
     }
 
@@ -1402,35 +1415,32 @@ public class ElizaAgentService extends Service {
             // WebView's /api/auth/me startup probe fails with "Backend
             // Unreachable". That is the emulator e2e churn — the Activity/FGS
             // gets recreated mid-run and onStartCommand → startAgentProcess
-            // would relaunch a perfectly healthy agent. Gate on the raw TCP
-            // listener (not /api/health), so a bun that is alive but busy
-            // mid-llama_decode — when an HTTP probe would time out — is still
+            // would relaunch a perfectly healthy agent. Gate on the raw socket
+            // accept (not /api/health), so a bun that is alive but busy
+            // mid-llama_decode — when a full request would time out — is still
             // recognised as running and left alone.
-            // Adopt on the PORT signal alone — not `detachedAgentMode &&`.
+            // Adopt on the socket signal alone — not `detachedAgentMode &&`.
             // detachedAgentMode is an instance field, so a service instance
             // created after an AMS teardown / process death always sees it
             // false and would skip adoption, fall through to launch.sh, and
             // pkill a perfectly healthy surviving agent (the exact churn the
             // comment above describes). Mark the instance detached on adopt so
             // an explicit ACTION_STOP still tears the adopted agent down.
-            if (isLoopbackAgentListening()) {
+            if (isLocalAgentSocketListening()) {
                 detachedAgentMode = true;
                 if (!"running".equals(currentStatus)) {
                     currentStatus = "running";
                     updateNotification();
                 }
-                Map<String, String> details = new LinkedHashMap<>();
-                details.put("port", String.valueOf(AGENT_PORT));
-                appendDiagnosticEvent("detached-agent-adopted", details);
-                Log.i(TAG, "Detached agent already listening on port " + AGENT_PORT
-                    + "; adopting it (no relaunch).");
+                appendDiagnosticEvent("detached-agent-adopted", null);
+                Log.i(TAG, "Detached agent already accepting on the request socket; adopting it (no relaunch).");
                 return;
             }
 
             // The agent may have been launched moments ago and still be in its
             // (slow) cold boot — plugin resolution + first model load can take
-            // 60-90s on an emulated CPU before bun binds the port. During that
-            // window isLoopbackAgentListening() is false, so without this guard a
+            // 60-90s on an emulated CPU before bun binds the socket. During that
+            // window isLocalAgentSocketListening() is false, so without this guard a
             // recreated Activity/FGS (onStartCommand fires repeatedly as the e2e
             // foregrounds/navigates) would relaunch.sh-pkill the booting bun and
             // restart the whole boot — an endless churn that never reaches ready.
@@ -1586,17 +1596,25 @@ public class ElizaAgentService extends Service {
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
-            agentEnv.put("PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
-            // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
-            // (defaulting to 2138) before falling back to PORT. Without
-            // these the agent binds 2138 even though the service advertises
-            // 31337, the loopback healthcheck never sees a listener, and
-            // the watchdog churns indefinitely. Both env vars resolve to
-            // the same port — UI bundles in the same Hono server.
-            agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
+            // Port-free by default: the WebView reaches the agent over the
+            // abstract-namespace request socket below, so the agent binds NO TCP
+            // listener (localAgentMode in android/bridge.ts → startEliza). The
+            // port only re-opens when ELIZA_API_EXPOSE_PORT is set (dev tooling,
+            // LAN access, e2e harnesses) — then the agent advertises AGENT_PORT
+            // and the launch.sh PORT default applies. Passing the port env
+            // unconditionally is what used to make the agent open 31337.
+            if ("1".equals(env.get("ELIZA_API_EXPOSE_PORT"))
+                    || "true".equalsIgnoreCase(env.get("ELIZA_API_EXPOSE_PORT"))) {
+                agentEnv.put("PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
+                agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
+                agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
+            }
+            // The abstract-namespace request socket the agent binds and this
+            // service dials (see LOCAL_AGENT_SOCKET_NAME). Both sides read the
+            // same env var so the name stays in sync.
+            agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET", LOCAL_AGENT_SOCKET_NAME);
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
@@ -1604,13 +1622,12 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
-            // Local passwordless mode: the on-device agent trusts its own
-            // loopback so the single device owner never hits a login/pairing
+            // Local passwordless mode: the on-device agent trusts its own sealed
+            // request socket so the single device owner never hits a login/pairing
             // gate. The per-boot bearer-token guard (ELIZA_REQUIRE_LOCAL_AUTH=1)
             // is intentionally OFF — the WebView cannot reliably present that
             // token at cold start, which otherwise dead-ends the dashboard at
-            // 401 ("Connecting to backend…" forever). Tradeoff: other apps on
-            // THIS device can reach 127.0.0.1:31337. The token is still minted
+            // 401 ("Connecting to backend…" forever). The token is still minted
             // and exposed via the Agent plugin for callers that opt to use it.
             agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "0");
             agentEnv.put("ELIZA_API_TOKEN", token);
@@ -2522,39 +2539,37 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Quick liveness probe for an already-running detached agent: can a TCP
-     * connection be opened to the loopback agent port? Unlike {@link
-     * #probeHealth()} this only completes the socket handshake, so it returns
-     * true even while bun is busy inside a synchronous native call
-     * (mid-llama_decode) and the HTTP layer is unresponsive — precisely the
-     * state we must NOT mistake for a dead agent and relaunch over. Used by
-     * {@link #startAgentProcess()} to adopt a surviving detached agent instead
-     * of killing + restarting it when the service/Activity is recreated.
+     * Quick liveness probe for an already-running detached agent: can a
+     * connection be opened to its request socket? Unlike {@link #probeHealth()}
+     * this only completes the socket handshake, so it returns true even while bun
+     * is busy inside a synchronous native call (mid-llama_decode) and the accept
+     * loop is briefly unresponsive to a full request — precisely the state we
+     * must NOT mistake for a dead agent and relaunch over. Used by {@link
+     * #startAgentProcess()} to adopt a surviving detached agent instead of
+     * killing + restarting it when the service/Activity is recreated.
      */
-    private boolean isLoopbackAgentListening() {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", AGENT_PORT), 2000);
+    private boolean isLocalAgentSocketListening() {
+        LocalSocket socket = new LocalSocket();
+        try {
+            socket.connect(new LocalSocketAddress(
+                LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
             return true;
         } catch (IOException ignored) {
             return false;
+        } finally {
+            closeQuietly(socket);
         }
     }
 
     private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(HEALTH_URL);
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout((int) HEALTH_TIMEOUT_MS);
-            conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
-            conn.setRequestMethod("GET");
-            String token = currentLocalAgentToken;
-            if (token != null && !token.trim().isEmpty()) {
-                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            }
-            int status = conn.getResponseCode();
+            JSONObject payload = new JSONObject()
+                .put("method", "GET")
+                .put("path", "/api/health");
+            JSONObject result = dispatchBufferedOverSocket(payload, (int) HEALTH_TIMEOUT_MS);
+            int status = result.optInt("status", 0);
             if (status >= 200 && status < 300) {
-                String body = readResponseBody(conn);
+                String body = result.optString("body", "");
                 if (!isReadyHealthBody(body)) {
                     Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
                     return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
@@ -2562,17 +2577,16 @@ public class ElizaAgentService extends Service {
                 return ElizaAgentWatchdogPolicy.ProbeResult.OK;
             }
             // Non-2xx: agent process is up but not healthy/authenticated.
-            // Treat as DEAD so strikes accumulate — this is a crash or
-            // readiness signal, not a busy signal.
+            // Treat as DEAD so strikes accumulate — a crash/readiness signal.
             return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-        } catch (IOException error) {
-            // HTTP request failed (timeout / connect refused / read
-            // interrupt). If the direct child process is still alive the
-            // most likely cause is bun synchronously inside a native FFI
-            // call. Detached mode has no live Java child to inspect, so use a
-            // cheap TCP connect probe: an open listener means the detached bun
-            // is alive but too busy to answer HTTP; a closed port is DEAD and
-            // the startup probe/watchdog owns retry timing.
+        } catch (IOException | JSONException error) {
+            // The request failed (socket connect refused / read interrupt / no
+            // response). If the direct child process is still alive the most
+            // likely cause is bun synchronously inside a native FFI call. Detached
+            // mode has no live Java child to inspect, so use a cheap connect
+            // probe: an accepting socket means the detached bun is alive but too
+            // busy to answer a full request; a closed socket is DEAD and the
+            // startup probe/watchdog owns retry timing.
             Process current;
             boolean detached;
             synchronized (processLock) {
@@ -2582,48 +2596,12 @@ public class ElizaAgentService extends Service {
             if (current != null && current.isAlive()) {
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
-            if (detached && isLoopbackAgentListening()) {
-                appendDiagnosticEvent("detached-agent-probe-busy-port-open", null);
-                Log.i(TAG, "Detached agent HTTP probe failed but loopback port is open — likely mid-decode. No strike.");
+            if (detached && isLocalAgentSocketListening()) {
+                appendDiagnosticEvent("detached-agent-probe-busy-socket-open", null);
+                Log.i(TAG, "Detached agent request probe failed but socket is accepting — likely mid-decode. No strike.");
                 return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
             }
             return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
-
-    private static String readResponseBody(HttpURLConnection conn) throws IOException {
-        try (InputStream in = conn.getInputStream()) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = in.read(buf)) >= 0) {
-                out.write(buf, 0, n);
-            }
-            return out.toString(StandardCharsets.UTF_8.name());
-        }
-    }
-
-    private static String readResponseBody(InputStream in, int maxBytes) throws IOException {
-        return new String(readResponseBytes(in, maxBytes), StandardCharsets.UTF_8);
-    }
-
-    private static byte[] readResponseBytes(InputStream in, int maxBytes) throws IOException {
-        if (in == null) return new byte[0];
-        try (InputStream input = in) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int total = 0;
-            int n;
-            while ((n = input.read(buf)) >= 0) {
-                total += n;
-                if (total > maxBytes) {
-                    throw new IOException("Response body is too large");
-                }
-                out.write(buf, 0, n);
-            }
-            return out.toByteArray();
         }
     }
 
@@ -2991,7 +2969,7 @@ public class ElizaAgentService extends Service {
         switch (currentStatus) {
             case "running":
                 title = "Eliza agent · Running";
-                text = "Local agent listening on :" + AGENT_PORT;
+                text = "On-device agent ready";
                 break;
             case "starting":
                 title = "Eliza agent · Starting";
