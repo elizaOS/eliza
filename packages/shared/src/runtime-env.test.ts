@@ -4,11 +4,14 @@
  * `resolveApiSecurityConfig` — proving malformed `127.*` binds are never promoted to
  * loopback and that the origin/host allow-lists are trimmed into arrays.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "./config/boot-config";
 import {
   isLoopbackBindHost,
   isWildcardBindHost,
   resolveApiSecurityConfig,
+  resolveDesktopApiPortPreference,
+  resolveRuntimePorts,
   stripOptionalHostPort,
 } from "./runtime-env";
 
@@ -65,5 +68,84 @@ describe("runtime env host security helpers", () => {
       "http://localhost:2138",
     ]);
     expect(config.allowedHosts).toEqual(["app.example", "localhost"]);
+  });
+});
+
+describe("runtime env alias resolution", () => {
+  const savedConfig = getBootConfig();
+  const aliases: Array<readonly [string, string]> = [
+    ["ACME_PORT", "ELIZA_PORT"],
+    ["ACME_UI_PORT", "ELIZA_UI_PORT"],
+    ["ACME_API_PORT", "ELIZA_API_PORT"],
+    ["ACME_API_BIND", "ELIZA_API_BIND"],
+    ["ACME_API_TOKEN", "ELIZA_API_TOKEN"],
+    ["ACME_ALLOWED_ORIGINS", "ELIZA_ALLOWED_ORIGINS"],
+    ["ACME_ALLOWED_HOSTS", "ELIZA_ALLOWED_HOSTS"],
+    ["ACME_ALLOW_NULL_ORIGIN", "ELIZA_ALLOW_NULL_ORIGIN"],
+    ["ACME_DISABLE_AUTO_API_TOKEN", "ELIZA_DISABLE_AUTO_API_TOKEN"],
+  ];
+
+  beforeEach(() => {
+    setBootConfig({ ...savedConfig, envAliases: aliases });
+  });
+
+  afterEach(() => {
+    setBootConfig(savedConfig);
+  });
+
+  it("resolves ports from a non-ELIZA brand prefix without materializing mirror keys", () => {
+    const env = {
+      ACME_PORT: "4666",
+      ACME_UI_PORT: "4777",
+      ACME_API_PORT: "4555",
+    };
+
+    expect(resolveRuntimePorts(env)).toEqual({
+      serverOnlyPort: 4666,
+      desktopApiPort: 4555,
+      desktopUiPort: 4777,
+    });
+    expect(resolveDesktopApiPortPreference(env)).toMatchObject({
+      port: 4555,
+      winningKey: "ELIZA_API_PORT",
+    });
+    expect(env).not.toHaveProperty("ELIZA_PORT");
+    expect(env).not.toHaveProperty("ELIZA_UI_PORT");
+    expect(env).not.toHaveProperty("ELIZA_API_PORT");
+  });
+
+  it("resolves API security config from branded aliases without mutating the env record", () => {
+    const env = {
+      ACME_API_BIND: "0.0.0.0",
+      ACME_API_TOKEN: "branded-token",
+      ACME_ALLOWED_ORIGINS: " https://acme.example, http://localhost:2138 ",
+      ACME_ALLOWED_HOSTS: " acme.example,localhost ",
+      ACME_ALLOW_NULL_ORIGIN: "true",
+      ACME_DISABLE_AUTO_API_TOKEN: "1",
+    };
+    const before = { ...env };
+
+    expect(resolveApiSecurityConfig(env)).toMatchObject({
+      bindHost: "0.0.0.0",
+      token: "branded-token",
+      allowedOrigins: ["https://acme.example", "http://localhost:2138"],
+      allowedHosts: ["acme.example", "localhost"],
+      allowNullOrigin: true,
+      disableAutoApiToken: true,
+      isLoopbackBind: false,
+      isWildcardBind: true,
+    });
+    expect(env).toEqual(before);
+    expect(env).not.toHaveProperty("ELIZA_API_TOKEN");
+    expect(env).not.toHaveProperty("ELIZA_ALLOWED_ORIGINS");
+  });
+
+  it("keeps explicit ELIZA values ahead of brand aliases", () => {
+    const config = resolveApiSecurityConfig({
+      ACME_API_TOKEN: "branded-token",
+      ELIZA_API_TOKEN: "canonical-token",
+    });
+
+    expect(config.token).toBe("canonical-token");
   });
 });

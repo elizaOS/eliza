@@ -11,6 +11,8 @@
  * detects mobile (`ELIZA_PLATFORM=android|ios`) embeddings where host
  * capabilities that shell out are unavailable.
  */
+
+import { resolveAliasedEnvValue } from "./boot-env.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 
 const DEFAULT_API_BIND_HOST = "127.0.0.1";
@@ -84,7 +86,7 @@ function firstNonEmpty(
 	keys: readonly string[],
 ): string | null {
 	for (const key of keys) {
-		const value = env[key]?.trim();
+		const value = resolveEnvValue(env, key)?.trim();
 		if (value) return value;
 	}
 	return null;
@@ -96,10 +98,17 @@ export function firstWinningEnvString(
 	keys: readonly string[],
 ): { key: string; value: string } | null {
 	for (const key of keys) {
-		const value = env[key]?.trim();
+		const value = resolveEnvValue(env, key)?.trim();
 		if (value) return { key, value };
 	}
 	return null;
+}
+
+function resolveEnvValue(
+	env: RuntimeEnvRecord,
+	key: string,
+): string | undefined {
+	return resolveAliasedEnvValue(key, undefined, env);
 }
 
 export interface PortPreferenceResolution {
@@ -114,7 +123,7 @@ export function resolveDesktopApiPortPreference(
 	env: RuntimeEnvRecord = process.env,
 ): PortPreferenceResolution {
 	for (const key of DESKTOP_API_PORT_KEYS) {
-		const p = parsePositivePort(env[key]);
+		const p = parsePositivePort(resolveEnvValue(env, key));
 		if (p !== null) {
 			return {
 				port: p,
@@ -138,7 +147,7 @@ export function resolveDesktopUiPortPreference(
 	env: RuntimeEnvRecord = process.env,
 ): PortPreferenceResolution {
 	for (const key of DESKTOP_UI_PORT_KEYS) {
-		const p = parsePositivePort(env[key]);
+		const p = parsePositivePort(resolveEnvValue(env, key));
 		if (p !== null) {
 			return {
 				port: p,
@@ -222,15 +231,16 @@ export function resolveRuntimePorts(
 ): ResolvedRuntimePorts {
 	return {
 		serverOnlyPort:
-			parsePositivePort(env.ELIZA_PORT) ??
-			parsePositivePort(env.ELIZA_UI_PORT) ??
+			parsePositivePort(resolveEnvValue(env, "ELIZA_PORT")) ??
+			parsePositivePort(resolveEnvValue(env, "ELIZA_UI_PORT")) ??
 			DEFAULT_SERVER_ONLY_PORT,
 		desktopApiPort:
-			parsePositivePort(env.ELIZA_API_PORT) ??
-			parsePositivePort(env.ELIZA_PORT) ??
+			parsePositivePort(resolveEnvValue(env, "ELIZA_API_PORT")) ??
+			parsePositivePort(resolveEnvValue(env, "ELIZA_PORT")) ??
 			DEFAULT_DESKTOP_API_PORT,
 		desktopUiPort:
-			parsePositivePort(env.ELIZA_UI_PORT) ?? DEFAULT_DESKTOP_UI_PORT,
+			parsePositivePort(resolveEnvValue(env, "ELIZA_UI_PORT")) ??
+			DEFAULT_DESKTOP_UI_PORT,
 	};
 }
 
@@ -376,13 +386,15 @@ export function syncResolvedApiPort(
 const MOBILE_PLATFORM_VALUES = new Set(["android", "ios"]);
 
 export function isMobilePlatform(env: RuntimeEnvRecord = process.env): boolean {
-	const raw = env.ELIZA_PLATFORM?.trim().toLowerCase();
+	const raw = resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase();
 	if (!raw) return false;
 	return MOBILE_PLATFORM_VALUES.has(raw);
 }
 
 export function isAndroidMobile(env: RuntimeEnvRecord = process.env): boolean {
-	return env.ELIZA_PLATFORM?.trim().toLowerCase() === "android";
+	return (
+		resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase() === "android"
+	);
 }
 
 export function resolveElizaRuntimeEnv(
