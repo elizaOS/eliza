@@ -1,3 +1,11 @@
+/**
+ * Plugin build helper for deriving Bun.build externals from package metadata.
+ *
+ * Runtime, peer, optional, and caller-supplied dependencies are externalized so
+ * plugin bundles do not inline transitive packages that expect Node internals at
+ * top-level import time.
+ */
+
 import { readFile } from "node:fs/promises";
 
 export interface ExternalsFromPackageJsonOptions {
