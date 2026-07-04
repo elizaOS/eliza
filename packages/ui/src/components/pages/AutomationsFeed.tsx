@@ -54,7 +54,6 @@ import {
 } from "../../utils/automation-feed-filter";
 import { formatSchedule } from "../../utils/cron-format";
 import { mergeUnifiedTasks } from "../../utils/merge-unified-tasks";
-import { decodeScheduleTags } from "../../utils/task-schedule";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ListSkeleton } from "../ui/skeleton-layouts";
@@ -142,13 +141,27 @@ interface FeedRow {
   source: AutomationItem;
 }
 
-/** Derive a schedule label from a scheduled-task item's synthesized summary. */
-function scheduledRowSchedule(item: AutomationItem): string | null {
+/**
+ * Derive a schedule label from an automation item's `schedules`
+ * (`TriggerSummary[]` populated by the `/api/automations` builder from
+ * `metadata.trigger`). Cron shows the humanized cadence; an on-event trigger
+ * shows "On <event>"; otherwise the trigger's display name.
+ */
+function schedulesLabel(
+  item: AutomationItem,
+  t: ReturnType<typeof useTranslation>["t"],
+): string | null {
   return (
     item.schedules
       .map((trigger) => {
         if (trigger.cronExpression)
           return formatSchedule(trigger.cronExpression);
+        if (trigger.triggerType === "event" && trigger.eventKind) {
+          return t("automationsfeed.onEvent", {
+            event: trigger.eventKind,
+            defaultValue: "On {{event}}",
+          });
+        }
         if (trigger.displayName) return trigger.displayName;
         return null;
       })
@@ -162,32 +175,7 @@ function automationToRow(
   t: ReturnType<typeof useTranslation>["t"],
 ): FeedRow {
   const isWorkflow = item.type === "workflow";
-  const isScheduledTask = item.source === "scheduled_task";
-  const schedule = isWorkflow
-    ? item.schedules
-        .map((trigger) => {
-          if (trigger.cronExpression)
-            return formatSchedule(trigger.cronExpression);
-          if (trigger.displayName) return trigger.displayName;
-          return null;
-        })
-        .filter((s): s is string => Boolean(s))
-        .join(", ") || null
-    : isScheduledTask
-      ? scheduledRowSchedule(item)
-      : (() => {
-          const decoded = decodeScheduleTags(item.task?.tags);
-          if (decoded.kind === "recurring" && decoded.cronExpression) {
-            return formatSchedule(decoded.cronExpression);
-          }
-          if (decoded.kind === "event" && decoded.eventName) {
-            return t("automationsfeed.onEvent", {
-              event: decoded.eventName,
-              defaultValue: "On {{event}}",
-            });
-          }
-          return null;
-        })();
+  const schedule = schedulesLabel(item, t);
 
   return {
     key: item.id,
@@ -421,21 +409,35 @@ export function AutomationsFeed({
     // Item vanished (e.g. refreshed away) — fall through to the list.
   }
   if (editor.kind === "task") {
+    // `editor.taskId` is a workbench-task id for a plain task, or a trigger id
+    // for a prompt-kind (recurring/event) automation.
     const existing =
       editor.taskId && data
-        ? data.automations.find((a) => a.task?.id === editor.taskId)
+        ? (data.automations.find((a) => a.task?.id === editor.taskId) ??
+          data.automations.find((a) => a.triggerId === editor.taskId))
         : null;
-    const decoded = decodeScheduleTags(existing?.task?.tags);
+    const trigger = existing?.trigger;
+    const initial =
+      trigger && trigger.kind === "prompt"
+        ? {
+            triggerId: trigger.id,
+            name: trigger.displayName,
+            prompt: trigger.instructions,
+            scheduleKind: (trigger.triggerType === "event"
+              ? "event"
+              : "recurring") as "event" | "recurring",
+            cronExpression: trigger.cronExpression ?? "",
+            eventName: trigger.eventKind ?? "",
+          }
+        : {
+            id: existing?.task?.id,
+            name: existing?.task?.name,
+            prompt: existing?.task?.description,
+            scheduleKind: "once" as const,
+          };
     return (
       <TaskEditor
-        initial={{
-          id: existing?.task?.id,
-          name: existing?.task?.name,
-          prompt: existing?.task?.description,
-          scheduleKind: decoded.kind,
-          cronExpression: decoded.cronExpression,
-          eventName: decoded.eventName,
-        }}
+        initial={initial}
         onSaved={() => {
           setEditor({ kind: "none" });
           void refresh();
@@ -568,9 +570,14 @@ export function AutomationsFeed({
                         itemId: row.source.id,
                       });
                     } else if (row.kind === "task") {
+                      // A prompt-kind trigger has no backing workbench task —
+                      // key the editor by its trigger id instead.
                       setEditor({
                         kind: "task",
-                        taskId: row.source.task?.id ?? null,
+                        taskId:
+                          row.source.task?.id ??
+                          row.source.triggerId ??
+                          null,
                       });
                     } else {
                       setEditor({
