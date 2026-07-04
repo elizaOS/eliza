@@ -25,6 +25,8 @@ function makeCommand(
     surfaces: overrides.surfaces,
     target: overrides.target ?? { kind: "agent" },
     icon: overrides.icon,
+    source: overrides.source ?? "builtin",
+    views: overrides.views,
   };
 }
 
@@ -204,10 +206,39 @@ describe("resolveSlashDispatch", () => {
     });
   });
 
+  it("sends toggle-transcription to the agent (shared client action, no TUI behavior)", () => {
+    // toggle-transcription was missing from the old hand-synced TUI union; it is
+    // now part of the shared ClientCommandAction and must route like any other
+    // client action the terminal can't run locally (#12411).
+    const command = makeCommand({
+      key: "transcription",
+      target: { kind: "client", clientAction: "toggle-transcription" },
+    });
+    expect(
+      resolveSlashDispatch({ command, args: "" }, "/transcription"),
+    ).toEqual({ kind: "send", text: "/transcription" });
+  });
+
+  it("carries source and views through the shared wire contract", () => {
+    // source and views are shared-contract fields the old TUI copy dropped; the
+    // TUI must accept them without a type error (#12411).
+    const command = makeCommand({
+      key: "calendar",
+      source: "custom-action",
+      views: ["calendar"],
+    });
+    expect(command.source).toBe("custom-action");
+    expect(command.views).toEqual(["calendar"]);
+  });
+
   it("navigates to a pinned view id", () => {
     const command = makeCommand({
       key: "orchestrator",
-      target: { kind: "navigate", viewId: "orchestrator" },
+      target: {
+        kind: "navigate",
+        path: "/orchestrator",
+        viewId: "orchestrator",
+      },
     });
     expect(
       resolveSlashDispatch({ command, args: "" }, "/orchestrator"),
@@ -217,7 +248,7 @@ describe("resolveSlashDispatch", () => {
   it("navigates to a view id resolved from a /views <id> argument", () => {
     const command = makeCommand({
       key: "views",
-      target: { kind: "navigate" },
+      target: { kind: "navigate", path: "/views" },
       acceptsArgs: true,
       args: [{ name: "view", description: "View", dynamicChoices: "views" }],
     });
@@ -229,7 +260,12 @@ describe("resolveSlashDispatch", () => {
   it("sends tab/settings navigation to the agent (no terminal equivalent)", () => {
     const command = makeCommand({
       key: "settings",
-      target: { kind: "navigate", tab: "settings", section: "ai-model" },
+      target: {
+        kind: "navigate",
+        path: "/settings",
+        tab: "settings",
+        section: "ai-model",
+      },
     });
     expect(resolveSlashDispatch({ command, args: "" }, "/settings")).toEqual({
       kind: "send",

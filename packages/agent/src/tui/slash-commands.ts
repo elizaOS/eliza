@@ -2,75 +2,25 @@
  * Pure helpers that bridge the universal slash-command catalog (served by
  * `GET /api/commands?surface=tui`) into the terminal composer.
  *
- * The catalog item shape mirrors the server's `SerializedCommand`
- * (@elizaos/plugin-commands). We keep a local copy of the transport type so
- * the TUI does not take a runtime dependency on the commands plugin, matching
- * how the web client (`@elizaos/ui` `client-types-commands`) keeps its own.
+ * The wire contract (`SerializedCommand*`, `CommandsCatalogResponse`) is the
+ * one declared in `@elizaos/shared`; this module imports it rather than keeping
+ * a hand-synced copy, which is what fixes the prior TUI drift (a stale `target`
+ * union, a `string` `category`, and missing `toggle-transcription`/`source`/
+ * `views` — #12411). The agent already depends on `@elizaos/shared`.
  *
  * Everything here is pure (no terminal, no I/O) so it is unit-testable. The
  * side effects (HTTP, transcript mutation) live in `agent-terminal-tui.ts`.
  */
 
+import type { CommandArgSource, SerializedCommand } from "@elizaos/shared";
 import type { AutocompleteItem, SlashCommand } from "@elizaos/tui";
 
-export type CommandSurface = "gui" | "tui" | "discord" | "telegram";
-
-export type CommandArgSource =
-  | "models"
-  | "views"
-  | "settings-sections"
-  | "skills"
-  | "providers";
-
-export type ClientCommandAction =
-  | "clear-chat"
-  | "new-conversation"
-  | "toggle-fullscreen"
-  | "open-command-palette"
-  | "show-commands";
-
-export interface SerializedCommandArg {
-  name: string;
-  description: string;
-  required?: boolean;
-  choices?: string[];
-  dynamicChoices?: CommandArgSource;
-  captureRemaining?: boolean;
-}
-
-export type SerializedCommandTarget =
-  | { kind: "agent"; action?: string }
-  | {
-      kind: "navigate";
-      tab?: string;
-      viewId?: string;
-      path?: string;
-      section?: string;
-    }
-  | { kind: "client"; clientAction: ClientCommandAction };
-
-export interface SerializedCommand {
-  key: string;
-  nativeName: string;
-  description: string;
-  textAliases: string[];
-  scope: "text" | "native" | "both";
-  category?: string;
-  acceptsArgs: boolean;
-  args: SerializedCommandArg[];
-  requiresAuth: boolean;
-  requiresElevated: boolean;
-  surfaces?: CommandSurface[];
-  target: SerializedCommandTarget;
-  icon?: string;
-}
-
-export interface CommandsCatalogResponse {
-  commands: SerializedCommand[];
-  surface: string | null;
-  agentId: string | null;
-  generatedAt: string;
-}
+export type {
+  CommandArgSource,
+  CommandsCatalogResponse,
+  SerializedCommand,
+  SerializedCommandArg,
+} from "@elizaos/shared";
 
 /**
  * The display name for a command (no leading slash). Prefers the first text

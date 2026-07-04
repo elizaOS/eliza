@@ -5,6 +5,7 @@
  */
 
 export * from "./api/agent-api-types.js";
+export * from "./api/command-transport-types.js";
 export * from "./api/http-helpers.js";
 export * from "./api/route-helpers.js";
 // Leaf modules (no internal collisions)

@@ -16,6 +16,7 @@ function cmd(
     requiresElevated: partial.requiresElevated ?? false,
     target: partial.target ?? { kind: "agent" },
     ...partial,
+    source: partial.source ?? "builtin",
   };
 }
 
