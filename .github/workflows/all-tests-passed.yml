@@ -1,0 +1,234 @@
+name: All Tests Passed
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: all-tests-passed-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+
+jobs:
+  all-tests-passed:
+    name: All Tests Passed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      POLL_TIMEOUT_SECONDS: ${{ vars.ALL_TESTS_PASSED_TIMEOUT_SECONDS || '5400' }}
+      POLL_INTERVAL_SECONDS: ${{ vars.ALL_TESTS_PASSED_INTERVAL_SECONDS || '30' }}
+      REQUIRED_CONTEXTS: |
+        Develop Gate (lint)
+        Develop Gate (secret scan + UI determinism)
+        Format + Type Safety Ratchet
+        Homepage Build (PR smoke)
+        gitleaks
+        coverage on changed files
+        check-pr-title
+        stale-base guard
+      QUALITY_PATH_IGNORED_CONTEXTS: |
+        Develop Gate (lint)
+        Develop Gate (secret scan + UI determinism)
+        Format + Type Safety Ratchet
+        Homepage Build (PR smoke)
+    steps:
+      - name: Checkout aggregate contract
+        # actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 1
+
+      - name: Verify aggregate workflow contract
+        run: node packages/scripts/all-tests-passed-workflow-contract.mjs
+
+      - name: Wait for required PR checks
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          map_contexts() {
+            sed '/^[[:space:]]*$/d' | sed 's/[[:space:]]*$//'
+          }
+
+          mapfile -t required_contexts < <(printf '%s\n' "$REQUIRED_CONTEXTS" | map_contexts)
+          mapfile -t quality_path_ignored_contexts < <(printf '%s\n' "$QUALITY_PATH_IGNORED_CONTEXTS" | map_contexts)
+
+          if [ "${#required_contexts[@]}" -eq 0 ]; then
+            echo "::error title=All Tests Passed::REQUIRED_CONTEXTS is empty"
+            exit 1
+          fi
+
+          for context in "${required_contexts[@]}"; do
+            if [ "$context" = "All Tests Passed" ]; then
+              echo "::error title=All Tests Passed::aggregate cannot require itself"
+              exit 1
+            fi
+          done
+
+          declare -A required_lookup=()
+          for context in "${required_contexts[@]}"; do
+            required_lookup["$context"]=1
+          done
+
+          declare -A missing_or_skipped_allowed=()
+
+          quality_path_ignored=false
+          if [ -n "$PR_NUMBER" ]; then
+            mapfile -t changed_files < <(gh api --paginate "repos/${GH_REPO}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')
+            if [ "${#changed_files[@]}" -gt 0 ]; then
+              quality_path_ignored=true
+              for file in "${changed_files[@]}"; do
+                case "$file" in
+                  AGENTS.md|CHANGELOG.md|LICENSE|.github/pull_request_template.md|docs/*|packages/docs/*|.github/ISSUE_TEMPLATE/*|*.md)
+                    ;;
+                  *)
+                    quality_path_ignored=false
+                    break
+                    ;;
+                esac
+              done
+            fi
+          fi
+
+          if [ "$quality_path_ignored" = "true" ]; then
+            for context in "${quality_path_ignored_contexts[@]}"; do
+              if [ -z "${required_lookup[$context]+x}" ]; then
+                echo "::error title=All Tests Passed::path-ignore allowlist contains non-required context '$context'"
+                exit 1
+              fi
+              missing_or_skipped_allowed["$context"]="Quality (Extended) paths-ignore matched every changed file"
+            done
+          fi
+
+          deadline=$(( $(date +%s) + POLL_TIMEOUT_SECONDS ))
+          attempt=1
+
+          while true; do
+            checks_tsv="$(mktemp)"
+            statuses_tsv="$(mktemp)"
+            trap 'rm -f "$checks_tsv" "$statuses_tsv"' EXIT
+
+            gh api --paginate "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+              --jq '.check_runs[] | [.name, .status, (.conclusion // ""), (.started_at // .completed_at // .created_at // "")] | @tsv' \
+              > "$checks_tsv"
+
+            gh api "repos/${GH_REPO}/commits/${HEAD_SHA}/status" \
+              --jq '.statuses[] | [.context, .state, (.updated_at // .created_at // "")] | @tsv' \
+              > "$statuses_tsv"
+
+            declare -A check_status=()
+            declare -A check_conclusion=()
+            declare -A check_stamp=()
+            while IFS=$'\t' read -r name status conclusion stamp; do
+              [ -n "$name" ] || continue
+              if [ -z "${check_stamp[$name]+x}" ] || [[ "$stamp" > "${check_stamp[$name]}" ]]; then
+                check_status["$name"]="$status"
+                check_conclusion["$name"]="$conclusion"
+                check_stamp["$name"]="$stamp"
+              fi
+            done < "$checks_tsv"
+
+            declare -A status_state=()
+            declare -A status_stamp=()
+            while IFS=$'\t' read -r context state stamp; do
+              [ -n "$context" ] || continue
+              if [ -z "${status_stamp[$context]+x}" ] || [[ "$stamp" > "${status_stamp[$context]}" ]]; then
+                status_state["$context"]="$state"
+                status_stamp["$context"]="$stamp"
+              fi
+            done < "$statuses_tsv"
+
+            ok=0
+            pending=0
+            bad=0
+            messages=()
+
+            for context in "${required_contexts[@]}"; do
+              if [ -n "${check_status[$context]+x}" ]; then
+                status="${check_status[$context]}"
+                conclusion="${check_conclusion[$context]}"
+                if [ "$status" = "completed" ] && [ "$conclusion" = "success" ]; then
+                  ok=$((ok + 1))
+                  messages+=("PASS check-run '$context' concluded success")
+                elif [ "$status" = "completed" ] && { [ "$conclusion" = "skipped" ] || [ "$conclusion" = "neutral" ]; } && [ -n "${missing_or_skipped_allowed[$context]+x}" ]; then
+                  ok=$((ok + 1))
+                  messages+=("PASS check-run '$context' concluded ${conclusion}: ${missing_or_skipped_allowed[$context]}")
+                elif [ "$status" = "completed" ]; then
+                  bad=$((bad + 1))
+                  messages+=("FAIL check-run '$context' concluded ${conclusion:-unknown}")
+                else
+                  pending=$((pending + 1))
+                  messages+=("WAIT check-run '$context' is $status")
+                fi
+              elif [ -n "${status_state[$context]+x}" ]; then
+                state="${status_state[$context]}"
+                if [ "$state" = "success" ]; then
+                  ok=$((ok + 1))
+                  messages+=("PASS commit status '$context' is success")
+                elif { [ "$state" = "pending" ] || [ "$state" = "neutral" ]; } && [ -n "${missing_or_skipped_allowed[$context]+x}" ]; then
+                  ok=$((ok + 1))
+                  messages+=("PASS commit status '$context' is ${state}: ${missing_or_skipped_allowed[$context]}")
+                elif [ "$state" = "pending" ]; then
+                  pending=$((pending + 1))
+                  messages+=("WAIT commit status '$context' is pending")
+                else
+                  bad=$((bad + 1))
+                  messages+=("FAIL commit status '$context' is ${state:-unknown}")
+                fi
+              elif [ -n "${missing_or_skipped_allowed[$context]+x}" ]; then
+                ok=$((ok + 1))
+                messages+=("PASS missing '$context': ${missing_or_skipped_allowed[$context]}")
+              else
+                pending=$((pending + 1))
+                messages+=("WAIT missing required context '$context'")
+              fi
+            done
+
+            {
+              echo "### All Tests Passed aggregate"
+              echo
+              echo "- Head SHA: \`${HEAD_SHA}\`"
+              echo "- Required contexts: ${#required_contexts[@]}"
+              echo "- Passing contexts: ${ok}"
+              echo "- Pending contexts: ${pending}"
+              echo "- Failed contexts: ${bad}"
+              if [ "$quality_path_ignored" = "true" ]; then
+                echo "- Quality path-ignore: matched all changed files"
+              fi
+              echo
+              printf '%s\n' "${messages[@]}" | sed 's/^/- /'
+            } > "$GITHUB_STEP_SUMMARY"
+
+            printf 'All Tests Passed poll attempt %s: ok=%s pending=%s failed=%s\n' "$attempt" "$ok" "$pending" "$bad"
+            printf '%s\n' "${messages[@]}"
+
+            if [ "$bad" -gt 0 ]; then
+              echo "::error title=All Tests Passed::one or more required contexts failed"
+              exit 1
+            fi
+            if [ "$pending" -eq 0 ]; then
+              echo "All required contexts passed."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error title=All Tests Passed::timed out waiting for required contexts"
+              exit 1
+            fi
+
+            rm -f "$checks_tsv" "$statuses_tsv"
+            trap - EXIT
+            attempt=$((attempt + 1))
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
