@@ -1,3 +1,14 @@
+/**
+ * Per-account background loop for one BlueSky handle: owns the notification
+ * poll timer, the action-processing timer, and the randomized automated-post
+ * scheduler. Polls `BlueSkyClient.getNotifications`, dedupes against a cached
+ * `indexedAt` cursor, and emits `bluesky.*` runtime events (mention/reply,
+ * follow, like, repost, quote, should_respond, create_post) that the
+ * application layer responds to — the manager itself never generates replies or
+ * posts, it only fires events. Automated posts run inside a standalone
+ * trajectory so background generation is traced. Instantiated and started by
+ * `BlueSkyService`.
+ */
 import {
 	type IAgentRuntime,
 	logger,

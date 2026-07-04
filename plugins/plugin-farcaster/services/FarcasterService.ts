@@ -1,3 +1,13 @@
+/**
+ * Top-level runtime `Service` and the plugin's lifecycle owner. A process-wide
+ * singleton keyed by agent, it discovers every configured account, spins up a
+ * `FarcasterAgentManager` (plus per-account cast and message services) for each,
+ * and starts/stops them. `registerSendHandlers` binds the cast service's
+ * `handleSendPost`/`fetchFeed`/`searchPosts` into the runtime as a `farcaster`
+ * post connector when the runtime supports it. Also exposes account/manager
+ * lookups (used by the profile provider and webhook route) and a `healthCheck`
+ * that pings each account's Neynar profile.
+ */
 import {
   ChannelType,
   type Content,

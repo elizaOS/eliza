@@ -1,3 +1,4 @@
+/** Unit tests for `TwitterInteractionClient` engagement on search-discovered tweets — like/retweet/quote/none per model choice, plus dry-run; mocked runtime. */
 import { type IAgentRuntime, logger, type UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";

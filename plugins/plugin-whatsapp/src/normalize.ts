@@ -1,4 +1,11 @@
 /**
+ * Phone/JID normalization and outbound-text chunking for the WhatsApp connector.
+ * Parses E.164 numbers, recognizes user JIDs and LIDs, detects chat type, and
+ * normalizes send targets into a canonical form both transports agree on. Shared
+ * by the runtime service, message adapters, and account resolution.
+ */
+
+/**
  * WhatsApp text chunk limit
  */
 export const WHATSAPP_TEXT_CHUNK_LIMIT = 4096;

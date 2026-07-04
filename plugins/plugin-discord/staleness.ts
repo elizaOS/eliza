@@ -1,3 +1,8 @@
+/**
+ * Stale-message guard — decides whether an out-of-sequence inbound message
+ * should be tagged, skipped, or ignored so the agent does not reply to
+ * messages that a newer turn has already superseded.
+ */
 import type { Content } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 

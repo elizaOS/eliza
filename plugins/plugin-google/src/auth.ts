@@ -1,3 +1,11 @@
+/**
+ * OAuth provider metadata and capability-scoped config for the Google connector.
+ * `GOOGLE_OAUTH_PROVIDER_METADATA` describes the fixed Google endpoints and
+ * settings keys; `getGoogleOAuthProviderConfig` narrows a requested capability
+ * set into the scopes and authorization params the connector manager needs.
+ * `MissingGoogleCredentialResolver` is the fail-loud default resolver used until
+ * a real one backed by the connector OAuth store is injected.
+ */
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,

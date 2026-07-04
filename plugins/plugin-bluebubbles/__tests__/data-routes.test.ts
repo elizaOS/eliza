@@ -1,3 +1,9 @@
+/**
+ * Covers the BlueBubbles data + webhook routes' request guards: missing
+ * `chatGuid`, hostile pagination clamping, webhook secret rejection, and
+ * malformed-payload rejection before dispatch. Drives the route handlers with
+ * hand-built runtime/request stubs — no live BlueBubbles server.
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { blueBubblesDataRoutes } from "../src/data-routes";

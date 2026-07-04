@@ -1,3 +1,8 @@
+/**
+ * Test stub for `@elizaos/ui`'s Radix-backed Tabs, mirroring the controlled
+ * value / trigger / content contract the phone components rely on.
+ */
+
 import React from "react";
 
 // Lightweight stand-in for @elizaos/ui's Radix-backed Tabs. Mirrors the real

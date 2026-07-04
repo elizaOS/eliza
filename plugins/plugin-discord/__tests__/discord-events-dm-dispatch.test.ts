@@ -1,11 +1,16 @@
+/**
+ * Unit tests for `setupDiscordEventListeners` DM dispatch — asserts DMs are
+ * dispatched directly (and serialized per channel) while channel messages route
+ * through the debouncer. Fake discord.js client + mocked debouncer.
+ */
 import { EventEmitter } from "node:events";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mirror the debouncer mock shape from discord-events-config.test.ts so we can
 // assert whether channel messages were enqueued vs. DMs dispatched directly.
-// The message-debouncer was removed (DMs no longer batch), so only the channel
-// debouncer is mocked here.
+// DMs are dispatched directly (not batched), so only the channel debouncer is
+// mocked here.
 const debouncerState = vi.hoisted(() => {
 	const channelEnqueue = vi.fn();
 	return {

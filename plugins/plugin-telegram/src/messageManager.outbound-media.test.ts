@@ -1,3 +1,9 @@
+/**
+ * Unit tests for outbound media dispatch: each `Media` attachment routes to the
+ * matching Telegram sender (sendPhoto / sendVideo / sendAudio / sendDocument) by
+ * coarse content type, unknown types degrade to a document, and accompanying
+ * prose is sent alongside. Telegraf send calls are mocked.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MessageManager } from "./messageManager";

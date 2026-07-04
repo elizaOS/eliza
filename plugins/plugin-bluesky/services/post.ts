@@ -1,3 +1,11 @@
+/**
+ * Public-feed connector implementation for one BlueSky account: backs the
+ * runtime's post-connector surface. Publishes posts, reads the timeline, and
+ * searches posts through `BlueSkyClient`, mapping AT Protocol post views into
+ * runtime `Memory` records. Generated content over the AT Protocol 300-grapheme
+ * limit is truncated via an LLM prompt before publishing. Registered by
+ * `BlueSkyService`.
+ */
 import {
 	ChannelType,
 	type Content,

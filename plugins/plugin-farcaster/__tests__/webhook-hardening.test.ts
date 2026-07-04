@@ -1,3 +1,8 @@
+/**
+ * Drives the `POST /webhook` route handler against malformed and adversarial
+ * `NeynarWebhookData` payloads, asserting validation and dispatch behaviour with
+ * a fake runtime and mocked response (no network).
+ */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { farcasterWebhookRoutes } from "../routes/webhook";

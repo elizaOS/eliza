@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the text/button helpers: `convertMarkdownToTelegram` (bold /
+ * strikethrough rewriting, MarkdownV2 escaping, link and nested-token handling)
+ * and `convertToTelegramButtons`. Pure functions, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import type { Button } from "./types";
 import {

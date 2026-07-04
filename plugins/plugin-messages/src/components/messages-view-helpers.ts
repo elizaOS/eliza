@@ -1,6 +1,8 @@
-// Pure SMS data helpers shared between MessagesView.tsx (the GUI/XR data wrapper)
-// and messages-interact.ts (the terminal capability handler). Kept Capacitor-aware
-// but React-free so both surfaces can import it.
+/**
+ * Pure SMS data helpers shared between MessagesView.tsx (the GUI/XR data
+ * wrapper) and messages-interact.ts (the terminal capability handler).
+ * Capacitor-aware but React-free so both surfaces can import it.
+ */
 
 import type { SmsMessageSummary } from "@elizaos/capacitor-messages";
 import { Messages } from "@elizaos/capacitor-messages";

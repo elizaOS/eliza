@@ -1,3 +1,12 @@
+/**
+ * Persists connector OAuth secrets into the first available vault/secret store
+ * (connector credential store, vault, or SECRETS) and records the resulting
+ * vault refs against the connector account storage. Used by the Calendly OAuth
+ * completion path; throws when no durable credential writer or ref writer exists,
+ * so an account is never marked connected without its credentials actually
+ * persisted.
+ */
+
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,

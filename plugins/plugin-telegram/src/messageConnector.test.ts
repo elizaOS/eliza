@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `TelegramService`'s `MessageConnector` registration and send
+ * routing: connector metadata, account-scoped vs legacy routes, forum-topic
+ * channel-id parsing, per-account manager selection, and rejection of sends with
+ * no resolvable target. Runtime and Telegraf are mocked.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { TelegramService } from "./service";

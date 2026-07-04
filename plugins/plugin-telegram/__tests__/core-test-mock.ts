@@ -1,3 +1,9 @@
+/**
+ * Shared `vi.mock("@elizaos/core")` factory for the plugin's unit tests: stubs
+ * the enums, logger, `Service` base, and id helpers the connector touches while
+ * delegating to the real interaction protocol so callback encoding/layout is
+ * exercised for real rather than re-stubbed.
+ */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {

@@ -1,3 +1,13 @@
+/**
+ * Slack mrkdwn formatting utilities. Converts agent markdown to Slack's
+ * `*bold*` / `_italic_` / `~strike~` mrkdwn and chunks it under the message
+ * length limit (`markdownToSlackMrkdwn`, `chunkSlackText`), escapes user text so
+ * it can't forge Slack control sequences while preserving legitimate
+ * angle-bracket mention/link tokens (`escapeSlackMrkdwn`), builds and parses the
+ * `<@U…>` / `<#C…>` / `<url|label>` tokens and message permalinks, and derives
+ * channel-type / display-name helpers. Used by `service.ts` on the send/receive
+ * paths and re-exported from `index.ts`.
+ */
 import type { SlackChannel, SlackUser } from "./types";
 
 /**

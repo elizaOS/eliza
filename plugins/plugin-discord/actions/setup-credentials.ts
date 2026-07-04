@@ -1,3 +1,8 @@
+/**
+ * Credential preset definitions and loader for the connector `/setup` flow.
+ * Describes the fields each credential preset requires and reads their values
+ * from disk.
+ */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Supplies `whatsAppApi` credentials (Cloud API access token + phone number ID)
+ * to the workflow plugin via the shared workflow_credential_provider service
+ * type. Reads from runtime settings; returns a credential_data result when
+ * configured, otherwise null so the workflow can surface a needs-auth path.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 const WORKFLOW_CREDENTIAL_PROVIDER_TYPE = "workflow_credential_provider";

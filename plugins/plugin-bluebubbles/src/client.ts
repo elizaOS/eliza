@@ -1,5 +1,9 @@
 /**
- * BlueBubbles API client for interacting with the BlueBubbles server
+ * Thin REST wrapper over the BlueBubbles server HTTP API: sends messages and
+ * attachments, queries chats/messages, marks read, reacts, and edits/unsends
+ * (edit and unsend require the BlueBubbles Private API). Authenticates by
+ * appending the server password as a query parameter to every request; the
+ * service layer owns all higher-level routing and envelope mapping.
  */
 import { API_ENDPOINTS } from "./constants";
 import type {

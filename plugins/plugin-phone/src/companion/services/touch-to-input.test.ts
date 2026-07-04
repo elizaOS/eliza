@@ -1,3 +1,9 @@
+/**
+ * Unit + property tests (fast-check) for `touchToInput`: checks that touch
+ * samples translate into the expected pointer/click input events (e.g. a
+ * single-finger tap becomes a left click at the release point).
+ */
+
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

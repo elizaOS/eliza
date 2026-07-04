@@ -1,3 +1,11 @@
+/**
+ * Reads and validates Farcaster account configuration from env vars, runtime
+ * settings, and `character.settings.farcaster` against `FarcasterConfigSchema`
+ * (zod). Owns all account-id resolution — single-account, `FARCASTER_<ID>_`
+ * namespaced vars, and the `FARCASTER_ACCOUNTS` JSON array — so callers never
+ * hand-roll account discovery; use `listFarcasterAccountIds`,
+ * `normalizeFarcasterAccountId`, and `resolveDefaultFarcasterAccountId` here.
+ */
 import { type IAgentRuntime, type ProcessEnvLike, parseBooleanFromText } from "@elizaos/core";
 import { z } from "zod";
 import {

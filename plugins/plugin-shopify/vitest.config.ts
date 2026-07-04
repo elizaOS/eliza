@@ -1,3 +1,7 @@
+/**
+ * Vitest config for the Shopify plugin: sets the package root and the
+ * `@elizaos/*` workspace aliases the tests resolve against.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

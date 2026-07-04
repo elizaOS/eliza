@@ -1,3 +1,9 @@
+/**
+ * Injects the agent's Farcaster profile (FID, username, display name) into the
+ * prompt for `social_posting`, `messaging`, and `connectors` turns. Resolves the
+ * account's `FarcasterAgentManager` via `FarcasterService` and reads its profile;
+ * name/spec come from the generated `farcasterProfile` provider spec.
+ */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { FarcasterService } from "../services/FarcasterService";

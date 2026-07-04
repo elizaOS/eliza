@@ -1,16 +1,16 @@
-import { logger } from "./logger";
-
 /**
  * Remote session WebSocket client + touch-to-input translator.
  *
  * The companion opens a single WebSocket to the session ingress
  * (`wss://<ingress>/input`) and relays serialized input events. The host-side
- * session bridge (T9a data plane) forwards those events into the noVNC /
- * input-channel pipeline on the paired Mac.
+ * session bridge forwards those events into the noVNC / input-channel pipeline
+ * on the paired Mac.
  *
  * This module is pure — no React, no Capacitor. Makes it directly unit-testable
  * under jsdom/node.
  */
+
+import { logger } from "./logger";
 
 export type InputButton = "left" | "right" | "middle";
 

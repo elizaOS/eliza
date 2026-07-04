@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the `AttachmentManager` — media type detection and download,
+ * against a mocked runtime (no live Discord or network).
+ */
 import { ContentType, type IAgentRuntime, ModelType } from "@elizaos/core";
 import { type Attachment, Collection } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";

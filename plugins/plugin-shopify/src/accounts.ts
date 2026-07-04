@@ -1,3 +1,11 @@
+/**
+ * Resolves configured Shopify store accounts from the runtime. Merges accounts
+ * declared via env (`SHOPIFY_STORE_DOMAIN` / `SHOPIFY_ACCESS_TOKEN` /
+ * `SHOPIFY_ACCOUNTS`) with those under `character.settings.shopify.accounts`,
+ * env taking precedence within the same account id, and selects the default
+ * account (`SHOPIFY_DEFAULT_ACCOUNT_ID`, else the first loaded). Consumed by
+ * {@link ShopifyService} and the SHOPIFY action's account-options helpers.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_SHOPIFY_ACCOUNT_ID = "default";

@@ -1,3 +1,9 @@
+/**
+ * Slack mrkdwn formatting helpers. Escaping &, <, > is required so user text
+ * can't forge Slack control sequences (mentions/links); the mention/link
+ * builders and their extractors must round-trip; and markdown→mrkdwn must use
+ * Slack's *bold* / _italic_ syntax rather than the markdown originals.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildSlackMessagePermalink,
@@ -16,13 +22,6 @@ import {
   stripSlackFormatting,
   truncateText,
 } from "./formatting.ts";
-
-/**
- * Slack mrkdwn formatting helpers. Escaping &, <, > is required so user text
- * can't forge Slack control sequences (mentions/links); the mention/link
- * builders and their extractors must round-trip; and markdown→mrkdwn must use
- * Slack's *bold* / _italic_ syntax rather than the markdown originals.
- */
 
 describe("escapeSlackMrkdwn", () => {
   it("escapes the three Slack control chars, leaves clean text untouched", () => {

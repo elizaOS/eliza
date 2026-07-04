@@ -1,3 +1,4 @@
+/** Unit tests for the PKCE helpers (code verifier/challenge, state, base64url), checked against `node:crypto` directly. */
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

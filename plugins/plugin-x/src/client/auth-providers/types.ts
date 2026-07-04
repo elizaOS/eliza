@@ -1,3 +1,10 @@
+/**
+ * Auth-provider contract for the X client: `TwitterAuthProvider` yields a valid
+ * access token (an OAuth 2.0 Bearer token or the OAuth 1.0a access token), and the
+ * optional `TwitterOAuth1Provider` extension additionally exposes the four-part
+ * OAuth 1.0a credentials for request signing. Implemented by `env.ts` and
+ * `oauth2-pkce.ts`; selected by `factory.ts`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";
 

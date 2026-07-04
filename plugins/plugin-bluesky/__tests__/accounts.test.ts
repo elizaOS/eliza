@@ -1,3 +1,7 @@
+/**
+ * Unit tests for multi-account config resolution and the connector-account
+ * provider, driven by an in-memory fake runtime (no network, no real SDK).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createBlueSkyConnectorAccountProvider } from "../connector-account-provider";

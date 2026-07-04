@@ -1,3 +1,8 @@
+/**
+ * Text and button helpers for outbound Telegram messages: escapes and converts
+ * agent Markdown to Telegram MarkdownV2 (`convertMarkdownToTelegram`) and maps a
+ * `Button[]` to Telegraf inline-keyboard markup (`convertToTelegramButtons`).
+ */
 import { logger } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
 import { Markup } from "telegraf";

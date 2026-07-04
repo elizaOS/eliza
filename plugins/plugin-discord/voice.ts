@@ -1,3 +1,9 @@
+/**
+ * `VoiceManager` — the voice helper `DiscordService` delegates to for audio
+ * receive/transmit over a joined voice channel: capturing member audio,
+ * running it through STT, and playing generated audio back. Requires the
+ * native opus/sodium deps and a system `ffmpeg`.
+ */
 import { EventEmitter } from "node:events";
 import { pipeline, Readable, type Transform } from "node:stream";
 import type {
@@ -1002,8 +1008,6 @@ export class VoiceManager extends EventEmitter {
 				},
 				"Failed to create opus decoder",
 			);
-			// For now, log the error and return early.
-			// In production, you might want to implement a PCM fallback or other audio processing
 			return;
 		}
 

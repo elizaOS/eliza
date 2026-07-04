@@ -1,3 +1,8 @@
+/**
+ * tsup build config: extends the shared plugin-packages preset, marking the
+ * runtime, cloud, and native-binding deps as external so they resolve from the
+ * host rather than being bundled into the plugin's dist output.
+ */
 import sharedConfig from "../tsup.plugin-packages.shared";
 
 export default {

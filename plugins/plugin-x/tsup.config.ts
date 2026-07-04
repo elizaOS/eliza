@@ -1,9 +1,10 @@
+/** tsup build config: bundles the plugin entry and the standalone LifeOps DM adapter entry to `dist/`. */
 import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: ["src/index.ts", "src/lifeops-message-adapter.ts"],
   outDir: "dist",
-  tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
+  tsconfig: "./tsconfig.build.json",
   sourcemap: true,
   clean: true,
   format: ["esm"],

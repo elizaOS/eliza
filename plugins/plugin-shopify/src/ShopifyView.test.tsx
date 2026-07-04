@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
-// Drives the unified ShopifyView (the single GUI/XR data wrapper) through the
-// rendered DOM: the same component the bundle exports for the "gui", "xr", and
-// "tui" modalities. Asserts the populated store dashboard, the tab navigation,
-// the overview count-tile shortcuts, the products search / create / pagination
-// affordances, the orders status filter, the customers search, the refresh
-// control, and the error path — functional parity with the retired
-// ShopifyTuiView surface. The `interact` capability handler keeps its own
-// coverage at the bottom of this file.
+/**
+ * Drives the unified ShopifyView (the single GUI/XR data wrapper) through the
+ * rendered DOM — the same component the bundle exports for the "gui", "xr", and
+ * "tui" modalities — asserting the populated store dashboard, tab navigation,
+ * overview count-tile shortcuts, products search / create / pagination, orders
+ * status filter, customers search, refresh, and the error path. Deterministic:
+ * a stubbed `fetch`, no network. The `interact` capability handler keeps its own
+ * coverage at the bottom of this file.
+ */
 
 import {
   cleanup,

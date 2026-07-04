@@ -1,3 +1,8 @@
+/**
+ * Vitest config for the Discord plugin's unit tests. Aliases unbuilt workspace
+ * deps (`@elizaos/plugin-commands`, `@elizaos/plugin-meetings`) to their source
+ * so tests resolve without a prebuild of those packages.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

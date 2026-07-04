@@ -1,3 +1,12 @@
+/**
+ * Supplies Bluesky (AT Protocol) credentials to the workflow plugin. Extends the
+ * core `Service` but is discovered by the runtime purely by its
+ * `workflow_credential_provider` service type, so it carries no compile-time
+ * dependency on `@elizaos/plugin-workflow`. `resolve` returns the configured
+ * handle + app password as `httpHeaderAuth` credential data — the only supported
+ * credential type — which workflows use to mint a session via
+ * `com.atproto.server.createSession`.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

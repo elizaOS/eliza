@@ -1,3 +1,4 @@
+/** Unit tests for the Discord audio-lane config resolution. Pure-function assertions. */
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_DISCORD_AUDIO_LANES,

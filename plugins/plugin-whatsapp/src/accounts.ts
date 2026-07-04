@@ -1,3 +1,10 @@
+/**
+ * Multi-account resolution for the WhatsApp connector. Reads accounts from
+ * character settings (`character.settings.whatsapp.accounts`) with env-var
+ * fallbacks, resolves which transport (Cloud API vs Baileys) each account uses,
+ * and applies DM/group access policies via the shared allowlist/pairing checks.
+ * Env-only deployments still surface as a single `default` account.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { checkPairingAllowed, isInAllowlist, type PairingCheckResult } from "@elizaos/core";
 

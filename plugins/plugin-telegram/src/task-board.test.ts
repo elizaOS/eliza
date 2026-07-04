@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the pinned task board: `composeTaskBoard` rendering (status
+ * emoji, closed tail, empty state) and the board's edit-in-place behavior —
+ * post on first render, edit the same message thereafter, with separate boards
+ * per chat/thread. Bot API calls are mocked.
+ */
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

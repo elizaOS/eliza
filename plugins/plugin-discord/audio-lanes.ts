@@ -1,3 +1,7 @@
+/**
+ * Voice audio lane definitions (tts, music, sfx, ambient) and their default
+ * mixing config, used by the voice sink to route concurrent audio streams.
+ */
 export const DISCORD_AUDIO_LANE_TTS = "tts";
 export const DISCORD_AUDIO_LANE_MUSIC = "music";
 export const DISCORD_AUDIO_LANE_SFX = "sfx";

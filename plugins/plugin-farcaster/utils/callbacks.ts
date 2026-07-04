@@ -1,3 +1,10 @@
+/**
+ * Builds the `HandlerCallback` the runtime invokes when an action wants to
+ * publish a Farcaster cast — used both by the POST connector and by mention
+ * replies. Attaches agent-generated media as cast embeds, honours
+ * `FARCASTER_DRY_RUN`, sends via `FarcasterClient`, persists cast memories, and
+ * routes success/failure to the supplied `onCompletion`/`onError` hooks.
+ */
 import type { Content, HandlerCallback, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";
 import type { FarcasterClient } from "../client";

@@ -1,4 +1,12 @@
 /**
+ * HTTP transport to the signal-cli REST/JSON-RPC daemon: send/reaction/typing/
+ * read-receipt calls, account/contact/group queries, and the SSE `receive`
+ * stream (`streamSignalEvents` / `createSignalEventStream`). This is the API
+ * transport mode; `local-client.ts` covers the polled-receive path. Callers
+ * (chiefly `SignalService`) pass a base URL via `SignalRpcOptions`.
+ */
+
+/**
  * Options for Signal RPC requests
  */
 export interface SignalRpcOptions {

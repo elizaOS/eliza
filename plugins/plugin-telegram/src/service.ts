@@ -1,3 +1,15 @@
+/**
+ * The `TelegramService`: launches and supervises a Telegraf long-poll bot per
+ * account, maps inbound Telegram updates (messages, reactions, membership
+ * changes) into runtime Worlds/Rooms/Entities and `TelegramEventTypes` events,
+ * and registers the agent as a `MessageConnector` so outbound sends, edits,
+ * reactions, and threads route back out through Telegram.
+ *
+ * Forum topics become distinct Rooms keyed `<chatId>-<threadId>`. Active pollers
+ * are tracked in a module-level map so a token is never long-polled twice
+ * (Telegram 409s on concurrent getUpdates). Must start before
+ * `TelegramOwnerPairingServiceImpl`, which looks up the live bot instance here.
+ */
 import {
   ChannelType,
   type Content,
@@ -504,8 +516,6 @@ export class TelegramService extends Service {
    * @returns {Promise<TelegramService>} A promise that resolves with the initialized TelegramService.
    */
   static async start(runtime: IAgentRuntime): Promise<TelegramService> {
-    // Remove validateTelegramConfig call to allow service to start without token
-
     const service = new TelegramService(runtime);
 
     for (const account of listEnabledTelegramAccounts(runtime)) {
@@ -623,7 +633,6 @@ export class TelegramService extends Service {
    * @param {IAgentRuntime} runtime - The agent runtime to stop
    */
   static async stop(runtime: IAgentRuntime) {
-    // Implement shutdown if necessary
     const tgClient = await runtime.getService(TELEGRAM_SERVICE_NAME);
     if (tgClient) {
       await (tgClient as TelegramService).stop();
@@ -940,7 +949,7 @@ export class TelegramService extends Service {
     // Regular message handler
     bot?.on("message", async (ctx) => {
       try {
-        // Message handling is now simplified since all preprocessing is done by middleware
+        // Preprocessing runs in the middleware chain; this only dispatches.
         await messageManager?.handleMessage(ctx);
       } catch (error) {
         logger.error(
@@ -1405,7 +1414,6 @@ export class TelegramService extends Service {
       },
     };
 
-    // Directly ensure world exists instead of using syncTelegram
     await this.runtime.ensureWorldExists(world);
 
     // Create the main room for the chat
@@ -1427,7 +1435,6 @@ export class TelegramService extends Service {
       },
     };
 
-    // Directly ensure room exists instead of using syncTelegram
     await this.runtime.ensureRoomExists(generalRoom);
 
     // Prepare the rooms array starting with the main room
@@ -1743,7 +1750,7 @@ export class TelegramService extends Service {
 
   /**
    * Extracts and builds the room object for a forum topic from a message context.
-   * This refactored method can be used both in middleware and when handling new chats.
+   * Used both in middleware and when handling new chats.
    *
    * @param {Context} ctx - The context of the incoming update
    * @param {UUID} worldId - The ID of the world the topic belongs to

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the embedded-app (Mini App) launch button: an OWNER sender gets
+ * a `web_app` button at the platform-tagged https `/embed` url, an http url is
+ * never emitted, and non-elevated senders or an unconfigured url get nothing.
+ * `hasRoleAccess` is mocked to control sender trust.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
 import { beforeEach, describe, expect, it, vi } from "vitest";

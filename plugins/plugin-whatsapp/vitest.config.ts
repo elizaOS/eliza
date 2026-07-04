@@ -1,3 +1,4 @@
+/** Vitest configuration for the WhatsApp plugin test suite. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -1,3 +1,10 @@
+/**
+ * The `Tweet`/`Mention` domain shapes and the fetch/normalize helpers that turn
+ * raw twitter-api-v2 v2 payloads (with their `includes` side-tables of users,
+ * media, polls, places) into flattened plugin tweets. Covers single-tweet and
+ * timeline fetches, retweeter/quote enumeration, and tweet-send param assembly;
+ * called by `Client` in `client.ts`.
+ */
 import type {
   ApiV2Includes,
   MediaObjectV2,

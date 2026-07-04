@@ -1,3 +1,8 @@
+/**
+ * Handles the update_comment Linear op: updates a comment body by comment id via
+ * LinearService.updateComment. `handleUpdateComment` is the router entry and
+ * requires both commentId and body in the action parameters.
+ */
 import {
   type ActionResult,
   type HandlerCallback,

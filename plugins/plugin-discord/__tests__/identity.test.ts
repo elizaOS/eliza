@@ -1,3 +1,8 @@
+/**
+ * Unit tests for owner-user-id extraction and parsing from settings
+ * (`extractDiscordOwnerUserIds`, `parseDiscordOwnerUserIds`). Pure-function
+ * assertions.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	extractDiscordOwnerUserIds,

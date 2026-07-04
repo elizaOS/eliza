@@ -1,3 +1,9 @@
+/**
+ * Shared Discord types: the `DiscordEventTypes` enum and its
+ * `DiscordEventPayloadMap`, `DiscordSettings`, connector error classes, and
+ * snowflake helpers. This is the contract every other file in the plugin and
+ * every downstream event subscriber depends on.
+ */
 import type {
 	ChannelType,
 	Character,

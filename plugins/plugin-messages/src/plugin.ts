@@ -1,3 +1,11 @@
+/**
+ * The `@elizaos/plugin-messages` Plugin object: declares a passive `sms`
+ * connector source and registers the Android SMS "messages" surface as a single
+ * view spanning the GUI, XR, and TUI modalities, all drawn from the one
+ * MessagesView bundle export (`dist/views/bundle.js`). Registers no actions,
+ * providers, evaluators, or services.
+ */
+
 import type { Plugin } from "@elizaos/core";
 
 export const appMessagesPlugin: Plugin = {

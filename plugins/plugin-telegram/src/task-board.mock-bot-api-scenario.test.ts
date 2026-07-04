@@ -1,3 +1,9 @@
+/**
+ * Scenario test for the pinned task board against a mock Bot API: `/tasks`
+ * renders the board, task status advances, and the same Bot API message is
+ * edited in place rather than re-posted. Drives the real command through a faked
+ * Telegraf/Bot-API surface.
+ */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";

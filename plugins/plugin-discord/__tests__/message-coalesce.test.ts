@@ -1,3 +1,7 @@
+/**
+ * Unit tests for inbound message coalescing — bursts from one author collapse
+ * into a single turn. Driven with fake timers.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createChannelDebouncer } from "../debouncer";
 import {

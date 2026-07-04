@@ -1,7 +1,8 @@
 /**
- * Twitch chat integration plugin for ElizaOS.
- *
- * This plugin provides Twitch chat integration using the @twurple library.
+ * Plugin entry for Twitch chat integration — assembles the `Plugin` object and
+ * wires `TwitchService` plus the `ConnectorAccountProvider`. Registers no
+ * actions or providers of its own; send/join/leave route through the runtime
+ * `MESSAGE` action via the `MessageConnector`. Chat transport is @twurple.
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";

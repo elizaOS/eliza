@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Drives the Pairing view in jsdom over a mocked ElizaIntent bridge: exercises
+ * the paste-the-code path, payload decode, and the onPaired handoff.
+ */
+
 import {
   cleanup,
   fireEvent,

@@ -1,3 +1,11 @@
+/**
+ * `GoogleGmailClient` — all Gmail operations behind the workspace service: raw
+ * message search/get/send, plus the enriched triage layer (unread/importance
+ * scoring, reply-needed detection, unresponded-thread scanning), label/state
+ * mutation, subscription-header extraction, and sender-filter/unsubscribe
+ * helpers. Maps Gmail API payloads into the plugin's `GoogleGmail*` DTOs. Each
+ * method acquires a scoped googleapis client from `GoogleApiClientFactory`.
+ */
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {

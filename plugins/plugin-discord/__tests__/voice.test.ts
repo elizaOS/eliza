@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `VoiceManager` — voice-channel join/leave and audio routing,
+ * against a mocked runtime and Discord voice stack (no real gateway).
+ */
 import type { UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ICompatRuntime } from "../compat";

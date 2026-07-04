@@ -1,3 +1,9 @@
+/**
+ * X-Hub-Signature-256 verification for Meta webhook POSTs. Resolves the app
+ * secret (runtime setting then env) and validates the HMAC-SHA256 signature over
+ * the raw request body, so unsigned or tampered webhook events are rejected
+ * before the connector processes them.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
 

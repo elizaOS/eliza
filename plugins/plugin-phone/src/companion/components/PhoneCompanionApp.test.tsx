@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Verifies the companion root routes `renderView` to Chat / Pairing /
+ * RemoteSession by (view, ready) state, driving controllable navigation and
+ * intent stubs instead of the real persistence/haptics hook.
+ */
+
 import {
   act,
   cleanup,

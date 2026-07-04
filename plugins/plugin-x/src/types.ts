@@ -1,3 +1,11 @@
+/**
+ * Shared type surface for the X connector: the runtime-provided
+ * `TwitterClientState` passed into client constructors, the connector's own
+ * `Tweet`/`MediaData`/`ActionResponse` shapes, the `ITwitterClient` interface,
+ * and the full `TwitterEventTypes` enum with its per-event payload map. The
+ * connector-local `Tweet` is a normalized view over the low-level
+ * `client/tweets` tweet; `convertClientTweetToCoreTweet` maps between them.
+ */
 import type {
   EntityPayload,
   EventPayload,

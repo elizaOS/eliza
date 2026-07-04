@@ -1,3 +1,10 @@
+/**
+ * Message-facing half of the connector: treats casts as messages for the
+ * runtime's messaging layer. `getMessages`/`getMessage`/`getThread` read a
+ * cast or thread via `FarcasterClient` and map it to the domain shape, while
+ * `sendMessage` publishes a cast (or thread reply) and emits
+ * `FARCASTER_POST_GENERATED`. One instance per (agent, account).
+ */
 import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
 import type { FarcasterClient } from "../client/FarcasterClient";
 import { type Cast, FARCASTER_SOURCE, FarcasterEventTypes, FarcasterMessageType } from "../types";

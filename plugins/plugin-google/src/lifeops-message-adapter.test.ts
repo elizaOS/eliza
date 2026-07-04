@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for `GoogleGmailAdapter`: message mapping, manage-operation
+ * translation, and reply drafting/sending against a mock runtime whose "google"
+ * service is a `vi.fn` stub — deterministic, no live Gmail API.
+ */
 import type { IAgentRuntime } from "@elizaos/core/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GoogleGmailAdapter } from "./lifeops-message-adapter.js";

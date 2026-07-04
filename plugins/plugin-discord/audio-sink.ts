@@ -1,3 +1,8 @@
+/**
+ * Abstract audio-sink contract for voice playback — the interface and base
+ * class a concrete sink implements to stream lane-routed audio into a Discord
+ * voice connection.
+ */
 import { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 import type { DiscordAudioLane } from "./audio-lanes";

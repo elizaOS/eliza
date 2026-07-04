@@ -1,3 +1,7 @@
+/**
+ * Tests Feishu config loading, validation, and chat-allowlist gating in
+ * environment.ts against a mocked runtime getSetting (deterministic, no live API).
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { getFeishuConfig, isChatAllowed, validateConfig } from "./environment";

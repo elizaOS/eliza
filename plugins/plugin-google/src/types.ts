@@ -1,3 +1,10 @@
+/**
+ * Shared type surface for the Google connector: the account reference every
+ * call is scoped by (`GoogleAccountRef`), OAuth provider metadata/config shapes,
+ * the DTOs returned by each sub-client (Gmail, Calendar, Drive, Meet), and the
+ * `IGoogle*Service` interfaces that `GoogleWorkspaceService` implements. These
+ * are the contract the service, clients, and consumers agree on.
+ */
 import type { Service } from "@elizaos/core";
 // Import the auth client type through googleapis' own re-export so the type
 // identity always matches the google-auth-library copy googleapis was built

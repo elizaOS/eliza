@@ -1,3 +1,7 @@
+/**
+ * Tests markdown → Feishu Post conversion in formatting.ts, including stripping
+ * of unsafe link URLs. Pure-function tests, no external calls.
+ */
 import { describe, expect, it } from "vitest";
 import { markdownToFeishuPost } from "./formatting";
 

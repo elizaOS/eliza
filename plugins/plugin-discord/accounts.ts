@@ -1,3 +1,9 @@
+/**
+ * Multi-account token resolution and config types for the Discord connector.
+ * Resolves a bot token (and its per-account config) from env vars, plugin
+ * config, or character settings, and normalizes the account ids the rest of the
+ * plugin keys on.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

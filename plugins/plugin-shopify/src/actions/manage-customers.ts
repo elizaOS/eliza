@@ -1,3 +1,8 @@
+/**
+ * Handler for the `customers` op of the SHOPIFY action: list customers or
+ * search them by name/email via {@link ShopifyService}. Read-only; classifies
+ * free-text intent with `ModelType.TEXT_SMALL` when parameters are absent.
+ */
 import type {
   ActionResult,
   HandlerCallback,

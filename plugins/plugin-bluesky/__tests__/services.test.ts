@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the DM/post connector services and the workflow credential
+ * provider, using in-memory fakes for the client and runtime — deterministic,
+ * no live BlueSky API.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BlueSkyMessageService } from "../services/message";

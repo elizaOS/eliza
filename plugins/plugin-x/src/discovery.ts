@@ -1,3 +1,10 @@
+/**
+ * `TwitterDiscoveryClient` — the autonomous discovery loop that searches for and
+ * engages new accounts on its own schedule: follows candidates above the minimum
+ * follower count and likes/replies to surface the agent. Constructed with a
+ * `ClientBase` + runtime + `TwitterClientState`, gated by `TWITTER_ENABLE_DISCOVERY`,
+ * and started/stopped by `TwitterClientInstance` in `services/x.service.ts`.
+ */
 import {
   createUniqueUuid,
   type IAgentRuntime,

@@ -1,5 +1,15 @@
 /**
- * Google Chat service implementation for ElizaOS.
+ * Connector service that bridges an Eliza agent to Google Chat. It authenticates
+ * one or more service-account bots via `google-auth-library`, registers a
+ * `MessageConnector` (send message / thread reply / attachment / reaction, list
+ * spaces, direct message) so all messaging routes through the runtime's MESSAGE
+ * surface, and translates inbound webhook events into `emitEvent` calls and
+ * agent memories.
+ *
+ * A single instance holds per-account state keyed by `accountId` (see
+ * `accounts.ts`); `getState` throws for unknown ids rather than falling back.
+ * REST calls hit the Chat v1 API and the multipart upload endpoint under
+ * `https://chat.googleapis.com`, scoped to `auth/chat.bot`.
  */
 
 import {

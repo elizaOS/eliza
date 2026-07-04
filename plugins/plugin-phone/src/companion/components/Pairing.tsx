@@ -1,3 +1,12 @@
+/**
+ * Pairing view of the Phone Companion: scans (or accepts a pasted) QR code
+ * carrying the base64 pairing payload, decodes it via `decodePairingPayload`,
+ * and hands the resulting {@link PairingPayload} back to the app shell.
+ *
+ * Camera scan requires the iOS native runtime; on web/dev it surfaces a
+ * paste-the-code fallback rather than pretending the scanner is available.
+ */
+
 import {
   CapacitorBarcodeScanner,
   CapacitorBarcodeScannerTypeHint,

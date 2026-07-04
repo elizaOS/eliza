@@ -1,3 +1,7 @@
+/**
+ * Unit tests for inbound-envelope normalisation — content formatting and chat
+ * surface classification (dm/channel/thread/forum). Synthetic Discord messages.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	formatInboundEnvelope,

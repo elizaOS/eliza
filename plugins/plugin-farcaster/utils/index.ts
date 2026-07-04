@@ -1,3 +1,10 @@
+/**
+ * Cast-mapping and content helpers shared across the plugin: `neynarCastToCast`
+ * translates a Neynar cast into the domain `Cast`, `castId`/`castUuid` derive a
+ * stable memory id (`stringToUuid`) from a cast hash, `extractCastEmbedUrls`
+ * pulls attachment URLs for outbound embeds, and `splitPostContent` chunks
+ * over-length prose into a cast thread.
+ */
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";

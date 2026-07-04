@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the plugin surface: the service facade, credential resolver,
+ * connector account provider OAuth flow, and each sub-client's DTO mapping.
+ * Deterministic harness — googleapis clients and the OAuth token/userinfo fetch
+ * are stubbed via fake client factories and a stubbed `fetch`; no live Google
+ * API is contacted.
+ */
 import type {
   ConnectorAccount,
   ConnectorAccountPatch,

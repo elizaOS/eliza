@@ -1,3 +1,7 @@
+/**
+ * Concrete audio sink that plays lane-routed audio into a registered Discord
+ * voice target, implementing `DiscordAudioSinkBase`.
+ */
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import type { DiscordAudioLane } from "./audio-lanes";

@@ -1,9 +1,13 @@
+/**
+ * Registers the WhatsApp message source with the shared TriageService so
+ * cross-connector MESSAGE triage recognizes "whatsapp" inbound traffic.
+ */
 import {
-	BaseMessageAdapter,
-	getDefaultTriageService,
-	type IAgentRuntime,
-	type MessageAdapterCapabilities,
-	type MessageSource,
+  BaseMessageAdapter,
+  getDefaultTriageService,
+  type IAgentRuntime,
+  type MessageAdapterCapabilities,
+  type MessageSource,
 } from "@elizaos/core";
 
 /**
@@ -13,24 +17,24 @@ import {
  * flags default off until the underlying adapter wires them up.
  */
 export class WhatsappMessageAdapter extends BaseMessageAdapter {
-	readonly source: MessageSource = "whatsapp";
+  readonly source: MessageSource = "whatsapp";
 
-	isAvailable(runtime: IAgentRuntime): boolean {
-		return runtime.getService("whatsapp") != null;
-	}
+  isAvailable(runtime: IAgentRuntime): boolean {
+    return runtime.getService("whatsapp") != null;
+  }
 
-	capabilities(): MessageAdapterCapabilities {
-		return {
-			list: false,
-			search: false,
-			manage: {},
-			send: {},
-			worlds: "single",
-			channels: "explicit",
-		};
-	}
+  capabilities(): MessageAdapterCapabilities {
+    return {
+      list: false,
+      search: false,
+      manage: {},
+      send: {},
+      worlds: "single",
+      channels: "explicit",
+    };
+  }
 }
 
 export function registerWhatsappTriageAdapter(): void {
-	getDefaultTriageService().register(new WhatsappMessageAdapter());
+  getDefaultTriageService().register(new WhatsappMessageAdapter());
 }

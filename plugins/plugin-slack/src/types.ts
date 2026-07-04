@@ -1,3 +1,11 @@
+/**
+ * Shared type surface for the Slack plugin: the `SlackEventTypes` enum, the
+ * connector's domain models (`SlackChannel`, `SlackMessage`, `SlackUser`,
+ * event payload maps, …), the `ISlackService` contract, error classes, ID
+ * validators, and constants (`SLACK_SERVICE_NAME`, `MAX_SLACK_MESSAGE_LENGTH`,
+ * `MAX_SLACK_BLOCKS`, …). Consumed across `service.ts`, the connector provider,
+ * and re-exported from `index.ts`.
+ */
 import type {
   Character,
   EntityPayload,

@@ -1,3 +1,9 @@
+/**
+ * End-to-end integration test driving the live Twitter API v2: authenticates,
+ * fetches the profile, and exercises PostService against the real platform.
+ * Reads credentials from `.env` via dotenv and skips when they are absent — no
+ * mock stands in for X here.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import dotenv from "dotenv";
 import {

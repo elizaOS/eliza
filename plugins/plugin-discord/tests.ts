@@ -1,3 +1,8 @@
+/**
+ * `DiscordTestSuite` — a `TestSuite` run by the elizaOS plugin test runner that
+ * exercises live message send, voice, and attachment paths against a real
+ * Discord channel (`DISCORD_TEST_CHANNEL_ID`). Requires real credentials.
+ */
 import { Readable } from "node:stream";
 import type { VoiceConnection } from "@discordjs/voice";
 import {

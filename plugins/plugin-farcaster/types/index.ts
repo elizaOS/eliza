@@ -1,3 +1,10 @@
+/**
+ * Domain types and constants for the plugin: the `Cast`/`Profile`/`CastEmbed`
+ * shapes the connector maps Neynar responses into, the `FarcasterConfig` zod
+ * schema (`FarcasterConfigSchema`) and defaults, the `FarcasterEventTypes` /
+ * `FarcasterMessageType` enums, the `NeynarWebhookData` payload shape, and the
+ * service-name/source constants used across services, managers, and routes.
+ */
 import type { Media, Memory, MessagePayload } from "@elizaos/core";
 import type { Cast as NeynarCast, Embed as NeynarEmbed } from "@neynar/nodejs-sdk/build/api";
 import * as zod from "zod";

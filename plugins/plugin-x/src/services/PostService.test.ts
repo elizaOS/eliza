@@ -1,3 +1,4 @@
+/** Unit tests for `TwitterPostService` inverse actions (unlike / unrepost), driving a mocked Twitter client. */
 import type { UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../base";

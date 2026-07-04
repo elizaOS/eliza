@@ -1,3 +1,12 @@
+/**
+ * OAuth 2.0 PKCE (`oauth` mode) auth provider: runs the authorization-code + PKCE
+ * flow against X's authorize/token endpoints, persists the resulting token set
+ * through a `TokenStore`, and returns a live Bearer access token on demand —
+ * refreshing with the stored refresh token, or driving an interactive re-auth
+ * (loopback-callback server, else paste-the-redirected-URL) when tokens are missing
+ * or unrefreshable. Selected by the auth-provider factory when
+ * `TWITTER_AUTH_MODE=oauth`; requires `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { TwitterClientState } from "../../types";

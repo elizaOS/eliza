@@ -1,3 +1,7 @@
+/**
+ * Unit-tests the cast helpers in `utils/index` — id/uuid derivation, embed-url
+ * extraction, and content splitting/chunking. Pure functions, no network.
+ */
 import type { Content } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

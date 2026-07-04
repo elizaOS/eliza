@@ -1,3 +1,10 @@
+/**
+ * IWhatsAppClient implementation for the Baileys (personal account) transport.
+ * Composes the auth manager, WebSocket connection, message adapter, and QR
+ * generator into one client: forwards inbound messages as normalized events and
+ * sends outbound WhatsAppMessages through the socket. Peer of the Cloud API
+ * WhatsAppClient; selected by ClientFactory based on detected auth method.
+ */
 import { EventEmitter } from "node:events";
 import { BaileysAuthManager } from "../baileys/auth";
 import { BaileysConnection } from "../baileys/connection";

@@ -1,3 +1,10 @@
+/**
+ * Plugin entry point for @elizaos/plugin-signal: assembles the `Plugin` object,
+ * wires the `SignalService` and `SignalWorkflowCredentialProvider` services, the
+ * `/api/setup/signal/*` routes, and the connector-account provider, and registers
+ * the cross-connector triage adapter. Also re-exports the plugin's public surface
+ * (types, service, helpers) for programmatic consumers.
+ */
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createSignalConnectorAccountProvider } from "./connector-account-provider";
 

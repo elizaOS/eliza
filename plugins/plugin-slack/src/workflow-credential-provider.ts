@@ -1,3 +1,11 @@
+/**
+ * `SlackWorkflowCredentialProvider` — a duck-typed `workflow_credential_provider`
+ * service that hands the workflow plugin the Slack credentials it needs without a
+ * compile-time dependency on `@elizaos/plugin-workflow`. Resolves `slackApi` to
+ * the bot token (`xoxb-`) and `slackOAuth2Api` to the user OAuth token (`xoxp-`);
+ * deliberately never returns the Socket Mode app token (`xapp-`), which has no API
+ * scopes and would fail with `invalid_auth` at execution.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

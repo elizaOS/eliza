@@ -1,3 +1,11 @@
+/**
+ * Grouped Linear router actions (LINEAR_ISSUE / LINEAR_COMMENT /
+ * LINEAR_WORKFLOW) and the typed result envelopes they emit. Each router selects
+ * a child sub-action by explicit op or regex match, dispatches it, and wraps the
+ * child's `data` in a discriminated `Linear*RouterResultData` envelope carrying
+ * the routed action name, resolved subaction, and success/error result.
+ * `getLinearRouteForTest` exposes route selection for tests.
+ */
 import type {
   Action,
   ActionResult,

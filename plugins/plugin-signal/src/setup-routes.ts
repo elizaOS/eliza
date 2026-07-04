@@ -8,11 +8,7 @@
  *   POST /api/setup/signal/start    start (or restart) a QR device-linking session
  *   POST /api/setup/signal/cancel   stop active pairing and disconnect Signal
  *
- * The underlying QR pairing logic is unchanged from the legacy
- * `/api/signal/*` routes — only the path layout, the canonical response
- * envelope, and the structured error shape have been normalized.
- *
- * Cancel folds the old "stop pairing in progress" and "disconnect already
+ * Cancel folds the "stop pairing in progress" and "disconnect already
  * paired Signal" cases into a single endpoint: it stops any in-flight
  * session and wipes auth on disk in one call.
  *

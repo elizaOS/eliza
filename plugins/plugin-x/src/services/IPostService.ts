@@ -1,3 +1,4 @@
+/** Transport contract for the X post surface: the `IPostService` interface plus the `Post`, `CreatePostOptions`, and `GetPostsOptions` types. Implemented by `PostService.ts`. */
 import type { UUID } from "@elizaos/core";
 
 export interface Post {

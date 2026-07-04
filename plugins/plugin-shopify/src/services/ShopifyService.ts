@@ -1,3 +1,15 @@
+/**
+ * The `shopify` runtime service — the plugin's single boundary to the Shopify
+ * Admin GraphQL API. Holds one {@link ShopifyClient} per configured account
+ * (resolved from ../accounts) and owns every Admin API call: shop info, product
+ * / order / customer / inventory / location reads and writes, plus product and
+ * order counts.
+ *
+ * The GraphQL fragments, queries, and mutations live in this file; response
+ * shapes come from ../types. The action handlers and the store-context provider
+ * reach the store only through this service (never a raw client). Multi-account
+ * calls take an optional `accountId`, defaulting to the resolved default store.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   DEFAULT_SHOPIFY_ACCOUNT_ID,

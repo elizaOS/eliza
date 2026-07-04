@@ -1,3 +1,10 @@
+/**
+ * Test stub for `@elizaos/ui`: minimal stand-ins for the app-shell primitives
+ * the phone components import (Button, host detection, agent-surface, page/app
+ * registration, navigate-view payload) so component tests run without the real
+ * UI package and can seed a navigate-view payload.
+ */
+
 import React from "react";
 
 export type OverlayAppContext = Record<string, unknown>;

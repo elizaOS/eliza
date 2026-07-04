@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the linear_issues search category: asserts the registration
+ * metadata and that registerLinearSearchCategory is idempotent. Deterministic,
+ * mocked runtime, no live API.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { LINEAR_ISSUES_SEARCH_CATEGORY, registerLinearSearchCategory } from "./search-category";

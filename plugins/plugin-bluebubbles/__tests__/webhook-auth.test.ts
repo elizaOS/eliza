@@ -1,3 +1,8 @@
+/**
+ * Covers the webhook shared-secret helpers: constant-time secret comparison,
+ * case-insensitive/array header reads, runtime-setting-over-env precedence, and
+ * end-to-end authorization gating. Deterministic stubs, no live server.
+ */
 import type { IAgentRuntime, RouteRequest } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

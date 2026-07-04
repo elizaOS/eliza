@@ -1,3 +1,9 @@
+/**
+ * `describeTweetPhotos` — runs each of a tweet's photos through the IMAGE_DESCRIPTION
+ * model and returns them as described image `Media` attachments, so the interaction
+ * and timeline loops can reason about pictured content. No-ops when the tweet has no
+ * photos, no IMAGE_DESCRIPTION model is registered, or `DISABLE_IMAGE_DESCRIPTION` is set.
+ */
 import {
   type ContentType,
   type IAgentRuntime,

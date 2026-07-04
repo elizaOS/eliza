@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the phone/JID normalization helpers: E.164 parsing, JID and
+ * LID recognition, chat-type detection, target normalization, and text chunking.
+ * Pure functions — no runtime or network.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildWhatsAppUserJid,

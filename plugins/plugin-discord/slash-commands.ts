@@ -1,3 +1,8 @@
+/**
+ * Slash-command registry and dispatcher — `addCommand` registers a
+ * `SlashCommand`, and the dispatcher routes an incoming interaction to the
+ * matching command's `execute` handler after role-access checks.
+ */
 import {
 	createUniqueUuid,
 	hasRoleAccess,

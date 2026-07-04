@@ -1,3 +1,7 @@
+/**
+ * Tests that `SignalService` registers correct message-connector metadata and
+ * routes direct/group sends, using a fully mocked runtime (no live signal-cli).
+ */
 import type { Content, IAgentRuntime, TargetInfo, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SignalService } from "./service";

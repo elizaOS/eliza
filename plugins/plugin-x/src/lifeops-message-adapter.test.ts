@@ -1,3 +1,4 @@
+/** Unit tests for `XDmAdapter`: mapping DM memories to message refs, drafting/sending through plugin-x, rejecting empty drafts, and surfacing send failures rather than faking success; mocked XService. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { XDmAdapter } from "./lifeops-message-adapter.js";

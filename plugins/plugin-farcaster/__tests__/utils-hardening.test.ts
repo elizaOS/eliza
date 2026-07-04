@@ -1,3 +1,7 @@
+/**
+ * Hardens `neynarCastToCast` against partial/malformed Neynar payloads (e.g. a
+ * parented cast missing `parent_author`). Pure function, no network.
+ */
 import { describe, expect, it } from "vitest";
 import { neynarCastToCast } from "../utils";
 

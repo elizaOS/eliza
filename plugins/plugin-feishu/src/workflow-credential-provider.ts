@@ -1,3 +1,10 @@
+/**
+ * Surfaces Feishu app credentials to the workflow plugin as an httpHeaderAuth
+ * credential provider, so workflow HTTP Request nodes can call Feishu APIs
+ * without re-entering credentials. Registers under the
+ * workflow_credential_provider service type and duck-types the interface to
+ * avoid a compile-time dependency on @elizaos/plugin-workflow.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

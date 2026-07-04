@@ -1,3 +1,10 @@
+/**
+ * Plugin entry: assembles the Telegram `Plugin` object — the `TelegramService`
+ * and `TelegramOwnerPairingServiceImpl` (in that order), the bot- and
+ * user-account setup routes, and the live test suite — and, on `init`, wires the
+ * ConnectorAccountManager provider, the DM sensitive-request adapter, and the
+ * cross-connector triage adapter. Auto-enables on the `telegram` connector key.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import {

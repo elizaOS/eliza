@@ -1,3 +1,14 @@
+/**
+ * Persists OAuth credential material for a connector account and reads the
+ * resulting refs back out. `persistConnectorCredentialRefs` writes each secret
+ * to the first available durable vault (connector credential store, vault, or
+ * SECRETS) and records a `vaultRef` pointer on the account via storage; it
+ * refuses to proceed unless both a vault writer and a ref writer exist, so an
+ * account is never marked connected without durable credentials.
+ * `credentialRefRecordsFromMetadata` is the read side, extracting ref records
+ * from account metadata for the credential resolver. Consumed by the connector
+ * account provider on OAuth completion and by `DefaultGoogleCredentialResolver`.
+ */
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,

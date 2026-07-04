@@ -1,3 +1,11 @@
+/**
+ * `TwitterInteractionClient` — the mention/reply polling loop and search-driven
+ * engagement engine. Fetches mentions and replies, routes each into the agent via
+ * the message service (attaching IMAGE_DESCRIPTION photo context), and, for
+ * configured target users and search terms, decides and takes like/retweet/quote/reply
+ * actions. Constructed with `ClientBase` + runtime + `TwitterClientState`; gated by
+ * `TWITTER_ENABLE_REPLIES`/`TWITTER_ENABLE_ACTIONS` and driven by `TwitterClientInstance`.
+ */
 import {
   ChannelType,
   type Content,

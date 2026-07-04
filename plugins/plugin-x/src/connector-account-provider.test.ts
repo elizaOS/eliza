@@ -1,3 +1,4 @@
+/** Unit tests for the X ConnectorAccountManager provider (`createXConnectorAccountProvider`) over a mocked runtime and account manager. */
 import type {
   ConnectorAccount,
   ConnectorAccountPatch,

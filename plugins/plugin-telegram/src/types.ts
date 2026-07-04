@@ -1,3 +1,8 @@
+/**
+ * Telegram-specific type surface: `TelegramContent` (core `Content` widened with
+ * a `buttons` array), the `Button` shape, and the `TelegramEventTypes` enum plus
+ * its per-event payload interfaces emitted by the service.
+ */
 import type {
   Content,
   EntityPayload,

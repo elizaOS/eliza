@@ -1,3 +1,9 @@
+/**
+ * The `shopifyStoreContext` provider: injects the connected store's name,
+ * domain, plan, currency, and product/order counts into the agent's prompt
+ * context. Reads from {@link ShopifyService}; dynamic and turn-scoped, gated to
+ * the `connectors` / `finance` contexts.
+ */
 import type {
   IAgentRuntime,
   Memory,

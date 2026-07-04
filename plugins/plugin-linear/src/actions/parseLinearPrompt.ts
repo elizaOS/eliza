@@ -1,3 +1,10 @@
+/**
+ * Tolerant parsing helpers for LLM responses in the Linear action handlers.
+ * `parseLinearPromptResponse` pulls a JSON object out of fenced or prose-wrapped
+ * model output; the `get*Value` helpers coerce individual fields to
+ * string/array/boolean/number/priority, treating sentinels like "none"/"n/a" as
+ * empty and mapping priority names (urgent/high/normal/low) to Linear's numbers.
+ */
 const EMPTY_SCALAR_VALUES = new Set(["", "none", "null", "undefined", "n/a", "not provided"]);
 
 const EMPTY_LIST_VALUES = new Set([...EMPTY_SCALAR_VALUES, "clear", "clear all", "no labels"]);

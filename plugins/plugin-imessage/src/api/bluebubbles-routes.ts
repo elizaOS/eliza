@@ -1,3 +1,10 @@
+/**
+ * Raw `http.IncomingMessage` handler for BlueBubbles, a third-party iMessage
+ * relay. Resolves the registered `bluebubbles` service off the runtime and
+ * serves its webhook (forwarding inbound payloads to `handleWebhook`) plus
+ * chat/message reads. Exported for the agent's legacy HTTP router to mount
+ * manually; it is not registered as a plugin `Route[]`.
+ */
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
 

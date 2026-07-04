@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Exercises the RemoteSession view against a fake SessionClient, asserting the
+ * connState transitions and the connect()/close() lifecycle without a real
+ * WebSocket.
+ */
+
 import {
   act,
   cleanup,

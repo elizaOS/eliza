@@ -1,3 +1,8 @@
+/**
+ * LINEAR_PROJECTS context provider: injects up to 10 active (started/planned)
+ * Linear projects from LinearService into the prompt. Gated to the
+ * automation/connectors contexts and ADMIN role, cached per agent.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { Project } from "@linear/sdk";
 import type { LinearService } from "../services/linear";

@@ -1,3 +1,8 @@
+/**
+ * Caches Discord avatar images to the state dir and serves them under a local
+ * `/api/avatar/discord` route, so stored entities reference a stable local URL
+ * instead of a volatile Discord CDN link.
+ */
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";

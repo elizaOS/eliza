@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-signal: node environment, runs the co-located `src/**` and `__tests__/**` suites. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

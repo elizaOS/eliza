@@ -1,3 +1,8 @@
+/**
+ * Handles the list_comments Linear op. Reads the issue id from parameters or a
+ * regex match on the message, fetches comments (default 25, capped at 100) via
+ * LinearService.listComments, and formats author/date/body lines into the reply.
+ */
 import {
   type Action,
   type ActionResult,

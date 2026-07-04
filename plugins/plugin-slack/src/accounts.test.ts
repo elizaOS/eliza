@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the multi-account resolution helpers in `accounts.ts` —
+ * role normalization and the env-vs-config account resolution/role wiring.
+ * Uses a hand-built fake runtime; no live Slack API.
+ */
 import type { Character, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

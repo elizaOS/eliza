@@ -1,3 +1,9 @@
+/**
+ * Bridges Signal into the workflow plugin: a `workflow_credential_provider`
+ * service that hands back `httpHeaderAuth` credentials pointing at the local
+ * signal-cli REST endpoint, so workflow steps can call Signal. Signal workflows
+ * are local-only — the workflow runtime must share a host with signal-cli.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

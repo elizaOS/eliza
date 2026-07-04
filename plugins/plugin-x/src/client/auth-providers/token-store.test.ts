@@ -1,3 +1,4 @@
+/** Unit tests for the OAuth 2.0 token stores (runtime-cache and connector-account backed) over a mocked runtime. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Supplies the Neynar API key to the workflow plugin as `httpHeaderAuth`
+ * credentials, so Farcaster HTTP Request nodes authenticate without the agent
+ * re-entering keys. Registered in the plugin's services; the workflow plugin
+ * duck-types it by `serviceType`, so there is no compile-time dependency on it.
+ */
 import { type IAgentRuntime, Service } from '@elizaos/core';
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

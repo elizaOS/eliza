@@ -1,3 +1,9 @@
+/**
+ * Live end-to-end coverage of the `/api/shopify/*` routes: boots a real runtime
+ * server with the plugin loaded but no store credentials, then asserts the
+ * actual HTTP responses (unconfigured status + real 404 errors). Gated on
+ * `ELIZA_LIVE_TEST=1` via `describeIf`.
+ */
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { req } from "../../../packages/app-core/test/helpers/http.ts";

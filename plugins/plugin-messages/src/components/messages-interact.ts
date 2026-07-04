@@ -1,6 +1,8 @@
-// View-bundle `interact` capability handler for the terminal surface. Kept in
-// its own module (not the React component file) so the view bundle can re-export
-// `interact` via ./messages-view-bundle.ts without coupling to JSX.
+/**
+ * View-bundle `interact` capability handler for the terminal surface. Kept in
+ * its own module (not the React component file) so the view bundle can re-export
+ * `interact` via ./messages-view-bundle.ts without coupling to JSX.
+ */
 
 import { Messages } from "@elizaos/capacitor-messages";
 import { System } from "@elizaos/capacitor-system";

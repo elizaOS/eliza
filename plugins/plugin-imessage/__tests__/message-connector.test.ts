@@ -1,3 +1,9 @@
+/**
+ * Verifies IMessageService's MessageConnector registration against a mocked
+ * runtime: connector metadata, contact resolution, that fetched memories are
+ * stamped with the local accountId, and that non-default account ids are
+ * rejected at the connector boundary. No real chat.db or macOS bridge.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { IMessageService } from "../src/service.js";

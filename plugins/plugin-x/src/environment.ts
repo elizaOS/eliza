@@ -1,3 +1,12 @@
+/**
+ * Zod schema and validation for the X connector's environment/settings surface.
+ * `twitterEnvSchema` defines every `TWITTER_*` var (all stored as strings, time
+ * intervals in minutes); `validateTwitterConfig` resolves values via
+ * `getSetting` (runtime settings before `process.env`), enforces the per-mode
+ * credential requirements (env-mode needs the four OAuth 1.0a keys; oauth-mode
+ * needs client id + redirect uri), and returns a fully-defaulted `TwitterConfig`.
+ * Also exposes target-user matching and randomized loop-interval helpers.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import * as z from "zod";
@@ -49,7 +58,7 @@ export const twitterEnvSchema = z.object({
   TWITTER_DISCOVERY_INTERVAL_MAX: z.string().default("30"), // maximum minutes between discovery cycles
 
   // Limits
-  TWITTER_MAX_ENGAGEMENTS_PER_RUN: z.string().default("5"), // Reduced from 10 to be less aggressive
+  TWITTER_MAX_ENGAGEMENTS_PER_RUN: z.string().default("5"),
   TWITTER_MAX_TWEET_LENGTH: z.string().default("280"), // standard tweet length
 
   // Advanced

@@ -1,3 +1,11 @@
+/**
+ * Memory helpers shared by the autonomous loops: `createMemorySafe` (idempotent
+ * write that tolerates duplicate-key races and retries transient failures),
+ * `ensureTwitterContext` (rooms/entities for a tweet), `isTweetProcessed` /
+ * `isDuplicateTweet` (dedupe already-handled or near-identical tweets), and
+ * `buildTwitterMessageMetadata`. Keeps the connector from re-processing or
+ * double-replying to the same tweet.
+ */
 import {
   ChannelType,
   createUniqueUuid,

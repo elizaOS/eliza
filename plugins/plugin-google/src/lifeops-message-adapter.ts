@@ -1,3 +1,13 @@
+/**
+ * `GoogleGmailAdapter` — projects Gmail into the core message-triage adapter
+ * shape consumed by assistant plugins such as LifeOps. Maps Gmail triage
+ * summaries to `MessageRef`s, translates the generic manage operations
+ * (archive/trash/spam/label/mark-read/unsubscribe) into Gmail bulk operations,
+ * and implements reply drafting/sending over `GoogleWorkspaceService`'s Gmail
+ * methods. Resolves the Google service by name at runtime and no-ops as
+ * unavailable when the plugin is not loaded; `accountId` is carried on each
+ * `MessageRef` via `worldId` so triage stays multi-account.
+ */
 import {
   BaseMessageAdapter,
   type DraftRequest,

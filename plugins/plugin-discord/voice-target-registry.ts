@@ -1,3 +1,9 @@
+/**
+ * Types and registry for active Discord voice targets. A `DiscordVoiceTarget`
+ * exposes play / stop / status over a joined voice channel, tracked per
+ * account / guild / channel so callers can address audio playback to a specific
+ * target and lane.
+ */
 import type { Readable } from "node:stream";
 import type { BaseGuildVoiceChannel } from "discord.js";
 import type { DiscordAudioLane, DiscordAudioLaneConfig } from "./audio-lanes";

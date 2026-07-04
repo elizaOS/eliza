@@ -1,3 +1,11 @@
+/**
+ * `GoogleCalendarClient` — Calendar list and event CRUD behind the workspace
+ * service. Maps Calendar API events into `GoogleCalendarEvent` DTOs, attaches a
+ * Meet link on create when requested, and preserves recurrence/time-zone
+ * context across patches. Also exports `readConferenceLink`, which extracts the
+ * canonical join URL from an event (hangoutLink or the best conference entry
+ * point) — the source of the calendar feed's `meetLink`.
+ */
 import { randomUUID } from "node:crypto";
 import type { calendar_v3 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";

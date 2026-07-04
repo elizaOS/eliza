@@ -1,3 +1,4 @@
+/** Vitest config for the iMessage plugin; loads the `@elizaos/core` mock in `__tests__/core-test-mock.ts` as a setup file. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

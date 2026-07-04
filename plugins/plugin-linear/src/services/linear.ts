@@ -1,3 +1,15 @@
+/**
+ * The plugin's singleton wrapper around the @linear/sdk LinearClient. Holds a
+ * per-account client map keyed by account id (accounts resolved from runtime
+ * settings and character config via ../accounts) and exposes typed CRUD methods
+ * for issues, comments, projects, teams, labels, and users that the LINEAR
+ * sub-action handlers and context providers call.
+ *
+ * It also maintains an in-memory activity log (capped at 1000 entries) that the
+ * LINEAR_ACTIVITY provider and the get/clear_activity ops read. Constructing
+ * without a resolvable default account throws LinearAuthenticationError, which
+ * is how the plugin declines to enable when no API key is configured.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Comment,
@@ -353,7 +365,6 @@ export class LinearService extends Service {
       filterObject.priority = { number: { in: filters.priority } };
     }
 
-    // Add state filter
     if (filters.state && filters.state.length > 0) {
       filterObject.state = {
         name: { in: filters.state },

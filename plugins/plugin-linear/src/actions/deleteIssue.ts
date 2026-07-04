@@ -1,3 +1,9 @@
+/**
+ * Handles the delete_issue Linear op, which archives (not hard-deletes) an issue.
+ * Resolves the issue id from a parameter, prompt extraction, or regex fallback,
+ * then requires a two-phase user confirmation before calling
+ * LinearService.deleteIssue, since archiving is irreversible from the agent side.
+ */
 import {
   type Action,
   type ActionResult,

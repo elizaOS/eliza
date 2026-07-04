@@ -1,3 +1,8 @@
+/**
+ * Per-account pool of discord.js `Client` and manager state
+ * (`DiscordAccountClientState`), keyed by resolved account id, so multi-account
+ * mode keeps one gateway client and its managers per token.
+ */
 import type { Client as DiscordJsClient } from "discord.js";
 import {
 	DEFAULT_ACCOUNT_ID,

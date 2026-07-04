@@ -1,3 +1,9 @@
+/**
+ * Guards the appPhonePlugin manifest shape: no actions (VOICE_CALL stays
+ * host-adapted by personal-assistant), exactly the phoneCallLog provider, and
+ * one phone view spanning all three modalities.
+ */
+
 import { describe, expect, it } from "vitest";
 import * as phoneExports from "../src/index.ts";
 import { appPhonePlugin } from "../src/plugin.ts";

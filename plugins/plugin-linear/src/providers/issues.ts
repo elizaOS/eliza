@@ -1,3 +1,8 @@
+/**
+ * LINEAR_ISSUES context provider: injects up to 10 recent issues (identifier,
+ * title, state, assignee) from LinearService into the prompt. Gated to the
+ * automation/connectors contexts and ADMIN role, cached per turn.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { Issue } from "@linear/sdk";
 import type { LinearService } from "../services/linear";

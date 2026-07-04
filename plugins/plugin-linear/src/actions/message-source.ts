@@ -1,3 +1,8 @@
+/**
+ * Small helpers shared by Linear action handlers: reads the originating
+ * message `source` to echo back on callbacks, and renders an unknown thrown
+ * value into a loggable string.
+ */
 import type { Memory } from "@elizaos/core";
 
 export function getMessageSource(message: Memory): string | undefined {

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for outbound media on the Discord connector (#8876) — each `Media`
+ * on a sent message must map to a Discord `AttachmentBuilder`. Mocked service
+ * and discord.js client.
+ */
 import {
 	type Content,
 	ContentType,

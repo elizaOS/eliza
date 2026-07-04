@@ -1,3 +1,9 @@
+/**
+ * `StreamRouteState` — the shared state bundle the consuming runtime passes into
+ * `handleStreamRoute`. Carries the `StreamManager` reference, the destinations
+ * map, and the optional `IScreenCaptureService` used to source desktop frames,
+ * so the route handler stays a pure function of its inputs.
+ */
 import type { IScreenCaptureService } from "@elizaos/core";
 import type { StreamingDestination } from "./streaming-types.js";
 

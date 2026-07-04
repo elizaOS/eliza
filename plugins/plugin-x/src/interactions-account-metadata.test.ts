@@ -1,3 +1,4 @@
+/** Unit tests for `TwitterInteractionClient` mention processing: malformed-candidate skipping, no-double-reply, and engagement-limit clamping; mocked runtime. */
 import {
   createUniqueUuid,
   type IAgentRuntime,

@@ -1,3 +1,4 @@
+/** Vitest configuration for the Feishu connector's unit tests (excludes .live.test.ts). */
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "url";
 

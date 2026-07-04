@@ -1,8 +1,3 @@
-import { encodeReplyCallback } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
-import { MessageManager } from "./messageManager";
-import { telegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
-
 /**
  * Real round-trip tests for the inbound half of the Telegram interaction
  * support: a button tap is decoded and replayed through the runtime as an
@@ -10,6 +5,10 @@ import { telegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
  * tap-through link button. No behavior is stubbed away — the decode, memory
  * construction, and dispatch all run.
  */
+import { encodeReplyCallback } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { MessageManager } from "./messageManager";
+import { telegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 
 function createCallbackManager() {
   const handleMessage = vi.fn(async () => undefined);

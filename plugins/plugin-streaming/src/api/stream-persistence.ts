@@ -1,11 +1,9 @@
 /**
  * Stream persistence layer — overlay layout and visual/voice settings I/O.
  *
- * Extracted from stream-routes.ts to keep that file focused on route handling.
- * All functions here deal with reading/writing JSON files under the
- * `data/stream/` directory.
- *
- * @module api/stream-persistence
+ * All functions read and write JSON files under the agent's `data/stream/`
+ * directory, keeping stream-routes.ts focused on route handling. Per-destination
+ * overlay layouts land in `overlay-layout-<destId>.json`.
  */
 
 import fs from "node:fs";

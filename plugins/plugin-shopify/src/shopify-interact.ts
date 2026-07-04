@@ -1,6 +1,8 @@
-// View-bundle `interact` capability handler for the Shopify terminal surface.
-// The view bundle re-exports `interact` via ./shopify-view-bundle.ts alongside
-// the ShopifyView componentExport.
+/**
+ * View-bundle `interact` capability handler for the Shopify terminal surface.
+ * The view bundle re-exports `interact` via ./shopify-view-bundle.ts alongside
+ * the ShopifyView componentExport.
+ */
 import {
   fetchShopifyTuiJson,
   loadShopifyTuiState,

@@ -1,3 +1,9 @@
+/**
+ * Classifies raw twitter-api-v2 errors into a `TwitterErrorType` (auth, rate-limit,
+ * API, network, media) so callers can react — back off on rate limits, surface auth
+ * failures — instead of treating every failure the same. Shared across the client
+ * layer and the autonomous loops.
+ */
 import { logger } from "@elizaos/core";
 
 export enum TwitterErrorType {

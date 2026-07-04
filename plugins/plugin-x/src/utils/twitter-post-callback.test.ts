@@ -1,3 +1,4 @@
+/** Unit tests for `createTwitterPostCallback`: dry-run skip, duplicate suppression, normalized-length posting, and returned memory even when persistence fails after publish; mocked client. */
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../base";

@@ -1,6 +1,3 @@
-import { registerPlugin, WebPlugin } from "@capacitor/core";
-import { logger } from "./logger";
-
 /**
  * Eliza Intent Plugin — TypeScript facade for the native iOS bridge.
  *
@@ -11,6 +8,9 @@ import { logger } from "./logger";
  * each invocation, and rejects native-only calls so dev builds cannot
  * appear to "work" without iOS.
  */
+
+import { registerPlugin, WebPlugin } from "@capacitor/core";
+import { logger } from "./logger";
 
 export interface ScheduleAlarmOptions {
   timeIso: string;

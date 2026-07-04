@@ -1,3 +1,9 @@
+/**
+ * Account-selection helpers shared by the SHOPIFY action handlers: resolves the
+ * target account id from action options (flattening a nested `parameters` bag),
+ * reports whether a store is configured, and exposes the `accountId` action
+ * parameter descriptor. Delegates the actual resolution to ../accounts.
+ */
 import type { HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import {
   hasShopifyAccountConfig,

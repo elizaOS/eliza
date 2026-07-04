@@ -1,3 +1,14 @@
+/**
+ * Per-account inbound and outbound message handling for a Telegram bot: ingests
+ * text, media, and document attachments from Telegraf update contexts, routes
+ * them through the runtime, and dispatches agent replies back to Telegram.
+ *
+ * Inbound media is transcribed/described and normalized to core `Media`;
+ * outbound replies are converted to MarkdownV2 (`utils.ts`), split at Telegram's
+ * 4096-char limit, rendered with inline keyboards (`interactions.ts`), and
+ * role-gated for embedded-app launch buttons. Owned by `TelegramService`, which
+ * registers this as the connector's send path.
+ */
 import fs from "node:fs";
 import {
   buildInteractionUrlResolver,
@@ -730,9 +741,9 @@ export class MessageManager {
       }
     }
 
-    // Voice / audio / video / animation / sticker — previously silently dropped.
-    // Setting contentType lets processAttachments transcribe audio/video and
-    // lets the attachment round-trip safely back out to any connector.
+    // Voice / audio / video / animation / sticker attachments. Setting
+    // contentType lets processAttachments transcribe audio/video and lets the
+    // attachment round-trip safely back out to any connector.
     const pushFileAttachment = async (
       fileId: string,
       contentType: ContentType,

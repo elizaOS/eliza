@@ -1,3 +1,9 @@
+/**
+ * Live role-policy check against the real Discord API: confirms a whitelisted
+ * Discord owner in the "Cozy Devs" guild can drive owner-gated behavior (e.g.
+ * create a task agent) while others cannot. Requires a real bot token and
+ * guild membership; asserts against live guild/member data, not mocks.
+ */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";

@@ -1,3 +1,10 @@
+/**
+ * Autonomous cast loop for one account: on a randomized `CAST_INTERVAL_MIN..MAX`
+ * schedule (optionally firing immediately), emits `POST_GENERATED` so the runtime
+ * composes and publishes a cast via `standardCastHandlerCallback`. The last-cast
+ * timestamp is cached (`lastCastCacheKey`) so restarts don't double-post inside an
+ * interval. Gated by `ENABLE_CAST`.
+ */
 import {
   createUniqueUuid,
   type EventPayload,

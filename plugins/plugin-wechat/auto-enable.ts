@@ -1,9 +1,12 @@
-// Auto-enable check for @elizaos/plugin-wechat.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
-// no service init, no transitive imports of the full plugin runtime. The
-// auto-enable engine loads dozens of these per boot.
+/**
+ * Decides whether the WeChat connector should auto-enable from character config.
+ *
+ * Referenced by package.json's `elizaos.plugin.autoEnableModule` and loaded by
+ * the auto-enable engine for every plugin at boot — so it must stay light: env
+ * reads only, no service init, no transitive imports of the full plugin
+ * runtime. Only gates on block-present-and-not-disabled; the engine's
+ * `isConnectorConfigured` performs the full per-account credential check.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when a `wechat` connector block is present and not explicitly disabled. */
@@ -13,9 +16,8 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;
-  // The full per-connector field check (appId/appSecret/encodingAESKey) lives
-  // in the central engine's isConnectorConfigured. We delegate to a simple
-  // "block present + not explicitly disabled" check here; the central
-  // engine's stricter check remains as a fallback during migration.
+  // The central engine's isConnectorConfigured performs the full per-account
+  // credential check; this module only gates on block-present and not
+  // explicitly disabled.
   return true;
 }

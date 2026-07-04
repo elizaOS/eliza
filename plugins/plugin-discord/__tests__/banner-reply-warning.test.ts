@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `warnIfRepliesSuppressed` — the startup banner warning that
+ * fires when config would silently drop replies. Mocked settings, no live gateway.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { warnIfRepliesSuppressed } from "../banner.ts";

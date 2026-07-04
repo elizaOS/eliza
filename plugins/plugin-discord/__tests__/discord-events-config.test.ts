@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `setupDiscordEventListeners` config wiring and
+ * response-cooldown gating, driven with a fake discord.js client (EventEmitter)
+ * and mocked debouncer.
+ */
 import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

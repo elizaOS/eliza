@@ -1,3 +1,14 @@
+/**
+ * `DiscordService` — the connector's main gateway service. Wraps a discord.js
+ * `Client`, logs in with the configured bot token(s), and drives inbound and
+ * outbound messages, voice, slash-command and interaction handling, reactions,
+ * channel-history backfill, and profile sync.
+ *
+ * It emits `DiscordEventTypes.*` on the runtime and composes most of the other
+ * files in this plugin (messages, messaging, debouncer, history, events,
+ * interactions, reactions, voice, identity, allowlist) as helpers. This is the
+ * service registered from `index.ts` under the `"discord"` type key.
+ */
 import {
 	ChannelType,
 	type Character,

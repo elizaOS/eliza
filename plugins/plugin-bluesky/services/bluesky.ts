@@ -1,3 +1,17 @@
+/**
+ * Singleton orchestrator service for the BlueSky plugin. Owns the per-agent,
+ * per-account fleet: for each enabled handle it builds a `BlueSkyClient`, starts
+ * a `BlueSkyAgentManager`, and holds a `BlueSkyMessageService` +
+ * `BlueSkyPostService`. On `registerSendHandlers` it wires those sub-services
+ * into the runtime as a DM message connector and a public-feed post connector
+ * (`source: "bluesky"`), falling back to the legacy `registerSendHandler` path
+ * when the runtime has no `registerMessageConnector`.
+ *
+ * The static `getInstance` cache means one `BlueSkyService` backs every agent in
+ * the process; `agents` maps `agentId` → its accounts. Accessors
+ * (`getMessageService`/`getPostService`/`listAccountIds`) resolve an account by
+ * normalized id, defaulting to the agent's configured default account.
+ */
 import {
 	ChannelType,
 	type Content,

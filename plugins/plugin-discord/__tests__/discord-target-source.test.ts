@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the Discord target-source: guild/channel enumeration
+ * (`fetchDiscordEnumeration`), target-source construction, and registration.
+ * Mocked runtime and Discord client.
+ */
 import {
 	CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
 	type IAgentRuntime,

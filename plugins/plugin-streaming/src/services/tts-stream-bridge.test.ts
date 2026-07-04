@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the TTS bridge's config resolution: `resolveTtsConfig` and
+ * `getTtsProviderStatus`. The runtime and its `TEXT_TO_SPEECH` model handler are
+ * stubbed with `vi.fn()`; provider selection is asserted without spawning
+ * FFmpeg or calling a live TTS provider.
+ */
 import { ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { getTtsProviderStatus, resolveTtsConfig } from "./tts-stream-bridge.ts";

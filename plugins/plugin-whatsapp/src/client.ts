@@ -1,3 +1,10 @@
+/**
+ * HTTP client for the WhatsApp Cloud API (Meta Graph). Sends text, media,
+ * reactions, location, and interactive (button/list) messages, marks messages
+ * read, resolves media URLs, and verifies the webhook token — one Graph request
+ * per call against the configured phone number ID. Implements IWhatsAppClient;
+ * media links pass through the SSRF guard before dispatch.
+ */
 import { EventEmitter } from "node:events";
 import type { IWhatsAppClient } from "./clients/interface";
 import { assertValidWhatsAppMediaLink } from "./media";

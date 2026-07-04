@@ -1,4 +1,10 @@
 /**
+ * Shopify plugin config plus the Admin GraphQL API response types (shop,
+ * product, order, customer, inventory, location, and their edge/count/mutation
+ * wrappers) that {@link ShopifyService} maps into the DTOs the plugin returns.
+ */
+
+/**
  * Configuration for connecting to a Shopify store via the Admin GraphQL API.
  */
 export interface ShopifyPluginConfig {

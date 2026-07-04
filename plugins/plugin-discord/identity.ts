@@ -1,3 +1,8 @@
+/**
+ * Owner/entity id resolution and world/entity metadata for Discord. Maps
+ * Discord user ids to runtime entity ids and builds the world/entity metadata
+ * stored on inbound messages.
+ */
 import {
 	createUniqueUuid,
 	type IAgentRuntime,

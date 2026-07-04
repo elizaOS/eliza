@@ -1,3 +1,9 @@
+/**
+ * Tests that the one {@link ShopifySpatialView} renders correctly across all
+ * three modalities: to real terminal lines under the TUI width contract, to DOM
+ * for GUI/XR, and as a terminal view the agent terminal can mount. Deterministic
+ * — no network; renders in-memory snapshots.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

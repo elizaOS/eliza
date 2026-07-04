@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `DiscordVoiceTargetAudioSink` — audio playback lifecycle over
+ * a fake voice target, using in-memory streams (no real voice connection).
+ */
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { DISCORD_AUDIO_LANE_MUSIC } from "../audio-lanes";

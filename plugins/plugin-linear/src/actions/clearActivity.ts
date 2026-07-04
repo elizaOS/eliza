@@ -1,3 +1,8 @@
+/**
+ * Handles the clear_activity Linear op: wipes the in-memory activity log
+ * (optionally scoped to an account) via LinearService.clearActivityLog. Requires
+ * a two-phase user confirmation first, since the clear is not undoable.
+ */
 import {
   type Action,
   type ActionResult,

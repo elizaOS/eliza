@@ -1,3 +1,13 @@
+/**
+ * Remote-session view of the Phone Companion: opens a {@link SessionClient}
+ * WebSocket to the paired Mac's session ingress and relays local touch/pointer
+ * gestures as input events via `touchToInput`.
+ *
+ * Tracks the connection state machine (connecting/open/closed/error) for the
+ * viewer chrome and validates the ingress host against private-network prefixes
+ * before connecting.
+ */
+
 import { Button } from "@elizaos/ui/components/ui/button";
 import React, {
   type PointerEvent as ReactPointerEvent,

@@ -1,3 +1,8 @@
+/**
+ * Tests registration and query execution of the github_pull_requests search
+ * category against a mock runtime with an in-memory category registry.
+ */
+
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the Calendly ConnectorAccountManager provider: legacy-token
+ * account synthesis, stored-account CRUD, and the OAuth completion path
+ * (including the refusal when no durable vault writer is available). Driven by a
+ * fake runtime and stubbed fetch — no live Calendly.
+ */
+
 import {
   type ConnectorAccount,
   type ConnectorAccountPatch,

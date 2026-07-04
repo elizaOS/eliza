@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `SlackService`'s message-connector surface — target
+ * resolution, recent-target and room listing, and chat/user context — driven
+ * against a `SlackService` instance with its Slack-facing methods stubbed. No
+ * live Slack API.
+ */
 import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SlackService } from "./service";

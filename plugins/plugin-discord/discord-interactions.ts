@@ -1,8 +1,7 @@
 /**
- * Discord interaction handling — extracted from service.ts
- *
- * Contains handleInteractionCreate(), buildStandardizedRooms(),
- * buildStandardizedUsers(), and onReady().
+ * Interaction handling for DiscordService. Dispatches slash commands, buttons,
+ * and modal submits (decoding component custom_ids) and builds the standardized
+ * room/user records the runtime needs on ready and on first contact.
  */
 import {
 	ChannelType,

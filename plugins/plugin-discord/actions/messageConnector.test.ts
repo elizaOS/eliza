@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the Discord message-connector adapter — outbound send routing
+ * through the account client pool, against a partially-constructed
+ * `DiscordService` and mocked discord.js client.
+ */
 import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import type { Message } from "discord.js";
 import { describe, expect, it, vi } from "vitest";

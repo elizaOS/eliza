@@ -13,9 +13,8 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;
   if (config.enabled === false) return false;
-  // The full per-connector field check (appId/appSecret) lives in the
-  // central engine's isConnectorConfigured. We delegate to a simple "block
-  // present + not explicitly disabled" check here; the central engine's
-  // stricter check remains as a fallback during migration.
+  // Full per-connector field validation (appId/appSecret) lives in the central
+  // engine's isConnectorConfigured. Here we only check that the block is present
+  // and not explicitly disabled; the engine applies the stricter check.
   return true;
 }

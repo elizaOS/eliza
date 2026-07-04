@@ -1,3 +1,8 @@
+/**
+ * Per-channel message debouncer. Batches rapid inbound Discord messages within
+ * a cooldown window and flushes them together, so the agent processes a burst
+ * as a single turn.
+ */
 import type { Message as DiscordMessage } from "discord.js";
 import { isDiscordUserAddressed } from "./addressing";
 

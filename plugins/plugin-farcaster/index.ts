@@ -1,3 +1,12 @@
+/**
+ * Plugin entry point: assembles `farcasterPlugin` and re-exports the public surface.
+ *
+ * Registers `FarcasterService` (cast/message lifecycle + post-connector) and the
+ * workflow credential provider as services, the profile provider, and the Neynar
+ * `/webhook` route. `init` wires the Farcaster account provider into the runtime's
+ * ConnectorAccountManager; `dispose` tears the service down. Auto-enables when a
+ * `farcaster` connector block is present under `config.connectors`.
+ */
 import { getConnectorAccountManager, logger, type Plugin } from "@elizaos/core";
 import { createFarcasterConnectorAccountProvider } from "./connector-account-provider";
 import { farcasterProviders } from "./providers";

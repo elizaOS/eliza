@@ -1,3 +1,8 @@
+/**
+ * LINEAR_TEAMS context provider: injects up to 20 Linear teams (key, name,
+ * truncated description) from LinearService into the prompt. Gated to the
+ * automation/connectors contexts and ADMIN role, cached per agent.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { Team } from "@linear/sdk";
 import type { LinearService } from "../services/linear";

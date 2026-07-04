@@ -1,3 +1,8 @@
+/**
+ * Unit tests for voice-meeting audio conversion helpers — PCM16↔float32,
+ * linear resampling, and Discord-PCM-to-pipeline-frame mapping. Pure-function
+ * assertions over synthetic buffers.
+ */
 import { Buffer } from "node:buffer";
 import { PassThrough } from "node:stream";
 import { ChannelType, createUniqueUuid, type UUID } from "@elizaos/core";

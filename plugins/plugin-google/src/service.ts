@@ -1,3 +1,11 @@
+/**
+ * `GoogleWorkspaceService` — the sole runtime service and single entry point for
+ * the plugin. Assembles the four sub-clients (Gmail, Calendar, Drive, Meet) over
+ * a shared `GoogleApiClientFactory` and delegates every `IGoogleWorkspaceService`
+ * method to the matching client. Retrieved via `runtime.getService("google")`.
+ * Credential resolution defaults to `DefaultGoogleCredentialResolver` but can be
+ * swapped (constructor option or `setCredentialResolver`) for tests.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import { getGoogleOAuthProviderConfig, getGoogleOAuthProviderMetadata } from "./auth.js";

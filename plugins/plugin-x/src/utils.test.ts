@@ -1,3 +1,4 @@
+/** Unit tests for `sendTweet`, covering that a published tweet is returned even when post-publish local cache bookkeeping fails; mocked client. */
 import { describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import { sendTweet } from "./utils";

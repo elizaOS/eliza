@@ -1,3 +1,10 @@
+/**
+ * Interactive helpers for the OAuth 2.0 PKCE first-time authorization: a loopback
+ * HTTP server that captures the `?code`/`?state` redirect (validating state, timing
+ * out, failing fast on bind errors) and a TTY prompt that reads the pasted redirected
+ * URL when a loopback callback isn't usable. Both feed the code back to
+ * `OAuth2PKCEAuthProvider.interactiveLogin`.
+ */
 import { createServer } from "node:http";
 import * as readline from "node:readline";
 import { URL } from "node:url";

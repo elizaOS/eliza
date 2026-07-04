@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `MessageManager` outbound chunking and malformed-payload
+ * handling: over-limit messages hard-split at Telegram's size cap (preferring
+ * newline boundaries), interaction-only replies still carry fallback text, and
+ * unknown attachment types degrade to a document upload. Telegraf is mocked.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
@@ -246,9 +252,9 @@ describe("MessageManager malformed payload handling", () => {
       throw new Error("telegram unavailable");
     });
 
-    // Unknown/absent content types no longer throw synchronously (which, inside
-    // Promise.all, aborted the whole reply). They degrade to a document upload;
-    // the underlying send failure is still awaited and propagated.
+    // Unknown/absent content types degrade to a document upload rather than
+    // throwing synchronously (a sync throw inside Promise.all would abort the
+    // whole reply); the underlying send failure is still awaited and propagated.
     await expect(
       manager.sendMessageInChunks(
         {

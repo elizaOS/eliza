@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-// Drives the unified MessagesView (the single GUI/XR data wrapper) through the
-// rendered DOM: the same component the bundle exports for both the "gui" and
-// "xr" modalities. Asserts the thread list, open-thread, compose address/body,
-// send, refresh, the SMS-role request, and the error/permission path all reach
-// the native bridge with the exact arguments — functional parity with the
-// retired hand-written MessagesPluginView/MessagesTuiView surfaces.
+/**
+ * Drives the unified MessagesView (the single GUI/XR data wrapper) through the
+ * rendered DOM — the same component the bundle exports for both the "gui" and
+ * "xr" modalities. Asserts the thread list, open-thread, compose address/body,
+ * send, refresh, the SMS-role request, and the error/permission path all reach
+ * the native bridge with the exact arguments.
+ */
 
 import {
   cleanup,

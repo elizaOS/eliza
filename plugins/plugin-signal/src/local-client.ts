@@ -1,3 +1,10 @@
+/**
+ * Low-level polling client for the local signal-cli REST endpoint: reads
+ * inbound envelopes via `readSignalInboundMessages` and derives connection
+ * config from `SIGNAL_*` env vars (`readSignalLocalClientConfigFromEnv`).
+ * Maps raw signal-cli envelopes into `SignalRecentMessage`. Publicly exported
+ * and consumed by `SignalService`; complements the RPC/SSE path in `rpc.ts`.
+ */
 import { randomUUID } from "node:crypto";
 import type { SignalRecentMessage } from "./types";
 

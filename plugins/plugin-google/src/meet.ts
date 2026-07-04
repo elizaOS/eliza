@@ -1,3 +1,10 @@
+/**
+ * `GoogleMeetClient` — Meet space management and conference-artifact reads
+ * behind the workspace service: create/get/end spaces, and list participants,
+ * transcripts, and recordings for a conference record. `generateReport`
+ * assembles those artifacts into a structured `GoogleMeetReport`.
+ * `GOOGLE_MEET_API_SURFACE` records the capability each method requires.
+ */
 import type { meet_v2 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {

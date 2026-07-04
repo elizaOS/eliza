@@ -1,3 +1,10 @@
+/**
+ * Resolves which X account a client run targets and materializes its per-account
+ * `TwitterClientState` (auth mode + credentials). Bridges the multi-account routing
+ * inputs — the `TWITTER_ACCOUNT_ID` / `TWITTER_DEFAULT_ACCOUNT_ID` settings, an
+ * explicit request `accountId`, and any connector-account credential ref — into the
+ * single state object `ClientBase` and the auth-provider factory consume.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { getConnectorAccount } from "../connector-credential-refs";
 import type { TwitterConfig } from "../environment";

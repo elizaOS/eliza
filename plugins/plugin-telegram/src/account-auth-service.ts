@@ -1,3 +1,10 @@
+/**
+ * State machine for authenticating a Telegram *user* account over MTProto
+ * (GramJS `telegram` package), distinct from the bot-API path. Drives the
+ * multi-step login — provisioning code, Telegram OTP, then optional 2FA
+ * password — and persists the resulting `StringSession` under the state dir.
+ * Consumed by `account-setup-routes.ts`.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

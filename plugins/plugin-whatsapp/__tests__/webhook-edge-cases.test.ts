@@ -1,3 +1,8 @@
+/**
+ * Exercises WhatsAppConnectorService.handleWebhook against malformed and
+ * boundary webhook payloads (missing fields, empty entries, unknown message
+ * types) to confirm they are handled without crashing. Fake runtime, no network.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsAppConnectorService } from "../src/runtime-service";

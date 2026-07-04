@@ -1,3 +1,13 @@
+/**
+ * Twilio transport helpers for outbound SMS and voice calls: reads credentials
+ * from the environment, sends via the Twilio REST API with bounded retry, and
+ * computes the segment-based SMS billing breakdown (raw cost + markup).
+ *
+ * These are standalone helpers held here for the future VOICE_CALL provider
+ * migration; no action in this package wires them today — outbound dispatch is
+ * owned by the PA-hosted VOICE_CALL action.
+ */
+
 import { logger } from "@elizaos/core";
 
 export interface TwilioCredentials {

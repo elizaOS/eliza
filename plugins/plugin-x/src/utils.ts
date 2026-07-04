@@ -1,3 +1,10 @@
+/**
+ * Shared tweet-sending and media helpers for the connector: `sendTweet` (publishes
+ * text, splitting into threads and honoring the max length, returning the accepted
+ * `SentTweet`), `fetchMediaData` (SSRF-guarded media download for attachments), and
+ * `parseActionResponseFromText` (extracts the model's like/retweet/quote/reply
+ * choice). Re-exports the shared API error handler.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import type { Media } from "@elizaos/core";

@@ -1,3 +1,9 @@
+/**
+ * Plugin entry for @elizaos/plugin-linear. Registers the LinearService
+ * singleton, the promoted LINEAR router sub-actions, and the four Linear context
+ * providers; on init it registers the linear_issues search category and the
+ * ConnectorAccountManager provider that drives OAuth/API-key account lifecycle.
+ */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger, promoteSubactionsToActions } from "@elizaos/core";
 import { linearAction } from "./actions/linear";

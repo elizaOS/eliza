@@ -1,3 +1,9 @@
+/**
+ * Covers the message-connector registration BlueBubblesService performs:
+ * `bluebubbles` plus `imessage` fallback with target hooks, empty-content and
+ * missing-target guards, reply-guid threading, and reaction/edit/delete
+ * mutation errors. Uses a stub runtime and mocked client — no live server.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BlueBubblesService } from "../src/service";

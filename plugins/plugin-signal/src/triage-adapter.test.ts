@@ -1,3 +1,8 @@
+/**
+ * Tests that the Signal triage adapter registers into the shared (real,
+ * in-process) triage service and that its availability tracks the signal
+ * service's presence on the runtime.
+ */
 import {
   __resetDefaultTriageServiceForTests,
   getDefaultTriageService,
@@ -17,7 +22,7 @@ describe("signal triage adapter registration", () => {
   afterEach(() => __resetDefaultTriageServiceForTests());
 
   it("core ships no signal adapter until the plugin registers one", () => {
-    // Core no longer pre-registers connector adapters — the plugin owns it.
+    // The plugin owns connector-adapter registration; core pre-registers none.
     expect(getDefaultTriageService().getAdapter("signal")).toBeUndefined();
   });
 

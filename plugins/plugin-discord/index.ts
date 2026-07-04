@@ -1,3 +1,11 @@
+/**
+ * Plugin definition and public barrel for `@elizaos/plugin-discord`. `init`
+ * registers the connector account provider, reads the Discord env vars, and
+ * prints the startup banner; the exported `Plugin` wires the `services` and
+ * `routes` arrays that make up this connector's surface. No actions or
+ * providers are registered — all behavior flows through services and
+ * `DiscordEventTypes` events.
+ */
 import {
 	getConnectorAccountManager,
 	type IAgentRuntime,

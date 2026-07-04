@@ -1,6 +1,4 @@
-/**
- * Constants for the BlueBubbles plugin
- */
+/** Service name, default webhook path, BlueBubbles REST endpoint map, and DM/group policy string literals shared across the connector. */
 
 export const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 export const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";

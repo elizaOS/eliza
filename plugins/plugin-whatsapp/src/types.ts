@@ -1,3 +1,11 @@
+/**
+ * Raw transport types for the WhatsApp connector: per-transport config
+ * (Cloud API / Baileys), outbound message shapes (text, media, reaction,
+ * location, template, interactive button/list/flow), inbound webhook and
+ * status-update payloads, the normalized inbound message, and connection/QR
+ * state. These model the wire protocols, distinct from the agent-facing config
+ * types in config.ts.
+ */
 export type WhatsAppConfig = CloudAPIConfig | BaileysConfig;
 
 export interface CloudAPIConfig {

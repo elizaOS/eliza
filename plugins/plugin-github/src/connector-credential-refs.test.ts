@@ -1,3 +1,8 @@
+/**
+ * Tests credential-ref persistence and OAuth-token readback against a
+ * deterministic mock runtime with stubbed account-store/vault services.
+ */
+
 import type { ConnectorAccount, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

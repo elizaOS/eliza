@@ -1,3 +1,8 @@
+/**
+ * SSRF guard for outbound media links: `assertValidWhatsAppMediaLink` accepts
+ * only well-formed http(s) URLs and throws on anything else (file:, data:,
+ * javascript:, malformed). Called by both transport clients before dispatch.
+ */
 const ALLOWED_MEDIA_PROTOCOLS = new Set(["http:", "https:"]);
 
 function mediaLinkError(kind: string): Error {

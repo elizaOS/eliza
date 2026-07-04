@@ -14,9 +14,7 @@ import { GoogleChatWorkflowCredentialProvider } from "./workflow-credential-prov
 export * from "./accounts.js";
 // Message, space listing, and reaction operations route through MESSAGE via
 // the MessageConnector registered by GoogleChatService.
-// Export types
 export * from "./types.js";
-// Export service
 export { GoogleChatService };
 
 /**
@@ -103,7 +101,6 @@ const googleChatPlugin: Plugin = {
 
 export default googleChatPlugin;
 
-// Channel configuration types
 export type {
   GoogleChatAccountConfig,
   GoogleChatActionConfig,

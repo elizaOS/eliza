@@ -1,3 +1,11 @@
+/**
+ * Resolves Linear account configs from runtime settings and the character file.
+ * Merges the legacy single LINEAR_API_KEY account, the LINEAR_ACCOUNTS JSON
+ * multi-account list, and character.settings.linear.accounts into a deduped map,
+ * and resolves which account id a request targets (explicit id → configured
+ * default → first registered). Consumed by LinearService and every action to
+ * pick the client for a call.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const DEFAULT_LINEAR_ACCOUNT_ID = "default";

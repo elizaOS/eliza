@@ -1,3 +1,7 @@
+/**
+ * Unit tests for `DiscordVoiceTargetRegistry` — registration/lookup of voice
+ * targets per account/guild/channel, using fake targets (no real voice connection).
+ */
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { DISCORD_AUDIO_LANE_MUSIC } from "../audio-lanes";

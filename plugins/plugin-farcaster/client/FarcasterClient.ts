@@ -1,3 +1,14 @@
+/**
+ * Thin wrapper around the Neynar Node SDK — the single Farcaster API client for
+ * the plugin. Every hub/network call (publish cast, lookup, mentions, timeline,
+ * profile, reactions) goes through here; nothing else touches Neynar directly.
+ *
+ * `sendCast` splits over-length prose into a chained thread via `splitPostContent`
+ * and attaches media embeds once on the first cast. Cast lookups (TTL 30 min, max
+ * `DEFAULT_CAST_CACHE_SIZE`) and profiles (TTL 15 min, max 1000) are memoized in
+ * module-level LRU caches, so repeated reads skip the network. `logNeynarCall`
+ * wraps each SDK call with structured start/ok/failed timing logs.
+ */
 import { type Content, logger as elizaLogger } from "@elizaos/core";
 import { isApiErrorResponse, type NeynarAPIClient } from "@neynar/nodejs-sdk";
 import type { Cast as NeynarCast } from "@neynar/nodejs-sdk/build/api";

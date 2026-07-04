@@ -1,3 +1,12 @@
+/**
+ * Resolves the GitHub account set an action runs under, layering three
+ * sources: `GITHUB_ACCOUNTS` JSON and legacy `GITHUB_USER_PAT`/`GITHUB_AGENT_PAT`
+ * env vars, `character.settings.github.accounts`, and OAuth credentials from
+ * the connector account store. Given a role (`user`/`agent`) and optional
+ * `accountId`, returns the matching config the GitHubService uses to build an
+ * Octokit client.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   listConnectorAccounts,

@@ -1,3 +1,11 @@
+/**
+ * Bridges GitHub OAuth credentials to the connector account store's vault +
+ * credential-ref model: persists token records as credential refs, reads back
+ * a usable OAuth access token for an account, and lists stored connector
+ * accounts. Consumed by `accounts.ts` when overlaying OAuth accounts onto the
+ * env/character account set.
+ */
+
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccount,

@@ -1,3 +1,9 @@
+/**
+ * Handler for the `search` op of the SHOPIFY action: a read-only fan-out across
+ * products, orders, and customers via {@link ShopifyService}, returning a
+ * combined result. An intent classifier scopes which entities are queried
+ * (`all` or a single kind). Read-only, so it never gates on confirmation.
+ */
 import type {
   ActionResult,
   HandlerCallback,

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the ConnectorAccountManager provider: that a bot-token config
+ * surfaces as an open AGENT account and a personal (GramJS) config as an
+ * owner-binding-gated OWNER account with a stable externalId, and that disabled
+ * or credential-less blocks are ignored. Runtime is mocked.
+ */
 import type {
   ConnectorAccount,
   ConnectorAccountManager,

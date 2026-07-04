@@ -1,3 +1,8 @@
+/**
+ * Message gating for the Discord connector. Resolves whether a user or channel
+ * is allowed under the configured DM policy and channel allowlist, matching by
+ * wildcard, id, name, tag, or parent channel.
+ */
 import type { Guild, GuildMember, User } from "discord.js";
 import type {
 	DiscordAccountConfig,

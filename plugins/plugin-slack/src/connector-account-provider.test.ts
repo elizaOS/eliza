@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the Slack `ConnectorAccountProvider` — how it lists, creates,
+ * patches, and deletes accounts against a mocked `ConnectorAccountManager` and a
+ * fake runtime whose `getSetting` returns canned env values. No live Slack API.
+ */
 import {
   type ConnectorAccount,
   type ConnectorAccountPatch,

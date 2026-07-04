@@ -1,3 +1,8 @@
+/**
+ * Resolves which transport a config selects: an explicit `authMethod` wins
+ * (rejecting unknown values), otherwise presence of Baileys auth-dir fields
+ * chooses Baileys and Cloud API credentials choose cloudapi. Used by ClientFactory.
+ */
 import type { WhatsAppConfig } from "../types";
 
 export function detectAuthMethod(

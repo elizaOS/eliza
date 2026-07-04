@@ -1,3 +1,7 @@
+/**
+ * Typing-indicator controller for a channel — starts and stops the Discord
+ * "typing…" indicator while the agent generates a reply.
+ */
 import type { TextChannel } from "discord.js";
 
 export interface TypingController {

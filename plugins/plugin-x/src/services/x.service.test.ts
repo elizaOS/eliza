@@ -1,3 +1,4 @@
+/** Unit tests for `XService` account-status reporting (config_missing, env capabilities, OAuth-scope mapping) without any network call; mocked runtime. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { XService } from "./x.service";

@@ -1,3 +1,12 @@
+/**
+ * Plugin entry-point for the X (Twitter) connector: exports `XPlugin`, which
+ * registers the `XService` and `XWorkflowCredentialProvider` services and the
+ * `TWITTER_IDENTITY` provider. `init` validates auth-mode credentials and
+ * registers the X account provider with the runtime's ConnectorAccountManager;
+ * env account materialization and the autonomous loops run later in
+ * `XService.start`. No actions or evaluators are registered — all agent-facing
+ * behavior flows through the message and post connectors.
+ */
 import {
   getConnectorAccountManager,
   type IAgentRuntime,

@@ -1,3 +1,9 @@
+/**
+ * Handles the create_comment Linear op. Resolves the target issue from an
+ * explicit id, a prompt-extracted id/description, or regex, disambiguating when a
+ * description matches multiple issues, then posts the comment body via
+ * LinearService.createComment (prefixing a [TYPE] tag for non-note comments).
+ */
 import {
   type Action,
   type ActionResult,

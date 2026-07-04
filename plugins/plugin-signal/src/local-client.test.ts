@@ -1,3 +1,7 @@
+/**
+ * Tests the local signal-cli polling client: env-var config parsing and
+ * inbound-envelope mapping, driven against a stubbed global `fetch`.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSignalInboundMessages, readSignalLocalClientConfigFromEnv } from "./local-client";
 

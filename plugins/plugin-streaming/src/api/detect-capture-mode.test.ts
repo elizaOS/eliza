@@ -4,10 +4,10 @@ import { detectCaptureMode } from "./stream-routes.js";
 
 /**
  * `detectCaptureMode` selects the FFmpeg input mode. The desktop screen-capture
- * bridge is now discovered by the caller via
+ * bridge is discovered by the caller via
  * `runtime.getService(ServiceType.SCREEN_CAPTURE)` (a typed
- * {@link IScreenCaptureService}) and passed in explicitly — never read from a
- * producerless globalThis screen-capture bridge (the old dead contract).
+ * {@link IScreenCaptureService}) and passed in explicitly, never read from a
+ * global screen-capture bridge.
  */
 describe("detectCaptureMode", () => {
   const saved = { ...process.env };

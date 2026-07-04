@@ -1,3 +1,9 @@
+/**
+ * Owns the Baileys WebSocket socket lifecycle for one personal WhatsApp session.
+ * Opens the connection from persisted auth state, re-emits QR, connection-status,
+ * message, and error events to the client, and drives reconnect with backoff
+ * (except on a logged-out disconnect). Baileys logging is routed through pino.
+ */
 import { EventEmitter } from "node:events";
 import type { Boom } from "@hapi/boom";
 import makeWASocket, { DisconnectReason, type WASocket } from "@whiskeysockets/baileys";

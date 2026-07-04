@@ -1,3 +1,14 @@
+/**
+ * Plugin entry point: assembles the `slack` `Plugin` object and re-exports the
+ * package's public surface. Declares `SlackService` and
+ * `SlackWorkflowCredentialProvider` as services, a passive `slack` connector
+ * source, and a self-declared auto-enable keyed on the `slack` connector.
+ *
+ * `init()` registers the `ConnectorAccountProvider` with the runtime's
+ * `ConnectorAccountManager` and validates/masks the configured Slack tokens
+ * (warn-only — missing tokens load the plugin inert rather than throwing);
+ * `dispose()` stops the service.
+ */
 import {
   getConnectorAccountManager,
   type IAgentRuntime,

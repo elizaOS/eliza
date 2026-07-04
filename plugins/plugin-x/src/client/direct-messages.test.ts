@@ -1,3 +1,4 @@
+/** Unit tests for the `Client` direct-message methods, driving a hand-rolled fake twitter-api-v2 `v2` client. */
 import { describe, expect, it, vi } from "vitest";
 import { Client } from "./client";
 

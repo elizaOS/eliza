@@ -1,4 +1,10 @@
 /**
+ * Shared constants for the Feishu connector: the service registration name,
+ * the per-domain Open Platform API base URLs, and the message-size and
+ * request-timeout limits used across the service, message manager, and formatting.
+ */
+
+/**
  * Service name used to register and retrieve the Feishu service.
  */
 export const FEISHU_SERVICE_NAME = "feishu";

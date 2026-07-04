@@ -1,3 +1,4 @@
+/** Re-exports the Linear sub-action handlers and router helpers. */
 export * from "./clearActivity";
 export * from "./createComment";
 export * from "./createIssue";

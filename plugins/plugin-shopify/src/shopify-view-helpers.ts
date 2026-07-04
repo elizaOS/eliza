@@ -1,6 +1,8 @@
-// Shared fetch helpers for the Shopify terminal `interact` capability handler
-// (shopify-interact.ts). Pure fetch logic, no React, so it is safe to load in
-// the Node agent process where the terminal capabilities run.
+/**
+ * Shared fetch helpers for the Shopify terminal `interact` capability handler
+ * (shopify-interact.ts). Pure fetch logic, no React, so it is safe to load in
+ * the Node agent process where the terminal capabilities run.
+ */
 import type {
   ShopifyCustomersResponse,
   ShopifyInventoryResponse,

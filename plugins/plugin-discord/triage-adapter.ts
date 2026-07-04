@@ -1,3 +1,8 @@
+/**
+ * Registers the Discord message adapter with the shared TriageService so
+ * cross-connector MESSAGE triage recognizes the `discord` source. Availability
+ * hinges on the `DiscordService` being registered.
+ */
 import {
 	BaseMessageAdapter,
 	getDefaultTriageService,

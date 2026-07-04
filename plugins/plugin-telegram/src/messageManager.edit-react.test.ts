@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `MessageManager` edit/react paths: in-place MarkdownV2 edits
+ * with plain-text fallback on a 400 parse error, the compact-progress callback
+ * that edits one status message, and computer-use approval callback parsing.
+ * Telegraf send/edit calls are mocked.
+ */
 import { type Content, encodeReplyCallback, type Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

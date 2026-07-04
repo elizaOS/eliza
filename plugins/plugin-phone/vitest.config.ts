@@ -1,3 +1,9 @@
+/**
+ * Vitest config for plugin-phone. Pins React / react-dom / testing-library to a
+ * single resolved copy so the jsdom component tests don't load duplicate React
+ * instances across workspace links.
+ */
+
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

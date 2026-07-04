@@ -1,3 +1,9 @@
+/**
+ * Plugin entry point. Assembles the `whatsapp` Plugin object — the connector
+ * service, workflow credential provider, connector-account source, triage
+ * adapter registration, and setup routes — and re-exports the public API for
+ * callers. Auto-enables when a `connectors.whatsapp` config block is present.
+ */
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";

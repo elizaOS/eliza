@@ -1,3 +1,9 @@
+/**
+ * Owns one Farcaster account for an agent: builds the Neynar SDK client from the
+ * account's config and wires up the autonomous cast loop and interaction manager.
+ * `FarcasterService` holds one instance per (agent, account); `start`/`stop`
+ * fan out to both child managers.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { Configuration, NeynarAPIClient } from "@neynar/nodejs-sdk";
 import { FarcasterClient } from "../client/FarcasterClient";

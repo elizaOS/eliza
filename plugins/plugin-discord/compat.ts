@@ -1,3 +1,8 @@
+/**
+ * Type-only cross-core compatibility shims. `WorldCompat` / `RoomCompat` /
+ * `ICompatRuntime` widen `serverId` / `messageServerId` so the plugin
+ * typechecks across core versions; there is no runtime proxy.
+ */
 import type {
 	ChannelType,
 	Entity,

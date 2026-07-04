@@ -1,3 +1,4 @@
+/** Transport contract for the X message surface: the `IMessageService` interface plus the `Message`, `MessageType`, and send/list option types. Implemented by `MessageService.ts`. */
 import type { UUID } from "@elizaos/core";
 
 export enum MessageType {

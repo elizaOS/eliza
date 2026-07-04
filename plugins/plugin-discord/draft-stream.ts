@@ -1,3 +1,7 @@
+/**
+ * Streams an in-progress agent reply to Discord by editing a single message as
+ * draft chunks arrive, using the draft-chunking break logic.
+ */
 import type { Message as DiscordMessage, TextChannel } from "discord.js";
 import {
 	DEFAULT_DRAFT_CHUNK_CONFIG,

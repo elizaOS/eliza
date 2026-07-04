@@ -1,3 +1,12 @@
+/**
+ * Bridges BlueBubbles credentials to `@elizaos/plugin-workflow`.
+ *
+ * Registers as a `workflow_credential_provider` service the workflow runtime
+ * duck-types, so BlueBubbles can be a workflow HTTP target without a
+ * compile-time dependency on the workflow plugin. Resolves only
+ * `httpQueryAuth`, returning the server password (as the `password` query
+ * parameter) plus the server URL from runtime settings.
+ */
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 // Inlined to avoid adding @elizaos/plugin-workflow as a compile-time dependency.

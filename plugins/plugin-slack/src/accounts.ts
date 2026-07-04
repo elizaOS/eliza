@@ -1,3 +1,13 @@
+/**
+ * Multi-account configuration model and resolution helpers for the Slack
+ * connector. Defines the per-workspace `SlackAccountConfig` shape (tokens,
+ * role, DM/channel/action policies) and functions that resolve an effective
+ * account from either flat env vars (`SLACK_BOT_TOKEN`, …) or a structured
+ * `character.settings.slack.accounts` record — `resolveSlackAccount`,
+ * `listEnabledSlackAccounts`, `resolveSlackBotToken`, `normalizeAccountId`, etc.
+ * `SlackService` reads these to build one runtime per workspace; the OWNER vs
+ * AGENT role decides whether outbound posts use the user or bot token.
+ */
 import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
 
 /**

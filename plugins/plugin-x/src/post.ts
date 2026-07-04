@@ -1,3 +1,10 @@
+/**
+ * `TwitterPostClient` — the autonomous tweet-generation loop. On its randomized
+ * interval (or immediately when `TWITTER_POST_IMMEDIATELY`) it composes a tweet from
+ * character state via the post templates and publishes it through `sendTweet`,
+ * honoring `TWITTER_DRY_RUN`. Constructed with `ClientBase` + runtime +
+ * `TwitterClientState`, gated by `TWITTER_ENABLE_POST`, driven by `TwitterClientInstance`.
+ */
 import {
   createUniqueUuid,
   type EventPayload,

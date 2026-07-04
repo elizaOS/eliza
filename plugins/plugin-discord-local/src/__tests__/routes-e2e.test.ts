@@ -1,15 +1,13 @@
 /**
  * Route-level e2e for plugin-discord-local (issue #8802).
  *
- * This plugin had ZERO tests; this is its first. It boots the plugin's declared
- * `Route[]` (from the default `discordLocalPlugin.routes`) through the real
- * production dispatcher (`tryHandleRuntimePluginRoute`) over a loopback
+ * Boots the plugin's declared `Route[]` (from `discordLocalPlugin.routes`) through
+ * the real production dispatcher (`tryHandleRuntimePluginRoute`) over a loopback
  * `http.createServer` — exercising the real auth gate, JSON body parsing, query
  * parsing, and handler dispatch — with a faked `DiscordLocalService` standing in
  * for the local Discord desktop bridge. The bridge is never contacted: the
  * service is mocked, so no Discord IPC socket, OAuth flow, or osascript runs.
- *
- * No mocked `json`/`error` functions: every assertion is on a real HTTP response.
+ * Every assertion is on a real HTTP response, not mocked `json`/`error` functions.
  */
 
 import http from "node:http";
