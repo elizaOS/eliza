@@ -1,7 +1,11 @@
+/**
+ * Exercises pure per-channel deep-link URL construction for cross-channel
+ * inbox triage. The cases pin platform-specific identifiers so queue entries
+ * can link back to Discord, Telegram, Signal, iMessage, WhatsApp, Slack, Gmail,
+ * and other source threads without dispatching connector calls.
+ */
 import { describe, expect, it } from "vitest";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
-
-/** Pure per-channel deep-link URL construction for cross-channel inbox triage. */
 
 describe("buildDeepLink — Discord", () => {
   it("builds a guild channel link, with optional message", () => {

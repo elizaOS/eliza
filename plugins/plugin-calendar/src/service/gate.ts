@@ -1,3 +1,8 @@
+/**
+ * Defines the cross-domain host gate used by CalendarService. Calendar owns
+ * event/sync persistence, while Google grant lookup, reminder plans, and audit
+ * rows are supplied by the host or LifeOps through this seam.
+ */
 import crypto from "node:crypto";
 import {
   getConnectorAccountManager,
@@ -20,18 +25,6 @@ import {
   resolveGoogleConnectorAccount,
 } from "../internal/google-delegates.js";
 
-/**
- * Cross-domain seam for the calendar service. Calendar owns the calendar event
- * and sync-state tables; the work below belongs to other domains:
- *
- * - **Google connector grants/accounts** are owned by the host's connector
- *   layer (LifeOps' Google service mixin). The default gate resolves them
- *   directly through `@elizaos/plugin-google` connector accounts.
- * - **Reminder plans** and **audit events** are owned by LifeOps' repository.
- *   The default gate no-ops them; LifeOps injects a real implementation via
- *   `CalendarService.setGate(...)` so calendar events keep firing reminders
- *   and writing audit rows.
- */
 export interface CalendarHostGate {
   getGoogleConnectorAccounts(
     requestUrl: URL,

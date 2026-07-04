@@ -1,11 +1,11 @@
+/**
+ * Normalizes loose action-detail records into typed primitives and parses model
+ * JSON responses after removing common wrapper formats. Calendar action handlers
+ * use these helpers at the LLM/runtime boundary so malformed details fail to
+ * resolve instead of leaking weak casts through the event service.
+ */
 import type { Memory, ProviderDataRecord } from "@elizaos/core";
 
-/**
- * Internal request URL passed as the `requestUrl` argument to
- * `CalendarService` methods. The calendar service only uses this to read the
- * connector mode/side from query params for remote requests; for in-process
- * action handlers a fixed loopback URL is correct.
- */
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
 export function toActionData<T extends object>(data: T): ProviderDataRecord {

@@ -1,3 +1,9 @@
+/**
+ * Defines the host seams used by the moved calendar action runner. LifeOps
+ * still owns model execution, recent-conversation grounding, and optional
+ * travel-buffer computation, so the calendar handler receives those capabilities
+ * through this typed dependency object instead of importing LifeOps internals.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 

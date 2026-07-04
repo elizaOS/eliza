@@ -1,3 +1,8 @@
+/**
+ * Guards the public Gmail normalization helpers used by inbox tests and
+ * integration callers. These cases cover delimiter handling, address
+ * canonicalization, and range checks for search and unresponded-age filters.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractNormalizedEmailAddress,
@@ -7,13 +12,6 @@ import {
   parseGmailRelativeDuration,
   splitMailboxLikeList,
 } from "../src/inbox/gmail-normalize.js";
-
-/**
- * Pure parsers over untrusted Gmail input — recipient lists, addresses, and
- * search/duration filters. They must split on the right delimiters while
- * respecting quotes/angle brackets, canonicalize addresses, and reject
- * out-of-range or malformed values rather than silently coercing them.
- */
 
 describe("splitMailboxLikeList", () => {
   it("splits on , ; newline and || but not inside quotes or angle brackets", () => {

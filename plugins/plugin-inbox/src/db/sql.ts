@@ -1,11 +1,10 @@
-import type { IAgentRuntime } from "@elizaos/core";
-
 /**
- * Self-contained raw-SQL helpers for the inbox back-end. Copied verbatim from
- * the PA LifeOps sql helpers (renamed error prefixes) so this plugin carries no
- * dependency on `@elizaos/plugin-personal-assistant`. Keep in sync only when a
- * correctness fix applies to both; do not add inbox-specific logic here.
+ * Provides the raw-SQL value encoders and row coercion helpers used by the
+ * inbox repositories. This is a self-contained copy of the LifeOps SQL helper
+ * surface so plugin-inbox can own `app_inbox` persistence without importing
+ * `@elizaos/plugin-personal-assistant`.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;

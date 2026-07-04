@@ -1,3 +1,8 @@
+/**
+ * Pins the plugin-inbox view and route registration contract in a Node test
+ * environment. The UI barrels are mocked so this can assert descriptor drift,
+ * view aliases, and HTTP route metadata without evaluating browser-only code.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 // This node-env guard imports the real InboxView (to assert its function name
@@ -13,11 +18,6 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 
 import { InboxView } from "../src/components/inbox/InboxView.tsx";
 import { inboxPlugin } from "../src/plugin.ts";
-
-// Regression guard pinning the view-registration descriptor in src/plugin.ts to
-// the actually-exported component. If the componentExport name, route path, or
-// the email/mail aliases drift, view loading silently breaks at runtime; this
-// test fails loudly instead. Lives in the node env (no DOM needed).
 
 describe("inboxPlugin view registration", () => {
   it("registers exactly one view with the inbox descriptor", () => {

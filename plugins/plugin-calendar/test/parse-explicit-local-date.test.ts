@@ -1,15 +1,13 @@
+/**
+ * Covers relative-date phrasing for the deterministic CALENDAR date resolver.
+ * The assertions compute expected local dates through the same timezone helpers
+ * the resolver uses, so they stay clock-independent while guarding everyday
+ * phrases like "tomorrow" and "in ten days."
+ */
 import { describe, expect, it } from "vitest";
 import { parseExplicitLocalDate } from "../src/actions/calendar-handler.js";
 import { addDaysToLocalDate, getZonedDateParts } from "../src/internal/time.js";
 
-/**
- * Relative-date phrasing coverage (#8795). The deterministic date resolver used
- * by the CALENDAR action previously returned null for "today"/"tomorrow"/"in N
- * days" — the exact everyday phrasing in the action's own examples ("Schedule a
- * meeting with Alex at 3pm tomorrow") — forcing an avoidable LLM round-trip.
- * These assert the offsets relative to "today" in a fixed timezone, computed
- * with the same time helpers the resolver uses so the test is clock-independent.
- */
 const TZ = "America/New_York";
 
 function expectedFromToday(offset: number) {

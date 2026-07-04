@@ -1,3 +1,9 @@
+/**
+ * Registers the scaffolded CONFLICT_DETECT action and its calendar-conflict
+ * sub-op vocabulary. The action is intentionally non-mutating until the full
+ * conflict scanner is migrated; each recognized op returns a scaffold failure
+ * instead of pretending to inspect the owner's feed.
+ */
 import type {
   Action,
   ActionResult,
@@ -6,14 +12,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-
-/**
- * Scaffold stub for the `CONFLICT_DETECT` calendar-conflict scanner action.
- * Registers the subaction vocabulary — `scan_today` (overlapping events today),
- * `scan_week` (overlaps across the rolling week), and `scan_event_proposal`
- * (a proposed window vs the owner feed) — each returning a `scaffold_stub`
- * failure naming the subaction.
- */
 
 const CONFLICT_DETECT_OPS = [
   "scan_today",

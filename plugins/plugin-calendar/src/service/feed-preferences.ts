@@ -1,3 +1,8 @@
+/**
+ * Stores calendar feed-inclusion preferences in the runtime cache. Keys combine
+ * connector grant id and calendar id so multi-account Google users can include
+ * or hide each calendar without depending on LifeOps scheduler metadata.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

@@ -1,3 +1,8 @@
+/**
+ * Covers Gmail input normalization for owner and LLM-supplied query values.
+ * These tests pin address extraction, mailbox-list splitting, duration parsing,
+ * and label/message id validation before values reach Gmail API calls.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractNormalizedEmailAddress,
@@ -7,15 +12,6 @@ import {
   parseGmailRelativeDuration,
   splitMailboxLikeList,
 } from "./gmail-normalize.ts";
-
-/**
- * Gmail input normalization. These run on owner-/LLM-supplied query params and
- * raw RFC5322-ish header strings: email extraction must pull the address out of
- * "Name <addr>" / mailto: forms and lowercase it, the mailbox splitter must not
- * break on commas inside quotes or angle brackets, and the label-id validator
- * must reject anything outside Gmail's id charset (so a crafted label id can't
- * smuggle characters into a Gmail API call).
- */
 
 describe("extractNormalizedEmailAddress", () => {
   it("pulls + lowercases the address from common forms", () => {

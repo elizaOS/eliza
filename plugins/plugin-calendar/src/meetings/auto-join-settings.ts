@@ -1,3 +1,9 @@
+/**
+ * Persists the per-agent policy for automatically joining meetings discovered
+ * from calendar events. The policy is stored in runtime cache, keeping the
+ * calendar package independent from LifeOps scheduler state while preserving
+ * the owner-visible off/ask/all behavior.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**

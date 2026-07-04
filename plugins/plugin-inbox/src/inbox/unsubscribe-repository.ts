@@ -1,3 +1,9 @@
+/**
+ * Implements the raw-SQL repository for email-unsubscribe history in
+ * `app_inbox.life_email_unsubscribes`. It mirrors the inbox repository pattern:
+ * thin runtime-DB access, explicit value encoding, and no dependency on
+ * `@elizaos/plugin-personal-assistant`.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
@@ -17,15 +23,6 @@ import type {
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.ts";
 
-/**
- * Raw-SQL repository for the email-unsubscribe history.
- *
- * Reads/writes `app_inbox.life_email_unsubscribes`, the table PA still
- * registers + migrates (no data migration — the table name is preserved). Same
- * pattern as {@link InboxRepository}: a thin raw-SQL wrapper over the runtime DB
- * handle so this plugin carries no `@elizaos/plugin-personal-assistant`
- * dependency.
- */
 function parseEmailUnsubscribe(
   row: Record<string, unknown>,
 ): EmailUnsubscribeRecord {

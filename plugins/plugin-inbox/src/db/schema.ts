@@ -1,19 +1,11 @@
+/**
+ * Defines the plugin-inbox Drizzle schema for triage entries, examples, and
+ * email-unsubscribe history. The table and column names mirror their original
+ * `app_lifeops` forms so InboxMigrationService can copy existing data into the
+ * plugin-owned `app_inbox` namespace without destructive rewrites.
+ */
 import { boolean, integer, pgSchema, real, text } from "drizzle-orm/pg-core";
 
-/**
- * Drizzle schema for plugin-inbox.
- *
- * The inbox-triage tables (`life_inbox_triage_entries`,
- * `life_inbox_triage_examples`, `life_email_unsubscribes`) were carved out of
- * `@elizaos/plugin-personal-assistant`'s `app_lifeops` schema into `app_inbox`,
- * owned by this plugin. Table + column names (and column order) are preserved
- * verbatim so the non-destructive `InboxMigrationService` can copy existing
- * `app_lifeops` rows across on first boot. The runtime registers this schema
- * through `@elizaos/plugin-sql`.
- *
- * Gmail sync/projection tables (`life_gmail_*`, `life_inbox_messages`) are NOT
- * part of the inbox-triage domain — they stay owned by PA in `app_lifeops`.
- */
 export const inboxSchema = pgSchema("app_inbox");
 
 export const lifeInboxTriageEntries = inboxSchema.table(

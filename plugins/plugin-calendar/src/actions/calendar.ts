@@ -1,3 +1,9 @@
+/**
+ * Registers the scaffolded owner-facing CALENDAR umbrella action. The moved
+ * calendar handler lives in `calendar-handler.ts`; this action preserves the
+ * planner-facing sub-op vocabulary while each op still reports a scaffold
+ * failure until routed through the full calendar runner.
+ */
 import type {
   Action,
   ActionResult,
@@ -6,14 +12,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-
-/**
- * Scaffold stub for the owner-facing `CALENDAR` umbrella action. Registers the
- * action contract and its sub-op vocabulary (read feed, create/update/delete
- * events, find slots, travel buffers, conflict-on-create); every sub-op returns
- * a `scaffold_stub` failure. The lower-level `createCalendarActionRunner`
- * (`./calendar-handler.ts`) is the runner `plugin-lifeops` drives today.
- */
 
 const CALENDAR_OPS = [
   "read_feed",

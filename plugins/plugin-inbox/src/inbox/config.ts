@@ -1,10 +1,11 @@
+/**
+ * Loads inbox triage defaults plus optional owner/agent overrides from the
+ * agent config. Nested settings are deep-merged so partial auto-reply or rule
+ * overrides do not erase the plugin's default safety thresholds.
+ */
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { InboxTriageConfig } from "./types.js";
 
-/**
- * Load inbox triage configuration from the agent config file.
- * Falls back to sensible defaults when not configured.
- */
 export function loadInboxTriageConfig(): InboxTriageConfig {
   try {
     const cfg = loadElizaConfig();
@@ -15,7 +16,7 @@ export function loadInboxTriageConfig(): InboxTriageConfig {
       return deepMergeConfig(DEFAULT_CONFIG, raw);
     }
   } catch {
-    // Config loading failed; use defaults
+    // Startup can run before a config file exists; defaults keep triage inert.
   }
   return { ...DEFAULT_CONFIG };
 }

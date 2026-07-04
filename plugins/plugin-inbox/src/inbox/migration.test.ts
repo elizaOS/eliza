@@ -1,3 +1,9 @@
+/**
+ * Covers the non-destructive `app_lifeops` to `app_inbox` table-copy migration
+ * through an injected in-memory SQL executor. The suite guards source-missing
+ * and target-non-empty skips, snooze-column repair, and the invariant that the
+ * source schema is never dropped or altered.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MIGRATED_INBOX_TABLES,
@@ -5,13 +11,6 @@ import {
   migrateInboxTables,
   type SqlExecutor,
 } from "./migration.ts";
-
-/**
- * Covers the non-destructive `app_lifeops` -> `app_inbox` triage-table copy
- * against an injected in-memory `SqlExecutor` (no real DB): skip when the source
- * is missing or the target is non-empty, never drop the source, and map old rows
- * with `NULL AS snoozed_until`.
- */
 
 /** A scripted executor: each statement is matched by substring → response. */
 function fakeExec(
