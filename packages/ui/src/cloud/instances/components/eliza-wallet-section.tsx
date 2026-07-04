@@ -136,6 +136,10 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
           r.ok ? r.json() : Promise.reject(r.statusText),
         ),
         fetch(`${base}/steward-status`)
+          // error-policy:J4 steward status is an optional wallet sub-panel; a
+          // failed/absent status degrades to null (the "no steward" render). The
+          // required address/balance fetches above reject and surface via their
+          // allSettled rejection handling below.
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
       ]);

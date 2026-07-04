@@ -790,6 +790,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const loadBrowserWalletState = useCallback(async () => {
     try {
+      // error-policy:J4 each sub-load degrades independently so the wallet panel
+      // renders partial data: absent steward status → "not connected", absent
+      // wallet config → no config, unreadable approvals → 0. A hard failure is
+      // still caught below and rendered as a visible steward error state.
       const stewardStatus = await getStewardStatusRef
         .current()
         .catch(() => null);

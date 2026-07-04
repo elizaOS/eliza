@@ -74,6 +74,8 @@ export async function discoverGatewayEndpoints(args?: {
     logger.warn({ error }, "[gateway-discovery] Discovery failed");
     return [];
   } finally {
+    // error-policy:J6 teardown — stop the mDNS browser started above; a failed
+    // stop has no recovery and must not mask the discovery result/throw.
     void plugin.stopDiscovery?.().catch(() => {});
   }
 }

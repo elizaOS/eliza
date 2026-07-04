@@ -406,6 +406,9 @@ export async function refreshCloudStewardSession(opts?: {
     credentials: "include",
   });
   if (!response.ok) return null;
+  // error-policy:J3 the refresh endpoint may return 200 with an empty body
+  // (rotation without a new access token); a non-JSON body parses to null and
+  // the caller treats "no token issued" as a valid outcome.
   return (await response.json().catch(() => null)) as {
     token?: string;
     expiresAt?: number;
@@ -3020,10 +3023,16 @@ export async function waitForCloudAgentRunning(
     "starting",
     "Starting your agent — a cold boot can take a few minutes...",
   );
+  // error-policy:J5 the resume is a wake kick; its outcome is observed by the
+  // poll loop below, which is the authority on readiness (and throws on a
+  // failed/timed-out boot). A failed kick simply means the loop waits.
   await client.resumeCloudCompatAgent(agentId).catch(() => null);
 
   let lastStatus = "unknown";
   for (;;) {
+    // error-policy:J4 a transient status-fetch failure inside the bounded wake
+    // poll degrades to "not ready yet" (null) and retries next tick; a
+    // persistent failure surfaces as the loop's timeout throw below.
     const detail = await client.getCloudCompatAgent(agentId).catch(() => null);
     const agent = detail?.success ? detail.data : null;
     if (agent) {
@@ -3186,6 +3195,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     throw new Error(created.data.message || "Failed to create cloud agent");
   }
   const agentId = created.data.agentId;
+  // error-policy:J4 a failed detail fetch for the freshly-created agent degrades
+  // to starting on the shared REST adapter base (see the comment below), which
+  // is the intended fast-start path — not an error.
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
   const detailAgent = detail?.success ? detail.data : null;
   // A freshly-created dedicated agent's subdomain is populated immediately, but

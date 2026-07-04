@@ -77,9 +77,10 @@ export function createIosStreamingAgentPlugin(
           onStreamError?.(error);
           throw error;
         });
-      // `requestStream` intentionally returns before the native call settles.
-      // Mark the promise handled immediately; the shared stream helper still
-      // observes the original rejection through the returned promise.
+      // error-policy:J5 `requestStream` intentionally returns before the native
+      // call settles. Mark this promise handled to avoid an unhandled-rejection;
+      // the rejection IS observed by the caller through the returned
+      // `completion` (and surfaced via onStreamError above).
       void completion.catch(() => {});
       return Promise.resolve({ streamId, completion });
     },

@@ -41,6 +41,9 @@ async function readSessionError(response: Response): Promise<{
   error?: string;
   code?: string;
 }> {
+  // error-policy:J3 best-effort parse of an error response body to extract a
+  // structured {error,code}; a non-JSON error body yields {} and the caller
+  // uses a generic message. This never fabricates success — it reads a failure.
   return ((await response.json().catch(() => null)) ?? {}) as {
     error?: string;
     code?: string;

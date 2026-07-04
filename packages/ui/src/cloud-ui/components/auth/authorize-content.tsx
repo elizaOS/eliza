@@ -313,6 +313,9 @@ function AuthorizeFlow({
         throw new Error(message);
       }
 
+      // error-policy:J3 parse of the authorize response body; a malformed/empty
+      // body yields null and the missing-code check below throws a visible
+      // error rather than proceeding with a fabricated code.
       const data = (await res.json().catch(() => null)) as {
         code?: unknown;
       } | null;

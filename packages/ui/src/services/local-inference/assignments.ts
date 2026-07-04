@@ -62,6 +62,10 @@ export async function readAssignments(): Promise<ModelAssignments> {
     if (parsed?.version !== 1 || !parsed.assignments) return {};
     return sanitizeAssignments(parsed.assignments);
   } catch {
+    // error-policy:J3 the assignments file is absent on first run (ENOENT) and
+    // may be truncated by a crash mid-write; either way "no model assignments"
+    // ({}) is a valid start-clean state, not a fabricated success — callers
+    // fall back to auto-selection.
     return {};
   }
 }

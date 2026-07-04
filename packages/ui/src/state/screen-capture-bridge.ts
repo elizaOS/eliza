@@ -122,6 +122,9 @@ async function serveRequest(request: CaptureRequest): Promise<void> {
     // (as null) instead of waiting out its timeout, and so this poller keeps
     // running for the next request.
     const reason = error instanceof Error ? error.message : String(error);
+    // error-policy:J6 this IS the error-reporting path (posting the capture
+    // failure back so the agent's request settles). If even the error post
+    // fails there is nothing further to do — swallow the terminal failure.
     await postScreenFrame({
       requestId: request.requestId,
       error: reason,

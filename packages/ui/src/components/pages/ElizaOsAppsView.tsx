@@ -62,6 +62,9 @@ export async function ensureNativeReadGranted(
   request: (() => Promise<string>) | null,
 ): Promise<boolean> {
   if (!check) return true;
+  // error-policy:J4 a failed native permission check/request reads as "not
+  // granted" (fail-closed) — the function returns false and the caller renders
+  // the permission-required state rather than proceeding as if granted.
   if ((await check().catch(() => null)) === "granted") return true;
   if (request && (await request().catch(() => null)) === "granted") return true;
   return false;

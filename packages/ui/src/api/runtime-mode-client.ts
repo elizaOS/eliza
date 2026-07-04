@@ -55,6 +55,8 @@ export async function fetchRuntimeModeSnapshot(): Promise<RuntimeModeSnapshot | 
     return null;
   }
   if (!res.ok) return null;
+  // error-policy:J3 advisory snapshot; a non-JSON body parses to null and the
+  // caller falls back to local heuristics (never load-bearing for security).
   const body = (await res.json().catch(() => null)) as {
     mode?: unknown;
     deploymentRuntime?: unknown;

@@ -359,6 +359,9 @@ export async function androidNativeAgentTransportForUrl(
   if (!shouldAttemptNativeAgentTransport(url)) return null;
 
   nativeTransportPromise ??= resolveNativeAgentPlugin()
+    // error-policy:J4 a missing/failed native agent plugin degrades to null so
+    // the caller falls back to the IPC/HTTP transport below; the memoized
+    // promise is reset on a null result so a later boot can retry.
     .then((agent) =>
       agent?.request ? createAndroidNativeAgentTransport(agent) : null,
     )

@@ -207,6 +207,9 @@ export function ApiExplorerSurface() {
           setLivePricing(payload.pricing);
         }
       })
+      // error-policy:J4 live pricing is an optional overlay on the static
+      // OpenAPI spec; when the summary endpoint is unreachable the explorer
+      // renders with the spec's baked-in pricing. Not a required load.
       .catch(() => {});
 
     return () => {

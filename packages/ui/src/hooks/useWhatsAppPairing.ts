@@ -54,7 +54,9 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
         }
       })
       .catch(() => {
-        // Non-fatal — just means we can't check initial status.
+        // error-policy:J4 initial-status probe is advisory; an unreachable
+        // endpoint leaves status at "idle" (the designed default). The live
+        // "whatsapp-status" WS stream below carries the real state once paired.
       });
   }, [accountId]);
 
@@ -124,7 +126,18 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
   }, [accountId]);
 
   const stopPairing = useCallback(async () => {
-    await client.stopWhatsAppPairing(accountId).catch(() => {});
+    try {
+      await client.stopWhatsAppPairing(accountId);
+    } catch (err) {
+      // A failed stop leaves the connector still pairing server-side; resetting
+      // to "idle" would tell the user it stopped when it did not. Surface it.
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: err instanceof Error ? err.message : "Failed to stop pairing",
+      }));
+      return;
+    }
     setState({
       status: "idle",
       qrDataUrl: null,
@@ -134,7 +147,18 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
   }, [accountId]);
 
   const disconnect = useCallback(async () => {
-    await client.disconnectWhatsApp(accountId).catch(() => {});
+    try {
+      await client.disconnectWhatsApp(accountId);
+    } catch (err) {
+      // A swallowed failed disconnect renders "idle" over a still-connected
+      // account — state corruption the user cannot see. Surface the failure.
+      setState((prev) => ({
+        ...prev,
+        status: "error",
+        error: err instanceof Error ? err.message : "Failed to disconnect",
+      }));
+      return;
+    }
     setState({
       status: "idle",
       qrDataUrl: null,

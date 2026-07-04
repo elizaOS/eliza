@@ -7,6 +7,7 @@
  * than coupling this hook to useLifecycleState directly.
  */
 
+import { logger } from "@elizaos/logger";
 import { useCallback, useState } from "react";
 import type { AgentStatus } from "../api";
 import { type CharacterData, client } from "../api";
@@ -67,7 +68,17 @@ export function useCharacterState({
     const normalized = normalizeAvatarIndex(v);
     setSelectedVrmIndexRaw(normalized);
     saveAvatarIndex(normalized);
-    client.saveStreamSettings({ avatarIndex: normalized }).catch(() => {});
+    // error-policy:J5 localStorage (saveAvatarIndex, just above) is the source
+    // of truth for the avatar; this is a best-effort server mirror so headless
+    // stream capture matches. A failed mirror must not block the local change,
+    // but it is logged rather than swallowed so a diverging capture is
+    // diagnosable.
+    client.saveStreamSettings({ avatarIndex: normalized }).catch((err) => {
+      logger.warn(
+        { err, avatarIndex: normalized },
+        "[useCharacterState] failed to mirror avatarIndex to stream settings",
+      );
+    });
   }, []);
 
   // ── Callbacks ───────────────────────────────────────────────────────
