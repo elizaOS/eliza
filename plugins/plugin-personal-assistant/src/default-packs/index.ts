@@ -90,6 +90,13 @@ import {
   type PromptLintRuleKind,
 } from "./lint.js";
 import {
+  assembleMorningBrief,
+  buildMorningBriefPromptFromReport,
+  MORNING_BRIEF_PACK_KEY,
+  MORNING_BRIEF_RECORD_IDS,
+  morningBriefPack,
+} from "./morning-brief.js";
+import {
   ADHD_BODY_DOUBLE_PACK_KEY,
   ADHD_BODY_DOUBLE_RECORD_IDS,
   adhdBodyDoublePack,
@@ -102,13 +109,6 @@ import {
   PERSONA_PACKS,
   SOFT_LOW_ENERGY_ESCALATION_STEPS,
 } from "./persona-packs.js";
-import {
-  assembleMorningBrief,
-  buildMorningBriefPromptFromReport,
-  MORNING_BRIEF_PACK_KEY,
-  MORNING_BRIEF_RECORD_IDS,
-  morningBriefPack,
-} from "./morning-brief.js";
 import {
   deriveQuietObservations,
   QUIET_THRESHOLD_DAYS,
@@ -234,11 +234,11 @@ export {
   INBOX_TRIAGE_STARTER_PACK_KEY,
   inboxTriageStarterPack,
   isInboxTriageEligible,
+  LOW_ENERGY_SUPPORT_PACK_KEY,
+  LOW_ENERGY_SUPPORT_RECORD_IDS,
   lintPack,
   lintPacks,
   lintPromptText,
-  LOW_ENERGY_SUPPORT_PACK_KEY,
-  LOW_ENERGY_SUPPORT_RECORD_IDS,
   lowEnergySupportPack,
   MORNING_BRIEF_PACK_KEY,
   MORNING_BRIEF_RECORD_IDS,

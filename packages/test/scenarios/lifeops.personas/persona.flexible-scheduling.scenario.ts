@@ -46,7 +46,11 @@ const DELIVERY_CHANNEL_KIND = "scenario_persona_delivery";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function futureDateAtUtcHour(hour: number, minute: number, daysAhead: number): Date {
+function futureDateAtUtcHour(
+  hour: number,
+  minute: number,
+  daysAhead: number,
+): Date {
   const base = new Date(Date.now() + daysAhead * DAY_MS);
   base.setUTCHours(hour, minute, 0, 0);
   return base;
@@ -189,7 +193,10 @@ function readFires(body: unknown): FireEntry[] | string {
   return fires;
 }
 
-function firesForTask(body: unknown, taskId: string | null): FireEntry[] | string {
+function firesForTask(
+  body: unknown,
+  taskId: string | null,
+): FireEntry[] | string {
   const fires = readFires(body);
   if (typeof fires === "string") return fires;
   if (typeof taskId !== "string" || taskId.length === 0) {
@@ -304,7 +311,10 @@ export default scenario({
       kind: "tick",
       name: "tick INSIDE the morning window → during_window fires",
       worker: "lifeops_scheduler",
-      options: { now: INSIDE_MORNING_TICK.toISOString(), scheduledTaskLimit: 50 },
+      options: {
+        now: INSIDE_MORNING_TICK.toISOString(),
+        scheduledTaskLimit: 50,
+      },
       assertResponse: firedFor("window"),
     },
     // -- relative_to_anchor fires relative to the wake anchor ---------------
@@ -341,7 +351,10 @@ export default scenario({
       name: "tick after the wake anchor + offset → anchor reminder fires",
       worker: "lifeops_scheduler",
       // 08:00 is 30m+ after the fallback morning.start anchor (07:00).
-      options: { now: INSIDE_MORNING_TICK.toISOString(), scheduledTaskLimit: 50 },
+      options: {
+        now: INSIDE_MORNING_TICK.toISOString(),
+        scheduledTaskLimit: 50,
+      },
       assertResponse: firedFor("anchor"),
     },
     // -- quiet_hours defers a low-priority reminder -------------------------
@@ -356,7 +369,9 @@ export default scenario({
         trigger: { kind: "interval", everyMinutes: 60 },
         shouldFire: {
           compose: "all",
-          gates: [{ kind: "quiet_hours", params: { highPriorityBypass: true } }],
+          gates: [
+            { kind: "quiet_hours", params: { highPriorityBypass: true } },
+          ],
         },
         priority: "low",
         output: {

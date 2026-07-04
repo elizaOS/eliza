@@ -250,8 +250,11 @@ describe("proactive-worker behavioral tripwire", () => {
 
   it("the tick INVOKES the rhythm learner, patching OwnerFacts with the derived window (B1 end-to-end)", async () => {
     const { runtime } = createTripwireRuntime();
-    const { readProfileFromMetadata, buildActivityProfile, refreshCurrentState } =
-      await import("./service.js");
+    const {
+      readProfileFromMetadata,
+      buildActivityProfile,
+      refreshCurrentState,
+    } = await import("./service.js");
     // Give the profile a real observed rhythm so the learner has something to
     // fold into owner facts: 07:00 wake / 23:00 sleep.
     const rhythmProfile = {
@@ -267,7 +270,9 @@ describe("proactive-worker behavioral tripwire", () => {
 
     // Read the REAL OwnerFactStore back: the learner must have written the
     // derived morning/evening windows with agent_inferred provenance.
-    const { resolveOwnerFactStore } = await import("../lifeops/owner/fact-store.js");
+    const { resolveOwnerFactStore } = await import(
+      "../lifeops/owner/fact-store.js"
+    );
     const facts = await resolveOwnerFactStore(runtime).read();
     expect(facts.morningWindow?.value).toEqual({
       startLocal: "07:00",

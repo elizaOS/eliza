@@ -182,7 +182,10 @@ describe("no_recent_user_message_in reader", () => {
     );
     const gate = reg.get("no_recent_user_message_in");
     const task = taskWithGate("no_recent_user_message_in", { minutes: 30 });
-    const decision = await gate?.evaluate(task, makeContext(task, { nowIso: NOW }));
+    const decision = await gate?.evaluate(
+      task,
+      makeContext(task, { nowIso: NOW }),
+    );
     expect(decision).toEqual({ kind: "allow" });
   });
 
@@ -194,7 +197,10 @@ describe("no_recent_user_message_in reader", () => {
     );
     const gate = reg.get("no_recent_user_message_in");
     const task = taskWithGate("no_recent_user_message_in", { minutes: 30 });
-    const decision = await gate?.evaluate(task, makeContext(task, { nowIso: NOW }));
+    const decision = await gate?.evaluate(
+      task,
+      makeContext(task, { nowIso: NOW }),
+    );
     expect(decision?.kind).toBe("defer");
     if (decision?.kind === "defer" && "offsetMinutes" in decision.until) {
       // last seen 10m ago, window 30m → quiet again in ~20m.

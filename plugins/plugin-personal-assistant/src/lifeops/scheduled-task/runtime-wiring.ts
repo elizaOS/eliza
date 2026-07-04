@@ -46,11 +46,6 @@ import {
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "@elizaos/plugin-scheduling";
-import {
-  behaviouralBaselineFromProfile,
-  readActivityProfile,
-  registerActivityProfileGates,
-} from "./activity-gates.js";
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
 import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
@@ -65,6 +60,11 @@ import { LifeOpsRepository } from "../repository.js";
 import { preferEffectiveMergedState } from "../schedule-state.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
 import { getActivitySignalBus } from "../signals/bus.js";
+import {
+  behaviouralBaselineFromProfile,
+  readActivityProfile,
+  registerActivityProfileGates,
+} from "./activity-gates.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
 interface RepositoryBackedStores {
@@ -208,7 +208,8 @@ function defaultOwnerFactsProvider(
         await readActivityProfile(runtime),
       );
       const sampleCount = Math.max(
-        typeof healthSampleCount === "number" && Number.isFinite(healthSampleCount)
+        typeof healthSampleCount === "number" &&
+          Number.isFinite(healthSampleCount)
           ? healthSampleCount
           : 0,
         behavioural?.sampleCount ?? 0,
@@ -591,7 +592,8 @@ function buildLifeOpsRunnerDeps(
   // runner deps are built during plugin init, before callers get a chance to
   // register (e.g. registerLifeOpsScheduledTaskSubjectStore in tests).
   const subjectStore: SubjectStoreView =
-    opts.subjectStore ?? makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
+    opts.subjectStore ??
+    makeRuntimeSubjectStoreView(opts.runtime, opts.agentId);
 
   return {
     store: stores.store,

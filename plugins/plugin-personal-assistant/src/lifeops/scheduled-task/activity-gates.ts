@@ -100,7 +100,9 @@ function makeCircadianStateInGate(
       _task: ScheduledTask,
       context: GateEvaluationContext,
     ): Promise<GateDecision> {
-      const states = parseStates(gateParams(context, "circadian_state_in").states);
+      const states = parseStates(
+        gateParams(context, "circadian_state_in").states,
+      );
       const profile = await readActivityProfile(runtime);
       const observed: CircadianState =
         profile?.isCurrentlySleeping === true ? "asleep" : "awake";

@@ -20,7 +20,10 @@
  * owner facts, which the existing structural trigger/anchor primitives read.
  */
 
-import type { OwnerFactWindow, OwnerFacts } from "../lifeops/owner/fact-store.js";
+import type {
+  OwnerFacts,
+  OwnerFactWindow,
+} from "../lifeops/owner/fact-store.js";
 
 /**
  * Windows derived from observed wake/sleep hours. Either field may be absent
@@ -151,7 +154,8 @@ export function resolveWindowPatch(
     const existing = current.morningWindow;
     const userOwned = isUserOwned(existing?.provenance.source);
     const alreadyMatches =
-      existing !== undefined && windowsEqual(existing.value, learned.morningWindow);
+      existing !== undefined &&
+      windowsEqual(existing.value, learned.morningWindow);
     if (!userOwned && !alreadyMatches) {
       patch.morningWindow = learned.morningWindow;
     }
@@ -161,7 +165,8 @@ export function resolveWindowPatch(
     const existing = current.eveningWindow;
     const userOwned = isUserOwned(existing?.provenance.source);
     const alreadyMatches =
-      existing !== undefined && windowsEqual(existing.value, learned.eveningWindow);
+      existing !== undefined &&
+      windowsEqual(existing.value, learned.eveningWindow);
     if (!userOwned && !alreadyMatches) {
       patch.eveningWindow = learned.eveningWindow;
     }

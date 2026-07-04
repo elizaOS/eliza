@@ -77,10 +77,17 @@ describe("deriveWindowsFromRhythm (pure mapping)", () => {
   });
 
   it("omits a window when the corresponding rhythm hour is unknown", () => {
-    expect(deriveWindowsFromRhythm({ typicalWakeHour: null, typicalSleepHour: 23 })).toEqual({
+    expect(
+      deriveWindowsFromRhythm({ typicalWakeHour: null, typicalSleepHour: 23 }),
+    ).toEqual({
       eveningWindow: { startLocal: "21:00", endLocal: "23:00" },
     });
-    expect(deriveWindowsFromRhythm({ typicalWakeHour: null, typicalSleepHour: null })).toEqual({});
+    expect(
+      deriveWindowsFromRhythm({
+        typicalWakeHour: null,
+        typicalSleepHour: null,
+      }),
+    ).toEqual({});
   });
 
   it("SKIPS an inverted morning window instead of emitting one the reader cannot satisfy", () => {
@@ -142,11 +149,17 @@ describe("resolveWindowPatch (override + idempotency policy)", () => {
       {
         morningWindow: {
           value: { startLocal: "05:00", endLocal: "08:00" },
-          provenance: { source: "first_run", recordedAt: "2026-01-01T00:00:00.000Z" },
+          provenance: {
+            source: "first_run",
+            recordedAt: "2026-01-01T00:00:00.000Z",
+          },
         },
         eveningWindow: {
           value: { startLocal: "19:00", endLocal: "21:00" },
-          provenance: { source: "profile_save", recordedAt: "2026-01-01T00:00:00.000Z" },
+          provenance: {
+            source: "profile_save",
+            recordedAt: "2026-01-01T00:00:00.000Z",
+          },
         },
       },
       {
@@ -162,7 +175,10 @@ describe("resolveWindowPatch (override + idempotency policy)", () => {
       {
         morningWindow: {
           value: { startLocal: "06:00", endLocal: "09:00" },
-          provenance: { source: "agent_inferred", recordedAt: "2026-01-01T00:00:00.000Z" },
+          provenance: {
+            source: "agent_inferred",
+            recordedAt: "2026-01-01T00:00:00.000Z",
+          },
         },
       },
       { morningWindow: { startLocal: "07:00", endLocal: "10:00" } },
@@ -177,7 +193,10 @@ describe("resolveWindowPatch (override + idempotency policy)", () => {
       {
         morningWindow: {
           value: { startLocal: "07:00", endLocal: "10:00" },
-          provenance: { source: "agent_inferred", recordedAt: "2026-01-01T00:00:00.000Z" },
+          provenance: {
+            source: "agent_inferred",
+            recordedAt: "2026-01-01T00:00:00.000Z",
+          },
         },
       },
       { morningWindow: { startLocal: "07:00", endLocal: "10:00" } },
@@ -215,7 +234,11 @@ describe("learnRhythmWindows (writer, end-to-end via OwnerFactStore)", () => {
 
   it("is idempotent — a second run over the same rhythm writes nothing", async () => {
     const runtime = makeRuntimeWithStore();
-    await learnRhythmWindows(runtime, { typicalWakeHour: 7, typicalSleepHour: 23 }, NOW);
+    await learnRhythmWindows(
+      runtime,
+      { typicalWakeHour: 7, typicalSleepHour: 23 },
+      NOW,
+    );
     const second = await learnRhythmWindows(
       runtime,
       { typicalWakeHour: 7, typicalSleepHour: 23 },

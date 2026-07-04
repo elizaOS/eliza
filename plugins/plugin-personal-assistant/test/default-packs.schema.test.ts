@@ -27,7 +27,6 @@ import {
   EXECUTIVE_ASSISTANT_RECORD_IDS,
   executiveAssistantPack,
   FOLLOWUP_STARTER_PACK_KEY,
-  followupStarterPack,
   getAllDefaultPacks,
   getDefaultEnabledPacks,
   getDefaultPack,
@@ -42,11 +41,9 @@ import {
   isInboxTriageEligible,
   LOW_ENERGY_SUPPORT_PACK_KEY,
   MORNING_BRIEF_PACK_KEY,
-  morningBriefPack,
   OBJECT_PERMANENCE_WATCHER_PACK_KEY,
   QUIET_THRESHOLD_DAYS,
   QUIET_USER_WATCHER_PACK_KEY,
-  quietUserWatcherPack,
 } from "../src/default-packs/index.js";
 
 const VALID_KINDS: ReadonlySet<ScheduledTaskKind> = new Set<ScheduledTaskKind>([

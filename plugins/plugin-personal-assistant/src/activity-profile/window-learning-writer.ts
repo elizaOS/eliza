@@ -13,8 +13,8 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
 import type { OwnerFactProvenance } from "../lifeops/owner/fact-store.js";
+import { resolveOwnerFactStore } from "../lifeops/owner/fact-store.js";
 import {
   deriveWindowsFromRhythm,
   type RhythmSample,
