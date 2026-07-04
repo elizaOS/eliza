@@ -436,6 +436,7 @@ test.describe
         await normalizeToHome(page, adb, serial);
 
         let modelPage: LauncherPage = "home";
+        let reportedPageErrors = 0;
         for (let i = 0; i < actions.length; i += 1) {
           const action = actions[i];
           await performAction(page, adb, serial, action);
@@ -476,8 +477,13 @@ test.describe
           if (state.activeElementInInert) {
             problems.push("focus escaped into an [inert] offscreen half");
           }
-          if (pageErrors.length > 0) {
-            problems.push(`page error(s): ${pageErrors.join(" | ")}`);
+          // A page error at any point fails the run, but record each new one
+          // once rather than re-reporting the accumulated list every action.
+          if (pageErrors.length > reportedPageErrors) {
+            problems.push(
+              `page error(s): ${pageErrors.slice(reportedPageErrors).join(" | ")}`,
+            );
+            reportedPageErrors = pageErrors.length;
           }
 
           if (problems.length > 0) {
@@ -485,6 +491,16 @@ test.describe
           }
 
           await rotateSegmentIfDue();
+        }
+
+        if (pageErrors.length > reportedPageErrors) {
+          failures.push({
+            index: actions.length,
+            reason: `page error(s) after final action: ${pageErrors
+              .slice(reportedPageErrors)
+              .join(" | ")}`,
+            state: await readInvariants(page),
+          });
         }
 
         writeJsonArtifact("android-launcher-loop-summary.json", {
