@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from scripts.manifest.eliza1_manifest import (
     build_manifest,
     parse_ctx_string,
     parse_text_ctx_from_filename,
+    read_gguf_architecture,
     text_context_for_manifest,
     validate_manifest,
     write_manifest,
@@ -31,6 +33,29 @@ from scripts.manifest.eliza1_manifest import (
 from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 
 SHA = "0" * 64
+
+
+def _gguf_string(value: str) -> bytes:
+    data = value.encode("utf-8")
+    return struct.pack("<Q", len(data)) + data
+
+
+def _write_fake_gguf(path: Path, metadata: dict[str, tuple[int, object]]) -> None:
+    payload = bytearray()
+    payload += b"GGUF"
+    payload += struct.pack("<I", 3)
+    payload += struct.pack("<Q", 0)
+    payload += struct.pack("<Q", len(metadata))
+    for key, (value_type, value) in metadata.items():
+        payload += _gguf_string(key)
+        payload += struct.pack("<I", value_type)
+        if value_type == 8:
+            payload += _gguf_string(str(value))
+        elif value_type == 4:
+            payload += struct.pack("<I", int(value))
+        else:
+            raise AssertionError(f"unsupported fake GGUF value type {value_type}")
+    path.write_bytes(bytes(payload))
 
 
 def passing_backends() -> dict[str, KernelVerification]:
@@ -137,6 +162,20 @@ def test_text_context_prefers_gguf_metadata_over_filename(
     assert text_context_for_manifest(text_path) == 262144
 
 
+def test_read_gguf_architecture_reads_general_architecture(tmp_path: Path):
+    text_path = tmp_path / "eliza-1-2b-128k.gguf"
+    _write_fake_gguf(
+        text_path,
+        {
+            "general.architecture": (8, "gemma4"),
+            "gemma4.context_length": (4, 131072),
+        },
+    )
+
+    assert read_gguf_architecture(text_path) == "gemma4"
+    assert text_context_for_manifest(text_path) == 131072
+
+
 def test_eliza1_tier_ids_are_canonical():
     assert ELIZA_1_TIERS == (
         "2b",
@@ -214,6 +253,40 @@ def test_build_manifest_happy_path():
     }
     # Validates against itself.
     assert validate_manifest(manifest) == ()
+
+
+def test_build_manifest_blocks_non_gemma_text_architecture():
+    kwargs = base_kwargs("9b")
+    kwargs["files"]["text"] = [
+        FileEntry(
+            path="text/eliza-1-9b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="qwen35",
+        )
+    ]
+
+    with pytest.raises(Eliza1ManifestError) as excinfo:
+        build_manifest(**kwargs)
+
+    assert "architecture: must be gemma*" in str(excinfo.value)
+
+
+def test_build_manifest_uses_gemma_text_architecture_without_emitting_it():
+    kwargs = base_kwargs("2b")
+    kwargs["files"]["text"] = [
+        FileEntry(
+            path="text/eliza-1-2b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="gemma4",
+        )
+    ]
+
+    manifest = build_manifest(**kwargs)
+
+    assert manifest["tokenizer"]["family"] == "gemma4"
+    assert "architecture" not in manifest["files"]["text"][0]
 
 
 def test_legacy_onnx_vad_manifest_remains_compatible():

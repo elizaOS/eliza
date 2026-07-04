@@ -421,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
             "path": text_rel,
             "sha256": text_sha,
             "ctx": M.text_context_for_manifest(text_dest) or TEXT_CTX_BY_TIER[tier],
+            "architecture": M.text_architecture_for_manifest(text_dest),
         }
     ]
 

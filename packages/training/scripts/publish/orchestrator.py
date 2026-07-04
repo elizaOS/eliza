@@ -88,6 +88,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     build_manifest,
     canonical_source_repo_error,
     required_voice_artifacts_for_tier,
+    text_architecture_for_manifest,
     text_context_for_manifest,
 )
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
@@ -1987,6 +1988,9 @@ def _collect_files_for_manifest(
                 path=rel(p),
                 sha256=_sha256_file(p),
                 ctx=text_context_for_manifest(p) if kind_src == "text" else None,
+                architecture=(
+                    text_architecture_for_manifest(p) if kind_src == "text" else None
+                ),
             )
             files[kind_dst].append(entry)
 

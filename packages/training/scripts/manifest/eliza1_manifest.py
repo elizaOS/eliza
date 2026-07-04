@@ -387,6 +387,36 @@ def _read_gguf_int_value(fh: BinaryIO, value_type: int) -> int | None:
     return None
 
 
+def _read_gguf_string_value(fh: BinaryIO, value_type: int) -> str | None:
+    if value_type == 8:
+        return _read_gguf_string(fh)
+    _skip_gguf_value(fh, value_type)
+    return None
+
+
+def read_gguf_architecture(path: Path) -> str | None:
+    """Return GGUF ``general.architecture`` when the header is readable."""
+
+    try:
+        with path.open("rb") as fh:
+            if _read_exact(fh, 4) != b"GGUF":
+                return None
+            _version = _read_u32(fh)
+            _tensor_count = _read_u64(fh)
+            metadata_count = _read_u64(fh)
+            if metadata_count > 1_000_000:
+                return None
+            for _ in range(metadata_count):
+                key = _read_gguf_string(fh)
+                value_type = _read_u32(fh)
+                if key == "general.architecture":
+                    return _read_gguf_string_value(fh, value_type)
+                _skip_gguf_value(fh, value_type)
+    except Exception:
+        return None
+    return None
+
+
 def read_gguf_context_length(path: Path) -> int | None:
     """Return the declared GGUF training/native context length, if readable.
 
@@ -441,6 +471,12 @@ def text_context_for_manifest(path: Path) -> int | None:
     return read_gguf_context_length(path) or parse_text_ctx_from_filename(path)
 
 
+def text_architecture_for_manifest(path: Path) -> str | None:
+    """Byte-level text GGUF architecture for publish-gate manifest checks."""
+
+    return read_gguf_architecture(path)
+
+
 class Eliza1ManifestError(ValueError):
     """Raised when manifest input violates schema or §3/§6 contract.
 
@@ -466,6 +502,7 @@ class FileEntry:
     path: str
     sha256: str
     ctx: int | None = None
+    architecture: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1489,6 +1526,30 @@ def _file_dict(entry: FileEntry) -> dict[str, Any]:
     return out
 
 
+def _tokenizer_family_from_text_files(
+    text_files: Sequence[FileEntry],
+    requested_family: str,
+) -> str:
+    architectures = [
+        (entry.path, entry.architecture)
+        for entry in text_files
+        if entry.architecture is not None
+    ]
+    if not architectures:
+        return requested_family
+
+    errors: list[str] = []
+    for path, architecture in architectures:
+        arch_norm = architecture.lower()
+        if not arch_norm.startswith("gemma"):
+            errors.append(
+                f"files.text[{path}].architecture: must be gemma*, got {architecture!r}"
+            )
+    if errors:
+        raise Eliza1ManifestError(errors)
+    return ELIZA_1_TOKENIZER_FAMILY
+
+
 def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
     out: dict[str, Any] = {
         "status": v.status,
@@ -1579,6 +1640,11 @@ def build_manifest(
 
     if tier not in ELIZA_1_TIERS:
         raise Eliza1ManifestError([f"tier: unknown tier {tier!r}"])
+
+    tokenizer_family = _tokenizer_family_from_text_files(
+        files.get("text", ()),
+        tokenizer_family,
+    )
 
     if tokenizer_family != ELIZA_1_TOKENIZER_FAMILY:
         raise Eliza1ManifestError(
