@@ -30,18 +30,25 @@ const HF_UPSTREAM_HOST = "https://huggingface.co";
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
- * `elizaos/eliza-1` (see `ELIZA_1_HF_REPO` in
- * `packages/shared/src/local-inference/catalog.ts`); scoping to the org prefix
- * keeps the cloud's `HF_TOKEN` from being used to download arbitrary — including
- * gated third-party — HuggingFace repos on the cloud's bandwidth/quota.
+ * `elizaos/eliza-1` (`ELIZA_1_HF_REPO` in `@elizaos/shared/local-inference`);
+ * scoping to the org prefix keeps the cloud's `HF_TOKEN` from being used to
+ * download arbitrary — including gated third-party — HuggingFace repos on the
+ * cloud's bandwidth/quota.
+ *
+ * This literal is deliberately not imported from the shared barrel (that barrel
+ * transitively pulls node-oriented helpers into this Cloudflare Worker route for
+ * a single constant). Instead it MUST stay in sync with the org segment of
+ * `ELIZA_1_HF_REPO`; `packages/cloud/api/__tests__/hf-proxy-route.test.ts`
+ * asserts the two agree so a future rename of the shared repo can't silently
+ * un-scope the allowlist. Exported for that test.
  */
-const ALLOWED_REPO_PREFIX = "elizaos/";
+export const ALLOWED_REPO_PREFIX = "elizaos/";
 
 /**
  * A HuggingFace resolve path is `<owner>/<repo>/resolve/<rev>/<file>`. Return the
  * `<owner>/<repo>` slug, or `null` if the path is not a well-formed resolve path.
  */
-function repoFromResolvePath(path: string): string | null {
+export function repoFromResolvePath(path: string): string | null {
   const resolveIdx = path.indexOf("/resolve/");
   if (resolveIdx <= 0) return null;
   const repo = path.slice(0, resolveIdx);

@@ -211,3 +211,24 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(usagePayload.userId).toBeDefined();
   });
 });
+
+describe("ALLOWED_REPO_PREFIX single-source-of-truth", () => {
+  test("matches the org segment of ELIZA_1_HF_REPO from @elizaos/shared", async () => {
+    // The route's allowlist prefix is a local literal (kept out of the worker
+    // bundle's import graph on purpose), so it MUST be pinned to the shared
+    // catalog constant — otherwise a rename of ELIZA_1_HF_REPO could silently
+    // un-scope the proxy allowlist. This test is that pin.
+    const { ALLOWED_REPO_PREFIX } = (await import(
+      "../v1/hf-proxy/[...path]/route"
+    )) as { ALLOWED_REPO_PREFIX: string };
+    const { ELIZA_1_HF_REPO } = (await import(
+      "@elizaos/shared/local-inference"
+    )) as { ELIZA_1_HF_REPO: string };
+
+    // ELIZA_1_HF_REPO is `<org>/<repo>` (e.g. "elizaos/eliza-1"); the allowlist
+    // is the `<org>/` prefix. The curated repo must fall inside the allowlist.
+    const org = ELIZA_1_HF_REPO.split("/")[0];
+    expect(ALLOWED_REPO_PREFIX).toBe(`${org}/`);
+    expect(ELIZA_1_HF_REPO.startsWith(ALLOWED_REPO_PREFIX)).toBe(true);
+  });
+});
