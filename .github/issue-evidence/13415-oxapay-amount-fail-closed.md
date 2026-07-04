@@ -29,8 +29,9 @@ After:
   accepting a `parseFloat` prefix. Every invoice is created with a positive
   amount (`createInvoice` requires it), so a non-positive inquiry amount is a
   malformed provider response, never a valid business state.
-- `nativePayAmount`: `Number.parseFloat(data.payAmount ?? "")`, non-finite →
-  `undefined` (field is optional on `OxaPayPaymentStatus.transactions[]`).
+- `nativePayAmount`: the same strict decimal parser is used for audit metadata;
+  malformed, blank, or partially numeric strings degrade to `undefined` (field
+  is optional on `OxaPayPaymentStatus.transactions[]`).
 
 ## Blast radius
 
@@ -46,10 +47,10 @@ provider returns a sane response.
 `bun test --isolate src/lib/services/oxapay.amount-fail-closed.test.ts`:
 
 ```
- 9 pass
+ 10 pass
  0 fail
  18 expect() calls
-Ran 9 tests across 1 file.
+Ran 10 tests across 1 file.
 ```
 
 Adjacent adapter suite unchanged and green:
@@ -61,9 +62,9 @@ Adjacent adapter suite unchanged and green:
 - `bun run audit:error-policy-ratchet`: `no new fallback-slop in touched files`.
 - `bun run --cwd packages/cloud/shared typecheck` (tsgo): no diagnostics in any
   `cloud/shared` file; the only errors are pre-existing out-of-package noise in
-  `packages/app-core` (`@elizaos/auth/*` module resolution) and the generated
-  `validation-keyword-data.js` artifact, all unrelated to this change and
-  identical on base.
+  `packages/app-core` (`@elizaos/auth/*` module resolution/strictness) plus
+  unrelated `src/lib/providers/video/fal-video-generation.ts` dependency and
+  strictness errors, all unrelated to this change and identical on base.
 
 ## N/A rows
 
