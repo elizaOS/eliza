@@ -56,6 +56,16 @@ final class GestureSemanticsUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        // Pin the simulated device orientation to portrait BEFORE launch. Every
+        // geometry contract in this suite (detent heights, the bubble being
+        // tappable above the keyboard right after send, composer keyboard
+        // clearance) assumes portrait phone metrics: a 393pt-tall landscape
+        // window with the ~276pt keyboard up leaves ~117pt of visual viewport —
+        // physically not enough for composer + a hittable message bubble, so
+        // the tap-to-reveal legs cannot hold there. A physical device lying
+        // flat (faceUp) launches the app in whatever orientation it last
+        // latched, which made this suite nondeterministic on the device lane.
+        XCUIDevice.shared.orientation = .portrait
     }
 
     // MARK: - Tests
