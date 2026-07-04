@@ -8,6 +8,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { mousePointerDrag } from "./helpers/gesture-inputs";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
@@ -764,19 +765,15 @@ test.describe("home widget priority (#9143)", () => {
 
     // Launcher capture — the home (widgets) and the launcher (launcher
     // tiles) are the two pages of HomeLauncherSurface, sharing one ambient
-    // wallpaper after the Views→Launcher consolidation. Flip to the
-    // launcher page via its navigation event (the same one the in-app edge
-    // swipe dispatches) and screenshot the launcher to capture the consolidated
-    // home↔launcher pair on the same surface.
+    // wallpaper after the Views→Launcher consolidation. Flip to the launcher
+    // page with a real leftward drag across the home half (the in-app rail
+    // gesture, which calls `goLauncher()` directly) and screenshot the launcher
+    // to capture the consolidated home↔launcher pair on the same surface.
     const surface = page.getByTestId("home-launcher-surface");
     const launcherPage = page.getByTestId("home-launcher-launcher-page");
-    await page.evaluate(() => {
-      window.dispatchEvent(
-        new CustomEvent("eliza:home-launcher:navigate", {
-          detail: { page: "launcher" },
-        }),
-      );
-    });
+    const homeHalf = page.getByTestId("home-launcher-home-page");
+    await expect(homeHalf).toBeVisible({ timeout: 15_000 });
+    await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
     await expect(surface).toHaveAttribute("data-page", "launcher", {
       timeout: 10_000,
     });

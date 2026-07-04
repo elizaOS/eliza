@@ -81,15 +81,13 @@ async function openHome(page: Page): Promise<void> {
 }
 
 /** Navigate to the launcher half deterministically (setup, not the gesture
- *  under test) and wait for the rail settle. */
+ *  under test) and wait for the rail settle. A real leftward drag across the
+ *  home half drives the rail's own gesture handler into `goLauncher()` — the
+ *  same store action the UI calls; there is no event-bridge shortcut. */
 async function openLauncherHalf(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    window.dispatchEvent(
-      new CustomEvent("eliza:home-launcher:navigate", {
-        detail: { page: "launcher" },
-      }),
-    );
-  });
+  const homeHalf = page.getByTestId("home-launcher-home-page");
+  await expect(homeHalf).toBeVisible({ timeout: 15_000 });
+  await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
   await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
     "data-page",
     "launcher",
