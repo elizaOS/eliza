@@ -9,6 +9,7 @@ import type { Plugin as ElizaPlugin } from "../../../types/plugin.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
 import { Service } from "../../../types/service.ts";
+import { formatError } from "../../../utils/format-error.ts";
 import {
 	applyRuntimeExtensions,
 	type ExtendedRuntime,
@@ -983,8 +984,13 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		} catch (err) {
 			// A plugin may legitimately have no build script; surface a real build
 			// failure observably instead of silently masking it as a healthy install.
-			logger.warn(`[PluginManager] build step did not complete for ${targetDir}`, err);
-			this.runtime.reportError("PluginManager", err, { targetDir, step: "build" });
+			logger.warn(
+				`[PluginManager] build step did not complete for ${targetDir}: ${formatError(err)}`,
+			);
+			this.runtime.reportError("PluginManager", err, {
+				targetDir,
+				step: "build",
+			});
 		}
 	}
 
@@ -1164,8 +1170,13 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					await execAsync(`${pm} run build`, { cwd: targetDir });
 				} catch (err) {
 					// Surface a real build failure observably instead of masking it (see above).
-					logger.warn(`[PluginManager] build step did not complete for ${targetDir}`, err);
-					this.runtime.reportError("PluginManager", err, { targetDir, step: "build" });
+					logger.warn(
+						`[PluginManager] build step did not complete for ${targetDir}: ${formatError(err)}`,
+					);
+					this.runtime.reportError("PluginManager", err, {
+						targetDir,
+						step: "build",
+					});
 				}
 
 				const commitHash = (
