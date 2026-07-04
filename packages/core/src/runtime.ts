@@ -48,6 +48,7 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-fie
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
+import { findEquivalentFactId } from "./runtime/fact-write-dedupe";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
@@ -9716,6 +9717,17 @@ ${section_end}`;
 					}),
 				},
 			};
+		}
+
+		// Facts are structurally deduped at write time: when an equivalent row
+		// (same normalized text + room + entity) already exists, skip the insert
+		// and hand back the existing id. The adapter cannot do this — its
+		// similarity check needs an embedding (absent inline on fact writes) and
+		// is bypassed whenever callers pass `unique` — so without this guard the
+		// same claim lands as multiple rows (see runtime/fact-write-dedupe.ts).
+		if (tableName === "facts") {
+			const equivalentId = await findEquivalentFactId(this, memory);
+			if (equivalentId) return equivalentId;
 		}
 
 		const ids = await this.adapter.createMemories([

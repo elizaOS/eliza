@@ -561,6 +561,7 @@ async function persistFactsAndRelationships(
 				runtime,
 				message,
 			);
+			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
 			try {
 				await runtime.createMemory(
 					{
@@ -568,7 +569,7 @@ async function persistFactsAndRelationships(
 						agentId: runtime.agentId,
 						roomId: message.roomId,
 						content: {
-							text: `${normalized.subject} ${normalized.predicate} ${normalized.object}`,
+							text: echoText,
 							type: "relationship",
 							subject: normalized.subject,
 							predicate: normalized.predicate,
@@ -581,7 +582,18 @@ async function persistFactsAndRelationships(
 							sourceEntityId,
 							targetEntityId,
 							tags: ["relationship", "extracted", "stage1"],
+							keywords: buildFactKeywordsForStorage(echoText),
 							extractedAt: Date.now(),
+							// Same stage-1 classification as the fact branch above: this
+							// echo lands in the `facts` table, and the reader defaults a
+							// missing `kind` to `durable` — an unkinded echo therefore
+							// resurfaces as a permanent durable fact (live symptom: the
+							// same claim shown twice, once durable, once current).
+							kind: "current" as FactKind,
+							category: "relationship",
+							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+							verificationStatus: "self_reported" as FactVerificationStatus,
+							validAt: new Date().toISOString(),
 						},
 					} as Memory,
 					"facts",
