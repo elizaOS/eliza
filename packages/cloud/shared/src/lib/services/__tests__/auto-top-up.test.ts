@@ -14,11 +14,13 @@ mock.module("../../../db/client", () => ({
 }));
 
 const updateOrganization = mock();
+const findOrganizationById = mock();
 const listByOrganization = mock();
 
 mock.module("../../../db/repositories", () => ({
   organizationsRepository: {
     update: updateOrganization,
+    findById: findOrganizationById,
   },
   usersRepository: {
     listByOrganization,
@@ -75,7 +77,9 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
-const { AutoTopUpService } = await import("../auto-top-up");
+const { AutoTopUpService, parseAutoTopUpNumber, CorruptAutoTopUpNumberError } = await import(
+  "../auto-top-up"
+);
 
 type AutoTopUpOrganization = Parameters<AutoTopUpService["executeAutoTopUp"]>[0];
 
@@ -96,7 +100,9 @@ function makeOrganization(overrides: Partial<AutoTopUpOrganization> = {}): AutoT
 
 beforeEach(() => {
   updateOrganization.mockReset();
+  findOrganizationById.mockReset();
   listByOrganization.mockReset();
+  findOrganizationById.mockResolvedValue(makeOrganization());
   createPaymentIntent.mockReset();
   retrievePaymentMethod.mockReset();
   requireStripe.mockClear();
@@ -153,6 +159,110 @@ describe("AutoTopUpService.executeAutoTopUp", () => {
       amount: 10,
       newBalance: 42.25,
     });
+  });
+});
+
+describe("parseAutoTopUpNumber (fail-closed NUMERIC boundary)", () => {
+  test("parses finite numeric strings and numbers", () => {
+    expect(parseAutoTopUpNumber("auto_top_up_amount", "10.00")).toBe(10);
+    expect(parseAutoTopUpNumber("markup_percent", 5)).toBe(5);
+    expect(parseAutoTopUpNumber("markup_percent", "0")).toBe(0);
+    expect(parseAutoTopUpNumber("markup_percent", 0)).toBe(0);
+  });
+
+  test("throws on the corrupt 'NaN'::numeric read-back that slips past bare Number()", () => {
+    // Regression guard: bare Number("NaN") is NaN and NaN <= 0 / NaN > MAX are
+    // both false, so this exact value used to flow into a Stripe NaN charge.
+    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "NaN")).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+    expect(Number("NaN")).toBeNaN();
+  });
+
+  test("throws on null/undefined/blank/non-numeric values", () => {
+    expect(() => parseAutoTopUpNumber("auto_top_up_amount", null)).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+    expect(() => parseAutoTopUpNumber("auto_top_up_amount", undefined)).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "   ")).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+    expect(() => parseAutoTopUpNumber("auto_top_up_amount", "abc")).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+    expect(() => parseAutoTopUpNumber("markup_percent", Number.POSITIVE_INFINITY)).toThrow(
+      CorruptAutoTopUpNumberError,
+    );
+  });
+});
+
+describe("AutoTopUpService.executeAutoTopUp fail-closed money gates", () => {
+  test("corrupt auto_top_up_amount ('NaN') disables + fails instead of charging NaN", async () => {
+    const org = makeOrganization({ auto_top_up_amount: "NaN" });
+
+    const result = await new AutoTopUpService().executeAutoTopUp(org);
+
+    // The corrupt amount must NEVER reach Stripe as Math.round(NaN * 100).
+    expect(createPaymentIntent).not.toHaveBeenCalled();
+    expect(addCredits).not.toHaveBeenCalled();
+    // Same fail-closed path as an out-of-range invalid amount: disable + fail.
+    expect(updateOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ auto_top_up_enabled: false }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        organizationId: "org-1",
+        success: false,
+        error: "Invalid top-up amount",
+      }),
+    );
+  });
+
+  test("corrupt affiliate markup_percent charges the base amount (no NaN total), no surcharge", async () => {
+    getReferrer.mockResolvedValue({
+      user_id: "affiliate-owner",
+      id: "code-1",
+      markup_percent: "NaN",
+    });
+
+    const result = await new AutoTopUpService().executeAutoTopUp(makeOrganization());
+
+    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
+    const chargedAmount = createPaymentIntent.mock.calls[0][0].amount;
+    // Base $10.00 charged as 1000 cents, NOT Math.round(NaN * 100) = NaN.
+    expect(chargedAmount).toBe(1000);
+    expect(Number.isNaN(chargedAmount)).toBe(false);
+    // Surcharge dropped: no affiliate fee metadata on a corrupt markup.
+    const metadata = createPaymentIntent.mock.calls[0][0].metadata;
+    expect(metadata.affiliate_fee_amount).toBeUndefined();
+    expect(metadata.affiliate_owner_id).toBeUndefined();
+    expect(metadata.total_charged).toBe("10.00");
+    // Customer's top-up still succeeds (best-effort surcharge, fail-safe).
+    expect(addCredits).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(
+      expect.objectContaining({ organizationId: "org-1", success: true, amount: 10 }),
+    );
+  });
+
+  test("valid affiliate markup still applies the surcharge (no behavior change)", async () => {
+    getReferrer.mockResolvedValue({
+      user_id: "affiliate-owner",
+      id: "code-1",
+      markup_percent: "10",
+    });
+
+    await new AutoTopUpService().executeAutoTopUp(makeOrganization());
+
+    expect(createPaymentIntent).toHaveBeenCalledTimes(1);
+    // $10 base + 10% affiliate ($1) + 20% platform ($2) = $13.00 -> 1300 cents.
+    expect(createPaymentIntent.mock.calls[0][0].amount).toBe(1300);
+    const metadata = createPaymentIntent.mock.calls[0][0].metadata;
+    expect(metadata.affiliate_fee_amount).toBe("1.00");
+    expect(metadata.affiliate_owner_id).toBe("affiliate-owner");
+    expect(metadata.total_charged).toBe("13.00");
   });
 });
 

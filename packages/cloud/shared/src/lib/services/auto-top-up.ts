@@ -15,6 +15,49 @@ export const AUTO_TOP_UP_LIMITS = {
   MAX_THRESHOLD: 1000,
 } as const;
 
+/**
+ * Thrown when an auto-top-up money-gate field read from a NUMERIC column
+ * cannot be coerced to a finite number. A corrupt persisted value must fail
+ * closed (no charge, no fabricated success) rather than flow a `NaN` into the
+ * charged Stripe amount or the affiliate/total markup math.
+ */
+export class CorruptAutoTopUpNumberError extends Error {
+  constructor(
+    readonly field: string,
+    readonly rawValue: unknown,
+  ) {
+    super(`Auto top-up ${field} is not a finite number: ${String(rawValue)}`);
+    this.name = "CorruptAutoTopUpNumberError";
+  }
+}
+
+/**
+ * Fail-closed boundary for auto-top-up NUMERIC reads. Postgres NUMERIC values
+ * arrive as strings at the driver, and `'NaN'::numeric` is a VALID stored value
+ * that reads back as the string `"NaN"` — `Number("NaN")` is `NaN`, and every
+ * `NaN <= 0` / `NaN > MAX` comparison is `false`, so a bare `Number(...)` read
+ * silently slips a corrupt amount PAST the invalid-amount guard and into a
+ * Stripe `paymentIntents.create({ amount: Math.round(NaN * 100) })` charge (or
+ * a `NaN` total via corrupt affiliate `markup_percent`).
+ *
+ * Throws {@link CorruptAutoTopUpNumberError} on a missing/blank/non-finite
+ * value so the caller aborts before charging. An explicit domain value of `0`
+ * is allowed (a legitimately zero markup/threshold is not corruption).
+ */
+export function parseAutoTopUpNumber(field: string, raw: unknown): number {
+  if (raw === null || raw === undefined) {
+    throw new CorruptAutoTopUpNumberError(field, raw);
+  }
+  if (typeof raw === "string" && raw.trim() === "") {
+    throw new CorruptAutoTopUpNumberError(field, raw);
+  }
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new CorruptAutoTopUpNumberError(field, raw);
+  }
+  return value;
+}
+
 export interface AutoTopUpResult {
   organizationId: string;
   success: boolean;
@@ -148,7 +191,26 @@ export class AutoTopUpService {
       };
     }
 
-    const amount = Number(org.auto_top_up_amount || 0);
+    // Fail-closed read: a corrupt/non-finite persisted auto_top_up_amount (e.g.
+    // 'NaN'::numeric) would coerce to NaN and PASS both `<= 0` and `> MAX`
+    // guards below, then flow into Stripe as amount: Math.round(NaN * 100).
+    // Treat a corrupt amount exactly like an invalid amount: disable + fail,
+    // never charge.
+    let amount: number;
+    try {
+      amount = parseAutoTopUpNumber("auto_top_up_amount", org.auto_top_up_amount ?? 0);
+    } catch (parseError) {
+      logger.error(
+        `[AutoTopUp] Org ${organizationId} has a corrupt top-up amount`,
+        parseError instanceof Error ? { error: parseError.message } : { error: String(parseError) },
+      );
+      await this.disableAutoTopUp(organizationId, "Invalid top-up amount");
+      return {
+        organizationId,
+        success: false,
+        error: "Invalid top-up amount",
+      };
+    }
     if (amount <= 0 || amount > AUTO_TOP_UP_LIMITS.MAX_AMOUNT) {
       logger.error(`[AutoTopUp] Org ${organizationId} has invalid top-up amount: ${amount}`);
       await this.disableAutoTopUp(organizationId, "Invalid top-up amount");
@@ -180,17 +242,44 @@ export class AutoTopUpService {
       if (checkUserId) {
         const referrer = await affiliatesService.getReferrer(checkUserId);
         if (referrer) {
-          affiliateOwnerId = referrer.user_id;
-          affiliateCodeId = referrer.id;
-          const affiliatePercent = Number(referrer.markup_percent);
-          const platformPercent = 20.0;
+          // Fail-closed read: a corrupt markup_percent ('NaN'::numeric) would
+          // make affiliateFeeAmount = amount * (NaN / 100) = NaN, poisoning
+          // totalAmount into Math.round(NaN * 100) = NaN. Never charge NaN.
+          let affiliatePercent: number;
+          try {
+            affiliatePercent = parseAutoTopUpNumber("markup_percent", referrer.markup_percent);
+          } catch (markupError) {
+            // A corrupt affiliate surcharge must NOT deny the customer's top-up
+            // and must NOT fabricate a NaN charge: drop the affiliate
+            // attribution + surcharge and proceed to bill the base amount.
+            logger.error(
+              `[AutoTopUp] Corrupt affiliate markup_percent for org ${organizationId}; charging base amount without surcharge`,
+              markupError instanceof Error
+                ? { error: markupError.message }
+                : { error: String(markupError) },
+            );
+            affiliateOwnerId = null;
+            affiliateCodeId = null;
+            affiliateFeeAmount = 0;
+            platformFeeAmount = 0;
+            affiliatePercent = Number.NaN; // sentinel: skip surcharge below
+          }
 
-          affiliateFeeAmount = amount * (affiliatePercent / 100);
-          platformFeeAmount = amount * (platformPercent / 100);
-          logger.info("Affiliate metadata applied", referrer);
+          if (Number.isFinite(affiliatePercent)) {
+            affiliateOwnerId = referrer.user_id;
+            affiliateCodeId = referrer.id;
+            const platformPercent = 20.0;
+
+            affiliateFeeAmount = amount * (affiliatePercent / 100);
+            platformFeeAmount = amount * (platformPercent / 100);
+            logger.info("Affiliate metadata applied", referrer);
+          }
         }
       }
     } catch (e) {
+      // Affiliate lookup/markup is a best-effort surcharge; on any failure we
+      // charge the base amount (surcharge fields reset to 0 above) rather than
+      // abort the top-up or bill a fabricated total.
       logger.error(`[AutoTopUp] Failed to lookup affiliate for org ${organizationId}`, e);
     }
 
