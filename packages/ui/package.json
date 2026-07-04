@@ -41,7 +41,7 @@
     "test:chat-perf-gate": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-perf-gate.mjs",
     "test:perf-gate-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-perf-gate-e2e.mjs",
     "test:home-screen-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-screen-e2e.mjs",
-    "test:launcher-loop-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-launcher-gesture-loop-e2e.mjs",
+    "test:launcher-loop-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-launcher-loop-e2e.mjs",
     "test:warmup-eviction-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-warmup-eviction-e2e.mjs",
     "test:tutorial-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/tutorial/__e2e__/run-tutorial-e2e.mjs",
     "test:permission-priming-e2e": "bun run --cwd ../.. packages/ui/src/components/permissions/__e2e__/run-permission-priming-e2e.mjs",
