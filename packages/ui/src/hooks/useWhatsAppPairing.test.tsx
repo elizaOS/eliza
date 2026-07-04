@@ -5,20 +5,24 @@
 // asserts the failure reaches the user-visible `error` state instead of being
 // swallowed into a false "idle" (issue #12267).
 
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getWhatsAppStatus = vi.fn();
 const stopWhatsAppPairing = vi.fn();
 const disconnectWhatsApp = vi.fn();
-const onWsEvent = vi.fn<(...args: unknown[]) => () => void>(() => () => {});
+type TestWsEventHandler = (data: Record<string, unknown>) => void;
+const onWsEvent = vi.fn(
+  (_type: string, _handler: TestWsEventHandler) => () => {},
+);
 
 vi.mock("../api/client", () => ({
   client: {
     getWhatsAppStatus: (...args: unknown[]) => getWhatsAppStatus(...args),
     stopWhatsAppPairing: (...args: unknown[]) => stopWhatsAppPairing(...args),
     disconnectWhatsApp: (...args: unknown[]) => disconnectWhatsApp(...args),
-    onWsEvent: (...args: unknown[]) => onWsEvent(...args),
+    onWsEvent: (type: string, handler: TestWsEventHandler) =>
+      onWsEvent(type, handler),
   },
 }));
 
