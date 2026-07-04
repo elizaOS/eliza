@@ -5,6 +5,8 @@
 // no vitest is spawned, so the harness is deterministic and fast.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
@@ -25,6 +27,11 @@ function run(args, env = {}) {
 }
 
 const NOWHERE_FILTER = "__no_such_package_zzz__";
+const TEMP_PACKAGE_DIR = join(
+  repoRoot,
+  "packages",
+  "__run_all_tests_false_no_test_skip__",
+);
 
 // Each case spawns the real runner (workspace discovery over the whole repo),
 // so give bun headroom well past the discovery cost on a cold/contended runner.
@@ -92,6 +99,53 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
       expect(result.status).toBe(0);
       const parsed = JSON.parse(result.stdout);
       expect(parsed.summary.taskCount).toBeGreaterThan(10);
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "does not reclassify arbitrary failing scripts as no-test skips",
+    () => {
+      rmSync(TEMP_PACKAGE_DIR, { recursive: true, force: true });
+      mkdirSync(TEMP_PACKAGE_DIR, { recursive: true });
+      try {
+        writeFileSync(
+          join(TEMP_PACKAGE_DIR, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/run-all-tests-false-no-test-skip-fixture",
+              private: true,
+              type: "module",
+              scripts: {
+                test: "node fail-with-no-test-text.mjs",
+              },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        writeFileSync(
+          join(TEMP_PACKAGE_DIR, "fail-with-no-test-text.mjs"),
+          "console.error('No test files found, then a real failure');\nprocess.exit(42);\n",
+        );
+
+        const result = run([
+          "--only=test",
+          "--no-cloud",
+          "--filter=@elizaos/run-all-tests-false-no-test-skip-fixture",
+        ]);
+        const output = `${result.stdout}${result.stderr}`;
+
+        expect(result.status).toBe(1);
+        expect(output).toContain(
+          "FAIL @elizaos/run-all-tests-false-no-test-skip-fixture",
+        );
+        expect(output).not.toContain(
+          "SKIP @elizaos/run-all-tests-false-no-test-skip-fixture",
+        );
+      } finally {
+        rmSync(TEMP_PACKAGE_DIR, { recursive: true, force: true });
+      }
     },
     SPAWN_TIMEOUT_MS,
   );

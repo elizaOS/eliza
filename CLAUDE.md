@@ -43,7 +43,7 @@ bun run format         # biome format via turbo
 bun run typecheck      # tsc across workspace (8 GB heap)
 bun run test           # full suite (run-all-tests.mjs)
 bun run test:server    # core/agent/app-core/shared/vault/elizaos/skills/scenario-runner
-bun run test:client    # app/ui + lifeops/training plugins
+bun run test:client    # app/ui + personal-assistant/training plugins
 bun run test:e2e       # end-to-end lane
 bun run start          # run an agent (packages/agent start)
 bun run clean          # nuke dist/.turbo/node_modules and local state
@@ -105,12 +105,11 @@ packages/        framework, shared libraries, and product surfaces
   prompts/       shared prompt scaffolding
   shared/        cross-package utilities + brand assets
   ui/            shared React component library
-  app/           web + desktop dashboard (Vite + React; desktop shell)
+  app/           web + desktop dashboard; also hosts the current cloud apex UI
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness
   cloud/api/     managed backend API (Hono on Cloudflare Workers)
-  app/           web + desktop dashboard; also hosts the current cloud apex UI
   cloud/shared/  shared cloud backend: db (Drizzle), billing, services, types
   cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
@@ -118,7 +117,7 @@ packages/        framework, shared libraries, and product surfaces
   os/ robot/                     device/OS images, OS landing, robotics
   plugin-remote-manifest/ plugin-worker-runtime/
                  remote plugin manifests, host shims, and worker runtime support
-  homepage/ docs/ docs-elizacloud-redirect/  marketing site, docs site, redirects
+  homepage/ docs/  marketing site and docs site
   examples/      30+ standalone runnable examples (each has its own README)
   benchmarks/    30+ evaluation suites (each has its own README + harness)
 
@@ -128,10 +127,10 @@ plugins/         runtime plugins and app plugins
   plugin-native-*/     native device bridges (camera, contacts, calendar, location, …)
   plugin-local-inference/  on-device llama.cpp (Kokoro TTS folded in) / whisper (git submodules under native/)
   plugin-sql/ plugin-localdb/ plugin-inmemorydb/  storage adapters
-  plugin-documents/ plugin-lifeops/ plugin-health/ …  app plugins
+  plugin-documents/ plugin-personal-assistant/ plugin-health/ …  app plugins
 
 scripts/         repo automation        patches/   dependency patches
-skills/          runtime skill packages turbo.json knip.json  build + dead-code config
+turbo.json knip.json  build + dead-code config
 ```
 
 Every package and plugin carries its own `CLAUDE.md` / `AGENTS.md` (identical)

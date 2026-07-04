@@ -42,7 +42,8 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       server: ${{ steps.filter.outputs.server }}
       client: ${{ steps.filter.outputs.client }}
@@ -484,7 +485,8 @@ jobs:
       - changes
       - plugin-tests
     if: ${{ !cancelled() && always() }}
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Check plugin shard results
         shell: bash
@@ -1238,7 +1240,8 @@ jobs:
       - cloud-live-e2e
       - provider-live-e2e
       - github-live-artifact-validate
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Check test results
         shell: bash

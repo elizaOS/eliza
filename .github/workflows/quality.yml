@@ -10,10 +10,8 @@ on:
   pull_request:
     branches: [main, develop]
     paths-ignore:
-      - "**/*.md"
       - "docs/**"
       - "packages/docs/**"
-      - "AGENTS.md"
       - "CHANGELOG.md"
       - "LICENSE"
       - ".github/ISSUE_TEMPLATE/**"
@@ -21,10 +19,8 @@ on:
   push:
     branches: [main, develop]
     paths-ignore:
-      - "**/*.md"
       - "docs/**"
       - "packages/docs/**"
-      - "AGENTS.md"
       - "CHANGELOG.md"
       - "LICENSE"
       - ".github/ISSUE_TEMPLATE/**"
@@ -176,6 +172,12 @@ jobs:
           setup-python: "false"
           install-protoc: "false"
           run-postinstall: "false"
+
+      - name: Run CLAUDE/AGENTS guide parity self-test
+        run: node --test scripts/assert-agents-claude-identical.test.mjs
+
+      - name: Run CLAUDE/AGENTS guide parity
+        run: bun run check:agents-claude
 
       - name: Run type-safety ratchet self-test
         run: bun run audit:type-safety-ratchet:self-test

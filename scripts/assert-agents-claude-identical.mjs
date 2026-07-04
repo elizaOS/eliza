@@ -12,6 +12,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 
 function git(args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 30 });
@@ -27,7 +28,17 @@ function guideFiles() {
     "**/CLAUDE.md",
   ])
     .split("\0")
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter(shouldCheckGuideFile);
+}
+
+export function shouldCheckGuideFile(file) {
+  const parts = file.replace(/\\/g, "/").split("/");
+  return !(
+    parts.includes("fixtures") ||
+    parts.includes("__tests__") ||
+    parts.includes(".archived")
+  );
 }
 
 function directoryFor(file) {
@@ -85,4 +96,6 @@ function main() {
   );
 }
 
-main();
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
