@@ -1,3 +1,7 @@
+/**
+ * Relationships drizzle schema defines the minimal entity and relationship graph
+ * tables registered by the plugin runtime.
+ */
 import { sql } from "drizzle-orm";
 import {
   index,
@@ -8,22 +12,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-/**
- * Drizzle schema for the relationships knowledge graph.
- *
- * Backs the `@elizaos/plugin-relationships` plugin. The runtime registers
- * migrations from this schema via the plugin object's `schema` field.
- *
- * Tables:
- *   - `entities`      — nodes (person/org/place/project/concept)
- *   - `relationships` — typed edges between entities
- *
- * NOTE: This is a minimal scaffold. The full LifeOps EntityStore and
- * RelationshipStore (see `plugins/plugin-personal-assistant/src/lifeops/entities/store.ts`
- * and `plugins/plugin-personal-assistant/src/lifeops/relationships/store.ts`) carry
- * richer per-row state (identities array, attributes map, retired status,
- * sentiment trend, …). Migration of those columns lands in a follow-up.
- */
 export const relationshipsSchema = pgSchema("app_relationships");
 
 export const entitiesTable = relationshipsSchema.table(

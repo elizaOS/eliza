@@ -1,4 +1,7 @@
-/** Contract tests asserting @elizaos/plugin-relationships registers its action, provider, and schema. */
+/**
+ * Relationships plugin contract tests assert action, provider, schema, and view
+ * registration without a live database.
+ */
 import { describe, expect, it } from "vitest";
 
 import { entityAction } from "./actions/entity.js";
@@ -25,7 +28,7 @@ describe("@elizaos/plugin-relationships contract", () => {
   });
 
   it("registers the graph-CRUD action as KNOWLEDGE_GRAPH, not ENTITY", () => {
-    // PA owns the ENTITY action; this plugin must not collide with it.
+    // Personal Assistant owns ENTITY, so this plugin must not collide with it.
     expect(entityAction.name).toBe(RELATIONSHIPS_ACTION_NAME);
     expect(entityAction.name).toBe("KNOWLEDGE_GRAPH");
     expect(entityAction.name).not.toBe("ENTITY");

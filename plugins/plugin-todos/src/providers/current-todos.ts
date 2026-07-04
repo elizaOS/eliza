@@ -1,4 +1,7 @@
-/** CURRENT_TODOS provider (position -5): injects the user's pending + in-progress todos as a markdown checklist into the planner context each turn in the tasks/todos/automation contexts. */
+/**
+ * CURRENT_TODOS provider injects active todos into task planning context each
+ * turn for tasks, todos, and automation conversations.
+ */
 import type {
   IAgentRuntime,
   Memory,
@@ -25,7 +28,6 @@ function checkboxFor(status: Todo["status"]): string {
 
 /**
  * Surface the user's current todo list to the planner each turn.
- * Mirrors how Claude Code keeps the TodoWrite list in the model's context.
  * Returns empty text when the user has no active todos.
  *
  * Scoping: by `entityId` (user) — todos persist across rooms for the same user.

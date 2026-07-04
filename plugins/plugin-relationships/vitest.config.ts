@@ -1,4 +1,7 @@
-/** Vitest config for @elizaos/plugin-relationships: extends the shared base config with the package's local aliases. */
+/**
+ * Vitest configuration for relationships contract and React view tests with
+ * shared workspace aliases.
+ */
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,12 +14,7 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
 
-// The unit suite covers the RelationshipsView render + kind-filter + refresh +
-// retry interaction (src/components/relationships/RelationshipsView.test.tsx,
-// jsdom via per-file directive) and the existing scaffold contract guard
-// (src/plugin.test.ts, node env). The base config supplies the @elizaos/* source
-// aliases that plugin.ts needs; the React aliases below pin a single React copy
-// so jsdom does not mix the workspace and hoisted peers (mirrors plugin-inbox).
+// Pin one React copy so jsdom tests do not mix workspace and hoisted peers.
 const liveOnlyExcludes = [
   "dist/**",
   "**/node_modules/**",

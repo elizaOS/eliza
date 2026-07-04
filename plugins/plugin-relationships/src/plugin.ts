@@ -1,28 +1,13 @@
+/**
+ * Relationships plugin registration adds graph CRUD, planner context, schema,
+ * and the dashboard viewer over the runtime knowledge graph service.
+ */
 import type { Plugin } from "@elizaos/core";
 
 import { entityAction } from "./actions/entity.js";
 import * as dbSchema from "./db/index.js";
 import { entityGraphProvider } from "./providers/entity-graph.js";
 
-/**
- * `@elizaos/plugin-relationships`
- *
- * The relationships viewer + "extras" over the runtime knowledge graph. The
- * graph itself (`EntityStore` / `RelationshipStore`) is owned by the runtime:
- * `@elizaos/agent`'s `KnowledgeGraphService`. This plugin consumes it via
- * `resolveKnowledgeGraphService(runtime)` and adds:
- *   - the `KNOWLEDGE_GRAPH` graph-CRUD action,
- *   - the `ENTITY_GRAPH` planner-context provider,
- *   - the `/relationships` viewer.
- *
- * It does NOT register an `ENTITY` action — `@elizaos/plugin-personal-assistant`
- * owns that (rich Rolodex orchestration with an LLM planner). Keeping a
- * distinct action name avoids a duplicate `ENTITY` registration when both
- * plugins load together.
- *
- * Hard-depends on `@elizaos/plugin-sql` — the runtime registers migrations
- * from `schema` (this module's drizzle pgSchema('app_relationships')).
- */
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:

@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
 /**
+ * @vitest-environment jsdom
+ *
  * Drives the unified RelationshipsView (the single GUI/XR data wrapper) through
  * the rendered DOM: the same component the bundle exports for both the "gui" and
  * "xr" modalities. It is a read-only entity/relationship graph viewer over the
@@ -24,8 +24,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// `@elizaos/ui` is the giant renderer barrel; RelationshipsView only touches
-// `client.getBaseUrl()` (default fetcher seam, overridden in every test) and
+// RelationshipsView only touches client.getBaseUrl and sendChatMessage here.
 // `client.sendChatMessage()` (add-someone + open-entity affordances). The
 // spatial primitives come from the separate `@elizaos/ui/spatial` subpath, which
 // is not mocked.

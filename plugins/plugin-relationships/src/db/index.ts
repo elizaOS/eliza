@@ -1,2 +1,4 @@
-/** Barrel for the relationships knowledge-graph drizzle schema. */
+/**
+ * Barrel for the relationships knowledge-graph drizzle schema.
+ */
 export * from "./schema.js";

@@ -1,4 +1,7 @@
-/** Unit tests for the TODO umbrella action and CURRENT_TODOS provider, driven against a deterministic in-memory FakeTodosService (no live database). */
+/**
+ * Todo action tests cover the TODO umbrella action and CURRENT_TODOS provider
+ * against a deterministic in-memory service with no live database.
+ */
 import type {
   ActionResult,
   HandlerOptions,

@@ -1,4 +1,7 @@
-/** Render tests for the todos spatial view over the TUI surface (deterministic static markup). */
+/**
+ * Todos spatial view tests render deterministic HTML and TUI markup without a
+ * live runtime.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

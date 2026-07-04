@@ -1,9 +1,7 @@
-// Auto-enable check for @elizaos/plugin-commands.
-//
-// Plugin manifest entry-point — referenced by package.json's
-// `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
-// no service init, no transitive imports of the full plugin runtime. The
-// auto-enable engine loads dozens of these per boot.
+/**
+ * Commands auto-enable probe reads character feature config without importing
+ * the full plugin runtime.
+ */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
 function isFeatureEnabled(
@@ -18,7 +16,7 @@ function isFeatureEnabled(
 	return false;
 }
 
-/** Enable when `config.features.commands` is truthy / not explicitly disabled. */
+/** Enable when `config.features.commands` is truthy or not explicitly disabled. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
 	return isFeatureEnabled(ctx.config, "commands");
 }

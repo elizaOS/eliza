@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
 /**
+ * @vitest-environment jsdom
+ *
  * Drives the unified TodosView (the single GUI/XR data wrapper) through the
  * rendered DOM: the same component the bundle exports for both the "gui" and
  * "xr" modalities. It is a read-only three-lane board (Today / Upcoming /

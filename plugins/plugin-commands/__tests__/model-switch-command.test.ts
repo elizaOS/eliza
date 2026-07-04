@@ -1,7 +1,7 @@
-// Coverage for `/model local|cloud [id]` routing through the shared
-// runtime-switch loopback route (#12178). The route HTTP is stubbed via a
-// mocked global fetch; a bare `/model <name>` must NOT hit the route (it stays
-// a per-room preference).
+/**
+ * Model command tests cover local/cloud runtime switching through a stubbed
+ * loopback route while preserving per-room model preference behavior.
+ */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
-/** Build entry for @elizaos/plugin-todos: bundles the Node plugin and the browser view through the shared buildPlugin helper. */
+/**
+ * Build entry for plugin-todos bundles the Node plugin and browser view through
+ * the shared plugin build helper.
+ */
 import { buildPlugin } from "../plugin-build";
 
 await buildPlugin({
