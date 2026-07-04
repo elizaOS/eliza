@@ -146,7 +146,9 @@ describe("ScheduledTaskEditor", () => {
 
   it("renders an unavailable state when the raw record is missing", () => {
     render(<ScheduledTaskEditor item={item(undefined)} />);
-    expect(screen.getByText("This task is no longer available.")).toBeTruthy();
+    expect(
+      screen.getByText("This scheduled item is no longer available."),
+    ).toBeTruthy();
     expect(applyScheduledTaskMock).not.toHaveBeenCalled();
   });
 });

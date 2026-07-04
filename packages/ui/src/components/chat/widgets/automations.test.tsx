@@ -111,7 +111,7 @@ describe("AutomationsWidget", () => {
     await screen.findByText("Daily digest");
     // The label is folded into the card's hover title + aria-label (icon-only
     // card), never rendered as visible text — so assert the accessible name.
-    const card = screen.getByTestId("chat-widget-workflows");
+    const card = screen.getByTestId("chat-widget-automations");
     expect(card.getAttribute("title")).toBe("Automations");
     const ariaLabel = card.getAttribute("aria-label") ?? "";
     expect(ariaLabel).toContain("Running automations");
