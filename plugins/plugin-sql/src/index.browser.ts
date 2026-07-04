@@ -119,6 +119,9 @@ export const plugin: Plugin = {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     logger.info({ src: "plugin:sql" }, "plugin-sql (browser) init starting");
 
+    // error-policy:J4 capability probe — if readiness can't be determined (no
+    // adapter registered yet, so `isReady` is absent/throws), fall through to
+    // create one. A registered-and-ready adapter short-circuits above.
     try {
       const isReady = await runtime.isReady();
       if (isReady) {
