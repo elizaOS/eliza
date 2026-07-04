@@ -150,16 +150,69 @@ describe("resolveChatPanelLayout", () => {
     expect(panelTopFromBottom(input, panelMaxH)).toBe(SCREEN_H);
   });
 
-  it("clamps to a minimum usable height on a tiny viewport", () => {
-    const { panelMaxH } = resolveChatPanelLayout({
+  it("prefers a usable height on a tight viewport by eating the top margin", () => {
+    // 260px of space: the 200px preference wins over (260-12-72)=176, and the
+    // whole 200 still fits on screen — the floor may consume the top margin.
+    const input: ChatPanelLayoutInput = {
+      viewportH: 260,
+      bottomPad: 12,
+      keyboardInset: 0,
+      effectiveKeyboardInset: 0,
+      safeAreaTopPx: 0,
+      fullBleed: false,
+    };
+    const { panelMaxH } = resolveChatPanelLayout(input);
+    expect(panelMaxH).toBe(200);
+    expect(panelTopFromBottom(input, panelMaxH)).toBeLessThanOrEqual(260);
+  });
+
+  it("never sizes the panel beyond the viewport on a tiny viewport", () => {
+    // A 120px viewport cannot hold a 200px panel: a bottom-anchored panel
+    // taller than the screen puts its top (grabber/header/thread) off-screen
+    // above, which is strictly worse than a short panel.
+    const input: ChatPanelLayoutInput = {
       viewportH: 120,
       bottomPad: 12,
       keyboardInset: 0,
       effectiveKeyboardInset: 0,
       safeAreaTopPx: 0,
       fullBleed: false,
-    });
-    expect(panelMaxH).toBe(200);
+    };
+    const { panelMaxH } = resolveChatPanelLayout(input);
+    expect(panelMaxH).toBe(120 - 12);
+    expect(panelTopFromBottom(input, panelMaxH)).toBeLessThanOrEqual(120);
+  });
+
+  it("keeps the whole panel on-screen on a landscape phone with the keyboard up (device failure geometry)", () => {
+    // Real numbers from the iPhone 15 Pro failure (GestureSemanticsUITests/
+    // testMessageEditAffordanceRevealsViaTouch): 852x393 landscape window,
+    // 276pt keyboard intrusion reported by the visual viewport (117pt left),
+    // 12px composer-focused bottom padding, no top safe-area in landscape.
+    // The old MIN floor produced a 200px panel whose top landed 95px above the
+    // window — the AX tree showed every message bubble (and the grabber and
+    // header) at negative y, unhittable.
+    const input: ChatPanelLayoutInput = {
+      viewportH: 117,
+      bottomPad: 12,
+      keyboardInset: 276,
+      effectiveKeyboardInset: 276,
+      safeAreaTopPx: 0,
+      fullBleed: false,
+    };
+    const { panelMaxH } = resolveChatPanelLayout(input);
+    expect(panelMaxH).toBe(117 - 12);
+    // Screen height = visual viewport (117) + keyboard (276) = 393. The panel
+    // top must land at or below the screen top.
+    expect(panelTopFromBottom(input, panelMaxH)).toBeLessThanOrEqual(393);
+  });
+
+  it("demonstrates the pre-fix landscape-keyboard geometry pushed the panel top off-screen", () => {
+    // Old formula: max(MIN, viewportH - bottomPad - topMargin - unreportedLift)
+    // = max(200, 117-12-72-0) = 200 → top at 276+12+200 = 488 on a 393pt-tall
+    // screen: 95px of panel (grabber, header, the entire thread window) above
+    // the top edge — matching the -96px panel top in the device AX dump.
+    const buggyPanelMaxH = Math.max(200, 117 - 12 - SHEET_TOP_MARGIN);
+    expect(276 + 12 + buggyPanelMaxH).toBeGreaterThan(393);
   });
 
   it("treats a non-finite safe-area measurement as zero", () => {

@@ -17,8 +17,14 @@ export const SHEET_TOP_MARGIN = 72;
 // doesn't butt directly against the Dynamic Island / status bar.
 const SAFE_AREA_TOP_BUFFER = 8;
 
-// The panel can never shrink below this — a tiny viewport still shows a usable
-// composer + a sliver of thread rather than collapsing to nothing.
+// The panel prefers not to shrink below this — on a tight viewport it eats the
+// top margin (rather than collapsing to nothing) before giving up height. It is
+// a PREFERENCE, not a hard floor: the panel may never exceed the space that
+// actually exists on screen (see the cap in resolveChatPanelLayout), because a
+// bottom-anchored panel taller than the viewport puts its top — the grabber,
+// header, and the entire thread window — above the screen where nothing can be
+// seen or tapped (observed on a landscape iPhone with the keyboard up: ~117px
+// of visual viewport, a 200px panel, and every message bubble unhittable).
 const MIN_PANEL_HEIGHT = 200;
 
 export interface ChatPanelLayoutInput {
@@ -97,12 +103,19 @@ export function resolveChatPanelLayout(
     ? 0
     : Math.max(SHEET_TOP_MARGIN, safeTop + SAFE_AREA_TOP_BUFFER);
 
-  const panelMaxH = Math.max(
-    MIN_PANEL_HEIGHT,
-    viewportH -
-      (fullBleed ? 0 : bottomPad) -
-      topMargin -
-      unreportedKeyboardLift,
+  // Everything the lifted, bottom-anchored panel can occupy without its top
+  // edge leaving the screen. The MIN_PANEL_HEIGHT preference may consume the
+  // topMargin, but never exceed this — otherwise the grabber/header/thread land
+  // off-screen above the viewport (the landscape-phone + keyboard failure:
+  // 393pt-tall window, ~276pt keyboard, 117pt visual viewport).
+  const availableH = Math.max(
+    0,
+    viewportH - (fullBleed ? 0 : bottomPad) - unreportedKeyboardLift,
+  );
+
+  const panelMaxH = Math.min(
+    availableH,
+    Math.max(MIN_PANEL_HEIGHT, availableH - topMargin),
   );
 
   return { topMargin, panelMaxH };
