@@ -14,8 +14,14 @@ import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
 } from "./ios-local-agent-kernel";
+import { createIosStreamingAgentPlugin } from "./ios-streaming-agent-plugin";
 import { createIttpAgentTransport } from "./ittp-agent-transport";
-import { type AgentRequestTransport, headersToRecord } from "./transport";
+import { createNativeStreamingResponse } from "./native-agent-stream";
+import {
+  type AgentRequestTransport,
+  headersToRecord,
+  isStreamingRequest,
+} from "./transport";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
@@ -319,6 +325,14 @@ interface FullBunRuntimePlugin {
     method: string;
     args?: unknown;
   }): Promise<{ result: unknown }>;
+  // Native → WebView chat-stream events (`agentStream*`), emitted by the engine's
+  // `stream_emit` host-call while `http_request_stream` runs (#12354). Optional
+  // here because older engine builds predate it; the streaming path checks for
+  // it and falls back to buffered when absent.
+  addListener?: (
+    eventName: string,
+    listener: (event: unknown) => void,
+  ) => Promise<{ remove: () => void | Promise<void> }>;
 }
 
 interface PrimedFullBunRuntime {
@@ -639,6 +653,7 @@ function wrapFullBunRuntime(
     start: runtime.start.bind(runtime),
     getStatus: runtime.getStatus.bind(runtime),
     call: runtime.call.bind(runtime),
+    addListener: runtime.addListener?.bind(runtime),
   };
 }
 
@@ -927,11 +942,56 @@ function nativeResultToResponse(
   });
 }
 
+/**
+ * Try to serve the request as an incremental token stream over the full-Bun
+ * runtime's `http_request_stream` bridge (#12354). Returns `null` when the
+ * request is not an SSE stream, the runtime is unavailable, or the stream head
+ * never arrives — the caller then falls back to the buffered path (which fakes a
+ * single-frame SSE), so a streaming failure never drops the chat reply.
+ */
+async function tryFullBunStreamingResponse(
+  options: IosLocalAgentNativeRequestOptions,
+): Promise<Response | null> {
+  const runtime = await getFullBunRuntime();
+  if (!runtime?.addListener) return null;
+  const plugin = createIosStreamingAgentPlugin(
+    { call: runtime.call, addListener: runtime.addListener },
+    (error) => {
+      console.warn("[ios-local-agent] stream request failed after head", {
+        path: options.path?.slice(0, 120) ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
+  const response = await createNativeStreamingResponse(plugin, {
+    method: options.method,
+    path: options.path,
+    headers: options.headers,
+    body: options.body ?? null,
+    timeoutMs: options.timeoutMs,
+  });
+  recordIosNativeAgentBootHeartbeat();
+  return response;
+}
+
 async function dispatchIosLocalAgentRequest(
   request: Request,
   context?: { timeoutMs?: number },
 ): Promise<Response> {
   const options = await requestToNativeBridgeOptions(request, context);
+
+  // Route the chat token stream (POST …/messages/stream, or any
+  // Accept: text/event-stream request) through the streaming bridge so tokens
+  // render incrementally instead of the buffered single-frame fallback.
+  if (isStreamingRequest(request.url, request.headers)) {
+    try {
+      const streamed = await tryFullBunStreamingResponse(options);
+      if (streamed) return streamed;
+    } catch {
+      // Stream couldn't start — fall through to the buffered request path.
+    }
+  }
+
   return nativeResultToResponse(
     await handleIosLocalAgentNativeRequest(options),
   );
