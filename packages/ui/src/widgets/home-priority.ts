@@ -305,6 +305,202 @@ export function rankHomeNotifications<T extends RankableContentNotification>(
     .map((entry) => entry.item);
 }
 
+// ---------------------------------------------------------------------------
+// Home notification QUIET-THRESHOLD + GROUPING (signal, not noise).
+//
+// The frontpage notification widget was showing every recent notification, so
+// a burst of low-value informational items read as a wall of noise. This layer
+// makes the HOME surface aggressively quiet:
+//   1. A relevance threshold — only unread, recent, and important-enough
+//      notifications are eligible for home. Everything else still lives in the
+//      full inbox/pull-down; it just never clutters home.
+//   2. Category grouping — when several eligible notifications share a category,
+//      they collapse into ONE grouped row ("N updates from X") instead of N
+//      rows, so a chatty source can't dominate the surface.
+// Pure + deterministic: `now` flows in from the caller (no Date.now in render).
+// The inbox/pull-down is unaffected — only `selectHomeNotifications` applies
+// this, and only the home widget calls it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Home quiet-threshold + grouping knobs. Exported so the home widget shares one
+ * notion of "what deserves home" and Shadow can dial the aggressiveness later
+ * without touching the algorithm.
+ */
+export interface HomeNotificationQuietOptions {
+  /** Current time (epoch-ms). Passed in for determinism + testability. */
+  now: number;
+  /**
+   * Minimum priority rank a notification must reach to be eligible for home.
+   * Defaults to {@link HOME_MIN_SEVERITY}. Notifications below this never appear
+   * on home (they remain in the full inbox).
+   */
+  minSeverity?: number;
+  /**
+   * Only notifications newer than this age (epoch-ms delta) are eligible.
+   * Defaults to {@link HOME_NOTIFICATION_MAX_AGE_MS}. A stale notification —
+   * however important it once was — isn't "act now" and shouldn't sit on home.
+   */
+  maxAgeMs?: number;
+  /**
+   * When true (default), only UNREAD notifications are eligible for home.
+   * A read notification has already been acknowledged, so it's not signal.
+   */
+  unreadOnly?: boolean;
+  /**
+   * When true (default), collapse eligible notifications that share a category
+   * into a single grouped row. Set false to keep every eligible notification as
+   * its own row (grouping off).
+   */
+  groupByCategory?: boolean;
+  /**
+   * A category needs at least this many eligible notifications before it
+   * collapses into a grouped row; below it, its notifications stay as single
+   * rows. Defaults to {@link HOME_GROUP_MIN_SIZE}.
+   */
+  groupMinSize?: number;
+}
+
+/**
+ * The default relevance floor for the home surface: only `high` and `urgent`
+ * notifications are important enough to interrupt the home glance. `normal` and
+ * `low` land silently in the inbox. Raise/lower to dial the quiet.
+ * (2 === `high` in {@link NOTIFICATION_PRIORITY_RANK}.)
+ */
+export const HOME_MIN_SEVERITY = NOTIFICATION_PRIORITY_RANK.high; // 2
+
+/**
+ * How recent a notification must be to be eligible for home. Older than this
+ * and it's history, not a live signal. 6h mirrors the widget attention window.
+ */
+export const HOME_NOTIFICATION_MAX_AGE_MS = 6 * 60 * 60_000;
+
+/** Group a category into one row once it has at least this many eligible items. */
+export const HOME_GROUP_MIN_SIZE = 2;
+
+/** Group notifications by their category by default. */
+export const GROUP_BY_CATEGORY = true;
+
+/** Minimal notification shape the home quiet/grouping layer needs. */
+export interface RankableHomeNotification extends RankableContentNotification {
+  /** Producer category — the grouping key. */
+  category?: string;
+}
+
+/** A single notification eligible for the home surface. */
+export interface HomeSingleNotification<T> {
+  kind: "single";
+  notification: T;
+}
+
+/** A collapsed group of same-category notifications on the home surface. */
+export interface HomeGroupedNotification<T> {
+  kind: "group";
+  /** The shared category the group collapses. */
+  category: string;
+  /** How many notifications this row stands in for. */
+  count: number;
+  /** The highest-attention member (drives icon/priority/deep-link of the row). */
+  lead: T;
+  /** Every member, ranked (lead first) — for expansion / a11y. */
+  members: T[];
+}
+
+/** A home notification entry: either one notification or a collapsed group. */
+export type HomeNotificationEntry<T> =
+  | HomeSingleNotification<T>
+  | HomeGroupedNotification<T>;
+
+/** Numeric priority rank of a notification (higher = more urgent). */
+function priorityRank(priority: string | undefined): number {
+  return NOTIFICATION_PRIORITY_RANK[priority ?? "normal"] ?? 1;
+}
+
+/**
+ * Whether a notification clears the home quiet threshold: important enough
+ * (severity), fresh enough (recency), and unacknowledged (unread) to be worth
+ * interrupting the home glance. Everything failing this stays in the full inbox.
+ */
+export function isHomeWorthy(
+  notification: RankableHomeNotification,
+  opts: HomeNotificationQuietOptions,
+): boolean {
+  const unreadOnly = opts.unreadOnly ?? true;
+  if (unreadOnly && notification.readAt) return false;
+
+  const minSeverity = opts.minSeverity ?? HOME_MIN_SEVERITY;
+  if (priorityRank(notification.priority) < minSeverity) return false;
+
+  const maxAgeMs = opts.maxAgeMs ?? HOME_NOTIFICATION_MAX_AGE_MS;
+  // `now === 0` is the deterministic first-render sentinel (see useNow) — don't
+  // age-gate against it, or the home surface flashes empty on first paint.
+  if (opts.now > 0 && opts.now - notification.createdAt >= maxAgeMs) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Aggressively reduce the notification list to a QUIET, GROUPED set for the
+ * home surface:
+ *   1. Drop everything below the quiet threshold ({@link isHomeWorthy}).
+ *   2. Rank the survivors by attention ({@link rankHomeNotifications}).
+ *   3. Collapse same-category runs into one grouped row once a category has
+ *      `groupMinSize`+ survivors, so a chatty source contributes a single
+ *      "N updates" row instead of N rows.
+ * Returns home ENTRIES (single | group) in attention order — the lead of each
+ * group is the highest-attention member, and groups sit where their lead ranks.
+ *
+ * The full inbox/pull-down does NOT call this — it's home-only. Pure + stable.
+ */
+export function selectHomeNotifications<T extends RankableHomeNotification>(
+  notifications: readonly T[],
+  opts: HomeNotificationQuietOptions,
+): HomeNotificationEntry<T>[] {
+  const eligible = notifications.filter((n) => isHomeWorthy(n, opts));
+  const ranked = rankHomeNotifications(eligible);
+
+  const groupByCategory = opts.groupByCategory ?? GROUP_BY_CATEGORY;
+  if (!groupByCategory) {
+    return ranked.map((notification) => ({ kind: "single", notification }));
+  }
+
+  const groupMinSize = opts.groupMinSize ?? HOME_GROUP_MIN_SIZE;
+
+  // Count survivors per category so we know which categories are chatty enough
+  // to collapse. A category below the threshold keeps its rows individual.
+  const categoryCounts = new Map<string, number>();
+  for (const n of ranked) {
+    const cat = n.category ?? "general";
+    categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1);
+  }
+
+  const entries: HomeNotificationEntry<T>[] = [];
+  const seenGroupCategory = new Set<string>();
+  for (const notification of ranked) {
+    const category = notification.category ?? "general";
+    const count = categoryCounts.get(category) ?? 1;
+    if (count < groupMinSize) {
+      entries.push({ kind: "single", notification });
+      continue;
+    }
+    // Chatty category → one grouped row, placed where its lead (highest-
+    // attention member) ranks. Since `ranked` is attention-ordered, the first
+    // member we hit for this category is the lead.
+    if (seenGroupCategory.has(category)) continue;
+    seenGroupCategory.add(category);
+    const members = ranked.filter((n) => (n.category ?? "general") === category);
+    entries.push({
+      kind: "group",
+      category,
+      count: members.length,
+      lead: members[0],
+      members,
+    });
+  }
+  return entries;
+}
+
 /** Minimal activity-event shape the signal derivation needs. */
 export interface RankableActivityEvent {
   eventType: string;

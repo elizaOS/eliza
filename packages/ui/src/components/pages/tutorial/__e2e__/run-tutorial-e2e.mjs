@@ -147,7 +147,7 @@ try {
       `[${theme.name}] glow color == themed --accent-rgb (glow ${glowRgb} vs accent ${accentRgb})`,
     );
 
-    // The Continue button must use the themed --accent (resolved), not #FF5800.
+    // The Continue button must use the themed --accent (resolved), not a hardcoded orange hex.
     const accentResolved = rgbTriplet(
       await page.evaluate(() => {
         const b = document.querySelector('[data-testid="tutorial-continue"]');

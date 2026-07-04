@@ -3,9 +3,9 @@
      stragglers that still reference it don't render blue. The Eliza Cloud
      palette is black + white + orange accent only. */
   --brand-blue: rgba(0, 0, 0, 0.6);
-  --brand-orange: #ff8a24;
-  --brand-black: #000000;
-  --brand-white: #ffffff;
+  --brand-orange: #ff6a1f;
+  --brand-black: #140c07;
+  --brand-white: #fdfaf7;
   --sky-0: rgba(0, 0, 0, 0.8);
   --sky-1: rgba(0, 0, 0, 0.6);
   --sky-2: var(--brand-white);
@@ -25,26 +25,31 @@
   --muted-strong: rgba(0, 0, 0, 0.74);
   --border: rgba(0, 0, 0, 0.12);
   --border-strong: rgba(0, 0, 0, 0.22);
+  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
+     genuine backdrop (never off-palette "ember" rgba). */
+  --scrim: rgba(20, 12, 7, 0.7);
   --accent: var(--brand-orange);
-  --accent-rgb: 255, 88, 0;
+  --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);
-  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-subtle: rgba(255, 106, 31, 0.14);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
-  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --destructive-subtle: rgba(255, 106, 31, 0.12);
   --status-success: #22c55e;
   --status-success-bg: rgba(34, 197, 94, 0.12);
   --status-danger: var(--brand-orange);
-  --status-danger-bg: rgba(255, 88, 0, 0.12);
+  --status-danger-bg: rgba(255, 106, 31, 0.12);
   --status-warning: var(--brand-orange);
-  --status-warning-bg: rgba(255, 88, 0, 0.14);
+  --status-warning-bg: rgba(255, 106, 31, 0.14);
   --status-info: rgba(0, 0, 0, 0.7);
   --status-info-bg: rgba(0, 0, 0, 0.06);
   /* `--info` (base.css) maps to brand-blue; neutralize it here too so any
      `info` utility renders neutral, not blue. */
   --info: rgba(0, 0, 0, 0.7);
   --info-bg: rgba(0, 0, 0, 0.06);
-  --font-sans: "Poppins", Arial, system-ui, sans-serif;
+  --font-sans:
+    "Poppins", "Poppins Variable", system-ui, -apple-system, "Segoe UI", Arial,
+    sans-serif;
   --font-body: var(--font-sans);
   --font-display: var(--font-body);
   --font-chat: var(--font-body);
@@ -59,29 +64,35 @@
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);
-  --card: rgba(0, 0, 0, 0.72);
+  --surface-1: #1d130c;
+  --surface-2: #251810;
+  --surface-3: #2f1f15;
+  --card: var(--surface-1);
   --card-foreground: var(--brand-white);
   --surface: rgba(255, 255, 255, 0.06);
   --text: var(--brand-white);
   --text-strong: var(--brand-white);
   --txt: var(--text);
-  --muted: rgba(255, 255, 255, 0.58);
-  --muted-strong: rgba(255, 255, 255, 0.74);
+  --muted: rgba(255, 240, 230, 0.56);
+  --muted-strong: rgba(255, 244, 236, 0.76);
   --border: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.22);
+  /* Modal/drawer scrim: brand black at a fixed dim so an open sheet reads as a
+     genuine backdrop (never off-palette "ember" rgba). */
+  --scrim: rgba(20, 12, 7, 0.72);
   --accent: var(--brand-orange);
-  --accent-rgb: 255, 88, 0;
+  --accent-rgb: 255, 106, 31;
   --accent-foreground: var(--brand-white);
-  --accent-subtle: rgba(255, 88, 0, 0.14);
+  --accent-subtle: rgba(255, 106, 31, 0.14);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
-  --destructive-subtle: rgba(255, 88, 0, 0.12);
+  --destructive-subtle: rgba(255, 106, 31, 0.12);
   --status-success: #4ade80;
   --status-success-bg: rgba(74, 222, 128, 0.16);
   --status-danger: var(--brand-orange);
-  --status-danger-bg: rgba(255, 88, 0, 0.12);
+  --status-danger-bg: rgba(255, 106, 31, 0.12);
   --status-warning: var(--brand-orange);
-  --status-warning-bg: rgba(255, 88, 0, 0.12);
+  --status-warning-bg: rgba(255, 106, 31, 0.12);
   --status-info: rgba(255, 255, 255, 0.7);
   --status-info-bg: rgba(255, 255, 255, 0.06);
   --info: rgba(255, 255, 255, 0.7);

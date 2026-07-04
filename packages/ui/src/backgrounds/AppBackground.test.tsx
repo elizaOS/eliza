@@ -50,6 +50,22 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
+  it("always paints the legibility scrim inside the image wallpaper", () => {
+    seed({ mode: "image", color: "#000000", imageUrl: "/api/media/wallpaper.png" });
+    const { container } = render(<AppBackground />);
+    const scrim = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image-scrim"]',
+    );
+    expect(scrim).not.toBeNull();
+    // The scrim lives INSIDE the image layer (one background layer invariant)
+    // and darkens via the theme --bg token so content stays legible over any
+    // wallpaper in both themes.
+    expect(
+      scrim?.closest('[data-testid="app-background-image"]'),
+    ).not.toBeNull();
+    expect(scrim?.className).toContain("bg-bg/50");
+  });
+
   it("renders the programmable shader (or its color-field fallback) for glsl mode", () => {
     seed({
       mode: "glsl",

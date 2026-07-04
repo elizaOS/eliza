@@ -5,7 +5,7 @@
  * a per-card favorite toggle; launching a card is delegated to `onLaunch`.
  */
 
-import { Star } from "lucide-react";
+import { LayoutGrid, Star } from "lucide-react";
 import {
   type MouseEvent,
   memo,
@@ -49,7 +49,7 @@ interface PackedCatalogRow {
   totalSlots: number;
 }
 
-const CARD_GAP_PX = 8;
+const CARD_GAP_PX = 12;
 const MAX_CARDS_PER_ROW = 5;
 const MIN_CARD_WIDTH_PX = 248;
 
@@ -265,15 +265,15 @@ function CatalogSkeletonSection({
   return (
     <section className="space-y-3" aria-hidden="true">
       <div className="flex items-center gap-3">
-        <Skeleton className="h-3 w-28 rounded-full bg-bg-accent/80" />
-        <div className="h-px flex-1 bg-border/30" />
+        <Skeleton className="h-3 w-28 rounded-full bg-bg-accent" />
+        <div className="h-px flex-1 bg-border" />
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {rowDescriptors.map((rowDescriptor) => (
           <div
             key={rowDescriptor.key}
-            className="grid gap-2"
+            className="grid gap-3"
             style={{
               gridTemplateColumns: `repeat(${rowDescriptor.rowSize}, minmax(0, 1fr))`,
             }}
@@ -281,12 +281,9 @@ function CatalogSkeletonSection({
             {rowDescriptor.cardKeys.map((cardKey) => (
               <div
                 key={cardKey}
-                className="overflow-hidden rounded-sm border border-border/35 bg-card/72"
+                className="overflow-hidden rounded-lg border border-border bg-card"
               >
-                <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
-                <div className="space-y-2 px-3 py-3">
-                  <Skeleton className="h-3 w-2/3 rounded-full bg-bg-accent/80" />
-                </div>
+                <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent" />
               </div>
             ))}
           </div>
@@ -314,8 +311,8 @@ const AppCard = memo(function AppCard({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-sm border bg-card/72 transition-all hover:border-accent/45   ${
-        isActive ? "border-ok/45 " : "border-border/35 "
+      className={`group relative overflow-hidden rounded-lg border bg-card transition-colors hover:border-accent/60 ${
+        isActive ? "border-ok/50" : "border-border"
       }`}
     >
       <Button
@@ -323,29 +320,29 @@ const AppCard = memo(function AppCard({
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
+        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent transition-transform active:scale-[0.99] motion-reduce:transition-none"
         onClick={() => onLaunch(app)}
       >
         <AppHero
           app={app}
-          className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.02]"
+          className="aspect-[4/3] transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
         />
         {provenanceLabels.originLabel || provenanceLabels.supportLabel ? (
           <div
-            className="pointer-events-none absolute left-3 top-3 flex max-w-[calc(100%-4rem)] flex-wrap gap-1.5"
+            className="pointer-events-none absolute left-2.5 top-2.5 flex max-w-[calc(100%-4rem)] flex-wrap gap-1.5"
             title={provenanceLabels.title}
           >
             {provenanceLabels.originLabel ? (
-              <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+              <span className="rounded-full bg-scrim px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.14em] text-white">
                 {provenanceLabels.originLabel}
               </span>
             ) : null}
             {provenanceLabels.supportLabel ? (
               <span
-                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                className={`rounded-full bg-scrim px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.14em] ${
                   provenanceLabels.supportLabel === "Community"
-                    ? "border-warn/45 bg-black/40 text-warn"
-                    : "border-accent/45 bg-black/40 text-white"
+                    ? "text-warn"
+                    : "text-accent"
                 }`}
               >
                 {provenanceLabels.supportLabel}
@@ -353,9 +350,9 @@ const AppCard = memo(function AppCard({
             ) : null}
           </div>
         ) : null}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2.5 pe-11">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-semibold text-white">
+            <div className="truncate text-sm font-semibold leading-tight text-white">
               {displayName}
             </div>
           </div>
@@ -364,17 +361,16 @@ const AppCard = memo(function AppCard({
       {isActive ? (
         <span
           title="Running"
-          className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok "
+          className="pointer-events-none absolute right-3 top-3 h-2.5 w-2.5 rounded-full bg-ok"
         />
       ) : null}
       <Button
         variant="ghost"
         size="icon-sm"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        className={`absolute bottom-3 right-3 h-8 w-8 rounded-full p-0 text-white transition-all ${
-          isFavorite
-            ? "bg-black/70 text-warn"
-            : "bg-black/70 text-white/70 hover:text-warn "
+        aria-pressed={isFavorite}
+        className={`absolute bottom-2.5 right-2.5 h-8 w-8 rounded-full bg-scrim p-0 transition-colors ${
+          isFavorite ? "text-warn" : "text-white hover:text-warn"
         }`}
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();
@@ -382,9 +378,10 @@ const AppCard = memo(function AppCard({
         }}
       >
         <Star
-          className="h-3.5 w-3.5"
+          className="h-4 w-4"
+          strokeWidth={2}
           fill={isFavorite ? "currentColor" : "none"}
-          aria-hidden
+          aria-hidden="true"
         />
       </Button>
     </div>
@@ -447,13 +444,13 @@ export function AppsCatalogGrid({
   return (
     <div ref={catalogRef} data-testid="apps-catalog-grid">
       {error ? (
-        <div className="mb-4 flex flex-col gap-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-xs text-danger sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           {onRetry ? (
             <Button
               variant="ghost"
               size="sm"
-              className="h-auto self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
+              className="h-auto min-h-touch self-start rounded-full border border-danger/50 px-3 py-1 text-2xs font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
               onClick={onRetry}
             >
               Retry
@@ -464,7 +461,7 @@ export function AppsCatalogGrid({
 
       {loading ? (
         <div
-          className="space-y-6"
+          className="space-y-8"
           role="status"
           aria-label={t("appsview.Loading")}
         >
@@ -485,15 +482,18 @@ export function AppsCatalogGrid({
           />
         </div>
       ) : visibleApps.length === 0 ? (
-        <div className="rounded-sm border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
-          <div className="text-xs font-medium text-muted-strong">
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-16 text-center">
+          <span className="grid h-10 w-10 place-items-center rounded-full bg-bg-accent text-muted">
+            <LayoutGrid className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+          </span>
+          <div className="text-sm font-medium text-muted-strong">
             {searchQuery
               ? t("appsview.NoAppsMatchSearch")
               : t("appsview.NoAppsAvailable")}
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {sectionRows.map((sectionRow) => {
             const rowKey = sectionRow.sections
               .map((section) => section.key)
@@ -517,13 +517,13 @@ export function AppsCatalogGrid({
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      <h2 className="text-sm font-semibold text-muted-strong">
+                      <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
                         {section.label}
                       </h2>
-                      <div className="h-px flex-1 bg-border/30" />
+                      <div className="h-px flex-1 bg-border" />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {buildBalancedRows(section.apps, section.slots).map(
                         (row) => {
                           const sectionRowKey = row
@@ -532,7 +532,7 @@ export function AppsCatalogGrid({
                           return (
                             <div
                               key={`${section.key}-${sectionRowKey}`}
-                              className="grid gap-2"
+                              className="grid gap-3"
                               style={{
                                 gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))`,
                               }}

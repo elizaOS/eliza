@@ -1,27 +1,9 @@
-/**
- * Renderer boot entry and composition root for the cross-platform Eliza app
- * shell (web browser, Electrobun desktop, and Capacitor iOS/Android). Runs
- * before React mounts: starts cold-start telemetry, registers host-external
- * view importers, and resolves cloud-only branding from the injected API base
- * / desktop runtime mode.
- *
- * `main()` drives the boot pipeline — embed-iframe session handshake, app-window
- * and model-tester route shortcuts, managed cloud launch connection, the
- * headless iOS full-Bun backend smoke gate, popout and detached/overlay window
- * shells, then the per-platform bridge stack (storage + Capacitor bridges, iOS
- * local-agent fetch/native-request bridges, Android native agent fetch bridge,
- * screen-capture / OCR / voice harnesses) — before mounting the React tree
- * (`@elizaos/ui` App, optionally wrapped by the web-only CloudRouterShell) and
- * running `initializePlatform()` concurrently after paint.
- *
- * Also owns deep-link handling (custom `<scheme>://` + `eliza.app` universal
- * links → hash routes, navigate-view events, or first-run remote connect), the
- * trusted-apiBase / native-WebSocket URL policy (tightened for iOS store + cloud
- * builds; a bearer token is never accepted from an OS deep link), the mobile
- * device bridge + agent tunnel + background runner, and the desktop tray /
- * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
- * deferred onto the idle path. Exports the resolved platform flags.
- */
+// FIRST side-effect: repair the same-origin WebSocket base for the plain-web
+// served bundle before the `client` singleton can dial its socket. The dev
+// server injects a desktop-loopback `__ELIZA_WS_BASE__` (ws://127.0.0.1:31337)
+// that client-base reads first; on a reverse-proxied web page the socket must
+// be same-origin (wss://<host>/ws). No-op on desktop / native. See module.
+import "./web-ws-base-fix";
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
@@ -174,7 +156,6 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
-import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
   createMobileLifecycle,
   type MobileLifecycle,
@@ -1789,12 +1770,6 @@ function handleDeepLink(url: string): void {
       // On-device AEC acoustic-loop evidence harness (#11373): the hash route
       // is consumed by installAecLoopHarness's hashchange watcher.
       setHashRoute("aec-loop", parsed.searchParams);
-      break;
-    case "keyboard-dictation":
-      // iOS keyboard app-handoff dictation (#12185): extensions have no mic,
-      // so the ElizaKeyboard extension opens the app; record + transcribe
-      // here, publish the transcript to the App Group, keyboard inserts it.
-      startKeyboardDictationSession(parsed.searchParams);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");

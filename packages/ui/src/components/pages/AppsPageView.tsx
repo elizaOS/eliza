@@ -54,6 +54,7 @@ export function AppsPageView() {
     }
   }, [appsSubTab, hasActiveGame, setState]);
 
+
   return (
     <ShellViewAgentSurface viewId="apps">
       {appsSubTab === "games" && hasActiveGame ? (
