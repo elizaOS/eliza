@@ -1,3 +1,6 @@
+/**
+ * Character definition for the OpenAI-backed Farcaster example agent.
+ */
 import { createCharacter } from "@elizaos/core";
 
 export const character = createCharacter({

@@ -1,3 +1,6 @@
+/**
+ * Deterministic coverage for Farcaster example environment validation.
+ */
 import { afterEach, describe, expect, test } from "bun:test";
 import { requireEnv, validateEnvironment } from "./agent";
 

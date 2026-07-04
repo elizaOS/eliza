@@ -1,3 +1,7 @@
+/**
+ * Deterministic coverage for X/Grok example environment validation and runtime
+ * settings propagation.
+ */
 import { afterEach, expect, test } from "bun:test";
 import { AgentRuntime, getBasicCapabilitiesSettings } from "@elizaos/core";
 import { requireEnv, validateEnvironment } from "./agent";

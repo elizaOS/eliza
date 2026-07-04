@@ -1,3 +1,6 @@
+/**
+ * Elysia REST API example smoke tests for CORS handling and request validation.
+ */
 import { expect, test } from "bun:test";
 import { app } from "./server";
 

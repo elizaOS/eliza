@@ -1,3 +1,6 @@
+/**
+ * Express REST API example smoke tests against a bound local HTTP server.
+ */
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { Server } from "node:http";
 import { app } from "./server";

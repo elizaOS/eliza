@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+/**
+ * X example agent entrypoint that validates Grok and X credentials, loads
+ * workspace plugins, and keeps the polling service alive.
+ */
 import { AgentRuntime, getBasicCapabilitiesSettings } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 

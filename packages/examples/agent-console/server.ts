@@ -1,7 +1,7 @@
-// Agent Console — observable elizaOS AgentRuntime with a live dashboard.
-// Spins up a real @elizaos/core AgentRuntime, wires plugin-openai (Cerebras-aware),
-// wraps useModel and subscribes to EventType.* so the UI sees every stage,
-// every prompt, every action, every evaluator, every model token.
+/**
+ * Observable AgentRuntime dashboard example that wraps model calls and runtime
+ * events so the browser can inspect prompts, actions, evaluators, and tokens.
+ */
 
 import { join, resolve } from "node:path";
 import {

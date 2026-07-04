@@ -1,3 +1,7 @@
+/**
+ * Static action scanner for the agent-console example, extracting action
+ * metadata and subaction relationships from elizaOS package sources.
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";

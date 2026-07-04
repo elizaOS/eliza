@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+/**
+ * Farcaster example agent entrypoint that validates Neynar credentials, loads
+ * workspace plugins, and keeps the polling service alive.
+ */
 import { AgentRuntime, type Plugin } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 

@@ -1,3 +1,6 @@
+/**
+ * Character definition for the Grok-backed X example agent.
+ */
 import { createCharacter } from "@elizaos/core";
 
 export const character = createCharacter({

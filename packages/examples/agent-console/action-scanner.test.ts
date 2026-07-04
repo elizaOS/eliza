@@ -1,3 +1,7 @@
+/**
+ * Deterministic fixture coverage for agent-console action scanning and
+ * subaction inference.
+ */
 import { expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
