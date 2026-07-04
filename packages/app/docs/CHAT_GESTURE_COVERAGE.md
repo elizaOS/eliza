@@ -25,15 +25,13 @@ pointer/touch gesture — identified by three low-false-positive markers (see
    `useNotificationPull` / `useConversationSwipeJank` (definition or consumer).
 
 A plain `onClick` / `onPointerDown` button is intentionally **not** a gesture
-site. `*.test.*` / `*.fuzz.*` specs and `__e2e__` fixtures are excluded. The
-current roster is 15 files (pinned in the gate).
+site. `*.test.*` / `*.fuzz.*` specs, `__e2e__` fixtures, and `testing/`
+scaffolding are excluded. The current roster is 15 files (pinned in the gate).
 
 **Out of scope of this matrix:** HTML5 native drag-and-drop reorder
 (`CharacterEditorPanels.tsx`, `draggable`/`onDragStart`) is a distinct input
 model, not a synthesized touch/pointer gesture, and is not a gesture-handler
-site. Push-to-talk (`chat-composer.tsx`) is a timer-based press-and-hold (no
-drag marker), so it is documented here (row 6) and covered by its L2 test, but
-is not in the enforced `sites` set.
+site.
 
 ## Test levels
 
@@ -73,11 +71,11 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 2 | Conversation edge-swipe L/R (+ jank telemetry) | overlay transcript | `ContinuousChatOverlay.tsx`, `useConversationSwipeJank.ts`, `use-pull-gesture.ts` | L1 `useConversationSwipeJank.test.ts`; L3 `run-conversation-swipe-e2e.mjs` (video) |
 | 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
 | 4 | Tap-reveal action row (touch) / hover rail (desktop) | chat-message | `chat-message.tsx` | L2 `chat-message.tap-reveal.test.tsx` |
-| 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `chat-conversation-item.tsx` | L2 `chat-conversation-item.test.tsx` |
-| 6 | Push-to-talk hold (composer + overlay mic) | composer | _timer-based (see note)_ | L2 `chat-composer.test.tsx` |
+| 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
+| 6 | Push-to-talk hold (composer + overlay mic) | composer + overlay mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `usePushToTalk.test.tsx` |
 | 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ContinuousChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
 | 8 | Notification pull / pull-to-refresh; ghost-click gate | home top edge | `use-notification-pull.ts`, `HomeScreen.tsx` | L1 `use-notification-pull.test.ts`; L3 `gesture-matrix.spec.ts`; L4 Android `touch-gesture.android.spec.ts` |
-| 9 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `Launcher.tsx`, `HomeScreen.tsx` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `Launcher.gestures.test.tsx`; L4 Android |
+| 9 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `HomeScreen.tsx` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
 | 10 | Topic group flick collapse/expand | TopicGroup | `TopicGroup.tsx` | L3 `run-chatux-gesture-e2e.mjs` (video) |
 | 11 | Send/stop/edit/delete/retry; streaming render; typing phases | chat thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
 | 12 | Attachments: add/paste/remove outbound; open/lightbox inbound | composer + thread | _not a gesture (see note)_ | L2 `MessageAttachments.test.tsx` |

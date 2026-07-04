@@ -64,7 +64,17 @@ function discoverGestureSites(): string[] {
     for (const entry of readdirSync(dir)) {
       const abs = path.join(dir, entry);
       if (statSync(abs).isDirectory()) {
-        if (entry === "node_modules" || entry === "__e2e__") continue;
+        // `testing/` is gesture-test scaffolding (fixture models, real-touch
+        // helpers, the e2e-runner toolkit) — not product gesture handlers — so
+        // it is excluded like `__e2e__`; a marker name appearing in its prose
+        // (e.g. a `useHorizontalPager` mention in a sim-model comment) is not a
+        // handler site.
+        if (
+          entry === "node_modules" ||
+          entry === "__e2e__" ||
+          entry === "testing"
+        )
+          continue;
         walk(abs);
         continue;
       }
@@ -150,14 +160,23 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   {
     id: 5,
     interaction: "Long-press conversation item → context menu (450 ms)",
-    sites: [S("components/composites/chat/chat-conversation-item.tsx")],
-    tests: [S("components/composites/chat/chat-conversation-item.test.tsx")],
+    // The long-press recognizer was extracted into the shared usePressAndHold
+    // hook (#12179/#12290); chat-conversation-item.tsx now spreads its handlers
+    // and no longer carries a raw touch marker, so the hook is the site.
+    sites: [S("gestures/usePressAndHold.ts")],
+    tests: [
+      S("components/composites/chat/chat-conversation-item.test.tsx"),
+      S("gestures/gestures.test.ts"),
+    ],
   },
   {
     id: 6,
     interaction: "Push-to-talk hold (composer + overlay mic)",
-    sites: [],
-    tests: [S("components/composites/chat/chat-composer.test.tsx")],
+    sites: [S("hooks/usePushToTalk.ts")],
+    tests: [
+      S("components/composites/chat/chat-composer.test.tsx"),
+      S("hooks/usePushToTalk.test.tsx"),
+    ],
   },
   {
     id: 7,
@@ -184,14 +203,13 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     sites: [
       S("hooks/useHorizontalPager.ts"),
       S("components/shell/HomeLauncherSurface.tsx"),
-      S("components/pages/Launcher.tsx"),
       S("components/shell/HomeScreen.tsx"),
     ],
     tests: [
       S("hooks/useHorizontalPager.test.ts"),
       GESTURE_MATRIX_SPEC,
       S("components/shell/__e2e__/run-home-screen-e2e.mjs"),
-      S("components/pages/Launcher.gestures.test.tsx"),
+      S("components/shell/HomeLauncherSurface.test.tsx"),
       ANDROID_TOUCH_SPEC,
     ],
     ownedBy: "#12179",
@@ -271,10 +289,8 @@ function rosteredSites(): Set<string> {
  */
 const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/chat/TasksEventsPanel.tsx",
-  "packages/ui/src/components/composites/chat/chat-conversation-item.tsx",
   "packages/ui/src/components/composites/chat/chat-message.tsx",
   "packages/ui/src/components/composites/sidebar/sidebar-root.tsx",
-  "packages/ui/src/components/pages/Launcher.tsx",
   "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
   "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
@@ -283,8 +299,10 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/TopicGroup.tsx",
   "packages/ui/src/components/shell/use-notification-pull.ts",
   "packages/ui/src/components/shell/use-pull-gesture.ts",
+  "packages/ui/src/gestures/usePressAndHold.ts",
   "packages/ui/src/hooks/useConversationSwipeJank.ts",
   "packages/ui/src/hooks/useHorizontalPager.ts",
+  "packages/ui/src/hooks/usePushToTalk.ts",
 ];
 
 describe("chat gesture coverage gate", () => {
