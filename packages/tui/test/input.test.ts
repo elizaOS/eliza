@@ -1,3 +1,7 @@
+/**
+ * Input component tests cover single-line editing, cursor movement, paste
+ * normalization, and submit/cancel handling.
+ */
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { Input } from "../src/components/input.js";

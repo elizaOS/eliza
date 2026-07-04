@@ -1,3 +1,7 @@
+/**
+ * Editor tests exercise terminal text editing, history, undo, autocomplete,
+ * paste handling, and keybinding behavior.
+ */
 import assert from "node:assert";
 import { stripVTControlCharacters } from "node:util";
 import { describe, it } from "vitest";

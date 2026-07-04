@@ -14,7 +14,7 @@ describe("Bug regression: isImageLine() crash with image escape sequences", () =
   describe("Bug scenario: Terminal without image support", () => {
     it("old implementation would return false, causing crash", () => {
       /**
-       * OLD IMPLEMENTATION (buggy):
+       * StartsWith-only detector:
        * ```typescript
        * export function isImageLine(line: string): boolean {
        *   const prefix = getImageEscapePrefix();
@@ -29,7 +29,7 @@ describe("Bug regression: isImageLine() crash with image escape sequences", () =
        * - Crash: "Rendered line exceeds terminal width (304401 > 115)"
        */
 
-      // Simulate old implementation behavior
+      // This local detector models the startsWith-only failure mode.
       const oldIsImageLine = (
         line: string,
         imageEscapePrefix: string | null,
@@ -44,7 +44,7 @@ describe("Bug regression: isImageLine() crash with image escape sequences", () =
       const lineWithImageSequence =
         "Read image file [image/jpeg]\x1b]1337;File=size=800,600;inline=1:base64data...\x07";
 
-      // Old implementation would return false (BUG!)
+      // The startsWith-only detector returns false for the mid-line sequence.
       const oldResult = oldIsImageLine(
         lineWithImageSequence,
         terminalWithoutImageSupport,

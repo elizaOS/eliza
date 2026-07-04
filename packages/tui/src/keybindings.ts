@@ -1,3 +1,6 @@
+/**
+ * Runtime-configurable editor action keybindings for terminal input widgets.
+ */
 import { type KeyId, matchesKey } from "./keys.js";
 
 /**
@@ -41,7 +44,6 @@ export type EditorAction =
   // Undo
   | "undo";
 
-// Re-export KeyId from keys.ts
 export type { KeyId };
 
 /**

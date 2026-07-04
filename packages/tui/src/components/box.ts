@@ -1,3 +1,7 @@
+/**
+ * Box component that applies padding and optional background styling around
+ * child terminal components.
+ */
 import type { Component } from "../tui.js";
 import { applyBackgroundToLine, visibleWidth } from "../utils.js";
 
@@ -8,9 +12,6 @@ type RenderCache = {
   lines: string[];
 };
 
-/**
- * Box component - a container that applies padding and background to all children
- */
 export class Box implements Component {
   children: Component[] = [];
   private paddingX: number;

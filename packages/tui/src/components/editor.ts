@@ -1,3 +1,7 @@
+/**
+ * Multi-line terminal editor with history, undo, kill-ring, autocomplete, and
+ * Kitty keyboard protocol handling.
+ */
 import type {
   AutocompleteItem,
   AutocompleteProvider,
@@ -27,7 +31,6 @@ export {
   layoutText,
   wordWrapLine,
 } from "./editor/layout.js";
-// Re-export types and utilities from editor submodules
 export type {
   EditorOptions,
   EditorState,
@@ -38,7 +41,6 @@ export type {
 } from "./editor/types.js";
 export { restoreSnapshot, UndoManager } from "./editor/undo.js";
 
-// Import for internal use
 import { wordWrapLine as wordWrapLineInternal } from "./editor/layout.js";
 import type {
   EditorOptions,

@@ -1,3 +1,8 @@
+/**
+ * ANSI wrapping tests verify that style open and reset sequences remain scoped
+ * to the wrapped text segments they decorate.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { visibleWidth, wrapTextWithAnsi } from "../src/utils.js";
@@ -12,10 +17,8 @@ describe("wrapTextWithAnsi", () => {
 
       const wrapped = wrapTextWithAnsi(text, 40);
 
-      // First line should NOT contain underline code - it's just "read this thread"
       assert.strictEqual(wrapped[0], "read this thread");
 
-      // Second line should start with underline, have URL content
       assert.strictEqual(wrapped[1].startsWith(underlineOn), true);
       assert.ok(wrapped[1].includes("https://"));
     });
@@ -39,12 +42,9 @@ describe("wrapTextWithAnsi", () => {
 
       const wrapped = wrapTextWithAnsi(text, 30);
 
-      // Middle lines (with underlined content) should end with underline-off, not full reset
-      // Line 1 and 2 contain underlined URL parts
       for (let i = 1; i < wrapped.length - 1; i++) {
         const line = wrapped[i];
         if (line.includes(underlineOn)) {
-          // Should end with underline off, NOT full reset
           assert.strictEqual(line.endsWith(underlineOff), true);
           assert.strictEqual(line.endsWith("\x1b[0m"), false);
         }
@@ -60,12 +60,10 @@ describe("wrapTextWithAnsi", () => {
 
       const wrapped = wrapTextWithAnsi(text, 15);
 
-      // Each line should have background color
       for (const line of wrapped) {
         assert.ok(line.includes(bgBlue));
       }
 
-      // Middle lines should NOT end with full reset (kills background for padding)
       for (let i = 0; i < wrapped.length - 1; i++) {
         assert.strictEqual(wrapped[i].endsWith("\x1b[0m"), false);
       }
@@ -80,7 +78,6 @@ describe("wrapTextWithAnsi", () => {
 
       const wrapped = wrapTextWithAnsi(text, 20);
 
-      // All lines should have background color 41 (either as \x1b[41m or combined like \x1b[4;41m)
       for (const line of wrapped) {
         const hasBgColor =
           line.includes("[41m") ||
@@ -89,10 +86,8 @@ describe("wrapTextWithAnsi", () => {
         assert.ok(hasBgColor);
       }
 
-      // Lines with underlined content should use underline-off at end, not full reset
       for (let i = 0; i < wrapped.length - 1; i++) {
         const line = wrapped[i];
-        // If this line has underline on, it should end with underline off (not full reset)
         if (
           (line.includes("[4m") ||
             line.includes("[4;") ||
@@ -129,12 +124,10 @@ describe("wrapTextWithAnsi", () => {
 
       const wrapped = wrapTextWithAnsi(text, 10);
 
-      // Each continuation line should start with red code
       for (let i = 1; i < wrapped.length; i++) {
         assert.strictEqual(wrapped[i].startsWith(red), true);
       }
 
-      // Middle lines should not end with full reset
       for (let i = 0; i < wrapped.length - 1; i++) {
         assert.strictEqual(wrapped[i].endsWith("\x1b[0m"), false);
       }

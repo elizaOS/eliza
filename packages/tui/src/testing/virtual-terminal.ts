@@ -1,3 +1,6 @@
+/**
+ * Headless xterm-backed terminal implementation for deterministic TUI tests.
+ */
 import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import xterm from "@xterm/headless";
 import type { Terminal } from "../terminal.js";

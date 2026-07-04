@@ -1,10 +1,11 @@
+/**
+ * Animated terminal loader that invalidates the host TUI while its spinner
+ * frame advances.
+ */
 import { LOADER_ANIMATION_INTERVAL_MS } from "../constants.js";
 import type { TUI } from "../tui.js";
 import { Text } from "./text.js";
 
-/**
- * Loader component with spinning animation.
- */
 export class Loader extends Text {
   private frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   private currentFrame = 0;

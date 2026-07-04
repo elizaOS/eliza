@@ -1,3 +1,7 @@
+/**
+ * Autocomplete tests cover slash command filtering and filesystem path
+ * suggestions against temporary directories.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,3 +1,6 @@
+/**
+ * Shared editor component contract for pluggable terminal text editors.
+ */
 import type { AutocompleteProvider } from "./autocomplete.js";
 import type { Component } from "./tui.js";
 

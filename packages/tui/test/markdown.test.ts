@@ -1,3 +1,8 @@
+/**
+ * Markdown component tests render formatted terminal output into a virtual
+ * terminal so ANSI styling and cell attributes can be asserted deterministically.
+ */
+
 import assert from "node:assert";
 import { Chalk } from "chalk";
 import { describe, it } from "vitest";
@@ -6,7 +11,7 @@ import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
 import { type Component, TUI } from "../src/tui.js";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
-// Force full color in CI so ANSI assertions are deterministic
+// Force full color in CI so ANSI assertions are deterministic.
 const chalk = new Chalk({ level: 3 });
 
 function getCellItalic(

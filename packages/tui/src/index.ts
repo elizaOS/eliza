@@ -1,4 +1,7 @@
-// Core TUI interfaces and classes
+/**
+ * Public API barrel for the terminal UI renderer, components, themes, input
+ * helpers, and testing utilities.
+ */
 
 // Autocomplete support
 export {

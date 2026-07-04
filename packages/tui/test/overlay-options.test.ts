@@ -1,3 +1,8 @@
+/**
+ * Overlay rendering tests verify size negotiation and placement against the
+ * virtual terminal renderer rather than a real terminal.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { VirtualTerminal } from "../src/testing/virtual-terminal.js";
@@ -11,7 +16,7 @@ class StaticOverlay implements Component {
   ) {}
 
   render(width: number): string[] {
-    // Store the width we were asked to render at for verification
+    // Capture the negotiated width so placement tests can assert it later.
     this.requestedWidth = width;
     return this.lines;
   }

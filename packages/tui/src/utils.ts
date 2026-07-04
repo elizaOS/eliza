@@ -1,3 +1,7 @@
+/**
+ * ANSI-aware terminal text measurement, truncation, wrapping, and style-state
+ * helpers.
+ */
 import { eastAsianWidth } from "get-east-asian-width";
 
 // Grapheme segmenter (shared instance)

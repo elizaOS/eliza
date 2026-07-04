@@ -1,3 +1,8 @@
+/**
+ * Toast component tests verify compact notification rendering with wide
+ * characters, ANSI styling, and borders.
+ */
+
 import { describe, expect, test } from "vitest";
 import { Toast } from "../src/components/toast.js";
 import { visibleWidth } from "../src/utils.js";

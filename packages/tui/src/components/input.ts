@@ -1,3 +1,7 @@
+/**
+ * Single-line terminal text input with cursor movement, paste handling, and
+ * editor keybinding support.
+ */
 import { getEditorKeybindings } from "../keybindings.js";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui.js";
 import {
@@ -16,9 +20,6 @@ import { getSegmenter, visibleWidth } from "../utils.js";
 
 const segmenter = getSegmenter();
 
-/**
- * Input component - single-line text input with horizontal scrolling
- */
 export class Input implements Component, Focusable {
   private value: string = "";
   private cursor: number = 0; // Cursor position in the value

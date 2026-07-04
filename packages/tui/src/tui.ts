@@ -121,7 +121,7 @@ export class TUI extends Container {
   }
 
   setFocus(component: Component | null): void {
-    // Clear focused flag on old component
+    // Clear focus on the previously focused component before assigning the new one.
     if (isFocusable(this.focusedComponent)) {
       this.focusedComponent.focused = false;
     }
@@ -742,7 +742,7 @@ export class TUI extends Container {
       return;
     }
 
-    // Check if firstChanged is above what was previously visible
+    // If the first changed row is above the visible region, redraw from the top.
     // Use previousLines.length (not maxLinesRendered) to avoid false positives after content shrinks
     const previousContentViewportTop = Math.max(
       0,

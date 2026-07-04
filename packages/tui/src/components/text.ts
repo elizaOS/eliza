@@ -1,3 +1,7 @@
+/**
+ * Text component that wraps ANSI-styled content into width-bounded terminal
+ * rows with optional padding and background styling.
+ */
 import type { Component } from "../tui.js";
 import {
   applyBackgroundToLine,
@@ -5,9 +9,6 @@ import {
   wrapTextWithAnsi,
 } from "../utils.js";
 
-/**
- * Text component - displays multi-line text with word wrapping
- */
 export class Text implements Component {
   private text: string;
   private paddingX: number; // Left/right padding

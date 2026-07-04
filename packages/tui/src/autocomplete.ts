@@ -1,3 +1,7 @@
+/**
+ * Autocomplete providers for slash commands and filesystem path suggestions in
+ * terminal editors.
+ */
 import { spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "fs";
 import { homedir } from "os";

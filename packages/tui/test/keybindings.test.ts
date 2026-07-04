@@ -1,3 +1,7 @@
+/**
+ * Keybinding tests verify the default editor action map and runtime remapping
+ * behavior.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

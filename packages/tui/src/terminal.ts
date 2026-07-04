@@ -1,3 +1,7 @@
+/**
+ * Terminal abstraction and process-backed implementation for raw-mode TUI
+ * rendering and input dispatch.
+ */
 import * as fs from "node:fs";
 import {
   DEFAULT_TERMINAL_HEIGHT,
@@ -8,9 +12,6 @@ import {
 import { setKittyProtocolActive } from "./keys.js";
 import { StdinBuffer } from "./stdin-buffer.js";
 
-/**
- * Minimal terminal interface for TUI
- */
 export interface Terminal {
   // Start the terminal with input and resize handlers
   start(onInput: (data: string) => void, onResize: () => void): void;
@@ -52,9 +53,6 @@ export interface Terminal {
   setTitle(title: string): void; // Set terminal window title
 }
 
-/**
- * Real terminal using process.stdin/stdout
- */
 export class ProcessTerminal implements Terminal {
   private wasRaw = false;
   private inputHandler?: (data: string) => void;

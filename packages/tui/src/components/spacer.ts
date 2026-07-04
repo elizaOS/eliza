@@ -1,3 +1,6 @@
+/**
+ * Spacer component that contributes a fixed number of blank terminal rows.
+ */
 import type { Component } from "../tui.js";
 
 /**

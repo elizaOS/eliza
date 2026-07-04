@@ -1,3 +1,8 @@
+/**
+ * Spacer component tests verify deterministic blank-line output for terminal
+ * layouts that need fixed vertical gaps.
+ */
+
 import { describe, expect, test } from "vitest";
 import { Spacer } from "../src/components/spacer.js";
 

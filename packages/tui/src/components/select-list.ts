@@ -1,3 +1,7 @@
+/**
+ * Keyboard-navigable terminal selection list with filtering and bounded
+ * visible rows.
+ */
 import { getEditorKeybindings } from "../keybindings.js";
 import type { Component } from "../tui.js";
 import { truncateToWidth } from "../utils.js";

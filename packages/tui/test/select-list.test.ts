@@ -1,3 +1,8 @@
+/**
+ * Select list tests cover keyboard-facing list state, filtering, and rendered
+ * labels with a deterministic plain-text theme.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { SelectList } from "../src/components/select-list.js";

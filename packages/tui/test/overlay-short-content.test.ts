@@ -1,3 +1,8 @@
+/**
+ * Overlay tests for short base content verify that modal layers render without
+ * corrupting the underlying virtual terminal rows.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { VirtualTerminal } from "../src/testing/virtual-terminal.js";

@@ -1,3 +1,7 @@
+/**
+ * Markdown renderer that converts marked tokens into width-bounded ANSI-styled
+ * terminal lines.
+ */
 import { marked, type Token } from "marked";
 import { isImageLine } from "../terminal-image.js";
 import type { Component } from "../tui.js";
@@ -8,7 +12,6 @@ import {
   wrapTextWithAnsi,
 } from "../utils.js";
 
-// Import types and utilities from submodules
 import type { InlineRenderContext } from "./markdown/inline-renderer.js";
 import { renderInlineTokens as renderInlineTokensUtil } from "./markdown/inline-renderer.js";
 import type { ListRenderContext } from "./markdown/list-renderer.js";
@@ -22,7 +25,6 @@ import type {
 } from "./markdown/types.js";
 import { getStylePrefix } from "./markdown/types.js";
 
-// Re-export types for backward compatibility
 export type {
   DefaultTextStyle,
   MarkdownTheme,

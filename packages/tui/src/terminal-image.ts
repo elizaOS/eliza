@@ -1,3 +1,7 @@
+/**
+ * Terminal image capability detection and Kitty/iTerm2 image protocol
+ * renderers.
+ */
 export type ImageProtocol = "kitty" | "iterm2" | null;
 
 export interface TerminalCapabilities {

@@ -1,11 +1,17 @@
+/**
+ * Loader component coverage for rendered spinner text, message updates, and
+ * interval cleanup using a minimal TUI requestRender boundary.
+ */
+
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Loader } from "../src/components/loader.js";
 import type { TUI } from "../src/tui.js";
 
 /**
- * Minimal mock TUI for Loader tests.
- * Loader only uses requestRender(), so we mock just that method.
- * Uses Pick<TUI, 'requestRender'> to ensure type alignment with actual TUI.
+ * Minimal TUI boundary for Loader tests.
+ *
+ * Loader only calls requestRender, and Pick<TUI, "requestRender"> keeps the
+ * test double aligned with the public TUI shape.
  */
 type MockTUI = Pick<TUI, "requestRender"> & {
   requestRender: ReturnType<typeof mock>;
@@ -24,14 +30,13 @@ describe("Loader component", () => {
   });
 
   afterEach(() => {
-    // Stop the loader to clear any intervals
+    // Spinner intervals must not leak between tests.
     if (loader) {
       loader.stop();
     }
   });
 
-  // Cast helper - Loader only uses requestRender(), so partial mock is safe.
-  // We use 'as unknown as TUI' because MockTUI is intentionally a subset.
+  // Loader only reaches requestRender, so this partial TUI is a bounded test double.
   const asTUI = (m: MockTUI): TUI => m as unknown as TUI;
 
   describe("constructor", () => {
@@ -42,7 +47,6 @@ describe("Loader component", () => {
         (s) => s,
       );
       const lines = loader.render(40);
-      // Should render spinner + message
       expect(lines.some((l) => l.includes("Loading..."))).toBe(true);
     });
 
@@ -86,7 +90,6 @@ describe("Loader component", () => {
         (s) => s,
       );
       const lines = loader.render(40);
-      // First line should be empty (for spacing)
       expect(lines[0]).toBe("");
       expect(lines.length).toBeGreaterThan(1);
     });
@@ -112,7 +115,7 @@ describe("Loader component", () => {
         (s) => s,
         (s) => s,
       );
-      // Reset mock to clear constructor call
+      // Clear the constructor-triggered request before measuring setMessage.
       mockTUI.requestRender.mockClear();
       loader.setMessage("New message");
       expect(mockTUI.requestRender).toHaveBeenCalled();
@@ -127,9 +130,8 @@ describe("Loader component", () => {
         (s) => s,
       );
       loader.stop();
-      // Reset mock to clear previous calls
+      // Only render requests after stop matter for this assertion.
       mockTUI.requestRender.mockClear();
-      // Wait a bit and verify no more render requests
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(mockTUI.requestRender).not.toHaveBeenCalled();
     });

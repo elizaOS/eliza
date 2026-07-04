@@ -1,3 +1,7 @@
+/**
+ * Cursor movement tests cover grapheme-aware terminal cursor math for editor
+ * navigation.
+ */
 import { describe, expect, test } from "vitest";
 import {
   deleteGraphemeBackward,

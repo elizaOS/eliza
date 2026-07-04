@@ -1,3 +1,8 @@
+/**
+ * TUI overlay regression tests verify that modal rendering restores ANSI style
+ * state before returning to base content.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { VirtualTerminal } from "../src/testing/virtual-terminal.js";

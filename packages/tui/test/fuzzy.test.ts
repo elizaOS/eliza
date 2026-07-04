@@ -1,3 +1,7 @@
+/**
+ * Fuzzy matching tests lock list filtering and ranking behavior for terminal
+ * selection surfaces.
+ */
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { fuzzyFilter, fuzzyMatch } from "../src/fuzzy.js";

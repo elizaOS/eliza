@@ -1,3 +1,8 @@
+/**
+ * Progress bar tests verify width accounting for narrow terminals, ANSI
+ * styling, and message truncation.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ProgressBar } from "../src/components/progress-bar.js";
 import { visibleWidth } from "../src/utils.js";

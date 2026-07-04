@@ -1,3 +1,7 @@
+/**
+ * Terminal settings list with value cycling, search, and nested submenu
+ * support.
+ */
 import { fuzzyFilter } from "../fuzzy.js";
 import { getEditorKeybindings } from "../keybindings.js";
 import type { Component } from "../tui.js";

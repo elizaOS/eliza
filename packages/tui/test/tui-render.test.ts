@@ -1,3 +1,8 @@
+/**
+ * TUI render tests exercise the virtual terminal pipeline for cursor movement,
+ * style attributes, and incremental row updates.
+ */
+
 import assert from "node:assert";
 import { describe, it } from "vitest";
 import { VirtualTerminal } from "../src/testing/virtual-terminal.js";

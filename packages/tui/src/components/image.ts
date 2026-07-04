@@ -1,3 +1,7 @@
+/**
+ * Inline image component for terminals with Kitty or iTerm2 image protocol
+ * support, with text fallback for unsupported hosts.
+ */
 import {
   getCapabilities,
   getImageDimensions,

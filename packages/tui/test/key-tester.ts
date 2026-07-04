@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Interactive terminal key tester for inspecting raw input sequences against
+ * the key matcher.
+ */
 import { matchesKey } from "../src/keys.js";
 import { ProcessTerminal } from "../src/terminal.js";
 import { type Component, TUI } from "../src/tui.js";

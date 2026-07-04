@@ -1,3 +1,7 @@
+/**
+ * Cancellable loader that turns the shared select-cancel keybinding into an
+ * AbortSignal for long-running terminal operations.
+ */
 import { getEditorKeybindings } from "../keybindings.js";
 import { Loader } from "./loader.js";
 

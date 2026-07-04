@@ -1,3 +1,8 @@
+/**
+ * Paste handler utility tests cover bracketed paste parsing for single-line and
+ * multiline editor input without involving a live terminal stream.
+ */
+
 import { describe, expect, test } from "vitest";
 import {
   cleanPasteForMultiLine,

@@ -1,3 +1,7 @@
+/**
+ * Single-line text component for terminal headers and status rows that must
+ * truncate rather than wrap.
+ */
 import type { Component } from "../tui.js";
 import { truncateToWidth, visibleWidth } from "../utils.js";
 

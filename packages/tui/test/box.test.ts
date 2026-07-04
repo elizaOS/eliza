@@ -1,3 +1,7 @@
+/**
+ * Box component tests verify child rendering, padding, background styling, and
+ * child removal behavior.
+ */
 import { describe, expect, test } from "vitest";
 import { Box } from "../src/components/box.js";
 import { Text } from "../src/components/text.js";
