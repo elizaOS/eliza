@@ -9,6 +9,7 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
+import { PageHeaderProvider } from "../../cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { ApiKeysSurface } from "./ApiKeysSurface";
@@ -18,7 +19,9 @@ export function ApiKeysPage() {
   useDocumentTitle(t("cloud.apiKeys.metaTitle", { defaultValue: "API Keys" }));
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
-      <ApiKeysSurface />
+      <PageHeaderProvider>
+        <ApiKeysSurface />
+      </PageHeaderProvider>
     </div>
   );
 }

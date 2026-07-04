@@ -8,6 +8,7 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
+import { PageHeaderProvider } from "../../cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AccountSurface } from "./AccountSurface";
@@ -17,7 +18,9 @@ export function AccountPage() {
   useDocumentTitle(t("cloud.account.metaTitle", { defaultValue: "Account" }));
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
-      <AccountSurface />
+      <PageHeaderProvider>
+        <AccountSurface />
+      </PageHeaderProvider>
     </div>
   );
 }
