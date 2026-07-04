@@ -12,6 +12,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildCallbackUrl,
+  expectedAuthCallbackFromUrl,
   parseArgs,
   parseResolvedActivity,
   resolvedActivityMatchesApp,
@@ -92,6 +93,19 @@ describe("mobile-auth-simulator-smoke: callback URL + args", () => {
         { path: "auth/callback", query: "state=s&code=c", url: "" },
       ),
     ).toBe("elizaos://auth/callback?state=s&code=c");
+  });
+
+
+  it("extracts expected iOS auth callback handling fields from the opened URL", () => {
+    expect(
+      expectedAuthCallbackFromUrl(
+        "elizaos://auth/callback?state=simulator-oauth-state&code=simulator-oauth-code&extra=1",
+      ),
+    ).toEqual({
+      path: "auth/callback",
+      state: "simulator-oauth-state",
+      code: "simulator-oauth-code",
+    });
   });
 
   it("honors a full --url override and normalizes leading slashes / ?", () => {
