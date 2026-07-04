@@ -945,8 +945,18 @@ jobs:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED: ${{ vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED != '' && vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED || secrets.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED }}
         run: |
+          strict_context=false
+          case "${EVENT_NAME}" in
+            push|merge_group|workflow_dispatch|schedule) strict_context=true ;;
+          esac
+
           if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
-            echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E for ${EVENT_NAME}."
+            message="No Eliza Cloud API key configured"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
+            echo "::warning::${message} - skipping optional cloud live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "capability_skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -957,6 +967,10 @@ jobs:
           if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then
             echo "capability_skip=false" >> "$GITHUB_OUTPUT"
           else
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
+              echo "::error::Remote capability cloud sandbox live smoke is required for ${EVENT_NAME}; set ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED=1 instead of producing a green skip."
+              exit 1
+            fi
             echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."
             echo "capability_skip=true" >> "$GITHUB_OUTPUT"
           fi
@@ -1075,8 +1089,18 @@ jobs:
           MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
         run: |
+          strict_context=false
+          case "${EVENT_NAME}" in
+            push|merge_group|workflow_dispatch|schedule) strict_context=true ;;
+          esac
+
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
-            echo "::warning::No remote capability provider endpoints configured - skipping optional provider live E2E."
+            message="No remote capability provider endpoints configured"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
+            echo "::warning::${message} - skipping optional provider live E2E."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1094,6 +1118,10 @@ jobs:
 
           if [ "${#missing_required[@]}" -gt 0 ]; then
             message="Missing required remote capability provider endpoint secrets: ${missing_required[*]}"
+            if [ "${strict_context}" = "true" ]; then
+              echo "::error::${message}; strict ${EVENT_NAME} live lanes must fail instead of greening by skip."
+              exit 1
+            fi
             echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
