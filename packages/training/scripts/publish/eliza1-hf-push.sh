@@ -78,7 +78,7 @@ To dry-run via the underlying CLI:
   cd packages/training && \
     python3 -m scripts.publish.publish_eliza1_model_repo \
       --bundles-root ~/.eliza/local-inference/models \
-      --dry-run --allow-missing --report /tmp/eliza1-hf-plan.json
+      --dry-run --report /tmp/eliza1-hf-plan.json
 
 See packages/training/reports/eliza1-hf-readiness-2026-05-14.md for the
 per-tier blocker ledger before paying for an upload.

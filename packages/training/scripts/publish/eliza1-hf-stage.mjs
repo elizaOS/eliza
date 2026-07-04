@@ -1,25 +1,24 @@
 #!/usr/bin/env node
-/**
- * Node entrypoint around the Eliza-1 per-tier HuggingFace staging publisher.
- *
- * Walks every tier in `ELIZA_1_TIERS` (resolved by the Python publisher), asks
- * `scripts.publish.publish_eliza1_model_repo` to plan each
- * `<bundles-root>/eliza-1-<tier>.bundle/` directory, and prints the resulting
- * plan plus JSON report. Dry-run is the default; actual uploads remain behind
- * `eliza1-hf-push.sh` with `HF_TOKEN` and `--yes-i-will-pay`.
- *
- * Usage:
- *   node packages/training/scripts/publish/eliza1-hf-stage.mjs
- *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
- *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --bundles-root ~/staging
- *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --report /tmp/plan.json
- *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 2b --tier 4b
- *
- * Exit codes mirror the Python publisher:
- *   0 - every tier uploadable (or --allow-missing was passed)
- *   2 - at least one tier has unresolved blockers (default behaviour)
- *   other - Python launch / interpreter failure
- */
+// eliza1-hf-stage.mjs — Node entry around the Eliza-1 per-tier HF publisher.
+//
+// Walks every tier in `ELIZA_1_TIERS` (resolved by the Python publisher),
+// asks `scripts.publish.publish_eliza1_model_repo` to plan each
+// `<bundles-root>/eliza-1-<tier>.bundle/` directory, and prints the
+// resulting plan + JSON report. **Dry-run by default** — this script
+// never invokes the actual HF upload path. To push, run
+// `eliza1-hf-push.sh` with `HF_TOKEN` set AND `--yes-i-will-pay`.
+//
+// Usage:
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --bundles-root ~/staging
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --report /tmp/plan.json
+//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 2b --tier 4b
+//
+// Exit codes mirror the Python publisher:
+//   0 — every tier uploadable
+//   2 — at least one tier has unresolved blockers (default behaviour)
+//   other — Python launch / interpreter failure
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -42,9 +41,7 @@ function parseArgs(argv) {
     bundlesRoot: DEFAULT_BUNDLES_ROOT,
     tiers: [],
     report: null,
-    allowMissing: true,
     strictVoicePolicy: false,
-    skipHashVerify: false,
     extra: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -59,17 +56,22 @@ function parseArgs(argv) {
       out.tiers.push(argv[++i]);
     } else if (arg === "--report") {
       out.report = argv[++i];
-    } else if (arg === "--no-allow-missing") {
-      out.allowMissing = false;
     } else if (arg === "--strict-voice-policy") {
       out.strictVoicePolicy = true;
     } else if (arg === "--skip-hash-verify") {
-      out.skipHashVerify = true;
+      process.stderr.write(
+        "eliza1-hf-stage: --skip-hash-verify was removed; staged bytes are always hashed.\n",
+      );
+      process.exit(2);
+    } else if (arg === "--allow-missing" || arg === "--no-allow-missing") {
+      process.stderr.write(
+        "eliza1-hf-stage: allow-missing flags were removed; blockers must fail closed.\n",
+      );
+      process.exit(2);
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(
         `Usage: node eliza1-hf-stage.mjs [--dry-run] [--bundles-root DIR] ` +
-          `[--tier TIER]... [--report PATH] [--strict-voice-policy] ` +
-          `[--skip-hash-verify] [--no-allow-missing]\n`,
+          `[--tier TIER]... [--report PATH] [--strict-voice-policy]\n`,
       );
       process.exit(0);
     } else {
@@ -113,9 +115,7 @@ function main() {
     args.push("--tier", tier);
   }
   if (opts.dryRun) args.push("--dry-run");
-  if (opts.allowMissing) args.push("--allow-missing");
   if (opts.strictVoicePolicy) args.push("--strict-voice-policy");
-  if (opts.skipHashVerify) args.push("--skip-hash-verify");
   if (opts.report) args.push("--report", opts.report);
   for (const extra of opts.extra) args.push(extra);
 

@@ -5,7 +5,8 @@ This is one of three canonical operator-facing publishers in
 
   - ``publish_model.py``    — this file. Pushes trained weights / GGUF
                               bundles to HuggingFace under the consolidated
-                              ``elizaos/eliza-1`` repo.
+                              ``elizaos/eliza-1`` repo (or, for the legacy
+                              fused-GGUF flow, to ``elizaos/<base>-optimized``).
   - ``publish_dataset.py``  — pushes the SFT dataset bundles to
                               ``elizaos/eliza-1-training`` (and siblings).
   - ``publish_pipeline.py`` — pushes the training-pipeline source tree to
@@ -20,10 +21,9 @@ the chosen mode:
                           (per-tier ``elizaos/eliza-1/bundles/<tier>/`` upload
                           when the gate ran elsewhere)
 
-Use ``--mode bundle`` for new work. ``--mode tier`` exists for operator-driven
-staged uploads after the full gate has run elsewhere. The legacy single-GGUF
-``optimized`` publisher was retired because it only accepted the disconnected
-Qwen-shaped fused path and rejected the Gemma Q4_K_M bundles the product ships.
+Use ``--mode bundle`` for release work. ``--mode tier`` exists only for
+operator-driven staged uploads after the full gate has run elsewhere; the
+legacy single-GGUF publisher is intentionally not dispatched from here.
 """
 
 from __future__ import annotations

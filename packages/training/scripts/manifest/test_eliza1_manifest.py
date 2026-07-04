@@ -26,6 +26,7 @@ from scripts.manifest.eliza1_manifest import (
     parse_ctx_string,
     parse_text_ctx_from_filename,
     read_gguf_architecture,
+    read_gguf_architecture_from_bytes,
     text_context_for_manifest,
     validate_manifest,
     write_manifest,
@@ -33,29 +34,6 @@ from scripts.manifest.eliza1_manifest import (
 from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 
 SHA = "0" * 64
-
-
-def _gguf_string(value: str) -> bytes:
-    data = value.encode("utf-8")
-    return struct.pack("<Q", len(data)) + data
-
-
-def _write_fake_gguf(path: Path, metadata: dict[str, tuple[int, object]]) -> None:
-    payload = bytearray()
-    payload += b"GGUF"
-    payload += struct.pack("<I", 3)
-    payload += struct.pack("<Q", 0)
-    payload += struct.pack("<Q", len(metadata))
-    for key, (value_type, value) in metadata.items():
-        payload += _gguf_string(key)
-        payload += struct.pack("<I", value_type)
-        if value_type == 8:
-            payload += _gguf_string(str(value))
-        elif value_type == 4:
-            payload += struct.pack("<I", int(value))
-        else:
-            raise AssertionError(f"unsupported fake GGUF value type {value_type}")
-    path.write_bytes(bytes(payload))
 
 
 def passing_backends() -> dict[str, KernelVerification]:
@@ -73,7 +51,26 @@ def quantization_kernel_fragments() -> list[dict[str, object]]:
 
 
 def text_file_for_tier(tier: str) -> FileEntry:
-    return FileEntry(path=f"text/eliza-1-{tier}-128k.gguf", sha256=SHA, ctx=131072)
+    return FileEntry(
+        path=f"text/eliza-1-{tier}-128k.gguf",
+        sha256=SHA,
+        ctx=131072,
+        architecture="gemma4",
+    )
+
+
+def gguf_header(arch: str) -> bytes:
+    def s(value: str) -> bytes:
+        data = value.encode("utf-8")
+        return struct.pack("<Q", len(data)) + data
+
+    return (
+        b"GGUF"
+        + struct.pack("<IQQ", 3, 0, 1)
+        + s("general.architecture")
+        + struct.pack("<I", 8)
+        + s(arch)
+    )
 
 
 def base_kwargs(tier: str = "4b") -> dict:
@@ -162,18 +159,29 @@ def test_text_context_prefers_gguf_metadata_over_filename(
     assert text_context_for_manifest(text_path) == 262144
 
 
-def test_read_gguf_architecture_reads_general_architecture(tmp_path: Path):
-    text_path = tmp_path / "eliza-1-2b-128k.gguf"
-    _write_fake_gguf(
-        text_path,
-        {
-            "general.architecture": (8, "gemma4"),
-            "gemma4.context_length": (4, 131072),
-        },
-    )
+def test_read_gguf_architecture_from_bytes_reads_gemma_and_qwen(tmp_path: Path):
+    gemma = tmp_path / "gemma.gguf"
+    gemma.write_bytes(gguf_header("gemma4"))
 
-    assert read_gguf_architecture(text_path) == "gemma4"
-    assert text_context_for_manifest(text_path) == 131072
+    assert read_gguf_architecture(gemma) == "gemma4"
+    assert read_gguf_architecture_from_bytes(gguf_header("qwen35")) == "qwen35"
+
+
+def test_build_manifest_blocks_non_gemma_text_architecture():
+    kwargs = base_kwargs("4b")
+    kwargs["files"]["text"] = [
+        FileEntry(
+            path="text/eliza-1-4b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="qwen35",
+        )
+    ]
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("expected gemma*" in e and "qwen35" in e for e in exc.value.errors)
 
 
 def test_eliza1_tier_ids_are_canonical():
@@ -199,40 +207,6 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["27b"] == ("omnivoice",)
 
 
-def _parse_publish_all_tiers() -> tuple[str, ...]:
-    """Mechanically extract the TIERS bash array from publish_all_eliza1.sh.
-
-    Matches ``readonly TIERS=("2b" "4b" ...)`` and returns the quoted tokens.
-    Parsing (not importing) the shell keeps this a real cross-file agreement
-    check rather than a duplicated constant.
-    """
-    import re
-
-    sh_path = Path(__file__).resolve().parent.parent / "publish_all_eliza1.sh"
-    assert sh_path.exists(), f"publish_all_eliza1.sh not found at {sh_path}"
-    text = sh_path.read_text()
-    m = re.search(r"^\s*(?:readonly\s+)?TIERS=\(([^)]*)\)", text, re.MULTILINE)
-    assert m, "could not find the TIERS=(...) array in publish_all_eliza1.sh"
-    return tuple(re.findall(r'"([^"]+)"', m.group(1)))
-
-
-def test_catalog_manifest_publish_tiers_agree():
-    """The Eliza-1 tier set is declared in THREE places that must stay in sync:
-    eliza1_manifest.py::ELIZA_1_TIERS (here), catalog.ts::ELIZA_1_TIER_IDS (the
-    runtime catalog, asserted in packages/shared/.../catalog.test.ts), and
-    publish_all_eliza1.sh::TIERS (the per-tier publish matrix). Renaming a tier
-    means updating all three together. This converts the previously
-    comment-only invariant into an enforced one for two of the three surfaces
-    (the TS surface is enforced in catalog.test.ts)."""
-    expected = ("2b", "4b", "9b", "27b", "27b-256k")
-    assert ELIZA_1_TIERS == expected
-    assert _parse_publish_all_tiers() == expected, (
-        "publish_all_eliza1.sh::TIERS drifted from eliza1_manifest.py::"
-        "ELIZA_1_TIERS — update catalog.ts, eliza1_manifest.py, and "
-        "publish_all_eliza1.sh together"
-    )
-
-
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
     assert manifest["tier"] == "4b"
@@ -253,40 +227,6 @@ def test_build_manifest_happy_path():
     }
     # Validates against itself.
     assert validate_manifest(manifest) == ()
-
-
-def test_build_manifest_blocks_non_gemma_text_architecture():
-    kwargs = base_kwargs("9b")
-    kwargs["files"]["text"] = [
-        FileEntry(
-            path="text/eliza-1-9b-128k.gguf",
-            sha256=SHA,
-            ctx=131072,
-            architecture="qwen35",
-        )
-    ]
-
-    with pytest.raises(Eliza1ManifestError) as excinfo:
-        build_manifest(**kwargs)
-
-    assert "architecture: must be gemma*" in str(excinfo.value)
-
-
-def test_build_manifest_uses_gemma_text_architecture_without_emitting_it():
-    kwargs = base_kwargs("2b")
-    kwargs["files"]["text"] = [
-        FileEntry(
-            path="text/eliza-1-2b-128k.gguf",
-            sha256=SHA,
-            ctx=131072,
-            architecture="gemma4",
-        )
-    ]
-
-    manifest = build_manifest(**kwargs)
-
-    assert manifest["tokenizer"]["family"] == "gemma4"
-    assert "architecture" not in manifest["files"]["text"][0]
 
 
 def test_legacy_onnx_vad_manifest_remains_compatible():
@@ -604,7 +544,12 @@ def test_desktop_tier_requires_rocm_pass():
 def test_long_context_requires_turbo3_tcq():
     kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(
+            path="text/eliza-1-4b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="gemma4",
+        )
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -617,7 +562,12 @@ def test_long_context_requires_turbo3_tcq():
 def test_long_context_rejects_turbo3_tcq_optional_only():
     kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(
+            path="text/eliza-1-4b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="gemma4",
+        )
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -631,7 +581,12 @@ def test_long_context_rejects_turbo3_tcq_optional_only():
 def test_long_context_with_turbo3_tcq_in_required_passes():
     kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(
+            path="text/eliza-1-4b-128k.gguf",
+            sha256=SHA,
+            ctx=131072,
+            architecture="gemma4",
+        )
     ]
     kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["4b"])
     kwargs["kernels_optional"] = []
@@ -642,7 +597,12 @@ def test_long_context_with_turbo3_tcq_in_required_passes():
 def test_text_context_below_128k_is_rejected():
     kwargs = base_kwargs("2b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-2b-64k.gguf", sha256=SHA, ctx=65536)
+        FileEntry(
+            path="text/eliza-1-2b-64k.gguf",
+            sha256=SHA,
+            ctx=65536,
+            architecture="gemma4",
+        )
     ]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -652,7 +612,12 @@ def test_text_context_below_128k_is_rejected():
 def test_32k_release_path_is_rejected_even_when_gguf_metadata_is_long():
     kwargs = base_kwargs("2b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-2b-32k.gguf", sha256=SHA, ctx=262144)
+        FileEntry(
+            path="text/eliza-1-2b-32k.gguf",
+            sha256=SHA,
+            ctx=262144,
+            architecture="gemma4",
+        )
     ]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)

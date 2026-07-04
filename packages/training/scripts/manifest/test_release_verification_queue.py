@@ -5,11 +5,24 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.manifest.release_verification_queue import build_queue, filter_queue, render_markdown  # noqa: E402
+from scripts.manifest.release_verification_queue import build_queue, filter_queue, main, render_markdown  # noqa: E402
+
+
+def test_summary_json_cli_flag_is_rejected(tmp_path: Path, capsys) -> None:
+    summary = tmp_path / "summary.json"
+    summary.write_text('{"ok": false}', encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--summary-json", str(summary)])
+
+    assert exc.value.code == 2
+    assert "--summary-json was removed" in capsys.readouterr().err
 
 
 def test_build_queue_expands_grouped_audit_failures() -> None:

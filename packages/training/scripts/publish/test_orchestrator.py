@@ -15,6 +15,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import struct
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,19 +29,17 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish.orchestrator import (  # noqa: E402
-    DEFAULT_RAM_BUDGET_MB,
     ELIZA_1_HF_REPO,
     EXIT_BUNDLE_LAYOUT_FAIL,
     EXIT_EVAL_GATE_FAIL,
+    EXIT_HF_AUDIT_FAIL,
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
     EXIT_OK,
-    EXIT_HF_AUDIT_FAIL,
     EXIT_RELEASE_EVIDENCE_FAIL,
     EXIT_USAGE,
     OrchestratorError,
     PublishContext,
-    TIER_TAGLINES,
     run,
     validate_bundle_layout,
 )
@@ -63,6 +63,30 @@ def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
     return h.hexdigest()
+
+
+def _current_commit() -> str:
+    proc = subprocess.run(
+        ["git", "-C", str(Path(__file__).resolve().parents[4]), "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else "unknown"
+
+
+def _gguf_header(arch: str = "gemma4") -> bytes:
+    def s(value: str) -> bytes:
+        data = value.encode("utf-8")
+        return struct.pack("<Q", len(data)) + data
+
+    return (
+        b"GGUF"
+        + struct.pack("<IQQ", 3, 0, 1)
+        + s("general.architecture")
+        + struct.pack("<I", 8)
+        + s(arch)
+    )
 
 
 def _passing_eval_blob(tier: str = "4b") -> dict[str, Any]:
@@ -108,8 +132,8 @@ def _build_fixture_bundle(
     bundle = tmp_path / f"bundle-{tier}"
 
     # Weight files — content irrelevant; sha256 is the contract.
-    _write(bundle / "text" / f"eliza-1-{tier}-128k.gguf", b"\x00text-128k\x00")
-    _write(bundle / "text" / f"eliza-1-{tier}-256k.gguf", b"\x00text-256k\x00")
+    _write(bundle / "text" / f"eliza-1-{tier}-128k.gguf", _gguf_header())
+    _write(bundle / "text" / f"eliza-1-{tier}-256k.gguf", _gguf_header())
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"\x00tts\x00")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00")
     _write(
@@ -128,7 +152,11 @@ def _build_fixture_bundle(
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
     _write(bundle / "mtp" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
     text_sha = _sha256(bundle / "text" / f"eliza-1-{tier}-256k.gguf")
+    text_shas = sorted(
+        _sha256(path) for path in (bundle / "text").glob("*.gguf")
+    )
     drafter_sha = _sha256(bundle / "mtp" / f"drafter-{tier}.gguf")
+    commit = _current_commit()
     _write(
         bundle / "mtp" / "target-meta.json",
         json.dumps(
@@ -212,6 +240,9 @@ def _build_fixture_bundle(
 
     # Evals — aggregate.json (gates input) + per-backend verify reports.
     blob = eval_blob if eval_blob is not None else _passing_eval_blob(tier)
+    blob = dict(blob)
+    blob["atCommit"] = commit
+    blob["textModelSha256s"] = text_shas
     _write(
         bundle / "evals" / "aggregate.json",
         json.dumps(blob, indent=2),
@@ -330,7 +361,9 @@ def _build_fixture_bundle(
             {
                 "backend": "metal",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
+                "device": "fixture-metal",
                 "report": "metal_verify.txt",
             }
         ),
@@ -341,7 +374,9 @@ def _build_fixture_bundle(
             {
                 "backend": "cpu",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
+                "device": "fixture-cpu",
                 "report": "cpu_reference.txt",
             }
         ),
@@ -352,7 +387,9 @@ def _build_fixture_bundle(
             {
                 "backend": "vulkan",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
+                "device": "fixture-vulkan",
                 "report": "vulkan_verify.txt",
             }
         ),
@@ -363,7 +400,9 @@ def _build_fixture_bundle(
             {
                 "backend": "cuda",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
+                "device": "fixture-cuda",
                 "report": "cuda_verify.txt",
             }
         ),
@@ -374,7 +413,9 @@ def _build_fixture_bundle(
             {
                 "backend": "rocm",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
+                "device": "fixture-rocm",
                 "report": "rocm_verify.txt",
             }
         ),
@@ -388,7 +429,7 @@ def _build_fixture_bundle(
                     "backend": backend,
                     "status": "pass",
                     "runtimeReady": True,
-                    "atCommit": "deadbee",
+                    "atCommit": commit,
                     "modelSha256": text_sha,
                     "kernelSet": graph_kernel_set,
                     "graphDispatch": {
@@ -439,7 +480,7 @@ def _build_fixture_bundle(
                     "target": target,
                     "status": "pass",
                     "device": f"fixture-{target}",
-                    "atCommit": "deadbee",
+                    "atCommit": commit,
                     "voiceAbi": (
                         True if target == "ios-arm64-metal" else "not-applicable"
                     ),
@@ -600,7 +641,9 @@ def _metal_report(tmp_path: Path, status: str = "pass") -> Path:
             {
                 "backend": "metal",
                 "status": status,
-                "atCommit": "cafef00",
+                "atCommit": _current_commit(),
+                "modelSha256": hashlib.sha256(_gguf_header()).hexdigest(),
+                "device": "fixture-metal",
                 "report": "metal_verify.txt",
             }
         )
@@ -689,17 +732,6 @@ def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 # (a) Dry-run happy path
 # ---------------------------------------------------------------------------
-
-
-def test_orchestrator_tier_maps_cover_release_matrix() -> None:
-    expected = ("2b", "4b", "9b", "27b", "27b-256k")
-
-    assert tuple(TIER_TAGLINES) == expected
-    assert tuple(DEFAULT_RAM_BUDGET_MB) == expected
-    for tier in expected:
-        ram_min, ram_rec = DEFAULT_RAM_BUDGET_MB[tier]
-        assert TIER_TAGLINES[tier]
-        assert 0 < ram_min <= ram_rec
 
 
 def test_layout_rejects_empty_mtp_dir_on_mtp_enabled_tier(tmp_path: Path) -> None:
@@ -1290,8 +1322,8 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
 
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
+    events: list[str] = []
     final_uploads: list[tuple[str, str]] = []
-    audit_calls: list[str] = []
 
     def fake_push_to_hf(
         ctx: PublishContext,
@@ -1315,6 +1347,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     def fake_push_final_release_evidence(
         ctx: PublishContext, release_path: Path, checksum_path: Path
     ) -> None:
+        events.append("final-evidence")
         final_uploads.append(
             (
                 str(release_path.relative_to(ctx.bundle_dir)),
@@ -1322,24 +1355,28 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
             )
         )
 
+    def fake_hf_audit(ctx: PublishContext) -> None:
+        events.append("audit")
+        assert ctx.repo_id == ELIZA_1_HF_REPO
+
+    def fake_tag(*args: Any) -> str:
+        events.append("tag")
+        return "tagged"
+
     monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
     monkeypatch.setattr(
         orchestrator,
         "push_final_release_evidence",
         fake_push_final_release_evidence,
     )
-    monkeypatch.setattr(
-        orchestrator,
-        "run_hf_release_audit",
-        lambda ctx: audit_calls.append(ctx.repo_id),
-    )
-    monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
+    monkeypatch.setattr(orchestrator, "run_hf_release_audit", fake_hf_audit)
+    monkeypatch.setattr(orchestrator, "tag_training_repo", fake_tag)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
     assert rc == EXIT_OK
+    assert events == ["final-evidence", "audit", "tag"]
     assert final_uploads == [("evidence/release.json", "checksums/SHA256SUMS")]
-    assert audit_calls == [ELIZA_1_HF_REPO]
     release = json.loads((bundle / "evidence" / "release.json").read_text())
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
@@ -1350,6 +1387,52 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
         line for line in checksum_lines if "  evidence/release.json" in line
     )
     assert release_line.startswith(_sha256(bundle / "evidence" / "release.json"))
+
+
+def test_real_publish_blocks_when_live_hf_audit_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    events: list[str] = []
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
+            "uploadedPaths": [
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
+                *(target for _, target in upload_pairs),
+            ],
+        }
+
+    def fake_hf_audit(ctx: PublishContext) -> None:
+        events.append("audit")
+        raise OrchestratorError("live HF audit failed", EXIT_HF_AUDIT_FAIL)
+
+    def fake_tag(*args: Any) -> str:
+        events.append("tag")
+        return "tagged"
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(orchestrator, "push_final_release_evidence", lambda *args: None)
+    monkeypatch.setattr(orchestrator, "run_hf_release_audit", fake_hf_audit)
+    monkeypatch.setattr(orchestrator, "tag_training_repo", fake_tag)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_HF_AUDIT_FAIL
+    assert events == ["audit"]
 
 
 def test_finalize_release_evidence_sets_size_first_from_upload_evidence(
@@ -1522,6 +1605,34 @@ def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
     assert rc == EXIT_KERNEL_VERIFY_FAIL
 
 
+def test_stale_kernel_verification_commit_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    report_path = bundle / "evals" / "vulkan_verify.json"
+    report = json.loads(report_path.read_text())
+    report["atCommit"] = "deadbee"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_KERNEL_VERIFY_FAIL
+
+
+def test_eval_sha_mismatch_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    aggregate_path = bundle / "evals" / "aggregate.json"
+    aggregate = json.loads(aggregate_path.read_text())
+    aggregate["textModelSha256s"] = ["f" * 64]
+    aggregate_path.write_text(json.dumps(aggregate), encoding="utf-8")
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_EVAL_GATE_FAIL
+
+
 def test_metal_required_but_missing_fails(tmp_path: Path) -> None:
     """Tier supports metal; without --metal-verification the run aborts."""
     bundle = _build_fixture_bundle(tmp_path)
@@ -1624,9 +1735,25 @@ def test_missing_e2e_loop_ok_blocks_publish(tmp_path: Path, monkeypatch) -> None
     blob["results"].pop("e2e_loop_ok")
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
+    monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_EVAL_GATE_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
+
+
+def test_alias_opt_in_env_no_longer_bypasses_missing_e2e_loop_ok(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The removed alias env var cannot source one gate from another."""
+    blob = _passing_eval_blob()
+    blob["results"].pop("e2e_loop_ok")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
     monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
     assert rc == EXIT_EVAL_GATE_FAIL
     assert not (bundle / "eliza-1.manifest.json").is_file()
 

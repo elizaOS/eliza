@@ -387,22 +387,46 @@ def test_plan_bundle_accepts_mtp_weight_claim_for_mtp_tier(tmp_path: Path):
     assert not any("weights lists MTP path" in e for e in plan.errors)
 
 
-def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):
+def test_allow_missing_flag_is_rejected(tmp_path: Path, capsys):
     report = tmp_path / "report.json"
 
-    rc = P.main(
-        [
-            "--bundles-root",
-            str(tmp_path),
-            "--tier",
-            "2b",
-            "--dry-run",
-            "--allow-missing",
-            "--report",
-            str(report),
-        ]
-    )
+    try:
+        P.main(
+            [
+                "--bundles-root",
+                str(tmp_path),
+                "--tier",
+                "2b",
+                "--dry-run",
+                "--allow-missing",
+                "--report",
+                str(report),
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:  # pragma: no cover - argparse must exit
+        raise AssertionError("--allow-missing should be rejected")
 
-    assert rc == 0
-    assert "Eliza-1 model repo publish plan" in capsys.readouterr().out
-    assert json.loads(report.read_text())["plans"][0]["tier"] == "2b"
+    assert "--allow-missing was removed" in capsys.readouterr().err
+    assert not report.exists()
+
+
+def test_skip_hash_verify_flag_is_rejected(tmp_path: Path, capsys):
+    try:
+        P.main(
+            [
+                "--bundles-root",
+                str(tmp_path),
+                "--tier",
+                "2b",
+                "--dry-run",
+                "--skip-hash-verify",
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:  # pragma: no cover - argparse must exit
+        raise AssertionError("--skip-hash-verify should be rejected")
+
+    assert "--skip-hash-verify was removed" in capsys.readouterr().err

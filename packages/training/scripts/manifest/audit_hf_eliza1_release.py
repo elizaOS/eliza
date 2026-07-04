@@ -16,22 +16,31 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 try:
     from scripts.manifest.eliza1_manifest import (
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
+        ELIZA_1_TOKENIZER_FAMILY,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        is_gemma_text_architecture,
+        read_gguf_architecture_from_bytes,
+        tokenizer_family_for_text_architecture,
     )
     from scripts.manifest.eliza1_platform_plan import CONTEXTS_BY_TIER, build_plan, text_artifact_name
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
+        ELIZA_1_TOKENIZER_FAMILY,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        is_gemma_text_architecture,
+        read_gguf_architecture_from_bytes,
+        tokenizer_family_for_text_architecture,
     )
     from eliza1_platform_plan import CONTEXTS_BY_TIER, build_plan, text_artifact_name
 
@@ -184,9 +193,19 @@ MODEL_API = "https://huggingface.co/api/models/{repo}"
 DATASET_API = "https://huggingface.co/api/datasets/{repo}"
 DATASET_SPLITS_API = "https://datasets-server.huggingface.co/splits?dataset={repo}"
 _CONTEXT_LABEL_RE = re.compile(r"^(\d+)([km])$", re.IGNORECASE)
+GGUF_HEADER_READ_BYTES = 1 << 20
+CANONICAL_CATALOG_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "packages"
+    / "shared"
+    / "src"
+    / "local-inference"
+    / "catalog.ts"
+)
 
 JsonFetcher = Callable[[str], Mapping[str, Any]]
 TextFetcher = Callable[[str], str]
+BytesFetcher = Callable[[str, int], bytes]
 
 
 @dataclass
@@ -239,6 +258,8 @@ class AuditReport:
                 by_category.setdefault("platformEvidence", []).append(item)
             elif name.endswith("quantization sidecars passed"):
                 by_category.setdefault("quantizationEvidence", []).append(item)
+            elif name.endswith("manifest/catalog/HF text architecture matches"):
+                by_category.setdefault("textArchitecture", []).append(item)
             elif name.endswith("manifest eval gates passed"):
                 by_category["manifestEvalGates"].append(item)
             elif name.startswith("model README"):
@@ -317,6 +338,20 @@ def hub_fetch_text(url: str) -> str:
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read(2_000_000).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:240]
+        raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
+
+
+def hub_fetch_bytes(url: str, max_bytes: int = GGUF_HEADER_READ_BYTES) -> bytes:
+    headers = {"Accept": "application/octet-stream", "Range": f"bytes=0-{max_bytes - 1}"}
+    token = _token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.read(max_bytes)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:240]
         raise RuntimeError(f"HTTP {exc.code} from {url}: {body}") from exc
@@ -571,25 +606,98 @@ def _manifest_text_context_blockers(manifest: Mapping[str, Any], tier: str) -> l
     return blockers
 
 
-def _manifest_text_architecture_blockers(manifest: Mapping[str, Any]) -> list[str]:
+def _read_catalog_text(catalog_text: str | None) -> str:
+    if catalog_text is not None:
+        return catalog_text
+    try:
+        return CANONICAL_CATALOG_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _catalog_tokenizer_families(catalog_text: str | None) -> dict[str, str]:
+    text = _read_catalog_text(catalog_text)
+    out: dict[str, str] = {}
+    for match in re.finditer(
+        r'id:\s*"(?P<id>eliza-1-[^"]+)".{0,2000}?tokenizerFamily:\s*"(?P<family>[^"]+)"',
+        text,
+        re.DOTALL,
+    ):
+        out[match.group("id")] = match.group("family")
+    if (
+        "ELIZA_1_TIER_IDS.map((id)" in text
+        and f'tokenizerFamily: "{ELIZA_1_TOKENIZER_FAMILY}"' in text
+    ):
+        for tier in ELIZA_1_TIERS:
+            out.setdefault(f"eliza-1-{tier}", ELIZA_1_TOKENIZER_FAMILY)
+    return out
+
+
+def _manifest_hf_text_architecture_blockers(
+    manifest: Mapping[str, Any],
+    *,
+    tier: str,
+    prefix: str,
+    model_repo: str,
+    model_paths: set[str],
+    fetch_bytes: BytesFetcher,
+    catalog_families: Mapping[str, str],
+) -> list[str]:
     files = manifest.get("files")
     if not isinstance(files, Mapping):
         return ["missing manifest files block"]
     text_entries = files.get("text")
-    if not isinstance(text_entries, list) or not text_entries:
+    if not isinstance(text_entries, list):
         return ["missing files.text block"]
+    tokenizer = manifest.get("tokenizer")
+    tokenizer_family = (
+        tokenizer.get("family")
+        if isinstance(tokenizer, Mapping) and isinstance(tokenizer.get("family"), str)
+        else None
+    )
+    catalog_family = catalog_families.get(f"eliza-1-{tier}")
     blockers: list[str] = []
     for entry in text_entries:
-        if not isinstance(entry, Mapping):
-            blockers.append("files.text entry: not an object")
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("path"), str):
             continue
-        path = entry.get("path")
-        label = path if isinstance(path, str) else "files.text entry"
-        architecture = entry.get("architecture")
-        if not isinstance(architecture, str) or not architecture:
-            blockers.append(f"{label}: architecture missing")
-        elif not architecture.lower().startswith("gemma"):
-            blockers.append(f"{label}: architecture={architecture!r}")
+        rel = entry["path"]
+        repo_path = f"{prefix}{rel}"
+        manifest_arch = entry.get("architecture")
+        if not isinstance(manifest_arch, str) or not manifest_arch:
+            blockers.append(f"{rel}: manifest files.text[].architecture missing")
+        if repo_path not in model_paths:
+            continue
+        try:
+            header = fetch_bytes(
+                _raw_model_url(model_repo, repo_path),
+                GGUF_HEADER_READ_BYTES,
+            )
+        except RuntimeError as exc:
+            blockers.append(f"{rel}: {exc}")
+            continue
+        hf_arch = read_gguf_architecture_from_bytes(header)
+        if hf_arch is None:
+            blockers.append(f"{rel}: HF GGUF {repo_path} missing general.architecture")
+            continue
+        if not is_gemma_text_architecture(hf_arch):
+            blockers.append(
+                f"{rel}: HF GGUF general.architecture={hf_arch!r}, expected gemma*"
+            )
+        if isinstance(manifest_arch, str) and manifest_arch != hf_arch:
+            blockers.append(
+                f"{rel}: manifest architecture {manifest_arch!r} != HF bytes {hf_arch!r}"
+            )
+        derived_family = tokenizer_family_for_text_architecture(hf_arch)
+        if tokenizer_family != derived_family:
+            blockers.append(
+                f"{rel}: manifest tokenizer.family {tokenizer_family!r} != "
+                f"byte-derived {derived_family!r}"
+            )
+        if catalog_family is not None and catalog_family != derived_family:
+            blockers.append(
+                f"{rel}: catalog tokenizerFamily {catalog_family!r} != "
+                f"byte-derived {derived_family!r}"
+            )
     return blockers
 
 
@@ -1445,9 +1553,12 @@ def audit_hf_release(
     dataset_repo: str = DEFAULT_DATASET_REPO,
     fetch_json: JsonFetcher = hub_fetch_json,
     fetch_text: TextFetcher = hub_fetch_text,
+    fetch_bytes: BytesFetcher = hub_fetch_bytes,
+    catalog_text: str | None = None,
 ) -> AuditReport:
     report = AuditReport(model_repo=model_repo, dataset_repo=dataset_repo)
     plan = build_plan()
+    catalog_families = _catalog_tokenizer_families(catalog_text)
 
     model_payload = fetch_json(_repo_api_url(MODEL_API, model_repo))
     model_paths = _sibling_paths(model_payload)
@@ -1662,12 +1773,20 @@ def audit_hf_release(
             not text_context_blockers,
             ", ".join(text_context_blockers[:8]) + (f" (+{len(text_context_blockers) - 8} more)" if len(text_context_blockers) > 8 else ""),
         )
-        text_architecture_blockers = _manifest_text_architecture_blockers(manifest)
+        architecture_blockers = _manifest_hf_text_architecture_blockers(
+            manifest,
+            tier=tier,
+            prefix=prefix,
+            model_repo=model_repo,
+            model_paths=model_paths,
+            fetch_bytes=fetch_bytes,
+            catalog_families=catalog_families,
+        )
         report.check(
-            f"{tier} manifest text architectures are Gemma",
-            not text_architecture_blockers,
-            ", ".join(text_architecture_blockers[:8])
-            + (f" (+{len(text_architecture_blockers) - 8} more)" if len(text_architecture_blockers) > 8 else ""),
+            f"{tier} manifest/catalog/HF text architecture matches",
+            not architecture_blockers,
+            ", ".join(architecture_blockers[:8])
+            + (f" (+{len(architecture_blockers) - 8} more)" if len(architecture_blockers) > 8 else ""),
         )
         manifest_required_file_blockers = _manifest_required_file_blockers(
             manifest,

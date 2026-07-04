@@ -1,9 +1,8 @@
 """Emit a MODEL_CATALOG entry for a freshly-produced eliza-1-<tier> GGUF.
 
-After the supported Gemma bundle staging path produces a GGUF +
-``eliza1_manifest.json``, the Eliza-1 runtime can only pick the model up once
-it has a catalog entry. The canonical catalog (``MODEL_CATALOG``,
-``ELIZA_1_TIER_IDS``,
+After ``optimize_for_eliza1.py`` produces a GGUF + ``eliza1_manifest.json``
+the Eliza-1 runtime can only pick the model up once it has a catalog
+entry. The canonical catalog (``MODEL_CATALOG``, ``ELIZA_1_TIER_IDS``,
 ``DEFAULT_ELIGIBLE_MODEL_IDS``, the HuggingFace URL builders) lives in:
 
     packages/shared/src/local-inference/catalog.ts
@@ -64,7 +63,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from manifest.eliza1_manifest import ELIZA_1_TIERS
+from manifest.eliza1_manifest import (
+    ELIZA_1_TIERS,
+    tokenizer_family_for_text_architecture,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,13 +89,12 @@ ACTIVE_BUNDLE_REPOS = tuple(_bundle_repo(tier) for tier in ELIZA_1_TIERS)
 
 
 # Heuristic mapping from base model name → catalog metadata. New
-# entries go here when adding a new optimization target. Tokenizer identity is
-# deliberately not part of this tier table; it must come from the manifest,
-# whose publisher-side gate owns byte-level GGUF provenance.
+# entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
     _bundle_repo("2b"): {
         "params": "2B",
         "context_length": 131072,
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
@@ -102,6 +103,7 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("4b"): {
         "params": "4B",
         "context_length": 131072,
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "mid",
         "min_ram_gb": 6,
@@ -110,6 +112,7 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("9b"): {
         "params": "9B",
         "context_length": 131072,
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 12,
@@ -118,6 +121,7 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("27b"): {
         "params": "27B",
         "context_length": 131072,
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 32,
@@ -126,6 +130,7 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("27b-256k"): {
         "params": "27B",
         "context_length": 262144,
+        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 48,
@@ -214,14 +219,27 @@ def _slug_from_repo(hf_repo: str) -> str:
     return last.lower()
 
 
-def _tokenizer_family_from_manifest(manifest: dict[str, object]) -> str:
+def _tokenizer_family_from_manifest(manifest: dict[str, object]) -> str | None:
     tokenizer = manifest.get("tokenizer")
-    if not isinstance(tokenizer, dict):
-        raise SystemExit("manifest.tokenizer must be an object")
-    family = tokenizer.get("family")
-    if not isinstance(family, str) or not family:
-        raise SystemExit("manifest.tokenizer.family is required")
-    return family
+    if isinstance(tokenizer, dict) and isinstance(tokenizer.get("family"), str):
+        return tokenizer["family"]
+    files = manifest.get("files")
+    text_files = files.get("text") if isinstance(files, dict) else None
+    if not isinstance(text_files, list):
+        return None
+    families = {
+        tokenizer_family_for_text_architecture(entry["architecture"])
+        for entry in text_files
+        if isinstance(entry, dict) and isinstance(entry.get("architecture"), str)
+    }
+    if len(families) == 1:
+        return families.pop()
+    if len(families) > 1:
+        raise SystemExit(
+            "manifest files.text[].architecture maps to multiple tokenizer families: "
+            f"{sorted(families)}"
+        )
+    return None
 
 
 def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
@@ -243,6 +261,12 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
     gguf_file = str(gguf.get("filename") or "")
     if not gguf_file:
         raise SystemExit("manifest.gguf.filename is required")
+    tokenizer_family = _tokenizer_family_from_manifest(manifest)
+    if tokenizer_family is None:
+        raise SystemExit(
+            "manifest must include tokenizer.family or files.text[].architecture "
+            "derived from the GGUF bytes"
+        )
 
     runtime = manifest.get("runtime") or {}
     if not isinstance(runtime, dict):
@@ -279,7 +303,7 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
         category=str(base_meta["category"]),
         bucket=str(base_meta["bucket"]),
         context_length=int(base_meta["context_length"]),
-        tokenizer_family=_tokenizer_family_from_manifest(manifest),
+        tokenizer_family=tokenizer_family,
         cache_type_k=cache_type_k,
         cache_type_v=cache_type_v,
         spec_type=spec_type,
@@ -353,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         "--manifest",
         type=Path,
         required=True,
-        help="Path to eliza1_manifest.json from the staged bundle.",
+        help="Path to eliza1_manifest.json from optimize_for_eliza1.py.",
     )
     ap.add_argument(
         "--catalog",

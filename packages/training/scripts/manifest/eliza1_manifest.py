@@ -19,6 +19,7 @@ Source of truth:
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import struct
@@ -36,10 +37,12 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+GGUF_ARCHITECTURE_KEY: Final[str] = "general.architecture"
+GEMMA_TEXT_ARCHITECTURE_RE: Final[re.Pattern[str]] = re.compile(r"^gemma", re.I)
 
 # Tokenizer identity for the Gemma 4 Eliza-1 line. Mirrors schema.ts
-# (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). Stamped into the
-# emitted manifest by build_manifest() so the bundle records its tokenizer.
+# (ELIZA_1_TOKENIZER_FAMILY / ELIZA_1_TOKENIZER_VOCAB_SIZE). build_manifest()
+# derives this from the text GGUF architecture for publish-ready manifests.
 ELIZA_1_TOKENIZER_FAMILY: Final[str] = "gemma4"
 ELIZA_1_TOKENIZER_VOCAB_SIZE: Final[int] = 262_144
 
@@ -394,11 +397,16 @@ def _read_gguf_string_value(fh: BinaryIO, value_type: int) -> str | None:
     return None
 
 
-def read_gguf_architecture(path: Path) -> str | None:
-    """Return GGUF ``general.architecture`` when the header is readable."""
+def read_gguf_architecture_from_bytes(data: bytes) -> str | None:
+    """Return ``general.architecture`` from a GGUF header byte slice.
+
+    The publish gate reads this field from the actual text GGUF bytes instead
+    of trusting filenames, source repository names, or operator-authored
+    manifest fields.
+    """
 
     try:
-        with path.open("rb") as fh:
+        with io.BytesIO(data) as fh:
             if _read_exact(fh, 4) != b"GGUF":
                 return None
             _version = _read_u32(fh)
@@ -409,12 +417,36 @@ def read_gguf_architecture(path: Path) -> str | None:
             for _ in range(metadata_count):
                 key = _read_gguf_string(fh)
                 value_type = _read_u32(fh)
-                if key == "general.architecture":
+                if key == GGUF_ARCHITECTURE_KEY:
                     return _read_gguf_string_value(fh, value_type)
                 _skip_gguf_value(fh, value_type)
     except Exception:
         return None
     return None
+
+
+def read_gguf_architecture(path: Path) -> str | None:
+    """Return ``general.architecture`` from a local GGUF file, if present."""
+
+    try:
+        with path.open("rb") as fh:
+            return read_gguf_architecture_from_bytes(fh.read(1024 * 1024))
+    except OSError:
+        return None
+
+
+def is_gemma_text_architecture(architecture: str | None) -> bool:
+    return isinstance(architecture, str) and bool(
+        GEMMA_TEXT_ARCHITECTURE_RE.match(architecture)
+    )
+
+
+def tokenizer_family_for_text_architecture(architecture: str) -> str:
+    """Map a GGUF text architecture to the tokenizer family in the manifest."""
+
+    if is_gemma_text_architecture(architecture):
+        return ELIZA_1_TOKENIZER_FAMILY
+    return architecture.lower()
 
 
 def read_gguf_context_length(path: Path) -> int | None:
@@ -469,12 +501,6 @@ def text_context_for_manifest(path: Path) -> int | None:
     """
 
     return read_gguf_context_length(path) or parse_text_ctx_from_filename(path)
-
-
-def text_architecture_for_manifest(path: Path) -> str | None:
-    """Byte-level text GGUF architecture for publish-gate manifest checks."""
-
-    return read_gguf_architecture(path)
 
 
 class Eliza1ManifestError(ValueError):
@@ -1269,6 +1295,22 @@ def validate_manifest(
             errors.append(
                 f"files.text[{i}].path: 32k/64k text GGUFs are below the Eliza-1 release floor"
             )
+        architecture = entry.get("architecture")
+        if require_publish_ready or manifest["defaultEligible"]:
+            if not isinstance(architecture, str) or not architecture:
+                errors.append(
+                    f"files.text[{i}].architecture: required from GGUF {GGUF_ARCHITECTURE_KEY} for publish-ready manifests"
+                )
+            elif not is_gemma_text_architecture(architecture):
+                errors.append(
+                    f"files.text[{i}].architecture: expected gemma* from GGUF {GGUF_ARCHITECTURE_KEY}, got {architecture!r}"
+                )
+        elif architecture is not None and (
+            not isinstance(architecture, str) or not architecture
+        ):
+            errors.append(
+                f"files.text[{i}].architecture: must be a non-empty string when present"
+            )
 
     must_have_recipe_manifest = require_publish_ready or manifest["defaultEligible"]
     if must_have_recipe_manifest:
@@ -1523,31 +1565,58 @@ def _file_dict(entry: FileEntry) -> dict[str, Any]:
     out: dict[str, Any] = {"path": entry.path, "sha256": entry.sha256}
     if entry.ctx is not None:
         out["ctx"] = entry.ctx
+    if entry.architecture is not None:
+        out["architecture"] = entry.architecture
     return out
 
 
-def _tokenizer_family_from_text_files(
+def _derive_tokenizer_family(
     text_files: Sequence[FileEntry],
-    requested_family: str,
+    requested_family: str | None,
+    *,
+    require_publish_ready: bool,
 ) -> str:
-    architectures = [
-        (entry.path, entry.architecture)
-        for entry in text_files
-        if entry.architecture is not None
-    ]
-    if not architectures:
-        return requested_family
-
+    architectures = [entry.architecture for entry in text_files]
+    present = [arch for arch in architectures if isinstance(arch, str) and arch]
     errors: list[str] = []
-    for path, architecture in architectures:
-        arch_norm = architecture.lower()
-        if not arch_norm.startswith("gemma"):
+
+    if require_publish_ready:
+        for entry in text_files:
+            if not entry.architecture:
+                errors.append(
+                    f"files.text[{entry.path}].architecture: missing GGUF {GGUF_ARCHITECTURE_KEY}"
+                )
+            elif not is_gemma_text_architecture(entry.architecture):
+                errors.append(
+                    f"files.text[{entry.path}].architecture: expected gemma* from GGUF {GGUF_ARCHITECTURE_KEY}, got {entry.architecture!r}"
+                )
+
+    families = {
+        tokenizer_family_for_text_architecture(arch)
+        for arch in present
+        if isinstance(arch, str)
+    }
+    if len(families) > 1:
+        errors.append(
+            "tokenizer.family: text GGUF architectures map to multiple tokenizer families "
+            f"{sorted(families)}"
+        )
+    derived = next(iter(families), None)
+    if requested_family is not None:
+        if requested_family != ELIZA_1_TOKENIZER_FAMILY:
             errors.append(
-                f"files.text[{path}].architecture: must be gemma*, got {architecture!r}"
+                "tokenizer_family: must be "
+                f"{ELIZA_1_TOKENIZER_FAMILY!r}, got {requested_family!r}"
+            )
+        if derived is not None and requested_family != derived:
+            errors.append(
+                f"tokenizer_family: requested {requested_family!r} but GGUF bytes derive {derived!r}"
             )
     if errors:
         raise Eliza1ManifestError(errors)
-    return ELIZA_1_TOKENIZER_FAMILY
+    if derived is not None:
+        return derived
+    return requested_family or ELIZA_1_TOKENIZER_FAMILY
 
 
 def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
@@ -1627,7 +1696,7 @@ def build_manifest(
     bundle_id: str | None = None,
     # Tokenizer identity stamped into the manifest. Defaults to the Gemma 4
     # constants (mirrors schema.ts ELIZA_1_TOKENIZER_FAMILY / VOCAB_SIZE).
-    tokenizer_family: str = ELIZA_1_TOKENIZER_FAMILY,
+    tokenizer_family: str | None = None,
     tokenizer_vocab_size: int = ELIZA_1_TOKENIZER_VOCAB_SIZE,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
@@ -1641,18 +1710,6 @@ def build_manifest(
     if tier not in ELIZA_1_TIERS:
         raise Eliza1ManifestError([f"tier: unknown tier {tier!r}"])
 
-    tokenizer_family = _tokenizer_family_from_text_files(
-        files.get("text", ()),
-        tokenizer_family,
-    )
-
-    if tokenizer_family != ELIZA_1_TOKENIZER_FAMILY:
-        raise Eliza1ManifestError(
-            [
-                "tokenizer_family: must be "
-                f"{ELIZA_1_TOKENIZER_FAMILY!r}, got {tokenizer_family!r}"
-            ]
-        )
     if tokenizer_vocab_size != ELIZA_1_TOKENIZER_VOCAB_SIZE:
         raise Eliza1ManifestError(
             [
@@ -1660,6 +1717,11 @@ def build_manifest(
                 f"{ELIZA_1_TOKENIZER_VOCAB_SIZE}, got {tokenizer_vocab_size}"
             ]
         )
+    resolved_tokenizer_family = _derive_tokenizer_family(
+        files.get("text", ()),
+        tokenizer_family,
+        require_publish_ready=require_publish_ready,
+    )
 
     if bundle_id is None:
         bundle_id = f"eliza-1-{tier}"
@@ -1770,7 +1832,7 @@ def build_manifest(
         # Gemma cutover identity: tokenizer family/vocab, KV-cache policy
         # (stock q8_0 — no QJL/Polar), and the separate-drafter MTP shape.
         "tokenizer": {
-            "family": tokenizer_family,
+            "family": resolved_tokenizer_family,
             "vocabSize": tokenizer_vocab_size,
         },
         "kv": ELIZA_1_KV_POLICY,
@@ -1909,6 +1971,7 @@ def file_entries_from_records(
                 path=r["path"],
                 sha256=r["sha256"],
                 ctx=r.get("ctx"),
+                architecture=r.get("architecture"),
             )
         )
     return entries

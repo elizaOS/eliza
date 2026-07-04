@@ -882,12 +882,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--bundles-root", type=Path, default=DEFAULT_BUNDLES_ROOT)
     ap.add_argument("--tier", choices=TIERS, action="append", dest="tiers")
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--allow-missing", action="store_true")
+    ap.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="Removed: release uploads fail closed when any bundle is blocked.",
+    )
     ap.add_argument("--strict-voice-policy", action="store_true")
     ap.add_argument(
         "--skip-hash-verify",
         action="store_true",
-        help="Only check manifest file presence; do not hash large GGUF files.",
+        help="Removed: release uploads always verify manifest hashes.",
     )
     ap.add_argument(
         "--large-folder-upload",
@@ -897,13 +901,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--large-folder-workers", type=int)
     ap.add_argument("--report", type=Path, help="Optional JSON report path.")
     args = ap.parse_args(argv)
+    if args.allow_missing:
+        ap.error("--allow-missing was removed; blocked Eliza-1 bundles must not publish")
+    if args.skip_hash_verify:
+        ap.error(
+            "--skip-hash-verify was removed; Eliza-1 publish always hashes staged bytes"
+        )
 
     tiers = args.tiers or list(TIERS)
     plans = plan_bundles(
         args.bundles_root,
         tiers,
         strict_voice_policy=args.strict_voice_policy,
-        verify_hashes=not args.skip_hash_verify,
+        verify_hashes=True,
     )
     _print_summary(plans, repo_id=args.repo_id, dry_run=args.dry_run)
 
@@ -922,7 +932,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     blockers = [p for p in plans if not p.uploadable]
-    if blockers and not args.allow_missing:
+    if blockers:
         return 2
     if not args.dry_run:
         token = _token()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import struct
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -22,7 +23,7 @@ from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     NATIVE_UPSTREAM_REVIEW_PATH,
     QUANTIZATION_SIDECARS,
     TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
-    audit_hf_release,
+    audit_hf_release as _audit_hf_release,
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_HF_REPO,
@@ -34,6 +35,35 @@ from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # no
 
 
 DATASET_REPO = "elizaos/eliza-1-training"
+
+
+def _gguf_header(arch: str) -> bytes:
+    def s(value: str) -> bytes:
+        data = value.encode("utf-8")
+        return struct.pack("<Q", len(data)) + data
+
+    return b"GGUF" + struct.pack("<IQQ", 3, 0, 1) + s("general.architecture") + struct.pack("<I", 8) + s(arch)
+
+
+def _bytes_fetcher(architectures: Mapping[str, str] | None = None):
+    by_path = dict(architectures or {})
+
+    def fetch(url: str, max_bytes: int) -> bytes:
+        for path, arch in by_path.items():
+            if url.endswith(path):
+                return _gguf_header(arch)[:max_bytes]
+        return _gguf_header("gemma4")[:max_bytes]
+
+    return fetch
+
+
+def audit_hf_release(**kwargs):
+    kwargs.setdefault("fetch_bytes", _bytes_fetcher())
+    kwargs.setdefault(
+        "catalog_text",
+        'export const MODEL_CATALOG = ELIZA_1_TIER_IDS.map((id) => ({ tokenizerFamily: "gemma4" }));',
+    )
+    return _audit_hf_release(**kwargs)
 
 
 def _api_url(template: str, repo: str) -> str:
@@ -772,12 +802,12 @@ def _passing_model_manifest(tier: str) -> str:
     for rel in build_plan()[tier].required_files:
         root = rel.split("/", 1)[0]
         entry: dict[str, object] = {"path": rel, "sha256": "a" * 64}
-        if root == "text":
+        if root == "text" and "-128k" in rel:
+            entry["ctx"] = 131072
             entry["architecture"] = "gemma4"
-            if "-128k" in rel:
-                entry["ctx"] = 131072
-            elif "-256k" in rel:
-                entry["ctx"] = 262144
+        elif root == "text" and "-256k" in rel:
+            entry["ctx"] = 262144
+            entry["architecture"] = "gemma4"
         files_by_dir.setdefault(root, []).append(entry)
     return __import__("json").dumps(
         {
@@ -809,6 +839,7 @@ def _passing_model_manifest(tier: str) -> str:
                     for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
                 }
             },
+            "tokenizer": {"family": "gemma4", "vocabSize": 262144},
             "evals": {
                 "textEval": {"passed": True},
                 "voiceRtf": {"passed": True},
@@ -1016,26 +1047,6 @@ def test_hf_release_audit_blocks_missing_manifest_text_context_variant() -> None
     )
 
 
-def test_hf_release_audit_blocks_non_gemma_manifest_text_architecture() -> None:
-    bad_manifest = __import__("json").loads(_passing_model_manifest("9b"))
-    bad_manifest["files"]["text"][0]["architecture"] = "qwen35"
-
-    report = audit_hf_release(
-        fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(
-            model_manifests={"9b": __import__("json").dumps(bad_manifest)}
-        ),
-    )
-
-    assert not report.ok
-    failed = [check for check in report.checks if not check["ok"]]
-    assert any(
-        check["name"] == "9b manifest text architectures are Gemma"
-        and "architecture='qwen35'" in check["detail"]
-        for check in failed
-    )
-
-
 def test_hf_release_audit_blocks_wrong_manifest_text_context_value() -> None:
     bad_manifest = __import__("json").loads(_passing_model_manifest("4b"))
     for entry in bad_manifest["files"]["text"]:
@@ -1052,6 +1063,41 @@ def test_hf_release_audit_blocks_wrong_manifest_text_context_value() -> None:
     assert any(
         check["name"] == "4b manifest records native and half context text variants"
         and "ctx=32768 expected 131072" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_non_gemma_hf_text_architecture() -> None:
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(),
+        fetch_bytes=_bytes_fetcher(
+            {"bundles/9b/text/eliza-1-9b-128k.gguf": "qwen35"}
+        ),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "9b manifest/catalog/HF text architecture matches"
+        and "general.architecture='qwen35'" in check["detail"]
+        and "manifest architecture 'gemma4' != HF bytes 'qwen35'" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_catalog_tokenizer_drift() -> None:
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(),
+        catalog_text='id: "eliza-1-2b", tokenizerFamily: "qwen"',
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "2b manifest/catalog/HF text architecture matches"
+        and "catalog tokenizerFamily 'qwen' != byte-derived 'gemma4'" in check["detail"]
         for check in failed
     )
 

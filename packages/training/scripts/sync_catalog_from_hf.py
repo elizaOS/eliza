@@ -1,6 +1,6 @@
 """Walk the elizaos/eliza-1 bundle repo and emit a catalog diff for local inference.
 
-The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
+The local-inference catalog (`packages/shared/src/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
