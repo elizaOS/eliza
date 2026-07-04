@@ -52,6 +52,14 @@ import {
   TUTORIAL_CHAT_CONTROL_EVENT,
   type TutorialChatControlDetail,
 } from "../../events";
+import {
+  COPY_HOLD_MS,
+  TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
+  SHEET_DETENT_OVERSHOOT_SCALE,
+  sqrtRubberBand,
+  usePointerPressAndHold,
+  useRafCoalescer,
+} from "../../gestures";
 import { useConversationSwipeJank } from "../../hooks/useConversationSwipeJank";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -204,7 +212,6 @@ const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // of resting free — so near-detent releases are deterministic + clean, and only
 // the clear gaps between detents keep the free-drag rest height.
 const SHEET_DETENT_MAGNET = 64;
-const OUTSIDE_SHEET_TAP_SLOP = 10;
 
 // Feature flag: the resting one-tap prompt-suggestion strip. Off for now so the
 // composer can be tested without it; flip to true to bring the strip back.
@@ -251,10 +258,6 @@ const OPEN_SPRING = {
 // maps offset → openProgress ∈ [0,1] over this distance; past it, the excess
 // flows into the thread height so pill → input → chat is one continuous motion.
 const PILL_OPEN_DISTANCE = 120;
-// Rubber-band resistance applied to drag past a detent (iOS-style overscroll).
-function rubberBand(overshoot: number): number {
-  return Math.sign(overshoot) * Math.sqrt(Math.abs(overshoot)) * 6;
-}
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
 // + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
@@ -893,10 +896,6 @@ export function BootStatusIndicator({
  * the right. Memoized so a live drag (which re-renders the overlay on every
  * pointer-move frame) doesn't re-render every message in a long thread.
  */
-// Press-and-hold copy: a still hold this long fires; any finger travel past the
-// move threshold first cancels it (so it yields to the thread's scroll).
-const COPY_HOLD_MS = 420;
-const COPY_MOVE_CANCEL_PX = 10;
 
 /**
  * Render a user turn's text, bolding a leading slash command so a sent
@@ -1130,58 +1129,31 @@ const ThreadLine = React.memo(function ThreadLine({
   // Press-and-hold to copy an assistant answer — the only extraction affordance
   // on touch (no hover row). A still hold past COPY_HOLD_MS copies + flashes
   // "Copied" + a light haptic; real finger travel cancels so it never fights the
-  // thread's touch-pan-y scroll.
+  // thread's touch-pan-y scroll (shared usePointerPressAndHold recognizer).
   const [copied, setCopied] = React.useState(false);
-  const holdTimer = React.useRef<number | null>(null);
-  const holdStart = React.useRef<{ x: number; y: number } | null>(null);
   const copiedTimer = React.useRef<number | null>(null);
-  const clearHold = React.useCallback(() => {
-    if (holdTimer.current !== null) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-    holdStart.current = null;
-  }, []);
   React.useEffect(
     () => () => {
-      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
       if (copiedTimer.current !== null)
         window.clearTimeout(copiedTimer.current);
     },
     [],
   );
   const canCopy = isAssistant && !!onCopy && message.content.trim().length > 0;
-  const copyHandlers = canCopy
-    ? {
-        onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => {
-          if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
-          holdStart.current = { x: e.clientX, y: e.clientY };
-          holdTimer.current = window.setTimeout(() => {
-            onCopy?.(message.content);
-            detentHaptic();
-            setCopied(true);
-            if (copiedTimer.current !== null)
-              window.clearTimeout(copiedTimer.current);
-            copiedTimer.current = window.setTimeout(
-              () => setCopied(false),
-              1100,
-            );
-            holdTimer.current = null;
-          }, COPY_HOLD_MS);
-        },
-        onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => {
-          const s = holdStart.current;
-          if (!s) return;
-          if (
-            Math.abs(e.clientX - s.x) > COPY_MOVE_CANCEL_PX ||
-            Math.abs(e.clientY - s.y) > COPY_MOVE_CANCEL_PX
-          )
-            clearHold();
-        },
-        onPointerUp: clearHold,
-        onPointerCancel: clearHold,
-      }
-    : null;
+  const holdBinding = usePointerPressAndHold<HTMLDivElement>({
+    enabled: canCopy,
+    durationMs: COPY_HOLD_MS,
+    canBegin: (e) => !isNestedInteractiveTarget(e.currentTarget, e.target),
+    onHold: () => {
+      onCopy?.(message.content);
+      detentHaptic();
+      setCopied(true);
+      if (copiedTimer.current !== null)
+        window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1100);
+    },
+  });
+  const copyHandlers = canCopy ? holdBinding : null;
 
   // Click-to-reveal per-message action row (#10713): tapping a bubble reveals
   // Copy + Play (assistant) or Copy + Edit (user) beneath it; an outside tap
@@ -2622,36 +2594,30 @@ export function ContinuousChatOverlay({
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, []);
+  // Coalesce the high-rate vv `scroll` to at most one commit per frame (shared
+  // useRafCoalescer) so the keyboard-animation storm can't drive >60 forced
+  // style reads + setStates/s.
+  const viewportSync = useRafCoalescer<void>(() => {
+    // Bail out of the re-render when the viewport values are unchanged — vv
+    // `scroll` fires constantly while the keyboard animates but the height/
+    // inset frequently don't actually move between events.
+    setViewport((prev) => {
+      const next = readViewport();
+      return prev.height === next.height &&
+        prev.keyboardInset === next.keyboardInset &&
+        prev.innerHeight === next.innerHeight
+        ? prev
+        : next;
+    });
+    const el = overlayRef.current;
+    if (el) {
+      const pad = Number.parseFloat(getComputedStyle(el).paddingBottom) || 0;
+      setBottomPad((prev) => (prev === pad ? prev : pad));
+    }
+  });
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const commit = () => {
-      // Bail out of the re-render when the viewport values are unchanged — vv
-      // `scroll` fires constantly while the keyboard animates but the height/
-      // inset frequently don't actually move between events.
-      setViewport((prev) => {
-        const next = readViewport();
-        return prev.height === next.height &&
-          prev.keyboardInset === next.keyboardInset &&
-          prev.innerHeight === next.innerHeight
-          ? prev
-          : next;
-      });
-      const el = overlayRef.current;
-      if (el) {
-        const pad = Number.parseFloat(getComputedStyle(el).paddingBottom) || 0;
-        setBottomPad((prev) => (prev === pad ? prev : pad));
-      }
-    };
-    // Coalesce the high-rate vv `scroll` to at most one commit per frame so the
-    // keyboard-animation storm can't drive >60 forced style reads + setStates/s.
-    let rafId = 0;
-    const sync = () => {
-      if (rafId !== 0) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        commit();
-      });
-    };
+    const sync = () => viewportSync.schedule(undefined);
     // A real WINDOW resize (rotation/desktop resize) must never strand the
     // pill↔input morph mid-crossfade — rotation often cancels the in-flight
     // pointer with no pointerup, leaving the drag orphaned. Re-settle to a clean
@@ -2669,12 +2635,12 @@ export function ContinuousChatOverlay({
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
-      if (rafId !== 0) cancelAnimationFrame(rafId);
+      viewportSync.cancel();
       window.removeEventListener("resize", syncAndSettleWindow);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
     };
-  }, [readViewport]);
+  }, [viewportSync]);
   const viewportH = viewport.height;
   const keyboardInset = viewport.keyboardInset;
 
@@ -2828,7 +2794,9 @@ export function ContinuousChatOverlay({
   // Map a raw drag height: rubber-band past FULL, hard-clamp the bottom to 0.
   const clampHeight = React.useCallback(
     (raw: number) =>
-      raw > openH ? openH + rubberBand(raw - openH) : Math.max(0, raw),
+      raw > openH
+        ? openH + sqrtRubberBand(raw - openH, SHEET_DETENT_OVERSHOOT_SCALE)
+        : Math.max(0, raw),
     [openH],
   );
   // Backdrop dimming + the suggestion-strip fade follow the live height; the
