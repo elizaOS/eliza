@@ -346,7 +346,7 @@ show on constrained hardware — the task's actual target. Add a `--throttle` fl
 that drives Playwright CDP `Emulation.setCPUThrottlingRate` (e.g. 4×) and
 `Network.emulateNetworkConditions` (Fast-3G profile). This makes O2/O3/O4/O7
 movements observable in `fcpMs`/`lcpMs`/`longTasksMs`. Keep the unthrottled run as
-the default budget gate; add the throttled run as a second recorded scenario.
+the default threshold comparison; add the throttled run as a second recorded scenario.
 
 ### D2 — Harden `bundle-kpi.mjs` (Finding O1)
 

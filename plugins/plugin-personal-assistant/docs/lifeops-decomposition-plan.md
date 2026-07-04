@@ -66,8 +66,7 @@ heaviest schema splits.
 - Calendar instrumentation is dormant (`CalendarSection`/`EventEditorDrawer` call
   `useAgentElement` but `CalendarView.tsx` doesn't mount them).
 - Screenshot harness EXISTS: `packages/app/test/ui-smoke/plugin-views-visual.spec.ts`
-  (62 `VIEW_CASES`, PNG + `.audit.json`), ratcheted by `route-coverage.test.ts` +
-  `view-interaction-coverage.test.ts`. Output is gitignored — no committed
+  (62 `VIEW_CASES`, PNG + `.audit.json`). Output is gitignored — no committed
   contact-sheet / manual-review like the cloud-frontend `audit:cloud` loop.
 
 ## Platform reality

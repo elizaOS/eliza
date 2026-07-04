@@ -210,7 +210,7 @@ entries and clear restores them; the logs refresh re-queries the source; the
 memory viewer queries memory data on load and the Browse toggle switches the
 surface and issues a browse query.
 
-This was extended into broad, **enforced** interaction coverage:
+This was extended into broad interaction coverage:
 
 - `apps-builtin-pages-interactions.spec.ts` — runtime (refresh re-queries),
   plugins (search filters), database (run a SQL query), skills (New Skill opens
@@ -224,15 +224,15 @@ This was extended into broad, **enforced** interaction coverage:
   the scaffold renders). These views are now registered in the ui-smoke stub
   (`smokeViewDeclarations`) so their bundles load. `documents` is excluded: its
   `/documents` view path collides with the built-in `documents` tab
-  (`/character/documents`) via `App.tsx` `findView`, so it stays tracked debt
-  (`MAX_INTERACTION_DEBT = 1`) until that path is disambiguated.
+  (`/character/documents`) via `App.tsx` `findView`, so it stays uncovered until
+  that path is disambiguated.
 
-**Enforcement:** `view-interaction-coverage.test.ts` now runs with
-`INTERACTION_DEBT = {}` and `MAX_INTERACTION_DEBT = 0` — every view-matrix entry
-must name an interaction-owner spec, so a new view without one fails CI. Combined
-with `route-coverage.test.ts` (every route needs a clicksafe entry) and
-`ui-smoke-coverage.test.ts` (every spec must be wired/classified), the three
-ratchets make page/view coverage a non-regressing invariant.
+**Coverage convention.** Keep page/view coverage from regressing: every view
+should name an interaction-owner spec that clicks its controls and asserts they
+*do something*, every route should have a clicksafe entry, and every spec should
+be wired into a runnable suite and classified. When you add a view or route, add
+its interaction coverage in the same change rather than leaving a load-smoke-only
+gap.
 
 ### Control-level gaps with a real keyless blocker (the next layer)
 

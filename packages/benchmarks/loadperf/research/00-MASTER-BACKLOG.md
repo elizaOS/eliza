@@ -25,7 +25,7 @@ Measurement contract + correctness gate: see `../VERIFICATION.md`.
   boot delta.
 - **Leaks (report 07).** A real 72-navigation probe measured **+0.00 MB heap / +0
   listeners** — the client/server are already lifecycle-hardened. No leak hunt;
-  the work is a regression gate + 2 small unbounded caches.
+  the work is a regression check you run + 2 small unbounded caches.
 - **Already handled by the concurrent effort (do NOT redo):** phonemizer
   single-chunk dedupe (`8a6114be47`), parallelized plugin view builds
   (`2e6761b8fc`), embedding-model warmup in deferred phase (`c7a13515a5`),
@@ -143,5 +143,5 @@ before editing, keep diffs surgical.
 
 1. Commit ONLY explicit paths (never `git add -A`); small, frequent commits; push when meaningful.
 2. Measure before/after with the harness; median-of-3 for boot/frontend; claim only measured deltas.
-3. Run the correctness gate (VERIFICATION.md §3) at wave boundaries; ratchet budgets down after wins lock.
+3. Run the correctness gate (VERIFICATION.md §3) at wave boundaries; lower budgets.json after wins lock.
 4. Prefer 🟢 isolated waves first (1, 2) to bank low-risk real wins while the concurrent frontend/boot effort settles; coordinate before 🔴 Wave 5.

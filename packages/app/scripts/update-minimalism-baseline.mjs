@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * update-minimalism-baseline — regenerate the committed "Her"-minimal ratchet
+ * update-minimalism-baseline — regenerate the committed "Her"-minimal
  * baseline (#9950) from the latest all-views aesthetic audit report.
  *
- * Mirrors the `audit:ui-determinism:update` idiom: the baseline records the
- * CURRENT divider-density debt per slug+viewport so the audit gate blocks NEW
- * breaches and regressions while the backlog is burned down.
+ * The baseline records the CURRENT divider-density debt per slug+viewport so
+ * the audit surfaces NEW breaches and regressions while the backlog is burned
+ * down.
  *
  *   bun run --cwd packages/app audit:app:minimalism:update
  *   bun scripts/update-minimalism-baseline.mjs --report <report.json> --out <baseline.json>

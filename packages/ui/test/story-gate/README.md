@@ -36,9 +36,10 @@ screenshot is byte-stable across machines and runs, which is what makes the
 artifacts diffable and the a11y results reproducible. The frozen instant matches
 the unit-test helper in `../determinism.ts`.
 
-`audit:ui-determinism` (`packages/scripts/audit-ui-determinism.mjs`) statically
-prevents new render-time nondeterminism from entering components in the first
-place.
+Keeping render-time nondeterminism out of components in the first place — no
+`Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`, or
+locale-defaulted `toLocale*` in a render path — is what makes this shim
+sufficient rather than a band-aid.
 
 ## Running
 

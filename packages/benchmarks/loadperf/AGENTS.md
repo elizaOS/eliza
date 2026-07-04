@@ -2,8 +2,9 @@
 
 Four standalone Node ESM KPI scripts that measure app load performance (bundle
 size, cold-boot time, web vitals, and WebSocket state-sync skew), compare each
-against `budgets.json`, and exit non-zero on budget failure. Not registered in
-the suite orchestrator — run directly with `node`.
+against `budgets.json`, and exit non-zero when a measurement is over its
+reference threshold. Not registered in the suite orchestrator — run directly
+with `node`.
 
 ## Run
 
@@ -57,7 +58,7 @@ against a built dist as shown above.
 | `frontend-kpi.mjs` | FCP / LCP / CLS / JS-transfer via headless Chromium |
 | `statesync-kpi.mjs` | WebSocket broadcast skew p50/p95 + reconnect time |
 | `lib.mjs` | Shared utilities (size helpers, result recording, git context) |
-| `budgets.json` | Hard budget thresholds for all KPIs |
+| `budgets.json` | Reference thresholds the KPIs compare against |
 | `BASELINE.md` | Measured baseline values and top optimization targets |
 | `results/` | Timestamped JSON results (gitignored; only `.gitignore` committed) |
 
@@ -65,11 +66,11 @@ against a built dist as shown above.
 
 - Results write to `results/<kpi>/latest.json` and `results/summary/latest.md`
   (the `results/` tree is gitignored).
-- Exit codes: `0` pass, `1` budget failure, `2` skipped/unavailable — usable
-  directly as CI gates.
+- Exit codes: `0` within threshold, `1` over the reference threshold, `2`
+  skipped/unavailable — run a KPI to measure regressions and read the exit code.
 - Not registered in the suite registry — no orchestrator invocation.
-- `BASELINE.md` documents the current measured numbers; ratchet `budgets.json`
-  down as optimizations land (monotonic improvement is the goal).
+- `BASELINE.md` documents the current measured numbers; lower `budgets.json` as
+  optimizations land (monotonic improvement is the goal).
 - Full environment variable reference: [README.md](README.md).
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root PR_EVIDENCE.md) -->

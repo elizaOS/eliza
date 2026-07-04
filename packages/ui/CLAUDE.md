@@ -158,14 +158,13 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    `test/determinism.ts` (`withFrozenClock()`, `withSeededRandom()`) so renders
    are reproducible. Runs in CI via `test:client`.
 
-2. **Determinism lint (`audit:ui-determinism`, repo root).** A TS-AST gate that
-   fails CI on **new** render-time nondeterminism — `Date.now()`, `new Date()`,
-   `Math.random()`, `crypto.randomUUID()`, locale-defaulted `toLocale*` in a
-   component/hook render path (the root cause of flaky screenshots). It classifies
-   by execution context, so effect/handler/timer usage is fine. Existing backlog
-   is tracked in `packages/scripts/ui-determinism-baseline.json`; if a new
-   occurrence is intentional, run `audit:ui-determinism:update` and commit the
-   baseline. Wired into `ci.yaml`.
+2. **Render-time determinism (convention).** Keep render-time nondeterminism —
+   `Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`,
+   locale-defaulted `toLocale*` — out of component/hook render paths; it is the
+   root cause of flaky screenshots. Effect/handler/timer usage is fine (it does
+   not run during render). When clock/RNG-derived UI is genuinely needed, opt into
+   the fixtures in `test/determinism.ts` (`withFrozenClock()`, `withSeededRandom()`)
+   so renders stay reproducible.
 
 3. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,

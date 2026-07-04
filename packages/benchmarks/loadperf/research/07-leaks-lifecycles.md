@@ -57,9 +57,9 @@ a small set of **genuinely unbounded module-level caches**, a few **micro-leaks 
 anonymous listeners on long-lived elements**, one **O(n)-per-message server scan**
 that is a CPU (not memory) concern, and — most importantly for this harness — **the
 total absence of a regression-proof leak-detection benchmark.** The biggest risk
-today is not a specific leak; it's that nothing *guards* the hard-won hygiene, so the
+today is not a specific leak; it's that nothing *checks* the hard-won hygiene, so the
 next careless `useEffect` regresses silently. The single highest-value deliverable is
-the benchmark in §D wired as a CI gate.
+the benchmark in §D — run it to catch a leak regression before it lands.
 
 A real probe (see §D, run during this research) over **72 hash-route navigations** of
 the static `packages/app/dist` build showed **+0.00 MB heap, +0 DOM nodes, +0
@@ -337,11 +337,12 @@ treatment as `--statesync`).
 
 ## E. Prioritized Backlog (ranked by confidence × impact)
 
-1. **L1 — Add the leak-detection benchmark (`leak-client.mjs` + `leak-server.mjs`) and
-   wire it as a CI gate.** *High × High.* This is the deliverable that matters most:
-   the §A hygiene is excellent but completely unguarded. Without this, every future
-   `useEffect`-without-cleanup regresses silently. Mechanism already proven runnable
-   (§C/L1, §D). Cost: two new files + 4 budget keys. **Do this first.**
+1. **L1 — Add the leak-detection benchmark (`leak-client.mjs` + `leak-server.mjs`)
+   you run to catch a leak regression.** *High × High.* This is the deliverable that
+   matters most: the §A hygiene is excellent but completely unchecked. Without this,
+   every future `useEffect`-without-cleanup regresses silently. Mechanism already
+   proven runnable (§C/L1, §D). Cost: two new files + 4 threshold keys. **Do this
+   first.**
 2. **L2 — Bound `bundleModuleCache` with an LRU (cap ~24) + cleanup-on-evict**
    (`DynamicViewLoader.tsx:56`). *High × Medium.* Only real *memory* leak with a clear
    unbounded slope; bites sessions that traverse many distinct plugin views.

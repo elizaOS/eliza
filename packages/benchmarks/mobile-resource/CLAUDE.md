@@ -1,7 +1,7 @@
 # Mobile Resource Workbench — Agent Guide
 
 On-device (iOS + Android) resource profiling harness: battery, RSS, prefill/decode
-tok/s, TTFT, thermal timeline. Mirrors `loadperf`'s budgets/results/CI-gate
+tok/s, TTFT, thermal timeline. Mirrors `loadperf`'s budgets/results/exit-code
 shape. Standalone Node ESM — run directly with `node`, not via the suite
 orchestrator. Issue #8800.
 
@@ -17,7 +17,8 @@ Flags: `--platform=android|ios`, `--tier=eliza-1-2b|eliza-1-4b`,
 `--device-class=<budgets.json key>`, `--workloads=a,b,c`, `--base-url=<agent>`,
 `--package=<android pkg>`, `--json`, `--fail-on-missing`.
 
-Exit: `0` pass, `1` budget/gate fail, `2` skipped (no device/agent).
+Exit: `0` within threshold, `1` over a reference threshold, `2` skipped (no
+device/agent).
 
 ## Smoke test (no device, no keys)
 
@@ -43,8 +44,8 @@ numbers.
 - **Never fabricate a missing measurement.** Unmeasured → `null`, surfaced as
   `—` in reports and recorded as `not-measured` in budget checks (which pass by
   default; use `--fail-on-missing` to fail closed).
-- **Budgets are per device-class × tier** in `budgets.json`; `null` budget =
-  no-baseline (recorded, never fails). Ratchet in from `BASELINE.md`.
+- **Thresholds are per device-class × tier** in `budgets.json`; `null` threshold
+  = no-baseline (recorded, never over). Fill them in from `BASELINE.md`.
 - **Results are generated, not committed** (`results/` is gitignored; only
   `.gitignore` is tracked).
 - Pure aggregation/budget logic lives in `metrics.mjs` and is unit-tested with

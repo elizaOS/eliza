@@ -44,12 +44,12 @@ Live in this checkout:
   per-tier resident estimates, installed bundle footprints, and arbiter
   load/eviction/pressure telemetry. Add `--load` to exercise every
   installed Eliza-owned bundle with a short decode and RSS delta sample.
-- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) is wired
-  into CI as a budget / eviction-telemetry regression gate
-  (`.github/workflows/memperf.yml`): exit `1` — a real `budgets.json` peak-RSS
-  or co-residency eviction-count regression — fails the build; a model-absent
-  runner exits `2` (skip) after the real-arbiter co-residency self-check still
-  runs.
+- The `memperf` harness (`packages/benchmarks/memperf/run-all.mjs`) measures
+  peak-RSS and co-residency eviction telemetry against the reference thresholds
+  in `budgets.json`: exit `1` on a peak-RSS or eviction-count regression, `0`
+  when within thresholds, `2` (skip) on a model-absent runner after the
+  real-arbiter co-residency self-check still runs. Run it when changing arbiter
+  residency, eviction, or memory-pressure behavior.
 
 Still deferred:
 

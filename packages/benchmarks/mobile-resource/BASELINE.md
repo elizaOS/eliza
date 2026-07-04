@@ -1,10 +1,10 @@
 # Mobile Resource Workbench — Baselines
 
 This file records the measured on-device baselines that back `budgets.json`.
-Until a physical-device run lands, most budgets are `null` ("no baseline yet"):
-the gate records them but never fails on them. Ratchet a budget in only after a
-stable, repeated measurement on the named device class — never hand-fill a
-fabricated number (AGENTS.md §3/§7).
+Until a physical-device run lands, most thresholds are `null` ("no baseline
+yet"): the harness records them but never counts them as over. Fill a threshold
+in only after a stable, repeated measurement on the named device class — never
+hand-fill a fabricated number (AGENTS.md §3/§7).
 
 ## How a baseline becomes a budget
 
@@ -24,9 +24,8 @@ fabricated number (AGENTS.md §3/§7).
      --fail-on-gaps
    ```
 4. Write the measured number + device + commit into the table below.
-5. Set the matching key in `budgets.json` with ~10–15% headroom, then ratchet it
-   down as optimisations land (monotonic-improvement discipline, same as
-   `loadperf`).
+5. Set the matching key in `budgets.json` with ~10–15% headroom, then lower it
+   as optimisations land (monotonic-improvement discipline, same as `loadperf`).
 
 ## Provisional ceilings (NOT measurements)
 
@@ -46,10 +45,10 @@ ceiling sits deliberately close to flag tiers that approach it.
 
 First real device capture landed for `android-phone` / `eliza-1-2b` (Pixel 6a,
 issue #11352). It is a **single, thermally-throttled run** — recorded here and
-in `budgets.json → measuredBaselines` (a non-gating block), but deliberately
-**not** promoted into the gating `deviceClasses` budgets (which stay `null`)
-until ≥3 stable runs on a quiet, cool device land. Full method + gaps:
-`.github/issue-evidence/11352-pixel6a-baseline/README.md`.
+in `budgets.json → measuredBaselines` (a record-only block), but deliberately
+**not** promoted into the `deviceClasses` thresholds the harness compares against
+(which stay `null`) until ≥3 stable runs on a quiet, cool device land. Full
+method + gaps: `.github/issue-evidence/11352-pixel6a-baseline/README.md`.
 
 | Device class   | Tier           | Workload        | decode tok/s        | prefill tok/s | TTFT | peak RSS (chat) | steady RSS (idle) | battery drain | commit |
 | -------------- | -------------- | --------------- | ------------------- | ------------- | ---- | --------------- | ----------------- | ------------- | ------ |

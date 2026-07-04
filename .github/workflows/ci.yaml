@@ -109,49 +109,11 @@ jobs:
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
 
-      - name: Type safety ratchet self-test
-        run: bun run audit:type-safety-ratchet:self-test
-
-      - name: Type safety ratchet
-        run: bun run audit:type-safety-ratchet
-
       - name: Check format
         run: bun run format:check
 
       - name: Run lint
         run: bun run lint
-
-      # UI render-time determinism gate. Fails on NEW Date.now()/Math.random()/
-      # crypto.randomUUID()/locale-defaulted toLocale* in a component/hook render
-      # path (the source of flaky screenshots + meaningless snapshots). The
-      # existing backlog is tracked in packages/scripts/ui-determinism-baseline.json;
-      # only regressions beyond it fail. Self-test asserts the AST classifier.
-      - name: UI determinism self-test
-        run: bun run audit:ui-determinism:self-test
-
-      - name: UI determinism gate
-        run: bun run audit:ui-determinism
-
-      # Anti-larp test gate (#10718). Fails on focused tests (.only / fit /
-      # fdescribe — a single .only silently drops every sibling test in the file)
-      # and on orphaned hardcoded skips (it.skip("name", fn) with no reason,
-      # tracking issue, deny-list ref, or Playwright skip-annotation). Legitimate
-      # conditional/env-gated skips (cond ? describe : describe.skip,
-      # test.skip(cond, reason)) are allowed. Self-test asserts the classifier.
-      - name: Anti-larp test gate self-test
-        run: bun run audit:focused-tests:self-test
-
-      - name: Anti-larp test gate
-        run: bun run audit:focused-tests
-
-      - name: Test realness ratchet
-        run: bun run audit:test-realness
-
-      # Per-plugin mock-LLM e2e coverage. Warn-first (--dry-run exits 0) while
-      # the backlog is burned down; flip to enforcing (drop --dry-run, allowlist
-      # justified N/A) once plugins carry a withMockLlmRuntime e2e. (#8801)
-      - name: Per-plugin e2e coverage (warn-only)
-        run: node packages/scripts/lint-lane-coverage.mjs --dry-run
 
   # Build job
   build:

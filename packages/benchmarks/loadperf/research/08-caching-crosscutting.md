@@ -654,17 +654,17 @@ curl -sI -H 'If-None-Match: "<etag>"' http://127.0.0.1:31337/api/views/<id>/bund
 # 5. Boot KPI (regression guard for X5 — ensure backend cold start unaffected)
 node packages/benchmarks/loadperf/boot-kpi.mjs
 
-# 6. Consolidated dashboard + budget gate
+# 6. Consolidated dashboard + threshold comparison
 node packages/benchmarks/loadperf/run-all.mjs
-# results/summary/latest.md ; exit 1 on any failing budget
+# results/summary/latest.md ; exit 1 on any measurement over threshold
 ```
 
-Budgets these move (`packages/benchmarks/loadperf/budgets.json`):
-`bundle.maxDuplicateLibBytes` (X3 — currently failing), `bundle.totalAssetsBrotliBytes`
+Thresholds these move (`packages/benchmarks/loadperf/budgets.json`):
+`bundle.maxDuplicateLibBytes` (X3 — currently over), `bundle.totalAssetsBrotliBytes`
 (X1/X3/X4/X8), `frontend.jsTransferredBytes` (X2/X4/X5/X10),
 `frontend.requestCount` (X2/X12/X14), `frontend.longTasksMs`
-(X6/X7/X13/X15), `frontend.fcpMs`/`lcpMs` (X5/X14). As wins land, ratchet the
-budgets down (`BASELINE.md:76` — monotonic improvement is the stated goal).
+(X6/X7/X13/X15), `frontend.fcpMs`/`lcpMs` (X5/X14). As wins land, lower the
+thresholds (`BASELINE.md` — monotonic improvement is the stated goal).
 
 ---
 

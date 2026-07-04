@@ -41,10 +41,9 @@ excluded from this inventory and the gate.
 | **Dedicated e2e** | The `run-*-e2e.mjs` runners (real view → esbuild → headless Chromium, real interactions, video) | ✅ Existence of the referenced runner file is asserted; running it is a CI lane, not this vitest gate. |
 | **Manual / on-device capture** | `bun run --cwd packages/app audit:app` (live full-page audit), `capture:ios-sim` / `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced in the PR-evidence lane per [`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md). |
 
-The vitest gate is deliberately **boot-free** (file reads + set diffs), like its
-sibling [`route-coverage.test.ts`](../test/route-coverage.test.ts), so it runs on
-every PR in the cheap `test:client` lane instead of behind a ~12-min cold-renderer
-Playwright boot.
+The vitest gate is deliberately **boot-free** (file reads + set diffs), so it runs
+on every PR in the cheap `test:client` lane instead of behind a ~12-min
+cold-renderer Playwright boot.
 
 ## Inventory
 

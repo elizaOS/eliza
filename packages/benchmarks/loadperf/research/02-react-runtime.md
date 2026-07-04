@@ -309,7 +309,7 @@ bun run --cwd packages/ui test
 bun run --cwd packages/app test:e2e
 ```
 
-`react-render-kpi.mjs` mirrors `frontend-kpi.mjs`'s structure (serve-or-attach, `addInitScript`, `page.evaluate`, `recordResult`, budget compare). Budgets to add to `budgets.json`: `react.streamedResponseCommits`, `react.idleBackgroundCommits`, `react.transcriptDomNodes`, `react.viewSwitchLongTasksMs` — then ratchet down as fixes land (the harness's stated monotonic-improvement model).
+`react-render-kpi.mjs` mirrors `frontend-kpi.mjs`'s structure (serve-or-attach, `addInitScript`, `page.evaluate`, `recordResult`, threshold compare). Thresholds to add to `budgets.json`: `react.streamedResponseCommits`, `react.idleBackgroundCommits`, `react.transcriptDomNodes`, `react.viewSwitchLongTasksMs` — then lower them as fixes land (the harness's stated monotonic-improvement model).
 
 ### D.5 Per-fix verification matrix
 

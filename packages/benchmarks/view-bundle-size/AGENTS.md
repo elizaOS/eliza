@@ -1,17 +1,18 @@
 # view-bundle-size — Agent Guide
 
-Device-independent, deterministic **bundle-size regression gate** for the plugin
+Device-independent, deterministic **bundle-size regression check** for the plugin
 **view bundles** (issue #10724). Builds every plugin's view bundle via the
 existing `bun run build:views` build (the same one the view-bundle import guard
 relies on), sums the **gzipped** (and raw) bytes of each emitted
 `plugins/<name>/dist/views/*.js|css`, compares each bundle plus the total against
-the committed ceilings in `budgets.json`, prints a table, and exits non-zero on
-regression. No models, no hardware, no live model, no server. Not registered in
-the suite orchestrator — run directly with `node`.
+the committed reference thresholds in `budgets.json`, prints a table, and exits
+non-zero when a measurement is over threshold. No models, no hardware, no live
+model, no server. Not registered in the suite orchestrator — run directly with
+`node`.
 
-Complements `loadperf/bundle-kpi.mjs` (which gates the assembled **web app**
-dist, `packages/app/dist`, in brotli). This gate covers the per-plugin **view
-bundles**, which had no size gate before.
+Complements `loadperf/bundle-kpi.mjs` (which measures the assembled **web app**
+dist, `packages/app/dist`, in brotli). This one covers the per-plugin **view
+bundles**, which had no size measurement before.
 
 ## Run
 

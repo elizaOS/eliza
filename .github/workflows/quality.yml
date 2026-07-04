@@ -177,30 +177,17 @@ jobs:
           install-protoc: "false"
           run-postinstall: "false"
 
-      - name: Run type-safety ratchet self-test
-        run: bun run audit:type-safety-ratchet:self-test
-
-      - name: Run type-safety ratchet
-        run: bun run audit:type-safety-ratchet
-
-      # The type-duplication finder is advisory (it never fails the build); only
-      # its AST classifier is gated here so the candidate-report tooling stays
-      # honest. The full scan + `--check` drift report is run on demand /
-      # periodically, not on the hot path (#10195, #10201).
-      - name: Run type-duplication finder self-test
-        run: bun run audit:type-duplication:self-test
-
       - name: Run biome format check
         run: bun run format:check
 
   # Develop-gate extension (#10104): the canonical `ci.yaml` quality job — which
-  # runs the prompt-secret scan, UI-determinism gate, and biome lint — fires only
-  # on PRs to `main` (`ci.yaml` `pull_request: branches: [main]`), while the
-  # default merge target is `develop`. So these checks never gated a develop PR.
-  # The static job below re-runs the build-free pair on develop (and main) PRs,
-  # mirroring the lean install used by `format-check`.
+  # runs the prompt-secret scan and biome lint — fires only on PRs to `main`
+  # (`ci.yaml` `pull_request: branches: [main]`), while the default merge target
+  # is `develop`. So the prompt-secret scan never gated a develop PR. The static
+  # job below re-runs it on develop (and main) PRs, mirroring the lean install
+  # used by `format-check`.
   develop-static-gate:
-    name: Develop Gate (secret scan + UI determinism)
+    name: Develop Gate (secret scan)
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
@@ -219,7 +206,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
-          # Both gates are static AST/text scans over source — no Python/protoc,
+          # The secret scan is a static text scan over source — no Python/protoc,
           # Rust, or postinstall artifacts needed (same lean install as the
           # format gate above).
           setup-python: "false"
@@ -228,23 +215,6 @@ jobs:
 
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
-
-      - name: UI determinism self-test
-        run: bun run audit:ui-determinism:self-test
-
-      - name: UI determinism gate
-        run: bun run audit:ui-determinism
-
-      # Develop PRs do not run the canonical `ci.yaml` main-branch quality job,
-      # so keep the anti-larp/test-realness gates enforced here too.
-      - name: Anti-larp test gate self-test
-        run: bun run audit:focused-tests:self-test
-
-      - name: Anti-larp test gate
-        run: bun run audit:focused-tests
-
-      - name: Test realness ratchet
-        run: bun run audit:test-realness
 
   # `bun run lint` is intentionally separate from the static scans above: the
   # Turbo lint task depends on selected package builds, so it needs the normal

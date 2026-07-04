@@ -40,8 +40,8 @@ never estimate a delta you did not measure with one of these.
 
 `run-all.mjs` runs them together and writes `results/summary/latest.md`.
 
-Budgets live in `budgets.json`. **Ratchet budgets DOWN** as wins land so a future
-change can never silently regress them (monotonic improvement).
+Reference thresholds live in `budgets.json`. **Lower them** as wins land so a
+future run catches a silent regression (monotonic improvement).
 
 ---
 
@@ -68,8 +68,9 @@ message and (for milestones) `BASELINE.md`:
    can't measure.
 6. **Gate.** Run the correctness gate (section 3). A perf win that breaks a gate
    is a regression, not a win.
-7. **Ratchet.** If the win is permanent, lower the relevant `budgets.json` key to
-   just above the new value so it locks in.
+7. **Lower the threshold.** If the win is permanent, lower the relevant
+   `budgets.json` key to just above the new value so a later run catches a
+   regression back past it.
 
 > Boot and frontend numbers vary run-to-run (CPU contention, JIT warmup). Take
 > the **median of 3 runs** for boot `readyMs` and frontend FCP/LCP before
@@ -144,7 +145,7 @@ Each becomes a new KPI script here (same `lib.mjs` + `recordResult` +
 The effort is done when ALL hold:
 
 1. Every landed optimization has a recorded real before/after delta (section 2).
-2. `budgets.json` has been ratcheted to lock in the wins.
+2. `budgets.json` thresholds have been lowered to lock in the wins.
 3. The full correctness gate (section 3) is green: pages load, agent chats,
    views switch, view-dependent actions fire, no e2e regressions.
 4. `bun run --cwd packages/app typecheck` + `bun run verify` pass for touched

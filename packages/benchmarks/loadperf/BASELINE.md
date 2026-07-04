@@ -1,23 +1,23 @@
 # Load / Perf Baseline
 
 Reference measurements captured on `develop`. Re-run the KPIs (`run-all.mjs`) to
-refresh; ratchet `budgets.json` down as these improve. All sizes are
+refresh; lower `budgets.json` as these improve. All sizes are
 **brotli**-compressed bytes.
 
 Captured: 2026-05-31; **corrected 2026-06-02** (see CORRECTIONS below);
-**re-baselined 2026-07-02** for the #11350 CI gate;
-**ratcheted 2026-07-02** by the #11351 residual lazy-loads (see below).
+**re-baselined 2026-07-02** for #11350;
+**thresholds lowered 2026-07-02** by the #11351 residual lazy-loads (see below).
 
-## CURRENT CI GATE BASELINE (2026-07-02) — clean `build:web`
+## CURRENT BASELINE (2026-07-02) — clean `build:web`
 
 Measured on `origin/develop` `858548c0d6` after a clean
 `bun run --cwd packages/app build:web`, then
 `node packages/benchmarks/loadperf/bundle-kpi.mjs`. Rebased after #11471
 (`34e839184b`), which measured the same build path at 3107.1 KB eager brotli;
-the CI budget was ratcheted from 3550.0 KB to 3400.0 KB to keep that win
-without using #11471's stale 1374.5 KB pre-regression budget.
+the threshold in `budgets.json` was lowered from 3550.0 KB to 3400.0 KB to keep
+that win without using #11471's stale 1374.5 KB pre-regression value.
 
-| Metric | Value | Gate budget | Status |
+| Metric | Value | Threshold | Status |
 | --- | --- | --- | --- |
 | total brotli | 4.96 MB | 6.00 MB | PASS |
 | eager (first-paint) brotli | 3242.5 KB across 34 chunks; #11471 after: 3107.1 KB | 3400.0 KB | PASS |
@@ -27,12 +27,12 @@ without using #11471's stale 1374.5 KB pre-regression budget.
 
 The 2026-07-02 app is heavier on the eager path than the 2026-06-02 corrected
 baseline because `vendor-crypto-*` and `vendor-three-*` are currently loaded as
-initial entries. #11350 establishes a green CI gate at the current reality so
-future regressions are blocked; #11471 moved 122.6 KB off the eager path and
-the gate preserves that ratchet. Follow-up optimization should split/lazy-load
-remaining eager vendors and ratchet `budgets.json` back down.
+initial entries. #11350 records the thresholds at the current reality so a later
+run catches regressions; #11471 moved 122.6 KB off the eager path and the
+lowered threshold preserves that win. Follow-up optimization should split/lazy-load
+remaining eager vendors and lower `budgets.json` further.
 
-### #11351 residual lazy-loads (2026-07-02) — measured ratchet
+### #11351 residual lazy-loads (2026-07-02) — measured threshold lowering
 
 The #11471 review found two static eager paths that partially defeated its
 lazy split: `DetachedShellRoot` (statically imported by the eager entry for
@@ -47,35 +47,35 @@ missed).
 Measured on this branch's rebase base (`0140a4fcb9e`) vs the change — clean
 `build:web` both sides, same machine (macOS arm64):
 
-| Metric | Before (develop base) | After (#11351 residuals) | Gate budget | Status |
+| Metric | Before (develop base) | After (#11351 residuals) | Threshold | Status |
 | --- | --- | --- | --- | --- |
 | eager (first-paint) brotli | 3,210,097 B (3135.0 KB / 39 chunks) | **3,142,732 B** (3069.1 KB / 57 chunks) | 3,330,000 B | PASS |
 | initial entry brotli | 3,024,127 B (2953.2 KB) | **2,937,470 B** (2868.6 KB) | 3,260,000 B | PASS |
 | total brotli | 5,233,041 B | 5,268,874 B (+35 KB chunk-split overhead) | 6,000,000 B | PASS |
 
 Delta: **eager −67,365 B (−65.8 KB), entry −86,657 B (−84.6 KB)**; 29 new
-on-demand chunks (379 → 408 assets). Budgets ratcheted down by (slightly more
+on-demand chunks (379 → 408 assets). Thresholds lowered by (slightly more
 than) the realized saving: `eagerGraphBrotliBytes` 3,400,000 → **3,330,000**,
-`initialEntryBrotliBytes` 3,350,000 → **3,260,000**. Against the CI-measured
-base (3,320,289 B eager), the expected CI after ≈ 3,252,900 B keeps ~2.3%
-headroom under the new gate. (Local absolute values sit ~110 KB under CI's —
-machine variance; the delta is the trustworthy number.)
+`initialEntryBrotliBytes` 3,350,000 → **3,260,000**. Against the measured
+base (3,320,289 B eager), the expected after ≈ 3,252,900 B keeps ~2.3%
+headroom under the new threshold. (Local absolute values sit ~110 KB under the
+quiesced-host reading — machine variance; the delta is the trustworthy number.)
 
-### `maxDuplicateLibBytes` remeasured (2026-07-03) — content-based, ratcheted 350 KB → 25 KB
+### `maxDuplicateLibBytes` remeasured (2026-07-03) — content-based, lowered 350 KB → 25 KB
 
 The duplicate detector originally grouped chunks by hash-stripped **basename**,
 which conflated unrelated modules that legitimately share generic names —
 every npm package entry emits an `index-*.js` chunk, every view emits a
 `register-terminal-view-*.js` chunk, and so on. That noise floor (~340 KB, and
 higher on dev machines with extra postinstall plugin HTML entries) sat just
-under the 350 KB budget and finally crossed it as ordinary `index.ts`-named
-lazy chunks accumulated (380.6 KB at `a747ced409`), failing the gate with zero
-actual duplication: content-hashing the same dist (rollup hash references
+under the 350 KB threshold and finally crossed it as ordinary `index.ts`-named
+lazy chunks accumulated (380.6 KB at `a747ced409`), flagging a regression with
+zero actual duplication: content-hashing the same dist (rollup hash references
 stripped, so per-entry copies that differ only in hashed sibling-chunk names
 still match) found **67 bytes** of true duplicate waste — two identical tiny
-chunks. The detector now groups by normalized content, and the budget is
-ratcheted 350,000 → **25,000** bytes, so a single duplicated vendor library
-(the regression this gate exists to catch) trips it immediately instead of
+chunks. The detector now groups by normalized content, and the threshold is
+lowered 350,000 → **25,000** bytes, so a single duplicated vendor library
+(the regression this measurement exists to catch) trips it immediately instead of
 hiding inside a ±30 KB name-collision noise band.
 
 ## CORRECTIONS (2026-06-02) — the original numbers below were wrong
@@ -146,11 +146,12 @@ subsides.
   **1057.6 MB**, **steady RSS 1069 MB**. Steady sits slightly *above* boot-peak
   because RSS keeps climbing during post-ready warmup (lazy provider/embedding
   load, GC not yet run) — the exact resident tail the boot-peak sample misses.
-- **Budget: `steadyRssMb` ≤ 1500 MB** — ~40 % headroom over the measured 1069 MB
-  and above the historical ~1272 MB peak reading, so it catches a real resident
-  regression (a ~430 MB idle leak) without flaking on host variance. Ratchet it
-  down as idle-footprint optimizations land. A `null` budget records the number
-  without gating; `--attach` mode reports `null` (no child pid to sample).
+- **Threshold: `steadyRssMb` ≤ 1500 MB** — ~40 % headroom over the measured
+  1069 MB and above the historical ~1272 MB peak reading, so it catches a real
+  resident regression (a ~430 MB idle leak) without flaking on host variance.
+  Lower it as idle-footprint optimizations land. A `null` threshold records the
+  number without comparing; `--attach` mode reports `null` (no child pid to
+  sample).
 
 ### Boot profile (quiesced, `ELIZA_BOOT_PROFILE=1`)
 
@@ -173,7 +174,7 @@ Spawn → `ready:true` on a quiet host (~3.7 s) decomposes as:
   with the remaining ~2.4 s of runtime boot instead of waiting for it.
 - Remaining levers (defer blocking-plugin imports, lazy non-first-paint route
   modules) are runtime-essential / architecture-sensitive — profile each before
-  touching; the boot already passes budget ~6×.
+  touching; the boot already sits ~6× under threshold.
 - **Harness is now honest (loadperf F1 + F8).** The boot KPI:
   - requires an explicit `health.ready === true` from `/api/health` — a bare
     HTTP 200 (stale server / early-liveness handler) no longer counts as ready,
@@ -191,29 +192,26 @@ Spawn → `ready:true` on a quiet host (~3.7 s) decomposes as:
     code regression. `summary.contention` (loadavg, cpu count, sibling count) is
     recorded for every run.
 
-### Boot-KPI CI gate — now ENFORCING (item 5 of #8812)
+### Boot-KPI thresholds (item 5 of #8812)
 
-The build-agent-image workflow's boot-verify step
-(`docker-ci-smoke.sh --boot-verify-only`) now runs with `BOOT_KPI_ENFORCE=1`, so
-a cold-start `readyMs` that exceeds `boot.coldReadyMs` (25 000 ms) **fails the
-build** and blocks publishing a slow image — the server/container analog of the
-mobile resource workbench (#8800). Safety rails so the gate is trustworthy, not
-flaky:
+Run the boot KPI to measure cold-start regressions: a cold-start `readyMs` over
+`boot.coldReadyMs` (25 000 ms) exits non-zero (over threshold) — the
+server/container analog of the mobile resource workbench (#8800). Notes so the
+number is trustworthy, not flaky:
 
-- The budget keeps ~5× headroom over the ~4.6 s real production cold boot, so
+- The threshold keeps ~5× headroom over the ~4.6 s real production cold boot, so
   only a genuine multi-× regression trips it.
-- `emit_boot_kpi` logs the runner `loadavg(1m)`/cpu count next to `readyMs`, and
-  **downgrades a breach to a warning** (does not fail) when the runner is heavily
-  contended (loadavg(1m) > 2× cpus) — boot is single-threaded and import-bound,
-  so a contended runner inflates `readyMs` with no code regression.
-- `peakRssMb` is **not** enforced on the docker path: `docker stats` samples
-  instantaneously, not the boot peak. Peak RSS is gated by the standalone
-  `boot-kpi.mjs` (`/proc/<pid>/status` VmRSS, budget 1600 MB) when run on a host.
+- The boot KPI logs `loadavg(1m)`/cpu count next to `readyMs`, and **WARNs on a
+  breach instead of exiting non-zero** when the host is heavily contended
+  (loadavg(1m) > 2× cpus) — boot is single-threaded and import-bound, so a
+  contended host inflates `readyMs` with no code regression.
+- `peakRssMb` is measured off `/proc/<pid>/status` VmRSS (threshold 1600 MB) when
+  `boot-kpi.mjs` runs on a host with a child pid to sample.
 
-**Ratcheting the budget down requires a quiesced host re-baseline** — run
+**Lowering the threshold requires a quiesced host re-baseline** — run
 `node packages/benchmarks/loadperf/boot-kpi.mjs --runs=5 --json` with no sibling
 node/bun/tsx load and update `boot.coldReadyMs` to the measured median + margin.
-Do not ratchet from a contended reading (the harness WARNs when it detects one).
+Do not lower it from a contended reading (the harness WARNs when it detects one).
 
 ## Frontend (`frontend-kpi.mjs`) — skipped this run
 

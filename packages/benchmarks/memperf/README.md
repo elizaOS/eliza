@@ -14,8 +14,9 @@ Eliza-1 **tier × modality** (`text`, `embedding`, `transcription`, `tts`,
 
 It emits a JSON report whose per-row shape is the shared `METRIC_SCHEMA`
 (`metric-schema.mjs`), **shared with #8800** (the mobile Resource Workbench) so
-a desktop report and an on-device report line up column-for-column. It checks
-the numbers against `budgets.json` and exits non-zero on regression.
+a desktop report and an on-device report line up column-for-column. It compares
+the numbers against the reference thresholds in `budgets.json` and exits non-zero
+when a measurement is over threshold.
 
 ## Honesty contract
 
@@ -62,22 +63,23 @@ MEMPERF_MAX_TOKENS=64 bun run bench:memperf
 `@elizaos/plugin-local-inference` source (the `MemoryArbiter`, the engine, the
 hardware probe) under the `eliza-source` export condition.
 
-## Exit codes (CI gate)
+## Exit codes
 
-- `0` — measured rows present, all budgets pass.
-- `1` — a budget (measured peak-RSS over ceiling, real co-residency eviction
-  count over ceiling, or a broken arbiter-telemetry self-check) **FAILED**.
+- `0` — measured rows present, all within their thresholds.
+- `1` — a measurement is over threshold (measured peak-RSS over ceiling, real
+  co-residency eviction count over ceiling, or a broken arbiter-telemetry
+  self-check).
 - `2` — nothing measurable on this host (no model bundle); the self-check ran
-  and passed. This is the CI-without-GBs-of-models path: the harness runs
-  cleanly and records what it skipped.
+  and passed. This is the no-GBs-of-models path: the harness runs cleanly and
+  records what it skipped.
 
-## Budgets
+## Budgets (reference thresholds)
 
 `budgets.json` carries per-tier `peakRssMb` (the resident ceiling for a
 single-tier text load+run) and `coResidency.maxEvictions` (the ceiling for the
 **real** co-residency sequence on a known-fitting set). `selfCheckMinEvictions`
 is the floor the synthetic wiring self-check must hit to prove eviction
-telemetry counts. Ratchet the per-tier ceilings down as the LRU fit-path and
+telemetry counts. Lower the per-tier ceilings as the LRU fit-path and
 dynamic context selection (#8809 steps 1/4) land.
 
 ## Layout

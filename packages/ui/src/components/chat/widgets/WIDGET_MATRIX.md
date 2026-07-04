@@ -174,8 +174,7 @@ the open proposal.
 | Music player | yes (added #9304) | n/a | n/a |
 | Topic chips bar | yes (added #9304) | yes | n/a |
 | Topic grouped transcript | yes (added #9304) | yes | n/a |
-| Home widgets (inbox/calendar/goals/finances/health/relationships) | yes + coverage gate | n/a | n/a |
+| Home widgets (inbox/calendar/goals/finances/health/relationships) | yes | n/a | n/a |
 
-`widgets/widget-coverage.test.ts` gates that the home-slot and the inline
-registry never silently lose a widget (extended in #9304): dropping a gated
-widget fails CI.
+When adding or removing a widget, keep the home-slot and inline registries in
+sync so a widget is never silently dropped from one while kept in the other.

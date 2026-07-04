@@ -5,11 +5,11 @@
 > an orchestrator benchmark adapter.
 
 Zero-build performance KPI suite for the app. Each KPI is a standalone Node ESM
-script that measures one dimension, compares against `budgets.json`, records a
-timestamped JSON result under `results/<kpi>/`, and exits non-zero when a hard
-budget is exceeded. Run any of them directly with `node` — no build or install
-step (the optional `playwright` / WebSocket deps degrade to a clearly-marked
-`skipped` result when unavailable).
+script that measures one dimension, compares against the reference thresholds in
+`budgets.json`, records a timestamped JSON result under `results/<kpi>/`, and
+exits non-zero when a measurement is over its threshold. Run any of them directly
+with `node` — no build or install step (the optional `playwright` / WebSocket
+deps degrade to a clearly-marked `skipped` result when unavailable).
 
 All sizes are **brotli**-compressed bytes unless noted (matching what a CDN
 serves). Budget keys live in `budgets.json`.
@@ -49,8 +49,8 @@ LOADPERF_BASE_URL=http://127.0.0.1:31337 node packages/benchmarks/loadperf/run-a
 ```
 
 `run-all.mjs` writes `results/summary/latest.md` (+ `latest.json` and timestamped
-copies). It exits non-zero only when a KPI that actually ran reports a budget
-failure — `skipped` KPIs (missing browser / no server) do not fail the suite.
+copies). It exits non-zero only when a KPI that actually ran measured over its
+threshold — `skipped` KPIs (missing browser / no server) do not fail the suite.
 
 ## Environment knobs
 
@@ -69,13 +69,14 @@ failure — `skipped` KPIs (missing browser / no server) do not fail the suite.
 
 ## Exit codes
 
-`0` pass, `1` budget failure, `2` skipped/unavailable. This makes each KPI usable
-directly as a CI gate.
+`0` within threshold, `1` over the reference threshold, `2` skipped/unavailable.
+Run a KPI to measure regressions and read the exit code.
 
-## Budgets as a CI gate
+## Budgets (reference thresholds)
 
-`budgets.json` is the contract. Wire `bundle-kpi.mjs` (and, where a server/browser
-is available, the others) into CI: a budget regression exits non-zero and fails
-the job. The intent is **monotonic improvement** — as optimizations land, ratchet
-the budgets *down* so they can never silently regress. See `BASELINE.md` for the
-current measured numbers and the top optimization targets.
+`budgets.json` holds the reference thresholds each KPI compares against. Run
+`bundle-kpi.mjs` (and, where a server/browser is available, the others) to measure
+regressions: a measurement over its threshold exits non-zero. The intent is
+**monotonic improvement** — as optimizations land, lower the thresholds in
+`budgets.json` so a later regression is caught the next time you run. See
+`BASELINE.md` for the current measured numbers and the top optimization targets.

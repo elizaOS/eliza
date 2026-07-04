@@ -87,7 +87,6 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 ### F. Scenario-runner
 - **Executor / interceptor / final-checks (~30) / judge / reporter+run-viewer / native-export / CLI / runtime-factory** — `packages/scenario-runner/src/{executor,interceptor,final-checks/index,judge,reporter,native-export,cli,runtime-factory}.ts`
 - **The one coding scenario** (FILE/SHELL/WORKTREE deterministic) — `test/scenarios/deterministic-coding-tools-actions.scenario.ts`
-- **Action-coverage ratchet gate** — `src/__tests__/deterministic-action-coverage.test.ts`
 
 ### G. E2E recording
 - **Root recording orchestrator + suite registry + contact-sheets + viewer** — `scripts/e2e-recordings/{run-all,suites,generate-contact-sheets,generate-viewer}.mjs`

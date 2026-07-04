@@ -6,9 +6,9 @@
 
 End-to-end on-device resource profiling for elizaOS local inference on **iOS +
 Android**: battery drain, peak/steady RSS, prefill/decode tokens/sec, TTFT,
-thermal-state timeline, and low-power transitions — with per-tier budgets, a
-regression gate, and a report. Mirrors the `loadperf` budgets/results/CI-gate
-discipline (issue #8800).
+thermal-state timeline, and low-power transitions — with per-tier reference
+thresholds you measure against, and a report. Mirrors the `loadperf`
+budgets/results/exit-code discipline (issue #8800).
 
 `loadperf` measures host load/boot performance; this measures the *phone*.
 
@@ -50,9 +50,10 @@ node packages/benchmarks/mobile-resource/lab-artifacts.mjs \
   --fail-on-gaps
 ```
 
-Exit codes: `0` pass, `1` budget/gate failure, `2` skipped/unavailable (no
-device/agent) — usable directly as a CI gate. When no device or agent is
-reachable the runner records `{ skipped }` and exits `2` rather than failing.
+Exit codes: `0` within threshold, `1` over a reference threshold, `2`
+skipped/unavailable (no device/agent) — run it to measure regressions and read
+the exit code. When no device or agent is reachable the runner records
+`{ skipped }` and exits `2` rather than failing.
 
 ## Workloads
 
@@ -114,8 +115,8 @@ of being replaced with zero.
 
 - Not registered in the suite orchestrator — run directly with `node`, same as
   `loadperf`.
-- Budgets in `budgets.json` start mostly `null` (no baseline yet); fill them in
-  from `BASELINE.md` as on-device numbers stabilise, then ratchet down.
-- CI: `.github/workflows/mobile-resource-workbench.yml` (`workflow_dispatch` +
-  nightly), self-hosted arm64 Android lane + iOS-sim lane, uploads the report +
-  raw traces. Kept off PR-blocking lanes until baselines are stable.
+- Thresholds in `budgets.json` start mostly `null` (no baseline yet); fill them
+  in from `BASELINE.md` as on-device numbers stabilise, then lower them as
+  optimizations land.
+- Run it on a self-hosted arm64 Android host or an iOS simulator (workflow +
+  nightly), and keep the report + raw traces alongside the run.

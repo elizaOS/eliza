@@ -90,7 +90,7 @@ Ranked by confidence × impact (see §E for the full ranked backlog).
 | 6 | api/auth | Cache `AuthStore` per-`db` (WeakMap) instead of `new AuthStore(db)` per request | High | Low-Med | Low |
 | 7 | api/auth | Throttle `touchSession` writes (only slide when `expiresAt` moves by a meaningful delta, e.g. ≥60 s) | Med | Low-Med (remote) | Low |
 | 8 | plugin-sql schema | Add `tasks(agent_id)` index (every `getTasks`/`getTask`/`getTasksByName` filters on it) | Med | Low (single-agent) / Med (multi) | Low |
-| 9 | observability | Add opt-in per-route timing + DB-query-count + cache hit/miss counters behind an env flag so this work is measurable and ratchetable | High | (enables everything) | Low |
+| 9 | observability | Add opt-in per-route timing + DB-query-count + cache hit/miss counters behind an env flag so this work is measurable and its thresholds can be lowered as wins land | High | (enables everything) | Low |
 | 10 | api memory feed | Cap per-table over-fetch (`perTableLimit = max(limit*2, 200)`) to `limit`-proportional, not a 200 floor | Med | Med | Low |
 
 ---
@@ -612,8 +612,8 @@ node --conditions=eliza-source --import tsx /tmp/m.mjs
 Add a `server-api-kpi.mjs` to `packages/benchmarks/loadperf/` that, against an
 `--attach`ed server, runs §D.1 + §D.2 over the N hottest endpoints and records
 `{p50,p95,rps,bytes, dbQueries, cacheHits, cacheMisses}` into
-`results/server-api/` with a budget in `budgets.json`. Ratchet the budgets down as
-C1–C10 land. (Not created here — research only.)
+`results/server-api/` with reference thresholds in `budgets.json`. Lower the
+thresholds as C1–C10 land. (Not created here — research only.)
 
 ---
 
@@ -626,8 +626,8 @@ C1–C10 land. (Not created here — research only.)
    4→2 queries on the DB-browser views (in-scope app-core route), provable cache
    hit rate.
 3. **C9 — perf instrumentation (route timing + query counter + cache counters)**
-   (High × enabler). Land early so 1/4/5/7 have authoritative before/after and so
-   regressions become a budget gate.
+   (High × enabler). Land early so 1/4/5/7 have authoritative before/after and so a
+   `server-api-kpi.mjs` run surfaces regressions against its thresholds.
 4. **C2 — response compression (remote-gated)** (High × Med-High remote).
    Deterministic bandwidth/TTFB win for cloud-deployed agents; gate off loopback.
 5. **C3 — scrub only on the error path** (High × Med). ~86 µs/response of
