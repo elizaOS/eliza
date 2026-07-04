@@ -78,7 +78,7 @@ function FtuWelcomeWidget({
       data-testid="chat-widget-ftu-welcome"
       aria-label="Getting started"
     >
-      <p className="text-[0.95rem] font-medium leading-snug text-white/95 [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
+      <p className="text-sm font-medium leading-snug text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]">
         Ask me anything to get started.
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -88,7 +88,7 @@ function FtuWelcomeWidget({
             type="button"
             data-testid="ftu-welcome-chip"
             onClick={() => onChip(text)}
-            className="rounded-full border border-[rgba(255,106,31,0.22)] bg-[rgba(255,106,31,0.1)] px-3 py-1.5 text-[0.8125rem] font-medium text-white/85 transition-colors duration-150 hover:border-[rgba(255,106,31,0.4)] hover:bg-[rgba(255,106,31,0.18)] hover:text-white active:scale-[0.97] motion-reduce:active:scale-100"
+            className="rounded-full border border-accent/25 bg-accent-subtle px-3 py-1.5 text-xs font-medium text-white transition-colors duration-150 hover:border-accent/45 hover:bg-accent/20 active:scale-[0.97] motion-reduce:active:scale-100"
           >
             {text}
           </button>
@@ -98,7 +98,7 @@ function FtuWelcomeWidget({
           data-testid="ftu-welcome-dismiss"
           aria-label="Dismiss welcome"
           onClick={() => dismissHomeWidget(WIDGET_KEY)}
-          className="px-1 text-[0.8125rem] text-white/50 transition-colors hover:text-white/80"
+          className="px-1 text-xs text-white/60 transition-colors hover:text-white"
         >
           Dismiss
         </button>
