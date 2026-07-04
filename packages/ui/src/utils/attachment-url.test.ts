@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for attachment-URL safety checks (allowed schemes, SSRF-adjacent
+ * rejects). Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { isSafeAttachmentUrl, safeAttachmentUrl } from "./attachment-url";
 

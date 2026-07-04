@@ -1,3 +1,7 @@
+/**
+ * Barrel for the widgets surface: home priority scoring, the registry, and host
+ * types.
+ */
 export {
   baseHomeScore,
   HOME_SIGNAL_WEIGHTS,

@@ -1,3 +1,7 @@
+/**
+ * Barrel for the UI utils surface: numeric parsers, formatters, and the
+ * re-exported shared helpers.
+ */
 export {
   isSafeExecutableValue,
   type ParseClampedIntegerOptions,

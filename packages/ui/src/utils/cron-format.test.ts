@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for human-readable cron descriptions and schedule formatting.
+ * Pure functions, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { CRON_PRESETS, describeCron, formatSchedule } from "./cron-format";
 

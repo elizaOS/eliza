@@ -1,3 +1,7 @@
+/**
+ * Runtime registry mapping widget ids to their React components, so plugins and
+ * the host contribute chat-sidebar widgets the WidgetHost renders.
+ */
 import type { ComponentType } from "react";
 import type { ChatSidebarWidgetDefinition } from "../components/chat/widgets/types";
 import type { WidgetProps } from "./types";

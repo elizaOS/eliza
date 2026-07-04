@@ -1,3 +1,7 @@
+/**
+ * Coarse interval-updated "current time" hook for recency/decay UI, kept off the
+ * render path to satisfy the determinism convention (see block below).
+ */
 import { useEffect, useState } from "react";
 
 /**

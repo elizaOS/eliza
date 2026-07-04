@@ -1,3 +1,7 @@
+/**
+ * Desktop workspace helpers over the Electrobun bridge, including click-audit
+ * entry-point tagging for tray/palette/settings launch points.
+ */
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 
 export type DesktopClickAuditEntryPoint =

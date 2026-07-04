@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the shared default-widget path: a plugin with live state but
+ * no bundled component resolves to the shared frontpage widget (#9143). Pure, no
+ * harness.
+ */
 import { describe, expect, it } from "vitest";
 import { BUILTIN_WIDGET_DECLARATIONS, resolveWidgetsForSlot } from "./registry";
 import type { PluginWidgetDeclaration } from "./types";

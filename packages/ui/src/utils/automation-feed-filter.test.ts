@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the automations feed filter predicate (all/active/kind).
+ * Pure function, no harness.
+ */
 import { describe, expect, it } from "vitest";
 import { passesFilter } from "./automation-feed-filter";
 

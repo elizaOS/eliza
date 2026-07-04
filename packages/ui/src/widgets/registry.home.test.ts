@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for Home/Launcher slot resolution: plugins opting into the `home`
+ * slot, and the orchestrator Activity widget reusing its component (#9143).
+ */
 import { describe, expect, it } from "vitest";
 import { resolveWidgetsForSlot } from "./registry";
 

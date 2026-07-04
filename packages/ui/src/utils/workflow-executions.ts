@@ -1,3 +1,7 @@
+/**
+ * Projects a WorkflowExecution into the display rows the automations UI renders:
+ * per-node run rows, tone, and formatted engine metrics/duration.
+ */
 import type { WorkflowExecution } from "../api/client-types-chat";
 
 export type WorkflowExecutionTone = "success" | "danger" | "warning" | "muted";

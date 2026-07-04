@@ -1,3 +1,6 @@
+/**
+ * Re-exports the shared display formatters (byte size, date/time, duration).
+ */
 export {
   formatByteSize,
   formatDateTime,

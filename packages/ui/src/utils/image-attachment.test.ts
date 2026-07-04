@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for chat image/media attachment validation (mime allowlist, size
+ * caps, count limits). Pure functions, no harness.
+ */
 import {
   CHAT_UPLOAD_MIME_TYPES,
   MAX_CHAT_IMAGE_BASE64_BYTES,

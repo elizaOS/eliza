@@ -1,3 +1,7 @@
+/**
+ * Native desktop dialog helpers (alert/confirm) routed through the Electrobun
+ * bridge, with web fallbacks when not running under the desktop shell.
+ */
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 

@@ -1,3 +1,7 @@
+/**
+ * Cross-platform clipboard write: prefers the desktop bridge, then the async
+ * Clipboard API, falling back to a legacy execCommand path for older webviews.
+ */
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 
 function copyWithLegacyDomApi(text: string): boolean {

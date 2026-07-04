@@ -1,3 +1,7 @@
+/**
+ * User-controlled per-slot widget visibility overrides, layered on top of the
+ * two-stage capability/declaration gate (see block below).
+ */
 import type { WidgetSlot } from "./types";
 
 /**

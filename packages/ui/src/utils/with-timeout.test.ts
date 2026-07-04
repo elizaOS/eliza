@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the promise timeout wrapper (resolve-in-time vs reject).
+ * Pure function, no harness.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { withTimeout } from "./with-timeout";
 

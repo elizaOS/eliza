@@ -1,3 +1,7 @@
+/**
+ * Collects desktop agent diagnostics via the Electrobun bridge for the bug-report
+ * form (agent state/phase snapshot).
+ */
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 
 export interface DesktopBugReportDiagnostics {

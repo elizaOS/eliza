@@ -1,3 +1,7 @@
+/**
+ * Types for the widget registry: slots, plugin widget declarations, and the
+ * WidgetProps the host passes to each widget component.
+ */
 import type { PluginWidgetDeclaration as CorePluginWidgetDeclaration } from "@elizaos/core";
 import type { ComponentType } from "react";
 import type { PluginInfo } from "../api/client-types-config";
