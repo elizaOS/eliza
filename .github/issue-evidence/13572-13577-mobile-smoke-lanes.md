@@ -3,7 +3,8 @@
 ## Change
 
 - `packages/app` public local-chat simulator scripts now pass `--require-installed`, so missing simulators/apps fail instead of falling through to host-only Vitest coverage.
-- `test:e2e:ios` now exposes the existing `scripts/ios-e2e.mjs` orchestrator as a discoverable package lane.
+- `test:e2e:ios` and `test:e2e:ios:cloud` now expose the existing `scripts/ios-e2e.mjs` orchestrator as discoverable package lanes.
+- `packages/app/CLAUDE.md` / `AGENTS.md` list the new iOS lanes and call out that default local-chat simulator lanes require an installed app.
 - `packages/app/test/mobile-smoke-scripts.test.ts` guards both contracts.
 
 ## Verification
@@ -15,4 +16,4 @@
 
 - Screenshots/video: N/A - script contract and simulator lane wiring only; no rendered UI changes.
 - Live model trajectory: N/A - no agent prompt/model behavior changed.
-- Native/device capture: required when closing the broader native QA umbrella, but this PR specifically removes false-green command wiring so those captures cannot be claimed from missing devices.
+- Native/device capture: still required before #13577 is closed; this PR removes false-green command wiring and exposes the iOS orchestrator, but it does not prove the full build/install/auth/chat/cloud loop on a clean simulator.

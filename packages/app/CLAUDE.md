@@ -99,8 +99,10 @@ bun run --cwd packages/app cap:sync:ios               # Capacitor sync iOS only
 bun run --cwd packages/app cap:sync:android           # Capacitor sync Android only
 
 # Simulator smoke tests
-bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke
-bun run --cwd packages/app test:sim:local-chat:android
+bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smoke, full-Bun local chat
+bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
+bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
+bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:auth:ios
 bun run --cwd packages/app test:sim:auth:android
 

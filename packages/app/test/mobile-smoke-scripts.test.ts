@@ -25,5 +25,8 @@ describe("mobile simulator smoke package scripts", () => {
 
   it("exposes the loud one-command iOS e2e orchestrator", () => {
     expect(script("test:e2e:ios")).toBe("node scripts/ios-e2e.mjs");
+    expect(script("test:e2e:ios:cloud")).toBe(
+      "node scripts/ios-e2e.mjs --cloud",
+    );
   });
 });
