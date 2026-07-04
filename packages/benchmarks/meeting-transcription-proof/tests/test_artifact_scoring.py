@@ -81,6 +81,23 @@ def test_unsupported_claim_raises_hallucination_and_grounding_rates() -> None:
     assert scores["source_grounding"] < 1
 
 
+def test_duplicate_unsupported_claims_keep_hallucination_rate_in_range() -> None:
+    generated = {
+        "summary_claims": [
+            {"text": "Pricing was approved", "source_span_ids": ["missing"]},
+            {"text": "Pricing was approved", "source_span_ids": ["missing"]},
+        ],
+    }
+
+    scores = score_generated_artifacts(
+        transcript_segments=TRANSCRIPT_SEGMENTS,
+        generated_artifacts=generated,
+        reference_artifacts=_reference_artifacts(),
+    )
+
+    assert scores["hallucination_rate"] == pytest.approx(1.0)
+
+
 def test_wrong_memory_entity_counts_as_incorrect_and_omitted() -> None:
     reference = _reference_artifacts()
     generated = dict(reference)

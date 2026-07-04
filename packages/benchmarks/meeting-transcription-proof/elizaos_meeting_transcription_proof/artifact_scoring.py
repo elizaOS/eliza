@@ -104,20 +104,25 @@ def score_generated_artifacts(
     supported_summary = sum(1 for row in summary_rows if _claim_supported(row, transcript_segments))
     summary_factuality = supported_summary / len(summary_rows) if summary_rows else 1.0
 
-    generated_actions = {_key(row, "text", "owner", "due") for row in _rows(generated_artifacts.get("action_items"))}
+    generated_action_rows = _rows(generated_artifacts.get("action_items"))
+    generated_decision_rows = _rows(generated_artifacts.get("decisions"))
+    generated_question_rows = _rows(generated_artifacts.get("open_questions"))
+    generated_memory_rows = _rows(generated_artifacts.get("memory_entities"))
+
+    generated_actions = {_key(row, "text", "owner", "due") for row in generated_action_rows}
     reference_actions = {_key(row, "text", "owner", "due") for row in _rows(reference_artifacts.get("action_items"))}
     action_scores = _precision_recall_f1(generated_actions, reference_actions)
 
-    generated_decisions = {_key(row, "text") for row in _rows(generated_artifacts.get("decisions"))}
+    generated_decisions = {_key(row, "text") for row in generated_decision_rows}
     reference_decisions = {_key(row, "text") for row in _rows(reference_artifacts.get("decisions"))}
     decision_scores = _precision_recall_f1(generated_decisions, reference_decisions)
 
-    generated_questions = {_key(row, "text") for row in _rows(generated_artifacts.get("open_questions"))}
+    generated_questions = {_key(row, "text") for row in generated_question_rows}
     reference_questions = {_key(row, "text") for row in _rows(reference_artifacts.get("open_questions"))}
     question_scores = _precision_recall_f1(generated_questions, reference_questions)
 
     generated_memory = {
-        _key(row, "entity_id", "name", "fact") for row in _rows(generated_artifacts.get("memory_entities"))
+        _key(row, "entity_id", "name", "fact") for row in generated_memory_rows
     }
     reference_memory = {
         _key(row, "entity_id", "name", "fact") for row in _rows(reference_artifacts.get("memory_entities"))
@@ -129,31 +134,31 @@ def score_generated_artifacts(
     unsupported = 0
     unsupported += _unsupported_count(summary_rows, reference_summary_keys, ("text",), transcript_segments)
     unsupported += _unsupported_count(
-        _rows(generated_artifacts.get("action_items")),
+        generated_action_rows,
         reference_actions,
         ("text", "owner", "due"),
         transcript_segments,
     )
     unsupported += _unsupported_count(
-        _rows(generated_artifacts.get("decisions")),
+        generated_decision_rows,
         reference_decisions,
         ("text",),
         transcript_segments,
     )
     unsupported += _unsupported_count(
-        _rows(generated_artifacts.get("open_questions")),
+        generated_question_rows,
         reference_questions,
         ("text",),
         transcript_segments,
     )
-    generated_total = (
-        len(generated_summary_keys)
-        + len(generated_actions)
-        + len(generated_decisions)
-        + len(generated_questions)
-        + len(generated_memory)
+    generated_total_rows = (
+        len(summary_rows)
+        + len(generated_action_rows)
+        + len(generated_decision_rows)
+        + len(generated_question_rows)
+        + len(generated_memory_rows)
     )
-    hallucination_rate = unsupported / generated_total if generated_total else 0.0
+    hallucination_rate = unsupported / generated_total_rows if generated_total_rows else 0.0
 
     reference_total = (
         len(reference_summary_keys)
@@ -192,7 +197,7 @@ def score_generated_artifacts(
             "open_questions": question_scores,
             "memory_entities": memory_scores,
             "unsupported_generated_items": unsupported,
-            "generated_items": generated_total,
+            "generated_items": generated_total_rows,
             "reference_items": reference_total,
             "grounded_items": grounded_count,
         },
