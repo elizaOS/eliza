@@ -203,6 +203,8 @@ describe("cloud routing helpers", () => {
     "//evil.test/api/v1",
     "https://cloud.example.com/api/v1?x=1",
     "https://cloud.example.com/api/v1#frag",
+    "not a url",
+    "http://",
   ])("rejects unsafe cloud base URLs: %s", (baseUrl) => {
     expect(
       cloudServiceApisBaseUrl(

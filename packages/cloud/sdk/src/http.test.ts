@@ -225,4 +225,67 @@ describe("ElizaCloudHttpClient errors", () => {
       },
     });
   });
+
+  it("throws instead of fabricating success on a 2xx with malformed JSON", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response("{not-json", {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    });
+
+    await expect(client.request("GET", "/api/test")).rejects.toMatchObject({
+      name: "CloudApiError",
+      statusCode: 200,
+      errorBody: {
+        success: false,
+        error: "HTTP 200: malformed JSON response body: {not-json",
+      },
+    });
+  });
+
+  it("keeps not-found, auth, and server failures as distinct statuses", async () => {
+    const respondWith = (status: number, statusText: string) =>
+      new ElizaCloudHttpClient({
+        baseUrl: "https://cloud.test",
+        fetchImpl: asFetch(async () =>
+          Response.json(
+            { success: false, error: statusText },
+            { status, statusText },
+          ),
+        ),
+      });
+
+    await expect(
+      respondWith(404, "Not Found").request("GET", "/api/x"),
+    ).rejects.toMatchObject({ name: "CloudApiError", statusCode: 404 });
+    await expect(
+      respondWith(401, "Unauthorized").request("GET", "/api/x"),
+    ).rejects.toMatchObject({ name: "CloudApiError", statusCode: 401 });
+    await expect(
+      respondWith(500, "Internal Server Error").request("GET", "/api/x"),
+    ).rejects.toMatchObject({ name: "CloudApiError", statusCode: 500 });
+  });
+
+  it("accepts a 2xx text/plain body as a success without JSON parsing", async () => {
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: asFetch(
+        async () =>
+          new Response("pong", {
+            status: 200,
+            headers: { "content-type": "text/plain" },
+          }),
+      ),
+    });
+
+    await expect(client.request("GET", "/api/ping")).resolves.toEqual({
+      success: true,
+    });
+  });
 });

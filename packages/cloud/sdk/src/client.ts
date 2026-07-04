@@ -173,8 +173,10 @@ function normalizeCloudApiBaseUrl(
   let url: URL;
   try {
     url = new URL(baseUrl);
-  } catch {
-    throw new Error(`Invalid Eliza Cloud API base URL: ${baseUrl}`);
+  } catch (cause) {
+    // error-policy:J2 translate an opaque URL parse failure into a named,
+    // actionable config error at the SDK construction boundary.
+    throw new Error(`Invalid Eliza Cloud API base URL: ${baseUrl}`, { cause });
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error(`Invalid Eliza Cloud API base URL protocol: ${baseUrl}`);
@@ -205,7 +207,9 @@ function browserBaseUrlForCliLogin(baseUrl: string): string {
       return DEFAULT_ELIZA_CLOUD_BASE_URL;
     }
   } catch {
-    // Fall through to the configured base URL.
+    // error-policy:J3 baseUrl is a configured string, not guaranteed parseable;
+    // this is an opportunistic host swap, so an unparseable input yields the
+    // identity result (the configured URL) rather than failing the login start.
   }
   return baseUrl;
 }
