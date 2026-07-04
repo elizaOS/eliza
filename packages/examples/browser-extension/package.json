@@ -14,6 +14,8 @@
     "clean": "node ../../../packages/scripts/rm-path-recursive.mjs chrome/dist",
     "test": "bun test smoke.test.js && bun run --cwd chrome test && bun run --cwd safari test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   }
 }

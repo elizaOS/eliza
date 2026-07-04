@@ -9,7 +9,10 @@
     "typecheck": "bun run --cwd ../chat typecheck",
     "test": "bun run --cwd ../chat typecheck",
     "build": "bun run --cwd ../chat build",
-    "lint": "bunx @biomejs/biome check --write --unsafe ."
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "engines": {
     "node": ">=24.0.0"

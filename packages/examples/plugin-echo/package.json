@@ -33,8 +33,11 @@
     "build": "tsc --noCheck -p tsconfig.json",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../../scripts/run-vitest.mjs run --config ./vitest.config.ts",
-    "lint": "bunx @biomejs/biome check src",
-    "lint:fix": "bunx @biomejs/biome check --write src"
+    "lint": "bunx @biomejs/biome check --write --unsafe src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format --write src",
+    "format:check": "bunx @biomejs/biome format src"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

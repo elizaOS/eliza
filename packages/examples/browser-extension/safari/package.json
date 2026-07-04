@@ -9,6 +9,8 @@
     "info": "echo 'See README.md for detailed Safari extension build instructions'",
     "test": "bun test",
     "lint": "node scripts/fix-generated-safari.mjs && bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   }
 }
