@@ -1867,6 +1867,68 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  // The native gesture-matrix suites (iOS XCUITest / Android WebView, #12344)
+  // observe web gesture state ONLY through the accessibility tree, so the
+  // composer mirrors its push-to-talk / voice phase into the sr-only
+  // `chat-composer-probe` (`voice:… keyboard:… attachments:…`). This locks the
+  // voice field so a native suite reading it is asserting real state.
+  it("mirrors the voice phase into the composer AX probe (idle → ptt-holding on hold)", () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({ startRecording: vi.fn() })}
+        />,
+      );
+      const probe = screen.getByTestId("chat-composer-probe");
+      expect(probe.textContent).toContain("voice:idle");
+      expect(probe.textContent).toContain("keyboard:down");
+      expect(probe.textContent).toContain("attachments:0");
+
+      // Hold the mic past the arm timer → push-to-talk engages and the probe
+      // flips to ptt-holding (the same state the native suite asserts on).
+      const mic = screen.getByTestId("chat-composer-mic");
+      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
+      act(() => {
+        vi.advanceTimersByTime(220);
+      });
+      expect(
+        screen.getByTestId("chat-composer-probe").textContent,
+      ).toContain("voice:ptt-holding");
+
+      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("mirrors recording / hands-free voice phases into the composer AX probe", () => {
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={makeController({ recording: true })} />,
+    );
+    expect(
+      screen.getByTestId("chat-composer-probe").textContent,
+    ).toContain("voice:recording");
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({ handsFree: true })}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-composer-probe").textContent,
+    ).toContain("voice:handsfree");
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({ transcriptionMode: true })}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-composer-probe").textContent,
+    ).toContain("voice:transcribing");
+  });
+
   it("drops the finished transcript into the composer as an attachment, not an auto-sent message", () => {
     let sink:
       | ((

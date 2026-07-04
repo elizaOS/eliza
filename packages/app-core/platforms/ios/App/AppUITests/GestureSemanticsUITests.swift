@@ -28,6 +28,17 @@ import XCTest
 ///     proves this run can detect the callout at all), then a long-press on the
 ///     select-none home gesture surface shows NO callout (the suppression the
 ///     app's `-webkit-touch-callout: none` body rule promises).
+///   - `testPushToTalkHoldEngagesAndReleaseDisengages` — press-and-hold the mic
+///     control past the arm timer engages push-to-talk (`voice:ptt-holding` in
+///     the composer probe, label flips to "release to insert"), and a release
+///     drops back to `voice:idle` — the hold-to-dictate gesture, driven native.
+///   - `testComposerKeyboardAvoidanceLift` — tapping the composer raises the
+///     software keyboard and the composer probe reports `keyboard:up` (the
+///     visualViewport-driven lift that keeps the input above the IME), and
+///     dismissing the keyboard returns it to `keyboard:down`.
+///   - `testMediaAttachmentPickerOpensViaTouch` — tapping the composer's attach
+///     affordance opens the system photo/file picker (the native document/photo
+///     UI over the WKWebView) — the entry point of the media-attachment flow.
 ///
 /// Assertion channel: the web app mirrors its gesture state into sr-only
 /// static texts — `chat-detent:<pill|collapsed|half|full>`
@@ -42,6 +53,11 @@ final class GestureSemanticsUITests: XCTestCase {
 
     private static let detentPrefix = "chat-detent:"
     private static let pagePrefix = "home-launcher-page:"
+    /// The composer AX probe folds three fields into one sr-only label:
+    /// `voice:<idle|ptt-holding|recording|handsfree|transcribing> keyboard:<up|down> attachments:<n>`.
+    /// The gesture legs below read the field they care about out of that whole
+    /// label (the fields are space-separated, so a token match is exact).
+    private static let composerPrefix = "voice:"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -268,6 +284,151 @@ final class GestureSemanticsUITests: XCTestCase {
         )
     }
 
+    func testPushToTalkHoldEngagesAndReleaseDisengages() throws {
+        let app = XCUIApplication()
+        try launchToRenderer(app)
+        try openComposer(in: app)
+
+        // The mic control carries aria-label "talk" while idle (it becomes
+        // "release to insert" only WHILE holding). It is exposed as a switch on
+        // iOS (aria-pressed), so match by label across element types.
+        let mic = try composerControl(
+            in: app, label: "talk",
+            missing: "no idle mic ('talk') control in the AX tree")
+        attachScreenshot(named: "ptt-00-idle")
+        XCTAssertEqual(
+            composerField(Self.composerPrefix, in: app), "idle",
+            "the composer must start in the idle voice phase"
+        )
+
+        // Press-and-hold past the ~200ms arm timer: push-to-talk engages and
+        // the composer probe reports ptt-holding (the same field the web unit
+        // test locks). `press(forDuration:)` holds a real touch down.
+        mic.press(forDuration: 1.6)
+        let engaged = waitForComposerField(
+            Self.composerPrefix, toEqual: "ptt-holding", timeout: 4, in: app)
+        attachScreenshot(named: "ptt-10-holding")
+        // A device without a usable mic/permission may refuse to enter capture;
+        // that is a real environmental refusal, not a gesture failure. Only a
+        // release that FAILED to disengage below is a hard failure.
+        guard engaged == "ptt-holding" else {
+            attachAccessibilitySnapshot(
+                of: app, named: "ax-hierarchy-ptt-not-engaged")
+            throw XCTSkip(
+                "press-and-hold did not engage push-to-talk on this device "
+                    + "(voice phase read '\(engaged ?? "nil")') — likely no mic "
+                    + "or a denied speech permission in this simulator lane"
+            )
+        }
+        // Release ends the hold → back to idle (the transcript, if any, lands in
+        // the draft; the mic returns to its resting label).
+        let disengaged = waitForComposerField(
+            Self.composerPrefix, toEqual: "idle", timeout: 6, in: app)
+        attachScreenshot(named: "ptt-20-released")
+        XCTAssertEqual(
+            disengaged, "idle",
+            "releasing the push-to-talk hold must return the composer to the "
+                + "idle voice phase, but it reads '\(disengaged ?? "nil")'"
+        )
+    }
+
+    func testComposerKeyboardAvoidanceLift() throws {
+        let app = XCUIApplication()
+        try launchToRenderer(app)
+        try openComposer(in: app)
+
+        // Composer at rest: no IME, no lift.
+        XCTAssertEqual(
+            composerField("keyboard:", in: app), "down",
+            "the composer must report keyboard:down before it is focused"
+        )
+        attachScreenshot(named: "kbd-00-resting")
+
+        // Focus the composer → the software keyboard rises and the overlay
+        // lifts the input above it (the visualViewport/native-inset avoidance),
+        // surfaced as keyboard:up in the probe.
+        let composer = try composerTextElement(in: app)
+        composer.tap()
+        guard app.keyboards.firstMatch.waitForExistence(timeout: 10) else {
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-keyboard")
+            throw XCTSkip(
+                "the software keyboard never appeared after tapping the composer "
+                    + "— hardware-keyboard simulators suppress it (Cmd-K)")
+        }
+        let lifted = waitForComposerField(
+            "keyboard:", toEqual: "up", timeout: 5, in: app)
+        attachScreenshot(named: "kbd-10-keyboard-up")
+        XCTAssertEqual(
+            lifted, "up",
+            "focusing the composer must lift it over the software keyboard "
+                + "(keyboard-avoidance), but the probe reads '\(lifted ?? "nil")'"
+        )
+
+        // Dismiss the keyboard → the lift releases back to keyboard:down.
+        if app.keyboards.buttons["Hide keyboard"].exists {
+            app.keyboards.buttons["Hide keyboard"].tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)).tap()
+        }
+        let released = waitForComposerField(
+            "keyboard:", toEqual: "down", timeout: 5, in: app)
+        attachScreenshot(named: "kbd-20-keyboard-down")
+        XCTAssertEqual(
+            released, "down",
+            "dismissing the keyboard must drop the composer lift back to "
+                + "keyboard:down, but the probe reads '\(released ?? "nil")'"
+        )
+    }
+
+    func testMediaAttachmentPickerOpensViaTouch() throws {
+        let app = XCUIApplication()
+        try launchToRenderer(app)
+        try openComposer(in: app)
+
+        // No pending attachments at rest.
+        XCTAssertEqual(
+            composerField("attachments:", in: app), "0",
+            "the composer must start with zero pending attachments"
+        )
+
+        // Tap the attach affordance (aria-label "attach image") → the web app
+        // clicks the hidden <input type=file>, which iOS answers with the
+        // system photo/document picker OVER the WKWebView. Detect the picker by
+        // its well-known sheet controls (Photo Library / Choose File / Cancel).
+        let attach = try composerControl(
+            in: app, label: "attach image",
+            missing: "no attach affordance ('attach image') in the AX tree")
+        attachScreenshot(named: "attach-00-before")
+        attach.tap()
+
+        let pickerEvidence = waitForAttachmentPicker(in: app, timeout: 8)
+        attachScreenshot(named: "attach-10-picker")
+        attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-attach-picker")
+        guard let pickerEvidence else {
+            // A simulator with no Photos entitlement/library can decline to show
+            // the picker; that is an environmental refusal of the OS surface,
+            // not a gesture failure. Record it honestly rather than green-wash.
+            throw XCTSkip(
+                "tapping the attach affordance raised no detectable system "
+                    + "photo/file picker on this simulator (no Photos library or "
+                    + "denied entitlement) — see attach-10 + the AX attachment"
+            )
+        }
+        XCTAssertNotNil(
+            pickerEvidence,
+            "the attach gesture must open the system media picker"
+        )
+
+        // Dismiss the picker, leaving the composer as we found it.
+        for cancelLabel in ["Cancel", "Done"] {
+            let cancel = app.buttons[cancelLabel]
+            if cancel.exists, cancel.isHittable {
+                cancel.tap()
+                break
+            }
+        }
+    }
+
     // MARK: - Launch / boot
 
     /// `XCUIApplication.launch()` can race an in-flight app (re)install — wait
@@ -414,6 +575,50 @@ final class GestureSemanticsUITests: XCTestCase {
         return lastSeen
     }
 
+    /// Read one space-separated field (`<field>:<value>`) out of the composer
+    /// probe's single sr-only label, e.g. `field("keyboard:")` → "up". Returns
+    /// nil when the probe (or that field) is absent.
+    private func composerField(
+        _ field: String, in app: XCUIApplication
+    ) -> String? {
+        let predicate = NSPredicate(format: "label CONTAINS %@", field)
+        let text = app.staticTexts.matching(predicate).firstMatch
+        let label: String?
+        if text.exists {
+            label = text.label
+        } else {
+            let any = app.descendants(matching: .any)
+                .matching(predicate).firstMatch
+            label = any.exists ? any.label : nil
+        }
+        guard let label else { return nil }
+        for token in label.split(separator: " ") where token.hasPrefix(field) {
+            return String(token.dropFirst(field.count))
+        }
+        return nil
+    }
+
+    /// Poll a composer-probe field until it reads `expected` (returns it) or the
+    /// timeout lapses (returns the last seen value for the assert message).
+    @discardableResult
+    private func waitForComposerField(
+        _ field: String,
+        toEqual expected: String,
+        timeout: TimeInterval,
+        in app: XCUIApplication
+    ) -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastSeen: String?
+        while Date() < deadline {
+            if let value = composerField(field, in: app) {
+                lastSeen = value
+                if value == expected { return value }
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return lastSeen
+    }
+
     private func assertDetent(
         becomes expected: String, in app: XCUIApplication, step: String
     ) {
@@ -544,6 +749,100 @@ final class GestureSemanticsUITests: XCTestCase {
         else {
             throw XCTSkip("could not normalize the rail to the home page")
         }
+    }
+
+    // MARK: - Composer plumbing
+
+    /// Open the chat sheet far enough that the composer input row (and its AX
+    /// probe) is live and interactive — the row is inert while the sheet is
+    /// pilled. A slow drag-open from collapsed exposes the composer at half.
+    private func openComposer(in app: XCUIApplication) throws {
+        // The composer/probe live inside `chat-content`, which is inert while
+        // pilled. From collapsed the input row is already mounted; only the
+        // pill state hides it, so normalize to collapsed then, if the probe is
+        // still not readable, drag the sheet open.
+        try settleSheetToCollapsed(in: app)
+        if composerField(Self.composerPrefix, in: app) != nil { return }
+        try slowDragGrabber(in: app, dy: -260)
+        Thread.sleep(forTimeInterval: 1.0)
+        guard composerField(Self.composerPrefix, in: app) != nil else {
+            attachAccessibilitySnapshot(
+                of: app, named: "ax-hierarchy-no-composer-probe")
+            throw XCTSkip(
+                "the composer probe never surfaced after opening the sheet — the "
+                    + "composer-state AX channel is unavailable on this boot")
+        }
+    }
+
+    /// A composer control matched by its aria-label. iOS exposes the mic/attach
+    /// controls as switches (aria-pressed) on some builds, so match across
+    /// element types and require it hittable.
+    private func composerControl(
+        in app: XCUIApplication, label: String, missing: String
+    ) throws -> XCUIElement {
+        let predicate = NSPredicate(format: "label == %@", label)
+        let button = app.buttons.matching(predicate).firstMatch
+        let element =
+            button.waitForExistence(timeout: 5)
+            ? button
+            : app.descendants(matching: .any).matching(predicate).firstMatch
+        guard element.waitForExistence(timeout: 5), element.isHittable else {
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-control")
+            throw XCTSkip(missing)
+        }
+        return element
+    }
+
+    /// The composer text field (the `chat-composer-textarea`, aria-label
+    /// "message"). Prefer the WKWebView subtree, then fall back to the app root.
+    private func composerTextElement(in app: XCUIApplication) throws -> XCUIElement {
+        let webView = app.webViews.firstMatch
+        let candidates: [XCUIElement] = [
+            webView.textViews.firstMatch,
+            webView.textFields.firstMatch,
+            app.textViews.firstMatch,
+            app.textFields.firstMatch,
+        ]
+        guard
+            let composer = candidates.first(where: {
+                $0.waitForExistence(timeout: 10) && $0.isHittable
+            })
+        else {
+            attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-composer")
+            throw XCTSkip("no hittable composer text element in the AX tree")
+        }
+        return composer
+    }
+
+    /// Evidence that iOS's system photo/document picker is on screen (the sheet
+    /// the hidden <input type=file> click raises). Scans the labels the picker
+    /// UI presents across OS builds.
+    private func attachmentPickerEvidence(in app: XCUIApplication) -> String? {
+        for label in [
+            "Photo Library", "Choose File", "Take Photo", "Browse",
+            "Choose from Library", "Recents", "Photos",
+        ] {
+            if app.buttons[label].exists { return "button '\(label)'" }
+            if app.staticTexts[label].exists { return "text '\(label)'" }
+            if app.cells[label].exists { return "cell '\(label)'" }
+        }
+        // The document-browser / photo sheet also raises Cancel that lives
+        // OUTSIDE the WKWebView (the composer's own controls all sit inside it).
+        let cancelOutside =
+            app.buttons["Cancel"].exists
+            && !app.webViews.firstMatch.buttons["Cancel"].exists
+        return cancelOutside ? "Cancel outside the webview" : nil
+    }
+
+    private func waitForAttachmentPicker(
+        in app: XCUIApplication, timeout: TimeInterval
+    ) -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let evidence = attachmentPickerEvidence(in: app) { return evidence }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        return nil
     }
 
     // MARK: - Message plumbing

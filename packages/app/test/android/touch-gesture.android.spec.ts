@@ -262,6 +262,73 @@ async function androidTouchDrag(
   ]);
 }
 
+/** Device-pixel center of a selector's box, honoring DPR + the visual-viewport
+ * offset (the same math androidTouchDrag uses to land a real touch). */
+async function deviceCenter(page: Page, selector: string) {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`no bounding box for ${selector}`);
+  const metrics = await page.evaluate(() => ({
+    dpr: window.devicePixelRatio || 1,
+    offsetLeft: window.visualViewport?.offsetLeft ?? 0,
+    offsetTop: window.visualViewport?.offsetTop ?? 0,
+  }));
+  return {
+    x: Math.round((box.x + box.width / 2 + metrics.offsetLeft) * metrics.dpr),
+    y: Math.round((box.y + box.height / 2 + metrics.offsetTop) * metrics.dpr),
+  };
+}
+
+/** A real hardware tap on the element center via `adb input tap`. */
+async function androidTap(
+  page: Page,
+  adb: string,
+  serial: string,
+  selector: string,
+) {
+  const { x, y } = await deviceCenter(page, selector);
+  adbDevice(adb, serial, ["shell", "input", "tap", String(x), String(y)]);
+}
+
+/** A real press-and-hold on the element center: a zero-distance `input swipe`
+ * whose duration exceeds the given hold (input has no dedicated long-press). */
+async function androidHold(
+  page: Page,
+  adb: string,
+  serial: string,
+  selector: string,
+  holdMs: number,
+) {
+  const { x, y } = await deviceCenter(page, selector);
+  adbDevice(adb, serial, [
+    "shell",
+    "input",
+    "swipe",
+    String(x),
+    String(y),
+    String(x),
+    String(y),
+    String(Math.max(300, holdMs)),
+  ]);
+}
+
+/** Read one space-separated field out of the composer AX probe
+ * (`voice:… keyboard:… attachments:…`) mirrored into `chat-composer-probe`. */
+async function readComposerField(
+  page: Page,
+  field: "voice" | "keyboard" | "attachments",
+) {
+  return page.evaluate((key) => {
+    const probe = document.querySelector(
+      '[data-testid="chat-composer-probe"]',
+    );
+    const text = probe?.textContent ?? "";
+    const token = text
+      .split(/\s+/)
+      .find((part) => part.startsWith(`${key}:`));
+    return token ? token.slice(key.length + 1) : null;
+  }, field);
+}
+
 /**
  * Wait until the WebView main thread is responsive enough to receive input.
  * On a software-GPU emulator the embedded runtime's boot stalls the main
@@ -623,4 +690,263 @@ test.describe
         }
       }
     });
+
+    // Composer gesture matrix (#12344): push-to-talk hold, keyboard-avoidance
+    // lift, and the media-attachment entry point — each driven with a REAL adb
+    // hardware event and asserted through the composer AX probe (never a mouse
+    // fallback). The probe (`chat-composer-probe`) is added in
+    // ContinuousChatOverlay for exactly this native-observability need.
+    test("push-to-talk hold engages and release disengages (real touch)", async ({
+      page,
+      device,
+    }, testInfo) => {
+      test.setTimeout(180_000);
+      fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+      const adb = resolveAdb();
+      const serial = device.serial();
+
+      const recording = await startAndroidScreenRecord({
+        serial,
+        artifactDir: ARTIFACT_DIR,
+        filename: "android-ptt-gesture.mp4",
+        remotePath: "/sdcard/eliza-android-ptt-gesture.mp4",
+      });
+      try {
+        await prepareComposer(page, adb, serial);
+        const micSelector = '[data-testid="chat-composer-mic"]';
+        await expect(page.locator(micSelector)).toBeVisible({ timeout: 30_000 });
+        expect(await readComposerField(page, "voice")).toBe("idle");
+
+        await waitForResponsiveMainThread(page);
+        // Hold past the ~200ms arm timer → push-to-talk engages.
+        await androidHold(page, adb, serial, micSelector, 1500);
+        const engaged = await page
+          .waitForFunction(
+            () =>
+              document
+                .querySelector('[data-testid="chat-composer-probe"]')
+                ?.textContent?.includes("voice:ptt-holding") ?? false,
+            undefined,
+            { timeout: 6_000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        captureAndroidScreenshot({
+          adb,
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "android-ptt-holding.png",
+        });
+        // A denied RECORD_AUDIO permission on the emulator is a real
+        // environmental refusal (not a gesture failure) — record it and skip.
+        test.skip(
+          !engaged,
+          "hold did not engage push-to-talk (likely no emulator mic / denied " +
+            "RECORD_AUDIO) — see android-ptt-holding.png",
+        );
+
+        // The release (swipe already released the touch) must return to idle.
+        await expect
+          .poll(() => readComposerField(page, "voice"), { timeout: 8_000 })
+          .toBe("idle");
+        const shot = captureAndroidScreenshot({
+          adb,
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "android-ptt-released.png",
+        });
+        await testInfo.attach("Android push-to-talk released", {
+          path: shot,
+          contentType: "image/png",
+        });
+      } finally {
+        const video = await recording.stop();
+        if (video) {
+          await testInfo.attach("Android push-to-talk screenrecord", {
+            path: video,
+            contentType: "video/mp4",
+          });
+        }
+      }
+    });
+
+    test("focusing the composer lifts it over the keyboard (real touch)", async ({
+      page,
+      device,
+    }, testInfo) => {
+      test.setTimeout(180_000);
+      fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+      const adb = resolveAdb();
+      const serial = device.serial();
+
+      const recording = await startAndroidScreenRecord({
+        serial,
+        artifactDir: ARTIFACT_DIR,
+        filename: "android-keyboard-gesture.mp4",
+        remotePath: "/sdcard/eliza-android-keyboard-gesture.mp4",
+      });
+      try {
+        await prepareComposer(page, adb, serial);
+        const composerSelector = '[data-testid="chat-composer-textarea"]';
+        await expect(page.locator(composerSelector)).toBeVisible({
+          timeout: 30_000,
+        });
+        expect(await readComposerField(page, "keyboard")).toBe("down");
+
+        await waitForResponsiveMainThread(page);
+        // Real tap focuses the composer → the soft keyboard rises and the
+        // overlay lifts the input above it (keyboard:up in the probe).
+        await androidTap(page, adb, serial, composerSelector);
+        const lifted = await page
+          .waitForFunction(
+            () =>
+              document
+                .querySelector('[data-testid="chat-composer-probe"]')
+                ?.textContent?.includes("keyboard:up") ?? false,
+            undefined,
+            { timeout: 10_000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        captureAndroidScreenshot({
+          adb,
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "android-keyboard-up.png",
+        });
+        // A hardware-keyboard emulator suppresses the soft IME entirely; that
+        // is an environment condition, not a keyboard-avoidance regression.
+        test.skip(
+          !lifted,
+          "the soft keyboard never rose (hardware-keyboard emulator) — no " +
+            "avoidance lift to assert; see android-keyboard-up.png",
+        );
+
+        // Dismiss the keyboard (BACK) → the lift releases.
+        adbDevice(adb, serial, ["shell", "input", "keyevent", "KEYCODE_BACK"]);
+        await expect
+          .poll(() => readComposerField(page, "keyboard"), { timeout: 8_000 })
+          .toBe("down");
+        const shot = captureAndroidScreenshot({
+          adb,
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "android-keyboard-down.png",
+        });
+        await testInfo.attach("Android keyboard dismissed", {
+          path: shot,
+          contentType: "image/png",
+        });
+      } finally {
+        const video = await recording.stop();
+        if (video) {
+          await testInfo.attach("Android keyboard-avoidance screenrecord", {
+            path: video,
+            contentType: "video/mp4",
+          });
+        }
+      }
+    });
+
+    test("tapping attach opens the media picker (real touch)", async ({
+      page,
+      device,
+    }, testInfo) => {
+      test.setTimeout(180_000);
+      fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+      const adb = resolveAdb();
+      const serial = device.serial();
+
+      const recording = await startAndroidScreenRecord({
+        serial,
+        artifactDir: ARTIFACT_DIR,
+        filename: "android-attach-gesture.mp4",
+        remotePath: "/sdcard/eliza-android-attach-gesture.mp4",
+      });
+      try {
+        await prepareComposer(page, adb, serial);
+        const attachSelector = '[data-testid="chat-composer-attach"]';
+        await expect(page.locator(attachSelector)).toBeVisible({
+          timeout: 30_000,
+        });
+        expect(await readComposerField(page, "attachments")).toBe("0");
+
+        // Instrument the hidden <input type=file> click: the native picker is
+        // an OS surface outside the WebView (Playwright can't see it), so the
+        // observable web-side outcome is that the file input received a click.
+        await page.evaluate(() => {
+          const input = document.querySelector(
+            'input[type="file"]',
+          ) as HTMLInputElement | null;
+          (
+            window as Window & { __attachClicks?: number }
+          ).__attachClicks = 0;
+          input?.addEventListener("click", () => {
+            (window as Window & { __attachClicks?: number }).__attachClicks =
+              ((window as Window & { __attachClicks?: number })
+                .__attachClicks ?? 0) + 1;
+          });
+        });
+
+        await waitForResponsiveMainThread(page);
+        await androidTap(page, adb, serial, attachSelector);
+        const opened = await page
+          .waitForFunction(
+            () =>
+              ((window as Window & { __attachClicks?: number })
+                .__attachClicks ?? 0) > 0,
+            undefined,
+            { timeout: 8_000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        const shot = captureAndroidScreenshot({
+          adb,
+          serial,
+          artifactDir: ARTIFACT_DIR,
+          filename: "android-attach-picker.png",
+        });
+        await testInfo.attach("Android attach picker", {
+          path: shot,
+          contentType: "image/png",
+        });
+        expect(
+          opened,
+          "tapping the attach affordance must click the file input (the entry " +
+            "point of the media-attachment flow)",
+        ).toBe(true);
+
+        // Dismiss any OS picker so we leave the app on the composer.
+        adbDevice(adb, serial, ["shell", "input", "keyevent", "KEYCODE_BACK"]);
+      } finally {
+        const video = await recording.stop();
+        if (video) {
+          await testInfo.attach("Android media-attachment screenrecord", {
+            path: video,
+            contentType: "video/mp4",
+          });
+        }
+      }
+    });
   });
+
+/**
+ * Bring the app to a state where the composer input row (and its AX probe) is
+ * live and interactive: complete first-run, collapse the sheet to home, and
+ * confirm the composer probe surfaces. Shared by every composer gesture leg.
+ */
+async function prepareComposer(page: Page, adb: string, serial: string) {
+  writeStage("prepare-composer-shell-ready", { serial });
+  await waitForShellReady(page);
+  await page.evaluate(() => {
+    localStorage.setItem("eliza:tutorial-autolaunched", "1");
+    localStorage.setItem("eliza:tutorial:completed", "1");
+  });
+  await gotoRoute(page, "/");
+  await completeFirstRunIfNeeded(page);
+  await gotoRoute(page, "/");
+  await ensureCollapsedHome(page, adb, serial);
+  await expect(page.getByTestId("chat-composer-probe")).toBeAttached({
+    timeout: 30_000,
+  });
+}

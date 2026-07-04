@@ -4548,6 +4548,28 @@ export function ContinuousChatOverlay({
           <span className="sr-only" data-testid="chat-detent-probe">
             {`chat-detent:${detentLabel}`}
           </span>
+          {/* AX-tree mirror of the composer's gesture-relevant state, for the
+              same reason as chat-detent (data-* attributes never surface in the
+              native accessibility tree). The native gesture-matrix suites
+              (XCUITest / Android WebView) assert push-to-talk, keyboard
+              avoidance, and attachment-intake outcomes off these fields:
+                voice:<idle|ptt-holding|recording|handsfree|transcribing>
+                keyboard:<up|down>       — is the composer lifted over the IME
+                attachments:<n>          — pending attachment count (attach flow)
+              Not aria-live — it never announces on its own. */}
+          <span className="sr-only" data-testid="chat-composer-probe">
+            {`voice:${
+              pttHolding
+                ? "ptt-holding"
+                : transcriptionMode
+                  ? "transcribing"
+                  : handsFree
+                    ? "handsfree"
+                    : recording
+                      ? "recording"
+                      : "idle"
+            } keyboard:${keyboardLiftActive ? "up" : "down"} attachments:${pendingImages.length}`}
+          </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">
               {`onboarding-step:${firstRunProbe.step} onboarding-choices:${firstRunProbe.choices}`}
