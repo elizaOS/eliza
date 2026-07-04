@@ -16,9 +16,9 @@
  * cloud-only conductor then takes its welcome-back path, which is exactly the
  * zero-interaction flow device e2e needs.
  *
- * Hard gates: never on store builds, never over a real injected wallet, and
- * only when the harness key is present — absent all three, this module is a
- * no-op and the lazy viem import never loads.
+ * Hard gates: never on store builds, never on deployed web origins, never over
+ * a real injected wallet, and only when the harness key is present — absent all
+ * four, this module is a no-op and the lazy viem import never loads.
  */
 import { logger } from "@elizaos/logger";
 import { isStoreBuild } from "../build-variant";
@@ -46,6 +46,25 @@ function readStorage(key: string): string | null {
 const KEY_POLL_INTERVAL_MS = 500;
 const KEY_POLL_ATTEMPTS = 20;
 
+export function isE2eWalletWebHostnameAllowed(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]"
+  );
+}
+
+export function isE2eWalletInstallAllowed(): boolean {
+  if (isStoreBuild()) return false;
+  if (isAndroid || isIOS) return true;
+  if (typeof window === "undefined") return false;
+  return isE2eWalletWebHostnameAllowed(window.location.hostname);
+}
+
 async function waitForHarnessKey(): Promise<string | null> {
   const first = readStorage(E2E_WALLET_KEY_STORAGE_KEY)?.trim();
   if (first) return first;
@@ -64,7 +83,7 @@ async function waitForHarnessKey(): Promise<string | null> {
  * than once (idempotent per page).
  */
 export async function installE2eWalletIfRequested(): Promise<boolean> {
-  if (isStoreBuild()) return false;
+  if (!isE2eWalletInstallAllowed()) return false;
   const rawKey = await waitForHarnessKey();
   if (!rawKey) return false;
   if (getInjectedEthereumProvider()) {

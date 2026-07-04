@@ -16,6 +16,8 @@ import {
   E2E_WALLET_AUTOLOGIN_STORAGE_KEY,
   E2E_WALLET_KEY_STORAGE_KEY,
   installE2eWalletIfRequested,
+  isE2eWalletInstallAllowed,
+  isE2eWalletWebHostnameAllowed,
 } from "../platform/e2e-wallet";
 import {
   buildSiweMessage,
@@ -126,6 +128,7 @@ describe("buildSiweMessage", () => {
 
 describe("e2e wallet + SIWE login", () => {
   it("installs only when the harness key is seeded", async () => {
+    expect(isE2eWalletInstallAllowed()).toBe(true);
     expect(await installE2eWalletIfRequested()).toBe(false);
     expect(getInjectedEthereumProvider()).toBeNull();
 
@@ -136,6 +139,17 @@ describe("e2e wallet + SIWE login", () => {
     expect(await provider?.request({ method: "eth_accounts" })).toEqual([
       ACCOUNT.address,
     ]);
+  });
+
+  it("rejects deployed web origins even when a harness key is present", () => {
+    expect(isE2eWalletWebHostnameAllowed("app.elizacloud.ai")).toBe(false);
+    expect(isE2eWalletWebHostnameAllowed("elizacloud.ai")).toBe(false);
+  });
+
+  it("keeps localhost web e2e eligible", () => {
+    expect(isE2eWalletWebHostnameAllowed("127.0.0.1")).toBe(true);
+    expect(isE2eWalletWebHostnameAllowed("localhost")).toBe(true);
+    expect(isE2eWalletInstallAllowed()).toBe(true);
   });
 
   it("never overwrites an already-injected wallet", async () => {
