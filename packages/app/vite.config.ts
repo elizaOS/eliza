@@ -1,3 +1,11 @@
+/**
+ * Vite configuration for the cross-platform app renderer.
+ *
+ * The config keeps web, Electrobun, and Capacitor builds on the same source
+ * graph while pinning browser-safe aliases, dev-server prebundles, and manual
+ * chunks that protect startup order for native, wallet, crypto, and workspace
+ * package dependencies.
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -195,12 +203,10 @@ const capacitorCoreEntry = path.join(
   "dist/index.js",
 );
 const patheEntry = _require.resolve("pathe");
-// The REAL feross `buffer` (a callable Buffer function), aliased below so the
-// crypto/wallet graph gets a working Buffer instead of the native-module-stub
-// plugin's empty `class Buffer {}` (which crashed vendor-crypto at module-init —
-// "Class constructor … cannot be invoked without 'new'" → blank app). `buffer`
-// is not a direct dep of packages/app (plain resolution finds only the Node
-// builtin), so we locate the highest version in the bun store directly.
+// The feross `buffer` package exposes a callable Buffer function required by
+// the crypto/wallet graph at module initialization. The native-module stub's
+// empty Buffer class is not callable, and `buffer` is not a direct app
+// dependency, so the alias targets the highest version available in Bun's store.
 const bufferEntry: string | undefined = (() => {
   try {
     const bunDir = path.join(elizaRoot, "node_modules/.bun");
@@ -417,18 +423,12 @@ const reactRouterCookieEntry = reactRouterEntry
   ? tryResolvePackageModuleEntryFrom("cookie", reactRouterEntry)
   : undefined;
 // yaml / uuid / adze are transitive deps (logger, core, plugin-documents) that
-// are listed in optimizeDeps.include but are not direct deps of packages/app,
-// so bun workspace hoisting leaves them unresolvable from the app's optimizer
-// root. Vite then logs "Failed to resolve dependency … present in optimizeDeps
-// .include", skips pre-bundling, and serves the bare specifiers raw — which 504s
-// in the browser and blanks the dev shell so the chat composer never mounts.
+// are listed in optimizeDeps.include but are not direct deps of packages/app.
 // Resolve each browser entry from the app scope and alias the bare specifier so
-// the dep is resolvable and pre-bundlable. `default` is the browser condition
-// for yaml/uuid; adze is plain ESM via its `main` field.
-// Resolution is best-effort: precisely because these are transitive deps,
-// a fresh install (CI) may not expose them to the app scope at all — a thrown
-// resolve here kills config load and with it the whole production build, which
-// doesn't need these dev-server pre-bundle aliases in the first place.
+// Vite can pre-bundle them instead of serving unresolved bare imports. `default`
+// is the browser condition for yaml/uuid; adze is plain ESM via its `main`
+// field. Resolution stays best-effort because production builds do not require
+// these dev-server pre-bundle aliases.
 const yamlBrowserEntry = (() => {
   try {
     return path.join(
@@ -456,19 +456,13 @@ const adzeEntry = (() => {
     return undefined;
   }
 })();
-// react-day-picker (transitive via @elizaos/ui's calendar) statically imports
-// `date-fns/locale` — the barrel re-exporting ~700 per-locale modules — and
-// `date-fns` from 150+ call sites. date-fns is hoisted into the bun store where
-// packages/app cannot resolve the bare specifier, so with optimizeDeps.noDiscovery
-// on it could never be pre-bundled and Vite served the whole locale tree raw:
-// 700+ cold module round-trips on every load and every HMR full-reload, which
-// stalled the dev server until the dev-ui supervisor health-check SIGTERM+restarted
-// it ("[vite] server connection lost. Polling for restart…" + ERR_CONNECTION_REFUSED).
-// Resolve each ESM entry through react-day-picker's scope and alias the bare
-// specifiers so they resolve from the app optimizer root and pre-bundle into a
-// single chunk. date-fns is `type: module`, so `index.js`/`locale.js` are the
-// browser entries; date-fns-jalali mirrors it (react-day-picker imports it for
-// the Persian calendar path).
+// react-day-picker (transitive via @elizaos/ui's calendar) imports the
+// `date-fns/locale` barrel and `date-fns` from many call sites. Resolve each ESM
+// entry through react-day-picker's scope and alias the bare specifiers so the
+// optimizer collapses the locale tree into one chunk instead of serving hundreds
+// of raw modules per page load. date-fns is `type: module`, so `index.js` and
+// `locale.js` are the browser entries; date-fns-jalali mirrors it for the
+// Persian calendar path.
 const reactDayPickerEntry = tryResolvePackageModuleEntryFrom(
   "react-day-picker",
   uiPackageJsonPath,
@@ -878,10 +872,9 @@ function createAppPluginBrowserAliases() {
     for (const uiEntry of ["src/ui.ts", "src/ui/index.ts"]) {
       const candidate = path.join(pkgDir, uiEntry);
       if (!fs.existsSync(candidate)) continue;
-      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form (the
-      // latter is what the package.json `./*` export maps to src/ui/index.ts);
-      // without `/index` here vite falls through to the unbuilt dist/ui/index.js
-      // in dev and the client bundle fails to resolve.
+      // Match both `<pkg>/ui` and the explicit `<pkg>/ui/index` form, which the
+      // package.json `./*` export maps to src/ui/index.ts. Dev builds must stay
+      // on source because dist/ui/index.js is not guaranteed to exist.
       aliases.push({
         find: new RegExp(`^${escapeRegExp(pkgName)}/ui(?:/index)?$`),
         replacement: candidate,
@@ -1964,9 +1957,8 @@ export default defineConfig({
     bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves
     // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
-    // by scanning plugins/ for elizaos.appRegister markers. Without this the
-    // production web/mobile build fails to resolve the virtual module (the
-    // refactor added the import but never wired the providing plugin).
+    // by scanning plugins/ for elizaos.appRegister markers. This plugin is the
+    // only provider for that virtual module in production web/mobile builds.
     appSideEffectModulesPlugin([nativePluginsRoot]),
     // When the cloud surface is excluded (ELIZA_DISABLE_WEB_SHELL=1), replace the
     // whole `@elizaos/ui/src/cloud` subtree with empty modules. The two lazy
@@ -2819,30 +2811,20 @@ export const INVALID_TRACER_PROVIDER = {};
       "yaml",
       "uuid",
       "adze",
-      // zod was historically excluded over a Vite dep-optimize chunk
-      // invalidation that 404'd the optimized chunk mid-startup. Retested on
-      // Vite v8 + Rolldown (8 rapid reloads + 5 cold starts): no chunk 404/504
-      // and no forced re-optimize reload. Including it collapses ~90 raw
-      // per-load module round-trips (zod v4 core + all locales) into one chunk.
+      // zod is safe to pre-bundle on Vite v8 + Rolldown and collapses roughly 90
+      // raw per-load module round-trips (zod v4 core + all locales) into one
+      // chunk.
       // zod/v3 and zod/v4 are separate package entry points: a few sources
       // import "zod/v3" (the v3 compat surface) directly, which the bare "zod"
       // pre-bundle does not cover, so pre-bundle those subpaths too.
       "zod",
       "zod/v3",
       "zod/v4",
-      // react-day-picker (via @elizaos/ui's calendar) statically imports
-      // `date-fns/locale` — the barrel that re-exports ~700 per-locale modules
-      // — from 100+ call sites. With noDiscovery on and date-fns unbundled,
-      // Vite served that whole locale tree raw, so every page load (and every
-      // HMR full-reload) fired 700+ cold module round-trips. The request storm
-      // stalled the dev server long enough for the dev-ui supervisor's port
-      // health-check to declare it unresponsive and SIGTERM+restart it —
-      // surfacing as "[vite] server connection lost. Polling for restart…"
-      // plus ERR_CONNECTION_REFUSED across the in-flight locale requests and a
-      // failed dynamic import of plugin-wallet-ui. Pre-bundling collapses the
-      // tree (date-fns + date-fns-jalali locales) into a single optimized
-      // chunk. date-fns-jalali is also pre-bundled because react-day-picker
-      // statically imports it for the Persian calendar path.
+      // react-day-picker (via @elizaos/ui's calendar) statically imports the
+      // `date-fns/locale` barrel from many call sites. Pre-bundling collapses
+      // the date-fns and date-fns-jalali locale trees into a single optimized
+      // chunk, avoiding hundreds of cold module requests per page load or HMR
+      // full reload.
       "react-day-picker",
       "date-fns",
       "date-fns/locale",
@@ -2850,17 +2832,11 @@ export const INVALID_TRACER_PROVIDER = {};
       "date-fns-jalali/locale",
       // Resolvable via the resolve.alias above (transitive through @elizaos/core).
       "@opentelemetry/api",
-      // Pre-bundle the feross `buffer` so the dev server serves it as ESM with a
-      // named `Buffer` export. `noDiscovery` is on, so without this the
-      // `resolve.alias` (buffer/node:buffer → the raw `.bun/buffer/index.js`)
-      // serves untransformed CommonJS; a workspace source's
-      // `import { Buffer } from "node:buffer"` (e.g. core's documents/utils, in
-      // BOTH core barrels and therefore eager) then throws "does not provide an
-      // export named 'Buffer'" at module-eval and blanks the whole app — only in
-      // the vite dev server (`bun run dev`), which is why the dev-smoke lane is
-      // red while production rollup builds are fine. esbuild's CJS interop on
-      // the pre-bundle exposes the static `exports.Buffer = Buffer` as a named
-      // ESM export. See #9452.
+      // Pre-bundle feross `buffer` so the dev server serves it as ESM with a
+      // named `Buffer` export. With `noDiscovery` on, the raw Bun-store CommonJS
+      // file behind the resolve.alias is not transformed unless it is listed
+      // here; esbuild's pre-bundle interop exposes `exports.Buffer = Buffer` as
+      // a named ESM export for workspace imports from `node:buffer`. See #9452.
       ...(bufferEntry ? ["buffer", "node:buffer"] : []),
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
@@ -2925,14 +2901,12 @@ export const INVALID_TRACER_PROVIDER = {};
             );
           },
         },
-        // es-toolkit@1.47 `./compat/*` is CJS-only and its CJS impl names a
-        // local `require_isUnsafeProperty` that collides with the dep
-        // optimizer's CJS-interop helper -> self-shadowing
-        // `var require_isUnsafeProperty = require_isUnsafeProperty()` (TDZ ->
-        // "is not a function") -> blank app. Resolve each
+        // es-toolkit@1.47 `./compat/*` is CJS-only, and its CJS implementation
+        // names a local `require_isUnsafeProperty` that collides with the dep
+        // optimizer's CJS interop helper. Resolve each
         // `es-toolkit/compat/<name>` to its ESM `dist/compat/**/<name>.mjs`
-        // and re-export the named binding as default so the optimizer never
-        // touches the broken CJS path. (Raw-serve counterpart is in `plugins`.)
+        // and re-export the named binding as default so the optimizer stays off
+        // the incompatible CJS path. Raw-serve uses the counterpart in `plugins`.
         makeEsToolkitCompatEsmPlugin("optimize"),
       ],
     },
@@ -3079,21 +3053,17 @@ export const INVALID_TRACER_PROVIDER = {};
         main: path.resolve(here, "index.html"),
       },
     },
-    // rollupOptions is the ONLY bundle-options key Vite reads. The sibling
-    // `rolldownOptions` block above is NOT a Vite option — Vite ignores it
-    // entirely (`@elizaos/vitest-vite` builds with classic Rollup, which has no
-    // `rolldownOptions`) — so the chunk-splitting + otel fallback that must
-    // reach the bundler both live here, under rollupOptions.output /
-    // rollupOptions.plugins.
+    // rollupOptions is the only bundle-options key Vite reads. The sibling
+    // `rolldownOptions` block above configures Rolldown-specific checks only;
+    // chunk-splitting and the otel fallback must live under rollupOptions so
+    // classic Rollup builds receive them too.
     rollupOptions: {
       output: {
         // Manual chunk-splitting. `@elizaos/vitest-vite` builds with classic
-        // Rollup, whose only chunking API is `output.manualChunks`. This lives
-        // under `rollupOptions.output` — the only bundle-options key Vite reads;
-        // the previous `rolldownOptions.output.manualChunks` placement was
-        // silently ignored, so the bn.js/crypto graph folded into the eager
-        // date-fns `en_US` locale chunk (the #9150 Buffer.allocUnsafe module-
-        // init crash). `scripts/verify-chunk-safety.mjs` gates the regression.
+        // Rollup, whose chunking API is `output.manualChunks`. Keeping this
+        // under `rollupOptions.output` prevents the bn.js/crypto graph from
+        // folding into eager locale chunks; `scripts/verify-chunk-safety.mjs`
+        // gates the startup-order invariant (#9150).
         manualChunks: resolveManualChunk,
       },
       plugins: [
