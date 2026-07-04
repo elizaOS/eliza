@@ -5,8 +5,10 @@
   "scripts": {
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
-    "build": "bun run typecheck"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",

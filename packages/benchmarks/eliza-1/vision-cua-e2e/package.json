@@ -16,6 +16,8 @@
     "fixtures:generate": "bun run scripts/generate-fixtures.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

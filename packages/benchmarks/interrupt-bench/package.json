@@ -16,6 +16,8 @@
     "bench:smoke": "bun run scripts/cerebras-smoke.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

@@ -8,6 +8,8 @@
     "test": "vitest run --config vitest.unit.config.ts",
     "bench": "vitest run --config vitest.gate.config.ts",
     "bench:triage": "vitest run --config vitest.gate.config.ts triage",
-    "bench:timeliness": "vitest run --config vitest.gate.config.ts timeliness"
+    "bench:timeliness": "vitest run --config vitest.gate.config.ts timeliness",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   }
 }

@@ -14,6 +14,9 @@
     "build": "bun --bun vite build --base=/solana-gym-env/ && cp public/404.html dist/404.html",
     "preview": "bun --bun vite preview",
     "lint": "bunx @biomejs/biome check --write --unsafe src package.json --vcs-enabled=false",
+    "lint:check": "bunx @biomejs/biome check src package.json --vcs-enabled=false",
+    "format": "bunx @biomejs/biome format --write src package.json --vcs-enabled=false",
+    "format:check": "bunx @biomejs/biome format src package.json --vcs-enabled=false",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

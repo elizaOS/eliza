@@ -6,7 +6,9 @@
     "node": "20.19.3"
   },
   "scripts": {
-    "dev": "next dev"
+    "dev": "next dev",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json"
   },
   "dependencies": {
     "@aws-amplify/core": "^4.3.12",

@@ -10,6 +10,8 @@
     "bench:kg:audio": "bun --conditions=eliza-source run.ts --lane kg --input audio",
     "bench:llm:text": "bun --conditions=eliza-source run.ts --lane llm --input text",
     "bench:llm:audio": "bun --conditions=eliza-source run.ts --lane llm --input audio",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json"
   }
 }

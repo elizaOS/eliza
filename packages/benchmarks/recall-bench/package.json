@@ -8,6 +8,8 @@
     "bench": "bun --conditions=eliza-source run.ts --tier smoke",
     "bench:1k": "bun --conditions=eliza-source run.ts --tier 1k",
     "bench:10k": "bun --conditions=eliza-source run.ts --tier 10k",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   }
 }

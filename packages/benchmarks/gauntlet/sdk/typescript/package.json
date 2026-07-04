@@ -8,6 +8,9 @@
     "build": "tsc",
     "test": "bunx jest --runInBand --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

@@ -22,6 +22,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
