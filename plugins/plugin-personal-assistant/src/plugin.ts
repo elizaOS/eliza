@@ -448,6 +448,22 @@ async function handleLifeOpsMessageAction(
 
   const recipient =
     match?.sourceRoomId ?? match?.sourceEntityId ?? match?.channelName;
+  // Fail-closed: the ApprovalQueue rejects a send_message payload whose
+  // `recipient` is not a non-empty string, and that throw propagates out of
+  // the pre-LLM direct-message hook (runDirectMessageHooks has no try/catch),
+  // crashing the whole turn BEFORE any planner/model call. That happens
+  // deterministically whenever no unresolved inbox entry can be matched (empty
+  // inbox -> `match` undefined -> `recipient` undefined), which is exactly the
+  // case in a fresh benchmark/agent context with no seeded inbox. Rather than
+  // enqueue a malformed approval (or crash), defer to the normal pipeline by
+  // returning null so the planner produces a real clarifying reply. (#13561)
+  if (typeof recipient !== "string" || recipient.trim() === "") {
+    args.runtime.logger?.debug?.(
+      { src: "lifeops:missed-call-repair", unresolvedCount: unresolved.length },
+      "missed-call repair hook: no resolvable recipient; deferring to planner",
+    );
+    return null;
+  }
   const body =
     match?.suggestedResponse ??
     (hint
