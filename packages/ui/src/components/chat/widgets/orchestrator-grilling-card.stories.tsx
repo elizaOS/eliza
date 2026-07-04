@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Orchestrator Grilling Card chat widget across
+ * populated, empty, and interaction-focused render states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { GrillingCriterion } from "./orchestrator-grilling-card";

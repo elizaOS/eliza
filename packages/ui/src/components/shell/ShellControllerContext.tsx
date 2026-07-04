@@ -1,3 +1,7 @@
+/**
+ * Provides shell controller state for overlays, launcher surfaces, and
+ * conversation navigation.
+ */
 import type * as React from "react";
 
 import { ShellControllerContext } from "./ShellControllerContext.hooks";

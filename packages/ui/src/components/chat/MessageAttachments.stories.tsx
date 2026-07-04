@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the MessageAttachments chat component used by message
+ * rendering, attachments, and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { MessageAttachment } from "../../api/client-types-chat";
 import { MessageAttachments } from "./MessageAttachments";

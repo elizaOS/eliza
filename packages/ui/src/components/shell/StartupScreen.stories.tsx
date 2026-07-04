@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the StartupScreen shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp, withMockApp } from "../../storybook/mock-providers.helpers";
 import { StartupScreen } from "./StartupScreen";

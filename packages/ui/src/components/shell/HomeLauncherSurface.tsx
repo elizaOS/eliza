@@ -1,3 +1,7 @@
+/**
+ * Renders the home launcher surface that combines app tiles, widgets, and
+ * shell navigation.
+ */
 import * as React from "react";
 import { useHorizontalPager } from "../../hooks/useHorizontalPager";
 import {

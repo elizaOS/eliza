@@ -1,3 +1,7 @@
+/**
+ * Renders the assistant overlay layer that hosts chat, notifications, and
+ * launcher-adjacent surfaces.
+ */
 import { X } from "lucide-react";
 import * as React from "react";
 

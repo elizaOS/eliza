@@ -1,3 +1,6 @@
+/**
+ * Declares the default home widgets shown by the launcher dashboard.
+ */
 import {
   Cloud,
   CloudFog,

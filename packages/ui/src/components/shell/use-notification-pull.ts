@@ -1,3 +1,7 @@
+/**
+ * Implements the pull gesture controller that opens and settles the
+ * notification surface.
+ */
 import * as React from "react";
 import {
   DEFAULT_PULL_VELOCITY as DEFAULT_VELOCITY_THRESHOLD,

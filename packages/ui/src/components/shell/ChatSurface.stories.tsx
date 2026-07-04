@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the ChatSurface shell surface across startup, launcher,
+ * banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { ChatSurface } from "./ChatSurface";
 import type { ShellMessage } from "./shell-state";

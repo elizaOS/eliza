@@ -1,3 +1,7 @@
+/**
+ * Renders the continuous chat overlay that keeps the composer and transcript
+ * available across views.
+ */
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   Check,

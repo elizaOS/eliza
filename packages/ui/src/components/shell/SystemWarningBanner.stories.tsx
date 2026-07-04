@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the SystemWarningBanner shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { mockApp } from "../../storybook/mock-providers.helpers";
 import { SystemWarningBanner } from "./SystemWarningBanner";

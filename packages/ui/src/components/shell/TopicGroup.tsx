@@ -1,3 +1,7 @@
+/**
+ * Renders grouped topic rows in the shell conversation list and launcher
+ * surfaces.
+ */
 import type * as React from "react";
 import { useClickSuppression } from "../../gestures";
 import { cn } from "../../lib/utils";

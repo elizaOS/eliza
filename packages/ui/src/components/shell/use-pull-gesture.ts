@@ -1,3 +1,7 @@
+/**
+ * Implements the shared pull gesture state machine used by shell drawers and
+ * notification surfaces.
+ */
 import * as React from "react";
 import {
   AXIS_COMMIT_SLOP,

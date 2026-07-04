@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Needs Attention chat widget across populated,
+ * empty, and interaction-focused render states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { CHAT_PREFILL_EVENT } from "../../../events";
 import {

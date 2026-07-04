@@ -1,3 +1,7 @@
+/**
+ * Covers shell conversation navigation helpers that choose active chat threads
+ * and fallback destinations.
+ */
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 import type { Conversation } from "../../api/client-types-chat";

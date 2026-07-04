@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Notifications chat widget across populated, empty,
+ * and interaction-focused render states.
+ */
 import type { AgentNotification } from "@elizaos/core";
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import {

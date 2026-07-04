@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Music Player chat widget across populated, empty,
+ * and interaction-focused render states.
+ */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { MusicPlayerSidebarWidget } from "./music-player";
 

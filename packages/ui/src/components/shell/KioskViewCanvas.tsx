@@ -1,3 +1,7 @@
+/**
+ * Hosts kiosk view content inside the shell canvas with the framing needed for
+ * dedicated display mode.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

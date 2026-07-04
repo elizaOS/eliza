@@ -1,3 +1,7 @@
+/**
+ * Covers chat panel layout decisions for responsive shell placement and
+ * transcript sizing.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type ChatPanelLayoutInput,

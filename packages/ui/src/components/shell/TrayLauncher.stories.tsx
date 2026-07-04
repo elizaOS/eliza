@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the TrayLauncher shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DesktopLauncherEntry } from "../../state/desktop-tray-launcher";
 import { TrayLauncher } from "./TrayLauncher";

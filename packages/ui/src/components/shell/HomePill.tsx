@@ -1,3 +1,7 @@
+/**
+ * Renders the compact home pill that anchors launcher access and current shell
+ * status.
+ */
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";

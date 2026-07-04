@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the ContinuousChatOverlay shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
 import type { SlashCommandCatalogItem } from "../../chat/slash-menu";

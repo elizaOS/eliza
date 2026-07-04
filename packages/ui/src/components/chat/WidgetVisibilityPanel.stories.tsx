@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the WidgetVisibilityPanel chat component used by
+ * message rendering, attachments, and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import type { WidgetVisibilityHook } from "../../widgets/useChatSidebarVisibility";

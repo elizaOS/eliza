@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Topic Chips Bar chat widget across populated,
+ * empty, and interaction-focused render states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { TopicChip } from "./topic-chips-bar";
 import { TopicChipsBar } from "./topic-chips-bar";

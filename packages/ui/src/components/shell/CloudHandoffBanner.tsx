@@ -1,3 +1,7 @@
+/**
+ * Renders the shell banner that guides users from local startup into the Cloud
+ * handoff flow.
+ */
 import { Check } from "lucide-react";
 import {
   type CloudHandoffPhase,

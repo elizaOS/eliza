@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the TopicChipsBar shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { TopicChipsBar } from "./TopicChipsBar";
 

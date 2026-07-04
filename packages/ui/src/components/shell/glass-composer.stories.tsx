@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Glass Composer shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { GlassIconButton } from "./glass-composer";
 import { GLASS_COMPOSER_CLASS } from "./glass-composer.helpers";

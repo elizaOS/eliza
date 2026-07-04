@@ -1,3 +1,7 @@
+/**
+ * Renders the shell connection failure banner with retry and recovery
+ * affordances.
+ */
 import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";

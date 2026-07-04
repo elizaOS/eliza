@@ -1,3 +1,6 @@
+/**
+ * Selects kiosk-capable view surfaces for the dedicated display canvas.
+ */
 import { useEffect, useState } from "react";
 import { subscribeDesktopBridgeEvent } from "../../bridge/electrobun-rpc";
 

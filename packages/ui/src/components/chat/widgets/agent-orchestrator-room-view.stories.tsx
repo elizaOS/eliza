@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Agent Orchestrator Room View chat widget across
+ * populated, empty, and interaction-focused render states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
 import type { OrchestratorRoomRosterOverview } from "../../../api/client-types-cloud";

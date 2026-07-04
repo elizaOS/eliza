@@ -1,3 +1,7 @@
+/**
+ * Coordinates shell-level voice output state so chat, overlays, and voice
+ * controls share one playback signal.
+ */
 import * as React from "react";
 
 import type { ConversationMessage } from "../../api/client-types-chat";

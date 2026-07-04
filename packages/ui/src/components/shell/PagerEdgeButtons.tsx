@@ -1,3 +1,7 @@
+/**
+ * Renders edge paging controls for launcher and carousel surfaces without
+ * owning their page state.
+ */
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { useMediaQuery } from "../../hooks/useMediaQuery";

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the CommandPalette shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type * as React from "react";
 import { BugReportProvider } from "../../hooks/BugReportProvider";

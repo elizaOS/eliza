@@ -1,3 +1,7 @@
+/**
+ * Defines shell reducer state for overlays, launcher mode, notifications, and
+ * surface coordination.
+ */
 import type {
   ChatFailureKind,
   ConversationSecretRequest,

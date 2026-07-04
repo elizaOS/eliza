@@ -1,3 +1,7 @@
+/**
+ * Renders slash-command suggestions and command picking for the shell
+ * composer.
+ */
 import * as React from "react";
 
 import {

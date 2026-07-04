@@ -1,3 +1,6 @@
+/**
+ * Renders topic chips that let the shell switch or seed conversation context.
+ */
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";

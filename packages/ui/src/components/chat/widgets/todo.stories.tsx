@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Todo chat widget across populated, empty, and
+ * interaction-focused render states.
+ */
 import type { Decorator, Meta, StoryObj } from "@storybook/react";
 import { client } from "../../../api";
 import type {

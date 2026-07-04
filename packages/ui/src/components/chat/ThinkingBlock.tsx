@@ -1,3 +1,7 @@
+/**
+ * Renders assistant thinking and trace blocks inside chat messages without
+ * changing the message parser contract.
+ */
 import { type ReactElement, useState } from "react";
 import { Button } from "../ui/button";
 

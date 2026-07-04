@@ -1,3 +1,7 @@
+/**
+ * Composes the shell home screen from launcher tiles, widgets, topics, and
+ * dashboard affordances.
+ */
 import {
   Camera,
   Contact,

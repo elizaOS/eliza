@@ -1,3 +1,7 @@
+/**
+ * Tracks bar-surface window placement so launcher and overlay panes stay
+ * within viewport constraints.
+ */
 import * as React from "react";
 
 import {

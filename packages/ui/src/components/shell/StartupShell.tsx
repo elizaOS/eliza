@@ -1,3 +1,7 @@
+/**
+ * Composes the startup shell around boot, retry, pairing, and handoff states
+ * before the app is ready.
+ */
 import { type ReactNode, useEffect, useState } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
 import { markStartup } from "../../state/startup-telemetry";

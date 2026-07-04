@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the AgentActivityBox chat component used by message
+ * rendering, attachments, and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { CodingAgentSession } from "../../api/client-types-cloud";
 import { mockApp } from "../../storybook/mock-providers.helpers";

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the Shared chat widget across populated, empty, and
+ * interaction-focused render states.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 

@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the PairingCommandHint shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { withMockApp } from "../../storybook/mock-providers.helpers";
 import { PairingCommandHint } from "./PairingCommandHint";

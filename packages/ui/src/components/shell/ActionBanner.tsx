@@ -1,3 +1,7 @@
+/**
+ * Renders shell action banners for transient commands, recovery prompts, and
+ * dismissible notices.
+ */
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 

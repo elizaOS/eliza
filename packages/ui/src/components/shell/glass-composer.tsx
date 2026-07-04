@@ -1,3 +1,7 @@
+/**
+ * Renders the glass composer input used by the floating chat and launcher
+ * shell surfaces.
+ */
 import * as React from "react";
 
 import { cn } from "../../lib/utils";

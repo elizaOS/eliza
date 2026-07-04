@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the HomeDashboard shell surface across startup,
+ * launcher, banner, and overlay contexts.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import { ShaderBackground } from "../../backgrounds/ShaderBackground";

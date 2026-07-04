@@ -1,3 +1,7 @@
+/**
+ * Coordinates conversation reset side effects so shell state and chat state
+ * clear together.
+ */
 import * as React from "react";
 import { useAppSelectorShallow } from "../../state";
 

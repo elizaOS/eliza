@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the MessageContent chat component used by message
+ * rendering, attachments, and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { mockApp } from "../../storybook/mock-providers.helpers";

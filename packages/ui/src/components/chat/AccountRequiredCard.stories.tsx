@@ -1,3 +1,7 @@
+/**
+ * Storybook states for the AccountRequiredCard chat component used by message
+ * rendering, attachments, and composer surfaces.
+ */
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { AccountRequiredCard } from "./AccountRequiredCard";

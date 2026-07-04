@@ -1,3 +1,7 @@
+/**
+ * Builds context-aware prompt suggestions for the home and chat shell
+ * surfaces.
+ */
 import * as React from "react";
 
 import { client } from "../../api/client";

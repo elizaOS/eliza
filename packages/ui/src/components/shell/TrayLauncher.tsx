@@ -1,3 +1,7 @@
+/**
+ * Renders the tray launcher surface that exposes navigation, notifications,
+ * and quick app actions.
+ */
 import {
   BookOpen,
   Bot,

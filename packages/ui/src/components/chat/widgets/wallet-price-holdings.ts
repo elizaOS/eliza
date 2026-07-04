@@ -1,3 +1,7 @@
+/**
+ * Normalizes wallet price and holding data for finance chat widgets before
+ * they render portfolio rows.
+ */
 import type {
   WalletBalancesResponse,
   WalletMarketPriceSnapshot,

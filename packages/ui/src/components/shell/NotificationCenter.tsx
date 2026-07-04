@@ -1,3 +1,7 @@
+/**
+ * Renders the shell notification drawer and action rows backed by the
+ * notification store.
+ */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { Bell, BellRing, CheckCheck, Inbox, Trash2, X } from "lucide-react";
 import {
