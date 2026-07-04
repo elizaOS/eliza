@@ -24,8 +24,10 @@ import {
 } from "vitest";
 
 import {
+  ChatComposerCtx,
   clearChatDraft,
   readChatDraft,
+  useChatComposerDraftPersistence,
   writeChatDraft,
 } from "../../state/ChatComposerContext.hooks";
 
@@ -48,9 +50,11 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+import * as React from "react";
 import type {
   Conversation,
   ConversationMessage,
+  ImageAttachment,
 } from "../../api/client-types-chat";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
@@ -72,7 +76,6 @@ import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
-  type ConversationNav,
   type ShellController,
 } from "./useShellController";
 
@@ -123,6 +126,75 @@ function makeController(
     clearConversation: vi.fn(),
     ...overrides,
   } as unknown as ShellController;
+}
+
+/**
+ * The app composition seam around the overlay, reproduced minimally: the
+ * shared ChatComposerContext slot (real state), the app-level
+ * useChatComposerDraftPersistence instance AppContext runs, and a
+ * selectConversation that performs useChatCallbacks.handleSelectConversation's
+ * flush/restore handoff — the path the overlay's conversation swipe routes
+ * through in the real app. `selectRef` hands the select function to the test.
+ */
+function AppComposerHarness({
+  initialActiveId,
+  selectRef,
+}: {
+  initialActiveId: string;
+  selectRef: { current: ((id: string) => void) | null };
+}) {
+  const [activeId, setActiveId] = React.useState(initialActiveId);
+  const [chatInput, setChatInput] = React.useState("");
+  const [chatPendingImages, setChatPendingImages] = React.useState<
+    ImageAttachment[]
+  >([]);
+  const chatInputRef = React.useRef(chatInput);
+  chatInputRef.current = chatInput;
+  useChatComposerDraftPersistence({
+    activeConversationId: activeId,
+    chatInput,
+    setChatInput,
+  });
+  selectRef.current = (id: string) => {
+    // Mirrors useChatCallbacks.handleSelectConversation: flush the leaving
+    // conversation's in-progress text under ITS OWN key, then repaint the
+    // target's saved draft (or clear when it has none).
+    writeChatDraft(activeId, chatInputRef.current);
+    setChatInput(readChatDraft(id) ?? "");
+    setActiveId(id);
+  };
+  const composerValue = React.useMemo(
+    () => ({
+      chatInput,
+      chatSending: false,
+      chatPendingImages,
+      setChatInput,
+      setChatPendingImages,
+    }),
+    [chatInput, chatPendingImages],
+  );
+  const controller = React.useMemo(
+    () =>
+      makeController({
+        conversationNav: {
+          hasPrev: false,
+          hasNext: false,
+          goPrev: () => {},
+          goNext: () => {},
+          activeId,
+          index: 0,
+        },
+      } as unknown as Partial<ShellController>),
+    [activeId],
+  );
+  return (
+    <ChatComposerCtx.Provider value={composerValue}>
+      <span data-testid="harness-chat-input" hidden>
+        {chatInput}
+      </span>
+      <ContinuousChatOverlay controller={controller} />
+    </ChatComposerCtx.Provider>
+  );
 }
 
 describe("ContinuousChatOverlay", () => {
@@ -2893,45 +2965,47 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 
-  it("restores the persisted composer draft for the active conversation (overlay draft parity)", () => {
-    // The overlay wires useChatComposerDraftPersistence keyed by the
-    // controller's conversationNav.activeId — closing the platform gap where
-    // only the desktop ChatView restored drafts. A draft stored for the active
-    // conversation must repopulate the composer on mount.
+  it("restores the persisted composer draft for the active conversation (shared app composer slot)", () => {
+    // The overlay reads the SHARED ChatComposerContext draft; the app-level
+    // persistence hook (AppContext runs the same one this harness runs)
+    // restores a saved draft into that slot on mount, which must repaint the
+    // overlay's composer.
     clearChatDraft("conv-draft-x");
     writeChatDraft("conv-draft-x", "half-written thought");
-    const controller = makeController({
-      conversationNav: {
-        hasPrev: false,
-        hasNext: false,
-        goPrev: () => {},
-        goNext: () => {},
-        activeId: "conv-draft-x",
-        index: 0,
-      },
-    } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(
+      <AppComposerHarness
+        initialActiveId="conv-draft-x"
+        selectRef={{ current: null }}
+      />,
+    );
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("half-written thought");
     clearChatDraft("conv-draft-x");
   });
 
-  // Draft handoff on conversation switch (mirrors ChatView's
-  // handleSelectConversation fix): the leaving conversation's in-progress text
-  // must be flushed under ITS OWN key, and a draftless target must CLEAR the
-  // composer — not inherit the previous conversation's text (which the
-  // debounced persister would then re-home under the WRONG conversation's key).
-  describe("draft handoff on conversation switch", () => {
-    const navFor = (activeId: string): ConversationNav => ({
-      hasPrev: false,
-      hasNext: false,
-      goPrev: () => {},
-      goNext: () => {},
-      activeId,
-      index: 0,
-    });
+  it("typing in the overlay edits the shared app composer slot (one draft across surfaces)", () => {
+    render(
+      <AppComposerHarness
+        initialActiveId="conv-a"
+        selectRef={{ current: null }}
+      />,
+    );
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "shared draft" } });
+    expect(screen.getByTestId("harness-chat-input").textContent).toBe(
+      "shared draft",
+    );
+    clearChatDraft("conv-a");
+  });
 
+  // Draft handoff on conversation switch. The overlay no longer owns any
+  // handoff logic: its draft is the shared ChatComposerContext slot, and the
+  // app's select path (useChatCallbacks.handleSelectConversation — which the
+  // controller's conversationNav swipe routes through) flushes the leaving
+  // conversation's text under ITS OWN key and repaints the target's draft (or
+  // clears it). The harness runs that exact seam around the real overlay.
+  describe("draft handoff on conversation switch", () => {
     beforeEach(() => {
       clearChatDraft("conv-a");
       clearChatDraft("conv-b");
@@ -2943,19 +3017,16 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
     });
 
     it("switching A(typed) → B(no draft) clears the composer and saves the text under A's key — never B's", async () => {
-      const { rerender } = render(
-        <ContinuousChatOverlay
-          controller={makeController({ conversationNav: navFor("conv-a") })}
-        />,
+      const selectRef: {
+        current: ((id: string) => void) | null;
+      } = { current: null };
+      render(
+        <AppComposerHarness initialActiveId="conv-a" selectRef={selectRef} />,
       );
       const input = screen.getByLabelText("message") as HTMLTextAreaElement;
       fireEvent.change(input, { target: { value: "half-typed for A" } });
 
-      rerender(
-        <ContinuousChatOverlay
-          controller={makeController({ conversationNav: navFor("conv-b") })}
-        />,
-      );
+      act(() => selectRef.current?.("conv-b"));
 
       // The draftless target CLEARS — A's text must not stay visible in B.
       expect(input.value).toBe("");
@@ -2976,19 +3047,16 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
 
     it("switching A(typed) → B(saved draft) restores B's own draft and keeps A's under A's key", () => {
       writeChatDraft("conv-b", "B's parked reply");
-      const { rerender } = render(
-        <ContinuousChatOverlay
-          controller={makeController({ conversationNav: navFor("conv-a") })}
-        />,
+      const selectRef: {
+        current: ((id: string) => void) | null;
+      } = { current: null };
+      render(
+        <AppComposerHarness initialActiveId="conv-a" selectRef={selectRef} />,
       );
       const input = screen.getByLabelText("message") as HTMLTextAreaElement;
       fireEvent.change(input, { target: { value: "half-typed for A" } });
 
-      rerender(
-        <ContinuousChatOverlay
-          controller={makeController({ conversationNav: navFor("conv-b") })}
-        />,
-      );
+      act(() => selectRef.current?.("conv-b"));
 
       expect(input.value).toBe("B's parked reply");
       expect(readChatDraft("conv-a")).toBe("half-typed for A");
@@ -2997,7 +3065,16 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
 
     it("a successful send still clears both the composer and the active conversation's saved draft", () => {
       writeChatDraft("conv-a", "stale saved draft");
-      const controller = makeController({ conversationNav: navFor("conv-a") });
+      const controller = makeController({
+        conversationNav: {
+          hasPrev: false,
+          hasNext: false,
+          goPrev: () => {},
+          goNext: () => {},
+          activeId: "conv-a",
+          index: 0,
+        },
+      } as unknown as Partial<ShellController>);
       render(<ContinuousChatOverlay controller={controller} />);
       const input = screen.getByLabelText("message") as HTMLTextAreaElement;
       fireEvent.change(input, { target: { value: "ship it" } });

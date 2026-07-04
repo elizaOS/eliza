@@ -9,8 +9,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-afterEach(cleanup);
 import type { ImageAttachment } from "../api";
 import { useChatComposerOrLocal } from "../state/ChatComposerContext.hooks";
 import {
@@ -19,6 +17,8 @@ import {
   useComposerKeydown,
   useComposerPaste,
 } from "./composer-core";
+
+afterEach(cleanup);
 
 function KeydownHarness({
   onSend,

@@ -28,6 +28,7 @@ import type {
   ChatTurnStatus,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
 import {
   parseSlashDraft,
   resolveClientShortcutExecution,
@@ -64,9 +65,7 @@ import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-la
 import { useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
-  readChatDraft,
-  useChatComposerDraftPersistence,
-  writeChatDraft,
+  useChatComposerOrLocal,
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
@@ -75,7 +74,6 @@ import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
-  classifyComposerPaste,
   intakeAttachmentFiles,
   MAX_CHAT_IMAGES,
   summarizeDroppedAttachments,
@@ -1157,63 +1155,29 @@ export function ContinuousChatOverlay({
   // a near-instant cross-fade with no positional movement when this is true.
   const reduce = useReducedMotion() ?? false;
 
-  const [draft, setDraft] = React.useState("");
-  // Per-conversation composer draft persistence — the SAME localStorage-backed
-  // store the desktop ChatView surface uses (readChatDraft/writeChatDraft via
-  // useChatComposerDraftPersistence), keyed by the active conversation id. This
-  // closes the platform gap where only ChatView restored a draft: on the ambient
-  // overlay (mobile/web/default-desktop) a draft typed here now survives a reload
-  // / navigation and follows the conversation across surfaces. Restore fires on
-  // mount and on a conversation-id change; the persist is debounced. It coexists
-  // with the prefill (CHAT_PREFILL / assistant-launch) and dictation paths: those
-  // setDraft() edits are persisted like any keystroke, and restore only fires on a
-  // conversation-id change — so a just-prefilled composer is never clobbered. The
-  // successful-send path clears it (below).
-  const activeConversationId = conversationNav.activeId;
-  // Draft HANDOFF on conversation switch (mirrors ChatView's
-  // handleSelectConversation fix in useChatCallbacks): swiping A→B must repaint
-  // the composer for the TARGET. Flush the LEAVING conversation's in-progress
-  // text under ITS OWN key first (the debounced persister's pending timer is
-  // cancelled by the id change, so a fast edit would otherwise be lost), then
-  // restore the target's own saved draft — or CLEAR the composer when it has
-  // none. The explicit `?? ""` clear is load-bearing: the persistence hook's
-  // restore only sets when a saved draft EXISTS, so without the clear a
-  // draftless target inherits the previous conversation's composer text, which
-  // the debounced persister then saves under the TARGET's key — the half-typed
-  // message silently re-homes to (and would send to) the wrong conversation.
-  //
-  // The persistence hook is keyed by `persistedConversationId`, which trails
-  // `activeConversationId` by exactly this handoff commit — so the hook never
-  // observes the (new id, old conversation's draft) combination and never even
-  // schedules a write of the old text under the new key. Exactly one
-  // steady-state persistence path (the hook) remains; this effect only adds
-  // the one-shot switch-time flush + repaint the hook cannot do.
-  //
-  // Both null transitions are deliberate no-repaints: on boot (null → id) the
-  // composer may already hold a prefill (CHAT_PREFILL / assistant-launch) that
-  // must NOT be clobbered, and on id → null there is no target to paint.
-  const [persistedConversationId, setPersistedConversationId] = React.useState<
-    string | null
-  >(activeConversationId);
-  // Live handle to the draft so the handoff effect keys off the id change
-  // alone (a keystroke never re-runs it), same pattern as messagesRef above.
-  const draftRef = React.useRef(draft);
-  draftRef.current = draft;
-  React.useLayoutEffect(() => {
-    if (persistedConversationId === activeConversationId) return;
-    if (persistedConversationId !== null) {
-      writeChatDraft(persistedConversationId, draftRef.current);
-      if (activeConversationId !== null) {
-        setDraft(readChatDraft(activeConversationId) ?? "");
-      }
-    }
-    setPersistedConversationId(activeConversationId);
-  }, [activeConversationId, persistedConversationId]);
-  useChatComposerDraftPersistence({
-    activeConversationId: persistedConversationId,
+  // The composer draft + pending attachments are the SHARED ChatComposerContext
+  // slot (one draft per active conversation, edited by every surface): under
+  // the app provider, AppContext owns the debounced per-conversation
+  // persistence and useChatCallbacks.handleSelectConversation owns the
+  // switch-time flush/restore handoff — a swipe here routes through
+  // conversationNav → selectConversation → that same handoff, which repaints
+  // this composer because it reads the context. The overlay keeps NO private
+  // draft copy (#12188 Phase 3); stories/e2e fixtures without a provider fall
+  // back to live local state inside useChatComposerOrLocal. Prefill
+  // (CHAT_PREFILL / assistant-launch) and dictation setDraft() writes are
+  // persisted upstream like any keystroke; the successful-send path clears the
+  // stored draft immediately (below).
+  const {
     chatInput: draft,
     setChatInput: setDraft,
-  });
+    chatPendingImages: pendingImages,
+    setChatPendingImages: setPendingImages,
+  } = useChatComposerOrLocal();
+  const activeConversationId = conversationNav.activeId;
+  // Live handle to the draft for callbacks that must read the current text
+  // without subscribing (dictation append), same pattern as messagesRef above.
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText / pickSuggestion keep their stable identities.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -1383,9 +1347,6 @@ export function ContinuousChatOverlay({
   }, []);
   // Push-to-talk is a label-only mirror of the shared hold hook's holding phase.
   const [pttHolding, setPttHolding] = React.useState(false);
-  const [pendingImages, setPendingImages] = React.useState<ImageAttachment[]>(
-    [],
-  );
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -1727,7 +1688,15 @@ export function ContinuousChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, firstRunOpen, sendActionMessage, send, viewChatBinding],
+    [
+      canSend,
+      firstRunOpen,
+      sendActionMessage,
+      send,
+      setDraft,
+      setPendingImages,
+      viewChatBinding,
+    ],
   );
 
   // Tapping a suggestion sends it immediately (same path as submit), so the
@@ -1744,43 +1713,49 @@ export function ContinuousChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, send],
+    [canSend, send, setDraft],
   );
 
-  const addImageFiles = React.useCallback((files: FileList | File[]) => {
-    void intakeAttachmentFiles(files)
-      .then(({ attachments, droppedTooLarge }) => {
-        // The overlay is a pure component without an i18n translator, so it
-        // surfaces the "kept N, dropped M" notice inline in English (matching
-        // its other hardcoded strings) via the existing imageError channel.
-        const summary = summarizeDroppedAttachments({
-          acceptedCount: attachments.length,
-          droppedTooLarge,
-          droppedOverCount: [],
-        });
-        setImageError(
-          summary
-            ? `Kept ${summary.kept}, dropped ${summary.dropped} (too large — max ${summary.maxMb}MB)`
-            : null,
-        );
-        if (attachments.length) {
-          setPendingImages((prev) =>
-            [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+  const addImageFiles = React.useCallback(
+    (files: FileList | File[]) => {
+      void intakeAttachmentFiles(files)
+        .then(({ attachments, droppedTooLarge }) => {
+          // The overlay is a pure component without an i18n translator, so it
+          // surfaces the "kept N, dropped M" notice inline in English (matching
+          // its other hardcoded strings) via the existing imageError channel.
+          const summary = summarizeDroppedAttachments({
+            acceptedCount: attachments.length,
+            droppedTooLarge,
+            droppedOverCount: [],
+          });
+          setImageError(
+            summary
+              ? `Kept ${summary.kept}, dropped ${summary.dropped} (too large — max ${summary.maxMb}MB)`
+              : null,
           );
-        }
-      })
-      .catch((err: unknown) => {
-        // Surface the failure inline rather than silently dropping the image —
-        // the overlay is pure, so it can't reach the global notice channel.
-        setImageError(
-          err instanceof Error ? err.message : "Couldn't read image",
-        );
-      });
-  }, []);
+          if (attachments.length) {
+            setPendingImages((prev) =>
+              [...prev, ...attachments].slice(0, MAX_CHAT_IMAGES),
+            );
+          }
+        })
+        .catch((err: unknown) => {
+          // Surface the failure inline rather than silently dropping the image —
+          // the overlay is pure, so it can't reach the global notice channel.
+          setImageError(
+            err instanceof Error ? err.message : "Couldn't read image",
+          );
+        });
+    },
+    [setPendingImages],
+  );
 
-  const removeImage = React.useCallback((index: number) => {
-    setPendingImages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  const removeImage = React.useCallback(
+    (index: number) => {
+      setPendingImages((prev) => prev.filter((_, i) => i !== index));
+    },
+    [setPendingImages],
+  );
 
   // ── Push-to-talk ────────────────────────────────────────────────────────────
   // Press-and-hold on the mic dictates into the composer draft (no send); a
@@ -2583,7 +2558,7 @@ export function ContinuousChatOverlay({
     window.addEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
     return () =>
       window.removeEventListener(TUTORIAL_CHAT_CONTROL_EVENT, onControl);
-  }, [goToDetent, firstRunOpen]);
+  }, [goToDetent, firstRunOpen, setDraft]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -2612,7 +2587,7 @@ export function ContinuousChatOverlay({
     };
     window.addEventListener(CHAT_PREFILL_EVENT, onPrefill);
     return () => window.removeEventListener(CHAT_PREFILL_EVENT, onPrefill);
-  }, [clearPrefillFocusSchedule]);
+  }, [clearPrefillFocusSchedule, setDraft]);
 
   // "Open chat" intent (the launcher's Messages tile). Land the user IN an open
   // conversation instead of the wordless home with a collapsed pill: un-pill to
@@ -2681,6 +2656,7 @@ export function ContinuousChatOverlay({
     expand,
     handsFree,
     recording,
+    setDraft,
     toggleHandsFree,
   ]);
 
@@ -2689,12 +2665,15 @@ export function ContinuousChatOverlay({
   // mounted, appending to whatever the user has already typed.
   React.useEffect(() => {
     setDictationSink((text) => {
-      setDraft((current) => (current ? `${current} ${text}` : text));
+      // Append through the live draft ref — the shared context setter takes a
+      // plain string (no functional-update form).
+      const current = draftRef.current;
+      setDraft(current ? `${current} ${text}` : text);
       inputRef.current?.focus();
       expand();
     });
     return () => setDictationSink(null);
-  }, [setDictationSink, expand]);
+  }, [setDictationSink, setDraft, expand]);
 
   // A completed transcription SESSION drops its transcript into the composer as
   // an ATTACHMENT — it does NOT auto-send as a message. The user sends it (with
@@ -2761,7 +2740,7 @@ export function ContinuousChatOverlay({
         });
     });
     return () => setTranscriptSessionSink(null);
-  }, [setTranscriptSessionSink, expand]);
+  }, [setTranscriptSessionSink, setPendingImages, expand]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -2844,6 +2823,7 @@ export function ContinuousChatOverlay({
       slash,
       controller,
       submitText,
+      setDraft,
       toggleMaximize,
       toggleTranscriptionMode,
       collapse,
@@ -2888,6 +2868,45 @@ export function ContinuousChatOverlay({
     },
     [slashMenu, runExecution],
   );
+
+  // The shared composer-core keydown: IME-commit guard (#9148) → slash-menu
+  // interception → Enter sends → Escape collapses the open sheet. The slash
+  // binding adapts the overlay's menu/executor onto the core's key contract.
+  const handleComposerKeyDown = useComposerKeydown<HTMLTextAreaElement>({
+    onSend: submit,
+    slash: {
+      open: slashOpen,
+      move: (delta) => slashMenu.move(delta),
+      complete: () => {
+        const completed = slashMenu.complete();
+        if (completed == null) return false;
+        setDraft(completed);
+        return true;
+      },
+      submit: () => {
+        const exec = slashMenu.resolve();
+        if (!exec) return false;
+        runExecution(exec);
+        return true;
+      },
+      dismiss: () => setSlashDismissed(true),
+    },
+    onEscape: () => {
+      if (!sheetOpen) return false;
+      collapse();
+      return true;
+    },
+  });
+  // The shared composer-core paste routing: an image/file paste attaches, an
+  // oversized text paste becomes a collapsed text-attachment chip, small text
+  // falls through to the textarea.
+  const handleComposerPaste = useComposerPaste<HTMLTextAreaElement>({
+    addFiles: addImageFiles,
+    attachText: (attachment) =>
+      setPendingImages((prev) =>
+        [...prev, attachment].slice(0, MAX_CHAT_IMAGES),
+      ),
+  });
 
   // Whether a document-level pointer landed on one of the overlay's OWN
   // surfaces. CONTRACT: EVERY child of the overlay root counts as INSIDE the
@@ -4184,86 +4203,8 @@ export function ContinuousChatOverlay({
                     expand();
                   }
                 }}
-                onPaste={(e) => {
-                  // Shared with the desktop composer: a pasted image/file
-                  // attaches, a large plain-text paste becomes a collapsed
-                  // text-attachment chip, and small text falls through to the
-                  // textarea as normal.
-                  const intent = classifyComposerPaste({
-                    files: Array.from(e.clipboardData?.files ?? []),
-                    text: e.clipboardData?.getData("text") ?? "",
-                  });
-                  if (intent.kind === "files") {
-                    e.preventDefault();
-                    addImageFiles(intent.files);
-                    return;
-                  }
-                  if (intent.kind === "text-attachment") {
-                    e.preventDefault();
-                    setPendingImages((prev) =>
-                      [...prev, intent.attachment].slice(0, MAX_CHAT_IMAGES),
-                    );
-                  }
-                }}
-                onKeyDown={(e) => {
-                  // Never treat the Enter that COMMITS an IME composition as a
-                  // command/send key: while a CJK/other IME is composing, the
-                  // browser fires this keydown with `isComposing` true (legacy
-                  // engines report keyCode 229) and the Enter only accepts the
-                  // candidate. Guard BOTH the slash-resolve and the submit below
-                  // so committing a candidate never fires either (#9148). Let it
-                  // fall through to the textarea/IME as its default.
-                  if (
-                    e.key === "Enter" &&
-                    (e.nativeEvent.isComposing || e.keyCode === 229)
-                  ) {
-                    return;
-                  }
-                  // The slash menu intercepts navigation/commit keys when open.
-                  if (slashOpen) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      slashMenu.move(1);
-                      return;
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      slashMenu.move(-1);
-                      return;
-                    }
-                    if (e.key === "Tab") {
-                      const completed = slashMenu.complete();
-                      if (completed != null) {
-                        e.preventDefault();
-                        setDraft(completed);
-                        return;
-                      }
-                    }
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      const exec = slashMenu.resolve();
-                      if (exec) {
-                        e.preventDefault();
-                        runExecution(exec);
-                        return;
-                      }
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSlashDismissed(true);
-                      return;
-                    }
-                  }
-                  // Enter sends; Shift+Enter inserts a newline (multi-line compose).
-                  // (An IME-composition Enter was already filtered out above.)
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submit();
-                  } else if (e.key === "Escape" && sheetOpen) {
-                    e.preventDefault();
-                    collapse();
-                  }
-                }}
+                onPaste={handleComposerPaste}
+                onKeyDown={handleComposerKeyDown}
                 // The composer is unlocked during onboarding (#12178): typing is
                 // always allowed. Free text is answered locally by the in-chat
                 // conductor and never reaches the server (submitText routes it).
