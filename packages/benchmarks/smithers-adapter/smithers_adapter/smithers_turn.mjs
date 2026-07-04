@@ -11,12 +11,10 @@
 // of looping and executing them — exactly what single-turn benchmarks (BFCL,
 // action-calling, ...) need.
 //
-// Provider model is forced onto the chat-completions endpoint via
-// `provider.chat(model)` because OpenAI-compatible backends such as Cerebras do
-// not implement the newer `/responses` endpoint that `@ai-sdk/openai` defaults
-// to for bare model ids.
+// Smithers' OpenAIAgent accepts the OpenAI-compatible `baseURL`/`apiKey` pair
+// directly with a string model and resolves the SDK provider internally. That
+// keeps this adapter aligned with the Smithers package's own AI SDK version.
 
-import { createOpenAI } from "@ai-sdk/openai";
 import { jsonSchema } from "ai";
 import { OpenAIAgent } from "smithers-orchestrator";
 import {
@@ -279,10 +277,10 @@ async function main() {
   let reasoningEffort = payload.reasoning_effort ?? ctx.reasoning_effort;
   if (!reasoningEffort && isGptOss(modelName)) reasoningEffort = "low";
 
-  const sdkProvider = createOpenAI({ baseURL, apiKey });
-
   const agentOpts = {
-    model: sdkProvider.chat(modelName),
+    model: modelName,
+    baseURL,
+    apiKey,
     // ToolLoopAgent passthrough:
     ...(tools ? { tools } : {}),
     ...(toolChoice ? { toolChoice } : {}),

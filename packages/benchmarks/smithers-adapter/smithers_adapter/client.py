@@ -28,7 +28,9 @@ from typing import Any, Mapping, Sequence
 logger = logging.getLogger(__name__)
 
 _HARNESS_SCRIPT_NAME = "smithers_turn.mjs"
+_OPTIMIZATION_SCRIPT_NAME = "optimization.mjs"
 _CANONICAL_SCRIPT = Path(__file__).resolve().parent / _HARNESS_SCRIPT_NAME
+_CANONICAL_OPTIMIZATION_SCRIPT = Path(__file__).resolve().parent / _OPTIMIZATION_SCRIPT_NAME
 
 _OPENAI_COMPAT_DEFAULT_BASE_URLS = {
     "cerebras": "https://api.cerebras.ai/v1",
@@ -310,16 +312,21 @@ class SmithersClient:
         return resolve_bun_binary(self._bun_bin_explicit)
 
     def materialize_script(self) -> Path:
-        """Copy the canonical harness into the install dir (beside node_modules).
+        """Copy the canonical harness files into the install dir.
 
         Bun resolves an entry file's bare imports from the file's own directory
         tree, so the script must live next to Smithers' ``node_modules``.
         """
+        self.install_dir.mkdir(parents=True, exist_ok=True)
         target = self.install_dir / _HARNESS_SCRIPT_NAME
-        src_text = _CANONICAL_SCRIPT.read_text(encoding="utf-8")
-        if not target.exists() or target.read_text(encoding="utf-8") != src_text:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(src_text, encoding="utf-8")
+        optimization_target = self.install_dir / _OPTIMIZATION_SCRIPT_NAME
+        for src, dst in (
+            (_CANONICAL_SCRIPT, target),
+            (_CANONICAL_OPTIMIZATION_SCRIPT, optimization_target),
+        ):
+            src_text = src.read_text(encoding="utf-8")
+            if not dst.exists() or dst.read_text(encoding="utf-8") != src_text:
+                dst.write_text(src_text, encoding="utf-8")
         self._script_path = target
         return target
 

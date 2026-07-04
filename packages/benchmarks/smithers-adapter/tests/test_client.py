@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import pytest
 
 from smithers_adapter.client import (
     MessageResponse,
@@ -79,6 +85,7 @@ def test_materialize_script_writes_harness(tmp_path: Path) -> None:
     assert target.name == "smithers_turn.mjs"
     assert target.exists()
     assert "OpenAIAgent" in target.read_text(encoding="utf-8")
+    assert (tmp_path / "optimization.mjs").exists()
 
 
 def test_build_command_shape(tmp_path: Path) -> None:
@@ -90,3 +97,147 @@ def test_build_command_shape(tmp_path: Path) -> None:
         return
     assert cmd[1] == "run"
     assert cmd[-1].endswith("smithers_turn.mjs")
+
+
+def test_send_message_runs_real_smithers_harness_against_local_chat_server(
+    tmp_path: Path,
+) -> None:
+    packages_root = Path(__file__).resolve().parents[3]
+    repo_root = packages_root.parent
+    node_modules = repo_root / "node_modules"
+    has_harness_deps = all(
+        (node_modules / dep).exists()
+        for dep in ("smithers-orchestrator", "@ai-sdk/openai", "ai", "zod")
+    )
+    if not has_harness_deps:
+        node_modules = repo_root / "plugins" / "plugin-workflow" / "node_modules"
+        has_harness_deps = all(
+            (node_modules / dep).exists()
+            for dep in ("smithers-orchestrator", "@ai-sdk/openai", "ai", "zod")
+        )
+    should_provision = os.environ.get("SMITHERS_LIVE_SUBPROCESS_PROOF") == "1"
+    if not has_harness_deps and not should_provision:
+        pytest.skip(
+            "set SMITHERS_LIVE_SUBPROCESS_PROOF=1 to provision JS deps and run the live Smithers subprocess proof"
+        )
+
+    install_dir = tmp_path / "smithers-install"
+    install_dir.mkdir()
+    if has_harness_deps:
+        (install_dir / "node_modules").symlink_to(node_modules, target_is_directory=True)
+    else:
+        (install_dir / "package.json").write_text('{"type":"module"}\n', encoding="utf-8")
+        subprocess.run(
+            [
+                os.environ.get("BUN_BIN", "bun"),
+                "add",
+                "smithers-orchestrator@0.26.1",
+                "@ai-sdk/openai",
+                "ai",
+                "zod",
+            ],
+            cwd=install_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    received: list[dict[str, object]] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("content-length", "0"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            body["_path"] = self.path
+            received.append(body)
+            if self.path.endswith("/responses"):
+                payload = {
+                    "id": "resp-smithers-local",
+                    "object": "response",
+                    "created_at": 1,
+                    "status": "completed",
+                    "model": body.get("model", "local-smithers"),
+                    "output": [
+                        {
+                            "id": "msg-smithers-local",
+                            "type": "message",
+                            "status": "completed",
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "local smithers benchmark proof",
+                                    "annotations": [],
+                                }
+                            ],
+                        }
+                    ],
+                    "usage": {
+                        "input_tokens": 7,
+                        "output_tokens": 5,
+                        "total_tokens": 12,
+                    },
+                }
+            else:
+                payload = {
+                    "id": "chatcmpl-smithers-local",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": body.get("model", "local-smithers"),
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": "local smithers benchmark proof",
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 7,
+                        "completion_tokens": 5,
+                        "total_tokens": 12,
+                    },
+                }
+            data = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = SmithersClient(
+            install_dir=install_dir,
+            provider="openai",
+            model="local-smithers",
+            api_key="local-key",
+            base_url=f"http://127.0.0.1:{server.server_port}/v1",
+            timeout_s=60,
+        )
+        response = client.send_message(
+            "run the Smithers benchmark harness",
+            {"benchmark": "smithers-adapter-live-proof"},
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+    assert response.text == "local smithers benchmark proof"
+    assert response.params["usage"] == {
+        "prompt_tokens": 7,
+        "completion_tokens": 5,
+        "total_tokens": 12,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+    }
+    assert received
+    assert received[0]["model"] == "local-smithers"
+    assert received[0]["_path"] in {"/v1/chat/completions", "/v1/responses"}
