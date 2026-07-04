@@ -2,27 +2,19 @@
  * Verifies availableAgentsProvider.
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
+import { mock } from "bun:test";
 import { describe, expect, it, vi } from "vitest";
 
 // Control the framework-state probe so we can drive its failure path
 // deterministically without touching the filesystem / env discovery it does.
 const getTaskAgentFrameworkStateMock = vi.fn();
-vi.mock(
-  "../../src/services/task-agent-frameworks.js",
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("../../src/services/task-agent-frameworks.js")
-      >();
-    return {
-      ...actual,
-      getTaskAgentFrameworkState: (...args: unknown[]) =>
-        getTaskAgentFrameworkStateMock(...args),
-    };
-  },
-);
+mock.module("../../src/services/task-agent-frameworks.js", () => {
+  return {
+    getTaskAgentFrameworkState: (...args: unknown[]) =>
+      getTaskAgentFrameworkStateMock(...args),
+  };
+});
 
-import { availableAgentsProvider } from "../../src/providers/available-agents.js";
 import {
   memory,
   runtimeWith,
@@ -30,6 +22,10 @@ import {
   session,
   state,
 } from "../../src/test-utils/action-test-utils.js";
+
+const { availableAgentsProvider } = await import(
+  "../../src/providers/available-agents.js"
+);
 
 // Default: an empty, healthy framework state (probe succeeded, nothing extra
 // installed) so the pre-existing behavioural assertions below are unaffected.
