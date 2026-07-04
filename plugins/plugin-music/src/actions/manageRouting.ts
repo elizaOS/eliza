@@ -1,3 +1,9 @@
+/**
+ * Routing-management action for the music playback engine.
+ *
+ * It exposes structured commands for routing mode, broadcast routes, and status
+ * over the AudioRouter and ZoneManager boundary.
+ */
 import type {
   Action,
   ActionResult,

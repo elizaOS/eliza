@@ -1,3 +1,9 @@
+/**
+ * Music metadata provider for track, artist, and album context.
+ *
+ * It detects music entities in the current turn and asks MusicLibraryService for
+ * compact metadata that can inform DJ introductions or music conversations.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { MusicLibraryService } from "../services/musicLibraryService";

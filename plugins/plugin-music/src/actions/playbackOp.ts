@@ -1,3 +1,9 @@
+/**
+ * Playback transport action for queue and current-track controls.
+ *
+ * It resolves the active guild, gates destructive transport operations, and
+ * coordinates MusicService and fetch progress feedback.
+ */
 import {
   type Action,
   type ActionExample,

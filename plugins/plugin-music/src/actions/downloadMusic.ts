@@ -1,3 +1,9 @@
+/**
+ * Download subaction for fetching and caching music from search queries.
+ *
+ * It validates structured input or active media/file context, asks for
+ * confirmation, and streams fetch progress through the action callback.
+ */
 import {
   type ActionExample,
   type ActionResult,

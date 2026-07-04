@@ -1,3 +1,9 @@
+/**
+ * Zone-management action for grouped music playback targets.
+ *
+ * It creates, deletes, inspects, and edits ZoneManager groups through
+ * structured action parameters.
+ */
 import type {
   Action,
   ActionResult,

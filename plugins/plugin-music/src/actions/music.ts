@@ -1,3 +1,10 @@
+/**
+ * Umbrella MUSIC action dispatcher for playback, queue, library, routing, and
+ * generation subactions.
+ *
+ * It normalizes legacy aliases and routes structured action parameters to the
+ * narrower handlers that own each music capability.
+ */
 import type {
   Action,
   ActionExample,

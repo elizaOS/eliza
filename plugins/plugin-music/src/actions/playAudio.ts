@@ -1,3 +1,10 @@
+/**
+ * Direct playback action for URLs, library tracks, Spotify links, and search
+ * results.
+ *
+ * It bridges MusicService, Discord voice state, library lookups, and
+ * progressive user feedback before queueing or starting audio.
+ */
 import {
   type Action,
   type ActionExample,

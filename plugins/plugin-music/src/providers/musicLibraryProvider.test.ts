@@ -1,3 +1,9 @@
+/**
+ * Music library provider tests for language-agnostic structured context.
+ *
+ * They verify the provider emits the same library payload regardless of request
+ * language.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import musicLibraryProvider from "./musicLibraryProvider";

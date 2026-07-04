@@ -1,3 +1,9 @@
+/**
+ * Queue provider for now-playing and upcoming music context.
+ *
+ * It resolves the current room's server queue from MusicService and emits a
+ * bounded JSON summary for media and knowledge turns.
+ */
 import {
   type IAgentRuntime,
   logger,

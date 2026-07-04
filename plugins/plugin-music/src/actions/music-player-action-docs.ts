@@ -1,3 +1,6 @@
+/**
+ * Compact action-surface summary injected into music action guidance.
+ */
 export const MUSIC_PLAYER_ACTION_DOCS = [
   "playback_sources: YouTube, SoundCloud, Spotify links via search, and yt-dlp supported media URLs",
   "transport_actions: PAUSE_MUSIC, RESUME_MUSIC, STOP_MUSIC, SKIP_TRACK",

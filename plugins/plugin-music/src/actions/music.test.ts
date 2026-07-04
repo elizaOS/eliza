@@ -1,3 +1,9 @@
+/**
+ * MUSIC umbrella-action tests for structured dispatch and context routing.
+ *
+ * They pin validation from planner context, legacy aliases, and delegation to
+ * the underlying music handlers.
+ */
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { manageRouting } from "./manageRouting";

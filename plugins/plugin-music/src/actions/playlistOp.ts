@@ -1,3 +1,9 @@
+/**
+ * Playlist subaction handler for save, load, delete, and add operations.
+ *
+ * It reads structured playlist names and coordinates MusicService queue state
+ * with MusicLibraryService persistence.
+ */
 import {
   type ActionExample,
   type ActionResult,

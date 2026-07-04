@@ -1,3 +1,9 @@
+/**
+ * YouTube search action tests for structured query handling.
+ *
+ * They verify validation and search execution do not mine free-form message
+ * text for a target query.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleSearchYouTube, validateSearchYouTube } from "./searchYouTube";

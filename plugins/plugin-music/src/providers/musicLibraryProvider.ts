@@ -1,3 +1,9 @@
+/**
+ * Music library provider for aggregate library stats and recent-track context.
+ *
+ * It injects play counts, top tracks, and recent tracks from the persisted music
+ * library into media and knowledge turns.
+ */
 import {
   type IAgentRuntime,
   logger,
@@ -69,9 +75,7 @@ export const musicLibraryProvider: Provider = {
   },
 };
 
-/**
- * Format milliseconds into a human-readable time ago string
- */
+// Formats a millisecond delta into compact provider text.
 function formatTimeAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);

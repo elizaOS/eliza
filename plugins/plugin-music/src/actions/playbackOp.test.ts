@@ -1,3 +1,9 @@
+/**
+ * Playback transport tests for structured pause, resume, skip, stop, and queue
+ * operations.
+ *
+ * They keep transport validation independent from free-form message text.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { playbackOp, validatePlaybackControl } from "./playbackOp";

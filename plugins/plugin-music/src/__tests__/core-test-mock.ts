@@ -1,3 +1,7 @@
+/**
+ * Shared Vitest mock for music tests that need core services without loading
+ * the full runtime.
+ */
 import { vi } from "vitest";
 
 vi.mock("@elizaos/core", () => {

@@ -1,3 +1,9 @@
+/**
+ * Download action tests for structured query routing.
+ *
+ * They pin media-context validation and prevent the handler from extracting
+ * download targets from free-form message text.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleDownloadMusic, validateDownloadMusic } from "./downloadMusic";

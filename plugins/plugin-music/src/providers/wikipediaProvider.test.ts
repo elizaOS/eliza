@@ -1,3 +1,9 @@
+/**
+ * Wikipedia provider tests for request-context preservation.
+ *
+ * They verify extraction receives the user request across languages without
+ * English keyword purpose inference.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { wikipediaProvider } from "./wikipediaProvider";

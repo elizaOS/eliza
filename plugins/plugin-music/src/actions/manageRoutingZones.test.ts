@@ -1,3 +1,9 @@
+/**
+ * Routing and zone action tests for structured command parameters.
+ *
+ * They verify routing and zone mutations come from action options rather than
+ * parsed prose.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { ZoneManager } from "../router";

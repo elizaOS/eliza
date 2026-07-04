@@ -1,3 +1,9 @@
+/**
+ * Wikipedia music provider for LLM-extracted artist and track context.
+ *
+ * It detects music entities, fetches Wikipedia material through
+ * MusicLibraryService, and injects extracted context into media turns.
+ */
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { DetectedMusicEntity } from "../services/musicEntityDetectionService";

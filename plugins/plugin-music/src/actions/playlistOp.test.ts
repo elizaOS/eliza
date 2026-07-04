@@ -1,3 +1,8 @@
+/**
+ * Playlist operation tests for structured names and destructive confirmation.
+ *
+ * They prevent playlist mutations from being inferred from prose alone.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handlePlaylistOp, validatePlaylistOp } from "./playlistOp";

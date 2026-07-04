@@ -1,3 +1,9 @@
+/**
+ * Smart query playback action for research-backed music requests.
+ *
+ * It turns structured or media-routed requests into library and web-search
+ * lookups before queueing the selected track.
+ */
 import {
   type ActionExample,
   type ActionResult,

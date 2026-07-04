@@ -1,3 +1,9 @@
+/**
+ * Playlist provider for user-scoped saved music playlists.
+ *
+ * It reads MusicLibraryService playlists for the requesting entity and injects a
+ * compact JSON list into media and knowledge turns.
+ */
 import {
   type IAgentRuntime,
   logger,

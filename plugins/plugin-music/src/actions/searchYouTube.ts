@@ -1,3 +1,9 @@
+/**
+ * YouTube search subaction for music-library backed video lookup.
+ *
+ * It accepts structured search parameters, stores useful search memory, and
+ * returns playable YouTube candidates.
+ */
 import {
   type ActionExample,
   type ActionResult,

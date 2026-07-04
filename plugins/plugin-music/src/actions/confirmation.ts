@@ -1,3 +1,9 @@
+/**
+ * Confirmation helpers for destructive music actions.
+ *
+ * The action handlers share this wrapper so playlist, queue, transport, and
+ * download operations use the same pending-confirmation contract.
+ */
 import type {
   ActionResult,
   HandlerCallback,

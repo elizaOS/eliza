@@ -1,3 +1,9 @@
+/**
+ * Smart music-query validation tests for routing-context behavior.
+ *
+ * They prove structured queries and media context work across languages without
+ * English keyword extraction.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { validatePlayMusicQuery } from "./playMusicQuery";

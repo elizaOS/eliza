@@ -1,3 +1,10 @@
+/**
+ * Music library action facade for playlist, query playback, YouTube search, and
+ * download subactions.
+ *
+ * It keeps library-oriented aliases and validation in one place before
+ * delegating to the specialized handlers.
+ */
 import type {
   Action,
   ActionExample,
