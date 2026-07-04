@@ -2277,8 +2277,9 @@ export class AgentRuntime implements IAgentRuntime {
 			handler.reject(stopError);
 			const promise = this.servicePromises.get(serviceType);
 			if (promise) {
-				// Prevent unhandled rejection noise when runtimes are cleaned up with
-				// unresolved service-load promises during shutdown.
+				// error-policy:J5 unhandled-rejection suppression — the rejection is
+				// delivered to getServiceLoadPromise() awaiters via handler.reject
+				// above; this only silences unhandled-rejection noise at shutdown.
 				void promise.catch(() => {});
 			}
 		}
@@ -3594,7 +3595,14 @@ export class AgentRuntime implements IAgentRuntime {
 					actionStatus: "executing",
 					source: message.content.source,
 				},
-			}).catch(() => {});
+			}).catch((err) =>
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+				// event bus must not abort the action, but it must surface.
+				this.reportError("AgentRuntime.emitEvent", err, {
+					event: EventType.ACTION_STARTED,
+					messageId,
+				}),
+			);
 
 			let success = true;
 			let errorMsg: string | undefined;
@@ -3640,7 +3648,14 @@ export class AgentRuntime implements IAgentRuntime {
 					source: message.content.source,
 					error: errorMsg,
 				},
-			}).catch(() => {});
+			}).catch((err) =>
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+				// event bus must not abort the action, but it must surface.
+				this.reportError("AgentRuntime.emitEvent", err, {
+					event: EventType.ACTION_COMPLETED,
+					messageId,
+				}),
+			);
 		};
 
 		const isDuring =
@@ -4637,9 +4652,9 @@ export class AgentRuntime implements IAgentRuntime {
 			resolver = resolve;
 			rejecter = reject;
 		});
-		// Prevent unhandled rejection if the service fails before anyone
-		// awaits this promise.  Callers of getServiceLoadPromise() will
-		// still observe the rejection when they await.
+		// error-policy:J5 unhandled-rejection suppression — callers of
+		// getServiceLoadPromise() still observe the rejection when they await;
+		// this only prevents an unhandled rejection if the service fails first.
 		svcPromise.catch(() => {});
 		this.servicePromises.set(serviceType, svcPromise);
 		if (!resolver) {
@@ -8843,7 +8858,15 @@ ${section_end}`;
 					priority,
 					runId: this.getCurrentRunId(),
 				}),
-			}).catch(() => {});
+			}).catch((err) =>
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — offloading
+				// embedding generation to the companion is fire-and-forget, but a
+				// dead companion must surface (embeddings would silently stop).
+				this.reportError("AgentRuntime.companionEmbedding", err, {
+					url,
+					agentId: this.agentId,
+				}),
+			);
 			return;
 		}
 
@@ -9287,7 +9310,15 @@ ${section_end}`;
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ agentId: this.agentId }),
-		}).catch(() => {});
+		}).catch((err) =>
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — the notify is
+			// fire-and-forget (no need to block), but a dead companion means tasks
+			// stop being processed, so the failure must surface.
+			this.reportError("AgentRuntime.companionTasksDirty", err, {
+				url,
+				agentId: this.agentId,
+			}),
+		);
 	}
 
 	/**

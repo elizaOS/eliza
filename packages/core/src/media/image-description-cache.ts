@@ -91,7 +91,13 @@ export async function getCachedImageDescription(
 ): Promise<CachedImageDescription | undefined> {
 	const cached = await runtime
 		.getCache<CachedImageDescription>(imageDescriptionCacheKey(imageUrl))
-		.catch(() => undefined);
+		// error-policy:J7 diagnostics-must-not-kill-the-loop — a read failure
+		// degrades to a cache miss (re-describe), but a dead cache melts model
+		// spend silently, so surface it. `undefined` = treat as miss.
+		.catch((err) => {
+			runtime.reportError("ImageDescriptionCache.get", err, { imageUrl });
+			return undefined;
+		});
 	if (cached && (cached.description || cached.text)) {
 		return {
 			title: cached.title || "Image",
@@ -110,7 +116,12 @@ export async function setCachedImageDescription(
 	if (!value.description && !value.text) return;
 	await runtime
 		.setCache(imageDescriptionCacheKey(imageUrl), value)
-		.catch(() => {});
+		// error-policy:J7 diagnostics-must-not-kill-the-loop — a failed cache
+		// write must not abort the describe call, but a dead cache melts model
+		// spend silently, so surface it.
+		.catch((err) =>
+			runtime.reportError("ImageDescriptionCache.set", err, { imageUrl }),
+		);
 }
 
 /**

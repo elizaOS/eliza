@@ -35,6 +35,9 @@ function parseObjectCandidate<T extends object>(candidate: string): T | null {
 			return parsed as T;
 		}
 	} catch {
+		// error-policy:J3 untrusted-input sanitizing — raw model output that isn't
+		// a bare JSON object is expected; retry once against the first embedded
+		// object substring before reporting the candidate as invalid.
 		const objectText = extractJsonObjects(candidate)[0];
 		if (!objectText) return null;
 		try {
@@ -43,6 +46,8 @@ function parseObjectCandidate<T extends object>(candidate: string): T | null {
 				return parsed as T;
 			}
 		} catch {
+			// error-policy:J3 untrusted-input sanitizing — unparseable model output;
+			// null is the explicit "invalid" signal, never a fake-valid default.
 			return null;
 		}
 	}
