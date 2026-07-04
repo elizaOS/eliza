@@ -2,6 +2,7 @@
  * Desktop permission client: queries/requests OS permissions through the
  * Electrobun bridge, conforming to the shared permissions-client shape.
  */
+import { logger } from "@elizaos/logger";
 import type { client as appClient } from "../api/client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import type {
@@ -177,7 +178,33 @@ async function reconcileRendererPermissions(
   return changed ? nextPermissions : permissions;
 }
 
-async function mergeRuntimePermissions(
+/**
+ * Build the explicit "authoritative runtime check failed" state for a runtime
+ * permission (`website-blocking`). The desktop shell's bridged
+ * `permissionsGetAll` snapshot can carry an optimistic `granted` for a
+ * security-relevant blocking control; when the authoritative runtime check
+ * throws we must NOT keep advertising it as granted, or the permissions UI
+ * tells the user a blocking control is enforced when its true state is
+ * unverified. `not-determined` is the fail-closed representation: the UI
+ * renders it as "Request Approval" (unconfirmed/actionable), never as active.
+ */
+function unverifiedRuntimePermissionState(
+  id: SystemPermissionId,
+  previous: PermissionState | undefined,
+): PermissionState {
+  return {
+    ...(previous ?? {}),
+    id,
+    status: "not-determined",
+    canRequest: true,
+    reason:
+      "Runtime permission check is temporarily unavailable; status is unverified.",
+    lastChecked: Date.now(),
+    platform: previous?.platform ?? currentRendererPlatform(),
+  } as PermissionState;
+}
+
+export async function mergeRuntimePermissions(
   permissions: AllPermissionsState,
   getPermission: (id: SystemPermissionId) => Promise<PermissionState>,
 ): Promise<AllPermissionsState> {
@@ -187,9 +214,21 @@ async function mergeRuntimePermissions(
     RUNTIME_PERMISSION_IDS.map(async (id) => {
       try {
         nextPermissions[id] = await getPermission(id);
-      } catch {
-        // Leave the bridged snapshot untouched when the runtime-side permission
-        // route is temporarily unavailable.
+      } catch (error) {
+        // error-policy:J4 the authoritative runtime check for a
+        // security-relevant permission (website-blocking) failed. Do NOT
+        // silently retain the possibly-optimistic bridged snapshot, which
+        // fabricates a "granted"/enforced state the runtime can't confirm.
+        // Fail closed to an explicit unverified state and surface the error
+        // so the permissions UI shows "unconfirmed" instead of "protected".
+        logger.warn(
+          { error, permissionId: id },
+          "[desktop-permissions] runtime permission check failed; marking unverified",
+        );
+        nextPermissions[id] = unverifiedRuntimePermissionState(
+          id,
+          nextPermissions[id],
+        );
       }
     }),
   );
