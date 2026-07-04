@@ -1016,6 +1016,19 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
                 and comparison.get("comparison_type") == "internal_baseline"
             ):
                 internal_baseline_count += 1
+    adversarial_cases = root.get("adversarial_cases")
+    adversarial_count = len(adversarial_cases) if isinstance(adversarial_cases, list) else 0
+    qa_items = root.get("qa_review_checklist")
+    qa_count = len(qa_items) if isinstance(qa_items, list) else 0
+    qa_machine_pass_count = 0
+    qa_human_pass_count = 0
+    if isinstance(qa_items, list):
+        qa_machine_pass_count = sum(
+            1 for item in qa_items if isinstance(item, dict) and item.get("machine_verdict") == "pass"
+        )
+        qa_human_pass_count = sum(
+            1 for item in qa_items if isinstance(item, dict) and item.get("verdict") == "pass"
+        )
     publishable = root.get("publishable") is True
     if lane == "real_product":
         if not publishable:
@@ -1064,6 +1077,12 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             raise ValueError("meeting_transcription_proof: real lane requires an open-source baseline run")
         if internal_baseline_count < 1:
             raise ValueError("meeting_transcription_proof: real lane requires current Eliza baseline")
+        if adversarial_count < 10:
+            raise ValueError("meeting_transcription_proof: real lane requires adversarial cases")
+        if qa_count < 5:
+            raise ValueError("meeting_transcription_proof: real lane requires QA checklist verdicts")
+        if qa_machine_pass_count != qa_count or qa_human_pass_count != qa_count:
+            raise ValueError("meeting_transcription_proof: real lane requires passing QA checklist verdicts")
     elif publishable:
         raise ValueError("meeting_transcription_proof: mocked lane cannot be publishable")
 
@@ -1088,6 +1107,10 @@ def _score_from_meeting_transcription_proof_json(data: JSONValue) -> ScoreExtrac
             "baseline_comparison_count": baseline_count,
             "open_source_baseline_run_count": open_source_run_count,
             "internal_baseline_count": internal_baseline_count,
+            "adversarial_case_count": adversarial_count,
+            "qa_checklist_count": qa_count,
+            "qa_machine_pass_count": qa_machine_pass_count,
+            "qa_human_pass_count": qa_human_pass_count,
             "transcript_quality": metrics.get("transcript_quality") or 0,
             "diarization_quality": metrics.get("diarization_quality") or 0,
             "speaker_identity_quality": metrics.get("speaker_identity_quality") or 0,

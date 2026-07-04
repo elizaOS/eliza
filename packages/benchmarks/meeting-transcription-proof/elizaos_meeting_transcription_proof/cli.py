@@ -190,6 +190,57 @@ REQUIRED_BASELINE_METRICS = {
     "latency_ms",
     "privacy_capture_mode",
 }
+REQUIRED_FUZZ_TARGETS = {
+    "canonical_artifact_schema",
+    "transcript_span_alignment",
+    "rttm_diarization_segments",
+    "speaker_profile_lifecycle",
+    "capture_source_state_machine",
+    "asr_media_refs",
+    "meeting_notes_grounding",
+    "importer_response_shapes",
+}
+REQUIRED_ADVERSARIAL_CLASSES = {
+    "overlapping_similar_voices",
+    "duplicate_display_names",
+    "borrowed_laptop_identity",
+    "transcript_prompt_injection",
+    "side_conversation_not_action_item",
+    "sarcastic_or_negated_action_item",
+    "music_noise_false_vad",
+    "bot_removed_or_permission_revoked",
+    "audio_deleted_transcript_allowed",
+    "malformed_artifact_shape",
+}
+REQUIRED_ADVERSARIAL_FIELDS = {
+    "id",
+    "class",
+    "fuzz_targets",
+    "seed",
+    "scenario_id",
+    "expected_invariants",
+    "evidence",
+    "metrics",
+    "failure_policy",
+}
+REQUIRED_QA_FLOWS = {
+    "permission_denied",
+    "capture_stopped",
+    "speaker_correction",
+    "delete_audio",
+    "share_privacy_state",
+}
+REQUIRED_QA_FIELDS = {
+    "id",
+    "flow",
+    "surface",
+    "verdict",
+    "machine_verdict",
+    "reviewed_artifacts",
+    "evidence",
+    "failure_policy",
+}
+QA_VERDICTS = {"pass", "fail", "needs_human"}
 REQUIRED_SPEAKER_NAME_PROVENANCE_CASES = {
     "platform_roster_name",
     "calendar_attendee_name",
@@ -1100,6 +1151,147 @@ def _validate_baseline_comparisons(manifest: dict[str, Any]) -> tuple[list[dict[
     return sorted(normalized, key=lambda comparison: comparison["id"]), referenced_evidence
 
 
+def _validate_adversarial_cases(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    adversarial_cases = manifest.get("adversarial_cases")
+    if not isinstance(adversarial_cases, list) or not adversarial_cases:
+        raise ValueError("adversarial_cases must be a non-empty array")
+
+    covered_classes: set[str] = set()
+    covered_targets: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+
+    for index, case in enumerate(adversarial_cases):
+        if not isinstance(case, dict):
+            raise ValueError(f"adversarial_cases[{index}] must be an object")
+        missing_fields = REQUIRED_ADVERSARIAL_FIELDS - set(case)
+        if missing_fields:
+            raise ValueError(f"adversarial_cases[{index}] missing fields: {sorted(missing_fields)}")
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError(f"adversarial_cases[{index}].id must be a non-empty string")
+        case_class = case.get("class")
+        if not isinstance(case_class, str) or case_class not in REQUIRED_ADVERSARIAL_CLASSES:
+            raise ValueError(
+                f"adversarial_cases[{index}].class must be one of {sorted(REQUIRED_ADVERSARIAL_CLASSES)}"
+            )
+        fuzz_targets = _as_set(case.get("fuzz_targets"), field=f"adversarial_cases[{index}].fuzz_targets")
+        unknown_targets = fuzz_targets - REQUIRED_FUZZ_TARGETS
+        if unknown_targets:
+            raise ValueError(f"adversarial_cases[{index}] references unknown fuzz targets: {sorted(unknown_targets)}")
+        seed = case.get("seed")
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError(f"adversarial_cases[{index}].seed must be a non-negative integer")
+        scenario_id = case.get("scenario_id")
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            raise ValueError(f"adversarial_cases[{index}].scenario_id must be a non-empty string")
+        expected_invariants = _as_set(
+            case.get("expected_invariants"), field=f"adversarial_cases[{index}].expected_invariants"
+        )
+        if not expected_invariants:
+            raise ValueError(f"adversarial_cases[{index}].expected_invariants must be non-empty")
+        evidence = _as_set(case.get("evidence"), field=f"adversarial_cases[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"adversarial_cases[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        metrics = _as_set(case.get("metrics"), field=f"adversarial_cases[{index}].metrics")
+        unknown_metrics = metrics - KNOWN_METRICS
+        if unknown_metrics:
+            raise ValueError(f"adversarial_cases[{index}] references unknown metrics: {sorted(unknown_metrics)}")
+        failure_policy = case.get("failure_policy")
+        if not isinstance(failure_policy, str) or not failure_policy.strip():
+            raise ValueError(f"adversarial_cases[{index}].failure_policy must be a non-empty string")
+
+        covered_classes.add(case_class)
+        covered_targets.update(fuzz_targets)
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": case_id,
+                "class": case_class,
+                "fuzz_targets": sorted(fuzz_targets),
+                "seed": seed,
+                "scenario_id": scenario_id,
+                "expected_invariants": sorted(expected_invariants),
+                "evidence": sorted(evidence),
+                "metrics": sorted(metrics),
+                "failure_policy": failure_policy,
+            }
+        )
+
+    missing_classes = REQUIRED_ADVERSARIAL_CLASSES - covered_classes
+    if missing_classes:
+        raise ValueError(f"adversarial_cases missing classes: {sorted(missing_classes)}")
+    missing_targets = REQUIRED_FUZZ_TARGETS - covered_targets
+    if missing_targets:
+        raise ValueError(f"adversarial_cases missing fuzz targets: {sorted(missing_targets)}")
+    return sorted(normalized, key=lambda case: case["id"]), referenced_evidence
+
+
+def _validate_qa_review_checklist(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], set[str]]:
+    qa_items = manifest.get("qa_review_checklist")
+    if not isinstance(qa_items, list) or not qa_items:
+        raise ValueError("qa_review_checklist must be a non-empty array")
+
+    covered_flows: set[str] = set()
+    referenced_evidence: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+
+    for index, item in enumerate(qa_items):
+        if not isinstance(item, dict):
+            raise ValueError(f"qa_review_checklist[{index}] must be an object")
+        missing_fields = REQUIRED_QA_FIELDS - set(item)
+        if missing_fields:
+            raise ValueError(f"qa_review_checklist[{index}] missing fields: {sorted(missing_fields)}")
+        item_id = item.get("id")
+        if not isinstance(item_id, str) or not item_id.strip():
+            raise ValueError(f"qa_review_checklist[{index}].id must be a non-empty string")
+        flow = item.get("flow")
+        if not isinstance(flow, str) or flow not in REQUIRED_QA_FLOWS:
+            raise ValueError(f"qa_review_checklist[{index}].flow must be one of {sorted(REQUIRED_QA_FLOWS)}")
+        surface = item.get("surface")
+        if not isinstance(surface, str) or not surface.strip():
+            raise ValueError(f"qa_review_checklist[{index}].surface must be a non-empty string")
+        verdict = item.get("verdict")
+        if not isinstance(verdict, str) or verdict not in QA_VERDICTS:
+            raise ValueError(f"qa_review_checklist[{index}].verdict must be one of {sorted(QA_VERDICTS)}")
+        machine_verdict = item.get("machine_verdict")
+        if not isinstance(machine_verdict, str) or machine_verdict not in QA_VERDICTS:
+            raise ValueError(f"qa_review_checklist[{index}].machine_verdict must be one of {sorted(QA_VERDICTS)}")
+        reviewed_artifacts = _as_set(
+            item.get("reviewed_artifacts"), field=f"qa_review_checklist[{index}].reviewed_artifacts"
+        )
+        if not reviewed_artifacts:
+            raise ValueError(f"qa_review_checklist[{index}].reviewed_artifacts must be non-empty")
+        evidence = _as_set(item.get("evidence"), field=f"qa_review_checklist[{index}].evidence")
+        unknown_evidence = evidence - REQUIRED_EVIDENCE
+        if unknown_evidence:
+            raise ValueError(f"qa_review_checklist[{index}] references unknown evidence: {sorted(unknown_evidence)}")
+        failure_policy = item.get("failure_policy")
+        if not isinstance(failure_policy, str) or not failure_policy.strip():
+            raise ValueError(f"qa_review_checklist[{index}].failure_policy must be a non-empty string")
+
+        covered_flows.add(flow)
+        referenced_evidence.update(evidence)
+        normalized.append(
+            {
+                "id": item_id,
+                "flow": flow,
+                "surface": surface,
+                "verdict": verdict,
+                "machine_verdict": machine_verdict,
+                "reviewed_artifacts": sorted(reviewed_artifacts),
+                "evidence": sorted(evidence),
+                "failure_policy": failure_policy,
+            }
+        )
+
+    missing_flows = REQUIRED_QA_FLOWS - covered_flows
+    if missing_flows:
+        raise ValueError(f"qa_review_checklist missing flows: {sorted(missing_flows)}")
+    return sorted(normalized, key=lambda item: item["id"]), referenced_evidence
+
+
 def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Path) -> dict[str, Any]:
     if lane not in LANES:
         raise ValueError(f"lane must be one of {sorted(LANES)}")
@@ -1161,6 +1353,8 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
     audio_visual_cases, audio_visual_evidence_types = _validate_audio_visual_cases(manifest)
     generated_artifact_scores = _validate_generated_artifact_scores(manifest)
     baseline_comparisons, baseline_evidence_types = _validate_baseline_comparisons(manifest)
+    adversarial_cases, adversarial_evidence_types = _validate_adversarial_cases(manifest)
+    qa_review_checklist, qa_evidence_types = _validate_qa_review_checklist(manifest)
 
     metric_values = _validate_metrics(manifest.get("metrics"), lane=lane)
 
@@ -1194,6 +1388,22 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         missing_baseline_evidence = baseline_evidence_types - set(evidence_files)
         if missing_baseline_evidence:
             raise ValueError(f"baseline comparison evidence files missing: {sorted(missing_baseline_evidence)}")
+        missing_adversarial_evidence = adversarial_evidence_types - set(evidence_files)
+        if missing_adversarial_evidence:
+            raise ValueError(f"adversarial case evidence files missing: {sorted(missing_adversarial_evidence)}")
+        missing_qa_evidence = qa_evidence_types - set(evidence_files)
+        if missing_qa_evidence:
+            raise ValueError(f"QA checklist evidence files missing: {sorted(missing_qa_evidence)}")
+        failing_qa = [
+            item["id"]
+            for item in qa_review_checklist
+            if item["verdict"] != "pass" or item["machine_verdict"] != "pass"
+        ]
+        if failing_qa:
+            raise ValueError(
+                "qa_review_checklist real_product rows must have pass verdicts: "
+                f"{sorted(failing_qa)}"
+            )
 
     return {
         "surfaces": sorted(surfaces),
@@ -1208,6 +1418,8 @@ def validate_manifest(manifest: dict[str, Any], *, lane: str, manifest_path: Pat
         "audio_visual_cases": audio_visual_cases,
         "generated_artifact_scores": generated_artifact_scores,
         "baseline_comparisons": baseline_comparisons,
+        "adversarial_cases": adversarial_cases,
+        "qa_review_checklist": qa_review_checklist,
         "metrics": metric_values,
         "evidence_files": evidence_files,
         "provider_mode": provider_mode,

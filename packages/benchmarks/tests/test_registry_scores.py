@@ -62,6 +62,14 @@ def _meeting_baseline_comparisons() -> list[dict[str, object]]:
     ]
 
 
+def _meeting_adversarial_cases() -> list[dict[str, object]]:
+    return [{"id": f"adv_{index}", "class": f"class_{index}"} for index in range(10)]
+
+
+def _meeting_qa_checklist() -> list[dict[str, object]]:
+    return [{"id": f"qa_{index}", "verdict": "pass", "machine_verdict": "pass"} for index in range(5)]
+
+
 def test_hermes_env_placeholder_only_score_is_not_publishable() -> None:
     with pytest.raises(ValueError, match="placeholder-only"):
         _score_from_hermes_env_json(
@@ -221,6 +229,8 @@ def _meeting_transcription_real_report() -> dict[str, object]:
         "audio_visual_cases": [{} for _ in range(7)],
         "generated_artifact_scores": _meeting_generated_artifact_scores(),
         "baseline_comparisons": _meeting_baseline_comparisons(),
+        "adversarial_cases": _meeting_adversarial_cases(),
+        "qa_review_checklist": _meeting_qa_checklist(),
     }
 
 
@@ -309,6 +319,30 @@ def test_meeting_transcription_real_lane_requires_current_eliza_baseline() -> No
         _score_from_meeting_transcription_proof_json(report)
 
 
+def test_meeting_transcription_real_lane_requires_adversarial_and_qa_rows() -> None:
+    report = _meeting_transcription_real_report()
+    report["adversarial_cases"] = []
+
+    with pytest.raises(ValueError, match="adversarial cases"):
+        _score_from_meeting_transcription_proof_json(report)
+
+    report = _meeting_transcription_real_report()
+    report["qa_review_checklist"] = _meeting_qa_checklist()[:4]
+
+    with pytest.raises(ValueError, match="QA checklist"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
+def test_meeting_transcription_real_lane_requires_passing_qa_verdicts() -> None:
+    report = _meeting_transcription_real_report()
+    qa = _meeting_qa_checklist()
+    qa[0] = {**qa[0], "machine_verdict": "fail"}
+    report["qa_review_checklist"] = qa
+
+    with pytest.raises(ValueError, match="passing QA checklist"):
+        _score_from_meeting_transcription_proof_json(report)
+
+
 def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() -> None:
     extraction = _score_from_meeting_transcription_proof_json(_meeting_transcription_real_report())
 
@@ -325,3 +359,7 @@ def test_meeting_transcription_real_lane_score_is_publishable_with_evidence() ->
     assert extraction.metrics["baseline_comparison_count"] == 7
     assert extraction.metrics["open_source_baseline_run_count"] == 1
     assert extraction.metrics["internal_baseline_count"] == 1
+    assert extraction.metrics["adversarial_case_count"] == 10
+    assert extraction.metrics["qa_checklist_count"] == 5
+    assert extraction.metrics["qa_machine_pass_count"] == 5
+    assert extraction.metrics["qa_human_pass_count"] == 5

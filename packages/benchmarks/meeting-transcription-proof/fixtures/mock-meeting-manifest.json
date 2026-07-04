@@ -866,6 +866,170 @@
       "failure_policy": "not-run open-source systems require installation reason and cannot count as pass"
     }
   ],
+  "adversarial_cases": [
+    {
+      "id": "adv_overlapping_similar_voices",
+      "class": "overlapping_similar_voices",
+      "fuzz_targets": ["transcript_span_alignment", "rttm_diarization_segments"],
+      "seed": 12537001,
+      "scenario_id": "overlapped_speech",
+      "expected_invariants": ["non_negative_durations", "overlap_retained", "speaker_ids_stable"],
+      "evidence": ["audio", "metrics", "speaker_profile_artifact"],
+      "metrics": ["der", "jer", "speaker_attributed_wer"],
+      "failure_policy": "minimize to seed and attach diarization/transcript span diff"
+    },
+    {
+      "id": "adv_duplicate_display_names",
+      "class": "duplicate_display_names",
+      "fuzz_targets": ["speaker_profile_lifecycle"],
+      "seed": 12537002,
+      "scenario_id": "known_speaker_recognition",
+      "expected_invariants": ["display_name_not_identity", "manual_correction_required_before_merge"],
+      "evidence": ["speaker_profile_artifact", "transcript_artifact", "metrics"],
+      "metrics": ["speaker_identity_quality", "voice_profile_false_accept_rate"],
+      "failure_policy": "minimize to seed and attach speaker profile merge/split trace"
+    },
+    {
+      "id": "adv_borrowed_laptop_identity",
+      "class": "borrowed_laptop_identity",
+      "fuzz_targets": ["speaker_profile_lifecycle", "capture_source_state_machine"],
+      "seed": 12537003,
+      "scenario_id": "shared_room_microphone",
+      "expected_invariants": ["device_owner_not_assumed_speaker", "uncertain_room_label_allowed"],
+      "evidence": ["audio", "screenshots", "speaker_profile_artifact"],
+      "metrics": ["speaker_identity_quality", "active_speaker_accuracy"],
+      "failure_policy": "minimize to seed and attach identity-binding decision trace"
+    },
+    {
+      "id": "adv_transcript_prompt_injection",
+      "class": "transcript_prompt_injection",
+      "fuzz_targets": ["meeting_notes_grounding", "canonical_artifact_schema"],
+      "seed": 12537004,
+      "scenario_id": "cloud_agent_capture",
+      "expected_invariants": ["quoted_injection_not_instruction", "notes_grounded_to_spans"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach model trajectory plus offending span"
+    },
+    {
+      "id": "adv_side_conversation",
+      "class": "side_conversation_not_action_item",
+      "fuzz_targets": ["meeting_notes_grounding"],
+      "seed": 12537005,
+      "scenario_id": "google_meet_bot",
+      "expected_invariants": ["side_conversation_not_promoted", "action_items_have_directive_support"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach unsupported action-item report"
+    },
+    {
+      "id": "adv_negated_action_item",
+      "class": "sarcastic_or_negated_action_item",
+      "fuzz_targets": ["meeting_notes_grounding"],
+      "seed": 12537006,
+      "scenario_id": "zoom_bot",
+      "expected_invariants": ["negated_task_not_action_item", "sarcasm_requires_review"],
+      "evidence": ["model_trajectories", "transcript_artifact", "metrics"],
+      "metrics": ["notes_factuality", "action_item_extraction"],
+      "failure_policy": "minimize to seed and attach note/action grounding diff"
+    },
+    {
+      "id": "adv_music_noise_false_vad",
+      "class": "music_noise_false_vad",
+      "fuzz_targets": ["capture_source_state_machine", "transcript_span_alignment"],
+      "seed": 12537007,
+      "scenario_id": "speech_over_music",
+      "expected_invariants": ["music_not_speaker", "silence_windows_not_transcribed"],
+      "evidence": ["audio", "metrics", "transcript_artifact"],
+      "metrics": ["wer", "cer", "end_of_turn_latency_ms"],
+      "failure_policy": "minimize to seed and attach VAD window report"
+    },
+    {
+      "id": "adv_bot_removed_permission_revoked",
+      "class": "bot_removed_or_permission_revoked",
+      "fuzz_targets": ["capture_source_state_machine", "asr_media_refs"],
+      "seed": 12537008,
+      "scenario_id": "zoom_bot",
+      "expected_invariants": ["terminal_error_classified", "partial_transcript_marked_partial"],
+      "evidence": ["backend_logs", "frontend_logs", "transcript_artifact"],
+      "metrics": ["consent_retention_quality"],
+      "failure_policy": "minimize to seed and attach state transition log"
+    },
+    {
+      "id": "adv_audio_deleted_transcript_allowed",
+      "class": "audio_deleted_transcript_allowed",
+      "fuzz_targets": ["asr_media_refs", "canonical_artifact_schema"],
+      "seed": 12537009,
+      "scenario_id": "transcript_sharing_export_delete",
+      "expected_invariants": ["audio_replay_invalidated", "allowed_transcript_refs_survive"],
+      "evidence": ["retention_artifact", "screenshots", "transcript_artifact"],
+      "metrics": ["consent_retention_quality"],
+      "failure_policy": "minimize to seed and attach retention/delete artifact"
+    },
+    {
+      "id": "adv_malformed_artifact_shape",
+      "class": "malformed_artifact_shape",
+      "fuzz_targets": ["canonical_artifact_schema", "importer_response_shapes"],
+      "seed": 12537010,
+      "scenario_id": "hybrid_local_cloud",
+      "expected_invariants": ["schema_errors_are_actionable", "negative_durations_rejected"],
+      "evidence": ["backend_logs", "metrics", "transcript_artifact"],
+      "metrics": ["transcript_quality", "diarization_quality"],
+      "failure_policy": "minimize to seed and attach malformed artifact fixture"
+    }
+  ],
+  "qa_review_checklist": [
+    {
+      "id": "qa_permission_denied",
+      "flow": "permission_denied",
+      "surface": "zoom_bot_free",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["permission-denied-screenshot", "frontend-console-log"],
+      "evidence": ["screenshots", "frontend_logs"],
+      "failure_policy": "permission denial must be visible and recoverable before capture starts"
+    },
+    {
+      "id": "qa_capture_stopped",
+      "flow": "capture_stopped",
+      "surface": "google_meet_bot_free",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["capture-stop-video", "partial-transcript-artifact"],
+      "evidence": ["video", "transcript_artifact", "frontend_logs"],
+      "failure_policy": "capture stop must finalize partial transcript and mark audio completeness"
+    },
+    {
+      "id": "qa_speaker_correction",
+      "flow": "speaker_correction",
+      "surface": "hybrid_local_cloud",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["speaker-correction-screenshot", "speaker-profile-artifact"],
+      "evidence": ["screenshots", "speaker_profile_artifact"],
+      "failure_policy": "manual correction must be auditable and reversible"
+    },
+    {
+      "id": "qa_delete_audio",
+      "flow": "delete_audio",
+      "surface": "on_device",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["retention-delete-proof", "transcript-after-delete"],
+      "evidence": ["retention_artifact", "transcript_artifact"],
+      "failure_policy": "deleting audio must invalidate replay without deleting allowed transcript text"
+    },
+    {
+      "id": "qa_share_privacy_state",
+      "flow": "share_privacy_state",
+      "surface": "cloud_agent",
+      "verdict": "needs_human",
+      "machine_verdict": "pass",
+      "reviewed_artifacts": ["share-dialog-screenshot", "consent-record"],
+      "evidence": ["screenshots", "consent_record", "backend_logs"],
+      "failure_policy": "share controls must distinguish transcript, notes, audio, and generated artifacts"
+    }
+  ],
   "metrics": {
     "transcript_quality": 1.0,
     "diarization_quality": 1.0,

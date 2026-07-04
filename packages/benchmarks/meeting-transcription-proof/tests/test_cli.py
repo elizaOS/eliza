@@ -43,6 +43,14 @@ def _fixture_baseline_comparisons() -> list[object]:
     return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["baseline_comparisons"]
 
 
+def _fixture_adversarial_cases() -> list[object]:
+    return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["adversarial_cases"]
+
+
+def _fixture_qa_review_checklist() -> list[object]:
+    return json.loads(FIXTURE_MANIFEST.read_text(encoding="utf-8"))["qa_review_checklist"]
+
+
 def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
     return {
         "provider_mode": provider_mode,
@@ -72,6 +80,8 @@ def _base_manifest(provider_mode: str = "real_zoom_meet") -> dict[str, object]:
         "audio_visual_cases": _fixture_audio_visual_cases(),
         "generated_artifact_scores": _fixture_generated_artifact_scores(),
         "baseline_comparisons": _fixture_baseline_comparisons(),
+        "adversarial_cases": _fixture_adversarial_cases(),
+        "qa_review_checklist": _fixture_qa_review_checklist(),
         "metrics": {
             "transcript_quality": 0.91,
             "diarization_quality": 0.82,
@@ -132,6 +142,8 @@ def test_mocked_plumbing_fixture_is_not_publishable() -> None:
     assert len(report["audio_visual_cases"]) == len(_fixture_audio_visual_cases())
     assert len(report["generated_artifact_scores"]) == len(_fixture_generated_artifact_scores())
     assert len(report["baseline_comparisons"]) == len(_fixture_baseline_comparisons())
+    assert len(report["adversarial_cases"]) == len(_fixture_adversarial_cases())
+    assert len(report["qa_review_checklist"]) == len(_fixture_qa_review_checklist())
 
 
 def test_real_lane_requires_non_mock_provider(tmp_path: Path) -> None:
@@ -611,6 +623,115 @@ def test_baseline_comparisons_require_open_source_run_or_import(tmp_path: Path) 
         build_report(lane="real_product", manifest_path=manifest)
 
 
+def test_real_lane_requires_adversarial_cases(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data.pop("adversarial_cases")
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="adversarial_cases must be a non-empty array"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_adversarial_cases_require_all_classes(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data["adversarial_cases"] = [
+        case
+        for case in _fixture_adversarial_cases()
+        if isinstance(case, dict) and case.get("class") != "transcript_prompt_injection"
+    ]
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="adversarial_cases missing classes"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_adversarial_cases_may_only_reference_known_fuzz_targets(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    cases = _fixture_adversarial_cases()
+    assert isinstance(cases[0], dict)
+    cases[0] = {**cases[0], "fuzz_targets": ["canonical_artifact_schema", "imaginary_fuzzer"]}
+    manifest_data["adversarial_cases"] = cases
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="unknown fuzz targets"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_adversarial_case_seed_must_be_non_negative_integer(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    cases = _fixture_adversarial_cases()
+    assert isinstance(cases[0], dict)
+    cases[0] = {**cases[0], "seed": -1}
+    manifest_data["adversarial_cases"] = cases
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="seed must be a non-negative integer"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_real_lane_requires_qa_review_checklist(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data.pop("qa_review_checklist")
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="qa_review_checklist must be a non-empty array"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_qa_review_checklist_requires_all_flows(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    manifest_data["qa_review_checklist"] = [
+        item for item in _fixture_qa_review_checklist() if isinstance(item, dict) and item.get("flow") != "delete_audio"
+    ]
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="qa_review_checklist missing flows"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_qa_review_checklist_verdicts_are_machine_readable(tmp_path: Path) -> None:
+    manifest_data = _base_manifest()
+    items = _fixture_qa_review_checklist()
+    assert isinstance(items[0], dict)
+    items[0] = {**items[0], "machine_verdict": "maybe"}
+    manifest_data["qa_review_checklist"] = items
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="machine_verdict must be one of"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
+def test_real_lane_requires_passing_qa_review_verdicts(tmp_path: Path) -> None:
+    evidence_names = [
+        "audio",
+        "video",
+        "backend_logs",
+        "frontend_logs",
+        "screenshots",
+        "metrics",
+        "model_trajectories",
+        "transcript_artifact",
+        "speaker_profile_artifact",
+        "consent_record",
+        "retention_artifact",
+    ]
+    evidence = {}
+    for name in evidence_names:
+        filename = f"{name}.txt"
+        (tmp_path / filename).write_text(name, encoding="utf-8")
+        evidence[name] = filename
+    manifest_data = _base_manifest()
+    items = _fixture_qa_review_checklist()
+    assert isinstance(items[0], dict)
+    items[0] = {**items[0], "machine_verdict": "fail"}
+    manifest_data["qa_review_checklist"] = items
+    manifest_data["evidence"] = evidence
+    manifest = _write_manifest(tmp_path, manifest_data)
+
+    with pytest.raises(ValueError, match="pass verdicts"):
+        build_report(lane="real_product", manifest_path=manifest)
+
+
 def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path: Path) -> None:
     evidence_names = [
         "audio",
@@ -631,6 +752,12 @@ def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path
         (tmp_path / filename).write_text(name, encoding="utf-8")
         evidence[name] = filename
     manifest_data = _base_manifest()
+    qa_review_checklist = _fixture_qa_review_checklist()
+    manifest_data["qa_review_checklist"] = [
+        {**item, "verdict": "pass", "machine_verdict": "pass"}
+        for item in qa_review_checklist
+        if isinstance(item, dict)
+    ]
     manifest_data["evidence"] = evidence
     manifest = _write_manifest(tmp_path, manifest_data)
 
@@ -707,6 +834,18 @@ def test_real_lane_scores_lowest_required_quality_and_resolves_evidence(tmp_path
         for row in report["baseline_comparisons"]
     )
     assert any(row["comparison_type"] == "internal_baseline" for row in report["baseline_comparisons"])
+    assert {case["class"] for case in report["adversarial_cases"]} >= {
+        "transcript_prompt_injection",
+        "malformed_artifact_shape",
+        "audio_deleted_transcript_allowed",
+    }
+    assert {item["flow"] for item in report["qa_review_checklist"]} == {
+        "permission_denied",
+        "capture_stopped",
+        "speaker_correction",
+        "delete_audio",
+        "share_privacy_state",
+    }
     assert all(dataset["version"] for dataset in report["dataset_sources"])
     assert all(dataset["checksum"] for dataset in report["dataset_sources"])
     assert all(dataset["sample_count"] > 0 for dataset in report["dataset_sources"])

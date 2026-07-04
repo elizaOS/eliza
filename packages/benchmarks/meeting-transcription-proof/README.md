@@ -165,6 +165,17 @@ imported, and the current Eliza production baseline must always be present. Rows
 track capture/privacy mode, covered meeting conditions, comparison metrics,
 artifact references, manual review status, evidence, and the failure policy.
 
+Real manifests must include adversarial cases and QA review checklist rows.
+Adversarial cases cover canonical artifact schema fuzzing, transcript/span
+alignment, RTTM/diarization segment parsing, speaker profile lifecycle,
+capture-source state machines, ASR media refs, meeting-note grounding, and
+importer response shapes. Required scenario classes include prompt injection,
+negated action items, side conversations, duplicate names, borrowed laptops,
+permission revocation, audio deletion, false VAD, overlapping similar voices,
+and malformed artifact shapes. QA checklist rows must produce machine-readable
+verdicts for permission denied, capture stopped, speaker correction, delete
+audio, and share/privacy state.
+
 ## Fixture Manifest
 
 `fixtures/mock-meeting-manifest.json` describes the minimum canonical meeting
