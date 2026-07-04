@@ -12,7 +12,7 @@ import type {
   SocialMediaProvider,
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
-import { safeJsonParse } from "../../../utils/json-parsing";
+import { parseJsonErrorBody } from "../../../utils/json-parsing";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
 
@@ -133,7 +133,7 @@ async function _redditApiRequestLegacy<T>(
   });
 
   if (!response.ok) {
-    const error = await safeJsonParse<{ message?: string }>(response);
+    const error = await parseJsonErrorBody<{ message?: string }>(response);
     throw new Error(error.message || `Reddit API error: ${response.status}`);
   }
 

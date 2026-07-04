@@ -1,6 +1,6 @@
 // Coordinates cloud service token refresh behavior behind route handlers.
 import type { SocialCredentials, SocialPlatform } from "../../types/social-media";
-import { safeJsonParse } from "../../utils/json-parsing";
+import { parseJsonErrorBody } from "../../utils/json-parsing";
 import { logger } from "../../utils/logger";
 import { requestTwitterOAuth2Token } from "../twitter-automation/oauth2-client";
 
@@ -70,7 +70,7 @@ async function refreshMetaToken(accessToken: string): Promise<RefreshResult> {
   );
 
   if (!response.ok) {
-    const error = await safeJsonParse<{ error?: { message?: string } }>(response);
+    const error = await parseJsonErrorBody<{ error?: { message?: string } }>(response);
     throw new Error(error.error?.message || `Meta token refresh failed: ${response.status}`);
   }
 
@@ -100,7 +100,7 @@ async function refreshLinkedInToken(refreshToken: string): Promise<RefreshResult
   });
 
   if (!response.ok) {
-    const error = await safeJsonParse<{ error_description?: string }>(response);
+    const error = await parseJsonErrorBody<{ error_description?: string }>(response);
     throw new Error(error.error_description || `LinkedIn token refresh failed: ${response.status}`);
   }
 
@@ -135,7 +135,7 @@ async function refreshTikTokToken(refreshToken: string): Promise<RefreshResult> 
   });
 
   if (!response.ok) {
-    const error = await safeJsonParse<{ error_description?: string }>(response);
+    const error = await parseJsonErrorBody<{ error_description?: string }>(response);
     throw new Error(error.error_description || `TikTok token refresh failed: ${response.status}`);
   }
 

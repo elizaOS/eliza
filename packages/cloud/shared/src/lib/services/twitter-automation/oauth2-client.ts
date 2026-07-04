@@ -1,5 +1,5 @@
 // Coordinates cloud service oauth2 client behavior behind route handlers.
-import { safeJsonParse } from "../../utils/json-parsing";
+import { parseJsonErrorBody, parseJsonResponse } from "../../utils/json-parsing";
 
 const TWITTER_OAUTH2_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 
@@ -58,7 +58,7 @@ function getTwitterOAuth2AuthorizationHeader(clientId: string, clientSecret: str
 }
 
 async function readTwitterOAuth2ErrorMessage(response: Response): Promise<string> {
-  const payload = await safeJsonParse<TwitterOAuth2ErrorResponse>(response);
+  const payload = await parseJsonErrorBody<TwitterOAuth2ErrorResponse>(response);
   const details = [payload.error, payload.error_description, payload.detail, payload.title].filter(
     (value, index, all): value is string => {
       return typeof value === "string" && value.trim().length > 0 && all.indexOf(value) === index;
@@ -98,5 +98,5 @@ export async function requestTwitterOAuth2Token(
     throw new Error(await readTwitterOAuth2ErrorMessage(response));
   }
 
-  return safeJsonParse<TwitterOAuth2TokenResponse>(response);
+  return parseJsonResponse<TwitterOAuth2TokenResponse>(response, "Twitter OAuth2 token response");
 }
