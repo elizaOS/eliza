@@ -456,6 +456,8 @@ packages/ui/src/**/*.d.ts.map
 packages/app-core/src/**/*.d.ts
 packages/app-core/src/**/*.d.ts.map
 !packages/app-core/src/ambient-modules.d.ts
+packages/auth/src/**/*.d.ts
+packages/auth/src/**/*.d.ts.map
 apps/*/src/**/*.js
 apps/*/src/**/*.js.map
 apps/*/src/**/*.d.ts

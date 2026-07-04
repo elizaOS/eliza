@@ -24,6 +24,7 @@ import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
+import { parseStrictFiniteNumber } from "./strict-numeric";
 import { userSessionsService } from "./user-sessions";
 import {
   classifyCreditBalance,
@@ -200,11 +201,7 @@ function isPgTrue(value: boolean | string | number | null | undefined): boolean 
 }
 
 function parseNumeric(value: string | number | null | undefined, fieldName: string): number {
-  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`[CreditsService] Invalid numeric ${fieldName}`);
-  }
-  return parsed;
+  return parseStrictFiniteNumber(value, fieldName, "CreditsService");
 }
 
 function parseMetadata(value: CreditMutationRow["metadata"]): Record<string, unknown> {
