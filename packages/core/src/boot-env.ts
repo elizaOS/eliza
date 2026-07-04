@@ -129,3 +129,87 @@ export function syncElizaEnvAliases(): void {
 	const aliases = getBootConfig().envAliases;
 	if (aliases) syncElizaEnvToBrand(aliases);
 }
+
+/**
+ * Build a bidirectional key -> alias-partners lookup from the alias pair table.
+ *
+ * Each `[brandKey, elizaKey]` pair contributes both directions so a lookup of
+ * either name yields its partner(s). A single key can participate in more than
+ * one pair (kept as a list) so no alias is silently dropped.
+ */
+function buildAliasPartnerMap(
+	aliases: readonly (readonly [string, string])[],
+): Map<string, string[]> {
+	const map = new Map<string, string[]>();
+	const link = (from: string, to: string): void => {
+		if (from === to) return;
+		const existing = map.get(from);
+		if (existing) {
+			if (!existing.includes(to)) existing.push(to);
+		} else {
+			map.set(from, [to]);
+		}
+	};
+	for (const [brandKey, elizaKey] of aliases) {
+		link(brandKey, elizaKey);
+		link(elizaKey, brandKey);
+	}
+	return map;
+}
+
+/**
+ * An env value counts as "present" only when it is a non-empty (after trim)
+ * string. This mirrors the shared `normalizeEnvValue` / `readEnv` contract
+ * (empty / whitespace-only = unset) AND the `syncBrandEnvToEliza` mutation,
+ * which only mirrors a source when `typeof value === "string"` but a blank
+ * ELIZA_ value never suppressed a non-blank branded alias in the old sync path.
+ * Treating a blank direct value as present would let `ELIZA_API_TOKEN=""`
+ * shadow a real `ACME_API_TOKEN`, resolving a set alias as missing.
+ */
+function presentEnvValue(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	return value.trim() ? value : undefined;
+}
+
+/**
+ * Additive, NON-mutating alias-aware env reader (arch-audit #12251, slice 1).
+ *
+ * Resolves an env value for `key` by consulting the brand<->eliza alias table
+ * WITHOUT writing anything to `process.env`. The requested key wins when it is
+ * present (non-empty); a blank/whitespace value is treated as absent so a real
+ * alias partner still surfaces. If the key is absent, the first present alias
+ * partner (in alias-table order) is returned. This is the read-side migration
+ * target that lets call sites stop depending on the `syncBrandEnvToEliza` /
+ * `syncElizaEnvToBrand` mutation — the mutation stays in place as a fallback
+ * until every raw aliased read is migrated (per the staged plan on the issue).
+ *
+ * @param key       the env key a caller wants to read
+ * @param aliases   alias pair table; defaults to the immutable BootConfig list
+ * @param env       env source; defaults to the live `process.env`
+ * @returns the resolved value, or `undefined` when neither key nor an alias
+ *          partner is present
+ */
+export function resolveAliasedEnvValue(
+	key: string,
+	aliases: readonly (readonly [string, string])[] | undefined = getBootConfig()
+		.envAliases,
+	env: Record<string, string | undefined> | null = getProcessEnv(),
+): string | undefined {
+	if (!env) return undefined;
+
+	// The exact key takes precedence when it carries a real value — but a blank
+	// value must NOT shadow a present alias partner (see presentEnvValue).
+	const direct = presentEnvValue(env[key]);
+	if (direct !== undefined) return direct;
+
+	if (!aliases || aliases.length === 0) return undefined;
+
+	const partners = buildAliasPartnerMap(aliases).get(key);
+	if (!partners) return undefined;
+
+	for (const partner of partners) {
+		const value = presentEnvValue(env[partner]);
+		if (value !== undefined) return value;
+	}
+	return undefined;
+}

@@ -44,6 +44,7 @@ export {
 
 import {
   getBootConfig,
+  resolveAliasedEnvValue,
   syncBrandEnvToEliza,
   syncElizaEnvToBrand,
 } from "../config/boot-config.js";
@@ -123,6 +124,21 @@ function buildEnvPairs(
     [prefixed("APP_ROUTE_PLUGIN_MODULES"), "ELIZA_APP_ROUTE_PLUGIN_MODULES"],
     [prefixed("PORT"), "ELIZA_UI_PORT"],
   ];
+}
+
+/**
+ * Read an env value resolving brand<->eliza aliases from the immutable
+ * BootConfig, WITHOUT mutating `process.env` (arch-audit #12251, slice 1).
+ *
+ * Thin wrapper over core's {@link resolveAliasedEnvValue} that pins the alias
+ * table to `getBootConfig().envAliases` and normalizes the result via
+ * {@link normalizeEnvValue} (trim + empty -> undefined), so migrated read sites
+ * get the same trimmed-or-undefined contract they get today from a normalized
+ * `process.env.<key>` read. The `syncBrandEnvToEliza` / `syncElizaEnvToBrand`
+ * mutation remains as a fallback for not-yet-migrated raw reads.
+ */
+export function readAliasedEnv(key: string): string | undefined {
+  return normalizeEnvValue(resolveAliasedEnvValue(key));
 }
 
 export function syncAppEnvToEliza(): void {

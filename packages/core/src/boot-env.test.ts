@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { peekAmbientSingleton } from "./ambient-context";
 import {
+	resolveAliasedEnvValue,
 	syncAppEnvToEliza,
 	syncBrandEnvToEliza,
 	syncElizaEnvToBrand,
@@ -170,5 +171,98 @@ describe("boot config store is write-once", () => {
 		const viaAccessor = peekAmbientSingleton(STORE_KEY);
 		expect(viaAccessor).toBeDefined();
 		expect(viaAccessor).toBe(slot[STORE_KEY]);
+	});
+});
+
+// resolveAliasedEnvValue is the additive read-side migration target (#12251
+// slice 1): it resolves a brand<->eliza alias WITHOUT mutating process.env, so a
+// read site can stop depending on the sync* mutation. These cases prove it
+// resolves both directions, prefers the exact key, and never writes.
+describe("resolveAliasedEnvValue (non-mutating alias reader)", () => {
+	const BRAND = "MYBRAND_STATE_DIR";
+	const ELIZA = "ELIZA_STATE_DIR";
+	const OTHER = "MYBRAND_API_TOKEN";
+	const ELIZA_OTHER = "ELIZA_API_TOKEN";
+	const savedEnv: Record<string, string | undefined> = {};
+	const tracked = [BRAND, ELIZA, OTHER, ELIZA_OTHER];
+	const ALIASES = [
+		[BRAND, ELIZA],
+		[OTHER, ELIZA_OTHER],
+	] as const;
+
+	beforeEach(() => {
+		for (const key of tracked) {
+			savedEnv[key] = process.env[key];
+			delete process.env[key];
+		}
+	});
+
+	afterEach(() => {
+		for (const key of tracked) {
+			if (savedEnv[key] === undefined) delete process.env[key];
+			else process.env[key] = savedEnv[key];
+		}
+	});
+
+	it("resolves the branded value when only the branded key is set", () => {
+		process.env[BRAND] = "branded-state-dir";
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBe("branded-state-dir");
+	});
+
+	it("resolves the eliza value when only the eliza key is set", () => {
+		process.env[ELIZA] = "eliza-state-dir";
+		expect(resolveAliasedEnvValue(BRAND, ALIASES)).toBe("eliza-state-dir");
+	});
+
+	it("prefers the exact requested key over its alias partner", () => {
+		process.env[BRAND] = "branded";
+		process.env[ELIZA] = "eliza";
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBe("eliza");
+		expect(resolveAliasedEnvValue(BRAND, ALIASES)).toBe("branded");
+	});
+
+	it("returns undefined when neither the key nor its alias is set", () => {
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBeUndefined();
+	});
+
+	it("does not resolve across unrelated alias pairs", () => {
+		process.env[ELIZA_OTHER] = "token-value";
+		// STATE_DIR must not pick up an API_TOKEN value from a different pair.
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBeUndefined();
+	});
+
+	it("never mutates process.env while resolving", () => {
+		process.env[BRAND] = "branded-only";
+		const before = { ...process.env };
+		resolveAliasedEnvValue(ELIZA, ALIASES);
+		resolveAliasedEnvValue(BRAND, ALIASES);
+		// The eliza target must remain unset — the reader is additive, not a mirror.
+		expect(process.env[ELIZA]).toBeUndefined();
+		expect(process.env).toEqual(before);
+	});
+
+	it("treats an empty alias table as no aliasing", () => {
+		process.env[BRAND] = "branded-only";
+		expect(resolveAliasedEnvValue(ELIZA, [])).toBeUndefined();
+		expect(resolveAliasedEnvValue(BRAND, [])).toBe("branded-only");
+	});
+
+	it("a blank canonical value does not shadow a present branded alias", () => {
+		// Regression for the empty-string masking bug: the old sync path never
+		// let a blank ELIZA_ value suppress a real branded alias, so the reader
+		// must fall through to the branded value instead of resolving as unset.
+		process.env[ELIZA] = "";
+		process.env[BRAND] = "real-branded";
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBe("real-branded");
+
+		process.env[ELIZA_OTHER] = "   ";
+		process.env[OTHER] = "real-token";
+		expect(resolveAliasedEnvValue(ELIZA_OTHER, ALIASES)).toBe("real-token");
+	});
+
+	it("returns undefined when both key and alias are blank", () => {
+		process.env[ELIZA] = "";
+		process.env[BRAND] = "  ";
+		expect(resolveAliasedEnvValue(ELIZA, ALIASES)).toBeUndefined();
 	});
 });
