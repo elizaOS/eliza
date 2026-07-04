@@ -1,8 +1,9 @@
 /** Unit tests for OAuth token resolution in the credential store; uses real temp dirs and env-var manipulation, no live API. */
-import { ElizaError } from "@elizaos/core";
+
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearTokenCache, getClaudeOAuthToken } from "../utils/credential-store.js";
 
@@ -13,11 +14,15 @@ describe("Anthropic credential store", () => {
   const originalEnvToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
   const originalAnthropicEnvToken = process.env.ANTHROPIC_OAUTH_TOKEN;
   const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
 
   beforeEach(() => {
     stateDir = join(tmpdir(), `anthropic-credentials-${Date.now()}`);
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_NAMESPACE = "eliza";
+    process.env.HOME = stateDir;
+    process.env.USERPROFILE = stateDir;
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "stale-env-token";
     delete process.env.ANTHROPIC_OAUTH_TOKEN;
     clearTokenCache();
@@ -49,6 +54,16 @@ describe("Anthropic credential store", () => {
       delete process.env.CLAUDE_CONFIG_DIR;
     } else {
       process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+    }
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     rmSync(stateDir, { recursive: true, force: true });
   });
