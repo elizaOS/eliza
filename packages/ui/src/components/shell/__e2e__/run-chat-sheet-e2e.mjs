@@ -70,11 +70,12 @@ const url = await writeFixturePage({
   ],
   processShim: true,
   background: "#0a0d16",
-  // Register the `bg` color token so CDN Tailwind resolves the `bg-bg` utility
-  // to the shell background — the #12178/#12364 onboarding backdrop pixel-proof
-  // below asserts the opaque backdrop paints this exact dark color.
-  headHtml: `<script>tailwind.config={theme:{extend:{colors:{bg:"#0a0d16"}}}};</script>`,
+  headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
 });
+
+async function gotoFixture(p, href = url) {
+  await p.goto(href, { waitUntil: "domcontentloaded" });
+}
 
 // --- DOM probes ----------------------------------------------------------
 const variant = (p) =>
@@ -419,7 +420,7 @@ try {
   // ===== DESKTOP + MOUSE =====
   const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
   attachConsole(desktop, sink);
-  await desktop.goto(url);
+  await gotoFixture(desktop);
   await desktop.waitForSelector('[data-testid="chat-sheet"]');
   await desktop.waitForTimeout(700);
   await runDragSuite(desktop, "mouse", "desktop");
@@ -434,7 +435,7 @@ try {
   });
   const mobile = await mobileCtx.newPage();
   attachConsole(mobile, sink);
-  await mobile.goto(url);
+  await gotoFixture(mobile);
   await mobile.waitForSelector('[data-testid="chat-sheet"]');
   await mobile.waitForTimeout(700);
   await runDragSuite(mobile, "touch", "mobile");
@@ -477,7 +478,7 @@ try {
       deviceScaleFactor: 2,
     });
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector(grabberSel);
     await p.waitForTimeout(700);
 
@@ -588,7 +589,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?empty`);
+    await gotoFixture(p, `${url}?empty`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert((await p.locator('[data-testid="chat-thread"]').count()) === 0, "EMPTY: no thread/history mounted (just the input panel)");
@@ -605,7 +606,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?phase=booting`);
+    await gotoFixture(p, `${url}?phase=booting`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(650);
     assert(
@@ -629,7 +630,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?recording&phase=listening`);
+    await gotoFixture(p, `${url}?recording&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(650);
     assert(
@@ -658,7 +659,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?speaking`);
+    await gotoFixture(p, `${url}?speaking`);
     await p.waitForSelector('[data-testid="chat-composer-stop"]');
     await p.waitForTimeout(500);
     assert(
@@ -686,7 +687,7 @@ try {
     attachConsole(p, sink);
     const logs = [];
     p.on("console", (m) => logs.push(m.text()));
-    await p.goto(`${url}?unlock`);
+    await gotoFixture(p, `${url}?unlock`);
     await p.waitForSelector('[data-testid="overlay-voice-audio-unlock"]');
     await p.getByTestId("chat-sheet-grabber").focus();
     await p.keyboard.press("ArrowUp"); // open to half behind the chip
@@ -720,7 +721,7 @@ try {
     attachConsole(p, sink);
     const logs = [];
     p.on("console", (m) => logs.push(m.text()));
-    await p.goto(`${url}?transcribing&recording&speaking&phase=listening`);
+    await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
     assert(
@@ -749,7 +750,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?phase=responding`);
+    await gotoFixture(p, `${url}?phase=responding`);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();
@@ -764,7 +765,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(600);
     const input = p.getByTestId("chat-composer-textarea");
@@ -804,7 +805,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-attach"]');
     await p.waitForTimeout(600);
     // 1x1 transparent PNG
@@ -830,7 +831,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(600);
     await p.getByTestId("chat-composer-mic").click();
@@ -855,7 +856,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(500);
     await p.evaluate(() => window.__emitDictation?.("buy oat milk"));
@@ -899,7 +900,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-composer-mic").click(); // tap = hands-free converse
@@ -928,7 +929,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
     const mic = p.getByTestId("chat-composer-mic");
@@ -962,7 +963,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
     const mic = p.getByTestId("chat-composer-mic");
@@ -995,7 +996,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-mic"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-composer-mic").click(); // hands-free on
@@ -1021,7 +1022,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?empty`);
+    await gotoFixture(p, `${url}?empty`);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(500);
     assert(
@@ -1036,7 +1037,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(500);
     const ta = p.getByTestId("chat-composer-textarea");
@@ -1056,7 +1057,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-composer-textarea"]');
     await p.waitForTimeout(500);
     const focused = () =>
@@ -1116,7 +1117,7 @@ try {
         fake.dispatchEvent(new Event("resize"));
       };
     });
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
 
@@ -1201,7 +1202,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?failure=no_provider`);
+    await gotoFixture(p, `${url}?failure=no_provider`);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();
@@ -1229,7 +1230,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     assert((await detent(p)) === "collapsed", "PILL: starts at input (collapsed)");
@@ -1239,7 +1240,7 @@ try {
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: slow drag-down collapses the input → pill");
     // Reset to the input peek and verify a quick FLICK down pills it too.
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
@@ -1282,7 +1283,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
     await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
@@ -1312,7 +1313,7 @@ try {
     const p = await ctrl();
     attachConsole(p, sink);
     await p.emulateMedia({ reducedMotion: "reduce" });
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 120, { pointer: "mouse", slow: true });
@@ -1328,7 +1329,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
@@ -1355,7 +1356,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
@@ -1395,7 +1396,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
@@ -1431,7 +1432,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     // Simulate the Android insets, then fire a resize so the overlay samples its
@@ -1479,7 +1480,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     const vh = await viewportH(p);
@@ -1553,7 +1554,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     const vh = await viewportH(p);
@@ -1611,7 +1612,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
@@ -1680,7 +1681,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(600);
     assert(
@@ -1724,7 +1725,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
@@ -1783,7 +1784,7 @@ try {
     // releasing. The resize must force-settle: pill fully back, grabber gone.
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
     await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
@@ -1827,7 +1828,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(url);
+    await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
     const vh = await viewportH(p);
@@ -1881,7 +1882,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?streaming`);
+    await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
     // Open the thread so the in-flight assistant bubble is on screen.
@@ -1907,7 +1908,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?streaming`);
+    await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(400);
     // No draft while responding → STOP, and the mic is gated (not rendered).
@@ -1953,7 +1954,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await p.goto(`${url}?firstrun`);
+    await gotoFixture(p, `${url}?firstrun`);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(700);
     const vh = await viewportH(p);

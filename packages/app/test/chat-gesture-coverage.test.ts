@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -113,7 +113,8 @@ const S = (p: string) => `packages/ui/src/${p}`;
 const OVERLAY = S("components/shell/ContinuousChatOverlay.tsx");
 const CHAT_SHEET_RUNNER = S("components/shell/__e2e__/run-chat-sheet-e2e.mjs");
 const GESTURE_MATRIX_SPEC = "packages/app/test/ui-smoke/gesture-matrix.spec.ts";
-const ANDROID_TOUCH_SPEC = "packages/app/test/android/touch-gesture.android.spec.ts";
+const ANDROID_TOUCH_SPEC =
+  "packages/app/test/android/touch-gesture.android.spec.ts";
 
 /**
  * The checked-in chat/touch/gesture coverage matrix. Human-readable table +
@@ -228,7 +229,8 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 12,
-    interaction: "Attachments: add/paste/remove outbound; open/lightbox inbound",
+    interaction:
+      "Attachments: add/paste/remove outbound; open/lightbox inbound",
     sites: [],
     tests: [S("components/chat/MessageAttachments.test.tsx")],
   },
@@ -271,7 +273,8 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 18,
-    interaction: "Pinch/dblclick on chat surface (should NOT zoom/break layout)",
+    interaction:
+      "Pinch/dblclick on chat surface (should NOT zoom/break layout)",
     sites: [OVERLAY],
     tests: [],
   },
