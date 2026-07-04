@@ -315,6 +315,78 @@ describe("coding-account-bridge", () => {
       ),
     ).toBe(true);
   });
+
+  // Follow-up pinning: session affinity alone expires after 3 selects, after
+  // which least-used actively prefers the SIBLING (the affine account carries
+  // the freshest selection stamp). The first test documents that real-pool
+  // failure mode; the pin tests prove `accountIds` is what keeps a continuing
+  // session's token resolves on its spawn-time account.
+  it("drifts to the sibling once session affinity expires when NOT pinned", async () => {
+    writeAccount("anthropic-subscription", "pin-a", "sk-ant-oat-PIN-A");
+    writeAccount("anthropic-subscription", "pin-b", "sk-ant-oat-PIN-B");
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    const sessionKey = "sess-drift";
+    const spawn = await bridge?.select("claude", { sessionKey });
+    const spawnId = spawn?.accountId;
+    expect(spawnId).toBeTruthy();
+    // Affinity holds the next two selects (attempts 2 and 3 of 3)…
+    const followUps: Array<string | undefined> = [];
+    for (let i = 0; i < 3; i += 1) {
+      followUps.push(
+        (await bridge?.select("claude", { sessionKey }))?.accountId,
+      );
+    }
+    expect(followUps[0]).toBe(spawnId);
+    expect(followUps[1]).toBe(spawnId);
+    // …then the strategy re-pick prefers the sibling: the drift.
+    expect(followUps[2]).not.toBe(spawnId);
+  });
+
+  it("accountIds pins every follow-up resolve to the spawn-time account", async () => {
+    writeAccount("anthropic-subscription", "pin-a", "sk-ant-oat-PIN-A");
+    writeAccount("anthropic-subscription", "pin-b", "sk-ant-oat-PIN-B");
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    const sessionKey = "sess-pin";
+    const spawn = await bridge?.select("claude", { sessionKey });
+    const spawnId = spawn?.accountId;
+    expect(spawnId).toBeTruthy();
+    const spawnToken = spawn?.envPatch.CLAUDE_CODE_OAUTH_TOKEN;
+    // Well past affinity expiry — the pin must hold on every resolve.
+    for (let i = 0; i < 5; i += 1) {
+      const again = await bridge?.select("claude", {
+        sessionKey,
+        accountIds: [spawnId as string],
+      });
+      expect(again?.accountId).toBe(spawnId);
+      expect(again?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe(spawnToken);
+    }
+  });
+
+  it("returns null for a pinned account that is rate-limited, and exclude finds the sibling", async () => {
+    writeAccount("anthropic-subscription", "pin-a", "sk-ant-oat-PIN-A");
+    writeAccount("anthropic-subscription", "pin-b", "sk-ant-oat-PIN-B");
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    await bridge?.markRateLimited(
+      "anthropic-subscription",
+      "pin-a",
+      Date.now() + 60_000,
+    );
+    // The pin fails closed (null → the orchestrator's deliberate failover)…
+    const pinned = await bridge?.select("claude", {
+      sessionKey: "sess-limited",
+      accountIds: ["pin-a"],
+    });
+    expect(pinned).toBeNull();
+    // …and the failover pick (exclude the dud) lands on the sibling.
+    const failover = await bridge?.select("claude", {
+      sessionKey: "sess-limited",
+      exclude: ["pin-a"],
+    });
+    expect(failover?.accountId).toBe("pin-b");
+  });
 });
 
 describe("isAuthFailure (token-resolve triage)", () => {

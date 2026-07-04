@@ -2510,8 +2510,20 @@ export class AcpService extends Service {
   /**
    * Re-resolve the credential env for a session's previously selected account.
    * Used by the cli transport (which spawns a fresh subprocess per prompt);
-   * session affinity keeps the same account, and the token is refreshed on each
-   * resolve. Returns undefined when the session has no linked account.
+   * the native transport keeps the spawn-time client so it never re-resolves.
+   *
+   * The re-resolve is PINNED to the account stamped on the session at spawn.
+   * Pool session-affinity alone is not enough: it expires after a few selects,
+   * after which the default least-used strategy actively prefers the sibling
+   * (the affine account holds the freshest selection stamp) — the subprocess
+   * would silently auth as account B while recordUsage and health marks stay
+   * keyed to account A (wrong-account billing, wrong-account cool-offs). Only
+   * when the pinned account is no longer selectable (rate-limited /
+   * needs-reauth / disabled / token resolve failed) does this deliberately
+   * fail over to a fresh pick — and then re-stamps the session so every
+   * account-keyed consumer follows the credential actually injected. Returns
+   * undefined when the session has no linked account and no account is
+   * available.
    */
   private async accountCredentialsForSession(
     session: SessionInfo,
@@ -2520,18 +2532,60 @@ export class AcpService extends Service {
       session.metadata,
     );
     if (!meta) return undefined;
-    const resolved = await selectCodingAccount(session.agentType, {
+    const pinned = await selectCodingAccount(session.agentType, {
       sessionKey: session.id,
+      accountIds: [meta.accountId],
     });
-    if (!resolved) return undefined;
-    if (resolved.meta.accountId !== meta.accountId) {
-      this.log("warn", "coding account drifted on follow-up prompt", {
+    if (pinned) return pinned.selection.envPatch;
+    // Exclude the dud explicitly: it may still be pool-selectable (only its
+    // token resolve failed), and re-picking it here would just re-fail.
+    const failover = await selectCodingAccount(session.agentType, {
+      sessionKey: session.id,
+      exclude: [meta.accountId],
+    });
+    if (!failover) return undefined;
+    this.log("warn", "coding account failed over on follow-up prompt", {
+      sessionId: session.id,
+      previous: meta.accountId,
+      now: failover.meta.accountId,
+      providerId: failover.meta.providerId,
+    });
+    await this.restampSessionAccount(session, failover.meta);
+    return failover.selection.envPatch;
+  }
+
+  /**
+   * Re-key a session's account descriptor after a follow-up failover so usage
+   * and health attribution follow the credential actually injected: the
+   * SessionInfo metadata (which the next prompt's pin reads) and — via the
+   * `account_switched` session event — the orchestrator task store record
+   * whose accountProviderId/accountId feed recordUsage and the
+   * rate-limit/reauth marks.
+   */
+  private async restampSessionAccount(
+    session: SessionInfo,
+    meta: CodingAccountMeta,
+  ): Promise<void> {
+    const metadata = { ...(session.metadata ?? {}), account: meta };
+    session.metadata = metadata;
+    try {
+      await this.store.update(session.id, { metadata });
+    } catch (err) {
+      // error-policy:J7 the failover credential is already resolved and must
+      // reach the subprocess; a failed durable re-stamp only degrades the NEXT
+      // prompt's pin back to the stale account, so warn instead of failing the
+      // prompt.
+      this.log("warn", "failed to persist failover account on session", {
         sessionId: session.id,
-        previous: meta.accountId,
-        now: resolved.meta.accountId,
+        accountId: meta.accountId,
+        error: errorMessage(err),
       });
     }
-    return resolved.selection.envPatch;
+    this.emitSessionEvent(session.id, "account_switched", {
+      providerId: meta.providerId,
+      accountId: meta.accountId,
+      label: meta.label,
+    });
   }
 
   private buildEnv(
