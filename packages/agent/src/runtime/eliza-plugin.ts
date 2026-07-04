@@ -80,6 +80,7 @@ import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 
 import { setCustomActionsRuntime } from "./custom-actions.ts";
+import { registerErrorEscalation } from "./error-escalation.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -163,6 +164,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           "Workbench schedule-tag migration failed",
         );
       });
+      registerErrorEscalation(runtime);
       setCustomActionsRuntime(runtime);
       // Media store: persist inline data: URLs out of context/history, and
       // sweep orphaned files daily. The serving route is declared below.

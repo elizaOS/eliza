@@ -74,6 +74,12 @@ export enum EventType {
 	EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
 	EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
 
+	// Error reporting (#12263) — the general-purpose failure event emitted by
+	// `runtime.reportError` for failures outside the action path (providers,
+	// services, background jobs, event handlers). Surfaced to the agent via the
+	// RECENT_ERRORS provider and used to drive the owner-escalation threshold.
+	ERROR_REPORTED = "ERROR_REPORTED",
+
 	// Control events
 	CONTROL_MESSAGE = "CONTROL_MESSAGE",
 
@@ -277,6 +283,22 @@ export interface EmbeddingGenerationPayload extends EventPayload {
  */
 export interface ControlMessagePayload extends EventPayload {
 	message: ControlMessage;
+}
+
+/**
+ * Payload for {@link EventType.ERROR_REPORTED} — a structured failure surfaced
+ * by `runtime.reportError`. `scope` is the reporting subsystem (used as the
+ * `[scope]` log prefix), `code` is the machine-classifiable key (from
+ * `ElizaError.code` when available, else a normalized fallback like
+ * `UNCLASSIFIED`), and `context` carries serializable diagnostic detail.
+ */
+export interface ErrorReportedPayload extends EventPayload {
+	scope: string;
+	code: string;
+	message: string;
+	context?: Record<string, unknown>;
+	runId?: UUID;
+	roomId?: UUID;
 }
 
 /**
@@ -585,6 +607,7 @@ export interface EventPayloadMap {
 	[EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
 	[EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
+	[EventType.ERROR_REPORTED]: ErrorReportedPayload;
 	[EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 	[EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload;
 	[EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload;

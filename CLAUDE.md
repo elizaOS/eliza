@@ -133,6 +133,85 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
+## Error-Handling Simplification
+
+Binding policy for all error handling (parent #12182, foundation #12263). The
+codebase is full of defensive sludge — empty catches, log-and-continue that
+fabricates a result, `return <default>` from catch, `.catch(() => {})` on writes
+that matter, `?? <literal>` standing in for failed/missing data — that
+**swallows failures and makes broken pipelines look healthy**. Remove it.
+
+**Doctrine — fail fast inside, handle at the boundary.** Inner code throws typed
+errors; it does not catch-and-continue. Only designated boundaries translate
+those errors into a structured failure, a user-facing error state, or an
+escalation. This is crash-only design (Candea & Fox, "Crash-Only Software",
+HotOS IX 2003): transparent recovery at a designed boundary beats ad-hoc
+continue-on-error in every function. A failure must surface **observably** —
+either the **agent** sees it (and can retry / reconfigure / disable the failing
+feature) or it is **raised to the owner/developers** when systemic.
+
+**"Not loaded" must never read as "zero"/"empty".** A `?? 0`, `?? []`, `?? ""`,
+or `return 0`/`return []` from a catch that substitutes for failed or missing
+data conflates a broken pipeline with a legitimately empty result. Banned. DTO
+fields are required by default; fix the pipeline, don't paper over it.
+
+**Fast-fail on data paths; throw, never fabricate.** Precedent: issue #9324
+(closed) removed fabricated zero/marker embedding vectors in favor of throwing;
+`plugins/plugin-embeddings/AGENTS.md:32` codifies "THROW, never fabricate".
+
+**UI three-state rule.** `loading` / designed-`empty` / `error` are three
+distinguishable renders — never render healthy-empty from a catch. A
+404-from-unloaded-plugin may degrade to a designed "unavailable" state (J4);
+5xx/transport/parse failures set an error state. Canonical pattern:
+`packages/ui/src/components/pages/StreamView.tsx:55-63`; repaired load shape:
+`packages/ui/src/state/usePluginsSkillsState.ts:195-220`. See the view audit
+`scripts/view-audit/output/MASTER-REPORT.md` §6.A/§6.D.
+
+**Use the foundation.** New/rewritten throw sites use `ElizaError`
+(`packages/core/src/errors.ts`, `{ code, context, cause, severity }`).
+Diagnostic call sites outside the action path (providers, services, background
+jobs, event handlers) call `runtime.reportError(scope, error, context?)` — it
+logs, emits `EventType.ERROR_REPORTED`, surfaces the failure to the agent via
+the `RECENT_ERRORS` provider, and drives owner escalation on repeated systemic
+failure. Action/tool failures already reach the model via the planner loop —
+keep that.
+
+### Justified categories (J1–J7) — keep, annotated `// error-policy:J<N> <reason>`
+
+Every kept handler carries a grep-able `// error-policy:J<N> <reason>` comment
+so "remaining handlers each have a documented justification" is mechanically
+checkable. A justified handler still may not fabricate a success value: J1
+returns a *failure*, J3 returns an explicit *invalid* signal, J4 renders an
+*error/unavailable* state.
+
+- **J1 boundary translation** — one outermost handler per process/transport
+  boundary producing a structured failure.
+- **J2 context-adding rethrow** — must use `cause`.
+- **J3 untrusted-input sanitizing** — parse failures produce an explicit typed
+  "invalid" result, never a fake-valid default.
+- **J4 explicit user-facing degrade** — designed, visually-distinguishable
+  unavailable/error states; only expected error shapes degrade.
+- **J5 unhandled-rejection suppression** — with a comment naming where the
+  rejection IS observed.
+- **J6 best-effort teardown** — debug/warn, teardown paths only.
+- **J7 diagnostics-must-not-kill-the-loop** — trajectory/telemetry writes may
+  catch but must warn + `runtime.reportError`.
+
+Everything else is slop — including every empty catch, log-and-continue that
+fabricates the function's result, `return <default>` from catch,
+`.catch(() => {})` on writes that matter, `?? <literal>` substituting for
+failed/missing data, optional-chaining-as-guard on required collaborators, and
+fallback code paths whose only purpose is masking a primary failure. Every catch
+without an annotation must be either newly-obvious slop or a J1 route boundary in
+a directory documented as such in the batch PR.
+
+**Regression guard (non-blocking ratchet).** `bun run audit:error-policy-ratchet`
+baselines the current count of empty catches (repo-wide) and server-side
+`console.*` calls and fails only when a count **increases** — new slop is
+blocked while existing violations stay green. Sweep batches shrink the baseline
+as they delete slop (`node packages/scripts/error-policy-ratchet.mjs
+--update-baseline`). Logger only, never `console`, in server code.
+
 ## Slop and Comment Cleanup
 
 Every file is legible on its own: a purpose-explaining prose header at the top,

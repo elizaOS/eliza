@@ -113,6 +113,7 @@ export {
 export * from "./providers/index.ts";
 
 import { describeImageCached } from "../../media/index.ts";
+import { recentErrorsProvider } from "../../providers/recent-errors.ts";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
 // Import advanced capabilities
 import {
@@ -1350,6 +1351,7 @@ export const basicProviders = [
 	platformChatContextProvider,
 	platformUserContextProvider,
 	providersProvider,
+	recentErrorsProvider,
 	recentMessagesProvider,
 	runtimeModelContextProvider,
 	uiContextProvider,

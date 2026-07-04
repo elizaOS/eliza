@@ -1,3 +1,4 @@
+import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
@@ -956,6 +957,30 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		params: EventPayloadMap[T],
 	): Promise<void>;
 	emitEvent(event: string | string[], params: EventPayload): Promise<void>;
+
+	/**
+	 * Report a runtime failure that occurred outside the action path (a
+	 * provider, service, background job, or event handler) so it becomes
+	 * observable: logs via the structured logger with a `[scope]` prefix, emits
+	 * {@link EventType.ERROR_REPORTED}, forwards into the AgentEventService
+	 * `"error"` stream when registered, and records it in the in-memory ring the
+	 * RECENT_ERRORS provider and the owner-escalation threshold read.
+	 *
+	 * This is the diagnostic boundary (#12263): it never throws. Its own
+	 * failures — and failures inside `ERROR_REPORTED` handlers — are warn-only
+	 * and never re-enter `reportError`.
+	 */
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
+
+	/**
+	 * Snapshot of recently reported errors (newest last), read by the
+	 * RECENT_ERRORS provider. Returns a copy; callers must not mutate the ring.
+	 */
+	getRecentReportedErrors(): ReportedError[];
 
 	// In-memory task definition methods
 	registerTaskWorker(taskHandler: TaskWorker): void;

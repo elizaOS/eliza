@@ -37,6 +37,7 @@ export * from "./entities";
 // and exported from both barrels. @elizaos/shared re-exports it from the core
 // barrel so browser consumers resolve the same canonical truthy set.
 export * from "./env-utils";
+export * from "./errors";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export {

@@ -68,6 +68,7 @@ export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./env-utils";
+export * from "./errors";
 export {
 	roleAction,
 	updateRoleAction,
@@ -168,6 +169,8 @@ export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";
+// Export recent-errors provider (#12263)
+export * from "./providers/recent-errors";
 // Export setup providers
 export * from "./providers/setup-progress";
 // Export skill eligibility provider

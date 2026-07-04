@@ -8,6 +8,7 @@ import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { type ReportedError, toElizaError } from "./errors";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
@@ -849,6 +850,16 @@ export class AgentRuntime implements IAgentRuntime {
 	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
+
+	/**
+	 * Bounded ring of failures surfaced via {@link reportError} (#12263). Read
+	 * by the RECENT_ERRORS provider and the owner-escalation threshold. Oldest
+	 * entries drop once the cap is exceeded.
+	 */
+	private reportedErrors: ReportedError[] = [];
+	private static readonly REPORTED_ERROR_RING_CAP = 200;
+	/** Re-entrancy latch so a failure inside reportError stays warn-only (J7). */
+	private inReportError = false;
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
 	/**
@@ -8222,6 +8233,152 @@ ${section_end}`;
 				eventHandlers.map((handler) =>
 					handler(paramsWithRuntime as EventPayloadMap[keyof EventPayloadMap]),
 				),
+			);
+		}
+	}
+
+	/**
+	 * Diagnostic boundary for failures outside the action path (#12263). Logs
+	 * with a `[scope]` prefix, records the failure in the bounded ring, emits
+	 * {@link EventType.ERROR_REPORTED}, and forwards it into the
+	 * AgentEventService `"error"` stream when that service is registered.
+	 *
+	 * Self-safe: never throws. A failure inside this method (or inside an
+	 * `ERROR_REPORTED` handler it triggers) is caught and logged as a warning
+	 * without re-entering `reportError`, guarded by {@link inReportError}.
+	 */
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void {
+		if (this.inReportError) {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — a failure while
+			// reporting must not recurse; warn-only and return.
+			this.logger.warn(
+				{ src: "agent", scope },
+				`[${scope}] reportError re-entered while already reporting; dropping nested error`,
+			);
+			return;
+		}
+		this.inReportError = true;
+		try {
+			const normalized = toElizaError(error);
+			const merged: Record<string, unknown> | undefined =
+				context || normalized.context
+					? { ...normalized.context, ...context }
+					: undefined;
+			const runId =
+				typeof merged?.runId === "string" ? (merged.runId as UUID) : undefined;
+			const roomId =
+				typeof merged?.roomId === "string"
+					? (merged.roomId as UUID)
+					: undefined;
+
+			this.logger.error(
+				{
+					src: "agent",
+					scope,
+					code: normalized.code,
+					severity: normalized.severity,
+					context: merged,
+					err: normalized,
+				},
+				`[${scope}] ${normalized.message}`,
+			);
+
+			const entry: ReportedError = {
+				scope,
+				code: normalized.code,
+				message: normalized.message,
+				context: merged,
+				at: Date.now(),
+			};
+			this.reportedErrors.push(entry);
+			if (this.reportedErrors.length > AgentRuntime.REPORTED_ERROR_RING_CAP) {
+				this.reportedErrors.splice(
+					0,
+					this.reportedErrors.length - AgentRuntime.REPORTED_ERROR_RING_CAP,
+				);
+			}
+
+			this.forwardToAgentEventStream(entry, runId);
+
+			// Fire-and-forget: emitEvent is async but reportError is a sync
+			// diagnostic one-liner. A rejected emit (bad handler) is swallowed to
+			// the logger here — it must not surface as an unhandled rejection and
+			// must not re-enter reportError.
+			void this.emitEvent(EventType.ERROR_REPORTED, {
+				runtime: this,
+				source: scope,
+				scope,
+				code: normalized.code,
+				message: normalized.message,
+				context: merged,
+				runId,
+				roomId,
+			}).catch((emitErr) => {
+				// error-policy:J7 diagnostics-must-not-kill-the-loop — a broken
+				// ERROR_REPORTED handler is logged, never re-reported.
+				this.logger.warn(
+					{ src: "agent", scope, err: emitErr },
+					`[${scope}] ERROR_REPORTED emit failed`,
+				);
+			});
+		} catch (reportErr) {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — reportError is
+			// the diagnostic boundary; its own failure may only warn.
+			this.logger.warn(
+				{ src: "agent", scope, err: reportErr },
+				`[${scope}] reportError itself failed`,
+			);
+		} finally {
+			this.inReportError = false;
+		}
+	}
+
+	/** Snapshot copy of the reported-error ring (newest last). */
+	getRecentReportedErrors(): ReportedError[] {
+		return this.reportedErrors.map((entry) => ({ ...entry }));
+	}
+
+	/**
+	 * Forward a reported error into the AgentEventService `"error"` stream when
+	 * that service is registered. Duck-typed via ServiceType.AGENT_EVENT so core
+	 * keeps no import edge to the service class. Best-effort: a missing or
+	 * throwing service is warn-only (still inside the reportError latch).
+	 */
+	private forwardToAgentEventStream(
+		entry: ReportedError,
+		runId: UUID | undefined,
+	): void {
+		const service = this.getService(ServiceType.AGENT_EVENT) as {
+			emit?: (event: {
+				runId: string;
+				stream: string;
+				data: Record<string, unknown>;
+			}) => void;
+		} | null;
+		if (!service || typeof service.emit !== "function") return;
+		try {
+			service.emit({
+				runId: runId ?? "runtime",
+				stream: "error",
+				data: {
+					type: "error",
+					scope: entry.scope,
+					code: entry.code,
+					message: entry.message,
+					context: entry.context,
+					recoverable: true,
+				},
+			});
+		} catch (streamErr) {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — the event
+			// stream is a diagnostic sink; a failure here may only warn.
+			this.logger.warn(
+				{ src: "agent", scope: entry.scope, err: streamErr },
+				`[${entry.scope}] agent-event error stream forward failed`,
 			);
 		}
 	}

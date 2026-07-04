@@ -37,6 +37,7 @@ export {
 export * from "./database";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
+export * from "./errors";
 export * from "./features/basic-capabilities/index";
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
@@ -46,6 +47,7 @@ export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./plugin";
 export * from "./prompts";
+export * from "./providers/recent-errors";
 export * from "./providers/setup-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
