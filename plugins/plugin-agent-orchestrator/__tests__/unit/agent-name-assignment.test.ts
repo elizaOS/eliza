@@ -1,15 +1,15 @@
-import { describe, expect, it } from "vitest";
-import {
-  assignAgentName,
-  pickSubAgentName,
-} from "../../src/services/agent-name-assignment.js";
-
 /**
  * Sub-agent naming guarantees an operator can tell workers apart: an explicit
  * label is always kept, and an auto-assigned name never collides with a live
  * sibling or with the parent agent. These invariants hold for every RNG
  * outcome, so iterating many times can't flake.
  */
+
+import { describe, expect, it } from "vitest";
+import {
+  assignAgentName,
+  pickSubAgentName,
+} from "../../src/services/agent-name-assignment.js";
 
 const RUNS = 100;
 

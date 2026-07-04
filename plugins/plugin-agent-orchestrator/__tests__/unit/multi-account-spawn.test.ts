@@ -1,9 +1,10 @@
-import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Keystone test: the coding-account selector bridge is consulted on spawn and
  * its env patch is injected into the sub-agent subprocess (per agent type),
  * with single-account fallback when the bridge is absent.
  */
+
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AcpJsonRpcMessage,

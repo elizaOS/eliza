@@ -1,3 +1,10 @@
+/**
+ * resolveAllowedWorkdir is a sandbox boundary: an auto-spawned coding agent may
+ * only run inside `~/.eliza/workspaces` or the process cwd. A caller-supplied
+ * workdir pointing anywhere else (or one that doesn't exist) must be rejected,
+ * so a task can't escape the workspace sandbox.
+ */
+
 import { mkdir, rm } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,13 +13,6 @@ import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "../../src/services/workdir-validation.js";
-
-/**
- * resolveAllowedWorkdir is a sandbox boundary: an auto-spawned coding agent may
- * only run inside `~/.eliza/workspaces` or the process cwd. A caller-supplied
- * workdir pointing anywhere else (or one that doesn't exist) must be rejected,
- * so a task can't escape the workspace sandbox.
- */
 
 const created: string[] = [];
 afterAll(async () => {

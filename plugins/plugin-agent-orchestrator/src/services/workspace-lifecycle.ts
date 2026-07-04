@@ -1,3 +1,9 @@
+/**
+ * Scratch workspace lifecycle helpers remove temporary coding-agent directories
+ * only after path resolution proves they sit under the configured workspace
+ * base or an explicitly allowed root.
+ */
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

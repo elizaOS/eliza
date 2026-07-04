@@ -1,3 +1,11 @@
+/**
+ * The verifier GET-probes URLs extracted from untrusted sub-agent narration, so
+ * the guard is a security boundary: loopback is the one allowed non-public
+ * range; every other off-public address (private, link-local incl. the
+ * 169.254.169.254 cloud-metadata IP, CGNAT, ULA, multicast) must be blocked,
+ * and neither DNS rebinding nor a redirect may slip past it.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertHostAllowed,
@@ -8,14 +16,6 @@ import {
   setHostResolver,
   setPinnedTransport,
 } from "../../src/services/ssrf-guard.js";
-
-/**
- * The verifier GET-probes URLs extracted from untrusted sub-agent narration, so
- * the guard is a security boundary: loopback is the one allowed non-public
- * range; every other off-public address (private, link-local incl. the
- * 169.254.169.254 cloud-metadata IP, CGNAT, ULA, multicast) must be blocked,
- * and neither DNS rebinding nor a redirect may slip past it.
- */
 
 afterEach(() => {
   setHostResolver(); // reset to system resolver

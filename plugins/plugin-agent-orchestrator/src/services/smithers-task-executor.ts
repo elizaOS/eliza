@@ -1,3 +1,10 @@
+/**
+ * Smithers task executor adapts the orchestrator ACP service to the structured
+ * provision, turn, approval, and submit steps expected by the durable task
+ * runner. The interface stays narrow so tests can substitute an AcpLike without
+ * coupling the runner to AcpService internals.
+ */
+
 import type {
   TaskApprovalResult,
   TaskProvisionResult,

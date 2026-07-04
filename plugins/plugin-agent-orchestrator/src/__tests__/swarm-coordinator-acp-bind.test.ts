@@ -1,8 +1,3 @@
-import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AcpService } from "../services/acp-service.js";
-import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.js";
-
 /**
  * Regression coverage for the coordinator "silent bind give-up" bug.
  *
@@ -19,6 +14,11 @@ import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.j
  *   - ACP load-promise rejection marks the coordinator UNBOUND loudly.
  *   - never-registers keeps retrying (unbounded) instead of going silent.
  */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../services/acp-service.js";
+import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.js";
 
 /** Minimal fake ACP service exposing just the `onSessionEvent` surface. */
 function makeFakeAcp(): {

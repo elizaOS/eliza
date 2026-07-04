@@ -1,9 +1,3 @@
-import {
-  classifyTerminalSupport,
-  type OrchestratorTerminalSupport,
-  type TerminalSupportEnv,
-} from "./terminal-capabilities.js";
-
 /**
  * Static device × backend × auth-mode support matrix for multi-subscription
  * coding-agent orchestration. Single checked-in source of truth that mirrors
@@ -20,6 +14,12 @@ import {
  * selector over a globalThis bridge). When a device supports coding agents,
  * every backend below is reachable on it; when unsupported, none are.
  */
+
+import {
+  classifyTerminalSupport,
+  type OrchestratorTerminalSupport,
+  type TerminalSupportEnv,
+} from "./terminal-capabilities.js";
 
 /** Coding backends with a first-party spawnable CLI (post #9167 cleanup). */
 export const ORCHESTRATOR_BACKENDS = [

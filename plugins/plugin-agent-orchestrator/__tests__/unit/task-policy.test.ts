@@ -1,13 +1,14 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { requireTaskAgentAccess } from "../../src/services/task-policy.js";
-
 /**
  * A partial TASK_AGENT_ROLE_POLICY override (e.g. only tightening slack) must
  * MERGE over the built-in defaults, not replace them — otherwise the built-in
  * Discord ADMIN gate is silently dropped and Discord falls through to the GUEST
  * default, opening task-agent create/interact to anyone.
  */
+
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { requireTaskAgentAccess } from "../../src/services/task-policy.js";
+
 function runtimeWith(policy: unknown): IAgentRuntime {
   return {
     agentId: "00000000-0000-4000-8000-00000000pol1",

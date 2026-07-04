@@ -1,21 +1,9 @@
-// Unit tests for waitForSpawnSlot (src/actions/common.ts).
-//
-// Gap (L): waitForSpawnSlot — the concurrency gate that serialises sub-agent
-// spawns past a small ceiling so concurrent coding agents don't stampede the
-// model provider — had no unit coverage. This file pins its four load-bearing
-// behaviors deterministically (vitest fake timers, no real sleeping, mocked
-// service):
-//
-//   1. DISABLED when the limit is <= 0 (or non-finite): returns immediately
-//      and never reads session state.
-//   2. BLOCKS then PROCEEDS as active sessions terminate: it polls real
-//      session state and only returns once the active count drops below the
-//      ceiling.
-//   3. GIVES UP after maxWaitMs with a warn-and-proceed (never deadlocks).
-//   4. Counts ONLY non-terminal sessions toward the cap (completed / stopped /
-//      errored / cancelled don't occupy a slot; anything else — including
-//      transient statuses — does).
-//
+/**
+ * waitForSpawnSlot unit tests pin the concurrency gate that serializes coding
+ * sub-agent spawns past a configurable ceiling. Vitest fake timers and a mocked
+ * ACP service cover disabled limits, polling until capacity returns, warn-and-
+ * proceed timeout behavior, and terminal-status filtering without real sleeps.
+ */
 // Determinism: every wait is driven by vi.advanceTimersByTimeAsync; the
 // service's session list is a mutable array we flip between polls, so the gate
 // observes real state changes without any wall-clock sleeping or network.

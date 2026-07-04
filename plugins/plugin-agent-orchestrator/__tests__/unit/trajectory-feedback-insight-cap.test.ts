@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { queryPastExperience } from "../../src/services/trajectory-feedback";
-
 /**
  * Per-trajectory insight budget regression (audit-2 #7).
  *
@@ -11,6 +8,9 @@ import { queryPastExperience } from "../../src/services/trajectory-feedback";
  * intermediate `experiences` array before the final dedup + `maxEntries` cap.
  * These tests pin BOTH paths to the same 50/trajectory budget.
  */
+
+import { describe, expect, it } from "vitest";
+import { queryPastExperience } from "../../src/services/trajectory-feedback";
 
 const MAX = 50;
 

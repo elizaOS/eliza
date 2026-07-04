@@ -1,9 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  runGrillingEvidenceBundleCheck,
-  runGrillingHappyPathCheck,
-} from "../../test/scenarios/_helpers/grilling-scenario.ts";
-
 /**
  * LIVE end-to-end validation of the orchestrator grilling/verification loop
  * against a REAL model (Cerebras `gemma-4-31b`). Unlike the deterministic twin
@@ -15,6 +9,13 @@ import {
  *
  * Run: CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
  */
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  runGrillingEvidenceBundleCheck,
+  runGrillingHappyPathCheck,
+} from "../../test/scenarios/_helpers/grilling-scenario.ts";
+
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY?.trim() ?? "";
 const MODEL = process.env.GEMMA_MODEL?.trim() || "gemma-4-31b";
 const BASE_URL =

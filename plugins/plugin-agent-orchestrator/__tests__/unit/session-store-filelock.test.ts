@@ -1,21 +1,9 @@
-// Gap (L): no cross-instance file-lock contention test for FileSessionStore.
-//
-// FileSessionStore persists its full in-memory session map to a single JSON
-// file under an OS-level advisory lock (`<file>.lock`, created with open(...,"wx")).
-// session-store.test.ts only exercises a SINGLE instance: concurrent writes
-// through one store's WriteQueue, plus stale-lock recovery for one store. It
-// never proves the lock actually arbitrates between TWO independent
-// FileSessionStore instances pointed at the SAME file.
-//
-// This file closes that gap. It spins up two real FileSessionStore instances
-// on the same temp file (os.tmpdir + mkdtemp, real fs) and asserts the
-// load-bearing cross-instance guarantees:
-//   1. No torn / corrupt writes: while both instances race concurrent
-//      create/update calls, the on-disk file is ALWAYS valid, fully-parseable
-//      JSON (never a half-written blob), and after settle a freshly-loaded
-//      third instance reads back a complete, internally-consistent record set.
-//   2. Each instance's own writes are never lost from its own view (the lock
-//      serializes writers; it does not silently drop an acquired write).
+/**
+ * Cross-instance FileSessionStore contention tests run two real store instances
+ * against the same temporary JSON file and OS-level advisory lock. They assert
+ * that concurrent writes never leave torn JSON on disk and that a fresh store
+ * can read a complete, internally consistent record set after the race settles.
+ */
 //   3. Correct stale-lock takeover: a fresh instance acquires the lock when a
 //      pre-existing lock file is older than the staleness threshold, and a
 //      NON-stale lock held by "another process" blocks the writer until it is

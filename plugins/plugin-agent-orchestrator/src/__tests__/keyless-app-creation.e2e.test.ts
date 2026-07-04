@@ -1,12 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AcpService } from "../services/acp-service.js";
-
 /**
  * KEYLESS end-to-end of app-creation-through-orchestration — NO LLM.
  *
@@ -19,6 +10,16 @@ import { AcpService } from "../services/acp-service.js";
  * spawn → prompt → tool → file-write → task_complete pipeline deterministically,
  * so app-creation orchestration is CI-testable without a live model.
  */
+
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { IAgentRuntime } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AcpService } from "../services/acp-service.js";
+
 const FAKE_AGENT = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",

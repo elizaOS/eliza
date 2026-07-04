@@ -1,3 +1,10 @@
+/**
+ * Provider context for active coding sub-agents, their readiness, and cap
+ * pressure. The planner consumes this structural snapshot to decide whether a
+ * turn should start a new session, reuse an idle worker, or wait for a stalled,
+ * spend-capped, or round-trip-capped session to resolve.
+ */
+
 import type {
   IAgentRuntime,
   Memory,

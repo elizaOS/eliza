@@ -1,3 +1,11 @@
+/**
+ * Verifies the assertion LOGIC behind the three orchestrator scenarios in
+ * `test/scenarios/` (#8932) using deterministic models, so the grilling +
+ * multi-task loops have runnable, keyless coverage independent of the scenario
+ * CLI (which the live lane drives against a real model + ACP sub-agents). The
+ * scenario files import the exact same helpers.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildDeviceSupportScenarioEvidence } from "../../test/scenarios/_helpers/device-modality-scenario.ts";
 import {
@@ -11,13 +19,6 @@ import {
 } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
 import { runMultiTaskSupervisorCheck } from "../../test/scenarios/_helpers/supervisor-scenario.ts";
 
-/**
- * Verifies the assertion LOGIC behind the three orchestrator scenarios in
- * `test/scenarios/` (#8932) using deterministic models, so the grilling +
- * multi-task loops have runnable, keyless coverage independent of the scenario
- * CLI (which the live lane drives against a real model + ACP sub-agents). The
- * scenario files import the exact same helpers.
- */
 function makeBaseRuntime() {
   return {
     agentId: "00000000-0000-4000-8000-000000000001",

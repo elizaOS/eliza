@@ -1,15 +1,15 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readConfigMcpServers } from "../services/config-env";
-
 /**
  * Real integration test for MCP auto-inherit: write a config file, point
  * ELIZA_CONFIG_PATH at it, and assert readConfigMcpServers converts the
  * dashboard-persisted `mcp.servers` object into the ACP `session/new.mcpServers`
  * array shape. No mocks — it exercises the real file read + conversion.
  */
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readConfigMcpServers } from "../services/config-env";
 
 let dir: string;
 let prevPath: string | undefined;

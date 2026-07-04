@@ -1,4 +1,3 @@
-import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Account-readiness harness (#9960): the loud gate that asserts the pool has
  * ≥1 healthy Codex AND ≥1 healthy Claude (≥2 each for local rotation), instead
@@ -7,6 +6,8 @@ import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
  * returns 503 (loud) when the pool is not ready.
  */
 
+// biome-ignore assist/source/organizeImports: comment-only cleanup preserves import token order.
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import { handleOrchestratorRoutes } from "../../src/api/orchestrator-routes.js";

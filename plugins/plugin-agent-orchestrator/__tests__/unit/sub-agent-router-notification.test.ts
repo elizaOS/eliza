@@ -1,21 +1,9 @@
-// Gap (K): no test asserted that a completed coding task emits an
-// AgentNotification. SubAgentRouter.handleEvent fires a runtime notification
-// ONLY for a terminal `task_complete` event — it resolves the NOTIFICATION
-// service via getService(ServiceType.NOTIFICATION) ("notification") and calls
-// notify({ category: "agent", source: "orchestrator", deepLink: "/orchestrator",
-// groupKey: `orchestrator:${sessionId}`, ... }). The emit is fire-and-forget
-// (`void ...notify(...)`) so a regression that dropped it, mis-routed the
-// category/source/deepLink, or fired it for non-terminal events (error /
-// blocked / QUESTION_FOR_TASK_CREATOR / AGENT_COORDINATION / streaming chunks)
-// would go silently uncaught.
-//
-// This file drives real session events through the router's bound AcpService
-// event handler (the smallest seam that triggers notification) with a mocked
-// NOTIFICATION service, and asserts:
-//   - notify is called exactly once on task_complete
-//   - with category "agent", source "orchestrator", deepLink "/orchestrator"
-//   - groupKey includes the session id (`orchestrator:<sessionId>`)
-//   - data carries the session id + label + origin source
+/**
+ * SubAgentRouter notification tests drive real session events through the bound
+ * AcpService handler with a mocked notification service. They assert that a
+ * terminal task_complete event emits exactly one agent notification with the
+ * orchestrator source, deep link, session group key, and session metadata.
+ */
 //   - notify is NOT called for error / blocked / QUESTION_FOR_TASK_CREATOR /
 //     AGENT_COORDINATION / streaming (agent_message_chunk / tool_running) events
 //

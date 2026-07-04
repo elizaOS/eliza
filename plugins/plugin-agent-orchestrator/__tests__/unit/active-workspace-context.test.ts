@@ -1,7 +1,3 @@
-import type { Memory, State } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { activeWorkspaceContextProvider } from "../../src/providers/active-workspace-context.js";
-
 /**
  * The provider used to compute "reusable" sessions by comparing against an
  * always-empty task list, so it advertised EVERY session — including busy,
@@ -9,6 +5,11 @@ import { activeWorkspaceContextProvider } from "../../src/providers/active-works
  * It also reported a phantom taskCount:0 + dead task/pending blocks. These
  * assert the corrected behavior: only idle ("ready") sessions are reusable.
  */
+
+import type { Memory, State } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { activeWorkspaceContextProvider } from "../../src/providers/active-workspace-context.js";
+
 function mkSession(id: string, name: string, status: string) {
   return {
     id,

@@ -1,4 +1,3 @@
-import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 /**
  * Gap (J): sub-agent model + auth selection is dispersed across `buildEnv`
  * (private, in acp-service.ts) and `buildOpencodeAcpEnv` / `buildOpencodeSpawnConfig`
@@ -30,6 +29,7 @@ import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
  * to which model/auth a backend resolves to fails loudly.
  */
 
+import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AcpJsonRpcMessage,

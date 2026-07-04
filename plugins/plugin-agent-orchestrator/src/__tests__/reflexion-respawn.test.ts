@@ -1,3 +1,11 @@
+/**
+ * Service-level proof for #8899 AC#3 (inject prior failure into the re-spawn
+ * prompt): drive the REAL `spawnAgentForTask` read-at-spawn path
+ * (orchestrator-task-service.ts ~L2242) — not the pure render leaf — so a
+ * failed verification's reflection provably reaches the SECOND sub-agent's goal
+ * prompt, including coercion of malformed persisted entries.
+ */
+
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -14,13 +22,6 @@ import {
 } from "../../test/scenarios/_helpers/reflexion-scenario.ts";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 
-/**
- * Service-level proof for #8899 AC#3 (inject prior failure into the re-spawn
- * prompt): drive the REAL `spawnAgentForTask` read-at-spawn path
- * (orchestrator-task-service.ts ~L2242) — not the pure render leaf — so a
- * failed verification's reflection provably reaches the SECOND sub-agent's goal
- * prompt, including coercion of malformed persisted entries.
- */
 function makeBaseRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-4000-8000-000000000001",

@@ -1,9 +1,10 @@
+/** Pins the ACP-only resolution order used by TASKS after the acpx cleanup. */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { getAcpService } from "../../src/actions/common.ts";
 
-/** Pins the ACP-only resolution order used by TASKS after the acpx cleanup. */
 describe("getAcpService resolution order", () => {
   function buildRuntime(services: Record<string, unknown>): IAgentRuntime {
     return {

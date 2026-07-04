@@ -1,6 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
-import { runParentAgentBroker } from "../services/parent-agent-broker";
-
 /**
  * Real tests for sub-agent NESTING via the parent-agent broker's new
  * `spawn-sub-agent` mode: a running sub-agent spawns its own child on the same
@@ -8,6 +5,9 @@ import { runParentAgentBroker } from "../services/parent-agent-broker";
  * the required-field guards, and that a spawn error (e.g. the depth cap) is
  * surfaced back to the child as text rather than thrown.
  */
+
+import { describe, expect, it, vi } from "vitest";
+import { runParentAgentBroker } from "../services/parent-agent-broker";
 
 type SpawnFn = (
   taskId: string,

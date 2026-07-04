@@ -1,7 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { NativeAcpClient } from "../services/acp-native-transport";
-import type { ApprovalPreset } from "../services/types";
-
 /**
  * AC4 (#8898): the independent verifier's read-only-but-executable capability is
  * enforced at the native transport, not by prompt text.
@@ -15,6 +11,11 @@ import type { ApprovalPreset } from "../services/types";
  * (the verifier can run `bun test`, `git diff`, and read files) while edit/write/delete
  * are denied (any write physically throws off the same gate).
  */
+
+import { describe, expect, it } from "vitest";
+import { NativeAcpClient } from "../services/acp-native-transport";
+import type { ApprovalPreset } from "../services/types";
+
 function makeClient(approvalPreset: ApprovalPreset): NativeAcpClient {
   return new NativeAcpClient({
     command: "true",

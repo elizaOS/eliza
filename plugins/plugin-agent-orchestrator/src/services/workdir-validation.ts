@@ -1,3 +1,10 @@
+/**
+ * Workdir validation keeps auto-spawned coding agents inside the configured
+ * workspace sandbox. It expands the default per-task workspace under
+ * `~/.eliza/workspaces`, resolves symlinks before comparison, and rejects
+ * caller-supplied directories outside the allowed roots.
+ */
+
 import { mkdir, realpath } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";

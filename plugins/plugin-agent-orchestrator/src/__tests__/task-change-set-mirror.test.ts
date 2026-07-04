@@ -1,3 +1,10 @@
+/**
+ * Proves the change set the sub-agent produced (captured onto the LIVE ACP
+ * session metadata at `task_complete`) is mirrored into the durable task-store
+ * session record so the existing `/api/orchestrator/tasks/:id` detail route
+ * serves it via `TaskSessionDto.metadata.lastChangeSet` — no new HTTP route.
+ */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { toTaskThreadDetail } from "../services/orchestrator-task-mapper.js";
@@ -5,12 +12,6 @@ import { OrchestratorTaskService } from "../services/orchestrator-task-service.j
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
 
-/**
- * Proves the change set the sub-agent produced (captured onto the LIVE ACP
- * session metadata at `task_complete`) is mirrored into the durable task-store
- * session record so the existing `/api/orchestrator/tasks/:id` detail route
- * serves it via `TaskSessionDto.metadata.lastChangeSet` — no new HTTP route.
- */
 type EventHandler = (sessionId: string, event: string, data: unknown) => void;
 
 const CHANGE_SET: WorkspaceChangeSet = {

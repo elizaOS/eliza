@@ -1,3 +1,10 @@
+/**
+ * Integration boundary between TASKS and the durable Smithers runner. It gates
+ * the structured task path behind runtime settings, normalizes AcpService's
+ * optional methods into the executor shape, and falls back to the direct prompt
+ * path when Smithers is disabled.
+ */
+
 import type { AcpLike } from "./smithers-task-executor";
 import { SmithersTaskExecutor } from "./smithers-task-executor";
 import { runTaskWithSmithers } from "./smithers-task-runner";
