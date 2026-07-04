@@ -85,6 +85,12 @@ export interface ViewRegistryEntry {
   viewKind?: ViewKind;
   /** When false, the view is hidden from the manager grid (internal views). */
   visibleInManager?: boolean;
+  /**
+   * When true, this view is an internal-tool app the homescreen launcher may
+   * pin. Declared on the owning `ViewDeclaration`; the launcher builds its
+   * pinnable list from this flag instead of a hardcoded package-name table.
+   */
+  pinnable?: boolean;
   /** Named capabilities the view exposes (informational). */
   capabilities?: Array<{ id: string; description: string }>;
   /**
@@ -140,6 +146,20 @@ async function fetchViewList(
   const { views } = data as { views: unknown };
   if (!Array.isArray(views)) return [];
   return views as ViewRegistryEntry[];
+}
+
+/**
+ * One-shot fetch of the `/api/views` registry for non-React consumers (the apps
+ * catalog loaders) that need to overlay live plugin ViewDeclaration metadata
+ * onto the internal-tool catalog. Returns an empty list if the endpoint is
+ * unavailable — callers fall back to the static internal-tool declarations.
+ */
+export async function fetchAvailableViews(): Promise<ViewRegistryEntry[]> {
+  try {
+    return await fetchViews();
+  } catch {
+    return [];
+  }
 }
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {

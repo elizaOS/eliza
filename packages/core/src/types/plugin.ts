@@ -827,6 +827,13 @@ export interface ViewDeclaration {
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;
 	/**
+	 * When true, this view is an internal-tool app (plugin viewer, inspector,
+	 * fine-tuning, automations) that the homescreen launcher may pin. The
+	 * launcher builds its pinnable list from this declared flag instead of a
+	 * hardcoded UI package-name table. Default false.
+	 */
+	pinnable?: boolean;
+	/**
 	 * XR-specific panel behaviour. Only meaningful when viewType === "xr".
 	 * Omit to accept all defaults (1m-wide billboard panel at 1.5 m distance).
 	 */

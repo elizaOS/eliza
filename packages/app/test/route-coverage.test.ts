@@ -600,7 +600,9 @@ function packageNameForBootModule(moduleId: string): string {
 
 function internalToolWindowPaths(): string[] {
   const source = readFileSync(INTERNAL_TOOL_APPS_SOURCE, "utf8");
-  return [...source.matchAll(/windowPath:\s*"([^"]+)"/g)].map(
+  // Each internal-tool ViewDeclaration carries its window path as `path:`,
+  // always an `/apps/<tab>` route — parse those directly.
+  return [...source.matchAll(/path:\s*"(\/apps\/[^"]+)"/g)].map(
     (match) => match[1] ?? "",
   );
 }

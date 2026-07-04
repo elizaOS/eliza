@@ -1,8 +1,10 @@
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import type { Tab } from "../../navigation";
 import type { AppIdentitySource } from "./app-identity";
 import {
   getInternalToolApps,
   getInternalToolAppTargetTab,
+  getPinnableInternalAppNames,
 } from "./internal-tool-apps";
 
 /** A homescreen launcher tile: app identity plus where tapping it navigates. */
@@ -11,22 +13,13 @@ export interface HomeGridApp extends AppIdentitySource {
 }
 
 /**
- * Internal-tool apps that can be pinned to the homescreen.
- * None are pinned by default — this is the full catalog available for pinning.
+ * The internal-tool apps that can be pinned to the homescreen. Derived from the
+ * `pinnable` flag declared on each internal-tool ViewDeclaration — none are
+ * pinned by default, this is the full catalog available for pinning.
  */
-export const PINNABLE_INTERNAL_APPS: readonly string[] = [
-  "@elizaos/plugin-personal-assistant",
-  "@elizaos/plugin-task-coordinator",
-  "@elizaos/app-skills-viewer",
-  "@elizaos/app-memory-viewer",
-  "@elizaos/app-plugin-viewer",
-  "@elizaos/plugin-training",
-  "@elizaos/app-relationship-viewer",
-  "@elizaos/app-trajectory-viewer",
-  "@elizaos/app-database-viewer",
-  "@elizaos/app-runtime-debugger",
-  "@elizaos/app-log-viewer",
-];
+export function getPinnableInternalApps(): readonly string[] {
+  return getPinnableInternalAppNames();
+}
 
 /** The 4 tiles pinned to the homescreen by default. */
 const DEFAULT_PINNED_APPS: readonly HomeGridApp[] = [
@@ -64,10 +57,13 @@ const DEFAULT_PINNED_APPS: readonly HomeGridApp[] = [
  */
 export function getHomeGridApps(
   pinnedNames: readonly string[] = [],
+  networkViews: readonly ViewRegistryEntry[] = [],
 ): HomeGridApp[] {
   if (pinnedNames.length === 0) return [...DEFAULT_PINNED_APPS];
 
-  const byName = new Map(getInternalToolApps().map((app) => [app.name, app]));
+  const byName = new Map(
+    getInternalToolApps(networkViews).map((app) => [app.name, app]),
+  );
   const pinned: HomeGridApp[] = [];
   for (const name of pinnedNames) {
     const app = byName.get(name);

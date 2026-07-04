@@ -2,7 +2,7 @@
 //
 // /api/catalog/apps  → static apps known to the registry (internal-tool apps,
 //                      curated apps, plugin-shipped apps). Lets AppsView stop
-//                      depending on the hardcoded INTERNAL_TOOL_APPS array
+//                      depending on the hardcoded internal-tool app table
 //                      and the ELIZA_CURATED_APP_DEFINITIONS list.
 //
 // Server-discovered apps (npm packages installed at runtime) and overlay
