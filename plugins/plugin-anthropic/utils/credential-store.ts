@@ -270,12 +270,14 @@ function readFromCredentialStore(): ClaudeCredentials | null {
   const { join } = require("node:path") as typeof import("node:path");
   const { homedir } = require("node:os") as typeof import("node:os");
 
-  if (process.platform === "darwin") {
+  const configDirOverride = getEnvVar("CLAUDE_CONFIG_DIR")?.trim();
+  const configDir = configDirOverride || join(homedir(), ".claude");
+
+  if (!configDirOverride && process.platform === "darwin") {
     const fromKeychain = readFromMacKeychain();
     if (fromKeychain) return fromKeychain;
   }
 
-  const configDir = getEnvVar("CLAUDE_CONFIG_DIR") ?? join(homedir(), ".claude");
   const credPath = join(configDir, ".credentials.json");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
 

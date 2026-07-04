@@ -93,7 +93,7 @@ This plugin has a single responsibility (TTS model handler). The typical extensi
 ## Conventions / gotchas
 
 - **Node-only.** The browser build (`src/index.browser.ts`) exports a browser-unavailable plugin shape and warning log. Do not add Node.js file system or WebSocket code to the browser entry point.
-- **Temp file I/O.** `node-edge-tts` writes audio to a temp file (via `mkdtempSync`); the plugin reads it back and cleans up in a `finally` block. If cleanup fails, the error is silently ignored to avoid masking the audio result.
+- **Temp file I/O.** `node-edge-tts` writes audio to a temp file (via `mkdtempSync`); the plugin reads it back and cleans up in a `finally` block. Cleanup failure is logged at warn/debug level but must not mask the audio result.
 - **5000-character limit.** Enforced explicitly before calling the TTS service. The upstream service has its own practical limit near this value; errors above it are opaque network failures.
 - **Type declarations.** `node-edge-tts` ships its own TypeScript declarations in its `dist/` folder (`edge-tts.d.ts`, `drm.d.ts`). No hand-written type declarations are needed for this package.
 - **`synthesizeEdgeSpeech`** passes `null` as the runtime to `getEdgeTTSSettings`, so it reads only from `process.env`. Do not call it inside an agent handler where a runtime is available — use `runtime.useModel(ModelType.TEXT_TO_SPEECH, ...)` instead.
