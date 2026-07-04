@@ -38,10 +38,21 @@ function mediaPath(fileName: string): string {
 function makeRes(): {
   res: ServerResponse;
   get: () => { status: number; headers: Record<string, unknown>; body: string };
+  /**
+   * Resolves once the piped read stream has finished writing. The Range path
+   * pipes `createReadStream(...).pipe(res)`, which opens the file on a later
+   * tick; awaiting this keeps that async read from racing `afterAll`'s temp-dir
+   * cleanup and surfacing as an unhandled ENOENT.
+   */
+  whenEnded: () => Promise<void>;
 } {
   let status = 0;
   let headers: Record<string, unknown> = {};
   const chunks: Buffer[] = [];
+  let resolveEnded: (() => void) | undefined;
+  const ended = new Promise<void>((resolve) => {
+    resolveEnded = resolve;
+  });
   const res = {
     writeHead(s: number, h: Record<string, unknown>) {
       status = s;
@@ -51,6 +62,7 @@ function makeRes(): {
     end(body?: unknown) {
       if (typeof body === "string") chunks.push(Buffer.from(body));
       else if (Buffer.isBuffer(body)) chunks.push(body);
+      resolveEnded?.();
     },
     // createReadStream(...).pipe(res) calls write/end
     write(chunk: Buffer | string) {
@@ -69,6 +81,7 @@ function makeRes(): {
   } as unknown as ServerResponse;
   return {
     res,
+    whenEnded: () => ended,
     get: () => ({
       status,
       headers,
@@ -371,6 +384,110 @@ describe("handleMediaRouteRequest (in-process / iOS path)", () => {
     expect(handleMediaRouteRequest("/api/media/x.png", "POST").status).toBe(
       405,
     );
+  });
+
+  it("advertises Accept-Ranges: bytes so the WebView knows seeking works", () => {
+    const { url } = persistMediaBytes(Buffer.from("ranged"), "video/mp4");
+    expect(handleMediaRouteRequest(url, "GET").headers["Accept-Ranges"]).toBe(
+      "bytes",
+    );
+    // HEAD too — a player probes with HEAD before requesting ranges.
+    expect(handleMediaRouteRequest(url, "HEAD").headers["Accept-Ranges"]).toBe(
+      "bytes",
+    );
+  });
+
+  it("serves a satisfiable Range as 206 with the exact byte slice", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=2-5");
+    expect(res.status).toBe(206);
+    expect(res.headers["Content-Range"]).toBe("bytes 2-5/10");
+    expect(res.headers["Content-Length"]).toBe("4");
+    expect((res.body as Buffer).equals(Buffer.from("2345"))).toBe(true);
+  });
+
+  it("clamps an open-ended Range (bytes=N-) to the end of the file", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=7-");
+    expect(res.status).toBe(206);
+    expect(res.headers["Content-Range"]).toBe("bytes 7-9/10");
+    expect((res.body as Buffer).equals(Buffer.from("789"))).toBe(true);
+  });
+
+  it("serves a suffix Range (bytes=-N) as the last N bytes", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=-3");
+    expect(res.status).toBe(206);
+    expect(res.headers["Content-Range"]).toBe("bytes 7-9/10");
+    expect((res.body as Buffer).equals(Buffer.from("789"))).toBe(true);
+  });
+
+  it("clamps a too-large end to the last byte (partial overlap)", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=5-999");
+    expect(res.status).toBe(206);
+    expect(res.headers["Content-Range"]).toBe("bytes 5-9/10");
+    expect((res.body as Buffer).equals(Buffer.from("56789"))).toBe(true);
+  });
+
+  it("416s a Range whose start is past the end of the file", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=50-60");
+    expect(res.status).toBe(416);
+    expect(res.headers["Content-Range"]).toBe("bytes */10");
+  });
+
+  it("ignores a malformed Range and serves the full 200", () => {
+    const bytes = Buffer.from("0123456789");
+    const { url } = persistMediaBytes(bytes, "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "GET", "bytes=abc");
+    expect(res.status).toBe(200);
+    expect(res.headers["Content-Length"]).toBe("10");
+    expect((res.body as Buffer).equals(bytes)).toBe(true);
+  });
+
+  it("ignores a Range on a HEAD request (headers only, no 206)", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const res = handleMediaRouteRequest(url, "HEAD", "bytes=2-5");
+    expect(res.status).toBe(200);
+    expect(res.body).toBeUndefined();
+  });
+});
+
+describe("serveMediaFile Range (HTTP path)", () => {
+  it("answers a satisfiable Range with 206 + Content-Range + sliced bytes", async () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res, get, whenEnded } = makeRes();
+    const handled = serveMediaFile(
+      { method: "GET", headers: { range: "bytes=2-5" } } as never,
+      res,
+      url,
+    );
+    expect(handled).toBe(true);
+    await whenEnded();
+    const out = get();
+    expect(out.status).toBe(206);
+    expect(out.headers["Content-Range"]).toBe("bytes 2-5/10");
+    expect(Number(out.headers["Content-Length"])).toBe(4);
+    expect(out.body).toBe("2345");
+  });
+
+  it("answers an out-of-bounds Range with 416", () => {
+    const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
+    const { res, get } = makeRes();
+    serveMediaFile(
+      { method: "GET", headers: { range: "bytes=50-60" } } as never,
+      res,
+      url,
+    );
+    const out = get();
+    expect(out.status).toBe(416);
+    expect(out.headers["Content-Range"]).toBe("bytes */10");
   });
 });
 

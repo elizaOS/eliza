@@ -628,15 +628,58 @@ function resolveMediaFile(
 }
 
 /**
- * Serve a media file for the IN-PROCESS route path (iOS, where no HTTP server
- * runs and requests are dispatched over `runtime.routes`). Returns a
- * RouteHandlerResult-shaped object with a `Buffer` body; the native bridge
- * base64-encodes it losslessly. No Range support — the in-process path buffers
- * the whole file, which is fine for local on-device media.
+ * Parse a single-range `Range: bytes=<start>-<end>` header against a known file
+ * size. Returns the resolved inclusive `[start, end]` byte window, `null` when
+ * the header is absent or not a byte-range we serve (caller sends the full 200),
+ * or `{ unsatisfiable: true }` when the range is syntactically valid but out of
+ * bounds (caller sends 416). Multi-range (`bytes=0-1,3-4`) is intentionally not
+ * supported — it collapses to a full 200, which every media consumer accepts.
+ *
+ * Shared by the HTTP serve path (`serveMediaFile`) and the in-process/native
+ * IPC path (`handleMediaRouteRequest`) so audio/video seek behaves identically
+ * whether the bytes ride a Node HTTP response or a native scheme handler
+ * (iOS `WKURLSchemeHandler`, Android `shouldInterceptRequest`, Electrobun).
+ */
+function parseByteRange(
+  rangeHeader: string | undefined,
+  size: number,
+): { start: number; end: number } | { unsatisfiable: true } | null {
+  if (!rangeHeader) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return null;
+  const startRaw = match[1];
+  const endRaw = match[2];
+  // `bytes=-N` is a suffix range: the last N bytes.
+  if (!startRaw && endRaw) {
+    const suffix = Number.parseInt(endRaw, 10);
+    if (Number.isNaN(suffix) || suffix <= 0) return { unsatisfiable: true };
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = startRaw ? Number.parseInt(startRaw, 10) : 0;
+  let end = endRaw ? Number.parseInt(endRaw, 10) : size - 1;
+  if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
+    return { unsatisfiable: true };
+  }
+  end = Math.min(end, size - 1);
+  return { start, end };
+}
+
+/**
+ * Serve a media file for the IN-PROCESS route path (iOS/desktop/Android native
+ * scheme handlers, where the WebView reaches the on-device agent over IPC with
+ * no HTTP server). Returns a RouteHandlerResult-shaped object with a `Buffer`
+ * body; the native bridge base64-encodes it losslessly.
+ *
+ * Honors a single-range `Range: bytes=…` header so `<audio>`/`<video>` can seek
+ * over the native scheme: a satisfiable range yields `206 Partial Content` with
+ * `Content-Range` and only the requested byte slice, an out-of-bounds range
+ * yields `416`, and no range yields the full `200`. `Accept-Ranges: bytes` is
+ * always advertised so the WebView knows seeking is available.
  */
 export function handleMediaRouteRequest(
   pathname: string,
   method: string,
+  rangeHeader?: string,
 ): { status: number; headers: Record<string, string>; body?: Buffer } {
   const TEXT = { "Content-Type": "text/plain; charset=utf-8" };
   if (method !== "GET" && method !== "HEAD") {
@@ -659,9 +702,39 @@ export function handleMediaRouteRequest(
   const headers: Record<string, string> = {
     "Content-Type": resolved.contentType,
     "Cache-Control": "public, max-age=31536000, immutable",
-    "Content-Length": String(resolved.size),
+    "Accept-Ranges": "bytes",
     ...mediaSecurityHeaders(resolved.name, resolved.contentType),
   };
+
+  const range = method === "GET" ? parseByteRange(rangeHeader, resolved.size) : null;
+  if (range && "unsatisfiable" in range) {
+    return {
+      status: 416,
+      headers: {
+        ...TEXT,
+        "Content-Range": `bytes */${resolved.size}`,
+        "Accept-Ranges": "bytes",
+      },
+      body: Buffer.from("Range not satisfiable"),
+    };
+  }
+  if (range) {
+    const length = range.end - range.start + 1;
+    return {
+      status: 206,
+      headers: {
+        ...headers,
+        "Content-Range": `bytes ${range.start}-${range.end}/${resolved.size}`,
+        "Content-Length": String(length),
+      },
+      body: fs.readFileSync(resolved.filePath).subarray(
+        range.start,
+        range.end + 1,
+      ),
+    };
+  }
+
+  headers["Content-Length"] = String(resolved.size);
   if (method === "HEAD") return { status: 200, headers };
   return { status: 200, headers, body: fs.readFileSync(resolved.filePath) };
 }
@@ -698,41 +771,25 @@ export function serveMediaFile(
     ...mediaSecurityHeaders(resolved.name, contentType),
   };
 
-  const range = req.headers.range;
-  if (range && method === "GET") {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    if (match) {
-      const startRaw = match[1];
-      const endRaw = match[2];
-      let start = startRaw ? Number.parseInt(startRaw, 10) : 0;
-      let end = endRaw ? Number.parseInt(endRaw, 10) : size - 1;
-      if (!startRaw && endRaw) {
-        // suffix range: last N bytes
-        start = Math.max(0, size - Number.parseInt(endRaw, 10));
-        end = size - 1;
-      }
-      if (
-        Number.isNaN(start) ||
-        Number.isNaN(end) ||
-        start > end ||
-        start >= size
-      ) {
-        res.writeHead(416, {
-          "Content-Range": `bytes */${size}`,
-          "Content-Type": "text/plain; charset=utf-8",
-        });
-        res.end("Range not satisfiable");
-        return true;
-      }
-      end = Math.min(end, size - 1);
-      res.writeHead(206, {
-        ...baseHeaders,
-        "Content-Range": `bytes ${start}-${end}/${size}`,
-        "Content-Length": end - start + 1,
-      });
-      fs.createReadStream(filePath, { start, end }).pipe(res);
-      return true;
-    }
+  const range = method === "GET" ? parseByteRange(req.headers.range, size) : null;
+  if (range && "unsatisfiable" in range) {
+    res.writeHead(416, {
+      "Content-Range": `bytes */${size}`,
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+    res.end("Range not satisfiable");
+    return true;
+  }
+  if (range) {
+    res.writeHead(206, {
+      ...baseHeaders,
+      "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+      "Content-Length": range.end - range.start + 1,
+    });
+    fs.createReadStream(filePath, { start: range.start, end: range.end }).pipe(
+      res,
+    );
+    return true;
   }
 
   res.writeHead(200, { ...baseHeaders, "Content-Length": size });
