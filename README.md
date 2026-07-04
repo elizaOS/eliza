@@ -133,6 +133,10 @@ video, logs, and any relevant real-LLM trajectories attached under
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
 
+All community spaces are covered by our [Code of Conduct](CODE_OF_CONDUCT.md).
+To report a security vulnerability, follow [SECURITY.md](SECURITY.md); do not
+open a public issue.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

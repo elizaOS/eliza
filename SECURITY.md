@@ -10,10 +10,10 @@ commitments.
 
 Email: **security@elizalabs.ai**
 
-Encrypted-report intake is not available until the organization GPG key is
-provisioned. The public key and fingerprint will be published at
-`https://elizalabs.ai/.well-known/pgp-key.asc` once provisioned (see
-*human-in-loop* note below).
+Include a description of the issue, steps to reproduce, the affected
+versions or packages, and any proof-of-concept you have. If you need to
+share especially sensitive material, say so in your first email and we will
+arrange a secure channel before you send it.
 
 We will acknowledge receipt within **2 business days** and provide an initial
 triage assessment within **5 business days**.
@@ -65,17 +65,3 @@ Out-of-scope:
 
 Confirmed and remediated vulnerabilities are published as GitHub Security
 Advisories on this repository.
-
----
-
-## Human-in-loop checklist (must be completed before SOC2 audit)
-
-The following items require an operator to provision real values:
-
-- [ ] Generate organization GPG key for `security@elizalabs.ai`, publish public
-      key at `https://elizalabs.ai/.well-known/pgp-key.asc`, update fingerprint
-      above.
-- [ ] Confirm the `security@elizalabs.ai` mailbox is monitored by at least two
-      named individuals with paging coverage.
-- [ ] Register the security contact on https://securitytxt.org/ and publish
-      `/.well-known/security.txt`.

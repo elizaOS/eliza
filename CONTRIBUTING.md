@@ -3,6 +3,9 @@
 Thanks for helping with elizaOS. Open an issue before non-trivial work, branch
 from the latest `develop`, and ship changes through a PR against `develop`.
 
+By participating you agree to our [Code of Conduct](CODE_OF_CONDUCT.md).
+Security issues go through [SECURITY.md](SECURITY.md), never a public issue.
+
 ## Evidence Is Required
 
 The binding shipping standard is [`PR_EVIDENCE.md`](PR_EVIDENCE.md). A reviewer
