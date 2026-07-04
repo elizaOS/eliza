@@ -330,4 +330,32 @@ describe("TranscriptViewerOverlay", () => {
     expect(navigateBrowserPath).toHaveBeenCalledWith("/apps/transcripts");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("renders a load error — never '(empty transcript)' — when the inline read fails with no stored record", async () => {
+    // Served-URL attachment with no inline text and no transcriptId: the
+    // fetch rejecting must surface as the designed error state (three-state
+    // rule), not as a healthy-empty transcript.
+    const failingFetch = vi.fn().mockRejectedValue(new Error("offline"));
+    vi.stubGlobal("fetch", failingFetch);
+    try {
+      render(
+        <TranscriptViewerOverlay
+          attachment={{
+            id: "att-2",
+            url: "/api/media/deadbeef.md",
+            contentType: "document",
+            mimeType: "text/markdown",
+            title: "Broken transcript.md",
+          }}
+          onClose={() => {}}
+        />,
+      );
+      await waitFor(() => screen.getByTestId("transcript-load-error"));
+      expect(failingFetch).toHaveBeenCalled();
+      expect(screen.queryByTestId("transcript-text")).toBeNull();
+      expect(getTranscript).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

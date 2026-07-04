@@ -373,6 +373,8 @@ export function createVoiceCapture(
         startBrowser();
       }
     } catch (err) {
+      // error-policy:J1 capture boundary — the failure renders the voice
+      // error state and still propagates to the caller
       const error = err instanceof Error ? err : new Error(String(err));
       setState("error", error);
       throw error;
@@ -425,6 +427,8 @@ export function createVoiceCapture(
         });
         setState("stopped");
       } catch (err) {
+        // error-policy:J1 stop/transcribe boundary — the failure renders the
+        // voice error state and still propagates to the caller
         const error = err instanceof Error ? err : new Error(String(err));
         setState("error", error);
         throw error;
