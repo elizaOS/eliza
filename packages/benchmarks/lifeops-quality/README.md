@@ -27,28 +27,27 @@ expectations derive from the re-anchor-on-fire contract.
 
 ```bash
 bun run test              # unit lane: metrics, oracle, corpus/fixture/baseline invariants (fast, no DB)
-bun run bench             # both gates (real classifier + real scheduler tick over PGlite)
-bun run bench:triage      # triage gate only (~10s)
-bun run bench:timeliness  # timeliness gate only (~3min, ~2,300 real ticks)
+bun run bench             # both benchmarks (real classifier + real scheduler tick over PGlite)
+bun run bench:triage      # triage benchmark only (~10s)
+bun run bench:timeliness  # timeliness benchmark only (~3min, ~2,300 real ticks)
 ```
 
-Measured runs land in `results/*.json` (gitignored; uploaded as a CI
-artifact). CI: `.github/workflows/lifeops-quality-bench.yml` — keyless,
-runs on PRs touching the corpus, the classifier, the scheduled-task spine,
-or core trigger scheduling, plus nightly.
+Measured runs land in `results/*.json` (gitignored). Both benchmarks are
+keyless and deterministic — run them after touching the corpus, the
+classifier, the scheduled-task spine, or core trigger scheduling.
 
 ## Editing the corpus, fixtures, budgets, or baseline
 
 - **Corpus/fixtures changed?** Re-record `baseline.json` in the same change:
-  run the gates, copy the measured blocks from `results/*.json`. The unit
+  run the benchmarks, copy the measured blocks from `results/*.json`. The unit
   lane cross-checks `baseline.json` against both the corpus×fixtures score
   and `budgets.json`, so a stale baseline fails fast.
-- **Budgets** are calibrated so ONE additional triage misclassification (or
-  any scheduler fire defect) trips the gate — `triage/corpus.test.ts` proves
-  this calibration. When a run beats a floor with headroom the gate prints a
-  ratchet prompt; tighten `budgets.json` rather than letting headroom rot.
+- **Thresholds** are calibrated so ONE additional triage misclassification (or
+  any scheduler fire defect) is caught — `triage/corpus.test.ts` proves
+  this calibration. When a run beats a floor with headroom the benchmark prints
+  a prompt to tighten it; lower `budgets.json` rather than letting headroom rot.
 - The timeliness `maxDeviationMs` ceiling **is** the tick cadence (300000ms)
   — do not loosen it; a larger ceiling would tolerate a real lateness bug.
 - The fall-back window deliberately has no cron inside the repeated
   01:00–01:59 hour: core's ambiguous-hour behavior is pinned separately and
-  must not be baked into this gate's expectations.
+  must not be baked into this benchmark's expectations.
