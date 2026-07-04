@@ -67,7 +67,7 @@ export default function ApplicationsPage() {
               defaultValue: "Total Requests",
             })}
             value={totalRequests.toLocaleString()}
-            icon={<TrendingUp className="h-5 w-5 text-purple-500" />}
+            icon={<TrendingUp className="h-5 w-5 text-white/70" />}
           />
         </DashboardStatGrid>
         {!session.ready || isLoading ? (

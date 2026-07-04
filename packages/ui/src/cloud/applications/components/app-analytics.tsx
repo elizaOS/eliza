@@ -438,7 +438,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Total Requests"
                 value={totalStats.totalRequests?.toLocaleString("en-US") || "0"}
-                icon={<Activity className="h-5 w-5 text-purple-400" />}
+                icon={<Activity className="h-5 w-5 text-white/70" />}
               />
               <DashboardStatCard
                 label="Total Users"
@@ -721,7 +721,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           ).toFixed(1)
                         : "0"
                     }
-                    icon={<Activity className="h-5 w-5 text-purple-400" />}
+                    icon={<Activity className="h-5 w-5 text-white/70" />}
                   />
                 </div>
               )}

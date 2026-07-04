@@ -273,7 +273,11 @@ function FinancesAlertsWidget({
         <HomeWidgetCard
           icon={<Wallet />}
           label="Bills"
-          value={amount}
+          // Atomic: a currency amount must never soft-wrap mid-number
+          // ("-$12" / "5.50" read as two figures on half-width mobile cards).
+          value={
+            <span className="whitespace-nowrap tabular-nums">{amount}</span>
+          }
           badge="Overdrawn"
           tone="danger"
           testId="chat-widget-finances-alerts"

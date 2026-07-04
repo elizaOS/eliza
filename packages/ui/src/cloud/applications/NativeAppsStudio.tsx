@@ -214,6 +214,28 @@ function StudioBootFallback(): React.JSX.Element {
 }
 
 /**
+ * Opaque dark cloud surface for the native mount. The Applications pages are
+ * authored against the cloud console's dark theme (`theme-cloud` tokens, white
+ * text, `white/10` borders); on web `CloudRouterShell` mounts that surface
+ * around every authenticated route (`theme-cloud min-h-dvh bg-black
+ * text-white`). The native app shell instead renders registered pages over the
+ * HOST app theme (light/orange), so without this wrapper the studio floods
+ * with the host background and its white-on-dark text is unreadable. Sized to
+ * fill the shell's flex slot and own its scrolling.
+ */
+function StudioSurface({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="theme-cloud flex h-full min-h-0 w-full flex-col overflow-y-auto bg-black text-white">
+      {children}
+    </div>
+  );
+}
+
+/**
  * The Applications routes, mounted in a `MemoryRouter` seeded at the list. The
  * `create` path redirects to the list (parity with the web shell's
  * `dashboard/apps/create` redirect), the detail route's own UUID guard sends any
@@ -274,16 +296,22 @@ export default function NativeAppsStudio(): React.JSX.Element {
   }, []);
 
   if (!booted) {
-    return <StudioBootFallback />;
+    return (
+      <StudioSurface>
+        <StudioBootFallback />
+      </StudioSurface>
+    );
   }
 
   return (
-    <NativeCloudProviders>
-      <MemoryRouter initialEntries={[APPS_LIST_PATH]}>
-        <Suspense fallback={<StudioBootFallback />}>
-          <ApplicationsRoutes />
-        </Suspense>
-      </MemoryRouter>
-    </NativeCloudProviders>
+    <StudioSurface>
+      <NativeCloudProviders>
+        <MemoryRouter initialEntries={[APPS_LIST_PATH]}>
+          <Suspense fallback={<StudioBootFallback />}>
+            <ApplicationsRoutes />
+          </Suspense>
+        </MemoryRouter>
+      </NativeCloudProviders>
+    </StudioSurface>
   );
 }
