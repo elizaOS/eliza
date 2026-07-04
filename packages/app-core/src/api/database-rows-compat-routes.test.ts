@@ -18,6 +18,26 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  ElizaError: class ElizaError extends Error {
+    readonly code: string;
+    readonly context?: Record<string, unknown>;
+    readonly severity?: string;
+
+    constructor(
+      message: string,
+      options: {
+        code: string;
+        context?: Record<string, unknown>;
+        severity?: string;
+      },
+    ) {
+      super(message);
+      this.name = "ElizaError";
+      this.code = options.code;
+      this.context = options.context;
+      this.severity = options.severity;
+    }
+  },
   roleRank: (role: string | undefined) =>
     (
       ({
@@ -272,5 +292,76 @@ describe("GET /api/database/tables/:name/rows OWNER gate", () => {
       total: 2,
     });
     expect(mocks.executeRawSql).toHaveBeenCalled();
+  });
+
+  it("throws a typed error when the count query does not return a usable total", async () => {
+    const req = makeReq(
+      {},
+      "/api/database/tables/count_failures/rows?schema=public",
+    );
+    const res = fakeRes();
+    const ensureOwner = vi.fn(async () => true);
+
+    mocks.executeRawSql.mockImplementation(async (_runtime, sql: string) => {
+      if (sql.includes("information_schema.columns")) {
+        return { rows: [{ column_name: "id" }] };
+      }
+      if (sql.includes("count(*)")) {
+        return { rows: [{}] };
+      }
+      throw new Error("rows query should not run when count is malformed");
+    });
+
+    try {
+      await handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+        ensureOwner,
+      });
+      throw new Error("expected DB count failure");
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: "ElizaError",
+        code: "DB_COUNT_UNAVAILABLE",
+        context: { table: '"public"."count_failures"' },
+        severity: "ephemeral",
+      });
+    }
+
+    expect(mocks.executeRawSql).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.executeRawSql.mock.calls.some(([, sql]) =>
+        String(sql).includes("SELECT *"),
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts numeric string count values without fabricating zero", async () => {
+    const req = makeReq(
+      {},
+      "/api/database/tables/count_strings/rows?schema=public",
+    );
+    const res = fakeRes();
+    const ensureOwner = vi.fn(async () => true);
+
+    mocks.executeRawSql.mockImplementation(async (_runtime, sql: string) => {
+      if (sql.includes("information_schema.columns")) {
+        return { rows: [{ column_name: "id" }] };
+      }
+      if (sql.includes("count(*)")) {
+        return { rows: [{ total: "7" }] };
+      }
+      return { rows: [{ id: 1 }] };
+    });
+
+    await expect(
+      handleDatabaseRowsCompatRoute(req, res.res, STATE_WITH_DB, {
+        ensureOwner,
+      }),
+    ).resolves.toBe(true);
+
+    expect(res.status()).toBe(200);
+    expect(res.json()).toMatchObject({
+      table: "count_strings",
+      total: 7,
+    });
   });
 });

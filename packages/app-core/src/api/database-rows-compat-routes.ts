@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { ElizaError } from "@elizaos/core";
 import {
   executeRawSql,
   quoteIdent,
@@ -214,10 +215,15 @@ export async function handleDatabaseRowsCompatRoute(
     runtime,
     `SELECT count(*)::int AS total FROM ${qualifiedTable} ${whereClause}`,
   );
-  const total =
-    typeof countResult.rows[0]?.total === "number"
-      ? countResult.rows[0].total
-      : Number(countResult.rows[0]?.total ?? 0);
+  const rawTotal = countResult.rows[0]?.total;
+  const total = typeof rawTotal === "number" ? rawTotal : Number(rawTotal);
+  if (!Number.isFinite(total)) {
+    throw new ElizaError("Database row count is unavailable.", {
+      code: "DB_COUNT_UNAVAILABLE",
+      context: { table: qualifiedTable },
+      severity: "ephemeral",
+    });
+  }
 
   const rowsResult = await executeRawSql(
     runtime,
