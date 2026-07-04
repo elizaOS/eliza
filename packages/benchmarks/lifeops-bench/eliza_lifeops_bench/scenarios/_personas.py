@@ -215,6 +215,21 @@ PERSONA_CAM_COMMS = Persona(
     patience_turns=15,
 )
 
+PERSONA_DRE_FLOOD = Persona(
+    id="dre_flood",
+    name="Dre Whitfield",
+    traits=["comms-flooded", "triage-minded", "vip-sensitive"],
+    background=(
+        "COO of a 40-person startup: six channels, 300+ messages a day. Terrified of "
+        "missing the one message from a board member or their kid's school."
+    ),
+    communication_style=(
+        "staccato, forwards message content into chat, asks for summaries and 'just the "
+        "ones that matter', zero tolerance for a missed VIP"
+    ),
+    patience_turns=12,
+)
+
 PERSONA_DEL_LOW = Persona(
     id="del_low",
     name="Del Ferreira",
@@ -254,5 +269,6 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_TAO_TRAVEL,
     PERSONA_ELENA_ROAD,
     PERSONA_CAM_COMMS,
+    PERSONA_DRE_FLOOD,
     PERSONA_DEL_LOW,
 ]
