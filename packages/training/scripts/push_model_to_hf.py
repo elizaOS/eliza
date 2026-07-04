@@ -34,7 +34,7 @@ log = logging.getLogger("push_model")
 _REDIRECT_MESSAGE = (
     "push_model_to_hf.py is deprecated. Use one of:\n"
     "  - python -m scripts.publish.publish_model "
-    "(unified per-tier checkpoint/bundle/optimized publisher)\n"
+    "(unified gated bundle/per-tier publisher)\n"
     "  - python -m scripts.publish.orchestrator "
     "(full bundle gate + publish flow)\n"
     "See packages/training/scripts/HF_PUBLISHING.md."

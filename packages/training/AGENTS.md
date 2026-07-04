@@ -181,8 +181,9 @@ entry points for training and publishing:
 - `publish/publish_model.py` / `publish/publish_dataset.py` /
   `publish/publish_pipeline.py` — three canonical publisher entry points.
   `publish_model` dispatches to `publish.orchestrator` (full gated bundle
-  publish), `publish_eliza1_model_repo` (per-tier upload), or the legacy
-  `publish_eliza1_model` (fused single-GGUF, used by the nightly CI).
+  publish) or `publish_eliza1_model_repo` (per-tier upload after the full gate
+  ran elsewhere). The legacy fused single-GGUF `publish_eliza1_model` path was
+  retired because it only accepted the disconnected Qwen-shaped fused flow.
   `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
   *only* paths that push app-facing bundles to `elizaos/eliza-1`. The older
   `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted;

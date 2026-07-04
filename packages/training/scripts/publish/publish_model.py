@@ -5,8 +5,7 @@ This is one of three canonical operator-facing publishers in
 
   - ``publish_model.py``    — this file. Pushes trained weights / GGUF
                               bundles to HuggingFace under the consolidated
-                              ``elizaos/eliza-1`` repo (or, for the legacy
-                              fused-GGUF flow, to ``elizaos/<base>-optimized``).
+                              ``elizaos/eliza-1`` repo.
   - ``publish_dataset.py``  — pushes the SFT dataset bundles to
                               ``elizaos/eliza-1-training`` (and siblings).
   - ``publish_pipeline.py`` — pushes the training-pipeline source tree to
@@ -20,13 +19,11 @@ the chosen mode:
   - ``--mode tier``      → ``scripts.publish.publish_eliza1_model_repo``
                           (per-tier ``elizaos/eliza-1/bundles/<tier>/`` upload
                           when the gate ran elsewhere)
-  - ``--mode optimized`` → ``scripts.publish_eliza1_model``
-                          (single fused-GGUF publish, legacy nightly path
-                          targeting ``elizaos/<base>-optimized``)
 
-Use ``--mode bundle`` for new work. The other modes exist for back-compat
-with the nightly CI publish (``.github/workflows/local-inference-bench.yml``)
-and with operator-driven staged uploads.
+Use ``--mode bundle`` for new work. ``--mode tier`` exists for operator-driven
+staged uploads after the full gate has run elsewhere. The legacy single-GGUF
+``optimized`` publisher was retired because it only accepted the disconnected
+Qwen-shaped fused path and rejected the Gemma Q4_K_M bundles the product ships.
 """
 
 from __future__ import annotations
@@ -60,11 +57,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--mode",
         required=True,
-        choices=("bundle", "tier", "optimized"),
+        choices=("bundle", "tier"),
         help=(
             "bundle = full gated publish (scripts.publish.orchestrator); "
-            "tier = per-tier bundle upload (publish_eliza1_model_repo); "
-            "optimized = legacy single-GGUF (publish_eliza1_model)."
+            "tier = per-tier bundle upload (publish_eliza1_model_repo)."
         ),
     )
     args, rest = ap.parse_known_args(argv)
@@ -75,8 +71,6 @@ def main(argv: list[str] | None = None) -> int:
         return _run(
             [interpreter, "-m", "scripts.publish.publish_eliza1_model_repo", *rest]
         )
-    if args.mode == "optimized":
-        return _run([interpreter, "scripts/publish_eliza1_model.py", *rest])
     raise AssertionError(f"unhandled mode: {args.mode}")
 
 

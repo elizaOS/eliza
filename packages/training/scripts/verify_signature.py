@@ -1,8 +1,8 @@
 """Verify the Ed25519 signature on a published Eliza-1 model artifact.
 
 SOC2 CC6.8 — every downloader of an elizaos/eliza-1 GGUF should run this
-script before loading the file. The signature record was produced by
-``publish_eliza1_model.py`` via the ``kms-sign`` TS shim in
+script before loading the file. The signature record is produced by the
+canonical bundle publish flow via the ``kms-sign`` TS shim in
 ``@elizaos/security/scripts/``.
 
 Usage::

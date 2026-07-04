@@ -478,270 +478,54 @@ def test_dataset_card_includes_license(publish_dataset):
 
 
 # ---------------------------------------------------------------------------
-# elizaos publisher (publish_eliza1_model.py)
+# unified eliza-1 publisher dispatcher (publish/publish_model.py)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def publish_eliza1():
-    return _load("publish_eliza1_model", SCRIPTS / "publish_eliza1_model.py")
+def publish_model():
+    return _load("publish_model", SCRIPTS / "publish" / "publish_model.py")
 
 
-def _make_fused_gguf(path: Path) -> None:
-    """Write a tiny file that carries the required fused-kernel markers.
+def test_publish_model_dispatches_bundle_mode(publish_model, monkeypatch):
+    calls = []
+    monkeypatch.setattr(publish_model, "_run", lambda cmd: calls.append(cmd) or 0)
 
-    The publisher only scans the first 4 MB and the trailing 1 MB for
-    the marker strings; a few KB is enough to drive the validation path
-    in tests without producing an actual llama.cpp-loadable GGUF.
-    """
-    path.write_bytes(
-        b"GGUF\x03\x00\x00\x00"
-        + b"\x00" * 64
-        + b"tensor_type: q4_polar block_type qjl1_256 cache_type tbq3_0\n"
-        + b"\x00" * 1024,
-    )
+    rc = publish_model.main(["--mode", "bundle", "--tier", "2b"])
 
-
-def _make_missing_tbq_gguf(path: Path) -> None:
-    path.write_bytes(
-        b"GGUF\x03\x00\x00\x00"
-        + b"\x00" * 64
-        + b"tensor_type: q4_polar block_type qjl1_256\n"
-        + b"\x00" * 1024,
-    )
-
-
-def _make_stock_gguf(path: Path) -> None:
-    path.write_bytes(
-        b"GGUF\x03\x00\x00\x00"
-        + b"\x00" * 64
-        + b"tensor_type: q4_K_M block_type q4_k\n"
-        + b"\x00" * 1024,
-    )
-
-
-def _make_eliza1_bundle(
-    model_dir: Path, *, fused: bool, kind: str = "eliza-1-optimized"
-) -> None:
-    model_dir.mkdir(parents=True, exist_ok=True)
-    gguf = model_dir / f"{model_dir.name}.gguf"
-    (_make_fused_gguf if fused else _make_stock_gguf)(gguf)
-    manifest = {
-        "version": 1,
-        "kind": kind,
-        "modelId": "gemma4-e4b",
-        "base": {
-            "name": "gemma4-e4b",
-            "displayName": "Gemma 4 E4B",
-            "params": "4B",
-            "tokenizerFamily": "gemma4",
-            "contextLength": 131072,
-        },
-        "gguf": {
-            "file": gguf.name,
-            "sha256": None,
-            "sizeBytes": 0,
-            "quant": "Q4_POLAR + QJL1_256 K + TBQ4_0 V",
-        },
-        "optimization": {
-            "weights": "Q4_POLAR",
-            "kvK": "QJL1_256",
-            "kvV": "TBQ4_0",
-            "speculativeDecode": "MTP",
-            "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "mtp"],
-            "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza",
-        },
-        "pipeline": {
-            "publishedAt": "2026-05-10T00:00:00Z",
-            "trainedFrom": "google/gemma-4-E4B",
-            "trainingPipeline": "elizaos/eliza-1-training",
-            "buildScript": "packages/training/scripts/publish_eliza1_model.py",
-        },
-    }
-    import json as _json
-
-    (model_dir / "manifest.json").write_text(_json.dumps(manifest, indent=2))
-    (model_dir / "README.md").write_text("# placeholder\n")
-
-
-def test_eliza1_dry_run_accepts_fused_gguf(publish_eliza1, tmp_path, monkeypatch):
-    monkeypatch.delenv("HF_TOKEN", raising=False)
-    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=True)
-
-    rc = publish_eliza1.main(
+    assert rc == 0
+    assert calls == [
         [
-            "--model-dir",
-            str(bundle),
-            "--repo-id",
-            "elizaos/eliza-1",
-            "--dry-run",
+            sys.executable,
+            "-m",
+            "scripts.publish.orchestrator",
+            "--tier",
+            "2b",
         ]
-    )
-    assert rc == 0
-
-
-def test_eliza1_refuses_stock_gguf(publish_eliza1, tmp_path, monkeypatch):
-    monkeypatch.delenv("HF_TOKEN", raising=False)
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=False)
-
-    with pytest.raises(SystemExit) as excinfo:
-        publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "elizaos/eliza-1",
-                "--dry-run",
-            ]
-        )
-    msg = str(excinfo.value)
-    assert "q4_polar" in msg.lower() or "qjl1_256" in msg.lower()
-
-
-def test_eliza1_refuses_missing_turboquant_marker(
-    publish_eliza1, tmp_path, monkeypatch
-):
-    monkeypatch.delenv("HF_TOKEN", raising=False)
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=True)
-    _make_missing_tbq_gguf(bundle / f"{bundle.name}.gguf")
-
-    with pytest.raises(SystemExit) as excinfo:
-        publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "elizaos/eliza-1",
-                "--dry-run",
-            ]
-        )
-    assert "tbq3_0" in str(excinfo.value).lower()
-
-
-def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=True)
-
-    with pytest.raises(SystemExit) as excinfo:
-        publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "someoneelse/gemma4-e4b",
-                "--dry-run",
-            ]
-        )
-    assert "elizaos" in str(excinfo.value)
-
-
-def test_eliza1_refuses_zero_byte_gguf(publish_eliza1, tmp_path):
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    bundle.mkdir()
-    (bundle / "gemma4-e4b-optimized.gguf").touch()  # zero bytes
-    (bundle / "manifest.json").write_text(
-        '{"version":1,"kind":"eliza-1-optimized","modelId":"x","base":{},"gguf":{},"optimization":{}}'
-    )
-    (bundle / "README.md").write_text("# x")
-
-    with pytest.raises(SystemExit) as excinfo:
-        publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "elizaos/eliza-1",
-                "--dry-run",
-            ]
-        )
-    assert "zero bytes" in str(excinfo.value)
-
-
-def test_eliza1_publish_writes_published_sidecar(publish_eliza1, tmp_path, monkeypatch):
-    """End-to-end: HfApi mocked, publisher writes published.json idempotency
-    sidecar with the canonical resolve URL + sha256."""
-    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=True)
-
-    fake_api = MagicMock()
-    fake_api.repo_info.return_value = SimpleNamespace(siblings=[])
-
-    with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "elizaos/eliza-1",
-            ]
-        )
-    assert rc == 0
-
-    sidecar = bundle / "published.json"
-    assert sidecar.exists(), "published.json was not written"
-    import json as _json
-
-    data = _json.loads(sidecar.read_text())
-    assert data["repoId"] == "elizaos/eliza-1"
-    assert data["resolveUrl"].startswith(
-        "https://huggingface.co/elizaos/eliza-1/resolve/main/"
-    )
-    assert data["ggufFile"] == "gemma4-e4b-optimized.gguf"
-    assert isinstance(data["sha256"], str) and len(data["sha256"]) == 64
-    assert data["sizeBytes"] > 0
-
-    # Atomic commit path: README + manifest + GGUF in one create_commit().
-    assert fake_api.create_commit.call_count == 1
-    ops = fake_api.create_commit.call_args.kwargs["operations"]
-    op_paths = sorted(op.path_in_repo for op in ops)
-    assert op_paths == [
-        "README.md",
-        "manifest.json",
-        "gemma4-e4b-optimized.gguf",
     ]
 
 
-def test_eliza1_publish_skips_when_remote_sha_matches(
-    publish_eliza1, tmp_path, monkeypatch
-):
-    """If the remote LFS pointer's sha256 matches the local GGUF, the GGUF
-    upload is skipped and only README + manifest get refreshed."""
-    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "gemma4-e4b-optimized"
-    _make_eliza1_bundle(bundle, fused=True)
-    gguf_path = bundle / "gemma4-e4b-optimized.gguf"
-    expected_sha = publish_eliza1._sha256_file(gguf_path)
+def test_publish_model_dispatches_tier_mode(publish_model, monkeypatch):
+    calls = []
+    monkeypatch.setattr(publish_model, "_run", lambda cmd: calls.append(cmd) or 0)
 
-    sibling = SimpleNamespace(
-        rfilename="gemma4-e4b-optimized.gguf",
-        lfs={"sha256": expected_sha},
-    )
-    fake_api = MagicMock()
-    fake_api.repo_info.side_effect = [
-        SimpleNamespace(siblings=[sibling]),  # existence probe
-        SimpleNamespace(siblings=[sibling]),  # _remote_sha256 probe
+    rc = publish_model.main(["--mode", "tier", "--tier", "2b"])
+
+    assert rc == 0
+    assert calls == [
+        [
+            sys.executable,
+            "-m",
+            "scripts.publish.publish_eliza1_model_repo",
+            "--tier",
+            "2b",
+        ]
     ]
 
-    with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_eliza1.main(
-            [
-                "--model-dir",
-                str(bundle),
-                "--repo-id",
-                "elizaos/eliza-1",
-            ]
-        )
-    assert rc == 0
 
-    ops = fake_api.create_commit.call_args.kwargs["operations"]
-    op_paths = sorted(op.path_in_repo for op in ops)
-    # GGUF is NOT in the operations list — sha matched.
-    assert op_paths == ["README.md", "manifest.json"]
+def test_publish_model_rejects_retired_optimized_mode(publish_model):
+    with pytest.raises(SystemExit):
+        publish_model.main(["--mode", "optimized"])
 
 
 # ---------------------------------------------------------------------------
