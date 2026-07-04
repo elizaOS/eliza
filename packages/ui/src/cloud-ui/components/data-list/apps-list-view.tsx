@@ -167,11 +167,11 @@ export function AppsListView({
               </span>
               <span className="hidden text-white/20 sm:inline">-</span>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Users className="h-3 w-3 text-blue-400" />
+                <Users className="h-3 w-3 text-white/50" />
                 <span>{app.total_users.toLocaleString()}</span>
               </div>
               <div className="flex shrink-0 items-center gap-1 text-white/50">
-                <Activity className="h-3 w-3 text-purple-400" />
+                <Activity className="h-3 w-3 text-white/50" />
                 <span>{app.total_requests.toLocaleString()}</span>
               </div>
               <span className="text-white/20">-</span>

@@ -48,17 +48,30 @@ export function useWidgetNavigation(): {
 
 export type HomeWidgetTone = "default" | "danger" | "warn";
 
-// Default values sit on the orange home wallpaper; keep them high contrast.
+// Every card sits on the ORANGE home wallpaper, and the brand maps the
+// danger/warn/accent tokens to brand orange — so any `text-danger` /
+// `bg-accent-subtle` here is orange-on-orange (the overdrawn amount and its
+// badge rendered invisible). Tone must therefore use wallpaper-safe fixed
+// colors: white text always; tone is carried by the icon dot + the badge chip.
 const TONE_VALUE_CLASS: Record<HomeWidgetTone, string> = {
   default: "text-white",
-  danger: "text-danger",
-  warn: "text-warn",
+  danger: "text-white",
+  warn: "text-white",
 };
 
 const TONE_DOT_CLASS: Record<HomeWidgetTone, string> = {
-  default: "bg-muted",
-  danger: "bg-danger",
-  warn: "bg-warn",
+  default: "bg-white/60",
+  danger: "bg-white",
+  warn: "bg-white/75",
+};
+
+// Dark glass chips read on the orange field (the token-tinted `bg-danger/15
+// text-danger` chips did not — orange on orange). Danger/warn get the stronger
+// fill so escalations still pop against the default count chips.
+const TONE_BADGE_CLASS: Record<HomeWidgetTone, string> = {
+  default: "bg-black/20 text-white/90",
+  danger: "bg-black/35 text-white",
+  warn: "bg-black/30 text-white",
 };
 
 export interface HomeWidgetCardProps {
@@ -103,15 +116,21 @@ export function HomeWidgetCard({
         // Chromeless (#10708): no border/background/rounded card — content sits
         // directly on the wallpaper. Neutral-resting hover affordance is an
         // opacity change (no background fill), per the neutral hover rule.
-        "group h-auto w-full justify-start gap-3 whitespace-normal rounded-none bg-transparent px-3 py-2.5 text-left",
+        // `flex-wrap` + the value's min-width floor below keep the single datum
+        // legible on half-width mobile cards: without them a wide shrink-0
+        // badge ("Overdrawn") crushed the flex-1 value column to ~0px and the
+        // currency vanished. When the row can't fit, the badge wraps under.
+        "group h-auto w-full flex-wrap justify-start gap-3 whitespace-normal rounded-none bg-transparent px-3 py-2.5 text-left",
         "transition-opacity hover:bg-transparent hover:opacity-80",
       )}
     >
       <span
         className={cn(
+          // Tonal glyph tints are skipped for the same orange-on-orange reason
+          // as TONE_VALUE_CLASS: the escalated tones brighten to full white and
+          // the corner dot marks the tone.
           "relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white/85 [&>svg]:h-4 [&>svg]:w-4",
-          tone === "danger" && "text-danger",
-          tone === "warn" && "text-warn",
+          tone !== "default" && "text-white",
         )}
       >
         {icon}
@@ -129,7 +148,7 @@ export function HomeWidgetCard({
       {/* Icon-only: the lucide icon identifies the widget; the label is folded
           into the button's aria-label (and the hover title), never shown as a
           visible eyebrow. Only the single high-priority datum renders. */}
-      <span className="flex min-w-0 flex-1 flex-col">
+      <span className="flex min-w-[4.5rem] flex-1 flex-col">
         {value != null ? (
           <span
             className={cn(
@@ -155,11 +174,7 @@ export function HomeWidgetCard({
         <span
           className={cn(
             "shrink-0 rounded-full px-1.5 py-0.5 text-2xs font-semibold",
-            tone === "danger"
-              ? "bg-danger/15 text-danger"
-              : tone === "warn"
-                ? "bg-warn/15 text-warn"
-                : "bg-accent-subtle text-accent",
+            TONE_BADGE_CLASS[tone],
           )}
         >
           {badge}
