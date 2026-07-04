@@ -16,6 +16,7 @@ export type ConversationSource =
   | "chatgpt"
   | "claude"
   | "hermes"
+  | "openclaw"
   | (string & {});
 
 /**

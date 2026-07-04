@@ -1,6 +1,6 @@
 /**
  * @elizaos/import-conversations — bring prior AI conversation history
- * (ChatGPT / Claude / Hermes exports) into elizaOS as searchable, scoped
+ * (ChatGPT / Claude / Hermes / OpenClaw exports) into elizaOS as searchable, scoped
  * knowledge.
  *
  * Track A ships the shared core: the normalized conversation contract, the
@@ -26,3 +26,9 @@ export {
 } from "./parsers/claude.ts";
 export type { ParseOptions } from "./parsers/hermes.ts";
 export { default as hermesParser, detect, parse } from "./parsers/hermes.ts";
+export type { OpenClawParseOptions } from "./parsers/openclaw.ts";
+export {
+  default as openclawParser,
+  detect as detectOpenClawHome,
+  parse as parseOpenClawHome,
+} from "./parsers/openclaw.ts";
