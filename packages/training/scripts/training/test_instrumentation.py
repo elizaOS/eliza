@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from scripts.training import instrumentation
@@ -71,10 +72,36 @@ def test_log_environment_hashes_tokenizer_and_base_checkpoint(tmp_path, monkeypa
     log_environment(out, tokenizer_path=tok_dir, base_checkpoint=ckpt)
     repro = _read_env(out)["reproducibility"]
 
-    assert repro["tokenizer_hashes"][str(tok_dir)].startswith("sha256:")
+    # The tokenizer artifact hash is REQUIRED by AGENTS.md §9 — it must be
+    # present and a real sha256 (64 hex chars), not just a prefix or empty.
+    tok_hash = repro["tokenizer_hashes"][str(tok_dir)]
+    assert re.fullmatch(r"sha256:[a-f0-9]{64}", tok_hash), tok_hash
     assert repro["base_checkpoint_hashes"][str(ckpt)] == (
         "sha256:" + hashlib.sha256(ckpt.read_bytes()).hexdigest()
     )
+
+
+def test_log_environment_records_tokenizer_hash_when_passed(tmp_path, monkeypatch):
+    """Regression for the C10 wiring gap: train_local.py must pass tokenizer_path
+    so the reproducibility manifest is COMPLETE. Without a tokenizer_path the map
+    is empty; with one it carries the artifact hash. This guards that the
+    tokenizer slot is populated (the train_local.py call now passes it)."""
+    monkeypatch.setattr(instrumentation, "_git_head", lambda: {"available": False})
+    tok_dir = tmp_path / "tokenizer"
+    tok_dir.mkdir()
+    (tok_dir / "tokenizer.json").write_bytes(b'{"model":"gemma4"}')
+
+    # Not passing tokenizer_path → empty (proves the field is opt-in on inputs).
+    out_no_tok = tmp_path / "run-none"
+    log_environment(out_no_tok, base_checkpoint="org/repo-id")
+    assert _read_env(out_no_tok)["reproducibility"]["tokenizer_hashes"] == {}
+
+    # Passing it → the artifact hash is captured.
+    out_tok = tmp_path / "run-tok"
+    log_environment(out_tok, tokenizer_path=tok_dir)
+    hashes = _read_env(out_tok)["reproducibility"]["tokenizer_hashes"]
+    assert list(hashes) == [str(tok_dir)]
+    assert re.fullmatch(r"sha256:[a-f0-9]{64}", hashes[str(tok_dir)])
 
 
 def test_log_environment_skips_non_local_base_checkpoint(tmp_path, monkeypatch):

@@ -918,6 +918,12 @@ def main() -> int:
         InstrumentationConfig, log_environment, make_finite_weights_callback,
         make_hf_callback,
     )
+    # Materialize the exact tokenizer this run trains with (including any chat-
+    # template override applied above) to a stable path so its artifact hash is
+    # captured in the reproducibility manifest. This is the actual tokenizer the
+    # model sees, not just the base-model source.
+    tokenizer_dir = out_dir / "tokenizer"
+    tokenizer.save_pretrained(str(tokenizer_dir))
     log_environment(
         out_dir,
         run_meta={
@@ -930,6 +936,7 @@ def main() -> int:
         # HF repo id for --model won't resolve to a local path and is skipped;
         # a local base checkpoint is hashed.
         dataset_files=[args.train_file, args.val_file],
+        tokenizer_path=tokenizer_dir,
         base_checkpoint=args.model,
     )
     # Post-step finite-weights guard — registered unconditionally. A divergent
