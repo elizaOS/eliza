@@ -13,6 +13,14 @@ export interface RateLimitConfig {
   windowMs: number;
   maxRequests: number;
   keyGenerator?: (c: AppContext) => string;
+  /**
+   * Fail CLOSED on a runtime Redis error. Default (undefined/false) falls open
+   * — a Redis outage should not turn ordinary routes into 503s. Set on
+   * money/auth routes (session mint, top-up) where losing the limiter is worse
+   * than a brief availability hit: if the backing store throws at request time
+   * the request is rejected (503) instead of sailing through unlimited.
+   */
+  failClosed?: boolean;
 }
 
 function getRedis(env: Bindings): CompatibleRedis | null {
@@ -216,11 +224,29 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
         effectiveConfig.maxRequests,
       );
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (config.failClosed) {
+        // Money/auth route: losing the limiter is worse than a brief 503, so
+        // reject rather than serve unlimited requests while Redis is down.
+        logger.error("[RateLimit] Redis unavailable on fail-closed route; rejecting", {
+          error: message,
+        });
+        return c.json(
+          {
+            success: false,
+            error: "Service temporarily unavailable",
+            code: "rate_limit_unavailable" as const,
+            message: "Rate limiter backing store is unavailable; request rejected.",
+          },
+          503,
+          { "Retry-After": "30" },
+        );
+      }
       // Rate limiting is protective middleware. If its backing store is down
       // or unreachable in local Worker dev, requests should fall open instead
       // of turning application routes into 500s.
       logger.warn("[RateLimit] Redis unavailable; falling open", {
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
       result = fallOpenResult(effectiveConfig);
       policy = "redis-unavailable";

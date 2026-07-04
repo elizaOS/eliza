@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import { registerPhoneGatewayDevice } from "@/lib/services/phone-gateway-devices";
@@ -159,6 +160,26 @@ export async function handleBlueBubblesWebhookPayload(
   const hasAttachments = Boolean(data.attachments?.length);
   if (!body && !hasAttachments) {
     return c.json({ success: true, skipped: "empty_message" });
+  }
+
+  // Replay dedupe on the message guid (matches the crypto/stripe webhooks).
+  // The local relay retries deliveries, so without this a re-delivered message
+  // is routed to the agent twice (duplicate reply + double credit spend).
+  const messageGuid = data.guid?.trim() ?? null;
+  if (messageGuid) {
+    const dedupe = await webhookEventsRepository.tryCreate({
+      event_id: `bluebubbles:${messageGuid}`,
+      provider: "bluebubbles",
+      event_type: type,
+      payload_hash: messageGuid,
+    });
+    if (!dedupe.created) {
+      logger.warn("[BlueBubblesWebhook] Duplicate delivery ignored", {
+        messageGuid,
+        type,
+      });
+      return c.json({ success: true, skipped: "duplicate_delivery" });
+    }
   }
 
   const organizationId =

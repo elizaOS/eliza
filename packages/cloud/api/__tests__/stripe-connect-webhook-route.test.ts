@@ -29,6 +29,15 @@ mock.module(
 // NOTE: mapConnectWebhookEvent is intentionally NOT mocked — the test exercises
 // the real pure mapping so a regression there is caught here too.
 
+// The route dedupes on event.id via webhookEventsRepository.tryCreate (#12227
+// L5). Stub it as a first-time delivery so these mapping/persist tests run;
+// replay dedupe itself is covered in the sibling dedupe.test.ts.
+mock.module("@elizaos/cloud-shared/db/repositories/webhook-events", () => ({
+  webhookEventsRepository: {
+    tryCreate: mock(async () => ({ created: true, event: { id: "evt" } })),
+  },
+}));
+
 mock.module("@/lib/stripe", () => ({
   isStripeConfigured: () => stripeConfigured,
   requireStripe: () => ({ webhooks: { constructEventAsync } }),

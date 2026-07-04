@@ -1,4 +1,5 @@
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
 import { mapConnectWebhookEvent } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import { Hono } from "hono";
 import type Stripe from "stripe";
@@ -13,6 +14,18 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * time — matches Stripe's SDK default and the main `stripe/webhook` route.
  */
 const STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300;
+
+/** SHA-256 of the raw body for the webhook_events.payload_hash column.
+ *  WebCrypto-only so this works on Workers. */
+async function hashConnectPayload(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(body),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function getClientIp(c: AppContext): string {
   return (
@@ -89,6 +102,26 @@ async function handlePOST(c: AppContext): Promise<Response> {
       { success: false, error: "Webhook signature verification failed" },
       400,
     );
+  }
+
+  // Replay dedupe on the Stripe event id (matches the main stripe/webhook and
+  // crypto webhooks). Stripe delivers at-least-once; without this a re-delivered
+  // `account.updated` reapplies capability/status writes. The mutation below is
+  // synchronous (no queue), so a committed marker with no rollback is safe.
+  const dedupe = await webhookEventsRepository.tryCreate({
+    event_id: `stripe-connect:${event.id}`,
+    provider: "stripe-connect",
+    event_type: event.type,
+    payload_hash: await hashConnectPayload(body),
+    source_ip: getClientIp(c),
+    event_timestamp: event.created ? new Date(event.created * 1000) : undefined,
+  });
+  if (!dedupe.created) {
+    logger.info("[StripeConnect] Duplicate event — skipping", {
+      eventId: event.id,
+      type: event.type,
+    });
+    return c.json({ success: true, duplicate: true });
   }
 
   const outcome = mapConnectWebhookEvent({

@@ -33,6 +33,14 @@ mock.module("@/lib/services/phone-gateway-devices", () => ({
   registerPhoneGatewayDevice,
 }));
 
+// The route dedupes on the message guid via webhookEventsRepository.tryCreate
+// (#12227 L5). Stub it as a first-time delivery so these routing tests exercise
+// the routing path (dedupe itself is covered in dedupe.test.ts).
+const tryCreate = mock(async () => ({ created: true, event: { id: "evt-1" } }));
+mock.module("@/db/repositories/webhook-events", () => ({
+  webhookEventsRepository: { tryCreate },
+}));
+
 const { default: app } = await import("./route");
 
 const env = {
