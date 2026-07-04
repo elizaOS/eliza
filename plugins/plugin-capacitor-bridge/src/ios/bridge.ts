@@ -42,21 +42,16 @@ import {
 	resolveStoredModelPath,
 	toStoredModelPath,
 } from "../shared/local-inference-stored-path.ts";
-import { createStdioBridge } from "../shared/stdio-bridge.ts";
+import {
+	createStdioBridge,
+	type StdioBridgeRequestFrame as BridgeRequest,
+	type StdioBridgeResponseFrame as BridgeResponse,
+} from "../shared/stdio-bridge.ts";
 import { runModelGrind } from "./model-grind.ts";
 
-interface BridgeRequest {
-	id?: unknown;
-	method?: unknown;
-	payload?: unknown;
-}
-
-interface BridgeResponse {
-	id: unknown;
-	ok: boolean;
-	result?: unknown;
-	error?: string;
-}
+// `BridgeRequest` / `BridgeResponse` are the shared stdio frame types
+// (imported above as aliases) — the single source of truth for the NDJSON
+// request/response envelope this bridge speaks.
 
 interface HostCallFrame {
 	type: "host_call";
@@ -4318,8 +4313,8 @@ export async function runIosBridgeCli(
 	// host-call interleaving (`tryHandleHostResultLine`) via `interceptLine`, the
 	// runtime host, stdout reservation, and the status/streaming shims above.
 	const stdioBridge = createStdioBridge({
-		request: (request) => dispatchBridgeRequest(host, request as BridgeRequest),
-		writeFrame: (frame) => writeProtocolLine(frame as BridgeResponse),
+		request: (request) => dispatchBridgeRequest(host, request),
+		writeFrame: (frame) => writeProtocolLine(frame),
 		interceptLine: (line) => tryHandleHostResultLine(line),
 	});
 
