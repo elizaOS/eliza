@@ -17,7 +17,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
+import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
   RegistryAppInfo,
@@ -197,8 +197,12 @@ async function fetchLocalJson<T>(
       });
       if (!response.ok) continue;
       return (await response.json()) as T;
-    } catch {
+    } catch (err) {
       // Try the next local API port candidate on connection failures.
+      logger.debug(
+        { err, url },
+        "[page-scoped-context] local API fetch candidate failed",
+      );
     }
   }
   return null;
