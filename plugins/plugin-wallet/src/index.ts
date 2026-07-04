@@ -33,7 +33,11 @@ export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
 export * from "./contracts.js";
 export {
+  AGENT_AUTO_MAX_DAILY_TRADES,
+  agentAutoDailyTrades,
   canUseLocalTradeExecution,
+  getAgentAutoTradeDate,
+  recordAgentAutoTrade,
   resolveTradePermissionMode,
   resolveWalletExportRejection,
 } from "./lib/server-wallet-trade.js";
