@@ -19,7 +19,13 @@
  * module has no interact export.
  */
 
-import { resolveAppBranding } from "@elizaos/shared";
+import {
+  HOST_EXTERNAL_RUNTIME_PARAM,
+  HOST_EXTERNAL_SPECIFIERS_PARAM,
+  type HostExternalBundleFactory,
+  type HostModuleImporter,
+  resolveAppBranding,
+} from "@elizaos/shared";
 import {
   type ComponentType,
   memo,
@@ -503,25 +509,41 @@ function hostExternalSpecifiers(): string[] {
 
 declare global {
   interface Window {
-    __ELIZA_DYNAMIC_VIEW_IMPORT__?: (
-      specifier: string,
-    ) => Promise<Record<string, unknown>>;
     __ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__?: (
       bundleUrl: string,
     ) => Promise<Record<string, unknown>>;
   }
 }
 
-if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
-  window.__ELIZA_DYNAMIC_VIEW_IMPORT__ = async (specifier) => {
-    const importer = resolveHostExternalImporter(specifier);
-    if (!importer) {
-      throw new Error(
-        `DynamicViewLoader: unsupported host external "${specifier}"`,
-      );
-    }
-    return importer();
-  };
+/**
+ * Resolve one host-external specifier to the host shell's live singleton (the
+ * framework trunk map first, then registered plugin/build-variant specifiers).
+ * Passed to a served view bundle's factory (its default export) as the {@link
+ * HostModuleImporter} it resolves its externals through — no `globalThis` bridge.
+ * Exported so tests can exercise the resolver the factory receives.
+ */
+export const hostImport: HostModuleImporter = async (specifier) => {
+  const importer = resolveHostExternalImporter(specifier);
+  if (!importer) {
+    throw new Error(
+      `DynamicViewLoader: unsupported host external "${specifier}"`,
+    );
+  }
+  return importer();
+};
+
+/**
+ * A served view bundle's default export is a `HostExternalBundleFactory`: call
+ * it with {@link hostImport} to get the view's export namespace. Test/dev bundle
+ * modules injected through `__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__` already return
+ * a namespace directly, so a non-function default passes through unchanged.
+ */
+async function resolveBundleNamespace(
+  mod: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const factory = mod.default;
+  if (typeof factory !== "function") return mod;
+  return (factory as HostExternalBundleFactory)(hostImport);
 }
 
 /** Dev-mode polling interval in ms. Not used in production builds. */
@@ -569,7 +591,9 @@ async function importViewBundle(
 
   const hostExternalUrl = buildHostExternalBundleUrl(bundleUrl);
   if (hostExternalUrl) {
-    return import(/* @vite-ignore */ hostExternalUrl);
+    return resolveBundleNamespace(
+      await import(/* @vite-ignore */ hostExternalUrl),
+    );
   }
 
   try {
@@ -587,7 +611,7 @@ async function importViewBundle(
       `DynamicViewLoader: bundle at ${bundleUrl} could not use host externals`,
     );
   }
-  return import(/* @vite-ignore */ rewrittenUrl);
+  return resolveBundleNamespace(await import(/* @vite-ignore */ rewrittenUrl));
 }
 
 function buildHostExternalBundleUrl(bundleUrl: string): string | null {
@@ -595,9 +619,9 @@ function buildHostExternalBundleUrl(bundleUrl: string): string | null {
   const rewrittenUrl = new URL(bundleUrl, window.location.href);
   if (rewrittenUrl.origin !== window.location.origin) return null;
   if (!rewrittenUrl.pathname.startsWith("/api/views/")) return null;
-  rewrittenUrl.searchParams.set("hostExternalRuntime", "1");
+  rewrittenUrl.searchParams.set(HOST_EXTERNAL_RUNTIME_PARAM, "1");
   rewrittenUrl.searchParams.set(
-    "hostExternalSpecifiers",
+    HOST_EXTERNAL_SPECIFIERS_PARAM,
     hostExternalSpecifiers().join(","),
   );
   return rewrittenUrl.href;

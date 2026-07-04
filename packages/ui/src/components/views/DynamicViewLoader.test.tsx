@@ -19,6 +19,7 @@ import { APP_PAUSE_EVENT } from "../../events";
 import {
   __resetDynamicViewLoaderCacheForTests,
   DynamicViewLoader,
+  hostImport,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
 
@@ -61,14 +62,13 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   });
 });
 
-describe("host-external importer resolution (__ELIZA_DYNAMIC_VIEW_IMPORT__)", () => {
-  async function resolveHostExternal(
+describe("host-external importer resolution (factory hostImport)", () => {
+  // The served view-bundle factory receives `hostImport` as its parameter; it
+  // resolves a specifier to the host shell's live singleton with no globalThis
+  // bridge. Exercise that resolver directly here.
+  const resolveHostExternal = (
     specifier: string,
-  ): Promise<Record<string, unknown>> {
-    const importFn = window.__ELIZA_DYNAMIC_VIEW_IMPORT__;
-    if (!importFn) throw new Error("import hook not installed");
-    return importFn(specifier);
-  }
+  ): Promise<Record<string, unknown>> => hostImport(specifier);
 
   it("consults an importer contributed through registerHostExternalImporter", async () => {
     const { registerHostExternalImporter } = await import(

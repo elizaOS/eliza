@@ -24,15 +24,6 @@ type RemoteCapabilityServer = {
   close: () => Promise<void>;
 };
 
-type DynamicViewImportWindow = Window & {
-  __ELIZA_DYNAMIC_VIEW_IMPORT__?: (
-    specifier: string,
-  ) => Promise<Record<string, unknown>>;
-  __ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__?: (
-    bundleUrl: string,
-  ) => Promise<Record<string, unknown>>;
-};
-
 const ADVANCED_SETTINGS_STORAGE_KEY = "eliza:settings-advanced";
 const REMOTE_CAPABILITY_BUNDLE_PATH =
   "/api/views/remote-capability-live/bundle.js";
@@ -306,66 +297,12 @@ async function installRemoteCapabilityViewRoutes(
   page: Page,
   remote: RemoteCapabilityServer,
 ): Promise<void> {
-  await page.addInitScript(
-    ({ bundlePath, remoteBaseUrl }) => {
-      const dynamicWindow = window as DynamicViewImportWindow;
-      dynamicWindow.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = async (
-        bundleUrl,
-      ) => {
-        const url = new URL(bundleUrl, window.location.href);
-        if (
-          url.origin !== window.location.origin ||
-          url.pathname !== bundlePath
-        ) {
-          throw new Error(`Unexpected dynamic view bundle URL: ${bundleUrl}`);
-        }
-
-        const response = await fetch(
-          `${remoteBaseUrl}/assets/remote-capability-live.js`,
-          { cache: "no-store" },
-        );
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch dynamic view bundle: ${response.status}`,
-          );
-        }
-
-        const React = (await dynamicWindow.__ELIZA_DYNAMIC_VIEW_IMPORT__?.(
-          "react",
-        )) as { createElement?: (...args: unknown[]) => unknown } | undefined;
-        const createElement = React?.createElement;
-        if (!createElement) {
-          throw new Error("Dynamic view React host external unavailable");
-        }
-
-        return {
-          default(props: {
-            t?: (key: string, options?: { defaultValue?: string }) => string;
-          }) {
-            return createElement(
-              "section",
-              { "data-testid": "remote-capability-live-view" },
-              createElement("h1", null, "Remote capability live view"),
-              createElement(
-                "p",
-                null,
-                `Exit label: ${
-                  props.t?.("remote.exit", {
-                    defaultValue: "Leave remote view",
-                  }) ?? "Leave remote view"
-                }`,
-              ),
-            );
-          },
-        };
-      };
-    },
-    {
-      bundlePath: REMOTE_CAPABILITY_BUNDLE_PATH,
-      remoteBaseUrl: remote.baseUrl,
-    },
-  );
-
+  // No `__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__` test hook: the shell's real
+  // same-origin DynamicViewLoader path loads the routed bundle, appends the
+  // host-external runtime query, imports the served factory module, and calls
+  // its default factory with the host `react` singleton (#12250). The remote
+  // server already serves the bundle in that factory shape, so this exercises
+  // the production loading path end to end.
   await page.route(
     "**/api/views/remote-capability-live/bundle.js**",
     async (route) => {
@@ -481,20 +418,25 @@ async function handleRemoteRequest(
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-store",
     });
+    // Served in the new host-external factory shape: the module's default export
+    // is a factory the shell's DynamicViewLoader calls with a `hostImport` that
+    // resolves the host React singleton. No `globalThis` bridge (#12250).
     res.end(`
-const React = await window.__ELIZA_DYNAMIC_VIEW_IMPORT__("react");
-
-export default function RemoteCapabilityLiveView(props) {
-  return React.createElement(
-    "section",
-    { "data-testid": "remote-capability-live-view" },
-    React.createElement("h1", null, "Remote capability live view"),
-    React.createElement(
-      "p",
-      null,
-      "Exit label: " + props.t("remote.exit", { defaultValue: "Leave remote view" })
-    )
-  );
+export default async function RemoteCapabilityLiveFactory(__elizaHostImport) {
+  const React = await __elizaHostImport("react");
+  function RemoteCapabilityLiveView(props) {
+    return React.createElement(
+      "section",
+      { "data-testid": "remote-capability-live-view" },
+      React.createElement("h1", null, "Remote capability live view"),
+      React.createElement(
+        "p",
+        null,
+        "Exit label: " + props.t("remote.exit", { defaultValue: "Leave remote view" })
+      )
+    );
+  }
+  return { default: RemoteCapabilityLiveView };
 }
 `);
     return;

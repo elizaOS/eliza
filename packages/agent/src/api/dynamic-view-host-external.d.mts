@@ -1,5 +1,5 @@
-/** globalThis hook the rewritten imports call to resolve a host-external module. */
-export declare const DYNAMIC_VIEW_IMPORT_GLOBAL: "__ELIZA_DYNAMIC_VIEW_IMPORT__";
+/** Factory parameter name the wrapped bundle resolves host externals through. */
+export declare const HOST_IMPORT_PARAM: "__elizaHostImport";
 
 export declare function convertNamedImportsToDestructuring(
   namedImports: string,
@@ -11,7 +11,7 @@ export declare function buildHostExternalImportReplacement(
   index: number,
 ): string;
 
-export declare function rewriteHostExternalImports(
+export declare function wrapBundleAsHostExternalFactory(
   source: string,
   specifiers: readonly string[],
 ): string;

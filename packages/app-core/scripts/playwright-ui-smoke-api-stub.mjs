@@ -7,7 +7,7 @@ import { WebSocketServer } from "ws";
 // bundle route). Plain ESM so this node-run stub can import it without a build.
 import {
   parseHostExternalSpecifiers,
-  rewriteHostExternalImports,
+  wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.mjs";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -1962,7 +1962,7 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
       const source = smokeViewBundleSource(view);
       const body =
         hostExternalSpecifiers.length > 0
-          ? rewriteHostExternalImports(source, hostExternalSpecifiers)
+          ? wrapBundleAsHostExternalFactory(source, hostExternalSpecifiers)
           : source;
       sendBinary(
         req,
@@ -1981,7 +1981,7 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
     hostExternalSpecifiers.length > 0 &&
     contentTypeForSmokeViewAsset(assetPath).startsWith("application/javascript")
       ? Buffer.from(
-          rewriteHostExternalImports(
+          wrapBundleAsHostExternalFactory(
             rawBody.toString("utf8"),
             hostExternalSpecifiers,
           ),

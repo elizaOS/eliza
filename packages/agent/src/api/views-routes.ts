@@ -49,7 +49,7 @@ import {
 } from "../runtime/view-action-affinity.ts";
 import {
   parseHostExternalSpecifiers,
-  rewriteHostExternalImports,
+  wrapBundleAsHostExternalFactory,
 } from "./dynamic-view-host-external.mjs";
 import {
   PendingRequestMap,
@@ -527,7 +527,7 @@ export async function handleViewsRoutes(
 
     if (hostExternalSpecifiers.length > 0 && method !== "HEAD") {
       data = Buffer.from(
-        rewriteHostExternalImports(
+        wrapBundleAsHostExternalFactory(
           data.toString("utf8"),
           hostExternalSpecifiers,
         ),

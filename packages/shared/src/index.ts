@@ -326,6 +326,7 @@ export * from "./utils/trajectory-format.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./view-hero-art.js";
+export * from "./views/host-external-contract.js";
 export * from "./views/view-interact-protocol.js";
 export * from "./voice/first-sentence-snip.js";
 export * from "./voice/voice-cancellation-token.js";

@@ -4,15 +4,15 @@
  * A plugin view bundle is built with `@elizaos/ui`, `react`, etc. left as
  * *external* bare imports (see `view-bundle-vite.config.ts`). At runtime the
  * shell's `DynamicViewLoader` does NOT load those bare specifiers directly —
- * the agent's bundle route rewrites each one into a
- * `globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__("<specifier>")` call, resolved by
- * the loader's `HOST_EXTERNAL_IMPORTERS` map so the view shares the host's
+ * the agent's bundle route wraps the bundle as a host-external factory
+ * (`wrapBundleAsHostExternalFactory`), binding each external specifier to the
+ * loader's `HOST_EXTERNAL_IMPORTERS` map so the view shares the host's
  * singletons.
  *
- * That rewrite is an EXACT-STRING match against the map's keys. The Vite build,
+ * That binding is an EXACT-STRING match against the map's keys. The Vite build,
  * however, externalises by PREFIX (`@elizaos/ui` and anything under it). The two
  * therefore disagree: a view that imports an `@elizaos/ui/<subpath>` the loader
- * does not list is externalised by the build but never rewritten by the loader,
+ * does not list is externalised by the build but never bound by the loader,
  * so the browser receives a bare `import … from "@elizaos/ui/<subpath>"` it
  * cannot resolve and the view fails to load with "Failed to resolve module
  * specifier".
