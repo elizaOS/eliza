@@ -3966,7 +3966,6 @@
       "name": "@elizaos/plugin-local-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-aosp-local-inference": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
@@ -3977,6 +3976,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.2",
+        "@elizaos/agent": "workspace:*",
         "@types/node": "24.12.2",
         "@types/ws": "^8.18.1",
         "typescript": "^6.0.3",
