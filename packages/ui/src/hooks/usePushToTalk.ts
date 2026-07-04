@@ -15,8 +15,8 @@
  * single hold duration for both.
  */
 
-import { useCallback, useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /** Single hold duration before a press promotes to an active capture. */
 export const PUSH_TO_TALK_HOLD_MS = 200;
