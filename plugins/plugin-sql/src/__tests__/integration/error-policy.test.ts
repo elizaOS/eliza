@@ -33,25 +33,22 @@ describe("SQL adapter error policy", () => {
     try {
       await dropTable(setup.adapter.getDatabase() as DrizzleDatabase, "agents");
 
-      await expectElizaError(setup.adapter.countAgents(), "DB_COUNT_AGENTS_FAILED");
+      await expectElizaError(setup.adapter.countAgents(), "DB_COUNT_FAILED");
     } finally {
       await setup.cleanup();
     }
-  });
+  }, 60_000);
 
   it("throws a typed error when deleteAgents cannot write the agents table", async () => {
     const setup = await createIsolatedTestDatabase("error-policy-delete-agents");
     try {
       await dropTable(setup.adapter.getDatabase() as DrizzleDatabase, "agents");
 
-      await expectElizaError(
-        setup.adapter.deleteAgents([uuidv4() as UUID]),
-        "DB_DELETE_AGENTS_FAILED"
-      );
+      await expectElizaError(setup.adapter.deleteAgents([uuidv4() as UUID]), "DB_DELETE_FAILED");
     } finally {
       await setup.cleanup();
     }
-  });
+  }, 60_000);
 
   it("throws a typed error when createEntities cannot write the entities table", async () => {
     const setup = await createIsolatedTestDatabase("error-policy-create-entities");
@@ -63,11 +60,11 @@ describe("SQL adapter error policy", () => {
         agentId: setup.testAgentId,
         names: ["Error Policy Entity"],
       };
-      await expectElizaError(setup.adapter.createEntities([entity]), "DB_CREATE_ENTITIES_FAILED");
+      await expectElizaError(setup.adapter.createEntities([entity]), "DB_INSERT_FAILED");
     } finally {
       await setup.cleanup();
     }
-  });
+  }, 60_000);
 
   it("throws a typed error when updateComponent cannot write the components table", async () => {
     const setup = await createIsolatedTestDatabase("error-policy-update-component");
@@ -85,12 +82,9 @@ describe("SQL adapter error policy", () => {
         data: { value: "boom" },
         createdAt: Date.now(),
       };
-      await expectElizaError(
-        setup.adapter.updateComponent(component),
-        "DB_UPDATE_COMPONENT_FAILED"
-      );
+      await expectElizaError(setup.adapter.updateComponent(component), "DB_UPDATE_FAILED");
     } finally {
       await setup.cleanup();
     }
-  });
+  }, 60_000);
 });

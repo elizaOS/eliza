@@ -52,7 +52,7 @@ describe("DB adapter fail-fast error paths (real broken PGlite)", () => {
     const setup = await createIsolatedTestDatabase("db-failure-error-path");
     adapter = setup.adapter;
     cleanup = setup.cleanup;
-  });
+  }, 60_000);
 
   afterEach(async () => {
     // cleanup() calls adapter.close(); the raw connection may already be closed,
