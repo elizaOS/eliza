@@ -1,11 +1,13 @@
-import type { IAgentRuntime } from "@elizaos/core";
-
 /**
- * Self-contained raw-SQL helpers for the goals back-end. Copied verbatim from
- * the PA LifeOps sql helpers (renamed error prefixes) so this plugin carries no
- * dependency on `@elizaos/plugin-personal-assistant`. Keep in sync only when a
- * correctness fix applies to both; do not add goals-specific logic here.
+ * Self-contained raw-SQL helpers for the goals back-end — value coercers and a
+ * cached `sql.raw` accessor over the runtime DB handle.
+ *
+ * A verbatim copy of the PA LifeOps SQL helpers (only the error prefixes differ)
+ * so this plugin carries no dependency on `@elizaos/plugin-personal-assistant`.
+ * Keep in sync only when a correctness fix applies to both; do not add
+ * goals-specific logic here.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;

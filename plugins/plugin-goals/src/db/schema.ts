@@ -1,15 +1,13 @@
+/**
+ * Drizzle definitions for the `app_goals` schema — the goal tables
+ * (`life_goal_definitions`, `life_goal_links`) this plugin owns.
+ *
+ * Table and column names (and column order) mirror the `app_lifeops` originals
+ * verbatim so the non-destructive `GoalsMigrationService` can copy existing rows
+ * across on first boot. Registered with the runtime through `@elizaos/plugin-sql`.
+ */
 import { index, pgSchema, text, unique } from "drizzle-orm/pg-core";
 
-/**
- * Drizzle schema for plugin-goals.
- *
- * The goal tables (`life_goal_definitions`, `life_goal_links`) were carved out
- * of `@elizaos/plugin-personal-assistant`'s `app_lifeops` schema into
- * `app_goals`, owned by this plugin. Table + column names (and column order) are
- * preserved verbatim so the non-destructive `GoalsMigrationService` can copy
- * existing `app_lifeops` rows across on first boot. The runtime registers this
- * schema through `@elizaos/plugin-sql`.
- */
 export const goalsSchema = pgSchema("app_goals");
 
 export const lifeGoalDefinitions = goalsSchema.table(

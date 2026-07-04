@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the `goal-normalize` input coercers and `GoalsServiceError`,
+ * asserting the HTTP status each rejection carries. Pure functions, no runtime.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

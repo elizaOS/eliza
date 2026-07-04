@@ -1,15 +1,14 @@
+/**
+ * Drizzle definitions for the `app_reminders` schema — the reminder tables
+ * (`life_reminder_plans`, `life_reminder_attempts`, `life_escalation_states`)
+ * this plugin owns.
+ *
+ * Table and column names mirror the `app_lifeops` originals verbatim so the
+ * non-destructive `RemindersMigrationService` can copy existing rows across.
+ * Registered with the runtime through `@elizaos/plugin-sql`.
+ */
 import { boolean, index, integer, pgSchema, text } from "drizzle-orm/pg-core";
 
-/**
- * Drizzle schema for plugin-reminders.
- *
- * The reminder tables (`life_reminder_plans`, `life_reminder_attempts`,
- * `life_escalation_states`) were carved out of
- * `@elizaos/plugin-personal-assistant`'s `app_lifeops` schema. Table + column
- * names are preserved verbatim so the non-destructive `RemindersMigrationService`
- * can copy existing `app_lifeops` rows into `app_reminders`. The runtime
- * registers this schema through `@elizaos/plugin-sql`.
- */
 export const remindersSchema = pgSchema("app_reminders");
 
 export const lifeReminderPlans = remindersSchema.table(

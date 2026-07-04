@@ -1,3 +1,8 @@
+/**
+ * Vitest config for plugin-goals. The alias block anchors the leaf DB subpaths
+ * of sibling LifeOps plugins to source so the keyless node test graph
+ * (`goals.real-db.test.ts` drives PA's repository) never pulls in React views.
+ */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
