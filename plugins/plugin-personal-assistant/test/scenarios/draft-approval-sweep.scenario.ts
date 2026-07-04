@@ -1,4 +1,10 @@
-// Defines the draft approval sweep LifeOps scenario-runner spec.
+/**
+ * Live-model draft-approval sweep (#9310): seeds two real pending approvals on the
+ * live queue, asks for the sweep (the reply must name the seeded "Meridian" item,
+ * a token absent from every user turn), then drives a split decision through the
+ * live RESOLVE_REQUEST action and asserts both queue outcomes — one row approved,
+ * one rejected with no gated side effect.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalRejectedNoSideEffect,
@@ -6,19 +12,6 @@ import {
   expectPendingApprovalSeeded,
 } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only draft-sweep scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("approval", "draft",
- * "waiting" — all present in the user's own turn text), so a parroted reply
- * passed while the queue could be empty.
- *
- * This version seeds TWO real pending approvals on the live queue, asks for
- * the sweep (the reply must be grounded in the actual queue — it has to name
- * the seeded "Meridian" item, a token that never appears in any user turn),
- * then drives a split decision through the live RESOLVE_REQUEST action and
- * asserts both queue outcomes: one row approved, one row rejected with no
- * gated side effect.
- */
 export default scenario({
   lane: "live-only",
   id: "draft-approval-sweep",

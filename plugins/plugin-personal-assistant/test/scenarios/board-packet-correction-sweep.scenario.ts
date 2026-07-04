@@ -1,7 +1,3 @@
-// Defines the board packet correction sweep LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model board-packet correction sweep. Seeds real correction work — the
  * recipient who flagged the
@@ -12,6 +8,9 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
  * seed must never surface before counsel clears it, and no packet may be
  * resent before approval.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "board-packet-correction-sweep",

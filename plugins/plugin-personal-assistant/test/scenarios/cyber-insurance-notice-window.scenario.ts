@@ -1,20 +1,14 @@
-// Defines the cyber insurance notice window LifeOps scenario-runner spec.
+/**
+ * Live-model cyber-insurance notice-window flow (#9310): seeds real notice work —
+ * the insurer ("Ashworth Mutual") and broker ("Ferdinand Locke") appear in no
+ * user turn — and asserts the notice map is grounded in that seeded state. The
+ * staging turn is a counsel gate: the working incident description (the Corvus
+ * file server) stays out of drafts until counsel signs off, and nothing is
+ * dispatched.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only cyber-notice scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("policy",
- * "timeline", "broker", "counsel" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL notice work — the insurer ("Ashworth Mutual") and
- * the broker ("Ferdinand Locke") appear in NO user turn — and asserts the
- * notice map is grounded in them. The staging turn is a counsel gate: the
- * working incident description planted in the seed (the Corvus file server)
- * must stay out of drafts until counsel signs off, and nothing may be
- * dispatched.
- */
 export default scenario({
   lane: "live-only",
   id: "cyber-insurance-notice-window",

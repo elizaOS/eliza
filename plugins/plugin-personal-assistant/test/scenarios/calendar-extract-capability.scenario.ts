@@ -1,32 +1,14 @@
-// Defines the calendar extract capability LifeOps scenario-runner spec.
+/**
+ * Live-model behavior scenario for the `calendar_extract` LifeOps capability:
+ * natural-language calendar requests must route through the PA CALENDAR umbrella
+ * (or its promoted per-subaction virtuals) to a handler that calls
+ * `extractCalendarPlanWithLlm` (model calls tagged purpose:"calendar_extract").
+ * Asserts the selected action is one of the seven extract-capable subactions and
+ * that the extract prompt actually fired under the live model (modelCallOccurred);
+ * the non-extract siblings are excluded.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * Behavior scenario for the `calendar_extract` LifeOps capability.
- *
- * The calendar planner (`extractCalendarPlanWithLlm` in
- * `@elizaos/plugin-calendar`, model calls tagged `purpose: "calendar_extract"`)
- * turns a natural-language request into a structured plan. Its instruction
- * body is the GEPA-optimizable `calendar_extract` prompt routed through
- * `OptimizedPromptService`.
- *
- * Routing reality (verified against the promoted-action registry):
- * `@elizaos/plugin-personal-assistant` registers the CALENDAR umbrella via
- * `promoteSubactionsToActions(calendarAction)`, so the planner sees the
- * umbrella `CALENDAR` plus per-subaction virtuals (`CALENDAR_FEED`,
- * `CALENDAR_CREATE_EVENT`, ...). Each virtual injects the discriminator
- * (`"action":"create_event"` etc.) into the dispatched parameters, so the
- * planner-trace assertions below match either routing shape.
- *
- * Capability prompt path: the seven calendar-target subactions — feed,
- * next_event, search_events, create_event, update_event, delete_event,
- * trip_window — all delegate to the `@elizaos/plugin-calendar` handler, which
- * calls `extractCalendarPlanWithLlm` unconditionally, so any of those routes
- * exercises the `calendar_extract` prompt. The sibling subactions
- * bulk_reschedule / check_availability / propose_times / update_preferences
- * route elsewhere and NEVER run the extract prompt; the final selected-action
- * check therefore accepts only the extract-capable names.
- */
 export default scenario({
   lane: "live-only",
   id: "calendar-extract-capability",

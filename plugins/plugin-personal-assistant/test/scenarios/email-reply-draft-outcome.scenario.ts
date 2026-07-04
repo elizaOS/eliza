@@ -1,41 +1,14 @@
-// Defines the email reply draft outcome LifeOps scenario-runner spec.
+/**
+ * Live-model email-reply-draft outcome for the LifeOps email capability: seeds a
+ * real inbound email, asks the agent to DRAFT a reply, and asserts the result
+ * against the loopback Gmail mock — a draft was actually created
+ * (gmailDraftCreated/draftExists), its body carries the right recipient and the
+ * requested Friday-afternoon availability (gmailActionArguments + mock request
+ * body), and nothing was SENT (gmailMessageSent:false, gmailNoRealWrite). The
+ * MESSAGE `draft_reply` subaction is the path under test.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
-
-/**
- * OUTCOME-asserting scenario for the LifeOps email-reply-draft capability.
- *
- * Unlike the routing-only Gmail scenarios in this directory
- * (`gmail-direct-message-sender-routing`, `gmail-retry-followup`), which only
- * assert that the planner emitted `gmail_action`, this scenario seeds a real
- * inbound email, asks the agent to DRAFT a reply, and then asserts the RESULT:
- *
- *   1. a Gmail draft was actually created — proven against the loopback Gmail
- *      mock's request ledger (`POST /gmail/v1/users/me/drafts`) via
- *      `gmailDraftCreated` + `draftExists`, and against the captured action's
- *      `result.data.gmailDraft` payload, and
- *   2. the draft BODY content is correct — `gmailActionArguments` checks the
- *      structured arguments the MESSAGE/`draft_reply` subaction was called with
- *      (the recipient + the Friday-afternoon availability the owner asked for),
- *      and a `gmailMockRequest` on the draft POST body asserts the recipient
- *      address landed in the wire payload, and
- *   3. nothing was actually SENT — `gmailMessageSent: false` (no
- *      `/messages/send` or `/drafts/send` in the ledger) and `gmailNoRealWrite`
- *      (every write is constrained to the loopback mock base; real Gmail writes
- *      are excluded).
- *
- * The MESSAGE action's `draft_reply` subaction (resolved in
- * `packages/core/src/features/advanced-capabilities/actions/message.ts`,
- * delegating to `draftReplyAction` in
- * `packages/core/src/features/messaging/triage/actions/draftReply.ts`) is the
- * code path under test; the Gmail seam is exercised through the loopback mock
- * seeded by the `gmailInbox` seed (`packages/scenario-runner/src/seeds.ts`).
- *
- * Final-check handlers cited:
- *   - `draftExists`, `gmailActionArguments`, `gmailDraftCreated`,
- *     `gmailMockRequest`, `gmailMessageSent`, `gmailNoRealWrite`
- *     in `packages/scenario-runner/src/final-checks/index.ts`.
- */
 
 export default scenario({
   lane: "live-only",

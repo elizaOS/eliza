@@ -1,10 +1,3 @@
-// Defines the bill approval and payment LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectApprovalResolvedApproved,
-  expectPendingApprovalSeeded,
-} from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model bill-approval-and-payment flow. Seeds a real pending
  * payment-authorization approval on the
@@ -14,6 +7,12 @@ import {
  * whose arguments actually carry the receipt task (`selectedActionArguments`),
  * not just a reply that repeats the word "reminder".
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  expectApprovalResolvedApproved,
+  expectPendingApprovalSeeded,
+} from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "bill-approval-and-payment",

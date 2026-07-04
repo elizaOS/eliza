@@ -1,7 +1,3 @@
-// Defines the board observer conflict disclosure LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model board-observer conflict-disclosure flow. Seeds real disclosure
  * work — the conflicted observer's firm
@@ -12,6 +8,9 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
  * seed must never surface, and nothing may be dispatched before the owner
  * approves the exact language.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "board-observer-conflict-disclosure",

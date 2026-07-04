@@ -1,20 +1,13 @@
-// Defines the cross channel composition LifeOps scenario-runner spec.
+/**
+ * Live-model cross-channel composition (#9310): seeds "notes from today" as real
+ * tracked state whose distinctive tokens ("Copperline", "Ashgate") appear in no
+ * user turn, so the staged email draft must surface them rather than parrot the
+ * prompt. The send stays gated on approval (no external dispatch), and the policy
+ * turn is judged on proposing a group-chat handoff rather than echoing.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the echo-prone composition scenario (#9310): the old
- * file asserted reply keywords ("draft", "approval", "alice@example.com" /
- * "group chat", "handoff", "relay") that all appeared in the user's own turn
- * text, so a prompt-parroting reply passed with no check that the draft
- * carried any real content or that nothing was sent.
- *
- * This version seeds the "notes from today" as REAL tracked state whose
- * distinctive tokens ("Copperline", "Ashgate") appear in NO user turn: the
- * staged email draft must surface them, the send stays gated on approval
- * (no external dispatch), and the policy turn is judged on proposing the
- * group-chat handoff rather than echoing the question.
- */
 export default scenario({
   lane: "live-only",
   id: "cross-channel-composition",

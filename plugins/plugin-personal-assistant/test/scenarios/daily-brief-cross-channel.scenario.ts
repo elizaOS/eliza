@@ -1,19 +1,13 @@
-// Defines the daily brief cross channel LifeOps scenario-runner spec.
+/**
+ * Live-model daily-brief grounding (#9310): seeds real owner state through the
+ * headless-persistent LifeOps definition API (two commitments due today — the
+ * Meridian invoice payment and the Halcyon partnership prep) and asserts the
+ * brief surfaces the seeded "Meridian" and "Halcyon" items, tokens that never
+ * appear in any user turn, so an echoed reply cannot pass. Seeds re-verified via
+ * definitionCountDelta.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * OUTCOME rewrite of the routing-only daily-brief scenario (#9310): the old
- * file only asserted the planner said BRIEF and the reply echoed prompt
- * keywords ("calendar", "urgent", "draft", "bill", "need" — all present in
- * the user's own turn text), so a parroted reply passed against an empty day.
- *
- * This version seeds REAL owner state through the headless-persistent LifeOps
- * definition API (two commitments due today: the Meridian invoice payment and
- * the Halcyon partnership prep) and asserts the brief is GROUNDED in it: the
- * reply must surface the seeded "Meridian" and "Halcyon" items — tokens that
- * never appear in any user turn, so echoing the prompt cannot pass. The
- * seeded rows are re-verified via `definitionCountDelta` at the end.
- */
 export default scenario({
   lane: "live-only",
   id: "daily-brief-cross-channel",

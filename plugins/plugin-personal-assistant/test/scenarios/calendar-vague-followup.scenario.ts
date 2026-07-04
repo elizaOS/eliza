@@ -1,6 +1,3 @@
-// Defines the calendar vague followup LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
  * Live-model vague calendar-followup flow. Seeds two real flight commitments
  * through the
@@ -11,6 +8,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  * seeded outbound flight, and the return question must surface the seeded
  * return flight. The seeded rows are re-verified via `definitionCountDelta`.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+
 export default scenario({
   lane: "live-only",
   id: "calendar-vague-followup",

@@ -1,21 +1,16 @@
-// Defines the document signature chase LifeOps scenario-runner spec.
+/**
+ * Live-model NDA signature-chase (#9310): seeds a real pending sign_document
+ * approval on the live queue for the partner NDA, resolves it through the live
+ * RESOLVE_REQUEST action, and asserts the queue outcome (pending ->
+ * approved/executing/done). The close-out turn is judged on loop-closure
+ * semantics rather than prompt echoes.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectApprovalResolvedApproved,
   expectPendingApprovalSeeded,
 } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only signature-chase scenario (#9310): the
- * old file only asserted OWNER_DOCUMENTS routing plus reply keywords that all
- * appeared in the user's own turn text ("signature", "deadline", "approval",
- * "Friday" / "closed", "stopped", "done"), so an echoed reply passed.
- *
- * This version seeds a REAL pending sign_document approval on the live queue
- * for the partner NDA, resolves it through the live RESOLVE_REQUEST action,
- * and asserts the queue outcome (pending -> approved/executing/done). The
- * close-out turn is judged on loop-closure semantics rather than echoes.
- */
 export default scenario({
   lane: "live-only",
   id: "document-signature-chase",

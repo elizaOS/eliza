@@ -1,4 +1,12 @@
-// Defines the daily left today variants LifeOps scenario-runner spec.
+/**
+ * Live-model scenario proving the "what's left today" LifeOps leftover-overview
+ * across phrasing variants and channels: seeds two once-tasks ("Pay rent", "Call
+ * mom") via the definitions API, then across discord and telegram asks the
+ * remaining-items question three different ways, completing "Call mom" mid-flow,
+ * and asserts each reply plus the /api/lifeops/overview response surfaces the
+ * still-open item and drops the completed one. Seeds re-verified via
+ * definitionCountDelta.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**

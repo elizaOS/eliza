@@ -1,7 +1,3 @@
-// Defines the anonymous donor diligence LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model anonymous-donor diligence flow. Seeds real diligence tasks — the
  * charity ("Rosewater Children's Fund") and the anonymity vehicle ("Aldergate
@@ -11,6 +7,9 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
  * staged for the charity, and no
  * external dispatch may occur before written approval.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "anonymous-donor-diligence",

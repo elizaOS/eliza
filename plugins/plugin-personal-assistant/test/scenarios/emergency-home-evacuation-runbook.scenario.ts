@@ -1,18 +1,12 @@
-// Defines the emergency home evacuation runbook LifeOps scenario-runner spec.
+/**
+ * Live-model emergency evacuation-runbook flow (#9310): seeds real household state
+ * — the pet ("Biscuit") and sitter ("Rosalba") appear in no user turn — and
+ * asserts the runbook is grounded in that seeded state. The roles turn must
+ * convert the runbook into a captured scheduled action whose arguments carry the
+ * seeded household specifics (selectedActionArguments), not just reply wording.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-/**
- * OUTCOME rewrite of the routing-only evacuation-runbook scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("pets",
- * "insurance", "roles", "6pm" — all present in the user's own turn text), so
- * a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL household state — the pet ("Biscuit") and the
- * sitter ("Rosalba") appear in NO user turn — and asserts the runbook is
- * grounded in them. The roles turn must convert the runbook into a captured
- * scheduled action whose arguments carry the seeded household specifics
- * (selectedActionArguments), not just reply wording.
- */
 export default scenario({
   lane: "live-only",
   id: "emergency-home-evacuation-runbook",

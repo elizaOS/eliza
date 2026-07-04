@@ -1,48 +1,13 @@
-// Defines the calendar conflict resolve outcome LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * Calendar conflict detection + reschedule — OUTCOME scenario (supersedes the
- * routing-only `calendar-conflict-detect-reschedule.scenario.ts`).
- *
- * The routing-only file only asserted that the planner selected a calendar
- * action and the reply mentioned "reschedule". This scenario instead seeds two
- * genuinely overlapping owner commitments, asks the agent to surface the clash,
- * then drives the reschedule through the canonical, headless-persistent LifeOps
- * definition API and ASSERTS THE ACTUAL OUTCOME: a real `GET` proves the moved
- * commitment now occupies a new, conflict-free slot whose `dueAt` no longer
- * overlaps the anchor commitment.
- *
- * Why definitions and not `/api/lifeops/calendar/events`: in the scenario
- * runtime there is no connected Google grant and no Apple Calendar native
- * bridge, so `CalendarService.createCalendarEvent` / `updateCalendarEvent` fall
- * through to the native Apple bridge and cannot persist (see
- * `plugins/plugin-calendar/src/service/CalendarService.ts` createCalendarEvent
- * + `service/gate.ts requireGoogleCalendarWriteGrant`). The LifeOps definition
- * store is PGLite-backed and persists every commitment + its derived schedule
- * headlessly, and `updateDefinition` re-derives occurrences from the new
- * cadence (`refreshDefinitionOccurrences`), so a `once` commitment's `dueAt` is
- * the canonical scheduled slot we can move and re-read.
- *
- * Two overlapping commitments (a `once` task each):
- *   - "Budget review with Priya"  : now+120m .. now+180m  (anchor, priority 1)
- *   - "Dentist checkup"           : now+150m .. now+210m  (overlaps the anchor
- *                                                          from now+150m..now+180m)
- * Resolution moves "Dentist checkup" to now+300m (well after the anchor ends at
- * now+180m), so the two no longer overlap.
- *
- * Outcome evidence (not routing):
- *   - api `GET` on the rescheduled definition: its `cadence.dueAt` is parseable
- *     and now sits ≥ 240 minutes out — past the anchor's end and far past the
- *     original overlapping 150-minute slot. Combined with the anchor's
- *     unchanged ≤ 180-minute slot this proves the overlap is gone.
- *   - api `GET` on the anchor definition: its `dueAt` is unchanged (still the
- *     now+120m slot) — the resolution moved the right commitment, not the anchor.
- *   - `definitionCountDelta` for both titles (both `once`, dentist requires its
- *     reminder plan) — the persisted records survived the edit.
- *   - `memoryWriteOccurred` on `messages` — the live conflict-detect turn
- *     actually ran through the agent loop and wrote a response memory.
+ * Live-model calendar conflict-resolution outcome (#9310): seeds two genuinely
+ * overlapping owner commitments through the headless-persistent LifeOps
+ * definition API, has the agent surface the clash, then reschedules the
+ * lower-priority one and asserts the ACTUAL outcome — a GET proves the moved
+ * commitment's `dueAt` now sits past the anchor's end (no overlap) while the
+ * anchor's slot is unchanged. Definitions (not calendar events) are used because
+ * the scenario runtime has no Google/Apple calendar write grant.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 function assertApiBody(options: {
   includesAll?: ReadonlyArray<string>;

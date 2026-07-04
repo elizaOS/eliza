@@ -1,19 +1,13 @@
-// Defines the delegation map status compression LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
- * OUTCOME rewrite of the routing-only delegation-map scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("owner", "due",
- * "status", "blocked" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL delegations — a blocked item ("Kirkbride vendor
- * redline" delegated to Ansel) and an on-track item (finance recap owed by
- * Odette) that appear in NO user turn — and asserts the map and the
- * compression are grounded in them. The follow-up conversion must land as a
- * captured scheduled action whose arguments carry the blocked item
+ * Live-model delegation-map + status-compression (#9310): seeds real delegations
+ * — a blocked item ("Kirkbride vendor redline" delegated to Ansel) and an
+ * on-track item (finance recap owed by Odette) that appear in no user turn — and
+ * asserts the map and compression are grounded in them. The follow-up conversion
+ * must land as a captured scheduled action whose arguments carry the blocked item
  * (selectedActionArguments), not just reply wording.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+
 export default scenario({
   lane: "live-only",
   id: "delegation-map-status-compression",

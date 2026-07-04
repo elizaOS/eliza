@@ -1,6 +1,3 @@
-// Defines the board meeting prebrief risk register LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
  * Live-model board-meeting prebrief + risk-register flow. Seeds real prebrief
  * state — an open metric gap ("Westerly churn
@@ -11,6 +8,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
  * action whose arguments carry it (selectedActionArguments), not just reply
  * wording.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+
 export default scenario({
   lane: "live-only",
   id: "board-meeting-prebrief-risk-register",

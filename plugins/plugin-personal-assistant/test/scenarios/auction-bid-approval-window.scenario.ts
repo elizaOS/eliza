@@ -1,11 +1,3 @@
-// Defines the auction bid approval window LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectApprovalRejectedNoSideEffect,
-  expectNoExternalSendDispatch,
-  expectPendingApprovalSeeded,
-} from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model auction-bid approval-window flow.
  *
@@ -16,6 +8,13 @@ import {
  * row "rejected", no gated side effect runs, no external dispatch happens,
  * and the ceiling never leaks into chat.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  expectApprovalRejectedNoSideEffect,
+  expectNoExternalSendDispatch,
+  expectPendingApprovalSeeded,
+} from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "auction-bid-approval-window",

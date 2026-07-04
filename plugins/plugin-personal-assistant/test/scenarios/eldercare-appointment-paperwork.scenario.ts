@@ -1,19 +1,13 @@
-// Defines the eldercare appointment paperwork LifeOps scenario-runner spec.
+/**
+ * Live-model eldercare appointment-paperwork flow (#9310): seeds real appointment
+ * work — the specialist ("Dr. Okonkwo") and driving caregiver ("Lucinda") appear
+ * in no user turn — and asserts the paperwork plan is grounded in that seeded
+ * state. The caregiver-note turn is a privacy gate: the diagnosis planted in the
+ * seed stays out of the logistics note, and nothing is dispatched.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only eldercare-paperwork scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("referral",
- * "insurance", "pickup", "parking" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL appointment work — the specialist ("Dr. Okonkwo")
- * and the driving caregiver ("Lucinda") appear in NO user turn — and asserts
- * the paperwork plan is grounded in them. The caregiver-note turn is a
- * privacy gate: the diagnosis planted in the seed must stay out of the
- * logistics note, and nothing may be dispatched.
- */
 export default scenario({
   lane: "live-only",
   id: "eldercare-appointment-paperwork",

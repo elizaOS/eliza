@@ -1,19 +1,14 @@
-// Defines the data breach vendor notification LifeOps scenario-runner spec.
+/**
+ * Live-model vendor data-breach notification loop (#9310): seeds real breach work
+ * — the vendor ("Paystream") and outside counsel ("Whitlock Barnes") appear in no
+ * user turn — and asserts the triage is grounded in that seeded state. The notes
+ * turn is a discipline gate: the unverified affected-employee count planted in
+ * the seed stays out of every draft, and nothing is dispatched before legal
+ * approves.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only breach-notification scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("payroll",
- * "counsel", "HR", "containment" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL breach work — the vendor ("Paystream") and outside
- * counsel ("Whitlock Barnes") appear in NO user turn — and asserts the triage
- * is grounded in them. The notes turn is a discipline gate: the unverified
- * affected-employee count planted in the seed must stay out of every draft,
- * and nothing may be dispatched before legal approves.
- */
 export default scenario({
   lane: "live-only",
   id: "data-breach-vendor-notification",

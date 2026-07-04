@@ -1,18 +1,13 @@
-// Defines the emergency litigation hold executive LifeOps scenario-runner spec.
+/**
+ * Live-model litigation-hold flow (#9310): seeds real hold work — the matter
+ * ("Danvers") and document workspace ("Vaultree") appear in no user turn — and
+ * asserts the custodian map is grounded in that seeded state. The routing turn is
+ * a counsel gate: no notice is dispatched before counsel approves the recipient
+ * list.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
-/**
- * OUTCOME rewrite of the routing-only litigation-hold scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("custodians",
- * "threads", "routing", "tracker" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL hold work — the matter ("Danvers") and the document
- * workspace ("Vaultree") appear in NO user turn — and asserts the custodian
- * map is grounded in them. The routing turn is a counsel gate: no notice may
- * be dispatched before counsel approves the recipient list.
- */
 export default scenario({
   lane: "live-only",
   id: "emergency-litigation-hold-executive",

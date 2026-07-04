@@ -1,7 +1,3 @@
-// Defines the conference room crisis recovery LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model conference room-crisis recovery flow. Seeds real crisis state —
  * the AV vendor ("Lumivox") and the
@@ -11,6 +7,9 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
  * moved and catering not changed before approval, and nothing may be
  * dispatched.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "conference-room-crisis-recovery",

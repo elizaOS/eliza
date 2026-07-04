@@ -1,45 +1,14 @@
-// Defines the approval queue resolve outcome LifeOps scenario-runner spec.
+/**
+ * Live-model approval-queue resolution (#9970): seeds a real PENDING row in
+ * `approval_requests` (PERSONAL_ASSISTANT sign_document -> live
+ * `PgApprovalQueue.enqueue`), then drives the owner's approve/reject through the
+ * live RESOLVE_REQUEST action and asserts the outcome read straight off the real
+ * queue — approve advances the row past "pending" and runs the gated executor;
+ * reject leaves it "rejected" with no gated side effect and no send/sign
+ * confirmation.
+ */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-
-/**
- * OUTCOME-asserting approval-queue resolution scenario (#9970).
- *
- * This is NOT a routing-only scenario. It seeds a real PENDING approval row in
- * the `approval_requests` table (via PERSONAL_ASSISTANT action=sign_document,
- * which calls the live `PgApprovalQueue.enqueue`), then drives the owner's
- * approve / reject decision through the live-LLM RESOLVE_REQUEST action and
- * asserts the RESULT that came straight back off the real queue:
- *
- *  - approve path: RESOLVE_REQUEST returns success=true and the approval row's
- *    state advanced out of "pending" into approved/executing/done, and the
- *    gated executor ran (`executeApprovedRequest`). The reply confirms the
- *    action was carried out — not a second "should I?" prompt.
- *  - reject path: RESOLVE_REQUEST returns the row in state "rejected" and the
- *    gated side effect never reached executing/done. The reply confirms the
- *    rejection and surfaces NO send/sign confirmation.
- *
- * Why these specific checks (grounded in code, no larp):
- *  - The approval `state` we assert on is the value returned by the live
- *    `queue.approve()` / `queue.reject()` SQL UPDATE (see
- *    `src/lifeops/approval-queue.ts` `transitionWithResolution`), surfaced on
- *    `ActionResult.data.state` by `src/actions/resolve-request.ts`. The runner
- *    captures it on `ctx.actionsCalled[].result.data` (interceptor.ts).
- *  - We deliberately do NOT use the `approvalStateTransition`,
- *    `approvalRequestExists`, or `noSideEffectOnReject` final-check types here:
- *    nothing in the runner emits a `subject: "approval"` state transition, the
- *    `approvalRequests` capture only fires for `runtime.createTask`-based
- *    approvals (not the direct `queue.enqueue` this flow uses), and the reject
- *    check keys on `parameters.confirmed === false` which the PA reject path
- *    (subaction "reject") never sets. Using them would silently skip/fail
- *    rather than prove the outcome — so we assert the real `result.data.state`
- *    directly via `custom` predicates.
- *
- * The owner gate: the runner sets ELIZA_ADMIN_ENTITY_ID to the primary room's
- * user id, so the primary-room user is the canonical OWNER and clears the
- * `roleGate: { minRole: "OWNER" }` on both PERSONAL_ASSISTANT and
- * RESOLVE_REQUEST. Seed + resolution therefore both run in the primary room.
- */
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];
 

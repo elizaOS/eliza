@@ -1,10 +1,3 @@
-// Defines the board consent signature emergency LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  expectApprovalResolvedApproved,
-  expectPendingApprovalSeeded,
-} from "./_helpers/approval-outcome.ts";
-
 /**
  * Live-model emergency board-consent signature flow. Seeds a real pending
  * approval row on the live queue
@@ -15,6 +8,12 @@ import {
  * consent context contains a deal figure ("$40 million") that must never
  * appear in the chase plan the assistant proposes.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  expectApprovalResolvedApproved,
+  expectPendingApprovalSeeded,
+} from "./_helpers/approval-outcome.ts";
+
 export default scenario({
   lane: "live-only",
   id: "board-consent-signature-emergency",

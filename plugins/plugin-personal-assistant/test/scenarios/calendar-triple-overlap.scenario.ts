@@ -1,4 +1,12 @@
-// Defines the calendar triple overlap LifeOps scenario-runner spec.
+/**
+ * Live-model CONFLICT_DETECT over a triple overlap plus one declined invite. Four
+ * real rows are seeded into the LifeOps calendar-event store and read back through
+ * a repository-backed loader wired via the production `setConflictDetectLoader`
+ * seam (all-day and owner-declined events excluded, as in production). Asserts the
+ * real action result: scan 1 surfaces exactly the two genuine overlap pairs (A,B)
+ * and (B,C) with checkedEvents=3, and after the owner reschedules the gym block a
+ * re-scan leaves exactly one conflict (A,B).
+ */
 import type {
   CapturedAction,
   ScenarioContext,
@@ -9,41 +17,6 @@ import {
   createCalendarFeedConflictLoader,
   setConflictDetectLoader,
 } from "../../src/actions/conflict-detect.ts";
-
-/**
- * CONFLICT_DETECT over a triple overlap + one declined invite.
- *
- * Four real rows are seeded into the LifeOps calendar-event store
- * (`app_calendar.life_calendar_events` via the LifeOps repository — the
- * same rows a Google sync would land):
- *
- *   A  "Design review"   T+26h00 .. T+27h00
- *   B  "Investor call"   T+26h30 .. T+27h30   (overlaps A and C)
- *   C  "Gym block"       T+27h15 .. T+28h00   (overlaps B, not A)
- *   D  "Vendor pitch"    T+26h00 .. T+28h00   (owner DECLINED — status
- *                        "declined" + self-attendee responseStatus declined)
- *
- * Loader note: the production feed loader
- * (`createCalendarFeedConflictLoader`) reads `CalendarService.getCalendarFeed`,
- * which requires a live Google grant / Apple bridge that the scenario
- * runtime does not have. The seed therefore injects a repository-backed
- * loader through the SAME production seam (`setConflictDetectLoader`),
- * reading the real seeded store rows and applying the owner-committed-feed
- * contract: all-day events excluded (mirrors the production loader) and
- * events the owner declined excluded (a declined invite is not a
- * commitment, so pairing it against real commitments would fabricate
- * conflicts). Everything downstream of the loader — pairing math,
- * severity, summary, the re-scan — is the real CONFLICT_DETECT action.
- *
- * Load-bearing outcome assertions (on the action result payload):
- *   - scan 1 surfaces BOTH real overlap pairs — (A,B) and (B,C) — and
- *     exactly those two; the declined D appears in no pair; checkedEvents
- *     is 3 (D excluded from the scanned feed, not merely unpaired);
- *   - after the owner's reschedule lands in the store (Gym block moved to
- *     T+30h, written through the same repository), a re-scan yields exactly
- *     ONE remaining conflict — (A,B) — proving the resolution actually
- *     cleared (B,C) and did not disturb (A,B).
- */
 
 type JsonRecord = Record<string, unknown>;
 

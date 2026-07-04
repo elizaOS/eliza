@@ -1,11 +1,10 @@
-// Defines the calendar conflict detect reschedule LifeOps scenario-runner spec.
-import { scenario } from "@elizaos/scenario-runner/schema";
-
 /**
  * Calendar conflict-detect + reschedule (#8795 item 6). Fills the thin calendar
  * domain: a double-booking is created, CONFLICT_DETECT surfaces the clash, and
  * the owner reschedules the lower-priority event to resolve it.
  */
+import { scenario } from "@elizaos/scenario-runner/schema";
+
 export default scenario({
   lane: "live-only",
   id: "calendar-conflict-detect-reschedule",
