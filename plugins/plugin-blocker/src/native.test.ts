@@ -71,6 +71,7 @@ function makeWebsiteBackend(
     status: "granted",
     lastChecked: 0,
     canRequest: false,
+    platform: "ios",
   };
   return {
     getStatus: async () => status,

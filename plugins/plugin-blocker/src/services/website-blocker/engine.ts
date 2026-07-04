@@ -7,7 +7,11 @@ import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
 import type { HandlerOptions } from "@elizaos/core";
-import type { PermissionState, PermissionStatus } from "./permissions.ts";
+import type {
+  PermissionPlatform,
+  PermissionState,
+  PermissionStatus,
+} from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
 const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";
@@ -124,6 +128,22 @@ export interface SelfControlBlockPolicy {
   blockedWebsites: string[];
   allowedWebsites: string[];
   matchMode: SelfControlBlockMatchMode;
+}
+
+function normalizeSelfControlPermissionPlatform(
+  platform: NodeJS.Platform | string,
+): PermissionPlatform {
+  switch (platform) {
+    case "darwin":
+    case "win32":
+    case "linux":
+    case "ios":
+    case "android":
+    case "web":
+      return platform;
+    default:
+      return "web";
+  }
 }
 
 export interface SelfControlBlockMetadata {
@@ -586,6 +606,7 @@ export async function getSelfControlPermissionState(
     status: permissionStatus,
     lastChecked: Date.now(),
     canRequest,
+    platform: normalizeSelfControlPermissionPlatform(status.platform),
     reason: buildSelfControlPermissionReason(status, {
       prompted: false,
       promptSucceeded: false,
