@@ -11,6 +11,8 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
 | `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, push-to-talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
 | `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
+| `lifecycle.android.spec.ts` | #12185 device-lifecycle matrix: app switching (home/recents/other app), camera interruption, mute, low battery + battery saver, forced doze, and force-stop + relaunch — after each event the shell is interactive, the agent loopback answers, and state persists (matrix: `docs/DEVICE_LIFECYCLE_MATRIX.md`) | Playwright Android driver + adb (keyevents, `am`, `dumpsys battery`/`deviceidle`, `cmd media_session`) |
+| `lifecycle-reboot.android.spec.ts` | `adb reboot` → ElizaBootReceiver auto-starts ElizaAgentService from BOOT_COMPLETED without an app launch, then a normal launch reaches a healthy agent with persisted state | plain adb (no WebView fixture — CDP cannot survive a reboot) |
 | `ios-onboarding-smoke.mjs` | Fresh iOS Capacitor first-run onboarding selects the same real remote host agent, completes first-run, and lands on the home/chat surface with screenshot + video artifacts | `xcrun simctl` + in-WebView smoke request/result via Capacitor Preferences |
 | `playwright.android.config.ts` (`test/android/*.android.spec.ts`) | Every route/feature renders on the real WebView against the live backend | Playwright Android driver (`_android`) over the WebView CDP socket |
 
@@ -47,6 +49,11 @@ bun run --cwd packages/app test:e2e:android:touch-gesture
 
 # #9943 sleep/wake lifecycle regression against the real Android WebView.
 bun run --cwd packages/app test:e2e:android:sleep-wake
+
+# #12185 device-lifecycle matrix (app switch, camera, mute, battery, doze,
+# process death). Reboot leg is separate — run it LAST, it reboots the device.
+bun run --cwd packages/app test:e2e:android:lifecycle
+bun run --cwd packages/app test:e2e:android:lifecycle:reboot
 
 # Route-only/WebView-only pass when the local chat smoke is already done.
 bun run --cwd packages/app test:e2e:android:routes
