@@ -1221,10 +1221,10 @@ export class MessageManager {
 					for (const m of memories) {
 						await createDiscordMessageMemoryOnce(this.runtime, m, {
 							operation: "discord-response-callback",
-							platformMessageId:
-								typeof m.metadata?.platformMessageId === "string"
-									? m.metadata.platformMessageId
-									: undefined,
+							platformMessageId: stringField(
+								asRecord(m.metadata),
+								"platformMessageId",
+							),
 						});
 					}
 
