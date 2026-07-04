@@ -18,11 +18,15 @@ Partial plugin-view evidence:
 
 `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/`
 
+Registered plugin-view sweep:
+
+`.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/`
+
 Report:
 
 `.github/issue-evidence/views-ux-audit-2026-07-04/REPORT.md`
 
-The broad audit captured 121 route-level screenshots before the run was terminated. It includes desktop, mobile portrait, mobile landscape, and iPad portrait for built-in views through logs. A focused settings pass captured 32 additional settings screenshots: hub plus 15 sections at desktop and mobile. A deep-subview pass captured 25 more screenshots for wallet tabs, perps, predictions, browser tab states, launcher pages, and Settings -> Wallet & RPC. A plugin pass captured three screenshots before repeated API-unavailable failures made the run non-actionable.
+The broad audit captured 121 route-level screenshots before the run was terminated. It includes desktop, mobile portrait, mobile landscape, and iPad portrait for built-in views through logs. A focused settings pass captured 32 additional settings screenshots: hub plus 15 sections at desktop and mobile. A deep-subview pass captured 25 more screenshots for wallet tabs, perps, predictions, browser tab states, launcher pages, and Settings -> Wallet & RPC. A bounded registered-plugin sweep accounts for all 55 plugin view cases at desktop and mobile: desktop produced 52 screenshots / 3 capture errors, mobile produced 42 screenshots / 13 capture errors.
 
 ## Overall Product Read
 
@@ -150,6 +154,9 @@ Screenshots:
 
 - `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/contacts-gui.png`
 - `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-views/hyperliquid-gui.png`
+- `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/desktop-plugin-view-sweep.json`
+- `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/mobile-plugin-view-sweep.json`
+- `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/debug-contacts-seeded.png`
 
 Issues:
 
@@ -157,6 +164,8 @@ Issues:
 - `/hyperliquid` contains useful read-only data but reads as raw utility output, with local `Refresh`, `Home`, and `Back` buttons competing with shell navigation.
 - Plugin views inherit global reconnect/composer chrome without enough surface negotiation.
 - API-unavailable errors show up as host websocket/proxy failure noise instead of a deliberate plugin offline state.
+- The registered sweep's first pass produced many orange-only screenshots, and direct seeded debug capture showed `/contacts` falling back to the home/launcher surface with the global orange background still active.
+- Capture failures cluster around heavier/dynamic mobile views: vector browser, feed, views manager, screenshare, social alpha, task coordinator, orchestrator, and model tester. This reads like a surface/lifecycle problem, not a one-off aesthetic nit.
 
 Actionables:
 
@@ -164,6 +173,7 @@ Actionables:
 - Add assertions that registered routes render route-specific content.
 - Normalize plugin GUI chrome through the shell header unless the view opts into fullscreen/terminal mode.
 - Provide a bounded no-backend state for plugin/dynamic views.
+- Add visual readiness markers per registered plugin route so screenshots prove the intended view rendered rather than the shared app background or launcher fallback.
 
 ## Acceptance Criteria
 
@@ -174,5 +184,6 @@ Actionables:
 - Deep subview capture includes wallet Tokens/DeFi/NFTs, Perps, Predictions, browser empty/active states, and launcher pages at desktop/mobile where available.
 - Registered plugin view screenshots can be captured without API-unavailable proxy noise, or the test harness provides an intentional offline visual state.
 - `/contacts` renders a contacts-specific view, not the launcher fallback.
+- Registered plugin visual manifests show zero `capture-error` statuses on desktop and mobile under the no-backend/offline harness.
 - Duplicate launcher labels are removed.
 - Settings, Browser, and Wallet each have a coherent first-run/empty state and desktop/mobile layouts.

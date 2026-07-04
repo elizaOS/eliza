@@ -1,0 +1,13 @@
+{
+  "viewport": "mobile",
+  "id": "views-manager",
+  "viewType": "gui",
+  "path": "/views",
+  "screenshot": "mobile-views-manager-gui.png",
+  "url": "http://127.0.0.1:2138/views",
+  "status": "capture-error",
+  "visibleTextSample": "",
+  "consoleErrors": [],
+  "pageErrors": [],
+  "error": "locator.waitFor: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('body') to be visible\u001b[22m\n"
+}

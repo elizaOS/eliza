@@ -22,6 +22,7 @@ Current examples from the 2026-07-04 audit:
 - Wallet: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-inventory.png`
 - Wallet Perps: `.github/issue-evidence/views-ux-audit-2026-07-04/deep-subviews/desktop-wallet-perps-hyperliquid.png`
 - Launcher/apps: `.github/issue-evidence/views-ux-audit-2026-07-04/aesthetic-audit-output/desktop-landscape/builtin-apps.png`
+- Plugin sweep manifest: `.github/issue-evidence/views-ux-audit-2026-07-04/plugin-view-sweep/desktop-plugin-view-sweep.json`
 
 ## Evidence
 
@@ -36,6 +37,8 @@ Settings is especially inconsistent: desktop uses a left settings rail plus a se
 The focused settings pass captured hub plus 15 settings sections at desktop and mobile. It makes the inconsistency more obvious: mobile settings hub has a large left-offset `Settings` heading with no shell header, while mobile section pages use an inline `← Settings` text button and a separate icon/title row. The expected pattern is one centered view title with one bare left back icon.
 
 The deep subview pass expands the same finding beyond settings. Browser active-tab states use toolbar chrome as page identity. Hyperliquid/Polymarket wallet-family routes render local `Refresh`, `Home`, `Back`, and market controls instead of the same normal-view header. Wallet & RPC has a section-local heading and rail state, but no centered view header.
+
+The registered plugin sweep expands the same issue to dynamic views. Plugin GUI/TUI routes are not required to declare a shell-owned title/back/header policy, so some routes fall back to launcher/home chrome while others render local controls. Header consistency cannot be solved per page; it needs to be part of the view registration contract.
 
 ## Proposed Direction
 
@@ -58,8 +61,9 @@ Normal views render through the shell header. FullscreenViews opt out explicitly
 - Browser toolbar sits below the header rather than replacing it.
 - Wallet top tabs become secondary nav under the `Wallet` header.
 - `audit:app` or an equivalent visual assertion fails when a normal view lacks the shared header.
+- Registered plugin GUI views declare `headerPolicy` and either render through the shared normal-view header or explicitly opt into fullscreen/terminal chrome.
 
 ## Evidence Gaps / Known Defects
 
 - Generic `wallet-rpc` settings capture by id still fails, but direct navigation/click now captures Wallet & RPC at desktop/mobile. The section id/anchor contract needs repair.
-- Full plugin-view header coverage is still missing because registered plugin routes hit API proxy failures without a running API server.
+- Plugin-view happy-path header coverage still needs an API-backed/offline-capability-clean run. The bounded sweep now accounts for every registered route, but several captures are fallback/background evidence rather than intended plugin content.
