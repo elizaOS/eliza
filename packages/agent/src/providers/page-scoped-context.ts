@@ -5,7 +5,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
   RegistryAppInfo,
@@ -185,7 +185,13 @@ async function fetchLocalJson<T>(
       });
       if (!response.ok) continue;
       return (await response.json()) as T;
-    } catch {}
+    } catch {
+      // error-policy:J4 local-API port failover — the dev API lives on one of a
+      // small set of candidate ports; a connection failure means "try the next
+      // port". Total exhaustion returns null, which every caller renders as an
+      // explicit "unavailable from the … API" line (agent-visible, not silence).
+      continue;
+    }
   }
   return null;
 }
@@ -287,7 +293,12 @@ async function renderBrowserLiveState(
     }
 
     return lines.join("\n");
-  } catch {
+  } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — one failing subsection
+    // (browser service throwing) must not blank the whole provider, so it
+    // degrades to an omitted section; the failure is reported so it reaches the
+    // RECENT_ERRORS provider instead of vanishing.
+    runtime.reportError("PageScopedContext.browserLiveState", err);
     return null;
   }
 }
@@ -528,7 +539,11 @@ async function renderAutomationsLiveState(
       lines.push(`- ${name}${tagList}`);
     }
     return lines.join("\n");
-  } catch {
+  } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — a failing task read must
+    // not blank the whole provider; the automations section is omitted and the
+    // failure is reported so it surfaces via the RECENT_ERRORS provider.
+    runtime.reportError("PageScopedContext.automationsLiveState", err);
     return null;
   }
 }
@@ -654,12 +669,13 @@ export const pageScopedContextProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "[page-scoped-context] Error",
-      );
+      // error-policy:J1 provider boundary — the outermost handler for this
+      // provider degrades to an empty context section (a provider throwing
+      // would abort the whole turn), and reports the failure so it reaches the
+      // RECENT_ERRORS provider and the owner-escalation threshold, not just logs.
+      runtime.reportError("page-scoped-context", error, {
+        roomId: message.roomId,
+      });
       return EMPTY_RESULT;
     }
   },
