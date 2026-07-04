@@ -139,6 +139,7 @@ function looksLikeRemoteTarget(value: string): boolean {
         parsed.hostname.trim().length > 0
       );
     } catch {
+      // error-policy:J3 user-typed target — unparseable means "not a remote URL"
       return false;
     }
   }

@@ -34,6 +34,8 @@ function hasPersistedActiveServer(): boolean {
       parsed.id.length > 0
     );
   } catch {
+    // error-policy:J3 corrupt persisted server blob — treat as "none" so the
+    // pre-seed can write a fresh one
     return false;
   }
 }
@@ -52,7 +54,8 @@ function writeLocalAgentActiveServer(): void {
       JSON.stringify(payload),
     );
   } catch {
-    // localStorage can be unavailable in embedded shells.
+    // error-policy:J6 storage blocked (embedded shells) — the pre-seed is an
+    // optimization; first-run still resolves the server interactively
   }
 }
 

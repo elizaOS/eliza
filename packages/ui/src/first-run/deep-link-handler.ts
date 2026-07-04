@@ -88,6 +88,7 @@ export function parseFirstRunRemoteConnectDeepLink(
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 untrusted deep-link URL — unparseable means "not ours"
     return null;
   }
 
@@ -129,6 +130,7 @@ export function routeFirstRunDeepLink(url: string, urlScheme: string): boolean {
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 untrusted deep-link URL — unparseable means "not routed"
     return false;
   }
 

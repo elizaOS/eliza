@@ -16,6 +16,7 @@ function isNativeAndroid(): boolean {
   try {
     return Capacitor.getPlatform() === "android";
   } catch {
+    // error-policy:J4 capability probe — no Capacitor bridge means not native
     return false;
   }
 }
@@ -25,6 +26,7 @@ async function readNativeLocalAgentToken(): Promise<string | null> {
   try {
     agent = getAgentPlugin();
   } catch {
+    // error-policy:J4 capability probe — missing native plugin means no token
     agent = null;
   }
 
@@ -33,6 +35,8 @@ async function readNativeLocalAgentToken(): Promise<string | null> {
     const token = result?.token?.trim();
     return result?.available && token ? token : null;
   } catch {
+    // error-policy:J4 bridge call failed — auth proceeds tokenless and the
+    // local agent's 401 surfaces through the request path
     return null;
   }
 }

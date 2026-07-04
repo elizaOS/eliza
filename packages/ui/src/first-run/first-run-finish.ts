@@ -162,6 +162,7 @@ function isHttpLoopbackBase(value: string): boolean {
       url.hostname === "[::1]"
     );
   } catch {
+    // error-policy:J3 unparseable base — fail closed as "not loopback"
     return false;
   }
 }
@@ -174,6 +175,7 @@ function shouldUseAppShellLocalAgentProxy(apiBase: string): boolean {
   try {
     return new URL(apiBase).origin !== origin;
   } catch {
+    // error-policy:J3 unparseable base — fail closed as "no proxy"
     return false;
   }
 }
@@ -210,6 +212,8 @@ function canProbeCloudStatus(): boolean {
 
 async function getCloudStatusIfSupported() {
   if (!canProbeCloudStatus()) return null;
+  // error-policy:J4 cloud-status probe — unreachable/unsupported means the
+  // finish flow skips the cloud handoff, which is the designed degrade
   return client.getCloudStatus().catch(() => null);
 }
 

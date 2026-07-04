@@ -3,6 +3,7 @@
  * base constants + URL predicates the transports and runtime-target resolver
  * share. Emits MOBILE_RUNTIME_MODE_CHANGED_EVENT on change.
  */
+import { logger } from "@elizaos/logger";
 import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
@@ -63,6 +64,7 @@ export function isMobileLocalAgentIpcUrl(
       pathname.startsWith(`//${MOBILE_LOCAL_AGENT_IPC_HOST}/`)
     );
   } catch {
+    // error-policy:J3 unparseable value — fail closed as "not the IPC URL"
     return false;
   }
 }
@@ -99,6 +101,7 @@ export function mobileLocalAgentPathFromUrl(
   try {
     parsed = value instanceof URL ? value : new URL(trimmed);
   } catch {
+    // error-policy:J3 unparseable value — no IPC path can be derived
     return null;
   }
 
@@ -138,6 +141,7 @@ export function isMobileLocalAgentUrl(
   try {
     parsed = value instanceof URL ? value : new URL(value.toString());
   } catch {
+    // error-policy:J3 unparseable value — fail closed as "not the local agent"
     return false;
   }
   return (
@@ -194,6 +198,7 @@ export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
       window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
     );
   } catch {
+    // error-policy:J3 storage blocked — treat as "no persisted mode"
     return null;
   }
 }
@@ -220,8 +225,14 @@ async function persistNativeMobileRuntimeMode(
     } else {
       await Preferences.remove({ key: MOBILE_RUNTIME_MODE_STORAGE_KEY });
     }
-  } catch {
-    // Capacitor Preferences is unavailable in web/unit-test shells.
+  } catch (err) {
+    // error-policy:J4 Capacitor Preferences is absent in web/unit-test shells
+    // (expected). On native, a lost write means the runtime mode silently
+    // diverges across restarts (#11030 boot-hang class) — log it.
+    logger.warn(
+      { err, mode },
+      "[mobile-runtime-mode] native runtime-mode persist failed",
+    );
   }
 }
 
@@ -240,8 +251,14 @@ export function persistMobileRuntimeMode(mode: MobileRuntimeMode | null): void {
       } else {
         window.localStorage.removeItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
       }
-    } catch {
-      // localStorage can be unavailable in embedded shells.
+    } catch (err) {
+      // error-policy:J4 localStorage can be blocked in embedded shells; the
+      // native Preferences write below is the durable copy there. Logged so a
+      // lost mode write is not silent.
+      logger.warn(
+        { err, mode },
+        "[mobile-runtime-mode] localStorage runtime-mode persist failed",
+      );
     }
   }
 

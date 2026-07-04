@@ -38,6 +38,8 @@ function readMarker(): boolean {
   try {
     return window.localStorage?.getItem(AUTO_DOWNLOAD_MARKER_KEY) === "1";
   } catch {
+    // error-policy:J3 storage blocked (embedded shell) — treat as "not yet
+    // downloaded"; the worst case is re-offering the download
     return false;
   }
 }
@@ -47,7 +49,8 @@ function writeMarker(): void {
   try {
     window.localStorage?.setItem(AUTO_DOWNLOAD_MARKER_KEY, "1");
   } catch {
-    // Embedded shells without storage simply lose dedupe across sessions.
+    // error-policy:J6 storage blocked — dedupe marker is best-effort; losing
+    // it only re-offers the download next session
   }
 }
 

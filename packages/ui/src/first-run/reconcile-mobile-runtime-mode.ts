@@ -178,6 +178,7 @@ function capacitorNativePlatform(): MobileNativePlatform | null {
     const platform = cap.getPlatform?.();
     return platform === "ios" || platform === "android" ? platform : null;
   } catch {
+    // error-policy:J4 capability probe — no Capacitor bridge means not native
     return null;
   }
 }

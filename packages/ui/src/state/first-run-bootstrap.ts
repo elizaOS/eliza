@@ -66,6 +66,8 @@ export async function detectExistingFirstRunConnection(args: {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const result = await Promise.race([
     (async () => {
+      // error-policy:J4 existing-install probe — an unreachable agent means
+      // "no existing install detected" and first-run proceeds normally
       const status = await args.client.getFirstRunStatus().catch(() => null);
       if (!status) {
         return null;
@@ -78,6 +80,8 @@ export async function detectExistingFirstRunConnection(args: {
         } satisfies ExistingFirstRunProbeResult;
       }
 
+      // error-policy:J4 same probe semantics — no readable config means "no
+      // existing install detected"
       const config = await args.client.getConfig().catch(() => null);
       if (!hasPersistedExistingInstallConfig(config)) {
         return null;

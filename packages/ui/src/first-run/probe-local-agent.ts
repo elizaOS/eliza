@@ -48,6 +48,7 @@ function isNativeAndroid(): boolean {
   try {
     return Capacitor.getPlatform() === "android";
   } catch {
+    // error-policy:J4 capability probe — no Capacitor bridge means not native
     return false;
   }
 }
@@ -56,6 +57,7 @@ function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
   } catch {
+    // error-policy:J4 capability probe — no Capacitor bridge means not native
     return false;
   }
 }
@@ -68,6 +70,8 @@ async function resolveNativeAgentPlugin(): Promise<Pick<
     const agent = toAgentRequestPlugin(getAgentPlugin());
     if (agent) return agent;
   } catch {
+    // error-policy:J4 capability probe — missing native plugin means the
+    // native transport is unavailable, not an error
     return null;
   }
 
@@ -137,6 +141,7 @@ async function runNativeAndroidProbe(
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 unparseable probe URL — fail closed as "not healthy"
     return false;
   }
 
@@ -152,6 +157,7 @@ async function runNativeAndroidProbe(
       timeoutMs,
     });
   } catch {
+    // error-policy:J4 liveness probe — unreachable IS the negative result
     return false;
   }
 
@@ -161,6 +167,7 @@ async function runNativeAndroidProbe(
   try {
     body = JSON.parse(result.body ?? "");
   } catch {
+    // error-policy:J3 non-JSON health body — fail closed as "not healthy"
     return false;
   }
 
@@ -183,6 +190,7 @@ async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
       headers: { Accept: "application/json" },
     });
   } catch {
+    // error-policy:J4 liveness probe — unreachable/timeout IS the negative result
     return false;
   } finally {
     clearTimeout(timer);
@@ -194,6 +202,7 @@ async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
   try {
     body = await res.json();
   } catch {
+    // error-policy:J3 non-JSON health body — fail closed as "not healthy"
     return false;
   }
 
