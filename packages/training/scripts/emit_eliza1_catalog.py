@@ -86,12 +86,13 @@ ACTIVE_BUNDLE_REPOS = tuple(_bundle_repo(tier) for tier in ELIZA_1_TIERS)
 
 
 # Heuristic mapping from base model name → catalog metadata. New
-# entries go here when adding a new optimization target.
+# entries go here when adding a new optimization target. Tokenizer identity is
+# deliberately not part of this tier table; it must come from the manifest,
+# whose publisher-side gate owns byte-level GGUF provenance.
 KNOWN_BASE_MODELS = {
     _bundle_repo("2b"): {
         "params": "2B",
         "context_length": 131072,
-        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
@@ -100,7 +101,6 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("4b"): {
         "params": "4B",
         "context_length": 131072,
-        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "mid",
         "min_ram_gb": 6,
@@ -109,7 +109,6 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("9b"): {
         "params": "9B",
         "context_length": 131072,
-        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 12,
@@ -118,7 +117,6 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("27b"): {
         "params": "27B",
         "context_length": 131072,
-        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 32,
@@ -127,7 +125,6 @@ KNOWN_BASE_MODELS = {
     _bundle_repo("27b-256k"): {
         "params": "27B",
         "context_length": 262144,
-        "tokenizer_family": "gemma4",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 48,
@@ -216,6 +213,16 @@ def _slug_from_repo(hf_repo: str) -> str:
     return last.lower()
 
 
+def _tokenizer_family_from_manifest(manifest: dict[str, object]) -> str:
+    tokenizer = manifest.get("tokenizer")
+    if not isinstance(tokenizer, dict):
+        raise SystemExit("manifest.tokenizer must be an object")
+    family = tokenizer.get("family")
+    if not isinstance(family, str) or not family:
+        raise SystemExit("manifest.tokenizer.family is required")
+    return family
+
+
 def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
     base_model = str(manifest.get("base_model", ""))
     base_meta = KNOWN_BASE_MODELS.get(base_model)
@@ -271,7 +278,7 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
         category=str(base_meta["category"]),
         bucket=str(base_meta["bucket"]),
         context_length=int(base_meta["context_length"]),
-        tokenizer_family=str(base_meta["tokenizer_family"]),
+        tokenizer_family=_tokenizer_family_from_manifest(manifest),
         cache_type_k=cache_type_k,
         cache_type_v=cache_type_v,
         spec_type=spec_type,
