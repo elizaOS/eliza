@@ -34,7 +34,7 @@ async function persistentRuntime(
   const client = new PGlite({ dataDir: join(dir, 'pglite') });
   const db = drizzle(client, { schema: dbSchema });
   return {
-    runtime: runtime(settings, services, db),
+    runtime: runtime({ WORKFLOW_SEED_DEFAULTS: false, ...settings }, services, db),
     async close() {
       await client.close();
       await rm(dir, { recursive: true, force: true });
@@ -81,6 +81,60 @@ describe('EmbeddedWorkflowService', () => {
     await embedded.stop();
     await harness.close();
   }, 60_000);
+
+  test('seeds and runs the no-LLM device health check workflow by default', async () => {
+    const tasks: Array<Record<string, unknown>> = [];
+    const harness = await persistentRuntime({ WORKFLOW_SEED_DEFAULTS: true });
+    const runtimeWithTasks = {
+      ...harness.runtime,
+      agentId: 'agent-test',
+      createTask: async (task: Record<string, unknown>) => {
+        tasks.push({ id: `task-${tasks.length + 1}`, ...task });
+      },
+      getTasks: async () => tasks,
+      deleteTask: async (id: string) => {
+        const index = tasks.findIndex((task) => task.id === id);
+        if (index >= 0) tasks.splice(index, 1);
+      },
+    } as unknown as IAgentRuntime;
+
+    const service = await EmbeddedWorkflowService.start(runtimeWithTasks);
+    try {
+      const workflows = await service.listWorkflows();
+      const healthCheck = workflows.data.find(
+        (workflow) => workflow.id === 'system-device-health-check'
+      );
+      expect(healthCheck?.active).toBe(true);
+      expect(healthCheck?.nodes.map((node) => node.type)).toContain(
+        'workflows-nodes-base.deviceStatus'
+      );
+      expect(tasks).toHaveLength(1);
+      expect((tasks[0].metadata as { workflowId?: string }).workflowId).toBe(
+        'system-device-health-check'
+      );
+
+      const executions = await service.listExecutions({
+        workflowId: 'system-device-health-check',
+        limit: 1,
+      });
+      expect(executions.data).toHaveLength(1);
+      expect(executions.data[0].status).toBe('success');
+      const item =
+        executions.data[0].data?.resultData?.runData?.['Device Status']?.[0]?.data?.main?.[0]?.[0]
+          ?.json;
+      expect(item?.memory).toMatchObject({
+        totalBytes: expect.any(Number),
+        freeBytes: expect.any(Number),
+      });
+      expect(item?.disk).toMatchObject({
+        mount: '/',
+        availableBytes: expect.any(Number),
+      });
+    } finally {
+      await service.stop();
+      await harness.close();
+    }
+  }, 90_000);
 
   test('runs a schedule -> HTTP Request -> Set workflow in a child process', async () => {
     const pluginRoot = join(import.meta.dir, '../..');

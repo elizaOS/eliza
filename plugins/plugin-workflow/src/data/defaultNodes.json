@@ -1851,6 +1851,22 @@
     ]
   },
   {
+    "name": "workflows-nodes-base.deviceStatus",
+    "displayName": "Device Status",
+    "group": [
+      "input"
+    ],
+    "description": "Reports local RAM, disk, CPU, and runtime status without model calls",
+    "version": 1,
+    "inputs": [
+      "main"
+    ],
+    "outputs": [
+      "main"
+    ],
+    "properties": []
+  },
+  {
     "name": "workflows-nodes-base.filter",
     "displayName": "Filter",
     "group": [

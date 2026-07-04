@@ -142,6 +142,19 @@ interface FeedRow {
   source: AutomationItem;
 }
 
+function formatInterval(intervalMs: number): string {
+  const minutes = Math.round(intervalMs / 60_000);
+  if (minutes < 60) {
+    return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "Every hour" : `Every ${hours} hours`;
+  }
+  const days = Math.round(hours / 24);
+  return days === 1 ? "Every day" : `Every ${days} days`;
+}
+
 /**
  * Derive a schedule label from an automation item's `schedules`
  * (`TriggerSummary[]` populated by the `/api/automations` builder from
@@ -163,6 +176,7 @@ function schedulesLabel(
             defaultValue: "On {{event}}",
           });
         }
+        if (trigger.intervalMs) return formatInterval(trigger.intervalMs);
         if (trigger.displayName) return trigger.displayName;
         return null;
       })
@@ -220,16 +234,6 @@ export function AutomationsFeed({
   const focusAutomationChat = useCallback(() => {
     dispatchChatPrefill({ text: NEW_AUTOMATION_PROMPT, select: false });
   }, []);
-
-  const newAgent = useAgentElement<HTMLButtonElement>({
-    id: "action-new",
-    role: "button",
-    label: t("automationsfeed.new", { defaultValue: "New" }),
-    group: "automations-actions",
-    description:
-      "Focus Automations chat to create a workflow or prompt automation",
-    onActivate: focusAutomationChat,
-  });
 
   const editor: EditorState = useMemo(() => {
     if (scheduledEditorId)
@@ -475,17 +479,6 @@ export function AutomationsFeed({
               {t("automationsfeed.title", { defaultValue: "Automations" })}
             </h1>
           </div>
-          <Button
-            ref={newAgent.ref}
-            variant="default"
-            size="sm"
-            className="min-h-11"
-            onClick={focusAutomationChat}
-            {...newAgent.agentProps}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-            {t("automationsfeed.new", { defaultValue: "New" })}
-          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

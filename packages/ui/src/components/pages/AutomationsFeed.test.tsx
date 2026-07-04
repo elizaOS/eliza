@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 // Renders the real AutomationsFeed against a mocked `../../api` client to cover
-// its status overview, truthful run action, and the new-automation → chat
-// hand-off. jsdom + in-memory client stub; no live backend.
+// its status overview, truthful run action, and the streamlined creation
+// surface. jsdom + in-memory client stub; no live backend.
 
 import {
   cleanup,
@@ -47,7 +47,20 @@ function automationItem(
     hasBackingWorkflow: true,
     updatedAt: "2026-06-20T12:00:00.000Z",
     workflowId: "workflow-1",
-    schedules: [],
+    schedules: [
+      {
+        id: "trigger-1",
+        taskId: "task-trigger-1",
+        displayName: "Scheduled workflow run: Nightly review",
+        instructions: "Run workflow Nightly review",
+        triggerType: "interval",
+        enabled: true,
+        wakeMode: "inject_now",
+        createdBy: "workflow.schedule",
+        intervalMs: 3_600_000,
+        runCount: 0,
+      },
+    ],
     lastExecution: {
       status: "success",
       startedAt: "2026-06-20T12:00:00.000Z",
@@ -128,6 +141,7 @@ describe("AutomationsFeed", () => {
       within(screen.getByTestId("automation-stat-failed")).getByText("1"),
     ).toBeTruthy();
     expect(screen.getByText("Failed: HTTP request failed")).toBeTruthy();
+    expect(screen.getAllByText("Every hour").length).toBeGreaterThan(0);
 
     expect(
       screen.queryByRole("button", { name: /activate workflow/i }),
@@ -153,21 +167,10 @@ describe("AutomationsFeed", () => {
     expect(clientMock.listAutomations).toHaveBeenCalledTimes(2);
   });
 
-  it("routes new automation creation into the Automations chat", async () => {
-    const prefill = vi.fn();
-    window.addEventListener("eliza:chat:prefill", prefill as EventListener);
+  it("keeps the feed header focused on status instead of generic creation", async () => {
     render(<AutomationsFeed />);
 
     await screen.findByText("Nightly review");
-    fireEvent.click(screen.getByRole("button", { name: "New" }));
-
-    expect(prefill).toHaveBeenCalledOnce();
-    const event = prefill.mock.calls[0]?.[0] as CustomEvent;
-    expect(event.detail).toEqual({
-      text: "Create an automation that ",
-      select: false,
-    });
-
-    window.removeEventListener("eliza:chat:prefill", prefill as EventListener);
+    expect(screen.queryByRole("button", { name: "New" })).toBeNull();
   });
 });

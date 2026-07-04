@@ -13,6 +13,8 @@
  * `packages/agent` to avoid a dependency cycle.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import { statfs } from 'node:fs/promises';
+import { arch, cpus, freemem, loadavg, platform, release, totalmem, uptime } from 'node:os';
 import {
   type IAgentRuntime,
   logger,
@@ -173,6 +175,8 @@ interface IncomingConnection {
 
 const EMBEDDED_HOST = 'embedded://local';
 const DEFAULT_SCHEDULE_INTERVAL_MS = 60_000;
+const DEVICE_HEALTH_CHECK_WORKFLOW_ID = 'system-device-health-check';
+const DEVICE_HEALTH_CHECK_RUN_KEY = `${DEVICE_HEALTH_CHECK_WORKFLOW_ID}:initial`;
 
 let loadedQuickJs: Promise<typeof import('quickjs-emscripten')> | null = null;
 
@@ -245,6 +249,96 @@ function readString(value: unknown, fallback: string): string {
 
 function readNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function bytesFromBlocks(blocks: number, blockSize: number): number {
+  return Math.max(0, Math.floor(blocks * blockSize));
+}
+
+async function collectDeviceStatus(): Promise<Record<string, unknown>> {
+  const disk = await statfs('/');
+  const blockSize = Number(disk.bsize);
+  const totalDiskBytes = bytesFromBlocks(Number(disk.blocks), blockSize);
+  const freeDiskBytes = bytesFromBlocks(Number(disk.bfree), blockSize);
+  const availableDiskBytes = bytesFromBlocks(Number(disk.bavail), blockSize);
+  const totalMemoryBytes = totalmem();
+  const freeMemoryBytes = freemem();
+
+  return {
+    checkedAt: nowIso(),
+    runtime: {
+      node: process.version,
+      platform: platform(),
+      arch: arch(),
+      osRelease: release(),
+      pid: process.pid,
+      uptimeSeconds: Math.round(uptime()),
+    },
+    cpu: {
+      cores: cpus().length,
+      loadAverage: loadavg(),
+    },
+    memory: {
+      totalBytes: totalMemoryBytes,
+      freeBytes: freeMemoryBytes,
+      usedBytes: Math.max(0, totalMemoryBytes - freeMemoryBytes),
+      freeRatio: totalMemoryBytes > 0 ? freeMemoryBytes / totalMemoryBytes : null,
+    },
+    disk: {
+      mount: '/',
+      totalBytes: totalDiskBytes,
+      freeBytes: freeDiskBytes,
+      availableBytes: availableDiskBytes,
+      usedBytes: Math.max(0, totalDiskBytes - freeDiskBytes),
+      availableRatio: totalDiskBytes > 0 ? availableDiskBytes / totalDiskBytes : null,
+    },
+  };
+}
+
+function buildDeviceHealthCheckWorkflow(): WorkflowDefinition {
+  return {
+    id: DEVICE_HEALTH_CHECK_WORKFLOW_ID,
+    name: 'Device health check',
+    active: true,
+    nodes: [
+      {
+        id: 'schedule',
+        name: 'Hourly check',
+        type: 'workflows-nodes-base.scheduleTrigger',
+        typeVersion: 1.2,
+        position: [0, 0],
+        parameters: {
+          intervalMs: 3_600_000,
+        },
+      },
+      {
+        id: 'device-status',
+        name: 'Device Status',
+        type: 'workflows-nodes-base.deviceStatus',
+        typeVersion: 1,
+        position: [240, 0],
+        parameters: {},
+      },
+    ],
+    connections: {
+      'Hourly check': {
+        main: [[{ node: 'Device Status', type: 'main', index: 0 }]],
+      },
+    },
+    settings: {
+      executionOrder: 'v1',
+    },
+    meta: {
+      assumptions: [
+        'Runs locally without model calls and records RAM, disk, CPU, and runtime facts.',
+      ],
+    },
+  };
+}
+
+function shouldSeedDefaultWorkflows(runtime: IAgentRuntime): boolean {
+  const raw = runtime.getSetting?.('WORKFLOW_SEED_DEFAULTS');
+  return raw !== false && raw !== 'false';
 }
 
 /**
@@ -1131,6 +1225,32 @@ function createItemListsNode(): INodeType {
   };
 }
 
+function createDeviceStatusNode(): INodeType {
+  return {
+    description: {
+      displayName: 'Device Status',
+      name: 'workflows-nodes-base.deviceStatus',
+      group: ['input'],
+      version: [1],
+      description: 'Reports local RAM, disk, CPU, and runtime status without model calls.',
+      defaults: { name: 'Device Status' },
+      inputs: ['main'] as never,
+      outputs: ['main'] as never,
+      properties: [] as never,
+      capabilities: { requiresFs: true },
+    },
+    async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+      const sourceItems = this.getInputData();
+      const status = await collectDeviceStatus();
+      const json = {
+        ...(sourceItems[0]?.json ?? {}),
+        ...status,
+      } as INodeExecutionData['json'];
+      return [[{ json }]];
+    },
+  };
+}
+
 async function runQuickJsCode(jsCode: string, inputItems: INodeExecutionData[]): Promise<unknown> {
   const { getQuickJS, shouldInterruptAfterDeadline } = await loadQuickJs();
   const QuickJS = await getQuickJS();
@@ -1370,6 +1490,7 @@ class EmbeddedNodeTypes implements INodeTypes {
       createDateTimeNode(),
       createCryptoNode(),
       createItemListsNode(),
+      createDeviceStatusNode(),
       createCodeNode(),
     ]) {
       const canonical = node.description.name;
@@ -1434,6 +1555,9 @@ export class EmbeddedWorkflowService extends Service {
     );
     if (runtime.db) {
       await service.ensureSchema();
+      if (shouldSeedDefaultWorkflows(runtime)) {
+        await service.seedDefaultWorkflows();
+      }
       await service.rehydrateSchedules();
     }
     return service;
@@ -2162,6 +2286,38 @@ export class EmbeddedWorkflowService extends Service {
     for (const row of rows) {
       await this.armSchedules(row.id);
     }
+  }
+
+  private async seedDefaultWorkflows(): Promise<void> {
+    const rows = await this.getDb()
+      .select({ id: embeddedWorkflows.id })
+      .from(embeddedWorkflows)
+      .where(eq(embeddedWorkflows.id, DEVICE_HEALTH_CHECK_WORKFLOW_ID))
+      .limit(1);
+    if (rows.length > 0) return;
+
+    const workflow = buildDeviceHealthCheckWorkflow();
+    this.assertRegisteredNodes(workflow);
+    this.assertHostSupports(workflow);
+    const timestamp = nowIso();
+    const versionId = randomUUID();
+    const stored = normalizeWorkflowPayload(workflow, DEVICE_HEALTH_CHECK_WORKFLOW_ID, true);
+    await this.getDb().insert(embeddedWorkflows).values({
+      id: DEVICE_HEALTH_CHECK_WORKFLOW_ID,
+      name: stored.name,
+      active: true,
+      workflow: stored,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      versionId,
+    });
+    await this.runWorkflow(
+      stored,
+      'manual',
+      { source: 'default-workflow-seed' },
+      DEVICE_HEALTH_CHECK_RUN_KEY,
+      false
+    );
   }
 
   /** Remove legacy `workflow.run` / `workflow.webhook` Tasks left behind

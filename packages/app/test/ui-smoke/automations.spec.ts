@@ -676,29 +676,7 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(page.getByRole("button", { name: "Workflows 0" })).toBeVisible();
   await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
 
-  // "New" no longer opens a task/workflow chooser — it focuses the Automations
-  // chat with a creation prefill (mirrors AutomationsFeed.test.tsx). Capture the
-  // dispatched prefill event as the proof of the new contract.
-  await page.evaluate(() => {
-    (window as unknown as { __prefill?: unknown }).__prefill = null;
-    window.addEventListener(
-      "eliza:chat:prefill",
-      (event) => {
-        (window as unknown as { __prefill?: unknown }).__prefill = (
-          event as CustomEvent
-        ).detail;
-      },
-      { once: true },
-    );
-  });
-  await page.getByRole("button", { name: "New" }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as unknown as { __prefill?: unknown }).__prefill,
-      ),
-    )
-    .toEqual({ text: "Create an automation that ", select: false });
+  await expect(page.getByRole("button", { name: "New" })).toHaveCount(0);
   await expect(page.getByTestId("automations-shell")).toBeVisible();
 });
 
