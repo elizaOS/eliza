@@ -4066,12 +4066,14 @@ export class AgentRuntime implements IAgentRuntime {
 				? trajectoryStepIdFromMessage
 				: getTrajectoryContext()?.trajectoryStepId;
 
-		// When composing state for a recorded trajectory step, execute providers
-		// instead of serving a stale cached state so provider accesses are logged.
-		if (trajectoryStepId) {
-			skipCache = true;
-		}
-
+		// When composing state for a recorded trajectory step, every requested
+		// provider re-executes (see providersToRun below) so provider accesses
+		// are logged. Recording must not change what providers OBSERVE: the
+		// turn's cached state still flows to them — and into the merged result —
+		// exactly as it would without the recorder. Blanking it here made
+		// providers that read prior-pass state (e.g. RECENT_MESSAGES' turn-
+		// recompose gate on cross-room interactions) behave differently whenever
+		// trajectories were active.
 		const filterList = onlyInclude ? includeList : null;
 		const emptyObj = {
 			values: {},
@@ -4159,9 +4161,13 @@ export class AgentRuntime implements IAgentRuntime {
 		// already ran for this message.id. The full requested set still drives the
 		// rendered text/order below (pulled from `currentProviderResults`, which
 		// merges cache + fresh); only the run-set shrinks. No-op (run everything)
-		// when `refreshProviders` is null or there is no cached state.
+		// when `refreshProviders` is null or there is no cached state. Also a
+		// no-op while a trajectory step is recording: reusing a cached result
+		// would leave that provider's access out of the step's log, so every
+		// requested provider re-executes (against the same cached state a
+		// non-recording compose would hand it).
 		const refreshSet =
-			refreshProviders && refreshProviders.length > 0
+			refreshProviders && refreshProviders.length > 0 && !trajectoryStepId
 				? new Set(refreshProviders)
 				: null;
 		const cachedProviderNames = refreshSet
