@@ -301,6 +301,36 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
     assert metrics.completion_summary_quality == 0.0
 
 
+def test_category_metrics_use_scenario_metadata_not_id_substrings() -> None:
+    """`check_in_while_running` is a status scenario even though its ID lacks
+    the word "status"; category metrics must follow the scenario metadata."""
+    evaluator = LifecycleEvaluator()
+    scenario = Scenario(
+        scenario_id="check_in_while_running",
+        title="Check In While Running",
+        category="status",
+        turns=[
+            ScenarioTurn(
+                actor="user",
+                message="How is it going? Give me a status update.",
+                expected_behaviors=["report_active_subagent_status"],
+            )
+        ],
+    )
+    result = evaluator.evaluate_scenario(
+        scenario,
+        [
+            TurnRecord(
+                reply_text="Collection finished, analysis underway.",
+                events=["status_query"],
+            )
+        ],
+    )
+    metrics = evaluator.compute_metrics([result])
+    assert result.category == "status"
+    assert metrics.status_accuracy_rate == 1.0
+
+
 def test_compute_metrics_aggregates_pass_rate() -> None:
     evaluator = LifecycleEvaluator()
     scenario = _scenario(

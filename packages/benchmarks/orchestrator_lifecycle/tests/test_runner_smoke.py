@@ -85,6 +85,7 @@ def test_bridge_report_is_scored(tmp_path: Path) -> None:
     )
     report = json.loads(Path(report_path).read_text())
     assert report["scored"] is True
+    assert report["scenarios"][0]["category"] == "test"
     extraction = _score_from_orchestrator_lifecycle_json(report)
     assert extraction.score == 1.0
 
