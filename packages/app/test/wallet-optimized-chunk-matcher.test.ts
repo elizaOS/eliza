@@ -59,11 +59,21 @@ describe("wallet optimized-deps chunk matcher", () => {
     }
   });
 
-  it("matches the direct crypto billing card that imports both wallet stacks", () => {
-    expect(
-      VENDOR_OPTIMIZED_WALLET_TEST.test(
-        "/repo/packages/ui/src/cloud/billing/components/direct-crypto-credit-card.tsx",
-      ),
-    ).toBe(true);
+  it("never matches first-party source (the manual-chunk fold would anchor vendor-crypto into the entry)", () => {
+    // Rollup folds a pinned module's whole dependency subtree into the manual
+    // chunk. Pinning an app component (the old direct-crypto-credit-card pin)
+    // dragged the shared @elizaos/core + UI graph into vendor-crypto, forcing
+    // the entry to statically import the multi-MB wallet chunk on every boot
+    // (#13187 residual). First-party consumers stay behind dynamic import()
+    // boundaries instead; scripts/verify-chunk-safety.mjs gates the bundle.
+    const firstPartyIds = [
+      "/repo/packages/ui/src/cloud/billing/components/direct-crypto-credit-card.tsx",
+      "/repo/packages/ui/src/cloud/billing/wallet/steward-wallet-providers.tsx",
+      "/repo/packages/core/dist/browser/index.browser.js",
+    ];
+
+    for (const id of firstPartyIds) {
+      expect(VENDOR_OPTIMIZED_WALLET_TEST.test(id), id).toBe(false);
+    }
   });
 });
