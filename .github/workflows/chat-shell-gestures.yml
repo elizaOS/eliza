@@ -130,6 +130,19 @@ jobs:
       - name: Home-screen gesture e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
 
+      # Seeded launcher long-loop (#12373 engine / #12179 web lane): a fast-check
+      # fc.commands stream over the §D gesture alphabet driven through real CDP
+      # touch, checking every invariant (data-page/AX-probe/transform-at-rest,
+      # focus never in [inert], telemetry launch-count, no-blue, CLS) after each
+      # command. CI runs a fixed-seed 200-action smoke (~4 min) as the regression
+      # guard; the full ≥500-action × 3-random-seed DoD run is manual/local
+      # (evidence in .github/issue-evidence/12179-web-loop/).
+      - name: Launcher gesture-loop e2e
+        env:
+          ELIZA_LOOP_SEED: "12179"
+          ELIZA_LOOP_ACTIONS: "200"
+        run: bun run --cwd packages/ui test:launcher-loop-e2e
+
       # Bottom-bar state-machine gestures.
       - name: Bottombar gesture e2e
         run: bun run --cwd packages/ui test:bottombar-e2e
@@ -175,6 +188,7 @@ jobs:
             packages/ui/src/components/shell/__e2e__/output-conversation-swipe/
             packages/ui/src/components/shell/__e2e__/output-chatux/
             packages/ui/src/components/shell/__e2e__/output-home/
+            packages/ui/src/components/shell/__e2e__/output-launcher-loop/
             packages/ui/src/components/shell/__e2e__/output-bottombar/
             packages/ui/src/components/shell/__e2e__/output-warmup-eviction/
             packages/ui/src/components/shell/__e2e__/output-perf-gate/
