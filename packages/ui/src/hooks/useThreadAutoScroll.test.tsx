@@ -208,7 +208,9 @@ describe("useThreadAutoScroll", () => {
     // scrollTop stays at 600. A live re-measure reads 1300-600-400=300 > 80 and
     // wrongly stops following; the pre-growth measure (1000-600-400=0) follows.
     height = 1300;
-    rerender(<Harness growthKey={2} scroller={scroller} onState={cap.onState} />);
+    rerender(
+      <Harness growthKey={2} scroller={scroller} onState={cap.onState} />,
+    );
     flushRaf();
     // Followed to the new clamped bottom (1300 - 400); reader stays pinned.
     expect(scroller.scrollTop).toBe(900);
