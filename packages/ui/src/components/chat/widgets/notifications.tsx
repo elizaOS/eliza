@@ -7,8 +7,8 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell, ChevronRight } from "lucide-react";
 import { memo, useCallback } from "react";
-import { cn } from "../../../lib/utils";
 import { useNow } from "../../../hooks/useNow";
+import { cn } from "../../../lib/utils";
 import { categoryIcon } from "../../../state/notifications/category-icon";
 import {
   isSafeDeepLink,
@@ -18,11 +18,11 @@ import {
   markNotificationRead,
   useNotifications,
 } from "../../../state/notifications/notification-store";
+import { formatRelativeTime } from "../../../utils/format";
 import {
   rankHomeNotifications,
   selectHomeNotifications,
 } from "../../../widgets/home-priority";
-import { formatRelativeTime } from "../../../utils/format";
 import type { WidgetProps } from "../../../widgets/types";
 import { HomeWidgetCard, useWidgetNavigation } from "./home-widget-card";
 import { WidgetSection } from "./shared";
@@ -218,7 +218,9 @@ export function NotificationsWidget(props: WidgetProps) {
             isGroup ? value : `latest ${value}`
           }. Open inbox.`}
           onActivate={() =>
-            isGroup ? nav.openView("/inbox", "inbox") : openNotification(top.notification)
+            isGroup
+              ? nav.openView("/inbox", "inbox")
+              : openNotification(top.notification)
           }
         />
       </div>
@@ -245,11 +247,9 @@ export function NotificationsWidget(props: WidgetProps) {
       testId="widget-notifications"
       action={
         unreadCount > 0 ? (
-          <span
-            className="rounded-full bg-accent-subtle px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-accent"
-            aria-label={`${unreadCount} unread`}
-          >
-            {unreadCount}
+          <span className="rounded-full bg-accent-subtle px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-accent">
+            <span aria-hidden>{unreadCount}</span>
+            <span className="sr-only"> unread</span>
           </span>
         ) : (
           // All caught up: a quiet "read" state instead of a stray title with
@@ -285,8 +285,7 @@ export function NotificationsWidget(props: WidgetProps) {
           )}
         >
           <span>
-            {overflow} more{" "}
-            {overflow === 1 ? "notification" : "notifications"}
+            {overflow} more {overflow === 1 ? "notification" : "notifications"}
           </span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
         </button>

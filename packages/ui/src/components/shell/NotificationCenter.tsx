@@ -19,7 +19,6 @@ import {
   OPEN_NOTIFICATION_CENTER_EVENT,
 } from "../../events";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { REVEAL_SOFT_MAX } from "./use-notification-pull";
 import {
   Z_NOTIFICATION_BACKDROP,
   Z_NOTIFICATION_OVERLAY,
@@ -46,6 +45,7 @@ import { formatRelativeTime } from "../../utils/format";
 import { rankHomeNotifications } from "../../widgets/home-priority";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { REVEAL_SOFT_MAX } from "./use-notification-pull";
 
 type NotificationSortMode = "priority" | "time";
 
@@ -56,8 +56,7 @@ type NotificationSortMode = "priority" | "time";
  * the #9141 battery gate, and all shadow tokens are none). The list cards sit
  * on top as their own token tiles.
  */
-const GLASS_SURFACE =
-  "border border-border-strong bg-card";
+const GLASS_SURFACE = "border border-border-strong bg-card";
 
 /**
  * Finger travel (px) that maps to a fully-revealed sheet during a pull. Locked
@@ -693,9 +692,7 @@ export function NotificationCenter({
           hierarchy separate it from the list (app-wide flat direction). */}
       <div className="flex items-center justify-between gap-2 px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-semibold text-txt">
-            Notifications
-          </span>
+          <span className="text-sm font-semibold text-txt">Notifications</span>
           {hasUnread && (
             <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-2xs font-semibold leading-none text-accent">
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -896,7 +893,10 @@ export function NotificationCenter({
             onClick={() => onOpenChange?.(false)}
             className="h-auto shrink-0 rounded-none bg-transparent py-2 hover:bg-transparent"
           >
-            <span className="h-1 w-9 rounded-full bg-muted-strong" aria-hidden />
+            <span
+              className="h-1 w-9 rounded-full bg-muted-strong"
+              aria-hidden
+            />
           </Button>
         </div>
       </>,

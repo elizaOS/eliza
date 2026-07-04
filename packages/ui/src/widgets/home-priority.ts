@@ -449,7 +449,8 @@ export function selectHomeNotifications(
     if (!HOME_WORTHY_PRIORITIES.has(n.priority)) return false;
     // now === 0: pre-clock first render — keep everything so the tile paints
     // its real content immediately instead of flashing empty (see useNow).
-    if (opts.now !== 0 && opts.now - n.createdAt >= HOME_MAX_AGE_MS) return false;
+    if (opts.now !== 0 && opts.now - n.createdAt >= HOME_MAX_AGE_MS)
+      return false;
     return true;
   });
 

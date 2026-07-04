@@ -231,7 +231,11 @@ describe("NotificationsWidget (#9143)", () => {
   it("home slot: hides read/stale notifications, surfaces only the unread high one", () => {
     __resetNotificationStoreForTests();
     __ingestNotificationForTests(
-      notification({ title: "Old read alert", priority: "urgent", readAt: Date.now() }),
+      notification({
+        title: "Old read alert",
+        priority: "urgent",
+        readAt: Date.now(),
+      }),
     );
     __ingestNotificationForTests(
       notification({ title: "Act now", priority: "high" }),

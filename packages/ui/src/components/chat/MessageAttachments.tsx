@@ -730,7 +730,10 @@ function Model3dTile({
             <span className="min-w-0 flex-1 text-2xs text-muted">
               {t("messageattachments.model3dDownloadToView")}
             </span>
-            <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+            <Download
+              className="h-4 w-4 shrink-0 text-muted"
+              strokeWidth={1.5}
+            />
           </a>
         </Button>
       ) : (
@@ -857,7 +860,9 @@ function UnsafeAttachmentTile({
     >
       <FileText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs-tight font-medium">{label}</span>
+        <span className="block truncate text-xs-tight font-medium">
+          {label}
+        </span>
         <span className="block text-2xs uppercase tracking-wide text-muted">
           unsupported attachment
         </span>
@@ -887,12 +892,17 @@ function TranscriptTile({
     >
       <ScrollText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs-tight font-medium">{label}</span>
+        <span className="block truncate text-xs-tight font-medium">
+          {label}
+        </span>
         <span className="block text-2xs uppercase tracking-wide text-muted">
           Transcript · tap to open
         </span>
       </span>
-      <Maximize2 className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt" strokeWidth={1.5} />
+      <Maximize2
+        className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt"
+        strokeWidth={1.5}
+      />
     </Button>
   );
 }
