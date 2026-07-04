@@ -38,6 +38,8 @@
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
+    "format": "bunx @biomejs/biome format --write ./src package.json",
+    "format:check": "bunx @biomejs/biome format ./src package.json",
     "typecheck": "tsgo --noEmit -p tsconfig.build.json"
   },
   "files": [

@@ -8,6 +8,8 @@
     "test:headed": "bun --conditions=eliza-source playwright test --headed",
     "test:ui": "bun --conditions=eliza-source playwright test --ui",
     "domains:ledger": "bun scripts/domain-purchase-ledger.ts",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

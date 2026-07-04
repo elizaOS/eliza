@@ -73,6 +73,8 @@
     "test:real-llm:attachment": "node scripts/real-llm-attachment-smoke.mjs",
     "test:real-service:audio": "node scripts/real-service-audio-roundtrip.mjs",
     "test:real-service:voice": "node scripts/real-service-voice-e2e.mjs",
+    "format": "bunx @biomejs/biome format --write package.json",
+    "format:check": "bunx @biomejs/biome format package.json",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

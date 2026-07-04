@@ -16,7 +16,9 @@
   "scripts": {
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
     "start:control-plane": "bun run ./bin/control-plane-mock.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "format": "bunx @biomejs/biome format --write package.json src test bin",
+    "format:check": "bunx @biomejs/biome format package.json src test bin"
   },
   "dependencies": {
     "@elizaos/cloud-shared": "workspace:*",
