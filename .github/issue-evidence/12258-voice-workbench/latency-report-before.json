@@ -1,0 +1,1 @@
+{"ok":false,"baseUrl":"http://127.0.0.1:31337","error":"fetch failed","note":"N/A for this harness-only PR — no running app in the workbench lane. voice:latency-report is the SIBLINGS latency evidence (#12254), run against a live app; the tool works and returns structured JSON as shown."}

@@ -1,18 +1,21 @@
 name: Voice Workbench
 
-# Voice Workbench (#8785): the unified voice scenario/benchmark harness.
+# Voice Workbench (#8785, #12258): the unified voice scenario/benchmark harness.
 #
-# This lane runs WITHOUT a model or a browser:
+# The default lane runs WITHOUT a model or a browser:
 #   - the headless workbench unit suite (schema, corpus, runner, scorers,
-#     report, entrypoint), and
-#   - the `voice:workbench` mocked lane, which drives the full
-#     corpus → runner → scorers → report path over the built-in scenario matrix
-#     using a ground-truth mock services adapter.
+#     report, entrypoint),
+#   - the `voice:workbench` mocked lane (full corpus → runner → scorers → report
+#     over the built-in scenario matrix, ground-truth mock services),
+#   - the `voice:workbench --logic` lane with the regression gate against the
+#     committed baseline — this is where a TTFA / barge-in-gating / DER / EOT /
+#     echo regression in the SHIPPED decision logic reds the PR, and
+#   - the interrupt-bench suite (barge-in / interruption scoring).
 #
-# The real local backend is exercised "where provisioned": with no backend the
-# CLI reports every scenario `skipped` (never a false `pass`) — the honesty
-# contract. A nightly/hardware lane can run `voice:workbench --real` once a
-# real services adapter + corpus are provisioned.
+# The real acoustic backend is exercised "where provisioned": the CLI hard-fails
+# on any missing artifact (never a false `pass`), so the nightly `--real` job
+# guards on provisioned secrets/paths and honestly SKIPS on the shared runner —
+# the honesty contract at the job level.
 
 on:
   push:
@@ -27,7 +30,9 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
+      - "plugins/plugin-local-inference/src/services/voice/__fixtures__/voice-workbench-logic-baseline.json"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
+      - "packages/benchmarks/interrupt-bench/**"
       - "packages/shared/src/voice-wer.ts"
       - "packages/shared/src/voice-eot.ts"
       - "packages/shared/src/voice/respond-gate.ts"
@@ -45,12 +50,17 @@ on:
       - "plugins/plugin-local-inference/src/services/voice/__test-helpers__/synthetic-speech.ts"
       - "plugins/plugin-local-inference/src/services/voice/corpus-augment.ts"
       - "plugins/plugin-local-inference/src/services/voice/voice-workbench-report.ts"
+      - "plugins/plugin-local-inference/src/services/voice/__fixtures__/voice-workbench-logic-baseline.json"
       - "plugins/plugin-local-inference/scripts/voice-workbench.ts"
+      - "packages/benchmarks/interrupt-bench/**"
       - "packages/shared/src/voice-wer.ts"
       - "packages/shared/src/voice-eot.ts"
       - "packages/shared/src/voice/respond-gate.ts"
       - "packages/shared/src/voice/owner-inference.ts"
       - ".github/workflows/voice-workbench.yml"
+  schedule:
+    # Nightly real acoustic lane (provisioned runners only; honest-skip otherwise).
+    - cron: "0 7 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -64,7 +74,7 @@ jobs:
   voice-workbench:
     name: headless workbench (mocked backends)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: ./.github/actions/setup-bun-workspace
@@ -95,6 +105,9 @@ jobs:
             src/voice-eot.test.ts \
             src/voice-wer.test.ts
 
+      - name: interrupt-bench suite (barge-in / interruption scoring)
+        run: bun run --cwd packages/benchmarks/interrupt-bench test
+
       - name: voice:workbench mocked lane (plumbing — runs the matrix → report)
         run: bun run --cwd plugins/plugin-local-inference voice:workbench --out "${RUNNER_TEMP}/voice-workbench-output"
 
@@ -112,4 +125,53 @@ jobs:
           path: |
             ${{ runner.temp }}/voice-workbench-output
             ${{ runner.temp }}/voice-workbench-logic-output
+          if-no-files-found: ignore
+
+  voice-workbench-real:
+    name: real acoustic lane (nightly, provisioned only)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # Honesty contract at the job level: with no provisioned acoustic artifacts
+      # the `--real` CLI hard-fails on the first missing piece (never a false
+      # pass), so we detect their absence here and SKIP the run instead of reding
+      # the nightly. When a provisioned runner supplies the key + bundle, the
+      # step below runs the real lane and any genuine gap reds the job.
+      - name: Probe for provisioned acoustic artifacts
+        id: probe
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELIZA_ASR_BUNDLE: ${{ vars.ELIZA_ASR_BUNDLE }}
+        run: |
+          if [ -n "$ELEVENLABS_API_KEY" ] && [ -n "$ELIZA_ASR_BUNDLE" ] && [ -d "$ELIZA_ASR_BUNDLE" ]; then
+            echo "provisioned=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "provisioned=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::real acoustic lane skipped — no provisioned artifacts (honesty contract: skipped, never a false pass)"
+          fi
+
+      - name: voice:workbench real lane (provisioned)
+        if: steps.probe.outputs.provisioned == 'true'
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELIZA_ASR_BUNDLE: ${{ vars.ELIZA_ASR_BUNDLE }}
+        run: |
+          bun run --cwd plugins/plugin-local-inference voice:workbench --real \
+            --out "${RUNNER_TEMP}/voice-workbench-real-output"
+
+      - name: Upload real-lane report
+        if: ${{ always() && steps.probe.outputs.provisioned == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: voice-workbench-real-report
+          path: ${{ runner.temp }}/voice-workbench-real-output
           if-no-files-found: ignore
