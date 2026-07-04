@@ -182,7 +182,14 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
 4. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
    fixture → headless Chromium for gesture/animation/flow coverage no jsdom can
    reach (chat sheet detents, home screen, onboarding, agent surface). Author one
-   when a behaviour depends on real layout, pointer events, or timing.
+   when a behaviour depends on real layout, pointer events, or timing. Compose the
+   shared `src/testing/e2e-runner/` toolkit (esbuild stubs, fixture bundling, the
+   assert gate, snapper, video rename, Chromium scope, and the
+   `runBrowserFixtureE2E` orchestrator for the common one-page shape) rather than
+   copy-pasting the mechanics; a bespoke multi-page/pixel-diff runner composes the
+   lower-level helpers. Gesture handler sites are gated by
+   `packages/app/test/chat-gesture-coverage.test.ts` +
+   `packages/app/docs/CHAT_GESTURE_COVERAGE.md`.
 
 Every new story automatically gains story-gate coverage; a new interactive
 component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`

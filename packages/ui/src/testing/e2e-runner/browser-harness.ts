@@ -22,8 +22,8 @@ import {
 } from "playwright";
 import {
   type FixtureHtmlOptions,
-  writeFixturePage,
   type WriteFixturePageOptions,
+  writeFixturePage,
 } from "./fixture-bundle.ts";
 
 export interface AssertGate {
@@ -213,7 +213,9 @@ export async function runBrowserFixtureE2E(
 
   return finishRun({
     failures: gate.failures,
-    passMessage: config.passMessage ?? (config.label ? `\n${config.label} PASSED` : undefined),
+    passMessage:
+      config.passMessage ??
+      (config.label ? `\n${config.label} PASSED` : undefined),
     failMessage:
       config.failMessage ??
       (config.label
