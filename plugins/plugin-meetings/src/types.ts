@@ -17,7 +17,9 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import type {
   MeetingAutoLeaveConfig,
+  MeetingBillingState,
   MeetingEndReason,
+  MeetingJoinRequest,
   MeetingParticipant,
   MeetingPlatform,
   MeetingSessionStatus,
@@ -115,6 +117,36 @@ export interface MeetingTranscriptionPipeline extends MeetingAudioSink {
   speakerNames(): string[];
 }
 
+export type MeetingBillingErrorCode = "insufficient_credits" | "billing_failed";
+
+export class MeetingBillingError extends Error {
+  constructor(
+    readonly code: MeetingBillingErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "MeetingBillingError";
+  }
+}
+
+export interface MeetingBillingSessionInput {
+  runtime: IAgentRuntime;
+  sessionId: UUID;
+  request: MeetingJoinRequest;
+  maxDurationMs: number;
+}
+
+/**
+ * Metered meeting billing seam. Cloud wiring reserves/debits/refunds through
+ * its credit ledger; local/self-hosted runtimes omit it and remain unmetered.
+ */
+export interface MeetingBillingSession {
+  readonly state: MeetingBillingState;
+  reserveInitial(): Promise<void>;
+  ensureTranscriptionWindow(durationMs: number): Promise<void>;
+  reconcile(reason: MeetingEndReason): Promise<MeetingBillingState>;
+}
+
 export interface MeetingPipelineOptions {
   runtime: IAgentRuntime;
   sessionId: UUID;
@@ -122,4 +154,6 @@ export interface MeetingPipelineOptions {
   language?: string;
   /** Retain raw session audio for the transcript record's audio player. */
   retainAudio: boolean;
+  billing?: MeetingBillingSession;
+  onSpendCapReached?: (error: MeetingBillingError) => void;
 }

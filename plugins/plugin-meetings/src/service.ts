@@ -23,6 +23,7 @@ import {
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
   type MeetingAutoLeaveConfig,
+  type MeetingBillingState,
   type MeetingEndReason,
   type MeetingJoinRequest,
   type MeetingParticipant,
@@ -38,6 +39,9 @@ import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import { MeetingTranscriptWriter } from "./transcripts/meeting-transcript-writer.js";
 import type {
   MeetingAudioSink,
+  MeetingBillingError,
+  MeetingBillingSession,
+  MeetingBillingSessionInput,
   MeetingBotSession,
   MeetingPipelineOptions,
   MeetingPlatformAdapter,
@@ -55,6 +59,9 @@ export interface MeetingPipelineInstance extends MeetingTranscriptionPipeline {
 export interface MeetingServiceDependencies {
   adapters: ReadonlyMap<MeetingPlatform, MeetingPlatformAdapter>;
   createPipeline(options: MeetingPipelineOptions): MeetingPipelineInstance;
+  createBillingSession?(
+    input: MeetingBillingSessionInput,
+  ): MeetingBillingSession | null;
 }
 
 export type MeetingJoinErrorCode =
@@ -62,7 +69,8 @@ export type MeetingJoinErrorCode =
   | "unsupported_platform"
   | "unsupported_host"
   | "already_joined"
-  | "invalid_duration_cap";
+  | "invalid_duration_cap"
+  | "insufficient_credits";
 
 /** Validation/conflict failures of `requestJoin` — routes map these to 4xx. */
 export class MeetingJoinError extends Error {
@@ -100,6 +108,8 @@ interface InternalSession {
   readonly abort: AbortController;
   readonly pipeline: MeetingPipelineInstance;
   readonly writer: MeetingTranscriptWriter;
+  readonly billing?: MeetingBillingSession;
+  billingFinalized?: Promise<void>;
   /** Confirmed segments accumulated from pipeline updates (live view state). */
   confirmedSegments: TranscriptSegment[];
   /** Resolves when the adapter lifecycle + finalize have fully completed. */
@@ -226,12 +236,42 @@ export class MeetingService extends Service {
     };
     const maxDurationMs = this.resolveMaxDurationMs(request.maxDurationMs);
     const retainAudio = request.retainAudio ?? true;
+    const billing = this.deps.createBillingSession?.({
+      runtime: this.runtime,
+      sessionId,
+      request,
+      maxDurationMs,
+    });
+
+    if (billing) {
+      try {
+        await billing.reserveInitial();
+      } catch (err) {
+        if (
+          err instanceof Error &&
+          "code" in err &&
+          err.code === "insufficient_credits"
+        ) {
+          throw new MeetingJoinError("insufficient_credits", err.message);
+        }
+        throw err;
+      }
+    }
 
     const pipeline = this.deps.createPipeline({
       runtime: this.runtime,
       sessionId,
       language: request.language,
       retainAudio,
+      ...(billing ? { billing } : {}),
+      onSpendCapReached: (error: MeetingBillingError) => {
+        const live = this.sessions.get(sessionId);
+        if (!live || TERMINAL_STATUSES.has(live.status)) return;
+        live.endReason = "ended_due_to_spend_cap";
+        live.errorMessage = error.message;
+        this.applyStatus(live, "leaving");
+        live.abort.abort();
+      },
     });
     const writer = new MeetingTranscriptWriter(this.runtime);
 
@@ -251,6 +291,7 @@ export class MeetingService extends Service {
       abort: new AbortController(),
       pipeline,
       writer,
+      ...(billing ? { billing } : {}),
       confirmedSegments: [],
       done: Promise.resolve(),
     };
@@ -282,6 +323,22 @@ export class MeetingService extends Service {
         nativeMeetingId: parsed.nativeMeetingId,
       });
     } catch (err) {
+      try {
+        await this.reconcileBillingOnce(session, "error");
+      } catch (billingErr) {
+        logger.error(
+          {
+            sessionId,
+            platform: parsed.platform,
+            nativeMeetingId: parsed.nativeMeetingId,
+            error:
+              billingErr instanceof Error
+                ? billingErr.message
+                : String(billingErr),
+          },
+          "[MeetingService] join setup billing release failed",
+        );
+      }
       this.sessions.delete(sessionId);
       logger.error(
         {
@@ -382,7 +439,18 @@ export class MeetingService extends Service {
       participants: session.participants.map((p) => ({ ...p })),
       calendarEventId: session.calendarEventId,
       maxDurationMs: session.maxDurationMs,
+      billing: this.billingState(session),
     };
+  }
+
+  private billingState(session: InternalSession): MeetingBillingState {
+    return (
+      session.billing?.state ?? {
+        status: "unmetered",
+        reservedMs: 0,
+        consumedMs: 0,
+      }
+    );
   }
 
   /** One shared "Meetings" world across sessions (created once, reused). */
@@ -528,6 +596,9 @@ export class MeetingService extends Service {
       endReason = await Promise.race([adapter.run(botSession), capReached]);
       if (durationCapReached) {
         endReason = "duration_cap_reached";
+      } else if (session.endReason === "ended_due_to_spend_cap") {
+        endReason = "ended_due_to_spend_cap";
+        errorMessage = session.errorMessage;
       }
     } catch (err) {
       endReason = "error";
@@ -578,6 +649,18 @@ export class MeetingService extends Service {
       );
     }
 
+    try {
+      await this.reconcileBillingOnce(session, endReason);
+    } catch (err) {
+      endReason = "error";
+      errorMessage =
+        errorMessage ?? (err instanceof Error ? err.message : String(err));
+      logger.error(
+        { sessionId: session.id, error: errorMessage },
+        "[MeetingService] billing reconciliation failed",
+      );
+    }
+
     session.endReason = endReason;
     session.errorMessage = errorMessage;
     session.endedAt = Date.now();
@@ -602,6 +685,19 @@ export class MeetingService extends Service {
     // the durable data.
     this.sessions.delete(session.id);
     this.terminated.set(session.id, dto);
+  }
+
+  private async reconcileBillingOnce(
+    session: InternalSession,
+    endReason: MeetingEndReason,
+  ): Promise<void> {
+    if (!session.billing) return;
+    if (!session.billingFinalized) {
+      session.billingFinalized = session.billing
+        .reconcile(endReason)
+        .then(() => undefined);
+    }
+    await session.billingFinalized;
   }
 
   private settingString(key: string): string | null {

@@ -45,6 +45,7 @@ const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   unsupported_host: 422,
   already_joined: 409,
   invalid_duration_cap: 400,
+  insufficient_credits: 402,
 };
 
 const createRoute: Route = {

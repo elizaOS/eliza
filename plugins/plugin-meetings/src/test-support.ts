@@ -8,6 +8,7 @@
 
 import type { IAgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
 import type {
+  MeetingBillingState,
   MeetingEndReason,
   MeetingParticipant,
   MeetingPlatform,
@@ -20,11 +21,13 @@ import {
   type MeetingServiceDependencies,
 } from "./service.js";
 import type {
+  MeetingBillingSession,
   MeetingBotSession,
   MeetingPipelineOptions,
   MeetingPlatformAdapter,
   PipelineTranscriptUpdate,
 } from "./types.js";
+import { MeetingBillingError } from "./types.js";
 
 export interface FakeRuntime {
   runtime: IAgentRuntime;
@@ -153,6 +156,60 @@ export class ScriptedPipeline implements MeetingPipelineInstance {
   }
   sessionAudioWav(): Buffer | null {
     return this.audioWav;
+  }
+}
+
+export class FakeMeetingBillingSession implements MeetingBillingSession {
+  readonly state: MeetingBillingState = {
+    status: "reserved",
+    reservedMs: 0,
+    consumedMs: 0,
+    capMs: 60_000,
+    reservationIds: [] as string[],
+  };
+  initialReserveError: Error | null = null;
+  failAfterConsumedMs: number | null = null;
+  reserveInitialCalls = 0;
+  reconcileCalls: MeetingEndReason[] = [];
+
+  constructor(options?: { capMs?: number; reservedMs?: number }) {
+    this.state.capMs = options?.capMs ?? this.state.capMs;
+    this.state.reservedMs = options?.reservedMs ?? 0;
+  }
+
+  async reserveInitial(): Promise<void> {
+    this.reserveInitialCalls += 1;
+    if (this.initialReserveError) throw this.initialReserveError;
+    if (this.state.reservedMs === 0) this.state.reservedMs = 15_000;
+    this.state.reservationIds?.push(`reserve-${this.reserveInitialCalls}`);
+  }
+
+  async ensureTranscriptionWindow(durationMs: number): Promise<void> {
+    const nextConsumed = this.state.consumedMs + durationMs;
+    if (
+      this.failAfterConsumedMs !== null &&
+      nextConsumed > this.failAfterConsumedMs
+    ) {
+      this.state.status = "spend_cap_reached";
+      this.state.error = "insufficient credits for meeting transcription";
+      throw new MeetingBillingError(
+        "insufficient_credits",
+        "insufficient credits for meeting transcription",
+      );
+    }
+    this.state.consumedMs = nextConsumed;
+    while (this.state.reservedMs < nextConsumed) {
+      this.state.reservedMs += 15_000;
+      this.state.reservationIds?.push(
+        `reserve-${this.state.reservationIds.length + 1}`,
+      );
+    }
+  }
+
+  async reconcile(reason: MeetingEndReason) {
+    this.reconcileCalls.push(reason);
+    this.state.status = "reconciled";
+    return this.state;
   }
 }
 
@@ -464,12 +521,16 @@ export const mockMeetingsCompanionPlugin: Plugin = {
 };
 
 /** One-line factory: pipeline + deps for a MeetingService under test. */
-export function scriptedDeps(adapters: MeetingPlatformAdapter[]): {
+export function scriptedDeps(
+  adapters: MeetingPlatformAdapter[],
+  billingSessions: FakeMeetingBillingSession[] = [],
+): {
   deps: {
     adapters: Map<MeetingPlatform, MeetingPlatformAdapter>;
     createPipeline: (
       options: MeetingPipelineOptions,
     ) => MeetingPipelineInstance;
+    createBillingSession?: MeetingServiceDependencies["createBillingSession"];
   };
   pipelines: ScriptedPipeline[];
 } {
@@ -482,6 +543,17 @@ export function scriptedDeps(adapters: MeetingPlatformAdapter[]): {
         pipelines.push(pipeline);
         return pipeline;
       },
+      ...(billingSessions.length > 0
+        ? {
+            createBillingSession: () => {
+              const billing = billingSessions.shift();
+              if (!billing) {
+                throw new Error("[scriptedDeps] no billing session queued");
+              }
+              return billing;
+            },
+          }
+        : {}),
     },
     pipelines,
   };

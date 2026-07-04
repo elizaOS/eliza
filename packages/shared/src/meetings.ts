@@ -39,6 +39,7 @@ export type MeetingEndReason =
   | "normal_completion"
   | "requested_stop"
   | "duration_cap_reached"
+  | "ended_due_to_spend_cap"
   | "removed_by_admin"
   | "left_alone_timeout"
   | "startup_alone_timeout"
@@ -86,6 +87,16 @@ export interface MeetingJoinRequest {
   calendarEventId?: string;
 }
 
+/** Metering state exposed so routes/UI can prove a meeting is spend-bounded. */
+export interface MeetingBillingState {
+  status: "unmetered" | "reserved" | "spend_cap_reached" | "reconciled";
+  reservedMs: number;
+  consumedMs: number;
+  capMs?: number;
+  reservationIds?: string[];
+  error?: string;
+}
+
 /** A participant observed in the meeting roster. */
 export interface MeetingParticipant {
   /** Stable id within the session (platform participant id or synthesized). */
@@ -121,6 +132,7 @@ export interface MeetingSession {
   calendarEventId?: string;
   /** Maximum duration approved for this session, in milliseconds. */
   maxDurationMs?: number;
+  billing?: MeetingBillingState;
   metadata?: Record<string, unknown>;
 }
 

@@ -16,5 +16,12 @@ export {
   type BridgeRequest,
   elizaSandboxService,
 } from "./services/eliza-sandbox";
+export {
+  createMeetingCreditBillingSession,
+  MeetingCloudBillingError,
+  MeetingCreditBillingSession,
+  type MeetingCreditBillingSessionOptions,
+  resolveMeetingUsdPerMinute,
+} from "./services/meeting-billing";
 export { provisioningJobService } from "./services/provisioning-jobs";
 export { logger } from "./utils/logger";

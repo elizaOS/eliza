@@ -7,6 +7,7 @@ import { DEFAULT_MEETING_MAX_DURATION_MS } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
+  FakeMeetingBillingSession,
   makeFakeRuntime,
   ScriptedAdapter,
   scriptedDeps,
@@ -18,9 +19,10 @@ const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
 function makeService(
   adapters: ScriptedAdapter[] = [new ScriptedAdapter("google_meet")],
+  billingSessions: FakeMeetingBillingSession[] = [],
 ) {
   const fake = makeFakeRuntime();
-  const { deps, pipelines } = scriptedDeps(adapters);
+  const { deps, pipelines } = scriptedDeps(adapters, billingSessions);
   const service = new MeetingService(fake.runtime, deps);
   return { fake, service, pipelines, adapters };
 }
@@ -91,7 +93,9 @@ describe("MeetingService.requestJoin — validation", () => {
   });
 
   it("releases the reservation when join setup throws, so a retry succeeds (BL-5)", async () => {
-    const { fake, service } = makeService();
+    const billing = new FakeMeetingBillingSession();
+    const retryBilling = new FakeMeetingBillingSession();
+    const { fake, service } = makeService(undefined, [billing, retryBilling]);
     // Make the transcript writer's initial row write (createMemory) fail once.
     const realCreateMemory = fake.runtime.createMemory.bind(fake.runtime);
     let calls = 0;
@@ -110,6 +114,7 @@ describe("MeetingService.requestJoin — validation", () => {
     ).rejects.toThrow("db write failed");
     // The failed session did NOT strand a non-terminal reservation.
     expect(service.listSessions()).toHaveLength(0);
+    expect(billing.reconcileCalls).toEqual(["error"]);
 
     // Because the reservation rolled back, a second join for the same meeting
     // is not blocked by `already_joined`.
@@ -120,6 +125,7 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(dto.status).toBe("requested");
     expect(service.listSessions({ active: true })).toHaveLength(1);
     expect(calls).toBe(2);
+    expect(retryBilling.reconcileCalls).toEqual([]);
   });
 
   it("rejects requested duration caps above the configured maximum before launch", async () => {
@@ -188,6 +194,23 @@ describe("MeetingService.requestJoin — validation", () => {
     ).rejects.toMatchObject({ code: "invalid_duration_cap" });
     expect(decimalAdapter.session).toBeNull();
   });
+
+  it("fails closed before bot launch when initial credit reservation is insufficient", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const billing = new FakeMeetingBillingSession();
+    billing.initialReserveError = Object.assign(
+      new Error("not enough credits to start meeting transcription"),
+      { code: "insufficient_credits" },
+    );
+    const { service } = makeService([adapter], [billing]);
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toMatchObject({ code: "insufficient_credits" });
+    expect(adapter.session).toBeNull();
+    expect(service.listSessions()).toHaveLength(0);
+    expect(billing.reserveInitialCalls).toBe(1);
+  });
 });
 
 describe("MeetingService — session state machine", () => {
@@ -234,6 +257,34 @@ describe("MeetingService — session state machine", () => {
       "active",
       "ended",
     ]);
+  });
+
+  it("exposes billing state and reconciles it exactly once at normal finish", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const billing = new FakeMeetingBillingSession({ reservedMs: 30_000 });
+    const { service } = makeService([adapter], [billing]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(dto.billing).toMatchObject({
+      status: "reserved",
+      reservedMs: 30_000,
+      consumedMs: 0,
+    });
+
+    await adapter.started;
+    adapter.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+
+    const session = service.getSession(dto.id as never);
+    expect(session?.billing).toMatchObject({
+      status: "reconciled",
+      reservedMs: 30_000,
+    });
+    expect(billing.reconcileCalls).toEqual(["normal_completion"]);
+    expect(service.stopSession(dto.id as never)).toBe(false);
+    expect(billing.reconcileCalls).toHaveLength(1);
   });
 
   it("evicts the finished session to a lightweight terminal record but keeps it readable (BL-4)", async () => {
