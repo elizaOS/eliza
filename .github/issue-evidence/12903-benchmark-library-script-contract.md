@@ -60,22 +60,18 @@ Result:
 ```text
 packages/benchmarks/framework/typescript/package.json: script contract ok
 packages/benchmarks/lib/package.json: script contract ok
+packages/benchmarks/framework/typescript check: passed after building @elizaos/plugin-openai and @elizaos/plugin-cli-inference
 packages/benchmarks/framework/typescript lint:check: passed, 5 files
 packages/benchmarks/framework/typescript format:check: passed, 5 files
 packages/benchmarks/lib check: passed, 12 files lint/format checked
 packages/benchmarks/lib test: passed, 4 files / 44 tests
 ```
 
-Local blocker:
-
-```text
-packages/benchmarks/framework/typescript check:
-  tsgo could not resolve @elizaos/plugin-openai or
-  @elizaos/plugin-cli-inference through this auxiliary worktree's inherited
-  node_modules symlink, even after adding the provider directories and building
-  them. This PR adds the missing workspace dependency declarations so a normal
-  workspace install can resolve those imports.
-```
+`packages/benchmarks/framework/typescript check` initially needed the
+`@elizaos/plugin-openai` and `@elizaos/plugin-cli-inference` workspace packages
+prepared. After `bun run --cwd plugins/plugin-openai build` and
+`bun run --cwd plugins/plugin-cli-inference build`, the package-local `check`
+script passed.
 
 ## Evidence Matrix
 
