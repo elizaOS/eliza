@@ -291,9 +291,9 @@ export function buildBotFreeMeetingAudioArtifacts(
   captured: ReadonlyArray<BotFreeMeetingCapturedPcm>,
   includeMixedFallbackArtifact = true,
 ): BotFreeMeetingAudioArtifact[] {
-  const artifacts: BotFreeMeetingAudioArtifact[] = captured
-    .filter((source) => source.pcm.length > 0)
-    .map((source) => {
+  const capturedWithAudio = captured.filter((source) => source.pcm.length > 0);
+  const artifacts: BotFreeMeetingAudioArtifact[] = capturedWithAudio.map(
+    (source) => {
       const metadata = capturedMetadata(source, "captured");
       const audio = encodeMonoPcm16Wav(source.pcm, source.sampleRateHz);
       return {
@@ -306,12 +306,15 @@ export function buildBotFreeMeetingAudioArtifacts(
         audio,
         metadata,
       };
-    });
+    },
+  );
 
-  if (includeMixedFallbackArtifact && captured.length > 1) {
+  if (includeMixedFallbackArtifact && capturedWithAudio.length > 1) {
     const sampleRateHz =
-      captured[0]?.sampleRateHz ?? BOT_FREE_MEETING_AUDIO_SAMPLE_RATE;
-    const mixed = mixBotFreeMeetingPcm(captured.map((source) => source.pcm));
+      capturedWithAudio[0]?.sampleRateHz ?? BOT_FREE_MEETING_AUDIO_SAMPLE_RATE;
+    const mixed = mixBotFreeMeetingPcm(
+      capturedWithAudio.map((source) => source.pcm),
+    );
     const stats = measurePcmAudio(mixed);
     const durationMs = Math.round((mixed.length / sampleRateHz) * 1000);
     const metadata: BotFreeMeetingAudioSourceMetadata = {
@@ -321,7 +324,7 @@ export function buildBotFreeMeetingAudioArtifacts(
         "Mixed local + remote fallback",
         "captured",
       ),
-      audioTrackCount: captured.length,
+      audioTrackCount: capturedWithAudio.length,
       channelCount: 1,
       sampleRateHz,
       sampleCount: mixed.length,

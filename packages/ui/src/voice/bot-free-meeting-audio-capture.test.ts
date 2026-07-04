@@ -142,6 +142,30 @@ describe("bot-free meeting audio capture helpers", () => {
     ).toBe("browser");
   });
 
+  it("does not create a mixed fallback from a single non-empty source", () => {
+    const artifacts = buildBotFreeMeetingAudioArtifacts([
+      {
+        sourceId: "local-mic",
+        kind: "local_mic",
+        label: "Local microphone",
+        pcm: new Float32Array([0.1, 0.2, 0.3]),
+        sampleRateHz: BOT_FREE_MEETING_AUDIO_SAMPLE_RATE,
+        channelCount: 1,
+      },
+      {
+        sourceId: "remote-tab-or-system",
+        kind: "remote_tab_or_system",
+        label: "Tab/system audio",
+        pcm: new Float32Array(),
+        sampleRateHz: BOT_FREE_MEETING_AUDIO_SAMPLE_RATE,
+        channelCount: 2,
+        displaySurface: "browser",
+      },
+    ]);
+
+    expect(artifacts.map((artifact) => artifact.kind)).toEqual(["local_mic"]);
+  });
+
   it("throws a typed error when no requested source can open", async () => {
     Object.defineProperty(globalThis, "window", {
       configurable: true,
