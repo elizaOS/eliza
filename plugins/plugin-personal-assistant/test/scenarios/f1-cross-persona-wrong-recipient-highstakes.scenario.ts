@@ -82,14 +82,13 @@ export default scenario({
   ],
   finalChecks: [
     {
+      // RESOLVE_REQUEST is promoted via `promoteSubactionsToActions`, so the
+      // live router may land on the umbrella or a promoted subaction name;
+      // accept the reject-path family. The success + rejected-state outcome is
+      // asserted by the queue-reading predicate below, which matches the same
+      // family.
       type: "selectedAction",
-      actionName: ["RESOLVE_REQUEST"],
-    },
-    {
-      type: "actionCalled",
-      actionName: "RESOLVE_REQUEST",
-      status: "success",
-      minCount: 1,
+      actionName: ["RESOLVE_REQUEST", "RESOLVE_REQUEST_REJECT"],
     },
     {
       type: "custom",

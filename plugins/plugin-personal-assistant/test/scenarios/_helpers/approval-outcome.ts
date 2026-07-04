@@ -54,7 +54,16 @@ function resultData(
 function resolveRequestCalls(
   ctx: ScenarioContext,
 ): ReadonlyArray<CapturedActionLite> {
-  return ctx.actionsCalled.filter((a) => a.actionName === "RESOLVE_REQUEST");
+  // RESOLVE_REQUEST is registered via `promoteSubactionsToActions`, so a live
+  // model may select the umbrella OR a promoted subaction name
+  // (RESOLVE_REQUEST_APPROVE / RESOLVE_REQUEST_REJECT / ...). All of them run
+  // the same resolver; match the whole family so the outcome predicates read
+  // the decision wherever the router landed it.
+  return ctx.actionsCalled.filter(
+    (a) =>
+      a.actionName === "RESOLVE_REQUEST" ||
+      a.actionName.startsWith("RESOLVE_REQUEST_"),
+  );
 }
 
 function stateOf(action: CapturedActionLite): string {
