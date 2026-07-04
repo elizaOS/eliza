@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * E2E coverage report + ship-gate CLI (issue #8802).
+ * E2E coverage matrix report CLI (issue #8802).
  *
  * Builds the canonical coverage matrix (slash commands, #8791 shortcuts, plugin
  * routes, views) from real source, writes `reports/coverage/e2e-matrix.json` +
@@ -13,7 +13,7 @@
  *     gap (required).
  *
  * Usage:
- *   bun packages/scripts/check-e2e-coverage.ts [--report-dir <dir>] [--json]
+ *   bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts [--report-dir <dir>] [--json]
  *       [--fail-on-missing]
  */
 
@@ -23,7 +23,7 @@ import {
   buildCoverageMatrix,
   type CoverageMatrix,
   REPO_ROOT,
-} from "./e2e-coverage/inventory.ts";
+} from "./inventory.ts";
 
 interface CliOptions {
   reportDir: string;

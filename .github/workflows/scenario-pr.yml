@@ -887,9 +887,19 @@ jobs:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun test packages/scripts/__tests__/e2e-coverage.test.ts
 
+      # Per-plugin keyless-e2e coverage gate (issue #8801). The surface matrix
+      # above proves app-facing routes/views; this ratchet proves each plugin
+      # with user-facing capabilities has a deterministic, credential-free
+      # scenario or an explicit baseline entry.
+      - name: Per-plugin keyless e2e coverage self-test
+        run: bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
+
+      - name: Per-plugin keyless e2e coverage gate
+        run: bun run audit:e2e-coverage
+
       - name: E2E coverage matrix report
         if: always()
-        run: bun packages/scripts/check-e2e-coverage.ts --report-dir reports/coverage
+        run: bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts --report-dir reports/coverage
 
       - name: Build workspace packages for scenario resolution
         run: bun run build:core && bunx turbo run build --filter=@elizaos/plugin-github
