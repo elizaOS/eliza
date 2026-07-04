@@ -396,6 +396,8 @@ export function startKeyboardDictationSession(
 
   void writeState("recording").then((ok) => {
     if (!ok || settled || !capture) return;
+    // error-policy:J1 session boundary — a failed start terminates the
+    // dictation session through fail(), which records the error for the host
     capture.start().catch((error: unknown) => {
       if (!settled) {
         fail(

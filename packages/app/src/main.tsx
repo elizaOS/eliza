@@ -410,7 +410,8 @@ function applyCloudPairSessionToken(): void {
     if (!token) return;
     client.setToken(token);
   } catch {
-    // sessionStorage can be unavailable in hardened browser contexts.
+    // error-policy:J4 sessionStorage can be unavailable in hardened browser
+    // contexts — the pairing token is simply not adopted
   }
 }
 
@@ -522,6 +523,8 @@ function scheduleAppModuleIdleLoads(
       nextIndex += 1;
       activeCount += 1;
       void importSideEffectAppModule(key, load)
+        // error-policy:J4 deferred enhancement modules — a load failure is
+        // logged and the app stays usable without that module
         .catch((error) => {
           console.warn(`${APP_LOG_PREFIX} Failed to load ${key}:`, error);
         })
@@ -676,7 +679,8 @@ async function writeIosPreferenceSmokeResult(
   try {
     Storage.prototype.setItem.call(window.localStorage, key, value);
   } catch {
-    // Ignore localStorage failures; Preferences is the simulator harness source of truth.
+    // error-policy:J6 best-effort echo — Preferences is the simulator
+    // harness source of truth
   }
   await boundedPreferenceWrite(() =>
     Preferences.set({
@@ -728,7 +732,8 @@ function renderIosFullBunSmokeStatus(message: string): void {
     container.appendChild(text);
     document.body.appendChild(container);
   } catch {
-    // Smoke diagnostics are best-effort.
+    // error-policy:J7 smoke diagnostics are best-effort — a failed status
+    // render must not kill the smoke run
   }
 }
 
@@ -746,6 +751,7 @@ function parseIosOnboardingSmokeRequest(raw: string | null): {
           : fallback.apiBase,
     };
   } catch {
+    // error-policy:J3 corrupt smoke-request blob — run with the defaults
     return fallback;
   }
 }
@@ -788,6 +794,7 @@ function readIosOnboardingSmokeStorageSnapshot(): Record<
       try {
         return [key, window.localStorage.getItem(key)];
       } catch {
+        // error-policy:J7 diagnostics snapshot — an unreadable key reports null
         return [key, null];
       }
     }),
@@ -818,6 +825,8 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
   try {
     rawRequest = window.localStorage.getItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
   } catch {
+    // error-policy:J3 unavailable storage reads as "no request"; the
+    // Preferences fallback below still serves the simulator harness
     rawRequest = null;
   }
   if (!rawRequest) {
@@ -870,6 +879,8 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
       storage,
     });
   } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
     await writeIosOnboardingSmokeResult({
       ok: false,
       phase: "failed",
@@ -882,7 +893,8 @@ async function runIosOnboardingSmokeIfRequested(): Promise<boolean> {
     try {
       window.localStorage.removeItem(IOS_ONBOARDING_SMOKE_REQUEST_KEY);
     } catch {
-      // Preferences removal below is authoritative for the simulator harness.
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative for the simulator harness
     }
     await boundedPreferenceWrite(() =>
       Preferences.remove({ key: IOS_ONBOARDING_SMOKE_REQUEST_KEY }),
@@ -923,10 +935,12 @@ async function fetchIosFullBunSmokeJson<T>(
   try {
     return JSON.parse(text) as T;
   } catch (error) {
+    // error-policy:J2 context-adding rethrow
     throw new Error(
       `${label} returned invalid JSON: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 }
@@ -975,10 +989,12 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   try {
     return JSON.parse(body) as T;
   } catch (error) {
+    // error-policy:J2 context-adding rethrow
     throw new Error(
       `${label} returned invalid JSON: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 }
@@ -1022,6 +1038,8 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     requested =
       window.localStorage.getItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY) === "1";
   } catch {
+    // error-policy:J3 unavailable storage reads as "not requested"; the
+    // Preferences read below still serves the simulator harness
     requested = false;
   }
   try {
@@ -1030,14 +1048,16 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
     }
   } catch {
-    // Keep the localStorage result from the storage bridge hydration.
+    // error-policy:J4 Preferences unavailable — keep the localStorage
+    // result from the storage bridge hydration
   }
   if (!requested) return false;
   iosFullBunSmokeStarted = true;
   try {
     window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   } catch {
-    // Preferences can request the smoke before localStorage is hydrated.
+    // error-policy:J6 best-effort echo — Preferences can request the smoke
+    // before localStorage is hydrated
   }
   renderIosFullBunSmokeStatus("Running iOS full Bun backend smoke...");
   window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__ = (event) => {
@@ -1450,6 +1470,8 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       streamMessage,
     });
   } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
     await writeIosFullBunSmokeResult({
       ok: false,
       phase: "failed",
@@ -1461,7 +1483,8 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     try {
       window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
     } catch {
-      // Ignore localStorage failures; Preferences removal below is authoritative.
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative
     }
     await boundedPreferenceWrite(() =>
       Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
@@ -1475,6 +1498,8 @@ async function initializeAgent(): Promise<void> {
     const status = await Agent.getStatus();
     dispatchAppEvent(AGENT_READY_EVENT, status);
   } catch (err) {
+    // error-policy:J4 the native agent plugin is optional (absent on web) —
+    // the app runs against a remote agent instead; logged for triage
     console.warn(
       `${APP_LOG_PREFIX} Agent not available:`,
       err instanceof Error ? err.message : err,
@@ -1555,6 +1580,7 @@ async function registerMobileBlockerBackends(): Promise<void> {
       appNative.createNativeAppBlockerBackend(appNative.AppBlocker),
     );
   } catch (error) {
+    // error-policy:J4 optional native plugin — absence is a designed degrade
     logNativePluginUnavailable("Blocker backends", error);
   }
 }
@@ -1576,6 +1602,7 @@ async function initializeStatusBar(): Promise<void> {
       await StatusBar.setBackgroundColor({ color: "#00000000" });
     }
   } catch (error) {
+    // error-policy:J4 optional native plugin — absence is a designed degrade
     logNativePluginUnavailable("StatusBar", error);
   }
 }
@@ -1607,6 +1634,7 @@ async function initializeKeyboard(): Promise<void> {
       document.body.classList.remove("keyboard-open");
     });
   } catch (error) {
+    // error-policy:J4 optional native plugin — absence is a designed degrade
     logNativePluginUnavailable("Keyboard", error);
   }
 }
@@ -1657,6 +1685,7 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
   try {
     validatedUrl = new URL(rawApiBase);
   } catch {
+    // error-policy:J3 untrusted deep-link input — rejected loudly
     console.error(`${APP_LOG_PREFIX} Invalid first-run remote URL format`);
     return;
   }
@@ -1695,6 +1724,8 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     label: validatedUrl.hostname || "Remote agent",
     apiBase: connection.apiBase,
   });
+  // error-policy:J6 best-effort persist — the connect below still lands;
+  // only re-selection after restart is lost, and the failure is logged
   void setStorageValue("elizaos:active-server", activeServer).catch((error) => {
     console.warn(
       `${APP_LOG_PREFIX} Failed to persist first-run remote active server:`,
@@ -1721,6 +1752,9 @@ function handleDeepLink(url: string): void {
   try {
     parsed = new URL(url);
   } catch {
+    // error-policy:J3 untrusted deep-link input — unparseable links are
+    // dropped loudly so a broken link is diagnosable
+    console.warn(`${APP_LOG_PREFIX} Ignoring unparseable deep link`);
     return;
   }
 
@@ -1831,6 +1865,7 @@ function handleDeepLink(url: string): void {
             token: connection.token ?? undefined,
           });
         } catch {
+          // error-policy:J3 untrusted deep-link input — rejected loudly
           console.error(`${APP_LOG_PREFIX} Invalid gateway URL format`);
         }
       }
@@ -2345,6 +2380,8 @@ function validateAndSetApiBase(apiBase: string): void {
       );
     }
   } catch {
+    // error-policy:J3 not an absolute URL — accept only a same-origin
+    // relative path, otherwise reject loudly
     if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {
       setBootConfig({ ...getBootConfig(), apiBase });
     } else {
@@ -2407,6 +2444,7 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
     if (!mode) return IOS_RUNTIME_ENV_CONFIG;
     return { ...IOS_RUNTIME_ENV_CONFIG, mode };
   } catch {
+    // error-policy:J3 unavailable storage — build-time runtime config
     return IOS_RUNTIME_ENV_CONFIG;
   }
 }
@@ -2452,7 +2490,8 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
       ).value?.trim();
       if (fromPrefs) return fromPrefs;
     } catch {
-      // Preferences unavailable on this platform; fall through to localStorage.
+      // error-policy:J4 Preferences unavailable on this platform — fall
+      // through to localStorage
     }
     return (
       globalThis.localStorage?.getItem(DEVICE_BRIDGE_ID_KEY)?.trim() ||
@@ -2470,12 +2509,14 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
   try {
     await Preferences.set({ key: DEVICE_BRIDGE_ID_KEY, value: generated });
   } catch {
-    // Preferences unavailable; localStorage below is the durable fallback.
+    // error-policy:J6 Preferences unavailable — localStorage below is the
+    // durable fallback
   }
   try {
     globalThis.localStorage?.setItem(DEVICE_BRIDGE_ID_KEY, generated);
   } catch {
-    // No persistent store available; the id is still usable for this session.
+    // error-policy:J6 no persistent store available — the id is still
+    // usable for this session
   }
   return generated;
 }
@@ -2559,6 +2600,7 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
       details,
     });
   } catch (error) {
+    // error-policy:J4 optional native module — absence logged, app degrades
     console.warn(
       `${APP_LOG_PREFIX} Background runner unavailable:`,
       error instanceof Error ? error.message : error,
@@ -2617,6 +2659,7 @@ async function initializeMobileDeviceBridge(): Promise<void> {
         },
       });
     } catch (error) {
+      // error-policy:J4 optional native module — absence logged, app degrades
       console.warn(
         `${APP_LOG_PREFIX} Device bridge unavailable:`,
         error instanceof Error ? error.message : error,
@@ -2685,6 +2728,7 @@ async function initializeMobileAgentTunnel(): Promise<void> {
         status.lastError ?? "",
       );
     } catch (error) {
+      // error-policy:J4 optional native module — absence logged, app degrades
       console.warn(
         `${APP_LOG_PREFIX} Mobile agent tunnel unavailable:`,
         error instanceof Error ? error.message : error,
@@ -2705,6 +2749,7 @@ async function stopMobileAgentTunnel(): Promise<void> {
     );
     await MobileAgentBridge.stopInboundTunnel();
   } catch (error) {
+    // error-policy:J6 teardown — stop failure is logged
     console.warn(
       `${APP_LOG_PREFIX} Mobile agent tunnel stop failed:`,
       error instanceof Error ? error.message : error,
@@ -2713,7 +2758,8 @@ async function stopMobileAgentTunnel(): Promise<void> {
   try {
     await mobileAgentTunnelListener?.remove();
   } catch {
-    // Native tunnel stop above is authoritative.
+    // error-policy:J6 teardown — the native tunnel stop above is
+    // authoritative
   }
   mobileAgentTunnelListener = null;
 }
@@ -2786,6 +2832,8 @@ async function main(): Promise<void> {
   try {
     await applyLaunchConnectionFromUrl();
   } catch (err) {
+    // error-policy:J4 the launch-URL session apply is best-effort — the
+    // failure is logged and normal boot (with its own auth flows) proceeds
     console.error(
       `${APP_LOG_PREFIX} Failed to apply managed cloud launch session:`,
       err instanceof Error ? err.message : err,
@@ -2885,6 +2933,8 @@ async function main(): Promise<void> {
     const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
     registerDesktopFusedWake();
   } catch (error) {
+    // error-policy:J4 never let a voice-chunk load failure (e.g. a stale
+    // index.html pointing at a purged hash) gate mounting the app
     console.warn("[boot] fused-wake voice module unavailable", error);
   }
   markStartup("bridges:end", { platform });
@@ -2898,6 +2948,7 @@ async function main(): Promise<void> {
 // rejection unhandled and the page permanently blank. Route every boot failure
 // to an actionable reload card instead.
 function boot(): void {
+  // error-policy:J1 boot boundary — every rejection renders the reload card
   void main().catch(renderBootFailure);
 }
 

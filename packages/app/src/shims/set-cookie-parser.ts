@@ -47,7 +47,8 @@ export function parseString(
     try {
       value = decodeURIComponent(value);
     } catch {
-      // Match set-cookie-parser's tolerant browser behavior.
+      // error-policy:J3 malformed escape — keep the raw value, matching
+      // set-cookie-parser's tolerant browser behavior
     }
   }
 

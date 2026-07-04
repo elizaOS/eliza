@@ -164,6 +164,8 @@ export async function runEmbedHandshake(
     }
     response = result;
   } catch {
+    // error-policy:J1 auth boundary — structured failure the embed shell
+    // renders
     return { status: "failed", reason: "network_error" };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -177,6 +179,8 @@ export async function runEmbedHandshake(
   try {
     body = (await response.json()) as typeof body;
   } catch {
+    // error-policy:J3 unparseable auth response — explicit failure, never a
+    // fake-valid token
     return { status: "failed", reason: "bad_response" };
   }
 

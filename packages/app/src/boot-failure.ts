@@ -20,7 +20,7 @@ export function renderBootFailure(
   try {
     console.error("[boot] app failed to start", error);
   } catch {
-    // never let logging mask the recovery UI
+    // error-policy:J7 never let logging mask the recovery UI
   }
 
   const root = doc.getElementById("root");

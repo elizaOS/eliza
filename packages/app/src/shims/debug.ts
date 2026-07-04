@@ -35,7 +35,8 @@ export function enable(namespaces: string): void {
   try {
     globalThis.localStorage?.setItem("debug", namespaces);
   } catch {
-    // localStorage can be unavailable in sandboxed browser contexts.
+    // error-policy:J6 best-effort persistence — localStorage can be
+    // unavailable in sandboxed browser contexts
   }
 }
 
@@ -45,7 +46,8 @@ export function disable(): string {
   try {
     globalThis.localStorage?.removeItem("debug");
   } catch {
-    // localStorage can be unavailable in sandboxed browser contexts.
+    // error-policy:J6 best-effort cleanup — localStorage can be unavailable
+    // in sandboxed browser contexts
   }
   return namespaces;
 }
@@ -86,6 +88,7 @@ function createDebug(namespace: string): DebugLogger {
 try {
   refresh(globalThis.localStorage?.getItem("debug") ?? "");
 } catch {
+  // error-policy:J3 unavailable storage — no namespaces enabled
   refresh("");
 }
 

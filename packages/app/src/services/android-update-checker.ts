@@ -53,10 +53,12 @@ export const AndroidUpdateChecker = {
           return true;
         }
       } catch {
-        // Device plugin unavailable — fall back to userAgent
+        // error-policy:J4 Device plugin unavailable — fall back to userAgent
       }
       return navigator.userAgent.includes("Android");
     } catch {
+      // error-policy:J4 sideload probe failed — read as "not sideload" so
+      // the OTA prompt never fires on an unknown install channel
       return false;
     }
   },
@@ -106,6 +108,8 @@ export const AndroidUpdateChecker = {
         currentVersionCode = parseInt(appInfo.build, 10);
         currentVersion = appInfo.version;
       } catch {
+        // error-policy:J4 best-effort OTA — null is the explicit "no check
+        // result" callers handle; the failure is logged
         console.warn(
           "[AndroidUpdateChecker] Could not read app info via @capacitor/app",
         );
@@ -119,6 +123,8 @@ export const AndroidUpdateChecker = {
         currentVersionCode,
       };
     } catch (err) {
+      // error-policy:J4 best-effort OTA — null is the explicit "no check
+      // result"; the failure is logged
       console.warn("[AndroidUpdateChecker] check() error:", err);
       return null;
     }

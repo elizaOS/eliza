@@ -99,6 +99,7 @@ function parseIosAttachmentSmokeRequest(
           : fallback.dataUrl,
     };
   } catch {
+    // error-policy:J3 corrupt smoke-request blob — run with the defaults
     return fallback;
   }
 }
@@ -163,8 +164,9 @@ function resolveIosAttachmentSmokeApiUrl(
   try {
     return new URL(path).toString();
   } catch {
-    // Relative API paths inside a Capacitor WKWebView resolve to the app origin,
-    // so use the same configured agent base as the rest of the UI client.
+    // error-policy:J3 not an absolute URL — relative API paths inside a
+    // Capacitor WKWebView resolve to the app origin, so use the same
+    // configured agent base as the rest of the UI client
   }
   const base = (fallbackBase.trim() || getApiBaseUrl()).replace(/\/+$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -226,7 +228,8 @@ async function readSmokePreference(
     const value = window.localStorage.getItem(key);
     if (value) return value;
   } catch {
-    // Preferences is the authoritative native store for the simulator harness.
+    // error-policy:J4 unavailable localStorage — Preferences (already read
+    // above) is the authoritative native store for the simulator harness
   }
   return null;
 }
@@ -265,6 +268,8 @@ async function waitForOnboardingSmokeResultIfPresent(
         );
       }
     } catch (error) {
+      // error-policy:J3 corrupt interim result blob — keep polling; a parsed
+      // "failed" result still propagates
       if (error instanceof Error && error.message.includes("failed")) {
         throw error;
       }
@@ -289,6 +294,8 @@ export async function runIosAttachmentSmokeIfRequested({
   try {
     rawRequest = window.localStorage.getItem(IOS_ATTACHMENT_SMOKE_REQUEST_KEY);
   } catch {
+    // error-policy:J3 unavailable storage reads as "no request"; the
+    // Preferences read below still serves the simulator harness
     rawRequest = null;
   }
   if (!rawRequest) {
@@ -453,6 +460,7 @@ export async function runIosAttachmentSmokeIfRequested({
             : { attempted: true, settled: true };
       });
     } catch (error) {
+      // error-policy:J1 the share failure is recorded in the smoke result
       shareOutcome = {
         attempted: true,
         rejected: true,
@@ -480,6 +488,8 @@ export async function runIosAttachmentSmokeIfRequested({
       share: shareOutcome,
     });
   } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
     const filesystem = readCapacitorFilesystemForSmoke();
     const share = readCapacitorShareForSmoke();
     await writeAttachmentResult(writeResult, {
@@ -498,7 +508,8 @@ export async function runIosAttachmentSmokeIfRequested({
     try {
       window.localStorage.removeItem(IOS_ATTACHMENT_SMOKE_REQUEST_KEY);
     } catch {
-      // Preferences removal below is authoritative for the simulator harness.
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative for the simulator harness
     }
     await removePreference(IOS_ATTACHMENT_SMOKE_REQUEST_KEY);
   }

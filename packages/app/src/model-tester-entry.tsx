@@ -210,6 +210,7 @@ async function runTest(id: string): Promise<void> {
     });
     renderOutput(id, await response.json());
   } catch (error) {
+    // error-policy:J4 failure renders as the test's error output
     renderOutput(id, {
       ok: false,
       test: id,
@@ -240,6 +241,7 @@ el<HTMLInputElement>("audio-file").addEventListener("change", async (event) => {
     el("audio-name").textContent = file.name;
     el("asset-error").textContent = "";
   } catch (error) {
+    // error-policy:J4 failure renders in the asset-error line
     el("asset-error").textContent =
       error instanceof Error ? error.message : String(error);
   }

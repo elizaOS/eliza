@@ -69,6 +69,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         await StatusBar.setBackgroundColor({ color: "#00000000" });
       }
     } catch (error) {
+      // error-policy:J4 optional native plugin — absence is a designed degrade
       logNativePluginUnavailable("StatusBar", error);
     }
   }
@@ -99,6 +100,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         document.body.classList.remove("keyboard-open");
       });
     } catch (error) {
+      // error-policy:J4 optional native plugin — absence is a designed degrade
       logNativePluginUnavailable("Keyboard", error);
     }
   }
@@ -131,6 +133,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       CapacitorApp.addListener("appStateChange", ({ isActive }) => {
         setAppActive(isActive);
       }),
+      // error-policy:J4 App plugin unavailable — the visibilitychange
+      // fallback below still drives pause/resume
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
@@ -174,6 +178,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
           });
         }
       }),
+      // error-policy:J4 App plugin unavailable — the back press no-ops
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
@@ -182,6 +187,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       CapacitorApp.addListener("appUrlOpen", ({ url }) => {
         handleDeepLinkOnce(url);
       }),
+      // error-policy:J4 App plugin unavailable — deep links degrade to the
+      // cold-launch replay below / web routing
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
@@ -198,6 +205,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         .then((result) => {
           if (handleDeepLinkOnce(result?.url)) stopReplay();
         })
+        // error-policy:J4 App plugin unavailable — stop the replay loop
         .catch((error) => {
           stopReplay();
           logNativePluginUnavailable("App", error);
@@ -249,8 +257,9 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
         setConnected(status.connected);
       });
     } catch (error) {
-      // The online/offline fallback above remains active, so leave the listener
-      // marked registered rather than resetting for a native retry.
+      // error-policy:J4 the online/offline fallback above remains active, so
+      // leave the listener marked registered rather than resetting for a
+      // native retry
       logNativePluginUnavailable("Network", error);
     }
   }

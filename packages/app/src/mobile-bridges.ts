@@ -168,6 +168,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
         details,
       });
     } catch (error) {
+      // error-policy:J4 optional native module — absence logged, app degrades
       console.warn(
         `${ctx.logPrefix} Background runner unavailable:`,
         error instanceof Error ? error.message : error,
@@ -231,6 +232,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
           },
         });
       } catch (error) {
+        // error-policy:J4 bounded retry below; absence after that is logged
         console.warn(
           `${ctx.logPrefix} Device bridge unavailable:`,
           error instanceof Error ? error.message : error,
@@ -309,6 +311,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
           status.lastError ?? "",
         );
       } catch (error) {
+        // error-policy:J4 optional native module — absence logged, app degrades
         console.warn(
           `${ctx.logPrefix} Mobile agent tunnel unavailable:`,
           error instanceof Error ? error.message : error,
@@ -329,6 +332,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
       );
       await MobileAgentBridge.stopInboundTunnel();
     } catch (error) {
+      // error-policy:J6 teardown — stop failure is logged
       console.warn(
         `${ctx.logPrefix} Mobile agent tunnel stop failed:`,
         error instanceof Error ? error.message : error,
