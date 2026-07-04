@@ -23,7 +23,13 @@ import {
   Shield,
   TrendingUp,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { DashboardStatCard } from "../../../cloud-ui/components/brand";
@@ -40,14 +46,17 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
 import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
 import {
   deployApp,
+  deployRepoUrlFromApp,
   getLatestAppDeployment,
   regenerateAppApiKey,
+  validateDeployAppInput,
 } from "../lib/apps";
 import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
 
@@ -73,6 +82,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isPollingDeployment, setIsPollingDeployment] = useState(false);
+  const [deployRepoUrl, setDeployRepoUrl] = useState(() =>
+    deployRepoUrlFromApp(app),
+  );
+  const [deployRef, setDeployRef] = useState("");
+  const [deployDockerfile, setDeployDockerfile] = useState("");
+  const [deployInputError, setDeployInputError] = useState<string | null>(null);
   const [monetizationEnabled, setMonetizationEnabled] = useState<
     boolean | null
   >(null);
@@ -109,6 +124,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   useEffect(() => {
     if (showApiKey) revealApiKey(showApiKey);
   }, [showApiKey, revealApiKey]);
+
+  useEffect(() => {
+    const repoUrl = deployRepoUrlFromApp(app);
+    setDeployRepoUrl((current) => current || repoUrl);
+  }, [app]);
 
   useEffect(() => {
     return () => {
@@ -243,10 +263,25 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     }
   }
 
-  async function handleDeploy(): Promise<void> {
+  async function handleDeploy(
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> {
+    event.preventDefault();
+    const validation = validateDeployAppInput({
+      repoUrl: deployRepoUrl,
+      ref: deployRef,
+      dockerfile: deployDockerfile,
+    });
+
+    if (!validation.ok) {
+      setDeployInputError(validation.error);
+      return;
+    }
+
+    setDeployInputError(null);
     setIsDeploying(true);
     try {
-      await deployApp(app.id);
+      await deployApp(app.id, validation.value);
       // Refresh the app record so the Deployment status flips to "building"
       // without a manual reload (the key is a prefix of the auth-scoped key).
       await refreshAppRecord();
@@ -282,6 +317,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       )
     : [];
   const maskedApiKey = `eliza_${"•".repeat(32)}`;
+  const deployRepoInputId = `deploy-repo-url-${app.id}`;
+  const deployRefInputId = `deploy-ref-${app.id}`;
+  const deployDockerfileInputId = `deploy-dockerfile-${app.id}`;
 
   return (
     <div className="space-y-4">
@@ -380,28 +418,6 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               defaultValue: "Deployment",
             })}
           </h3>
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={deploymentButtonDisabled}
-            onClick={handleDeploy}
-            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors disabled:opacity-50"
-          >
-            {isDeploying || isPollingDeployment || deploymentInProgress ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Rocket className="h-3 w-3" />
-            )}
-            {deploymentInProgress || isPollingDeployment
-              ? t("cloud.apps.overview.deploying", {
-                  defaultValue: "Deploying",
-                })
-              : app.deployment_status === "deployed"
-                ? t("cloud.apps.overview.redeploy", {
-                    defaultValue: "Redeploy",
-                  })
-                : t("cloud.apps.overview.deploy", { defaultValue: "Deploy" })}
-          </Button>
         </div>
         <p className="text-xs text-neutral-500">
           {deploymentInProgress || isPollingDeployment
@@ -414,9 +430,96 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     "Your app is live. Redeploy to push the latest build.",
                 })
               : t("cloud.apps.overview.deployDraft", {
-                  defaultValue: "Deploy this app to a managed container.",
+                  defaultValue:
+                    "Mobile and desktop builds request a cloud build from a repository commit. Local source bundles, images, zips, tars, and artifacts are not uploaded.",
                 })}
         </p>
+        <form
+          className="grid gap-3 md:grid-cols-[1fr_1fr_auto]"
+          onSubmit={handleDeploy}
+        >
+          <label className="space-y-1.5" htmlFor={deployRepoInputId}>
+            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+              {t("cloud.apps.overview.deployRepoUrl", {
+                defaultValue: "Repository URL",
+              })}
+            </span>
+            <Input
+              id={deployRepoInputId}
+              value={deployRepoUrl}
+              onChange={(event) => setDeployRepoUrl(event.target.value)}
+              placeholder="https://github.com/org/app.git"
+              density="compact"
+              hasError={Boolean(deployInputError)}
+              className="border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+            />
+          </label>
+          <label className="space-y-1.5" htmlFor={deployRefInputId}>
+            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+              {t("cloud.apps.overview.deployCommitSha", {
+                defaultValue: "Commit SHA",
+              })}
+            </span>
+            <Input
+              id={deployRefInputId}
+              value={deployRef}
+              onChange={(event) => setDeployRef(event.target.value)}
+              placeholder="40-character SHA"
+              density="compact"
+              hasError={Boolean(deployInputError)}
+              className="font-mono border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+            />
+          </label>
+          <div className="flex items-end">
+            <Button
+              variant="ghost"
+              type="submit"
+              disabled={deploymentButtonDisabled}
+              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-white/10 hover:bg-white/15 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+            >
+              {isDeploying || isPollingDeployment || deploymentInProgress ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Rocket className="h-3 w-3" />
+              )}
+              {deploymentInProgress || isPollingDeployment
+                ? t("cloud.apps.overview.deploying", {
+                    defaultValue: "Deploying",
+                  })
+                : app.deployment_status === "deployed"
+                  ? t("cloud.apps.overview.redeploy", {
+                      defaultValue: "Redeploy",
+                    })
+                  : t("cloud.apps.overview.deploy", {
+                      defaultValue: "Deploy",
+                    })}
+            </Button>
+          </div>
+          <label
+            className="space-y-1.5 md:col-span-2"
+            htmlFor={deployDockerfileInputId}
+          >
+            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+              {t("cloud.apps.overview.deployDockerfile", {
+                defaultValue: "Dockerfile path",
+              })}
+            </span>
+            <Input
+              id={deployDockerfileInputId}
+              value={deployDockerfile}
+              onChange={(event) => setDeployDockerfile(event.target.value)}
+              placeholder="Dockerfile"
+              density="compact"
+              hasError={Boolean(deployInputError)}
+              className="border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+            />
+          </label>
+        </form>
+        {deployInputError && (
+          <p className="text-xs text-red-300" role="alert">
+            {deployInputError}
+          </p>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

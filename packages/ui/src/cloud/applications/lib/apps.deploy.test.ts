@@ -15,10 +15,12 @@ const {
   checkAppNameAvailable,
   createApp,
   deleteApp,
+  deployRepoUrlFromApp,
   deployApp,
   getLatestAppDeployment,
   regenerateAppApiKey,
   updateApp,
+  validateDeployAppInput,
 } = await import("./apps");
 
 afterEach(() => {
@@ -33,6 +35,22 @@ describe("deployApp (#9145)", () => {
       method: "POST",
     });
     expect(result).toEqual({ deploymentId: "dep_1", status: "BUILDING" });
+  });
+
+  it("POSTs a repository source payload when the app shell supplies one", async () => {
+    apiMock.mockResolvedValue({ deploymentId: "dep_2", status: "BUILDING" });
+    const input = {
+      repoUrl: "https://github.com/elizaOS/eliza.git",
+      ref: "0123456789abcdef0123456789abcdef01234567",
+      dockerfile: "packages/examples/cloud/Dockerfile",
+    };
+
+    await deployApp("app_42", input);
+
+    expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app_42/deploy", {
+      method: "POST",
+      json: input,
+    });
   });
 
   it("propagates the gated apps_deploy_disabled error to the caller", async () => {
@@ -55,6 +73,68 @@ describe("deployApp (#9145)", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/apps/app_42/deploy/status");
     expect(result.status).toBe("READY");
     expect(result.vercelUrl).toBe("https://app.example.test");
+  });
+});
+
+describe("deploy app source validation (#13425)", () => {
+  it("accepts an http(s) repository URL, full commit SHA, and optional Dockerfile", () => {
+    expect(
+      validateDeployAppInput({
+        repoUrl: "https://github.com/elizaOS/eliza.git",
+        ref: "0123456789abcdef0123456789abcdef01234567",
+        dockerfile: "packages/examples/cloud/Dockerfile",
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        repoUrl: "https://github.com/elizaOS/eliza.git",
+        ref: "0123456789abcdef0123456789abcdef01234567",
+        dockerfile: "packages/examples/cloud/Dockerfile",
+      },
+    });
+  });
+
+  it("normalizes a stored GitHub owner/repo value for the form", () => {
+    expect(
+      deployRepoUrlFromApp({
+        id: "app_42",
+        github_repo: "elizaOS/eliza",
+      } as never),
+    ).toBe("https://github.com/elizaOS/eliza.git");
+  });
+
+  it("rejects mutable refs and non-http repository URLs", () => {
+    expect(
+      validateDeployAppInput({
+        repoUrl: "git@github.com:elizaOS/eliza.git",
+        ref: "develop",
+      }),
+    ).toMatchObject({ ok: false });
+
+    expect(
+      validateDeployAppInput({
+        repoUrl: "https://github.com/elizaOS/eliza.git",
+        ref: "develop",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error:
+        "Use a full 40-character commit SHA so the cloud build is immutable.",
+    });
+  });
+
+  it("rejects unsupported bundle/image deploy inputs", () => {
+    expect(
+      validateDeployAppInput({
+        repoUrl: "https://github.com/elizaOS/eliza.git",
+        ref: "0123456789abcdef0123456789abcdef01234567",
+        zip: "file.zip",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error:
+        "Deploy from a Git repository and immutable commit SHA. Source bundles, images, zips, tars, and artifacts are not supported.",
+    });
   });
 });
 

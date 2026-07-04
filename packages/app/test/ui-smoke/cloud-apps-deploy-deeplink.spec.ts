@@ -8,7 +8,7 @@
  * half in a real Chromium shell: dispatching that intent on the
  * `eliza:navigate:view` bus mounts the registered `cloud-apps` app-shell page
  * (NativeAppsStudio → ApplicationsPage → ApplicationDetailPage), all the way to
- * the Deploy/Redeploy control.
+ * the repo/ref Deploy control and its Cloud API request payload.
  *
  * The `cloud-apps` page registers only on non-web platforms (the web build
  * serves the Applications surfaces via CloudRouterShell), so the Electrobun
@@ -38,6 +38,7 @@ const EVIDENCE_DIR = resolve(
 
 const APP_ID = "6e0a4f1c-9d2b-4c33-8f0e-5a7b1c2d3e4f";
 const APP_NAME = "Deep Link Deploy Proof";
+const DEPLOY_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567";
 
 function base64Url(input: string): string {
   return Buffer.from(input, "utf8")
@@ -84,7 +85,7 @@ function mockApp(): Record<string, unknown> {
     deployment_status: "READY",
     production_url: "https://deploy-proof.apps.elizacloud.ai",
     last_deployed_at: "2026-07-01T00:00:00.000Z",
-    github_repo: null,
+    github_repo: "elizaOS/eliza",
     linked_character_ids: null,
     monetization_enabled: false,
     inference_markup_percentage: null,
@@ -123,6 +124,7 @@ async function fulfillJson(
 async function installCloudApiMocks(
   page: Page,
   unmocked: string[],
+  deployRequests: unknown[],
 ): Promise<void> {
   await page.route("https://api.elizacloud.ai/**", async (route) => {
     const url = new URL(route.request().url());
@@ -162,6 +164,16 @@ async function installCloudApiMocks(
       });
       return;
     }
+    if (method === "POST" && path === `/api/v1/apps/${APP_ID}/deploy`) {
+      deployRequests.push(route.request().postDataJSON());
+      await fulfillJson(route, 202, {
+        success: true,
+        deploymentId: "dep-2",
+        status: "BUILDING",
+        startedAt: "2026-07-02T00:00:00.000Z",
+      });
+      return;
+    }
     unmocked.push(`${method} ${path}`);
     await fulfillJson(route, 404, { error: `unmocked in spec: ${path}` });
   });
@@ -179,12 +191,13 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("eliza://apps/deploy intent mounts the Apps studio and reaches the Deploy control", async ({
+test("eliza://apps/deploy intent mounts the Apps studio and submits repo/ref deploy", async ({
   page,
 }) => {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   const unmocked: string[] = [];
-  await installCloudApiMocks(page, unmocked);
+  const deployRequests: unknown[] = [];
+  await installCloudApiMocks(page, unmocked, deployRequests);
 
   await openAppPath(page, "/");
 
@@ -202,6 +215,11 @@ test("eliza://apps/deploy intent mounts the Apps studio and reaches the Deploy c
   // Applications list (NativeAppsStudio → ApplicationsPage) with the fixture app.
   const appCard = page.getByText(APP_NAME, { exact: true }).first();
   await expect(appCard).toBeVisible({ timeout: 30_000 });
+  const setupDialog = page.getByRole("dialog", { name: "Set up Eliza" });
+  if (await setupDialog.isVisible()) {
+    await setupDialog.getByRole("button", { name: "Skip for now" }).click();
+    await expect(setupDialog).toBeHidden();
+  }
   await page.screenshot({
     path: `${EVIDENCE_DIR}/cloud-apps-deploy-01-list.png`,
     fullPage: true,
@@ -213,8 +231,24 @@ test("eliza://apps/deploy intent mounts the Apps studio and reaches the Deploy c
     .getByRole("button", { name: /redeploy|deploy/i })
     .first();
   await expect(deployButton).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByLabel("Repository URL")).toHaveValue(
+    "https://github.com/elizaOS/eliza.git",
+  );
+  await page.getByLabel("Commit SHA").fill(DEPLOY_COMMIT_SHA);
+  await page.getByLabel("Dockerfile path").fill("Dockerfile");
   await page.screenshot({
     path: `${EVIDENCE_DIR}/cloud-apps-deploy-02-detail-deploy.png`,
+    fullPage: true,
+  });
+  await deployButton.click();
+  await expect.poll(() => deployRequests.length).toBe(1);
+  expect(deployRequests[0]).toEqual({
+    repoUrl: "https://github.com/elizaOS/eliza.git",
+    ref: DEPLOY_COMMIT_SHA,
+    dockerfile: "Dockerfile",
+  });
+  await page.screenshot({
+    path: `${EVIDENCE_DIR}/cloud-apps-deploy-03-submit.png`,
     fullPage: true,
   });
 

@@ -42,10 +42,118 @@ export interface AppDeploymentRecord {
   startedAt: string | null;
 }
 
+export interface DeployAppInput {
+  repoUrl: string;
+  ref: string;
+  dockerfile?: string;
+}
+
+export type DeployAppValidationResult =
+  | { ok: true; value: DeployAppInput }
+  | { ok: false; error: string };
+
 // Apps list changes only on create/edit/delete. Relax to 2 minutes so list
 // pages don't refetch on every nav while still staying responsive after
 // mutations (which also invalidate this key directly).
 const APP_STALE_MS = 2 * 60 * 1000;
+const IMMUTABLE_COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/i;
+const UNSUPPORTED_DEPLOY_SOURCE_KEYS = [
+  "archiveUrl",
+  "artifact",
+  "bundle",
+  "file",
+  "image",
+  "tar",
+  "zip",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function normalizeDeployRepoUrl(repo: string): string {
+  const trimmed = repo.trim();
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) {
+    return `https://github.com/${trimmed}.git`;
+  }
+  return trimmed;
+}
+
+export function validateDeployAppInput(
+  input: unknown,
+): DeployAppValidationResult {
+  if (!isRecord(input)) {
+    return { ok: false, error: "Deployment source is required." };
+  }
+
+  if (UNSUPPORTED_DEPLOY_SOURCE_KEYS.some((key) => key in input)) {
+    return {
+      ok: false,
+      error:
+        "Deploy from a Git repository and immutable commit SHA. Source bundles, images, zips, tars, and artifacts are not supported.",
+    };
+  }
+
+  const repoUrl =
+    typeof input.repoUrl === "string"
+      ? normalizeDeployRepoUrl(input.repoUrl)
+      : "";
+  if (!repoUrl) {
+    return { ok: false, error: "Repository URL is required." };
+  }
+
+  let parsedRepoUrl: URL;
+  try {
+    parsedRepoUrl = new URL(repoUrl);
+  } catch {
+    return { ok: false, error: "Enter a valid repository URL." };
+  }
+
+  if (!["http:", "https:"].includes(parsedRepoUrl.protocol)) {
+    return { ok: false, error: "Use an http(s) Git repository URL." };
+  }
+
+  const ref = typeof input.ref === "string" ? input.ref.trim() : "";
+  if (!ref) {
+    return { ok: false, error: "Commit SHA is required." };
+  }
+
+  if (!IMMUTABLE_COMMIT_SHA_PATTERN.test(ref)) {
+    return {
+      ok: false,
+      error:
+        "Use a full 40-character commit SHA so the cloud build is immutable.",
+    };
+  }
+
+  const rawDockerfile =
+    typeof input.dockerfile === "string" ? input.dockerfile.trim() : "";
+  if (
+    rawDockerfile &&
+    (rawDockerfile.startsWith("/") ||
+      rawDockerfile.includes("..") ||
+      rawDockerfile.includes("\\"))
+  ) {
+    return {
+      ok: false,
+      error: "Dockerfile path must be a relative path inside the repository.",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      repoUrl,
+      ref,
+      ...(rawDockerfile ? { dockerfile: rawDockerfile } : {}),
+    },
+  };
+}
+
+export function deployRepoUrlFromApp(app: App): string {
+  const githubRepo = typeof app.github_repo === "string" ? app.github_repo : "";
+  return githubRepo ? normalizeDeployRepoUrl(githubRepo) : "";
+}
 
 /** GET /api/v1/apps — list of the caller's apps. */
 export function useApps() {
@@ -107,7 +215,10 @@ export async function createApp(input: {
  * Gated server-side by APPS_DEPLOY_ENABLED: when off, the route rejects with
  * `apps_deploy_disabled`, which surfaces to the caller as a thrown error.
  */
-export async function deployApp(id: string): Promise<{
+export async function deployApp(
+  id: string,
+  input?: DeployAppInput,
+): Promise<{
   deploymentId?: string;
   status?: DeploymentStatus;
   startedAt?: string;
@@ -116,7 +227,10 @@ export async function deployApp(id: string): Promise<{
     deploymentId?: string;
     status?: DeploymentStatus;
     startedAt?: string;
-  }>(`/api/v1/apps/${id}/deploy`, { method: "POST" });
+  }>(`/api/v1/apps/${id}/deploy`, {
+    method: "POST",
+    ...(input ? { json: input } : {}),
+  });
 }
 
 /**
