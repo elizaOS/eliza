@@ -55,6 +55,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     return rateLimitError(limit.retryAfter);
   }
 
+  // error-policy:J3 untrusted request body; unparseable JSON is invalid input, null is
+  // the explicit "not valid JSON" signal that BodySchema.safeParse rejects with a 400.
   const json: unknown = await request.json().catch(() => null);
   const parsed = BodySchema.safeParse(json);
   if (!parsed.success) {

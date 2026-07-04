@@ -14,6 +14,8 @@ async function resolveUserId(request: NextRequest): Promise<string> {
     return queryUserId;
   }
 
+  // error-policy:J3 untrusted request body; a malformed/empty body is invalid input,
+  // null is the explicit "no usable body" signal validated below (throws USER_ID_REQUIRED).
   const body = await request.json().catch(() => null);
   const bodyUserId = typeof body?.userId === "string" ? body.userId.trim() : "";
 

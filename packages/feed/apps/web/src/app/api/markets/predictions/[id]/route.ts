@@ -22,6 +22,7 @@ import { FEE_CONFIG, WalletService } from "@feed/engine";
 import {
   logger,
   MarketQuerySchema,
+  NotFoundError,
   PredictionMarketIdSchema,
   toISOOrNull,
 } from "@feed/shared";
@@ -105,7 +106,13 @@ export const GET = withErrorHandling(
 
     const market =
       (await service.getMarket(marketId)) ??
-      (await service.ensureMarketExists({ marketId }).catch(() => null));
+      (await service.ensureMarketExists({ marketId }).catch((err: unknown) => {
+        // error-policy:J3 an absent question is a legitimate "market not found"
+        // (NotFoundError → 404 below); any other failure is a real fault and must
+        // surface via withErrorHandling (500 + Sentry), never be masked as a 404.
+        if (err instanceof NotFoundError) return null;
+        throw err;
+      }));
 
     if (!market) {
       return successResponse({ error: "Market not found" }, 404);
