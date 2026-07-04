@@ -22,6 +22,10 @@ export function readUtf8Safe(path: string): string | null {
   try {
     return readFileSync(path, "utf8");
   } catch {
+    // error-policy:J3 designed optional read — the "Safe" variant's contract is
+    // "content or null"; a check that needs a present file uses readUtf8 (which
+    // throws). `null` here is "file absent/unreadable", an expected outcome
+    // callers branch on. (The strict variant is `readUtf8` above.)
     return null;
   }
 }

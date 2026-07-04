@@ -32,7 +32,11 @@ export class ApiError extends Error {
     } catch {
       try {
         data = await response.text();
-      } catch {}
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — this is error-detail
+        // extraction for the ApiError being built; if even text() fails, `data`
+        // stays undefined and the ApiError still surfaces the HTTP status.
+      }
     }
 
     return new ApiError(response, data, `Response status: ${response.status}`);

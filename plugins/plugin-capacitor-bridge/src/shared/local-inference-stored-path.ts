@@ -99,7 +99,11 @@ export function resolveStoredModelPath(
 	for (const candidate of storedModelPathCandidates(stored, currentRoot)) {
 		try {
 			if (exists(candidate)) return candidate;
-		} catch {}
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — `exists` is an injected
+			// sandbox-fs probe that may throw on a malformed candidate path; treat a
+			// throwing probe as "not this candidate" and try the next one.
+		}
 	}
 	return null;
 }

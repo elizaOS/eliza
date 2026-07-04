@@ -1083,7 +1083,10 @@ async function downloadRecommendedModelFor(
 		);
 		try {
 			unlinkSync(finalPath);
-		} catch {}
+		} catch {
+			// error-policy:J6 best-effort teardown — removing a bad partial before
+			// re-download; if it is already gone the re-download proceeds anyway.
+		}
 	}
 
 	const dedupKey = model.id;
@@ -1095,7 +1098,10 @@ async function downloadRecommendedModelFor(
 		const stagingPath = `${finalPath}.part`;
 		try {
 			unlinkSync(stagingPath);
-		} catch {}
+		} catch {
+			// error-policy:J6 best-effort teardown — clear a leftover `.part` from a
+			// prior interrupted download before staging; absent is fine.
+		}
 		logger.info(
 			`[mobile-device-bridge] Auto-downloading recommended ${slot} model ${model.id} from ${url}`,
 		);
@@ -1113,7 +1119,10 @@ async function downloadRecommendedModelFor(
 		if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
 			try {
 				unlinkSync(stagingPath);
-			} catch {}
+			} catch {
+				// error-policy:J6 best-effort teardown — remove the size-mismatched
+				// partial before throwing; the throw below is the real failure.
+			}
 			throw new Error(
 				`[mobile-device-bridge] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}; aborting and removing partial file.`,
 			);

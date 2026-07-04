@@ -89,7 +89,11 @@ export function createReportCache(cacheDir: string): ReportCache {
             commitCount: report.commitCount,
             sizeBytes: stat.size,
           });
-        } catch {}
+        } catch {
+          // error-policy:J3 untrusted-input sanitizing — the cache dir is a
+          // regenerable, HEAD-keyed scratch store; a truncated/corrupt entry is
+          // skipped from the listing rather than failing the whole `list()`.
+        }
       }
       return out.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
     },

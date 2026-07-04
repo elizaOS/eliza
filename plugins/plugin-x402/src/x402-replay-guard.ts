@@ -93,6 +93,10 @@ export async function replayGuardTryBegin(
     for (const k of keys) inflight.add(k);
     return true;
   } catch (err) {
+    // error-policy:J4 fail-closed — this is a payment replay guard; a reservation
+    // that cannot be established (durable-store error, cache fault) must DENY, not
+    // proceed. `false` here means "not reserved -> do not verify/unlock", which is
+    // the safe/secure outcome. The error is surfaced via the logger.
     logger.error(
       `[x402] replayGuardTryBegin failed: ${
         err instanceof Error ? err.message : String(err)

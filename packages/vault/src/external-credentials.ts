@@ -407,6 +407,8 @@ async function isOnePasswordDesktopActiveWithExec(
     });
     return true;
   } catch {
+    // error-policy:J4 availability probe — a non-zero `op vault list` exit means
+    // desktop integration is not active; `false` is the answer to that question.
     return false;
   }
 }
@@ -433,6 +435,9 @@ function extractHostname(url: string): string | null {
     const host = parsed.hostname.toLowerCase();
     return host.length > 0 ? host : null;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — a vendor-supplied URL the URL
+    // parser rejects has no extractable hostname; `null` is the "no hostname"
+    // signal, not a swallowed failure.
     return null;
   }
 }

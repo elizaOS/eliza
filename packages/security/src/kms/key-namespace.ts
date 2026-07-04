@@ -111,6 +111,9 @@ export function isValidKeyId(id: string): id is KeyId {
     parseKeyId(id);
     return true;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — this is a validation predicate;
+    // a `KmsError` from parseKeyId means the id is malformed, so `false` is the
+    // explicit "not a valid key id" result (not a swallowed failure).
     return false;
   }
 }
