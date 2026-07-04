@@ -3612,17 +3612,41 @@ export function ContinuousChatOverlay({
         // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
         // so the glass panel reaches the true bottom (no orange gap). The
         // gesture-zone clearance moves INSIDE the composer row (below) so the
-        // input still sits above the home-gesture bar. Non-full-bleed keeps the
-        // chat lifted off the gesture zone as before.
+        // input still sits above the home-gesture bar. Non-full-bleed anchors the
+        // composer down: it clears the home-gesture inset (max safe-area /
+        // android inset) and nothing more, so it sits low with no dead gap
+        // beneath. The floor layer below paints that inset zone with the home
+        // surface so it reads continuous, not as a black bar.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.25rem)",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)))",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
+      {/* RECLAIMED BOTTOM FLOOR: the composer is lifted off the home-gesture
+          inset, so the strip between the composer and the true screen bottom
+          used to be an unpainted, transparent zone that read as a DEAD BLACK
+          BAR under the composer. This layer fills the reclaimed zone (and a
+          hair above, so it seats behind the composer with no seam) with the
+          same warm home-surface tone (--launch-bg). Purely cosmetic
+          (pointer-events-none, aria-hidden), back of the overlay stack, only
+          needed at rest. Soft top fade blends it into the field. */}
+      {!fullBleed && !keyboardLiftActive ? (
+        <div
+          aria-hidden="true"
+          data-testid="continuous-chat-bottom-floor"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-0"
+          style={{
+            height:
+              "calc(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 1.5rem)",
+            backgroundImage:
+              "linear-gradient(to bottom, transparent 0%, var(--launch-bg) 55%)",
+          }}
+        />
+      ) : null}
       {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
           but never captures pointer events; outside taps are handled by the
           document-level detector above, and outside drags pass through to the
