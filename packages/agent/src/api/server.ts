@@ -4371,10 +4371,11 @@ export async function startApiServer(opts?: {
             "[eliza-api] @elizaos/plugin-streaming did not export handleStreamRoute; skipping streaming route registration.",
           );
         }
-        // Desktop screen-capture bridge, resolved via the runtime service the
-        // desktop host registers (never a globalThis bridge). Absent on
-        // mobile/web/cloud → streaming falls back to another capture mode.
-        const screenCapture =
+        // Desktop screen-capture bridge, resolved lazily from the current
+        // runtime. Desktop app startup binds the API before the runtime exists,
+        // then supplies it through updateRuntime; restarts hot-swap the same
+        // state object.
+        const resolveScreenCapture = (): IScreenCaptureService | undefined =>
           state.runtime?.getService<IScreenCaptureService>(
             ServiceType.SCREEN_CAPTURE,
           ) ?? undefined;
@@ -4486,7 +4487,9 @@ export async function startApiServer(opts?: {
         const streamState = {
           streamManager,
           port,
-          screenCapture,
+          get screenCapture() {
+            return resolveScreenCapture();
+          },
           captureUrl: undefined as string | undefined,
           destinations,
           activeDestinationId,

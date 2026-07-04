@@ -122,6 +122,7 @@ import {
   resolveRendererAssetDir,
 } from "./runtime-layout";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
+import { startScreenCaptureBridgeServer } from "./screencapture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
@@ -2476,6 +2477,17 @@ async function main(): Promise<void> {
   const buildInfo = await BuildConfig.get();
   checkWebGpuBrowserSupport(buildInfo.defaultRenderer);
   cleanupFns.length = 0;
+  try {
+    const stopScreenCaptureBridge = await startScreenCaptureBridgeServer();
+    recordStartupPhase("screencapture_bridge_ready", {
+      pid: process.pid,
+    });
+    cleanupFns.push(stopScreenCaptureBridge);
+  } catch (err) {
+    logger.warn(
+      `[Main] Screen-capture bridge startup failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   // Start the browser-workspace bridge without blocking first paint. The
   // renderer reaches it lazily (browser-workspace RPC), so it does not need to
   // be listening before the window opens. Register a cleanup that awaits the

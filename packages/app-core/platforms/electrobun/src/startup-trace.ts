@@ -8,6 +8,7 @@ export const STARTUP_TRACE_PHASES = [
   "env_loaded",
   "crash_prompt_checked",
   "webgpu_initialized",
+  "screencapture_bridge_ready",
   "browser_workspace_bridge_ready",
   "desktop_test_bridge_ready",
   "creating_window",

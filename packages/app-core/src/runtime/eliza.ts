@@ -55,6 +55,7 @@ import {
   syncElizaEnvAliases,
   syncResolvedApiPort,
 } from "@elizaos/shared";
+import { registerDesktopScreenCaptureService } from "../platform/desktop-screencapture-service.js";
 import { getApps, loadRegistry } from "../registry";
 import { registerSubAgentCredentialBridgeAdapter } from "../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
@@ -709,6 +710,17 @@ async function repairRuntimeAfterBoot(
       "[eliza] Mobile platform detected — skipping desktop-only boot helpers",
     );
     return runtime;
+  }
+
+  try {
+    const registered = await registerDesktopScreenCaptureService(runtime);
+    if (registered) {
+      logger.info("[eliza] Desktop ScreenCaptureService registered");
+    }
+  } catch (err) {
+    logger.warn(
+      `[eliza] Desktop ScreenCaptureService registration failed: ${formatError(err)}`,
+    );
   }
 
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
