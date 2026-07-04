@@ -99,10 +99,90 @@ const OUT_DIRS = {
 const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
+let mobileWorkspacePackageDirCache = null;
+
+function collectMobileWorkspacePackageDirs() {
+  if (mobileWorkspacePackageDirCache) return mobileWorkspacePackageDirCache;
+  mobileWorkspacePackageDirCache = new Map();
+  const roots = [
+    path.join(repoRoot, "packages"),
+    path.join(repoRoot, "plugins"),
+    path.join(repoRoot, "packages", "cloud"),
+    path.join(repoRoot, "packages", "cloud", "services"),
+    path.join(repoRoot, "packages", "native", "plugins"),
+    path.join(repoRoot, "packages", "os"),
+    path.join(repoRoot, "packages", "examples"),
+  ];
+  for (const root of roots) {
+    for (const entryName of readdirSyncSafe(root)) {
+      const packageDir = path.join(root, entryName);
+      const packageJsonPath = path.join(packageDir, "package.json");
+      if (!existsSync(packageJsonPath)) continue;
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+        if (typeof packageJson.name === "string") {
+          mobileWorkspacePackageDirCache.set(packageJson.name, packageDir);
+        }
+      } catch {
+        // Ignore malformed workspace metadata here; the normal bundler error
+        // still surfaces if that package is actually imported.
+      }
+    }
+  }
+  return mobileWorkspacePackageDirCache;
+}
+
+function resolveMobileWorkspacePackageDir(pkgName) {
+  const workspaceDir = collectMobileWorkspacePackageDirs().get(pkgName) ?? null;
+  const pkgPath = path.resolve(repoRoot, "node_modules", ...pkgName.split("/"));
+  if (!existsSync(pkgPath)) return workspaceDir;
+
+  const linkedDir = realpathSync(pkgPath);
+  if (!workspaceDir) return linkedDir;
+  // Fresh/light installs can leave @elizaos workspace symlinks pointing at an
+  // older temp checkout. The mobile bundle must use the current checkout's
+  // sources so local simulator builds do not depend on stale installed output.
+  if (
+    linkedDir === repoRoot ||
+    linkedDir.startsWith(`${repoRoot}${path.sep}`)
+  ) {
+    return linkedDir;
+  }
+  return workspaceDir;
+}
 
 console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
+
+if (process.argv.includes("--verify-workspace-resolution")) {
+  const requiredPackages = [
+    "@elizaos/plugin-birdclaw",
+    "@elizaos/plugin-commands",
+    "@elizaos/plugin-vision",
+    "@elizaos/plugin-background-runner",
+    "@elizaos/plugin-wallet",
+    "@elizaos/cloud-routing",
+    "@elizaos/cloud-sdk",
+  ];
+  const missing = requiredPackages.filter(
+    (pkgName) => !resolveMobileWorkspacePackageDir(pkgName),
+  );
+  const walletDir = resolveMobileWorkspacePackageDir("@elizaos/plugin-wallet");
+  if (walletDir && !existsSync(path.join(walletDir, "src", "diagnostic.ts"))) {
+    missing.push("@elizaos/plugin-wallet/diagnostic");
+  }
+  if (missing.length > 0) {
+    console.error(
+      `[build-mobile] FATAL: mobile workspace resolution missing ${missing.join(", ")}`,
+    );
+    process.exit(1);
+  }
+  console.log(
+    `[build-mobile] workspace resolution verified for ${requiredPackages.length} packages`,
+  );
+  process.exit(0);
+}
 
 rmRecursive(outDir);
 await mkdir(outDir, { recursive: true });
@@ -1142,12 +1222,7 @@ const workspaceSrcFallbackPlugin = {
     const cache = new Map();
     const resolvePackageDir = (pkgName) => {
       if (cache.has(pkgName)) return cache.get(pkgName);
-      const pkgPath = path.resolve(
-        repoRoot,
-        "node_modules",
-        ...pkgName.split("/"),
-      );
-      const result = existsSync(pkgPath) ? pkgPath : null;
+      const result = resolveMobileWorkspacePackageDir(pkgName);
       cache.set(pkgName, result);
       return result;
     };

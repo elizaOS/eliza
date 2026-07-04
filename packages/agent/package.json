@@ -37,6 +37,7 @@
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
+    "verify:mobile-workspace-resolution": "bun run scripts/build-mobile-bundle.mjs --verify-workspace-resolution",
     "build:docker-dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
