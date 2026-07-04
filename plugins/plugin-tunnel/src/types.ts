@@ -12,8 +12,8 @@
 
 export {
   getTunnelService,
-  tunnelSlotIsFree,
   type ITunnelService,
   type TunnelProvider,
   type TunnelStatus,
+  tunnelSlotIsFree,
 } from '@elizaos/core';
