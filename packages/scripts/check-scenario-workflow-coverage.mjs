@@ -285,6 +285,7 @@ function loadScenarioMetadataFile(file) {
     id,
     title: getStaticStringProperty(objectLiteral, "title"),
     status: getStaticStringProperty(objectLiteral, "status"),
+    tier: getStaticStringProperty(objectLiteral, "tier"),
     lane: getStaticStringProperty(objectLiteral, "lane"),
     platformOs,
     deferred,

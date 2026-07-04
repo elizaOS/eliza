@@ -277,6 +277,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "orchestrator-reflexion-respawn",
   "orchestrator-view-cloud-deploy",
   "orchestrator-watchdog-stall",
+  "persona.flexible-scheduling",
   "relationships.list-entities",
   "reminder.cross-platform.acknowledged-syncs",
   "reminder.cross-platform.fires-on-mac-and-phone",

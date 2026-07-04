@@ -392,9 +392,13 @@ async function main(): Promise<number> {
     // final checks) so rows carry metadata.judge_score for reward-weighted
     // training (#8795).
     const scenarioJudgeScores = new Map<string, number>();
+    const scenarioTiers = new Map<string, string>();
     for (const report of reports) {
       if (typeof report.judgeScore === "number") {
         scenarioJudgeScores.set(report.id, report.judgeScore);
+      }
+      if (typeof report.tier === "string") {
+        scenarioTiers.set(report.id, report.tier);
       }
     }
     exportScenarioNativeJsonl(
@@ -402,6 +406,7 @@ async function main(): Promise<number> {
       parsed.exportNativePath,
       scenarioOutcomes,
       scenarioJudgeScores,
+      scenarioTiers,
     );
   }
   if (effectiveRunDir) {

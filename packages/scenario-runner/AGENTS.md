@@ -188,6 +188,10 @@ Loader discovers files recursively; entries starting with `_` are ignored. The `
 4. Assert end-state with `finalChecks` entries.
 5. Run with `bun src/cli.ts run <dir> --scenario <id>` or via `test:deterministic:e2e`.
 
+For LifeOps persona-pack scenarios, also follow
+`plugins/plugin-personal-assistant/test/scenarios/_catalogs/LIFEOPS_PERSONA_SCENARIO_AUTHORING.md`
+and update the owning pack catalog.
+
 ## Conventions / gotchas
 
 - **Single shared runtime per CLI invocation.** PGLite cannot be torn down and recreated (segfaults). For true per-scenario isolation, invoke `eliza-scenarios run` once per scenario from a shell loop.

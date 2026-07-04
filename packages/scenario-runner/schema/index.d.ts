@@ -451,6 +451,7 @@ export type ScenarioFinalCheck =
  *   for any scenario that does not declare a lane.
  */
 export type ScenarioLane = "pr-deterministic" | "live-only";
+export type ScenarioTier = "T1" | "T2" | "T3" | "T4";
 
 /**
  * A platform-gated deferral on a live-only scenario: it cannot run in any
@@ -491,6 +492,14 @@ export type ScenarioDefinition = {
   domain: string;
   description?: string;
   tags?: readonly string[];
+  /**
+   * Persona-scenario complexity tier.
+   * - `T1`: extraction and normalization.
+   * - `T2`: multi-turn flow with realistic friction.
+   * - `T3`: longitudinal journey with durable state.
+   * - `T4`: adversarial or boundary-condition behavior.
+   */
+  tier?: ScenarioTier;
   status?: "active" | "pending";
   /**
    * CI lane this scenario is eligible for.
@@ -543,6 +552,11 @@ export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
+
+/** Resolve and validate the optional persona-scenario complexity tier. */
+export declare function scenarioTier(
+  value: Omit<ScenarioDefinition, "tier"> & { tier?: unknown },
+): ScenarioTier | undefined;
 
 /**
  * Resolve a scenario's platform-gated deferral, or `null` when it is not

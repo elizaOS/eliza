@@ -140,6 +140,7 @@ function validateStrictFinalCheck(check, index) {
 export const DEFAULT_SCENARIO_LANE = "live-only";
 
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
+const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export function scenarioLane(value) {
@@ -153,6 +154,20 @@ export function scenarioLane(value) {
     );
   }
   return lane;
+}
+
+/** Resolve and validate the optional persona-scenario complexity tier. */
+export function scenarioTier(value) {
+  const tier = value?.tier;
+  if (tier === undefined) {
+    return undefined;
+  }
+  if (!SCENARIO_TIERS.has(tier)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid tier "${tier}"; expected one of ${[...SCENARIO_TIERS].join(", ")}`,
+    );
+  }
+  return tier;
 }
 
 /**
@@ -198,6 +213,8 @@ export function scenario(value) {
     }
     // Validate the lane eagerly so a typo fails at definition time, not in CI.
     scenarioLane(value);
+    // Validate optional LifeOps/persona tier metadata when authored.
+    scenarioTier(value);
     // Validate the deferral shape (and lane compatibility) eagerly too.
     scenarioDeferral(value);
   }

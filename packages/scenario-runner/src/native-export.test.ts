@@ -560,3 +560,51 @@ describe("judge score serialization (#8795)", () => {
     }
   });
 });
+
+describe("scenario tier serialization", () => {
+  it("stamps the scenario tier on rows and metadata", () => {
+    const rows = recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+      "passed",
+      0.82,
+      "T3",
+    );
+    const row = expectSingleNativeRow(rows);
+    expect(row.tier).toBe("T3");
+    expect(row.metadata.tier).toBe("T3");
+  });
+
+  it("threads per-scenario tiers through exportScenarioNativeJsonl", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-tier-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+      const outPath = path.join(runDir, "native.jsonl");
+      const outcomes = new Map<string, "passed" | "failed" | "skipped">([
+        ["todos.create-basic", "passed"],
+      ]);
+      const judgeScores = new Map<string, number>([
+        ["todos.create-basic", 0.9],
+      ]);
+      const tiers = new Map<string, string>([["todos.create-basic", "T4"]]);
+      const count = exportScenarioNativeJsonl(
+        runDir,
+        outPath,
+        outcomes,
+        judgeScores,
+        tiers,
+      );
+      expect(count).toBe(1);
+      const parsed = JSON.parse(readFileSync(outPath, "utf-8").trim());
+      expect(parsed.tier).toBe("T4");
+      expect(parsed.metadata.tier).toBe("T4");
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+});

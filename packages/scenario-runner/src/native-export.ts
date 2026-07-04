@@ -50,6 +50,7 @@ export type ScenarioOutcomeMap = ReadonlyMap<string, ScenarioOutcome>;
  * (#8795) instead of only routing on pass/fail.
  */
 export type ScenarioJudgeScoreMap = ReadonlyMap<string, number>;
+export type ScenarioTierMap = ReadonlyMap<string, string>;
 
 export interface NativeBoundaryRow {
   format: typeof NATIVE_FORMAT;
@@ -69,6 +70,8 @@ export interface NativeBoundaryRow {
    * knowing the row shape (#8795).
    */
   judgeScore?: number;
+  /** Optional persona-scenario complexity tier (`T1`..`T4`) for corpus slicing. */
+  tier?: string;
   request: {
     system?: string;
     messages?: unknown[];
@@ -378,6 +381,7 @@ export function recordedTrajectoryToNativeRows(
   trajectory: RecordedTrajectory,
   scenarioOutcome?: ScenarioOutcome,
   judgeScore?: number,
+  tier?: string,
 ): NativeBoundaryRow[] {
   const rows: NativeBoundaryRow[] = [];
   const stages: RecordedStage[] = Array.isArray(trajectory.stages)
@@ -413,6 +417,7 @@ export function recordedTrajectoryToNativeRows(
       boundary: GENERATE_TEXT_BOUNDARY,
       ...(scenarioOutcome ? { scenarioStatus: scenarioOutcome } : {}),
       ...(judgeScore !== undefined ? { judgeScore } : {}),
+      ...(tier ? { tier } : {}),
       request,
       response,
       trajectoryId: trajectory.trajectoryId,
@@ -464,6 +469,7 @@ export function recordedTrajectoryToNativeRows(
         trajectory_status: trajectory.status,
         ...(scenarioOutcome ? { scenario_status: scenarioOutcome } : {}),
         ...(judgeScore !== undefined ? { judge_score: judgeScore } : {}),
+        ...(tier ? { tier } : {}),
         ...(typeof model.costUsd === "number"
           ? { source_cost_usd: model.costUsd }
           : {}),
@@ -540,6 +546,7 @@ export function exportScenarioNativeJsonl(
   outPath: string,
   scenarioOutcomes?: ScenarioOutcomeMap,
   scenarioJudgeScores?: ScenarioJudgeScoreMap,
+  scenarioTiers?: ScenarioTierMap,
 ): number {
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
@@ -588,8 +595,17 @@ export function exportScenarioNativeJsonl(
       scenarioJudgeScores && typeof parsed.scenarioId === "string"
         ? scenarioJudgeScores.get(parsed.scenarioId)
         : undefined;
+    const tier =
+      scenarioTiers && typeof parsed.scenarioId === "string"
+        ? scenarioTiers.get(parsed.scenarioId)
+        : undefined;
     rows.push(
-      ...recordedTrajectoryToNativeRows(parsed, scenarioOutcome, judgeScore),
+      ...recordedTrajectoryToNativeRows(
+        parsed,
+        scenarioOutcome,
+        judgeScore,
+        tier,
+      ),
     );
   }
   mkdirSync(path.dirname(outPath), { recursive: true });

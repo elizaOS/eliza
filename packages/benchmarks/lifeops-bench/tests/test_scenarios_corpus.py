@@ -44,6 +44,7 @@ ID_PREFIX_TO_KIND: dict[str, str] = {
 # Known seed-id whitelist for prefixes that collide with action-verb strings
 # (e.g. ``list_channels`` is a subaction value, not a reminder_list id).
 KNOWN_REMINDER_LISTS: set[str] = {"list_inbox", "list_personal", "list_work"}
+SCENARIO_TIERS: set[str] = {"T1", "T2", "T3", "T4"}
 
 
 @pytest.fixture(scope="module")
@@ -97,6 +98,13 @@ def test_corpus_expands_current_core_by_exactly_10x() -> None:
 def test_unique_scenario_ids() -> None:
     ids = [s.id for s in ALL_SCENARIOS]
     assert len(ids) == len(set(ids)), "duplicate scenario ids"
+
+
+def test_optional_scenario_tiers_are_valid() -> None:
+    tiered = [s for s in ALL_SCENARIOS if s.tier is not None]
+    bad = [(s.id, s.tier) for s in tiered if s.tier not in SCENARIO_TIERS]
+    assert not bad, f"invalid scenario tiers: {bad}"
+    print(f"LifeOpsBench scenarios with tier metadata: {len(tiered)}")
 
 
 def test_every_action_name_exists_in_manifest(manifest_action_names: set[str]) -> None:
