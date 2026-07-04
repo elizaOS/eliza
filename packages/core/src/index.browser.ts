@@ -114,6 +114,7 @@ export * from "./sandbox-policy";
 export * from "./schemas/character";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+export * from "./security/redact";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";

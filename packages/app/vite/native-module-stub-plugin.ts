@@ -868,6 +868,22 @@ export function nativeModuleStubPlugin(
             "export default CapacitorBarcodeScanner;",
           ].join("\n");
         }
+        if (capPkg === "@capacitor/filesystem") {
+          return [
+            "const asyncNoop = async () => ({});const noopObj = new Proxy({}, { get: () => asyncNoop });",
+            "export const Filesystem = noopObj;",
+            "export const Directory = Object.freeze({ Cache: 'CACHE', Data: 'DATA', Documents: 'DOCUMENTS', External: 'EXTERNAL', ExternalStorage: 'EXTERNAL_STORAGE', Library: 'LIBRARY' });",
+            "export const Encoding = Object.freeze({ UTF8: 'utf8', ASCII: 'ascii', UTF16: 'utf16' });",
+            "export default noopObj;",
+          ].join("\n");
+        }
+        if (capPkg === "@capacitor/share") {
+          return [
+            "const asyncNoop = async () => ({});const noopObj = new Proxy({}, { get: () => asyncNoop });",
+            "export const Share = noopObj;",
+            "export default noopObj;",
+          ].join("\n");
+        }
         // Generic Capacitor plugin stub
         return [
           "const noop = () => {};const stub = new Proxy({}, { get: () => noop });",
