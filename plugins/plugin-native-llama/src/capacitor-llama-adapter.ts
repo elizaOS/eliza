@@ -1040,7 +1040,9 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
           "[capacitor-llama] failed to unload after generation error",
           {
             error:
-              unloadErr instanceof Error ? unloadErr.message : String(unloadErr),
+              unloadErr instanceof Error
+                ? unloadErr.message
+                : String(unloadErr),
           },
         );
       }
