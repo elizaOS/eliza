@@ -616,7 +616,6 @@ def render_markdown(items: list[QueueItem]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--summary-json", type=Path, help="Use a saved audit --summary JSON file.")
     ap.add_argument("--bundle-root", default="/tmp/eliza-1-bundles")
     ap.add_argument(
         "--verify-dir",
@@ -656,10 +655,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.local_only and args.hardware_only:
         ap.error("--local-only and --hardware-only are mutually exclusive")
 
-    if args.summary_json:
-        summary = json.loads(args.summary_json.read_text(encoding="utf-8"))
-    else:
-        summary = audit_hf_release().summary()
+    summary = audit_hf_release().summary()
     limit = 1 if args.next else args.limit
     all_items = build_queue(
         summary,
