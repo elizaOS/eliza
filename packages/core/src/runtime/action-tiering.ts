@@ -1,5 +1,6 @@
 import {
 	type ActionCatalog,
+	type ActionCatalogChild,
 	type ActionCatalogParent,
 	normalizeActionName,
 } from "./action-catalog";
@@ -7,6 +8,7 @@ import {
 	type ActionRetrievalResult,
 	candidateNamespaceParentExists,
 	parentAliasesForCandidateAction,
+	tokenizeActionSearchText,
 } from "./action-retrieval";
 
 export const TIER0_PROTOCOL_ACTIONS = [
@@ -23,6 +25,14 @@ export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 // Set just below a perfect 1.0 so only an overwhelmingly dominant match (not a
 // merely good tier-A hit) overrides Stage-1's routing judgement.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
+
+// Per-parent cap on children exposed as first-class planner tools. Symmetric
+// with the maxTierAParents default: without it a single hot parent floods the
+// surface with its whole namespace regardless of turn intent (observed live:
+// all 24 MESSAGE_* children on a two-intent turn, all 33 BROWSER_* children on
+// a browser turn). Narrowing never removes capability — the parent umbrella
+// tool stays exposed and its handler dispatches ANY subaction, exposed or not.
+const DEFAULT_MAX_TIER_A_CHILDREN_PER_PARENT = 8;
 
 export type ActionTier = "tier0" | "tierA" | "tierB" | "tierC";
 
@@ -55,6 +65,24 @@ export type TierActionResultsInput = {
 	 * outside the cap isn't silently displaced before the narrow runs.
 	 */
 	narrowToCandidateActions?: readonly string[];
+	/**
+	 * Cap on sub-actions exposed as first-class planner tools per tier-A
+	 * parent (parents themselves are capped by `maxTierAParents`). Children
+	 * are ranked against the turn's Stage-1 signals: candidate-named children
+	 * always survive (explicit routing decision), remaining slots go to the
+	 * best `queryTokens` overlap with each child's catalog search text.
+	 * Narrowed-out children remain reachable through the parent umbrella
+	 * tool, whose handler routes any subaction.
+	 */
+	maxTierAChildrenPerParent?: number;
+	/**
+	 * Turn query tokens (`ActionRetrievalResponse.query.tokens` — message
+	 * text plus Stage-1 candidate names) used to rank children within a
+	 * tier-A parent when `maxTierAChildrenPerParent` applies. Without tokens
+	 * the ranking degrades to candidate matches first, then catalog child
+	 * order — still deterministic, just intent-blind.
+	 */
+	queryTokens?: readonly string[];
 };
 
 export type TieredActionSurface = {
@@ -266,6 +294,17 @@ export function tierActionResults(
 		tierCParents.sort(compareTieredParents);
 	}
 
+	// Runs after the parent narrow + caps so it sees the final tier-A set
+	// (including candidate-promoted parents, whose children were restored on
+	// promotion) and narrows within each parent to the turn-relevant children.
+	narrowTierAChildrenPerParent(tierAParents, {
+		cap: normalizedLimit(
+			input.maxTierAChildrenPerParent ?? DEFAULT_MAX_TIER_A_CHILDREN_PER_PARENT,
+		),
+		candidateSet: narrowSet,
+		queryTokens: input.queryTokens,
+	});
+
 	const exposedParentNames = sortedUnique([
 		...tierAParents.map((parent) => parent.name),
 		...tierBParents.map((parent) => parent.name),
@@ -355,6 +394,100 @@ function emptyResult(parent: ActionCatalogParent): ActionRetrievalResult {
 		stageScores: {},
 		matchedBy: [],
 	};
+}
+
+// Children have no ActionRetrievalResult of their own (retrieval ranks
+// parents), so the per-parent narrow scores them with the same structural
+// signals the parent ranking used: Stage-1 candidate names and query-token
+// overlap against the child's catalog search text. Token sets are cached per
+// catalog child — the catalog itself is cached across turns, so the tokenize
+// cost is paid once per child, not once per message.
+const childScoringTokensCache = new WeakMap<ActionCatalogChild, Set<string>>();
+
+function getChildScoringTokens(child: ActionCatalogChild): Set<string> {
+	const cached = childScoringTokensCache.get(child);
+	if (cached) {
+		return cached;
+	}
+	const computed = new Set(tokenizeActionSearchText(child.searchText));
+	childScoringTokensCache.set(child, computed);
+	return computed;
+}
+
+function childMatchesCandidate(
+	child: ActionCatalogChild,
+	candidateSet: ReadonlySet<string>,
+): boolean {
+	if (candidateSet.size === 0) {
+		return false;
+	}
+	if (candidateSet.has(child.normalizedName)) {
+		return true;
+	}
+	for (const simile of child.similes) {
+		if (candidateSet.has(normalizeActionName(simile))) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function narrowTierAChildrenPerParent(
+	tierAParents: TieredParentAction[],
+	options: {
+		cap: number;
+		candidateSet: ReadonlySet<string>;
+		queryTokens?: readonly string[];
+	},
+): void {
+	const queryTokenSet = new Set(options.queryTokens ?? []);
+	for (let index = 0; index < tierAParents.length; index += 1) {
+		const entry = tierAParents[index];
+		if (!entry || entry.childNames.length <= options.cap) {
+			continue;
+		}
+		const scored = entry.result.parent.children.map((child, catalogIndex) => {
+			let overlap = 0;
+			if (queryTokenSet.size > 0) {
+				const childTokens = getChildScoringTokens(child);
+				for (const token of queryTokenSet) {
+					if (childTokens.has(token)) {
+						overlap += 1;
+					}
+				}
+			}
+			return {
+				child,
+				catalogIndex,
+				candidate: childMatchesCandidate(child, options.candidateSet),
+				overlap,
+			};
+		});
+		// Candidate-named children always survive — Stage-1's explicit routing
+		// decision, and the planner surface force-exposes registered candidates
+		// downstream, so dropping them here would only desynchronize the two.
+		// They may exceed the cap; the cap bounds the UNRANKED tail, not the
+		// explicit picks. Ties break on catalog child order (name-sorted at
+		// catalog build) so the narrow — and the surface hash derived from it —
+		// stays deterministic.
+		const candidates = scored.filter((child) => child.candidate);
+		const rest = scored
+			.filter((child) => !child.candidate)
+			.sort(
+				(left, right) =>
+					right.overlap - left.overlap ||
+					left.catalogIndex - right.catalogIndex,
+			)
+			.slice(0, Math.max(0, options.cap - candidates.length));
+		const kept = [...candidates, ...rest].sort(
+			(left, right) => left.catalogIndex - right.catalogIndex,
+		);
+		tierAParents[index] = {
+			...entry,
+			childNames: kept.map((child) => child.child.name),
+			childNormalizedNames: kept.map((child) => child.child.normalizedName),
+		};
+	}
 }
 
 function parentOnlyTieredParent(

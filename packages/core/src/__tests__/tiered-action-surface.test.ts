@@ -480,6 +480,80 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
+	it("caps a hot parent's sub-action flood to the turn-relevant children", async () => {
+		// One hot tier-A parent must not expose its whole namespace (observed
+		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
+		// child narrow keeps the Stage-1 candidate plus the best query-token
+		// matches under the default cap of 8; everything else stays reachable
+		// only through the MESSAGE umbrella, whose handler routes any subaction.
+		const reviewQueue = makeAction({
+			name: "MESSAGE_REVIEW_QUEUE",
+			description: "Review channel messages awaiting a response.",
+		});
+		const sendReply = makeAction({
+			name: "MESSAGE_SEND_REPLY",
+			description: "Reply to messages needing a response.",
+		});
+		const bulkOps = Array.from({ length: 10 }, (_, i) =>
+			makeAction({
+				name: `MESSAGE_OP_${i}`,
+				description: `Unrelated bulk operation number ${i}.`,
+			}),
+		);
+		const message = makeAction({
+			name: "MESSAGE",
+			description: "Message management parent action.",
+			subActions: [
+				"MESSAGE_REVIEW_QUEUE",
+				"MESSAGE_SEND_REPLY",
+				...bulkOps.map((action) => action.name),
+			],
+		});
+		const runtime = makeRuntime({
+			actions: [message, reviewQueue, sendReply, ...bulkOps],
+			responses: [
+				stage1Response({
+					contexts: ["general"],
+					intents: ["review channel messages", "reply to messages"],
+					candidateActionNames: ["MESSAGE_REVIEW_QUEUE"],
+				}),
+				plannerToolResponse("MESSAGE_REVIEW_QUEUE"),
+				finishEvaluatorResponse("Reviewed the queue."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("review the channel messages needing a response"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const tools = (
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+		)?.tools;
+		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		// Fires when relevant: the umbrella and the turn-relevant children are
+		// first-class tools.
+		expect(toolNames).toContain("MESSAGE");
+		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
+		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
+		// Lean when not: the namespace is capped, not fully expanded.
+		const childTools = toolNames.filter((name) =>
+			String(name).startsWith("MESSAGE_"),
+		);
+		expect(childTools.length).toBeLessThanOrEqual(8);
+		expect(toolNames).not.toContain("MESSAGE_OP_9");
+		// Prompt footprint drops with the tool surface: the narrowed-out child
+		// no longer appears in the rendered action section either.
+		const prompt = availableActionsSection(runtime);
+		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
+		expect(prompt).not.toContain("MESSAGE_OP_9");
+	});
+
 	it("omits planner tools that execution would reject for the selected context", async () => {
 		process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "GUEST" });
 		_resetActionRolePolicyCacheForTests();

@@ -364,6 +364,150 @@ describe("action tiering", () => {
 		]);
 	});
 
+	describe("per-parent tier-A child narrowing", () => {
+		// A hot parent with a wide namespace: two children match the turn's
+		// wording, the other ten are unrelated operations.
+		const messageActions = [
+			{
+				name: "MESSAGE",
+				description: "Message management parent.",
+				subActions: [
+					"MESSAGE_REVIEW_QUEUE",
+					"MESSAGE_SEND_REPLY",
+					...Array.from({ length: 10 }, (_, i) => `MESSAGE_OP_${i}`),
+				],
+			},
+			{
+				name: "MESSAGE_REVIEW_QUEUE",
+				description: "Review channel messages awaiting a response.",
+			},
+			{
+				name: "MESSAGE_SEND_REPLY",
+				description: "Reply to messages needing a response.",
+			},
+			...Array.from({ length: 10 }, (_, i) => ({
+				name: `MESSAGE_OP_${i}`,
+				description: `Unrelated bulk operation number ${i}.`,
+			})),
+		];
+		const reviewTurnTokens = [
+			"review",
+			"channel",
+			"messages",
+			"needing",
+			"response",
+			"reply",
+		];
+
+		it("caps children per tier-A parent and keeps the query-relevant ones", () => {
+			const catalog = buildActionCatalog(messageActions);
+			const message = catalog.parentByName.get("MESSAGE");
+			if (!message) {
+				throw new Error("missing MESSAGE parent");
+			}
+
+			const surface = tierActionResults({
+				catalog,
+				results: [resultFor(message, 0.95)],
+				maxTierAChildrenPerParent: 4,
+				queryTokens: reviewTurnTokens,
+			});
+
+			const tierA = surface.tierAParents[0];
+			expect(tierA.name).toBe("MESSAGE");
+			expect(tierA.childNames).toHaveLength(4);
+			expect(tierA.childNames).toContain("MESSAGE_REVIEW_QUEUE");
+			expect(tierA.childNames).toContain("MESSAGE_SEND_REPLY");
+			// The parent umbrella stays exposed as the catch-all dispatcher.
+			expect(surface.exposedActionNames).toContain("MESSAGE");
+			// Narrowed-out children leave the exposed surface entirely.
+			expect(surface.exposedActionNames).not.toContain("MESSAGE_OP_9");
+		});
+
+		it("always keeps Stage-1 candidate children even when token ranking misses them", () => {
+			const catalog = buildActionCatalog(messageActions);
+			const message = catalog.parentByName.get("MESSAGE");
+			if (!message) {
+				throw new Error("missing MESSAGE parent");
+			}
+
+			const surface = tierActionResults({
+				catalog,
+				results: [resultFor(message, 0.95)],
+				narrowToCandidateActions: ["MESSAGE_OP_7"],
+				maxTierAChildrenPerParent: 2,
+				queryTokens: reviewTurnTokens,
+			});
+
+			const tierA = surface.tierAParents[0];
+			expect(tierA.childNames).toContain("MESSAGE_OP_7");
+			expect(tierA.childNames).toHaveLength(2);
+		});
+
+		it("applies the default cap of 8 when the knob is omitted", () => {
+			const catalog = buildActionCatalog(messageActions);
+			const message = catalog.parentByName.get("MESSAGE");
+			if (!message) {
+				throw new Error("missing MESSAGE parent");
+			}
+
+			const surface = tierActionResults({
+				catalog,
+				results: [resultFor(message, 0.95)],
+				queryTokens: reviewTurnTokens,
+			});
+
+			expect(surface.tierAParents[0].childNames).toHaveLength(8);
+			expect(surface.tierAParents[0].childNames).toContain(
+				"MESSAGE_REVIEW_QUEUE",
+			);
+		});
+
+		it("leaves parents whose children fit the cap untouched", () => {
+			const catalog = buildActionCatalog(actions);
+			const music = catalog.parentByName.get("MUSIC");
+			if (!music) {
+				throw new Error("missing MUSIC parent");
+			}
+
+			const surface = tierActionResults({
+				catalog,
+				results: [resultFor(music, 0.92)],
+				queryTokens: ["pause", "the", "song"],
+			});
+
+			expect(surface.tierAParents[0].childNames).toEqual([
+				"PAUSE_MUSIC",
+				"PLAY_TRACK",
+			]);
+		});
+
+		it("narrows deterministically without query tokens via catalog child order", () => {
+			const catalog = buildActionCatalog(messageActions);
+			const message = catalog.parentByName.get("MESSAGE");
+			if (!message) {
+				throw new Error("missing MESSAGE parent");
+			}
+
+			const first = tierActionResults({
+				catalog,
+				results: [resultFor(message, 0.95)],
+				maxTierAChildrenPerParent: 3,
+			});
+			const second = tierActionResults({
+				catalog,
+				results: [resultFor(message, 0.95)],
+				maxTierAChildrenPerParent: 3,
+			});
+
+			expect(first.tierAParents[0].childNames).toEqual(
+				second.tierAParents[0].childNames,
+			);
+			expect(first.tierAParents[0].childNames).toHaveLength(3);
+			expect(first.actionSurfaceHash).toBe(second.actionSurfaceHash);
+		});
+	});
+
 	it("creates deterministic hashes from sorted parent sets", () => {
 		const left = stableActionSurfaceHash({
 			protocolActions: ["REPLY", "IGNORE", "STOP", "CONTINUE"],

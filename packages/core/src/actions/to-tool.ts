@@ -360,6 +360,19 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 		parentName: string;
 		subActionName: string;
 	}) => void;
+	/**
+	 * Per-parent allow-list of sub-action names (case-insensitive) to expand
+	 * for tier-A parents. Produced by the tiering surface's per-parent child
+	 * narrowing (`maxTierAChildrenPerParent` in `tierActionResults`): when a
+	 * parent has an entry, only the listed children become first-class tools;
+	 * every other subaction stays reachable through the parent umbrella tool,
+	 * whose handler dispatches any subaction. Parents WITHOUT an entry expand
+	 * all sub-actions, so full-surface mode and callers that never narrow are
+	 * unaffected.
+	 */
+	tierAChildrenByParent?:
+		| ReadonlyMap<string, readonly string[]>
+		| Readonly<Record<string, readonly string[]>>;
 }
 
 function normalizeParentNameKey(name: string): string {
@@ -386,6 +399,32 @@ function buildParentNameSet(
 		}
 	}
 	return set;
+}
+
+function resolveTierAChildAllowlist(
+	value: BuildPlannerToolsFromTieredActionsOptions["tierAChildrenByParent"],
+): Map<string, Set<string>> {
+	const map = new Map<string, Set<string>>();
+	if (!value) {
+		return map;
+	}
+	const entries: Iterable<[string, readonly string[]]> =
+		value instanceof Map ? value : Object.entries(value);
+	for (const [parentName, childNames] of entries) {
+		const parentKey = normalizeParentNameKey(parentName);
+		if (!parentKey || !Array.isArray(childNames)) {
+			continue;
+		}
+		const childKeys = new Set<string>();
+		for (const childName of childNames) {
+			const childKey = normalizeParentNameKey(String(childName));
+			if (childKey) {
+				childKeys.add(childKey);
+			}
+		}
+		map.set(parentKey, childKeys);
+	}
+	return map;
 }
 
 function resolveActionLookup(
@@ -443,6 +482,9 @@ export function buildPlannerToolsFromTieredActions(
 ): ToolDefinition[] {
 	const tierAKeys = buildParentNameSet(options.tierAParents);
 	const actionLookup = resolveActionLookup(options.actionLookup);
+	const childAllowlistByParent = resolveTierAChildAllowlist(
+		options.tierAChildrenByParent,
+	);
 
 	// Top up the lookup with anything already in `actions` so children that
 	// appear inline elsewhere in the input remain resolvable from a string ref.
@@ -473,11 +515,27 @@ export function buildPlannerToolsFromTieredActions(
 		if (!tierAKeys.has(key)) {
 			continue;
 		}
+		const allowedChildren = childAllowlistByParent.get(key);
 		for (const subAction of action.subActions ?? []) {
 			let child: PlannerToolActionShape | undefined;
 			let subActionName = "";
 			if (typeof subAction === "string") {
 				subActionName = subAction;
+			} else if (subAction && typeof subAction === "object") {
+				subActionName = subAction.name;
+				child = subAction;
+			}
+			// The allow-list check runs before string-ref resolution: a
+			// narrowed-out child is an intentional skip (it stays dispatchable
+			// through the parent umbrella), not an unresolvable reference, so
+			// it must not fire onUnresolvedSubAction.
+			if (
+				allowedChildren &&
+				!allowedChildren.has(normalizeParentNameKey(subActionName))
+			) {
+				continue;
+			}
+			if (typeof subAction === "string") {
 				child = actionLookup.get(normalizeParentNameKey(subAction));
 				if (!child) {
 					onUnresolved({
@@ -486,9 +544,6 @@ export function buildPlannerToolsFromTieredActions(
 					});
 					continue;
 				}
-			} else if (subAction && typeof subAction === "object") {
-				subActionName = subAction.name;
-				child = subAction;
 			}
 			if (!child) {
 				continue;

@@ -2213,6 +2213,14 @@ type V5PlannerActionSurfaceSummary = {
 	catalogParentCount: number;
 	exposedActionCount: number;
 	tierAParents: string[];
+	/**
+	 * Children exposed as first-class planner tools per tier-A parent, after
+	 * the per-parent child narrowing (`maxTierAChildrenPerParent`). Read back
+	 * by `collectPlannerTools` so the native-tool expansion matches the tiered
+	 * surface instead of re-expanding every subaction of a hot parent. Absent
+	 * in full-surface mode, where every subaction expands.
+	 */
+	tierAChildrenByParent?: Record<string, string[]>;
 	tierBParents: string[];
 	omittedParentCount: number;
 	omittedParentNamesPreview: string[];
@@ -2600,6 +2608,10 @@ function buildV5PlannerActionSurface(params: {
 		catalog,
 		results: retrieval.results,
 		narrowToCandidateActions: candidateActions,
+		// Message-text + candidate tokens rank children WITHIN each tier-A
+		// parent so a hot parent exposes its turn-relevant children instead of
+		// its whole namespace (maxTierAChildrenPerParent).
+		queryTokens: retrieval.query.tokens,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
@@ -2710,6 +2722,12 @@ function buildV5PlannerActionSurface(params: {
 			catalogParentCount: catalog.parents.length,
 			exposedActionCount,
 			tierAParents: tieredSurface.sortedTierAParentNames,
+			tierAChildrenByParent: Object.fromEntries(
+				tieredSurface.tierAParents.map((parent) => [
+					parent.name,
+					[...parent.childNames],
+				]),
+			),
 			tierBParents: tieredSurface.sortedTierBParentNames,
 			omittedParentCount: tieredSurface.omittedParentNames.length,
 			omittedParentNamesPreview: tieredSurface.omittedParentNames.slice(0, 20),
@@ -5485,6 +5503,7 @@ function collectPlannerTools(
 			actionLookup: new Map(
 				actions.map((action) => [action.name, action] as const),
 			),
+			tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
 		}),
 		...CORE_PLANNER_TERMINALS,
 	];
@@ -5514,6 +5533,38 @@ function readTierAParentsFromContext(context: ContextObject): Set<string> {
 		}
 	}
 	return set;
+}
+
+/**
+ * Read the per-parent tier-A child allow-list from the action surface
+ * metadata. Returns `undefined` when the surface carries no
+ * `tierAChildrenByParent` (full-surface mode, or contexts built outside the
+ * tiered pipeline), in which case the tiered tool builder expands every
+ * subaction of a tier-A parent as before.
+ */
+function readTierAChildrenByParentFromContext(
+	context: ContextObject,
+): Record<string, string[]> | undefined {
+	const surface = (context.metadata as { actionSurface?: unknown } | undefined)
+		?.actionSurface;
+	if (!surface || typeof surface !== "object") {
+		return undefined;
+	}
+	const raw = (surface as { tierAChildrenByParent?: unknown })
+		.tierAChildrenByParent;
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+		return undefined;
+	}
+	const record: Record<string, string[]> = {};
+	for (const [parentName, childNames] of Object.entries(raw)) {
+		if (!Array.isArray(childNames)) {
+			continue;
+		}
+		record[parentName] = childNames.filter(
+			(name): name is string => typeof name === "string",
+		);
+	}
+	return record;
 }
 
 /**

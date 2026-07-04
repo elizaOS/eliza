@@ -395,6 +395,93 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
+	it("expands only allow-listed children when tierAChildrenByParent has an entry", () => {
+		const playMusic = makeTieredAction({
+			name: "PLAY_MUSIC",
+			description: "Start playing a track.",
+		});
+		const pauseMusic = makeTieredAction({
+			name: "PAUSE_MUSIC",
+			description: "Pause the active track.",
+		});
+		const stopMusic = makeTieredAction({
+			name: "STOP_MUSIC",
+			description: "Stop playback.",
+		});
+		const music = makeTieredAction({
+			name: "MUSIC",
+			description: "Music control parent action.",
+			subActions: [playMusic, pauseMusic, stopMusic],
+		});
+
+		const tools = buildPlannerToolsFromTieredActions([music], {
+			tierAParents: new Set(["MUSIC"]),
+			tierAChildrenByParent: { MUSIC: ["PLAY_MUSIC"] },
+		});
+
+		// The parent umbrella stays — narrowed-out children remain dispatchable
+		// through it — but only the allow-listed child becomes a native tool.
+		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
+	});
+
+	it("expands all children for tier-A parents without an allow-list entry", () => {
+		const playMusic = makeTieredAction({
+			name: "PLAY_MUSIC",
+			description: "Start playing a track.",
+		});
+		const music = makeTieredAction({
+			name: "MUSIC",
+			description: "Music control parent action.",
+			subActions: [playMusic],
+		});
+		const createTask = makeTieredAction({
+			name: "CREATE_TASK",
+			description: "Create a task.",
+		});
+		const lifeops = makeTieredAction({
+			name: "LIFEOPS",
+			description: "Life-ops umbrella parent.",
+			subActions: [createTask],
+		});
+
+		const tools = buildPlannerToolsFromTieredActions([music, lifeops], {
+			tierAParents: new Set(["MUSIC", "LIFEOPS"]),
+			// Only LIFEOPS is narrowed; MUSIC has no entry and expands fully.
+			tierAChildrenByParent: new Map([["LIFEOPS", []]]),
+		});
+
+		expect(tools.map((tool) => tool.name)).toEqual([
+			"MUSIC",
+			"PLAY_MUSIC",
+			"LIFEOPS",
+		]);
+	});
+
+	it("does not report narrowed-out string refs as unresolved", () => {
+		const onUnresolvedSubAction = vi.fn();
+		const music = makeTieredAction({
+			name: "MUSIC",
+			description: "Music control parent action.",
+			subActions: ["PLAY_MUSIC", "MISSING_CHILD"],
+		});
+		const playMusic = makeTieredAction({
+			name: "PLAY_MUSIC",
+			description: "Start playing a track.",
+		});
+
+		const tools = buildPlannerToolsFromTieredActions([music], {
+			tierAParents: new Set(["MUSIC"]),
+			actionLookup: new Map([["PLAY_MUSIC", playMusic]]),
+			// MISSING_CHILD is narrowed out — an intentional skip, not an
+			// unresolvable reference.
+			tierAChildrenByParent: { MUSIC: ["PLAY_MUSIC"] },
+			onUnresolvedSubAction,
+		});
+
+		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
+		expect(onUnresolvedSubAction).not.toHaveBeenCalled();
+	});
+
 	it("emits parent terminals separately — does not implicitly append REPLY/IGNORE/STOP", () => {
 		// The tiered builder is a pure transform over input actions; callers are
 		// responsible for appending CORE_PLANNER_TERMINALS afterwards. This test
