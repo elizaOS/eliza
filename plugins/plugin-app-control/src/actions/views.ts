@@ -1643,6 +1643,7 @@ async function completeSplitTargetsWithCurrentView({
 	placement?: "left" | "right" | "top" | "bottom";
 }): Promise<ViewSummary[]> {
 	if (targets.length !== 1) return targets;
+	// error-policy:J4 current-view read over loopback; unreachable -> null -> keep given targets
 	const currentView = await client.getCurrentView().catch(() => null);
 	const currentId = currentView?.viewId;
 	if (!currentId || currentId === targets[0].id) return targets;
@@ -1666,6 +1667,7 @@ async function completeSplitTargetsFromCurrentLayout({
 	views: readonly ViewSummary[];
 	preferCurrentLayout?: boolean;
 }): Promise<ViewSummary[]> {
+	// error-policy:J4 current-view read over loopback; unreachable -> null -> no layout completion
 	const currentView = await client.getCurrentView().catch(() => null);
 	const currentLayoutIds = currentView?.views ?? [];
 	const byId = new Map(views.map((view) => [view.id, view]));

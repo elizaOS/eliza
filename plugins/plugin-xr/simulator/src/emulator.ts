@@ -187,6 +187,8 @@ async function dispatchGuarded(
   params: Record<string, unknown>,
 ): Promise<void> {
   await Promise.race([
+    // error-policy:J5 best-effort simulator input; a rejected dispatch is raced
+    // against the 1s timeout guard so it can never hang the test.
     xrDevice.remote.dispatch(method, params).catch(() => undefined),
     new Promise((resolve) => setTimeout(resolve, 1000)),
   ]);

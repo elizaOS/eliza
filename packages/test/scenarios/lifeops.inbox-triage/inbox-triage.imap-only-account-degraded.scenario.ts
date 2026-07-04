@@ -123,6 +123,8 @@ export default scenario({
              ${sqlQuote(now)}
            )
            ON CONFLICT DO NOTHING`,
+          // error-policy:J5 best-effort seed; a genuinely missing row fails the
+          // scenario's downstream assertions loudly, so the reject is observed there.
         ).catch(() => undefined);
         for (let i = 0; i < 3; i++) {
           await executeRawSql(

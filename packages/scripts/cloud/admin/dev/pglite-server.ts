@@ -70,6 +70,7 @@ console.log(
 
 async function shutdown(signal: string) {
   console.log(`${tag} ${signal} — closing server`);
+  // error-policy:J6 best-effort teardown on shutdown signal; process exits regardless
   await server.stop().catch(() => {});
   await db.close().catch(() => {});
   process.exit(0);

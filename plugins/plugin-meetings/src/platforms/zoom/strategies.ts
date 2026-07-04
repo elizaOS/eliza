@@ -6,6 +6,13 @@
  * attribution, removal monitoring, and leave. Ported from Vexa
  * (services/vexa-bot/core/src/platforms/zoom/web/*, Apache-2.0). No native
  * Zoom SDK.
+ *
+ * error-policy:J4 — the many `.catch(() => {})` / `.catch(() => null)` guards on
+ * `page.locator(...).click()`/`waitFor()`/`getAttribute()` are designed
+ * best-effort UI automation against a page whose exact controls vary per Zoom
+ * build/AB-test. A missing optional control is an expected degrade, not a
+ * failure; the join outcome is decided by the presence checks and the
+ * `MeetingEndReason` the strategy returns, not by any single click succeeding.
  */
 
 import { logger } from "@elizaos/core";

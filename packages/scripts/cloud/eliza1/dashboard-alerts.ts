@@ -267,6 +267,8 @@ async function verifyDashboardRender(dashboardUrl?: string) {
       waitUntil: "networkidle",
       timeout: 60_000,
     });
+    // error-policy:J4 best-effort UI navigation; the actual render state is measured
+    // by the .count() assertions below, so a missing tab/alert is observed there.
     await page
       .locator(
         'button[value="projections"], [role="tab"]:has-text("Projections")',

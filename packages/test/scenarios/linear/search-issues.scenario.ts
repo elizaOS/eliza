@@ -68,7 +68,9 @@ export default scenario({
             let query = "";
             try {
               query = JSON.parse(String(init?.body ?? "{}")).query ?? "";
-            } catch {}
+            } catch {
+              // error-policy:J3 untrusted request body; unparseable -> empty query (routes to default mock reply)
+            }
             linearMockQueries.push(query);
             const data: Record<string, unknown> = {};
             if (/issues/i.test(query)) {

@@ -142,6 +142,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
       // Contacts view opens (idempotent — already-granted returns granted with
       // no prompt). Nothing requests this at app launch. Tolerates older bridges
       // without the request path by falling through to listContacts.
+      // error-policy:J4 older-bridge compat degrade; null -> fall through to listContacts (which surfaces a real error)
       const status = await Contacts.requestPermissions().catch(() => null);
       if (status && status.contacts !== "granted") {
         setContacts([]);

@@ -445,6 +445,7 @@ async function defaultGenerateImage(prompt: string): Promise<string> {
 			signal: AbortSignal.timeout(120_000),
 		},
 	);
+	// error-policy:J3 unparseable body -> null, then fast-fails below with a clear message
 	const data = (await resp.json().catch(() => null)) as {
 		url?: string;
 		error?: string;

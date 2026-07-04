@@ -318,6 +318,7 @@ async function main(): Promise<void> {
       summary.push(`docker_nodes row created (${args.nodeId})`);
     }
   } finally {
+    // error-policy:J6 best-effort SSH teardown; the onboarding result already stands
     await ssh.disconnect().catch(() => {});
   }
 

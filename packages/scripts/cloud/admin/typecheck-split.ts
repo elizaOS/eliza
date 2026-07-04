@@ -200,6 +200,7 @@ async function checkDirectory(directory: string): Promise<CheckResult> {
     return { directory, success: false, output, duration };
   } finally {
     if (tempConfigPath) {
+      // error-policy:J6 best-effort temp-file cleanup; result already computed
       await unlink(tempConfigPath).catch(() => {});
     }
   }

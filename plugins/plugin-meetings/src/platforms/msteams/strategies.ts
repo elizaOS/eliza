@@ -3,6 +3,13 @@
  * caption-driven per-speaker capture, removal monitoring, and leave.
  * Ported from Vexa (services/vexa-bot/core/src/platforms/msteams/*,
  * Apache-2.0) onto the shared meeting-flow strategy contract.
+ *
+ * error-policy:J4 — the `.catch(() => {})` / `.catch(() => null)` guards on
+ * `page.locator(...).click()`/`waitFor()`/`getAttribute()` are designed
+ * best-effort UI automation against a Teams page whose optional controls vary
+ * per build. A missing optional control is an expected degrade, not a failure;
+ * the join outcome is decided by the presence/admission checks and the returned
+ * `MeetingEndReason`, not by any single click succeeding.
  */
 
 import { logger } from "@elizaos/core";

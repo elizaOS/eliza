@@ -201,7 +201,9 @@ export async function agentLifecycleAction(
   let body: unknown = text;
   try {
     body = JSON.parse(text);
-  } catch {}
+  } catch {
+    // error-policy:J3 non-JSON response body preserved as raw text; status still asserted below
+  }
   expect(
     acceptable,
     `agent ${action} returned ${res.status}: ${text}`,
@@ -402,7 +404,9 @@ export async function getSandboxState(
   let body: unknown = text;
   try {
     body = JSON.parse(text);
-  } catch {}
+  } catch {
+    // error-policy:J3 non-JSON response body preserved as raw text; status still asserted below
+  }
   return { status: res.status, body };
 }
 

@@ -308,6 +308,8 @@ export function RelationshipsView(
                 },
           );
         })
+        // error-policy:J4 background poll refresh; a transient failure keeps the
+        // last-good render (the initial load owns the error state), so it is not swallowed silently.
         .catch(() => {});
     }, RELATIONSHIPS_POLL_INTERVAL_MS);
     return () => clearInterval(id);

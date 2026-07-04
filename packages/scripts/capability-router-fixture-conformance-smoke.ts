@@ -154,6 +154,7 @@ try {
 } finally {
   if (child && !child.killed) {
     child.kill("SIGTERM");
+    // error-policy:J6 best-effort wait for child exit during cleanup
     await once(child, "exit").catch(() => undefined);
   }
   if (workspace) {
