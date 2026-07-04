@@ -99,14 +99,15 @@ export function selectPricedHoldings(
     })
     .slice(0, MAX_PRICED_HOLDINGS);
 
-  return ranked.map(([symbol]) => {
-    const snap = priceBySymbol.get(symbol);
-    // biome-ignore lint/style/noNonNullAssertion: filtered to has-price above.
-    const price = snap!;
-    return {
+  const priced: PricedHolding[] = [];
+  for (const [symbol] of ranked) {
+    const price = priceBySymbol.get(symbol);
+    if (!price) continue; // ranked is already filtered to has-price entries
+    priced.push({
       symbol: price.symbol,
       priceUsd: price.priceUsd,
       change24hPct: price.change24hPct,
-    };
-  });
+    });
+  }
+  return priced;
 }

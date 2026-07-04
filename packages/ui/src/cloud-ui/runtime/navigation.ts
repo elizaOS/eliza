@@ -37,7 +37,9 @@ function normalizeInternalHref(href: string): string {
     if (url.origin === window.location.origin) {
       return `${url.pathname}${url.search}${url.hash}`;
     }
-  } catch {}
+  } catch {
+    // error-policy:J3 an unparseable href is not a normalizable internal URL; pass it through verbatim
+  }
   return href;
 }
 
