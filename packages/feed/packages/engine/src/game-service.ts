@@ -18,9 +18,13 @@ import {
   markets,
   questions,
 } from "@feed/db";
-import { logger } from "@feed/shared";
+import { DatabaseError, logger } from "@feed/shared";
 import { StaticDataRegistry } from "./services/static-data-registry";
 import { getGameDayNumber } from "./utils/date-utils";
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 /**
  * Active market summary for NPC context (lightweight)
@@ -195,8 +199,12 @@ class GameService {
         .limit(1);
 
       return question?.outcome ?? null;
-    } catch {
-      return null;
+    } catch (error) {
+      throw new DatabaseError(
+        "Question outcome query failed",
+        "GameService.getQuestionOutcome",
+        toError(error),
+      );
     }
   }
 }

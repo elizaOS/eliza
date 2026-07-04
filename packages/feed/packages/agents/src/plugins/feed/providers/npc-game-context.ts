@@ -169,17 +169,10 @@ You are ${npcActor.name}. Just be yourself — talk about what interests you, re
 
     const phase = getArcPhaseForDay(currentDay, arcPlan);
 
-    // Fetch the actual predetermined outcome from the question
-    // This ensures insiders get correct signals (not always YES)
-    let outcome = true; // fallback
-    try {
-      const questionData = await gameService.getQuestionOutcome(market.id);
-      if (questionData != null) {
-        outcome = questionData;
-      }
-    } catch {
-      // Fallback to true if lookup fails
-    }
+    // Fetch the actual predetermined outcome from the question.
+    // Without a real outcome, skip this intuition instead of fabricating YES.
+    const outcome = await gameService.getQuestionOutcome(market.id);
+    if (outcome == null) continue;
 
     const signal = getSignalDirection(arcPlan, phase, agentId, outcome);
 

@@ -1,4 +1,9 @@
 import { db, eq, generateSnowflakeId, worldStateSnapshots } from "@feed/db";
+import { DatabaseError } from "@feed/shared";
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 export class WorldStateSnapshotService {
   /**
@@ -72,8 +77,12 @@ export class WorldStateSnapshotService {
         question: m.text,
         resolvedOutcome: m.outcome,
       }));
-    } catch {
-      return [];
+    } catch (error) {
+      throw new DatabaseError(
+        "Prediction market state query failed",
+        "WorldStateSnapshotService.getPredictionMarketState",
+        toError(error),
+      );
     }
   }
 
@@ -92,8 +101,12 @@ export class WorldStateSnapshotService {
         ticker: o.id,
         price: Number(o.basePrice),
       }));
-    } catch {
-      return [];
+    } catch (error) {
+      throw new DatabaseError(
+        "Perp market state query failed",
+        "WorldStateSnapshotService.getPerpMarketState",
+        toError(error),
+      );
     }
   }
 
@@ -109,8 +122,12 @@ export class WorldStateSnapshotService {
         .from(worldEvents)
         .limit(50);
       return events;
-    } catch {
-      return [];
+    } catch (error) {
+      throw new DatabaseError(
+        "World events query failed",
+        "WorldStateSnapshotService.getWorldEvents",
+        toError(error),
+      );
     }
   }
 
@@ -126,8 +143,12 @@ export class WorldStateSnapshotService {
         .from(questionArcPlans)
         .limit(50);
       return plans;
-    } catch {
-      return [];
+    } catch (error) {
+      throw new DatabaseError(
+        "Insider assignments query failed",
+        "WorldStateSnapshotService.getInsiderAssignments",
+        toError(error),
+      );
     }
   }
 
@@ -141,8 +162,12 @@ export class WorldStateSnapshotService {
       const { organizationState } = await import("@feed/db/schema");
       const orgs = await db.select().from(organizationState).limit(100);
       return orgs;
-    } catch {
-      return [];
+    } catch (error) {
+      throw new DatabaseError(
+        "Organization state query failed",
+        "WorldStateSnapshotService.getOrgStates",
+        toError(error),
+      );
     }
   }
 }
