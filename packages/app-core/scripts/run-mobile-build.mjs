@@ -1198,12 +1198,39 @@ async function buildWeb(platform) {
     await run(process.execPath, [packageStylesPatch], { cwd: repoRoot, env });
   }
   if (bun) {
+    const coreEntry = path.join(
+      packagesRoot,
+      "core",
+      "dist",
+      "node",
+      "index.node.js",
+    );
+    if (!fs.existsSync(coreEntry)) {
+      console.log(
+        "[mobile-build] Building @elizaos/core for mobile web bundle.",
+      );
+      await run(
+        bun,
+        ["run", "--cwd", path.join(packagesRoot, "core"), "build"],
+        {
+          cwd: repoRoot,
+          env,
+        },
+      );
+    }
     const sharedEntry = path.join(packagesRoot, "shared", "dist", "index.js");
     if (!fs.existsSync(sharedEntry)) {
       console.log(
-        "[mobile-build] Building workspace dependencies for mobile web bundle.",
+        "[mobile-build] Building @elizaos/shared for mobile web bundle.",
       );
-      await run(bun, ["run", "dev:prepare"], { cwd: repoRoot, env });
+      await run(
+        bun,
+        ["run", "--cwd", path.join(packagesRoot, "shared"), "build"],
+        {
+          cwd: repoRoot,
+          env,
+        },
+      );
     }
     await run(bun, ["run", "build:web"], { cwd: appDir, env });
     return;
