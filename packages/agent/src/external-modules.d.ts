@@ -1,10 +1,7 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
-  import type {
-    AgentRuntime,
-    MobileDeviceBridgeStatus,
-  } from "@elizaos/core";
+  import type { AgentRuntime, MobileDeviceBridgeStatus } from "@elizaos/core";
 
   export type { MobileDeviceBridgeStatus };
 
@@ -853,7 +850,6 @@ declare module "@elizaos/ui" {
   export const App: ComponentType<AnyValue>;
   export const AppProvider: ComponentType<AnyValue>;
   export const AppWindowRenderer: ComponentType<AnyValue>;
-  export const EmbeddedAppViewer: ComponentType<AnyValue>;
   export const Button: ComponentType<AnyValue>;
   export const CharacterEditor: ComponentType<AnyValue>;
   export const COMMAND_PALETTE_EVENT: string;
@@ -932,6 +928,8 @@ declare module "@elizaos/ui" {
 
 declare module "@elizaos/ui/navigation" {
   export const TAB_PATHS: Record<string, string>;
+  export const getWindowNavigationPath: AnyFunction;
+  export const isAppWindowRoute: AnyFunction;
 }
 
 declare module "@elizaos/plugin-discord" {
