@@ -15,10 +15,7 @@ import { containers as containersTable } from "../../../../db/schemas/containers
 import type { DockerNode } from "../../../../db/schemas/docker-nodes";
 import { containersEnv } from "../../../config/containers-env";
 import { logger } from "../../../utils/logger";
-import {
-  buildAppContainerSecurityFlags,
-  buildLoopbackPortPublishFlag,
-} from "../../app-network-utils";
+import { buildAppContainerSecurityFlags } from "../../app-network-utils";
 import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
@@ -47,6 +44,7 @@ import {
   validateContainerMountPath,
   validateEnvKey,
 } from "./paths";
+import { buildContainerPortPublishFlag } from "./port-publish";
 import { ensureRegistryAccess, readPulledImageDigest } from "./registry";
 import { findNodeInLocation, findStickyNodeForProject, getDockerNodeLocation } from "./scheduling";
 import {
@@ -272,7 +270,7 @@ export class HetznerContainersClient {
           `--memory ${input.memoryMb}m`,
           ...buildAppContainerSecurityFlags(),
           ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
-          buildLoopbackPortPublishFlag(hostPort, input.port),
+          buildContainerPortPublishFlag(hostPort, input.port),
           envFlags,
           shellQuote(input.image),
         ]
@@ -628,7 +626,7 @@ export class HetznerContainersClient {
                 `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
               ]
             : []),
-          buildLoopbackPortPublishFlag(meta.hostPort, meta.containerPort),
+          buildContainerPortPublishFlag(meta.hostPort, meta.containerPort),
           envFlags,
           shellQuote(meta.image),
         ]
