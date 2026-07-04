@@ -1,3 +1,7 @@
+/**
+ * Bun tests for the Telegram example's environment validation and character
+ * factory.
+ */
 import { expect, test } from "bun:test";
 import { createTelegramCharacter, readRequiredEnv } from "./telegram-agent";
 

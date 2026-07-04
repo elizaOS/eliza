@@ -1,3 +1,6 @@
+/**
+ * Character definition for the Bluesky runnable example agent.
+ */
 import { createCharacter } from "@elizaos/core";
 
 /**

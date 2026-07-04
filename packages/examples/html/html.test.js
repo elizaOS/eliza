@@ -1,3 +1,6 @@
+/**
+ * Bun smoke tests for the static browser-runtime HTML example.
+ */
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";

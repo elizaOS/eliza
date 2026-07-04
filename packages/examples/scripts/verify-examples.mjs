@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Verification runner for the first-party examples workspace.
+ *
+ * It discovers example package scripts, checks documentation coverage, and can
+ * run typecheck, test, and build commands with a JSON report for CI.
+ */
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

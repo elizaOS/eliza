@@ -1,3 +1,6 @@
+/**
+ * Bun tests for the deterministic text-adventure game engine.
+ */
 import { expect, test } from "bun:test";
 import { AdventureGame, playScriptedAdventure } from "./game";
 
