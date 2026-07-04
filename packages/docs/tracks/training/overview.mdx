@@ -1,14 +1,15 @@
 ---
 title: Training & Simulation
-description: "Eliza-1 fine-tuning, the Feed simulation, robot embodiment, benchmarks."
+description: "Eliza-1 fine-tuning, the Feed simulation, benchmarks."
 ---
 
-The Training & Simulation track covers four overlapping subsystems:
+The Training & Simulation track covers three overlapping subsystems:
 
 - **Eliza-1** — open-weight Eliza model family (2B–27B), trained from Gemma 4 bases with native tool-calling SFT and APOLLO optimization.
 - **Feed** — a satirical prediction-market simulation that generates social narratives and training data for Eliza agents.
-- **Robot** — MuJoCo-based robotic embodiment with RL training and a real-hardware bridge.
 - **Benchmarks** — 70+ evaluation harnesses spanning agent autonomy, tool-call correctness, voice, vision, and long-horizon reasoning.
+
+Robotic embodiment — MuJoCo simulation, RL training, and the real-hardware bridge — lives in the [elizaOS/research](https://github.com/elizaOS/research) repository.
 
 ## Track contents
 
@@ -19,11 +20,11 @@ The Training & Simulation track covers four overlapping subsystems:
   <Card title="Feed" icon="rss" href="/tracks/training/feed">
     The prediction-market simulation.
   </Card>
-  <Card title="Robot" icon="robot" href="/tracks/training/robot">
-    MuJoCo sim, RL, real-hardware deployment.
-  </Card>
   <Card title="Benchmarks" icon="gauge" href="/tracks/training/benchmarks">
     Evaluation harnesses for agents and models.
+  </Card>
+  <Card title="Research" icon="robot" href="https://github.com/elizaOS/research">
+    Robot embodiment and RL research.
   </Card>
 </CardGroup>
 
@@ -31,8 +32,8 @@ The Training & Simulation track covers four overlapping subsystems:
 
 - Eliza-1 pipeline: [`packages/training/`](https://github.com/elizaOS/eliza/tree/develop/packages/training)
 - Feed simulation: [`packages/feed/`](https://github.com/elizaOS/eliza/tree/develop/packages/feed)
-- Robot stack: [`packages/research/robot/`](https://github.com/elizaOS/eliza/tree/develop/packages/research/robot)
 - Benchmarks: [`packages/benchmarks/`](https://github.com/elizaOS/eliza/tree/develop/packages/benchmarks)
+- Robot stack: [elizaOS/research](https://github.com/elizaOS/research)
 
 ## Fine-tuning collection runs
 

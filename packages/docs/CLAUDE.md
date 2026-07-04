@@ -1,6 +1,6 @@
 # @elizaos/docs
 
-Mintlify-hosted documentation for the elizaOS project — covers the OS, runtime, app layer, Cloud, Chip, and Robot tracks.
+Mintlify-hosted documentation for the elizaOS project — covers the OS, runtime, app layer, and Cloud tracks. Hardware and embodiment research (the Eliza E1 chip, the robot stack, the Alberta RL framework) lives in the separate [elizaOS/research](https://github.com/elizaOS/research) repository, not here.
 
 ## Purpose / role
 
@@ -25,8 +25,7 @@ packages/docs/
 │   ├── cloud/                  # Eliza Cloud track
 │   ├── agent-app/              # App layer track (desktop, mobile, dashboard)
 │   ├── framework-app/          # Framework-app track
-│   ├── chip/                   # E1 RISC-V SoC track
-│   └── training/               # Model training track
+│   └── training/               # Model training track (Eliza-1, Feed, benchmarks)
 ├── runtime/                    # Runtime internals reference
 │   ├── core.mdx
 │   ├── models.mdx
@@ -108,10 +107,13 @@ Top-level tabs as of current content:
 - **Runtime** — agent track, framework (@elizaos/core), plugins, runtime internals, agent internals
 - **App** — app/desktop/mobile layer
 - **Cloud** — Eliza Cloud managed APIs and services
-- **Chip** — E1 RISC-V SoC
-- **Robot** — embodiment pages (tracks/training/robot, tracks/training/feed)
+- **Feed** — the Feed prediction-market simulation (tracks/training/feed)
 - **CLI** — CLI reference (create-project, create-plugin, overview)
 - **Reference** — configuration, deployment, advanced topics, security
+
+The chip and robot tabs were removed when hardware/embodiment research moved to
+the [elizaOS/research](https://github.com/elizaOS/research) repository; point
+readers there rather than re-adding chip or robot pages under this docs site.
 
 ## Brand asset sync
 

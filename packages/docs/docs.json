@@ -394,28 +394,11 @@
         ]
       },
       {
-        "tab": "Chip",
+        "tab": "Feed",
         "groups": [
           {
-            "group": "Eliza E1 SoC",
-            "pages": [
-              "tracks/chip/overview",
-              "tracks/chip/architecture",
-              "tracks/chip/rtl-verify",
-              "tracks/chip/software",
-              "tracks/chip/physical-design",
-              "tracks/chip/simulation",
-              "tracks/chip/manufacturing"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Robot",
-        "groups": [
-          {
-            "group": "Embodiment",
-            "pages": ["tracks/training/robot", "tracks/training/feed"]
+            "group": "Feed",
+            "pages": ["tracks/training/feed"]
           }
         ]
       },

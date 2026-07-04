@@ -1,9 +1,9 @@
 ---
 title: Tracks Overview
-description: "Six dimensions of elizaOS. Pick the one that fits your project."
+description: "Four dimensions of elizaOS. Pick the one that fits your project."
 ---
 
-elizaOS spans an operating system, a runtime, an app distribution layer, a hosted cloud, custom silicon, and an embodied robot stack. The documentation is organized around six dimensions. Pick the one that describes what you're building.
+elizaOS spans an operating system, a runtime, an app distribution layer, and a hosted cloud. The documentation is organized around these four dimensions. Pick the one that describes what you're building. Hardware and embodiment research — the Eliza E1 chip, the robot stack, and the Alberta RL framework — lives in a separate repository.
 
 <CardGroup cols={2}>
   <Card title="OS" icon="computer" href="/tracks/elizaos/overview">
@@ -18,21 +18,23 @@ elizaOS spans an operating system, a runtime, an app distribution layer, a hoste
   <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
     **Managed infrastructure.** Auth, app registration, inference routing, container deploys, billing, domains.
   </Card>
-  <Card title="Chip" icon="microchip" href="/tracks/chip/overview">
-    **The Eliza E1 SoC.** Open RISC-V AI phone chip — RTL, verification, BSP, physical design.
-  </Card>
-  <Card title="Robot" icon="robot" href="/tracks/training/robot">
-    **Embodiment.** MuJoCo simulation, RL training, real-hardware bridge, Feed.
-  </Card>
 </CardGroup>
+
+## Hardware & embodiment research
+
+The Eliza E1 chip (open RISC-V AI phone SoC), the robot stack (MuJoCo simulation, RL training, real-hardware bridge), and the Alberta RL framework are developed in the open in a dedicated research repository.
+
+<Card title="elizaOS Research" icon="microchip" href="https://github.com/elizaOS/research">
+  Chip, robot, and RL research — RTL, verification, physical design, simulation, and embodiment.
+</Card>
 
 ## How the dimensions compose
 
 These aren't silos. A typical project crosses several:
 
 - A **Plugin** is consumed by an **Agent** (Runtime), wrapped in an **App**, optionally deployed to **Cloud**.
-- A **Robot** policy loads an Eliza-1 model from the **Runtime**.
-- The **Chip** runs the **OS**, which hosts the **Runtime**, which runs the **App**.
+- The **OS** hosts the **Runtime**, which runs the **App**.
+- A research robot policy loads an Eliza-1 model from the **Runtime**.
 
 Start with the dimension closest to your output artifact and follow the links inward.
 
@@ -44,5 +46,5 @@ Start with the dimension closest to your output artifact and follow the links in
 | Runtime    | `packages/core/`, `packages/agent/`, `packages/training/`, plugins under `packages/` and `@elizaos/*` |
 | App        | `packages/app/`, `packages/app-core/`, `packages/elizaos/templates/project/`  |
 | Cloud      | `packages/cloud/api/`, `packages/cloud-frontend/`, `packages/cloud/shared/`, `packages/cloud/sdk/` |
-| Chip       | `packages/research/chip/`                                                              |
-| Robot      | `packages/research/robot/`, `packages/feed/`, `packages/benchmarks/`                   |
+
+Hardware and embodiment research lives in the [elizaOS/research](https://github.com/elizaOS/research) repository.
