@@ -225,26 +225,26 @@ export const CacheKeys = {
  */
 export const CacheTTL = {
   org: {
-    data: 300, // 5 minutes (was 60s)
-    credits: 60, // 1 minute (was 15s)
-    dashboard: 300, // 5 minutes (was 90s) - stale after 180s
+    data: 300, // 5 minutes
+    credits: 60, // 1 minute
+    dashboard: 300, // 5 minutes - stale after 180s
   },
   analytics: {
     overview: {
-      daily: 300, // 5 minutes (was 120s)
-      weekly: 600, // 10 minutes (was 180s)
-      monthly: 1800, // 30 minutes (was 300s)
+      daily: 300, // 5 minutes
+      weekly: 600, // 10 minutes
+      monthly: 1800, // 30 minutes
     },
-    breakdown: 600, // 10 minutes (was 180s)
-    stats: 600, // 10 minutes (was 300s)
-    userBreakdown: 1800, // 30 minutes (was 600s)
-    projections: 600, // 10 minutes (was 300s)
-    timeSeries: 600, // 10 minutes (was 180s)
-    providerBreakdown: 600, // 10 minutes (was 180s)
-    modelBreakdown: 600, // 10 minutes (was 180s)
+    breakdown: 600, // 10 minutes
+    stats: 600, // 10 minutes
+    userBreakdown: 1800, // 30 minutes
+    projections: 600, // 10 minutes
+    timeSeries: 600, // 10 minutes
+    providerBreakdown: 600, // 10 minutes
+    modelBreakdown: 600, // 10 minutes
   },
   apiKey: {
-    validation: 600, // 10 minutes (was 300s)
+    validation: 600, // 10 minutes
     appMapping: 600, // 10 minutes - app-to-API-key mapping rarely changes
   },
   /**
@@ -277,7 +277,7 @@ export const CacheTTL = {
   },
   user: {
     byId: 600, // 10 minutes
-    byEmail: 600, // 10 minutes (was 300s)
+    byEmail: 600, // 10 minutes
     byStewardId: 600,
     withOrg: 600,
     byEmailWithOrg: 600,
@@ -289,7 +289,7 @@ export const CacheTTL = {
     resolve: 300, // 5 minutes
   },
   memory: {
-    item: 1440, // 24 minutes (unchanged - memory is critical)
+    item: 1440, // 24 minutes - memory is critical
     roomRecent: 300, // 5 minutes
     roomContext: 300, // 5 minutes
     conversationContext: 300, // 5 minutes
@@ -307,8 +307,8 @@ export const CacheTTL = {
     agentStats: 300, // 5 minutes
   },
   container: {
-    list: 60, // 1 minute (was 30s)
-    logs: 60, // 1 minute (was 30s)
+    list: 60, // 1 minute
+    logs: 60, // 1 minute
     metrics: 300, // 5 minutes
   },
   eliza: {

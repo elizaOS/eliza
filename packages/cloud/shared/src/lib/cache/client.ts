@@ -778,9 +778,9 @@ export class CacheClient {
 
     const start = Date.now();
     // Thread the cursor as an opaque string. Cloudflare KV returns a base64-ish
-    // continuation token (and "0" when complete); parsing it as a number (the old
-    // behavior) corrupted it, so KV pagination stopped after the first page and
-    // pattern deletes silently left every key beyond the first batch behind.
+    // continuation token (and "0" when complete); numeric parsing corrupts that
+    // token, stops KV pagination after the first page, and leaves every key
+    // beyond the first pattern-delete batch behind.
     let cursor: string | number = "0";
     let totalDeleted = 0;
     let iterations = 0;

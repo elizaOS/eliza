@@ -55,8 +55,8 @@ describe("SocketRedis connection resilience", () => {
     const server = createServer((socket: NetSocket) => {
       connections += 1;
       if (connections === 1) {
-        // First connection dies as soon as the client speaks — a socket
-        // error, NOT a timeout (the path that previously never closed).
+        // First connection dies as soon as the client speaks: this is a socket
+        // error, not a timeout, and must close the poisoned connection.
         socket.once("data", () => socket.destroy());
         return;
       }

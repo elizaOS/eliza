@@ -147,13 +147,11 @@ export class MemoryCacheAdapter implements CacheRedisClient {
     const keys = [...new Set([...this.values.keys(), ...this.lists.keys()])]
       .filter((key) => pattern.test(key))
       .sort();
-    // Real pagination (the old impl returned only the first `count` keys and
-    // claimed completion — silently dropping the rest). Key-based opaque cursor
-    // ("mem:<lastKey>"): return the next `count` keys that sort strictly AFTER the
-    // cursor key. This is stable under deletion of already-returned keys (the
-    // delPattern case) — an offset cursor would skip keys as the set shrinks. The
-    // token is deliberately NON-numeric so callers can't parseInt it (mirrors
-    // Redis/KV opaque cursors and catches a parse-the-cursor regression).
+    // Real pagination uses a key-based opaque cursor ("mem:<lastKey>"): return
+    // the next `count` keys that sort strictly after the cursor key. This is
+    // stable under deletion of already-returned keys (the delPattern case), where
+    // an offset cursor would skip keys as the set shrinks. The token is
+    // deliberately non-numeric so callers must treat it like Redis/KV cursors.
     const after = cursor === "0" || cursor === 0 ? "" : String(cursor).slice("mem:".length);
     const startIdx = after === "" ? 0 : keys.findIndex((key) => key > after);
     const begin = startIdx < 0 ? keys.length : startIdx;

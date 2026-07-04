@@ -2,10 +2,10 @@
  * SCAN pagination — opaque-cursor threading regression guard.
  *
  * scanByPrefix + delPattern must thread the backend's continuation cursor
- * VERBATIM. The old code did `Number.parseInt(cursor)`, which corrupts Cloudflare
- * KV's base64-ish token (and is only accidentally fine on Redis numeric cursors),
- * so KV pagination stopped after the first ~100-key page — the inference-charge
- * sweep leaked stragglers (uncharged) and delPattern left keys behind.
+ * VERBATIM. Cloudflare KV returns a base64-ish token that is not parseable as a
+ * number, while Redis numeric cursors are only one backend shape. Cursor
+ * corruption stops KV pagination after the first ~100-key page, leaking
+ * inference-charge stragglers and leaving delPattern keys behind.
  *
  * The MemoryCacheAdapter now emits a deliberately NON-numeric ("mem:<offset>")
  * cursor, so a memory-backed CacheClient exercises the multi-page path and any
