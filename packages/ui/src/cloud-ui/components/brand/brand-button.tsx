@@ -15,7 +15,7 @@ const brandButtonVariants = cva(
     variants: {
       variant: {
         primary:
-          "bg-accent text-accent-foreground hover:bg-background hover:text-foreground active:bg-background/90",
+          "bg-accent text-accent-foreground hover:bg-background hover:text-foreground active:bg-background/90 disabled:bg-bg-muted disabled:text-muted",
         ghost: "bg-transparent text-txt/70 hover:bg-surface hover:text-txt",
         outline:
           "bg-bg-elevated text-txt hover:bg-foreground hover:text-background",

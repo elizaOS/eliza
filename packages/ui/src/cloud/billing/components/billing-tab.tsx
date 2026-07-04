@@ -286,8 +286,8 @@ export function BillingTab({ user }: BillingTabProps) {
                       onClick={() => setPaymentMethod("card")}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "card"
-                          ? "bg-[var(--accent)] border-[var(--accent)] text-white"
-                          : "bg-transparent border-[rgba(255,255,255,0.2)] text-white/60 hover:border-[rgba(255,255,255,0.4)]"
+                          ? "bg-accent border-accent text-accent-foreground"
+                          : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
                       <CreditCard className="h-4 w-4" />
@@ -299,8 +299,8 @@ export function BillingTab({ user }: BillingTabProps) {
                       onClick={() => setPaymentMethod("crypto")}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "crypto"
-                          ? "bg-[var(--accent)] border-[var(--accent)] text-white"
-                          : "bg-transparent border-[rgba(255,255,255,0.2)] text-white/60 hover:border-[rgba(255,255,255,0.4)]"
+                          ? "bg-accent border-accent text-accent-foreground"
+                          : "bg-transparent border-border text-muted hover:border-border-strong"
                       }`}
                     >
                       <Wallet className="h-4 w-4" />
