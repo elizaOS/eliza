@@ -216,8 +216,14 @@ the #12182 sweeps drive down. Logger only, never `console`, in server code.
 ## Slop and Comment Cleanup
 
 Every file is legible on its own: a purpose-explaining prose header at the top,
-in-body comments that carry only what the code cannot, and no change-narration.
-The rules below are binding for new code and for the repo-wide cleanup (#12181).
+then in-body comments that explain **why the code is the way it is** — the
+design rationale, the constraint that forced the approach, what consumes it —
+never a restatement of *what* it does. The reader can read the code; a comment
+earns its place only by adding what the code cannot show. No change-narration.
+Write for the next engineer opening this file cold in a **greenfield** codebase:
+there is no legacy to apologize for and no diff history to narrate — these
+comments are the codified, durable explanation of the system. The rules below
+are binding for new code and for the repo-wide cleanup (#12181).
 
 1. **Header form — one `/** … */` prose block at the very top** (after a `#!`
    shebang; after a third-party license block in the few files that carry one;
@@ -225,22 +231,27 @@ The rules below are binding for new code and for the repo-wide cleanup (#12181).
    `@author`/`@date`/`@version`. Position is the signal.
 2. **First sentence states what the file does in system terms; never repeat the
    filename** ("Local content-addressed media store for chat attachments.").
-   Then, only as warranted: relationships (consumers, dependencies, which
-   boundary it sits on), invariants/constraints, gotchas. Issue refs like
-   `(#9948)` are welcome when they anchor non-obvious rationale — never as a
-   substitute for stating it.
+   Then, only as warranted, give the reader a sense of the file's place in the
+   system: **who consumes it and what it consumes** (the boundary it sits on),
+   the invariants/constraints it must uphold, why it is shaped the way it is, and
+   gotchas to know before editing. Issue refs like `(#9948)` are welcome when
+   they anchor non-obvious rationale — never as a substitute for stating it.
 3. **Length scales with weight, hard ceiling ~25 lines.** Barrel `index.ts` /
    tiny type files: 1 line. Typical modules: 2–6 lines. Load-bearing modules:
    2–3 short paragraphs. Longer than that belongs in the package
    `CLAUDE.md`/`README.md` — reference it instead. Test files: 1–3 lines — what
    surface is under test and how real the harness is (live model vs
    deterministic proxy, real DB vs in-memory).
-4. **In-body comments carry only what the code cannot say**: intent, invariants,
-   units, boundary conditions, why-this-not-that, protocol quirks, ordering
-   constraints. Keep the two-tier split — `/** JSDoc */` on exported symbols (for
-   callers), `//` for implementation notes. Delete restatement, change-narration,
-   status updates, migration stories, and commented-out code. Do not
-   blanket-comment: a file whose code is clear needs a header and nothing else.
+4. **In-body comments explain the *why*, never the *what*.** The reader can see
+   what the code does; a comment earns its place only by adding what the code
+   cannot show — the design rationale (why this approach and not the obvious
+   alternative), the invariant or constraint that forced it, units and boundary
+   conditions, protocol quirks, ordering constraints, and non-obvious
+   consequences for callers. Keep the two-tier split — `/** JSDoc */` on exported
+   symbols (for callers), `//` for implementation notes. Delete restatement,
+   change-narration, status updates, migration stories, and commented-out code.
+   Do not blanket-comment: a file whose code is clear needs a header and nothing
+   else.
 5. **Churn test = durability test.** Would the comment be true and useful to
    someone who never saw the previous version? If it only makes sense as a diff
    annotation, delete it; if the fact is durable but churn-phrased, rewrite it to
