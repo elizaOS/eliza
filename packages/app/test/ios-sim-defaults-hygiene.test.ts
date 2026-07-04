@@ -29,8 +29,12 @@ describe("iOS simulator defaults hygiene", () => {
 
   it("does not remove ordinary app state unless it is a known lane poison", () => {
     expect(shouldClearIosSmokePreferenceKey("eliza:chat:draft")).toBe(false);
-    expect(shouldClearIosSmokePreferenceKey("CapacitorStorage.eliza:chat:draft")).toBe(false);
-    expect(shouldClearIosSmokePreferenceKey("eliza:first-run-complete")).toBe(true);
+    expect(
+      shouldClearIosSmokePreferenceKey("CapacitorStorage.eliza:chat:draft"),
+    ).toBe(false);
+    expect(shouldClearIosSmokePreferenceKey("eliza:first-run-complete")).toBe(
+      true,
+    );
   });
 
   it("deletes both CapacitorStorage-prefixed and raw native keys", () => {

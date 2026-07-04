@@ -157,16 +157,17 @@ export function clearIosSmokeDefaults({
   log = () => {},
 }) {
   const domainKeys = readIosDefaultsDomain({ udid, bundleId });
-  const selected = selectIosSmokePreferenceKeys(
-    [...domainKeys, ...extraKeys],
-    { includeAppState },
-  );
+  const selected = selectIosSmokePreferenceKeys([...domainKeys, ...extraKeys], {
+    includeAppState,
+  });
   for (const key of selected) {
     deleteIosDefaultsKey({ udid, bundleId, key });
   }
   flushIosPreferencesCache(udid);
   if (selected.length > 0) {
-    log(`cleared ${selected.length} iOS simulator smoke/default key(s): ${selected.join(", ")}`);
+    log(
+      `cleared ${selected.length} iOS simulator smoke/default key(s): ${selected.join(", ")}`,
+    );
   }
   return selected;
 }

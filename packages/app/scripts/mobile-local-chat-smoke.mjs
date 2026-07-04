@@ -11,8 +11,8 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
+import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
 
 const repoRoot = path.resolve(

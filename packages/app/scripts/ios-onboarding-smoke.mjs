@@ -11,14 +11,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  captureIosSimulatorScreenshot,
-  startIosSimulatorVideo,
-} from "./lib/ios-simulator-capture.mjs";
-import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
-import {
   assertCandidateIosAppRendererFresh,
   assertInstalledIosAppRendererFresh,
 } from "./lib/ios-renderer-stamp.mjs";
+import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
+import {
+  captureIosSimulatorScreenshot,
+  startIosSimulatorVideo,
+} from "./lib/ios-simulator-capture.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -239,44 +239,6 @@ function preferenceNativeKeys(key) {
   return [`CapacitorStorage.${key}`, key];
 }
 
-function defaultsDelete(udid, appId, key) {
-  const nativeKeys = preferenceNativeKeys(key);
-  for (const nativeKey of nativeKeys) {
-    tryRun("xcrun", [
-      "simctl",
-      "spawn",
-      udid,
-      "defaults",
-      "delete",
-      appId,
-      nativeKey,
-    ]);
-  }
-
-  const domainPath = prefsDomainPath(udid, appId);
-  if (domainPath) {
-    for (const nativeKey of nativeKeys) {
-      tryRun("defaults", ["delete", domainPath, nativeKey]);
-    }
-  }
-}
-
-function deleteSimulatorPreferenceDomainKeys(udid, appId, keys) {
-  for (const key of keys) {
-    for (const nativeKey of preferenceNativeKeys(key)) {
-      tryRun("xcrun", [
-        "simctl",
-        "spawn",
-        udid,
-        "defaults",
-        "delete",
-        appId,
-        nativeKey,
-      ]);
-    }
-  }
-}
-
 function defaultsWriteString(udid, appId, key, value) {
   const nativeKeys = preferenceNativeKeys(key);
   // Write through the simulator defaults domain. Host-path `defaults write`
@@ -362,12 +324,6 @@ const FIRST_RUN_STATE_KEYS = [
   "eliza.background.config",
   "elizaos:first-run:force-fresh",
 ];
-
-function clearFirstRunState(udid, appId) {
-  for (const key of FIRST_RUN_STATE_KEYS) {
-    defaultsDelete(udid, appId, key);
-  }
-}
 
 function takeScreenshot(udid, label) {
   try {

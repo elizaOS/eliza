@@ -23,7 +23,9 @@ export function rendererManifestPathFromAppPath(appPath) {
 
 export function freshRendererManifestPath({ repoRoot, rendererDist }) {
   return path.join(
-    rendererDist ? path.resolve(rendererDist) : path.join(repoRoot, "packages", "app", "dist"),
+    rendererDist
+      ? path.resolve(rendererDist)
+      : path.join(repoRoot, "packages", "app", "dist"),
     RENDERER_MANIFEST,
   );
 }
@@ -34,12 +36,18 @@ export function readRendererManifest(manifestPath, label) {
   }
   const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   if (typeof parsed.buildId !== "string" || parsed.buildId.length === 0) {
-    throw new Error(`${label} renderer manifest has no buildId: ${manifestPath}`);
+    throw new Error(
+      `${label} renderer manifest has no buildId: ${manifestPath}`,
+    );
   }
   return parsed;
 }
 
-export function compareRendererBuildIds({ fresh, installed, label = "iOS app" }) {
+export function compareRendererBuildIds({
+  fresh,
+  installed,
+  label = "iOS app",
+}) {
   if (installed.buildId !== fresh.buildId) {
     throw new Error(
       `${label} renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} - stale UI install.`,
@@ -56,9 +64,13 @@ export function readIosBundleIdFromAppPath(appPath) {
   if (!fs.existsSync(plist)) {
     throw new Error(`iOS app bundle is missing Info.plist: ${plist}`);
   }
-  const bundleId = execText("plutil", ["-extract", "CFBundleIdentifier", "raw", plist], {
-    optional: true,
-  });
+  const bundleId = execText(
+    "plutil",
+    ["-extract", "CFBundleIdentifier", "raw", plist],
+    {
+      optional: true,
+    },
+  );
   if (!bundleId) {
     throw new Error(`Could not read CFBundleIdentifier from ${plist}`);
   }
@@ -68,7 +80,9 @@ export function readIosBundleIdFromAppPath(appPath) {
 export function assertIosAppPathMatchesBundleId({ appPath, bundleId }) {
   const actual = readIosBundleIdFromAppPath(appPath);
   if (actual !== bundleId) {
-    throw new Error(`iOS app bundle id ${actual} did not match expected ${bundleId}: ${appPath}`);
+    throw new Error(
+      `iOS app bundle id ${actual} did not match expected ${bundleId}: ${appPath}`,
+    );
   }
   return actual;
 }
@@ -91,7 +105,12 @@ export function assertIosAppRendererFresh({
   return result;
 }
 
-export function assertCandidateIosAppRendererFresh({ appPath, bundleId, repoRoot, log }) {
+export function assertCandidateIosAppRendererFresh({
+  appPath,
+  bundleId,
+  repoRoot,
+  log,
+}) {
   assertIosAppPathMatchesBundleId({ appPath, bundleId });
   return assertIosAppRendererFresh({
     appPath,
@@ -113,7 +132,9 @@ export function assertInstalledIosAppRendererFresh({
     { optional: true },
   );
   if (!appPath) {
-    throw new Error(`Cannot verify renderer stamp: ${bundleId} is not installed in simulator ${udid}.`);
+    throw new Error(
+      `Cannot verify renderer stamp: ${bundleId} is not installed in simulator ${udid}.`,
+    );
   }
   return assertIosAppRendererFresh({
     appPath,

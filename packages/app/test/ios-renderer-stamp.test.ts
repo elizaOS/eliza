@@ -63,8 +63,9 @@ describe("iOS renderer stamp", () => {
       JSON.stringify({ buildId: "same", builtAt: "later" }),
     );
 
-    expect(
-      assertIosAppRendererFresh({ appPath, repoRoot }),
-    ).toEqual({ buildId: "same", builtAt: "later" });
+    expect(assertIosAppRendererFresh({ appPath, repoRoot })).toEqual({
+      buildId: "same",
+      builtAt: "later",
+    });
   });
 });
