@@ -217,7 +217,8 @@ export class XRSessionService extends Service {
 			// transport error (ECONNRESET etc.) precedes 'close'; the session is torn
 			// down there. Log so it is observable without escalating benign drops.
 			logger.warn(
-				`[XRSessionService] ws error on ${connId}: ${err instanceof Error ? err.message : String(err)}`,
+				{ connId, error: err.message, stack: err.stack },
+				"[XRSessionService] ws error",
 			),
 		);
 	}
