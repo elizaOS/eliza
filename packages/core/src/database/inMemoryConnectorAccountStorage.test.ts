@@ -1,3 +1,8 @@
+/**
+ * Exercises the connector-account storage surface of `IDatabaseAdapter` against
+ * the real `InMemoryDatabaseAdapter`: account upsert/get/list, credential refs,
+ * audit-event secret redaction, and OAuth flow-state create/consume/update/delete.
+ */
 import { describe, expect, it } from "vitest";
 import type { IDatabaseAdapter, UUID } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";

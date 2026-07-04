@@ -1,3 +1,13 @@
+/**
+ * Node-only pinned HTTP/HTTPS transport for the SSRF fetch guard. `nodePinnedFetch`
+ * issues a request through `node:http`/`node:https` while forcing DNS resolution
+ * through the caller-supplied pinned `lookup`, so the socket connects to the exact
+ * address `fetch-guard.ts` already screened — closing the DNS-rebinding window
+ * between the vetting lookup and the connect. Bridges web `RequestInit`/`Response`
+ * to node's `request`/`IncomingMessage`: body buffering, header normalization, a
+ * streamed response body, and abort-signal wiring. `nodeLookupFn` is the default
+ * `node:dns` resolver the guard pins against.
+ */
 import { Buffer } from "node:buffer";
 import { lookup as dnsLookup } from "node:dns/promises";
 import {

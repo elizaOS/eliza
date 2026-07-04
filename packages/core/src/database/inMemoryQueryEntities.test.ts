@@ -1,3 +1,7 @@
+/**
+ * Tests `InMemoryDatabaseAdapter.queryEntities` — agent-scoped, component-aware
+ * entity scans with limit/offset paging. Runs against the real in-memory adapter.
+ */
 import { describe, expect, it } from "vitest";
 import type { Component, Entity, UUID } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";

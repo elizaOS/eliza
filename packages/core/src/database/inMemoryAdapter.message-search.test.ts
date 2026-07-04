@@ -1,3 +1,9 @@
+/**
+ * Tests `InMemoryDatabaseAdapter.getMemories` keyword filtering (`textContains`)
+ * and ordering — case-insensitive literal match (`%`/`_` are not wildcards),
+ * `orderDirection` paging, and a bounded large-room scan. Runs against the real
+ * in-memory adapter, mirroring plugin-sql ILIKE semantics.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory, UUID } from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";

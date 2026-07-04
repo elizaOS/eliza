@@ -1,3 +1,10 @@
+/**
+ * Covers incoming-message hardening (GHSA-gh63-5vpj-39qp / #12087): fencing
+ * untrusted channel text, flagging prompt-injection, stripping a forged
+ * `isAutonomous` marker off non-autonomy sources, and scrubbing secret-shaped
+ * text before persistence. Deterministic — pure functions over `Memory` objects.
+ */
+
 import { describe, expect, it } from "vitest";
 import { isAutonomousTurn } from "../../runtime/private-action-gate.ts";
 import type { Memory } from "../../types/memory.ts";

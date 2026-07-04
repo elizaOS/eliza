@@ -1,3 +1,9 @@
+/**
+ * Exercises the `dlopen` path gate — `assertDlopenPathAllowed` and
+ * `isPathInsideAppBundle` — across build variants, using real per-test tempdir
+ * bundles on disk. Store-build enforcement is darwin-only, so the
+ * bundle-containment cases are gated on `process.platform`.
+ */
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";

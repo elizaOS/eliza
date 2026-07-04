@@ -1,3 +1,8 @@
+/**
+ * Records for the task system — durable scheduled/queued work rows the task
+ * scheduler reads.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

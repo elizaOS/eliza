@@ -1,7 +1,3 @@
-import type { IAgentRuntime } from "../types/index.ts";
-import { ModelType } from "../types/index.ts";
-import { parseJSONObjectFromText } from "../utils.ts";
-
 /**
  * Shared content-addressed cache for image descriptions.
  *
@@ -13,6 +9,9 @@ import { parseJSONObjectFromText } from "../utils.ts";
  * the served/remote URL) means identical bytes resolve to one cached
  * description reused everywhere.
  */
+import type { IAgentRuntime } from "../types/index.ts";
+import { ModelType } from "../types/index.ts";
+import { parseJSONObjectFromText } from "../utils.ts";
 
 export interface CachedImageDescription {
 	title: string;

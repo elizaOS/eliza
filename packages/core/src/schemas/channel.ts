@@ -1,3 +1,8 @@
+/**
+ * Canonical `SchemaTable` for the channels table — messaging channels scoped to a
+ * message_server, with text (not native uuid) ids. Assembled by `buildBaseTables`
+ * (schemas/index.ts).
+ */
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

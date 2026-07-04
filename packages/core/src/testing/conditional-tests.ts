@@ -1,3 +1,8 @@
+/**
+ * Condition-gated wrappers around Vitest's describe/it/test that fall back to
+ * the `.skip` variant when the predicate is false, letting suites opt out of a
+ * block without scattering inline `if` guards.
+ */
 import { describe, it, test } from "vitest";
 
 type DescribeFn = typeof describe;

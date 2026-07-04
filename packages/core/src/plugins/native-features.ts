@@ -1,3 +1,13 @@
+/**
+ * Registry of optional, core-compiled "native" runtime feature plugins —
+ * documents, relationships, trajectories, advancedPlanning, advancedMemory — that
+ * the runtime boot loop enables per character flag. Exposes the resolution tables
+ * mapping each feature to its plugin, plugin name, default on/off, and owned
+ * service types, plus the reverse lookups (service-type→feature, name→feature).
+ * Also defines the `relationships` plugin: the native relationship / contact /
+ * follow-up / social-memory capability bundle. Iterating this single registry
+ * keeps per-feature enablement out of hard-coded runtime branches.
+ */
 // Direct leaf-file imports — see comment in
 // ../features/advanced-capabilities/index.ts for the Bun.build mis-rewrite
 // that requires bypassing the barrels here too.
@@ -50,17 +60,13 @@ export const relationshipsPlugin: Plugin = {
 	description:
 		"Native relationship, contact, follow-up, and social memory capabilities.",
 	actions: [
-		// Contact / Rolodex / entity ops are consolidated into the
-		// `CONTACT` parent action in `@elizaos/agent`
-		// (packages/agent/src/actions/contact.ts). The old
-		// addContactAction / removeContactAction / searchContactsAction /
-		// updateContactAction / updateEntityAction leaves are no longer
-		// registered here — their similes live on CONTACT's similes list.
-		// MESSAGE and POST register the parent umbrella plus virtual
-		// MESSAGE_<SUB> / POST_<SUB> actions for every subaction. The
-		// virtuals delegate to the parent's handler with `subaction:`
-		// injected, so the planner can pick a specific verb directly OR
-		// call the parent with custom params.
+		// Contact / Rolodex / entity ops live on the `CONTACT` parent action in
+		// `@elizaos/agent` (packages/agent/src/actions/contact.ts), not as leaves
+		// here — their similes live on CONTACT's similes list. MESSAGE and POST
+		// register the parent umbrella plus virtual MESSAGE_<SUB> / POST_<SUB>
+		// actions for every subaction; the virtuals delegate to the parent's
+		// handler with `subaction:` injected, so the planner can pick a specific
+		// verb directly OR call the parent with custom params.
 		...promoteSubactionsToActions(messageAction),
 		...promoteSubactionsToActions(postAction),
 	],

@@ -1,3 +1,11 @@
+/**
+ * Recent-conversation text extraction. Pulls the last N conversation lines from
+ * `State` (the `recentMessages` / `text` values plus the recent-messages memory
+ * array), strips language-agnostic speaker-prefix labels ("Name: …"), and dedupes
+ * while preserving order. `recentConversationTexts` additionally falls back to
+ * `runtime.getMemories` on the room's `messages` table when state alone is too
+ * thin, degrading to state-only context if that read fails.
+ */
 import { logger } from "../logger";
 import { getRecentMessagesData } from "../recent-messages-state";
 import type { IAgentRuntime, Memory, State } from "../types";

@@ -1,3 +1,12 @@
+/**
+ * Prompt template and output JSON schema for the planner, which turns the user
+ * request and prior tool results into the smallest grounded queue of native
+ * tool calls (or a user-visible message when no tool fits). Feeds the
+ * planner-loop stage of the message loop. The schema keeps `args` a permissive
+ * object — strict-grammar providers reject an empty `properties` shape — and
+ * carries an optional `completed` signal the post-tool gate uses to decide
+ * whether to fall through to a full evaluator pass.
+ */
 import type { JSONSchema } from "../types/model";
 
 export const plannerTemplate = `task: Plan next native tool calls.

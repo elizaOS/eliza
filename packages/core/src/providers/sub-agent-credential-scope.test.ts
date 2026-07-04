@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the SUB_AGENT_CREDENTIAL_SCOPE provider, which exposes the
+ * active child credential scope (session id + allowed secrets) from the
+ * CredentialScopeClient service. The harness is deterministic: a hand-rolled
+ * fake client is returned from a stub runtime's getService, with no live model
+ * or database.
+ */
 import { describe, expect, test } from "vitest";
 import { subAgentCredentialScopeProvider } from "./sub-agent-credential-scope";
 

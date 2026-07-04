@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the USER_IDENTITY_VERIFICATION_STATUS provider, which reports
+ * whether a user is verified via the IdentityVerificationClient service. The
+ * harness is deterministic: a hand-rolled fake client is returned from a stub
+ * runtime's getService, with no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { userIdentityVerificationStatusProvider } from "./user-identity-verification-status";
 

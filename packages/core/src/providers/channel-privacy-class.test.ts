@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the CHANNEL_PRIVACY_CLASS provider, which derives a channel's
+ * privacy class (dm / unknown) from the message content's channelType. The
+ * harness is deterministic: runtime and message are plain object literals cast
+ * through `as never`, with no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../types/primitives";
 import { channelPrivacyClassProvider } from "./channel-privacy-class";

@@ -1,3 +1,8 @@
+/**
+ * Exercises the read-side access-control filter — `actorFromAccessContext`,
+ * `canReadScope`, and `filterByAccessContext` — as pure deterministic
+ * functions, plus a verbatim cross-check against the documents read ladder.
+ */
 import { describe, expect, it } from "vitest";
 import type { AccessContext, Memory, MemoryScope, UUID } from "../types";
 import {
@@ -128,8 +133,8 @@ describe("canReadScope", () => {
 		}
 	});
 
-	// Regression guard for PR 3d: for the four DOCUMENT scopes, canReadScope must
-	// be byte-identical to the documents plugin's canReadDocumentMemory ladder
+	// Regression guard: for the four DOCUMENT scopes, canReadScope must be
+	// byte-identical to the documents plugin's canReadDocumentMemory ladder
 	// (plugins/plugin-documents/src/routes.ts:408-430), so documents can delegate
 	// here without behavior change.
 	it("matches the documents read ladder verbatim for document scopes", () => {

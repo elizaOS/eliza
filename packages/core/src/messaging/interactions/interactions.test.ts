@@ -1,3 +1,9 @@
+/**
+ * Round-trip and behavior tests for the message-interaction block pipeline —
+ * parse, serialize, normalize, callback codec, and neutral button layout for
+ * the `[CHOICE]` / `[FORM]` / `[TASK]` / `[FOLLOWUPS]` / `[SECRET]` markers
+ * embedded in message content. Pure deterministic functions; no model or DB.
+ */
 import { describe, expect, it } from "vitest";
 import type {
 	ChoiceInteraction,

@@ -1,3 +1,8 @@
+/**
+ * Core unit tests for {@link SecretSwapSession}: substitute/restore round-trip,
+ * deterministic placeholders for repeated values, and fail-loud on a fabricated
+ * this-session placeholder. Deterministic and in-process — no model, no DB.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	SecretSwapSession,

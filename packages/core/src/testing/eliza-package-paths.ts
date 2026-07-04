@@ -1,3 +1,15 @@
+/**
+ * On-disk resolution for `@elizaos/*` workspace packages used by the core test
+ * harness: locate an installed package root, pick its entry (source vs dist),
+ * and import named exports from it.
+ *
+ * Distinguishes a repo-local monorepo/submodule checkout — where the package's
+ * `src/` is preferred so tests run against live source — from an ordinary
+ * `node_modules` install, where the built `dist/` entry wins. Setting
+ * `ELIZA_SKIP_LOCAL_UPSTREAMS=1` forces the installed path: CI checks out the
+ * submodule sources but skips installing their transitive deps, so importing
+ * from that source would fail at runtime.
+ */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

@@ -1,3 +1,8 @@
+/**
+ * Memoized probe for whether the process can bind a TCP socket on the loopback
+ * interface (127.0.0.1), letting tests skip cases that need a real listening
+ * port in sandboxes that forbid it.
+ */
 import net from "node:net";
 
 let loopbackAvailabilityPromise: Promise<boolean> | null = null;

@@ -1,3 +1,10 @@
+/**
+ * Shared HTTP request/response plumbing for the API and benchmark route layers:
+ * bounded body reads (size-guarded, with optional size/error-to-null fallbacks)
+ * and JSON responders in both awaitable and fire-and-forget forms. The raw body
+ * buffer and its parsed JSON are memoized on the request via `Symbol.for` keys
+ * so several handlers can read one body without re-consuming the stream.
+ */
 import type http from "node:http";
 import { logger } from "../logger.js";
 

@@ -1,3 +1,8 @@
+/**
+ * Tests `InMemoryDatabaseAdapter` relationship storage — create/update/delete
+ * and query by pair, entity, tags, and ids, plus the defensive clone that
+ * protects stored records from caller mutation. Runs against the real adapter.
+ */
 import { describe, expect, it } from "vitest";
 import type { UUID } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";

@@ -1,3 +1,9 @@
+/**
+ * Exercises the connector target-source registry (`createTargetSourceRegistry`
+ * and the `TargetSourceRegistryService` wrapper) — register / get / list /
+ * unregister keyed by platform, plus source clearing on service stop — with
+ * deterministic fake sources.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	createTargetSourceRegistry,

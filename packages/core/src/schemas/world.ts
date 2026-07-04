@@ -1,3 +1,8 @@
+/**
+ * Worlds — agent-owned groupings (e.g. a server/guild) that rooms are
+ * organized under.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `actions/subaction-dispatch`: reading a sub-action
+ * discriminator from planner args (canonical `action` key plus legacy aliases),
+ * normalizing op names, and dispatching to the selected handler. Pure
+ * functions — no runtime or live model.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	CANONICAL_SUBACTION_KEY,

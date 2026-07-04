@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the OUTSTANDING_PAYMENT_REQUESTS provider, which lists pending
+ * payment requests from the PaymentRequestsClient service. The harness is
+ * deterministic: a hand-rolled fake client is returned from a stub runtime's
+ * getService, with no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { outstandingPaymentRequestsProvider } from "./outstanding-payment-requests";
 

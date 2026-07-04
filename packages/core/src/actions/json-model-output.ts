@@ -1,3 +1,10 @@
+/**
+ * Lenient JSON parsing for model output. Strips a leading `<think>…</think>`
+ * reasoning preamble and a ```json / ```json5 code fence, then `JSON.parse`s the
+ * remainder — returning `null` rather than throwing on any failure.
+ * `parseJsonModelRecord` / `parseJsonModelArray` add shape guards for the common
+ * object / array cases.
+ */
 const MODEL_CODE_FENCE_PATTERN =
 	/^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 

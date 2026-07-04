@@ -1,3 +1,9 @@
+/**
+ * Covers `parseFrontmatterBlock`: YAML frontmatter parsing with CRLF handling and
+ * scalar/object→string coercion, line-parsing fallback for malformed YAML, empty
+ * result for missing/unclosed delimiters, and a fast-check fuzz asserting it never
+ * throws and yields only non-empty trimmed keys with string values.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { parseFrontmatterBlock } from "./frontmatter";

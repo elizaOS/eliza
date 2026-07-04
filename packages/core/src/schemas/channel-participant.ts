@@ -1,3 +1,8 @@
+/**
+ * Canonical `SchemaTable` for the channel_participants join table linking
+ * channels to entities (composite PK, plus a reverse index on entity_id).
+ * Assembled by `buildBaseTables` (schemas/index.ts).
+ */
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

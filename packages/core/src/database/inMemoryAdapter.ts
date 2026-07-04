@@ -1,3 +1,18 @@
+/**
+ * In-memory `IDatabaseAdapter` implementation — the storage fallback the
+ * runtime installs when no adapter is provided and `ALLOW_NO_DATABASE` is set,
+ * and the backing store for unit/integration tests, benchmarks, and
+ * ephemeral/serverless runs.
+ *
+ * Implements the full batch-first `IDatabaseAdapter` surface (memories,
+ * entities/components, rooms/participants, relationships, tasks, cache,
+ * pairing, connector accounts + OAuth flow state) over plain Maps and arrays;
+ * the single-item CRUD conveniences live on `AgentRuntime` and delegate here.
+ * Semantics are kept honest against plugin-sql — newest-first ordering (id as
+ * tiebreaker), case-insensitive `textContains` (ILIKE), and metadata
+ * containment all mirror the SQL adapters. Persistence is process-local and
+ * lost on restart.
+ */
 import { DatabaseAdapter } from "../database";
 import type {
 	AccessContext,
@@ -1062,9 +1077,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		for (const memory of memories) {
 			const existing = this.memoriesById.get(String(memory.id));
 			if (!existing) {
-				// WHY: Changed from returning false to skipping. Update failures should
-				// ideally throw, but silently skipping non-existent memories maintains
-				// backward compatibility with callers that may not check return values.
+				// Updates to a non-existent memory are skipped, not thrown, to stay
+				// compatible with callers that don't check return values.
 				continue;
 			}
 			const merged: Memory = { ...existing, ...memory };
@@ -1579,7 +1593,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			return true;
 		});
 
-		// WHY: Apply pagination to limit result size. Previously returned ALL matching tasks.
+		// Paginate to bound result size.
 		const offset = params.offset ?? 0;
 		filtered = filtered.slice(offset);
 		if (params.limit) {

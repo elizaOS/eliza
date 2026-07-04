@@ -5,11 +5,10 @@ import { chunkMarkdownText } from "./chunk.ts";
 /**
  * `chunkMarkdownText` feeds connectors with HARD length caps (Discord 2000,
  * SMS 160, …): a single chunk over `limit` gets the whole message rejected by
- * the platform API. The fence-splitting path used to overshoot — when the
- * injected close line (\n + ``` marker) did not fit next to the forced
- * minimum-progress break, the close line was appended anyway, emitting chunks
- * of `limit + 1` (and up to `limit + 1 + marker.length` on the bail path).
- * The limit is a hard cap; closing/reopening fences is best-effort within it.
+ * the platform API. The tricky path is fence splitting — the injected close
+ * line (\n + ``` marker) must not push a chunk past `limit` even when it does
+ * not fit next to the forced minimum-progress break. The limit is a hard cap;
+ * closing/reopening fences is best-effort within it.
  */
 describe("chunkMarkdownText", () => {
 	it("never exceeds the limit even when the fence close line cannot fit", () => {
@@ -27,10 +26,10 @@ describe("chunkMarkdownText", () => {
 	});
 
 	it("terminates when the fence reopen line is longer than the limit", () => {
-		// Regression: the bail path used to re-arm the fence split anyway, so each
-		// iteration prepended the "```js" reopen line (6 chars with newline) while
-		// consuming only `limit` (5) chars — `remaining` grew forever and the call
-		// never returned, hard-hanging the caller.
+		// The bail path must not re-arm the fence split, or each
+		// iteration prepends the "```js" reopen line (6 chars with newline) while
+		// consuming only `limit` (5) chars — `remaining` grows forever and the call
+		// never returns, hard-hanging the caller.
 		const chunks = chunkMarkdownText(`\`\`\`js\n${"b".repeat(50)}`, 5);
 
 		expect(chunks.length).toBeGreaterThan(0);
@@ -81,7 +80,7 @@ describe("chunkMarkdownText", () => {
 				fc.array(piece, { minLength: 1, maxLength: 30 }),
 				// min 8 keeps a regression failing fast on the length assertion; the
 				// deterministic tests above pin the tiny-limit (< 8) behavior, where
-				// the old code did not just overflow but never terminated.
+				// the failure mode is not just overflow but non-termination.
 				fc.integer({ min: 8, max: 120 }),
 				(pieces, limit) => {
 					for (const chunk of chunkMarkdownText(pieces.join(""), limit)) {

@@ -3,9 +3,9 @@ import { chunkText } from "./chunk.ts";
 
 /**
  * `chunkText` splits an over-long message into delivery-sized chunks for
- * connectors with hard length limits (Discord 2000, SMS 160, …) (#8801 — shipped
- * untested). The integrity property that matters: every chunk fits the limit AND
- * no message content is lost or corrupted across the split. A regression here
+ * connectors with hard length limits (Discord 2000, SMS 160, …) (#8801). The
+ * integrity property that matters: every chunk fits the limit AND no message
+ * content is lost or corrupted across the split. A regression here
  * silently drops or mangles the user's outbound text, so these are pinned.
  */
 describe("chunkText", () => {

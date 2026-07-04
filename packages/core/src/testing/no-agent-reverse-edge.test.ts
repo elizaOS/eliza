@@ -1,3 +1,9 @@
+/**
+ * Guards the invariant that core's `./testing` export carries no reverse import
+ * edge into `@elizaos/agent` (#12091 item 6): greps the harness source for
+ * import specifiers and asserts the injected-option shape. Deterministic — no
+ * runtime or model involved.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

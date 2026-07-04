@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the OUTSTANDING_SENSITIVE_REQUESTS provider, which lists
+ * pending secret/oauth requests from the SensitiveRequestsClient service. The
+ * harness is deterministic: a hand-rolled fake client is returned from a stub
+ * runtime's getService, with no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { outstandingSensitiveRequestsProvider } from "./outstanding-sensitive-requests";
 

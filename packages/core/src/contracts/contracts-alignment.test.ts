@@ -1,3 +1,9 @@
+/**
+ * Guards that core's contract implementations stay aligned with the
+ * `@elizaos/contracts` literals they mirror: service capabilities/transports,
+ * deployment runtimes, linked-account and wallet-RPC normalizers, and resolved
+ * cloud-topology keys. Pure deterministic assertions over fixture configs.
+ */
 import {
 	type BscWalletRpcProvider,
 	SERVICE_CAPABILITIES as CONTRACT_SERVICE_CAPABILITIES,

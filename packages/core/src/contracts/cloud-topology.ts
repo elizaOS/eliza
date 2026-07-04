@@ -1,3 +1,11 @@
+/**
+ * Derives the effective Eliza Cloud topology from a resolved config record:
+ * whether the account is linked, the deployment runtime (cloud vs local), which
+ * cloud services (inference/tts/media/embeddings/rpc) are routed through the
+ * cloud proxy, and whether the eliza-cloud plugin should load. Reads through the
+ * `first-run-options` resolvers over `@elizaos/contracts`; linkage treats a
+ * `[REDACTED]` API key as unset.
+ */
 import {
 	normalizeFirstRunProviderId,
 	resolveDeploymentTargetInConfig,

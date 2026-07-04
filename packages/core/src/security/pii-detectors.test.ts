@@ -1,3 +1,9 @@
+/**
+ * Covers the core `detectPii` classes and their validation primitives —
+ * Luhn/card-brand, SSN, IPv4 range, IBAN mod-97 — plus span overlap resolution,
+ * source ordering, and `disabledKinds`. Deterministic pattern/validator checks.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	cardBrand,

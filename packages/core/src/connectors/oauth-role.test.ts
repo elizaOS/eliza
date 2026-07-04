@@ -1,3 +1,8 @@
+/**
+ * Unit tests for `readRequestedConnectorRole` — mapping connector `requestedRole`
+ * metadata to the canonical OWNER / AGENT / TEAM role, its OWNER fallbacks, and
+ * when it emits the misconfiguration debug log (logger spied, fully deterministic).
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
 import { readRequestedConnectorRole } from "./oauth-role";

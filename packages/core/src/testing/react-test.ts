@@ -1,5 +1,11 @@
 /// <reference path="./react-test-renderer-module.ts" />
 
+/**
+ * Assertion helpers over `react-test-renderer` trees: recursive text extraction
+ * (`text` / `textOf`), a button-by-label finder, and an `act`-based microtask
+ * `flush`. Pairs with the ambient `react-test-renderer` declaration in the
+ * sibling module.
+ */
 import { act } from "react-test-renderer";
 
 export type ReactTestChild = string | ReactTestInstance;

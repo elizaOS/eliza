@@ -1,3 +1,11 @@
+/**
+ * Covers the extended secret classes in `detectPii` and their validators —
+ * BIP-39 mnemonics, WIF keys, URL credentials, provider tokens (Anthropic,
+ * Stripe, Slack, Telegram, Google OAuth), PGP/OpenSSH key blocks — plus the
+ * registry/config-derived secret seeding (`isSecretKey`, `deriveKnownSecrets`).
+ * Deterministic string checks, no external calls.
+ */
+
 import { describe, expect, it } from "vitest";
 import { deriveKnownSecrets, isSecretKey } from "../constants/secrets";
 import { findMnemonicPhrase, mnemonicValid } from "./bip39-wordlist";

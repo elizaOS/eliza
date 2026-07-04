@@ -1,11 +1,14 @@
+/**
+ * L8 (#12229): the SSRF fetch guard must refuse a `lookupFn` supplied without a
+ * `pinnedFetchImpl`. Computing a DNS pin and then falling through to the unpinned
+ * fetcher would silently discard the pin and re-open the DNS-rebinding race
+ * (#11147); the guard throws instead of downgrading. Deterministic — stub
+ * lookup/fetch, no real egress.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { fetchWithSsrfGuard } from "./fetch-guard.ts";
 import type { LookupFn, PinnedLookupFetchLike } from "./ssrf.ts";
 
-// L8 (#12229): a `lookupFn` computes a DNS pin, but without a `pinnedFetchImpl`
-// to connect to that pinned IP the request would fall through to the unpinned
-// fetcher — the pin is computed and silently discarded, re-opening the
-// DNS-rebinding race (#11147). The guard must throw instead of downgrading.
 describe("fetchWithSsrfGuard: lookupFn without pinnedFetchImpl", () => {
 	const lookupFn: LookupFn = async () => [
 		{ address: "93.184.216.34", family: 4 },

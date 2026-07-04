@@ -1,3 +1,7 @@
+/**
+ * Entity-to-room membership join, carrying each entity's per-room state.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

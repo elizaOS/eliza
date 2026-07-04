@@ -1,3 +1,9 @@
+/**
+ * Route-context and helper interfaces shared by the HTTP dispatch layer: the
+ * request/response metadata plus the `json` / `error` / `readJsonBody`
+ * responders threaded into each route handler. Type-only; the implementations
+ * live in `http-helpers.ts`.
+ */
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 

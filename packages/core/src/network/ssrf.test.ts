@@ -1,3 +1,8 @@
+/**
+ * Unit suite for the SSRF policy core (ssrf.ts): pinned-lookup callback shapes,
+ * private/link-local + blocked-hostname classification, resolution policy, and
+ * non-canonical IPv4 encodings as bypass vectors. Deterministic — stub lookupFn.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	createPinnedLookup,
@@ -57,8 +62,8 @@ describe("createPinnedLookup", () => {
 	it("drops undefined/empty addresses instead of pinning 'undefined'", async () => {
 		const lookup = createPinnedLookup({
 			hostname: "example.com",
-			// A resolver returning a hole (undefined/empty) used to reach node's
-			// net layer and throw "Invalid IP address: undefined".
+			// An undefined/empty address reaches node's net layer and throws
+			// "Invalid IP address: undefined" if pinned, so holes must be dropped.
 			addresses: [undefined as unknown as string, "", "203.0.113.10"],
 		}) as (
 			hostname: string,

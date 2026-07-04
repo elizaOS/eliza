@@ -1,3 +1,12 @@
+/**
+ * Fail-closed normalizers and adapters over `@elizaos/contracts` service-routing
+ * config. Re-exports the contract types and validates untrusted config records
+ * into typed shapes — service route/routing, deployment target, and
+ * linked-account records/flags — dropping unknown or empty fields rather than
+ * passing them through. Also builds the default Eliza Cloud service routing
+ * (Cerebras text-model defaults, per-capability cloud-proxy routes). Consumed by
+ * cloud-topology resolution and first-run config handling.
+ */
 import type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,
@@ -20,8 +29,8 @@ import type {
 } from "@elizaos/contracts";
 import { asRecord } from "../utils/type-guards.js";
 
-// Type contracts moved to @elizaos/contracts (Phase 5A). Re-export here
-// so existing consumers that import from this module keep compiling.
+// Type contracts live in @elizaos/contracts; re-exported here so consumers
+// that import from this module keep compiling.
 export type {
 	DeploymentTargetConfig,
 	DeploymentTargetRuntime,

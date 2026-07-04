@@ -1,9 +1,11 @@
-// Pure data inspection helpers shared between plugin auto-enable predicates,
-// host-app config sync code, and the agent runtime.
-//
-// These live in @elizaos/core (not @elizaos/shared) so plugin packages can
-// import them without dragging the app/shared layer into their dep graph —
-// external plugins published to npm only need @elizaos/core.
+/**
+ * Pure data inspection helpers shared between plugin auto-enable predicates,
+ * host-app config sync code, and the agent runtime.
+ *
+ * These live in @elizaos/core (not @elizaos/shared) so plugin packages can
+ * import them without dragging the app/shared layer into their dep graph —
+ * external plugins published to npm only need @elizaos/core.
+ */
 
 /**
  * True when a connector configuration block is present and "configured

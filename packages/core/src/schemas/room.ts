@@ -1,3 +1,8 @@
+/**
+ * Conversation contexts (channels), each scoped under a world and
+ * message-server, that participants join.
+ */
+
 import type { SchemaTable } from "../types/schema.ts";
 
 /**

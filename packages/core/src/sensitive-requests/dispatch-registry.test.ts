@@ -1,3 +1,8 @@
+/**
+ * Exercises the sensitive-request dispatch registry — register / get / list /
+ * unregister / resolve over delivery adapters — with deterministic fake
+ * adapters (no real connector delivery).
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	createSensitiveRequestDispatchRegistry,

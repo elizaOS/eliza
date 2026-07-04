@@ -1,3 +1,10 @@
+/**
+ * Sub-action dispatch for umbrella (parent) actions. Reads a discriminator
+ * parameter — the canonical `action` key or a legacy alias — normalizes it, and
+ * routes to the matching handler in a sub-action map, returning an
+ * `UNKNOWN_SUBACTION` `ActionResult` when the operation is missing or unknown.
+ * Lets one planner-visible parent action fan out to many second-level operations.
+ */
 import type { ActionResult } from "../types";
 
 export type SubactionParameters = Record<string, unknown> | undefined;
@@ -13,9 +20,9 @@ export type SubactionHandlerMap<TSubaction extends string, TContext = void> = {
 /**
  * Canonical project-wide discriminator field name for umbrella actions.
  *
- * Umbrella actions previously used a mix of `subaction`, `op`, `operation`,
- * `verb`, and `action`. The canonical name is now `action`. The other names
- * remain accepted as input aliases so cached planner outputs do not break.
+ * The canonical discriminator name is `action`. The legacy names `subaction`,
+ * `op`, `operation`, and `verb` remain accepted as input aliases so cached
+ * planner outputs do not break.
  *
  * Some existing parents already use `action` for a second-level choice
  * (`TASKS` uses `subaction=control` and `action=pause`, for example). Those

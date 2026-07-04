@@ -1,16 +1,15 @@
-import { describe, expect, it } from "vitest";
-import {
-	isLinkedAccountProviderId,
-	normalizeLinkedAccountFlagConfig,
-	normalizeLinkedAccountFlagsConfig,
-} from "./service-routing.ts";
-
 /**
  * Linked-account config normalization gates which provider accounts the router
  * may use. Provider-id validation must be an exact allowlist, and the
  * normalizers must drop unrecognized/empty entries rather than passing partial
  * or malformed account records downstream.
  */
+import { describe, expect, it } from "vitest";
+import {
+	isLinkedAccountProviderId,
+	normalizeLinkedAccountFlagConfig,
+	normalizeLinkedAccountFlagsConfig,
+} from "./service-routing.ts";
 
 describe("isLinkedAccountProviderId", () => {
 	it("accepts only known provider ids", () => {
