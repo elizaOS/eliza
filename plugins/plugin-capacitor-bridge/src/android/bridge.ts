@@ -326,21 +326,86 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_origConsoleWarn(...args);
 	};
 
+	// Fatal breadcrumbs land in the SAME restart-diagnostics JSONL the
+	// launcher and ElizaAgentService write/read (launch.sh's shape), so a
+	// death inside the detached agent is attributable from the Java side —
+	// without this, a fatal here is visible only in android-bridge.log, a
+	// file the service never reads, and the user sees a generic "transport
+	// hung" card (#13475).
+	const _appendDiagnostics = (
+		event: string,
+		details: Record<string, string>,
+	) => {
+		try {
+			const file =
+				process.env.DIAGNOSTICS_FILE ||
+				`${process.cwd()}/agent-restart-diagnostics.jsonl`;
+			const record = {
+				ts: Date.now(),
+				event,
+				status: "agent-child",
+				detachedAgentMode: true,
+				restartAttempts: -1,
+				details: {
+					...details,
+					pid: String(process.pid),
+					startupTraceId: process.env.ELIZA_STARTUP_TRACE_ID ?? "",
+				},
+			};
+			nodeFs.appendFileSync(file, `${JSON.stringify(record)}\n`);
+		} catch {
+			// error-policy:J7 diagnostics-must-not-kill-the-loop — the breadcrumb
+			// writer can never take down the agent it is documenting; the fatal
+			// is still mirrored to android-bridge.log below.
+		}
+	};
+
 	process.on("unhandledRejection", (reason) => {
 		const msg =
 			reason instanceof Error ? reason.stack || reason.message : String(reason);
 		_logToFile(`[android-bridge] unhandledRejection: ${msg}`);
+		_appendDiagnostics("agent-fatal", {
+			kind: "unhandledRejection",
+			message: msg.slice(0, 2000),
+		});
 		console.error("[android-bridge] unhandled rejection:", msg);
 	});
 	process.on("uncaughtException", (error) => {
 		_logToFile(
 			`[android-bridge] uncaughtException: ${error.stack || error.message}`,
 		);
+		_appendDiagnostics("agent-fatal", {
+			kind: "uncaughtException",
+			message: (error.stack || error.message).slice(0, 2000),
+		});
 		console.error(
 			"[android-bridge] uncaught exception:",
 			error.stack || error.message,
 		);
+		// Installing this handler suppresses the runtime's default fatal exit;
+		// without an explicit exit a post-boot uncaught exception leaves a
+		// zombie agent the supervisor never learns about. Exit loudly instead.
+		process.exit(1);
 	});
+
+	// Mid-boot SIGTERM/SIGINT window: the graceful stop handlers register only
+	// AFTER startEliza returns, so the entire multi-second boot was previously
+	// a silent-kill window (a service stop/restart pkill landed with zero
+	// breadcrumbs). These early handlers attribute the death, then exit with
+	// the conventional 128+signal code; the post-boot graceful registration
+	// below replaces them.
+	const _earlySignalExit = (signal: "SIGTERM" | "SIGINT") => {
+		_logToFile(`[android-bridge] ${signal} during boot — exiting`);
+		_appendDiagnostics("agent-terminated-by-signal", {
+			kind: signal,
+			stage: "boot",
+		});
+		process.exit(signal === "SIGTERM" ? 143 : 130);
+	};
+	const _earlyTerm = () => _earlySignalExit("SIGTERM");
+	const _earlyInt = () => _earlySignalExit("SIGINT");
+	process.once("SIGTERM", _earlyTerm);
+	process.once("SIGINT", _earlyInt);
 
 	_logToFile("[android-bridge] importing agent module...");
 	const { startEliza, dispatchRoute, coreRoutes } = await loadAgentModule();
@@ -361,6 +426,10 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	} catch (err: unknown) {
 		const msg = err instanceof Error ? err.stack || err.message : String(err);
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
+		_appendDiagnostics("agent-fatal", {
+			kind: "startEliza-threw",
+			message: msg.slice(0, 2000),
+		});
 		throw err;
 	} finally {
 		clearInterval(_hb);
@@ -424,6 +493,10 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	const stopped = new Promise<void>((resolve) => {
 		stop = resolve;
 	});
+	// Boot is over: retire the attribute-and-exit boot handlers in favor of
+	// the graceful server stop.
+	process.removeListener("SIGTERM", _earlyTerm);
+	process.removeListener("SIGINT", _earlyInt);
 	process.once("SIGINT", () => stop?.());
 	process.once("SIGTERM", () => stop?.());
 
