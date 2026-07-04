@@ -10,9 +10,13 @@ import {
   getAcpService,
   labelFor,
   listSessionsWithin,
+  reportProviderFetchFailure,
   shortId,
 } from "../actions/common.js";
-import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
+import {
+  getTaskAgentFrameworkState,
+  type TaskAgentFrameworkState,
+} from "../services/task-agent-frameworks.js";
 import {
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
@@ -59,20 +63,48 @@ export const availableAgentsProvider: Provider = {
       };
     }
 
+    // opencode is wired through the shell adapter (not in
+    // `coding-agent-adapters`'s registry), so `checkAvailableAgents`
+    // misses it. Query the framework-state directly so the planner sees
+    // opencode in its action context when authReady — otherwise the
+    // model reads "no compatible agent available" and refuses to spawn.
+    //
+    // A THROWN framework probe is a broken backend, NOT "opencode absent":
+    // swallowing it into `null` renders the same as a clean "opencode not
+    // installed" slate, so the planner can't distinguish a real probe crash
+    // from genuine absence and silently drops opencode from its options with
+    // no signal (#12273 healthy-empty-from-catch). Surface it — warn +
+    // reportError via reportProviderFetchFailure — and flag the context
+    // degraded so the failure is visible instead of masquerading as absence.
+    let frameworkProbeFailed = false;
     const [agents, sessions, frameworkState] = await Promise.all([
       service.checkAvailableAgents?.() ??
         service.getAvailableAgents?.() ??
         Promise.resolve([]),
       listSessionsWithin(service, 2000),
-      // opencode is wired through the shell adapter (not in
-      // `coding-agent-adapters`'s registry), so `checkAvailableAgents`
-      // misses it. Query the framework-state directly so the planner sees
-      // opencode in its action context when authReady — otherwise the
-      // model reads "no compatible agent available" and refuses to spawn.
-      getTaskAgentFrameworkState(runtime).catch(() => null),
+      getTaskAgentFrameworkState(runtime).catch(
+        (error): TaskAgentFrameworkState | null => {
+          // error-policy:J7 framework probe threw — backend down, not
+          // "opencode absent". Surface it + degrade instead of a silent null.
+          reportProviderFetchFailure(
+            runtime,
+            "AVAILABLE_AGENTS",
+            "getTaskAgentFrameworkState",
+            error,
+          );
+          frameworkProbeFailed = true;
+          return null;
+        },
+      ),
     ]);
 
     const lines = ["# acpx task agents"];
+    if (frameworkProbeFailed) {
+      lines.push(
+        "",
+        "> framework probe unavailable — adapter inventory below may be incomplete (a shell-adapter backend such as opencode could be installed but undetected). This is a probe failure, not confirmed absence.",
+      );
+    }
     const opencodeFramework = frameworkState?.frameworks.find(
       (framework) => framework.id === "opencode",
     );
@@ -138,6 +170,7 @@ export const availableAgentsProvider: Provider = {
           workdir: session.workdir,
         })),
         serviceAvailable: true,
+        frameworkProbeFailed,
       },
     };
   },
