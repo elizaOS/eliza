@@ -674,7 +674,6 @@ export const paymentAction: Action = {
 	descriptionCompressed:
 		"Payment create_request|deliver_link|verify_payload|settle|await_callback|cancel_request",
 	// Domain context declared on the owner action (#12090 item 35).
-	// Previously only present in core's static ACTION_CONTEXT_MAP fallback.
 	contexts: ["payments"],
 	parameters: [
 		{

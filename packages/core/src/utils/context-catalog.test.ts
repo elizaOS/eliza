@@ -13,11 +13,7 @@ import { describe, expect, it } from "vitest";
 import { actionStateProvider } from "../features/basic-capabilities/providers/actionState";
 import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization";
 import type { Action, AgentContext } from "../types/components";
-import {
-	LEGACY_ACTION_CONTEXT_FALLBACK,
-	resolveActionContexts,
-	resolveProviderContexts,
-} from "./context-catalog";
+import * as contextCatalog from "./context-catalog";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -56,31 +52,43 @@ describe("resolveActionContexts", () => {
 	it("prefers an action's declared contexts over the legacy fallback", () => {
 		// NONE has a legacy fallback of ["general"]; a declared array must win.
 		expect(
-			resolveActionContexts(makeAction("NONE", ["wallet", "code"])),
+			contextCatalog.resolveActionContexts(
+				makeAction("NONE", ["wallet", "code"]),
+			),
 		).toEqual(["wallet", "code"]);
 	});
 
 	it("falls back to the legacy table for plugin-owned names without declared contexts", () => {
 		// SEND_TOKEN is a plugin-owned (third-party) action name kept in the fallback.
-		expect(resolveActionContexts(makeAction("SEND_TOKEN"))).toEqual(["wallet"]);
-		expect(resolveActionContexts(makeAction("send_token"))).toEqual(["wallet"]);
+		expect(
+			contextCatalog.resolveActionContexts(makeAction("SEND_TOKEN")),
+		).toEqual(["wallet"]);
+		expect(
+			contextCatalog.resolveActionContexts(makeAction("send_token")),
+		).toEqual(["wallet"]);
 	});
 
 	it('defaults unknown, undeclared action names to ["general"]', () => {
-		expect(resolveActionContexts(makeAction("TOTALLY_UNKNOWN_ACTION"))).toEqual(
-			["general"],
-		);
+		expect(
+			contextCatalog.resolveActionContexts(
+				makeAction("TOTALLY_UNKNOWN_ACTION"),
+			),
+		).toEqual(["general"]);
 	});
 
 	it("treats an empty declared contexts array as undeclared (falls through)", () => {
-		expect(resolveActionContexts(makeAction("REPLY", []))).toEqual(["general"]);
+		expect(
+			contextCatalog.resolveActionContexts(makeAction("REPLY", [])),
+		).toEqual(["general"]);
 	});
 });
 
 describe("LEGACY_ACTION_CONTEXT_FALLBACK drift guard (#12090 item 35)", () => {
 	it("does not keep any migrated core-owned action name as a key", () => {
 		for (const { name } of MIGRATED_CORE_ACTIONS) {
-			expect(Object.hasOwn(LEGACY_ACTION_CONTEXT_FALLBACK, name)).toBe(false);
+			expect(
+				Object.hasOwn(contextCatalog.LEGACY_ACTION_CONTEXT_FALLBACK, name),
+			).toBe(false);
 		}
 	});
 
@@ -97,7 +105,9 @@ describe("LEGACY_ACTION_CONTEXT_FALLBACK drift guard (#12090 item 35)", () => {
 	});
 
 	it("only retains uppercase action-name keys (legacy fallback shape)", () => {
-		for (const key of Object.keys(LEGACY_ACTION_CONTEXT_FALLBACK)) {
+		for (const key of Object.keys(
+			contextCatalog.LEGACY_ACTION_CONTEXT_FALLBACK,
+		)) {
 			expect(key, `${key} should be an UPPER_SNAKE action name`).toMatch(
 				/^[A-Z][A-Z0-9_]*$/,
 			);
@@ -107,13 +117,17 @@ describe("LEGACY_ACTION_CONTEXT_FALLBACK drift guard (#12090 item 35)", () => {
 
 describe("resolveProviderContexts", () => {
 	it("exposes ACTION_STATE in every first-party context", () => {
-		expect(resolveProviderContexts(actionStateProvider)).toEqual([
-			...FIRST_PARTY_CONTEXT_IDS,
-		]);
-		expect(resolveProviderContexts(actionStateProvider)).toContain("tasks");
-		expect(resolveProviderContexts(actionStateProvider)).toContain("code");
-		expect(resolveProviderContexts(actionStateProvider)).toContain(
-			"agent_internal",
+		expect(contextCatalog.resolveProviderContexts(actionStateProvider)).toEqual(
+			[...FIRST_PARTY_CONTEXT_IDS],
 		);
+		expect(
+			contextCatalog.resolveProviderContexts(actionStateProvider),
+		).toContain("tasks");
+		expect(
+			contextCatalog.resolveProviderContexts(actionStateProvider),
+		).toContain("code");
+		expect(
+			contextCatalog.resolveProviderContexts(actionStateProvider),
+		).toContain("agent_internal");
 	});
 });
