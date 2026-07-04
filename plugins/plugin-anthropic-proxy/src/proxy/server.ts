@@ -384,6 +384,8 @@ export class ProxyServer {
         })
       );
     } catch (e) {
+      // error-policy:J6 best-effort diagnostics - /health should return a
+      // structured error payload if stats serialization fails.
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({

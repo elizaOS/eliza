@@ -180,6 +180,8 @@ function resolveFingerprintConfig(): {
       fingerprintConfig: loadFingerprintConfig(configPath),
     };
   } catch (error) {
+    // error-policy:J3 untrusted-input sanitizing - a bad optional fingerprint
+    // config disables the proxy and reports startError instead of crashing boot.
     return {
       configPath,
       configError: `Invalid anthropic proxy config ${configPath}: ${
@@ -257,6 +259,8 @@ export class AnthropicProxyService extends Service {
       try {
         service.effectiveUrl = validateSharedUpstream(config.upstream);
       } catch (e) {
+        // error-policy:J3 untrusted-input sanitizing - unsafe shared upstreams
+        // degrade the opt-in proxy to off and surface startError.
         service.startError = (e as Error).message;
         logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
         service.effectiveMode = "off";
@@ -301,6 +305,8 @@ export class AnthropicProxyService extends Service {
       setAnthropicBaseUrl(service.effectiveUrl);
       logger.info(`[anthropic-proxy] mode=inline — listening on ${service.effectiveUrl}`);
     } catch (e) {
+      // error-policy:J6 optional-service degradation - proxy startup failure
+      // is reported in status while the agent continues without middleware.
       service.startError = (e as Error).message;
       logger.warn(
         `[anthropic-proxy] failed to start inline proxy (${service.startError}). ` +
@@ -360,6 +366,8 @@ export class AnthropicProxyService extends Service {
         });
         upstream = { reachable: r.ok, status: r.status };
       } catch (e) {
+        // error-policy:J6 best-effort diagnostics - status should report an
+        // unreachable shared proxy, not fail the status action/route.
         upstream = {
           reachable: false,
           error: (e as Error).message,

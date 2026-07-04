@@ -75,7 +75,8 @@ function createNearAIRequestFetch(baseFetch: NearAIFetch): NearAIFetch {
         }
         init.body = JSON.stringify(body);
       } catch {
-        // Non-JSON request bodies pass through unchanged.
+        // error-policy:J3 untrusted-input sanitizing - non-JSON request bodies
+        // are outside the chat-completion shim and must pass through unchanged.
       }
     }
     return baseFetch(input, init);

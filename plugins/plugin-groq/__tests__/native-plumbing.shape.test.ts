@@ -95,6 +95,35 @@ describe("Groq native text plumbing", () => {
     expect(result).toBe("hello");
   });
 
+  it("rejects empty plain completions instead of fabricating success", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "",
+      finishReason: "content-filter",
+      usage: { inputTokens: 3, outputTokens: 0, totalTokens: 3 },
+    }));
+    vi.doMock("ai", async () => {
+      const actual = await vi.importActual<typeof import("ai")>("ai");
+      return { ...actual, generateText };
+    });
+    vi.doMock("@ai-sdk/groq", () => ({
+      createGroq: () => ({
+        languageModel: (modelName: string) => ({ modelName }),
+      }),
+    }));
+
+    const { groqPlugin } = await import("../index");
+    const runtime = createRuntime();
+    const handler = groqPlugin.models?.TEXT_SMALL as (
+      runtime: IAgentRuntime,
+      params: unknown
+    ) => Promise<unknown>;
+
+    await expect(handler(runtime, { prompt: "blocked prompt" })).rejects.toThrow(
+      "Groq TEXT_SMALL returned an empty completion"
+    );
+    expect(runtime.emitEvent).not.toHaveBeenCalled();
+  });
+
   it("sanitizes malformed generation options before calling the provider", async () => {
     const generateText = vi.fn(async () => ({
       text: "safe",

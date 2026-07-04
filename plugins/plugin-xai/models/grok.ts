@@ -54,6 +54,8 @@ function normalizeBaseUrl(value: unknown): string {
   try {
     url = new URL(raw);
   } catch {
+    // error-policy:J2 context-adding rethrow - expose the invalid setting name
+    // instead of leaking the URL parser's lower-level message.
     throw new Error("XAI_BASE_URL must be a valid URL");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
@@ -758,6 +760,8 @@ function parseJsonOrRaw(value: unknown): unknown {
   try {
     return JSON.parse(value);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing - xAI may stream tool
+    // arguments as partial/non-JSON strings; preserve the raw value.
     return value;
   }
 }

@@ -45,6 +45,8 @@ function jwtExpiresAt(token: string): number {
     const parsed = JSON.parse(json) as { exp?: number };
     return typeof parsed.exp === "number" ? parsed.exp * 1000 : 0;
   } catch {
+    // error-policy:J3 untrusted-input sanitizing - token expiry is diagnostic;
+    // malformed JWTs still authenticate via the token itself.
     return 0;
   }
 }
@@ -100,6 +102,8 @@ export function loadCredentials(
         };
       }
     } catch (e) {
+      // error-policy:J3 untrusted-input sanitizing - unreadable credentials
+      // are reported as load errors so the proxy can degrade to off.
       return {
         creds: null,
         error: `failed to read ${resolved}: ${(e as Error).message}`,

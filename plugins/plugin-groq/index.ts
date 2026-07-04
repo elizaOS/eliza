@@ -152,6 +152,8 @@ function stringifyForUsage(value: unknown): string {
   try {
     return JSON.stringify(value);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing - token estimation must not fail
+    // because a provider result contains circular/non-JSON metadata.
     return String(value);
   }
 }
@@ -247,6 +249,8 @@ function getBaseURL(runtime: IAgentRuntime): string {
   try {
     parsed = new URL(configured);
   } catch {
+    // error-policy:J2 context-adding rethrow - expose the invalid setting name
+    // instead of leaking the URL parser's lower-level message.
     throw new Error("GROQ_BASE_URL must be a valid http(s) URL");
   }
 
@@ -622,6 +626,9 @@ async function generateWithRetry(
   while (true) {
     try {
       const result = await generate();
+      if (!params.returnNative && !result.text) {
+        throw new Error(`Groq ${modelType} returned an empty completion`);
+      }
       const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(params.prompt, result.text);
       emitModelUsed(runtime, modelType, model, usage);
       if (params.returnNative) {
@@ -630,6 +637,8 @@ async function generateWithRetry(
       const { text } = result;
       return text;
     } catch (error) {
+      // error-policy:J2 context-aware retry gate - retry only typed rate-limit
+      // and transient failures, then rethrow the original provider failure.
       const kind = classifyRetryError(error);
 
       if (kind === "rate-limit" && rateLimitAttempts < MAX_RATE_LIMIT_RETRIES) {
