@@ -61,9 +61,8 @@ describe("resolveBuiltinTabId: alias resolution", () => {
 });
 
 describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
-  // Golden table mirroring the pre-refactor builtinRouteBackgroundPolicy chain:
+  // Golden table covering the builtinRouteBackgroundPolicy table:
   //   chat / background       -> "shared"
-  //   settings                -> "shared"
   //   views  && path==/views  -> "shared"
   //   apps   && path==/apps   -> "shared"
   //   otherwise               -> null (fall through to downstream resolution)
@@ -71,7 +70,6 @@ describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
     ["chat", "/chat", "shared"],
     ["chat", "/anything", "shared"],
     ["background", "/background", "shared"],
-    ["settings", "/settings", "shared"],
   ] as const)("%s @ %s -> %s (unconditional shared)", (tab, path, expected) => {
     expect(resolveBuiltinBackgroundPolicy(tab, path)).toBe(expected);
   });
@@ -88,6 +86,7 @@ describe("resolveBuiltinBackgroundPolicy: legacy parity", () => {
 
   it.each([
     ["voice", "/voice"],
+    ["settings", "/settings"],
     ["files", "/apps/files"],
     ["memories", "/apps/memories"],
     ["some-plugin-tab", "/plugin"],

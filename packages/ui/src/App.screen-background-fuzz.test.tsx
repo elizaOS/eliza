@@ -23,9 +23,11 @@
  *      the screen color is always defined; never blank, never two conflicting layers.
  *   B. When the wallpaper shows, its color === the seeded persisted color —
  *      switching views never mutates the user's background color.
- *   C. The known-shared surfaces (chat, background, settings, /views,
- *      /apps) always show the wallpaper — never the opaque underlay.
- *   D. Returning to the launcher (`/views`) always restores the wallpaper,
+ *   C. The known-shared surfaces (chat, background, /views, /apps) always
+ *      show the wallpaper — never the opaque underlay.
+ *   D. Settings always uses the opaque app surface — never the shared launcher
+ *      wallpaper.
+ *   E. Returning to the launcher (`/views`) always restores the wallpaper,
  *      regardless of which (possibly opaque) view preceded it.
  *
  * Runs the whole fuzz under shader, image, and programmable GLSL configs so
@@ -453,10 +455,12 @@ const LAUNCHER = { tab: "views" as BuiltinTab, path: "/views" };
 const ALWAYS_SHARED = new Set([
   "chat@/chat",
   "background@/background",
-  "settings@/settings",
   "views@/views",
   "apps@/apps",
 ]);
+
+// Routes that must be isolated from the launcher wallpaper/global background.
+const MUST_BE_OPAQUE = new Set(["settings@/settings"]);
 
 // Deterministic PRNG (mulberry32) so the fuzz is reproducible — no Math.random.
 function makeRng(seed: number): () => number {
@@ -677,6 +681,13 @@ describe("App screen-background fuzz — color invariant across view switching",
           `${label} ${key}: known-shared route shows wallpaper`,
         ).toBe(expectedWallpaperKind());
       }
+      if (MUST_BE_OPAQUE.has(key)) {
+        // Invariant D: isolated app surfaces must not leak the launcher wallpaper.
+        expect(
+          layer.kind,
+          `${label} ${key}: route uses opaque app surface`,
+        ).toBe("opaque");
+      }
       // Invariant B everywhere a wallpaper shows: color is preserved.
       if (layer.kind === "shader" || layer.kind === "glsl") {
         expect(
@@ -685,7 +696,7 @@ describe("App screen-background fuzz — color invariant across view switching",
         ).toBe(expectedRgb(bgState.config.color));
       }
 
-      // Invariant D: bounce back to the launcher — wallpaper always restored.
+      // Invariant E: bounce back to the launcher — wallpaper always restored.
       await navigate(rerender, LAUNCHER.tab, LAUNCHER.path);
       assertWallpaper(`after ${entry.tab} → launcher`);
     }
