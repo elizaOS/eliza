@@ -5,18 +5,20 @@ import WidgetKit
 
 // Lock Screen + Dynamic Island rendering for a voice/dictation session. The
 // `ElizaLiveActivityBridge` in the app target drives the `ContentState`; this
-// file only presents it. Interactive Stop/Save buttons are iOS 17+ (App-Intent
-// buttons in a Live Activity); on 16.1/16.2 the whole activity taps through to
-// the app via `widgetURL`. Every entry routes the `elizaos://` spine tagged
-// `source=ios-live-activity`.
+// file only presents it. Interactive Stop/Save buttons are iOS 18+ (they use
+// `OpenURLIntent`, same gate as the widget controls); on 16.1–17 the whole
+// activity taps through to the app via `widgetURL`. Every entry routes the
+// `elizaos://` spine tagged `source=ios-live-activity`.
 
-// MARK: - Interactive buttons (iOS 17+)
+// MARK: - Interactive buttons (iOS 18+)
 
 // Thin open-the-app shims: `openAppWhenRun` foregrounds the app (stopping the
 // mic / saving the note happens in the app, which owns the audio session and
 // the ActivityKit handle) and the returned URL routes the deep-link spine.
+// `OpenURLIntent` is iOS 18+ (same gate as the ElizaWidgets controls); on
+// 16.1–17 the whole activity taps through via `widgetURL`.
 
-@available(iOS 16.1, *)
+@available(iOS 18.0, *)
 struct StopElizaDictationIntent: AppIntent {
     static var title: LocalizedStringResource = "Stop Dictation"
     static var description = IntentDescription("Stop the current Eliza voice session.")
@@ -28,7 +30,7 @@ struct StopElizaDictationIntent: AppIntent {
     }
 }
 
-@available(iOS 16.1, *)
+@available(iOS 18.0, *)
 struct SaveElizaDictationIntent: AppIntent {
     static var title: LocalizedStringResource = "Save Dictation"
     static var description = IntentDescription("Save the current Eliza voice transcript.")
@@ -95,7 +97,7 @@ struct ElizaDictationLockScreenView: View {
                     .lineLimit(2)
             }
 
-            if #available(iOS 17.0, *) {
+            if #available(iOS 18.0, *) {
                 HStack(spacing: 10) {
                     Button(intent: StopElizaDictationIntent()) {
                         Label("Stop", systemImage: "stop.fill")
@@ -153,7 +155,7 @@ struct ElizaDictationLiveActivity: Widget {
                                 .font(.callout)
                                 .lineLimit(2)
                         }
-                        if #available(iOS 17.0, *) {
+                        if #available(iOS 18.0, *) {
                             HStack(spacing: 10) {
                                 Button(intent: StopElizaDictationIntent()) {
                                     Label("Stop", systemImage: "stop.fill")
