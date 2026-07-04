@@ -1,0 +1,260 @@
+[
+  {
+    "file": "packages/scripts/audit-build-typecheck.mjs",
+    "tokens": [
+      "plugins/plugin-app-manager",
+      "plugins/plugin-benchmarks",
+      "plugins/plugin-build",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-elizacloud",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-sql",
+      "plugins/plugin-video",
+      "plugins/plugin-vision",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
+  },
+  {
+    "file": "packages/scripts/build-private-workspace-packages.mjs",
+    "tokens": ["@elizaos/plugin-remote-manifest"],
+    "reason": "prose header names @elizaos/plugin-remote-manifest as the concrete #8143 repro; membership is resolved from elizaos.scripts.buildOnInstall metadata, not this text"
+  },
+  {
+    "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
+    "tokens": ["plugins/plugin-personal-assistant"],
+    "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
+  },
+  {
+    "file": "packages/scripts/check-scenario-workflow-coverage.mjs",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-app-control",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "scans the named scenario-root plugins to verify PR/live lane tags and workflow coverage"
+  },
+  {
+    "file": "packages/scripts/ci-path-gate.mjs",
+    "tokens": [
+      "plugins/plugin-app-control",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-github",
+      "plugins/plugin-sql"
+    ],
+    "reason": "path-gate rules map changes in these critical plugins to the scenario-pr test lane"
+  },
+  {
+    "file": "packages/scripts/cloud/admin/smoke-agent-plugins.ts",
+    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
+    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
+  },
+  {
+    "file": "packages/scripts/e2e-coverage/inventory.ts",
+    "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
+    "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
+  },
+  {
+    "file": "packages/scripts/e2e-coverage/manifest.ts",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-bluebubbles",
+      "plugins/plugin-browser",
+      "plugins/plugin-calendar",
+      "plugins/plugin-commands",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-discord-local",
+      "plugins/plugin-documents",
+      "plugins/plugin-elizacloud",
+      "plugins/plugin-facewear",
+      "plugins/plugin-github",
+      "plugins/plugin-hyperliquid",
+      "plugins/plugin-imessage",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-music",
+      "plugins/plugin-polymarket",
+      "plugins/plugin-scheduling",
+      "plugins/plugin-shopify",
+      "plugins/plugin-signal",
+      "plugins/plugin-social-alpha",
+      "plugins/plugin-telegram",
+      "plugins/plugin-training",
+      "plugins/plugin-wallet",
+      "plugins/plugin-whatsapp",
+      "plugins/plugin-workflow",
+      "plugins/plugin-xr"
+    ],
+    "reason": "maps each route-wiring plugin to its e2e coverage artifacts; every routed plugin needs an entry or exemption"
+  },
+  {
+    "file": "packages/scripts/ensure-native-plugins-linked.mjs",
+    "tokens": ["plugins/plugin-native-"],
+    "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
+  },
+  {
+    "file": "packages/scripts/ensure-workspace-symlinks.mjs",
+    "tokens": ["@elizaos/plugin-pdf"],
+    "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
+  },
+  {
+    "file": "packages/scripts/generate-dist-paths-config.mjs",
+    "tokens": [
+      "@elizaos/plugin-facewear",
+      "@elizaos/plugin-local-inference",
+      "@elizaos/plugin-music-library",
+      "@elizaos/plugin-music-player",
+      "@elizaos/plugin-xai",
+      "plugins/plugin-facewear",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-music",
+      "plugins/plugin-native-",
+      "plugins/plugin-xai"
+    ],
+    "reason": "explicit tsconfig dist-path aliases for non-standard export names (music-library/-player -> music, xai wildcard) and source-condition subpaths that a normal exports map cannot reflect"
+  },
+  {
+    "file": "packages/scripts/launch-qa/run.mjs",
+    "tokens": ["plugins/plugin-personal-assistant", "plugins/plugin-training"],
+    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant and training plugins"
+  },
+  {
+    "file": "packages/scripts/lib/real-live-suites.mjs",
+    "tokens": [
+      "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-anthropic",
+      "plugins/plugin-birdclaw",
+      "plugins/plugin-browser",
+      "plugins/plugin-calendar",
+      "plugins/plugin-calendly",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-form",
+      "plugins/plugin-google-genai",
+      "plugins/plugin-health",
+      "plugins/plugin-hyperliquid",
+      "plugins/plugin-local-inference",
+      "plugins/plugin-ollama",
+      "plugins/plugin-openai",
+      "plugins/plugin-openrouter",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-polymarket",
+      "plugins/plugin-pty",
+      "plugins/plugin-shell",
+      "plugins/plugin-sql",
+      "plugins/plugin-vision",
+      "plugins/plugin-wallet",
+      "plugins/plugin-web-search"
+    ],
+    "reason": "manifest of credential/opt-in-guarded real/live suites; each entry names the plugin whose tests self-skip without creds"
+  },
+  {
+    "file": "packages/scripts/run-cerebras.ts",
+    "tokens": ["plugins/plugin-openai"],
+    "reason": "invokes plugin-openai pointed at Cerebras to test native tool-calling trajectories"
+  },
+  {
+    "file": "packages/scripts/run-eliza-cerebras.ts",
+    "tokens": ["plugins/plugin-openai"],
+    "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
+  },
+  {
+    "file": "packages/scripts/stage-b-stt-bench.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "Stage-B STT benchmark measures plugin-local-inference ASR latency/WER"
+  },
+  {
+    "file": "packages/scripts/voice-matrix.mjs",
+    "tokens": [
+      "plugins/plugin-local-inference",
+      "plugins/plugin-native-swabble",
+      "plugins/plugin-native-talkmode"
+    ],
+    "reason": "voice live-matrix cells declare which fused-ASR / native wake-word / transcript plugins each cell exercises"
+  },
+  {
+    "file": "scripts/check-even-research-audit.mjs",
+    "tokens": ["plugins/plugin-facewear"],
+    "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"
+  },
+  {
+    "file": "scripts/check-smartglasses-completion-gate.mjs",
+    "tokens": [
+      "@elizaos/plugin-facewear",
+      "plugins/plugin-facewear",
+      "plugins/plugin-smartglasses"
+    ],
+    "reason": "facewear software-readiness gate; also asserts the removed plugin-smartglasses is gone"
+  },
+  {
+    "file": "scripts/e2e-recordings/audit-ui-coverage.mjs",
+    "tokens": ["plugins/plugin-facewear"],
+    "reason": "the facewear app-xr suite is a required standalone UI package in the recording manifest"
+  },
+  {
+    "file": "scripts/e2e-recordings/suites.mjs",
+    "tokens": ["plugins/plugin-facewear"],
+    "reason": "declarative UI e2e recording catalog; the facewear app-xr suite is listed with its config dir"
+  },
+  {
+    "file": "scripts/generate-view-heroes.mjs",
+    "tokens": [
+      "plugins/plugin-app-control",
+      "plugins/plugin-blocker",
+      "plugins/plugin-calendar",
+      "plugins/plugin-facewear",
+      "plugins/plugin-finances",
+      "plugins/plugin-goals",
+      "plugins/plugin-health",
+      "plugins/plugin-inbox",
+      "plugins/plugin-messages",
+      "plugins/plugin-native-settings",
+      "plugins/plugin-relationships",
+      "plugins/plugin-social-alpha",
+      "plugins/plugin-todos",
+      "plugins/plugin-vector-browser"
+    ],
+    "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
+  },
+  {
+    "file": "scripts/lifeops-bench/export-action-manifest.ts",
+    "tokens": [
+      "plugins/plugin-bluebubbles",
+      "plugins/plugin-contacts",
+      "plugins/plugin-imessage",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-phone",
+      "plugins/plugin-todos"
+    ],
+    "reason": "source plugins whose actions the LifeOps planner bench collects, tags, and scores"
+  },
+  {
+    "file": "scripts/lifeops/collect-11632-live-validation-status.mjs",
+    "tokens": [
+      "plugins/plugin-google",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-x"
+    ],
+    "reason": "maps LifeOps HITL connector groups to the plugins needing OAuth/credentials for live validation"
+  },
+  {
+    "file": "scripts/training-harvest/build-manifest.mjs",
+    "tokens": [
+      "@elizaos/plugin-cli-inference",
+      "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-app-control",
+      "plugins/plugin-cloud-apps",
+      "plugins/plugin-health",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "MEASURED_EXPANSION embeds per-scenario-dir persona/paraphrase multipliers sampled live, and the CLI-inference provider note names its plugin; SCENARIO_DIRS itself is seam-discovered"
+  },
+  {
+    "file": "scripts/training-harvest/stage3-gepa-sweep.mjs",
+    "tokens": ["plugins/plugin-training"],
+    "reason": "GEPA sweep maps task types via plugin-training's trajectory-task-datasets and runs its train command"
+  },
+  {
+    "file": "scripts/verify-smartglasses-software.mjs",
+    "tokens": ["plugins/plugin-facewear"],
+    "reason": "orchestrates the facewear plugin's software-readiness steps (lint/typecheck/test/app-registration)"
+  }
+]

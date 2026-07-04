@@ -16,5 +16,10 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
+  },
+  "elizaos": {
+    "scripts": {
+      "turboNonImportedBuildDeps": true
+    }
   }
 }

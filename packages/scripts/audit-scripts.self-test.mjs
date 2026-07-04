@@ -199,4 +199,150 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 11. A generic script with NO hardcoded plugin token passes the coupling gate.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/build-thing.ts":
+        "import { listPackages } from './lib/workspaces.mjs';\nexport const set = listPackages();\n",
+    },
+  });
+  assert(
+    report.ok,
+    `plugin-free generic script should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
+// 12. An UNALLOWLISTED hardcoded plugin token in a generic script fails.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/dev-thing.ts":
+        'const SKIP = ["@elizaos/plugin-wallet"];\n',
+    },
+  });
+  assert(!report.ok, "unallowlisted plugin token should fail");
+  assert(hasFinding(report, "[coupling]"), "expected a [coupling] finding");
+  assert(
+    hasFinding(report, "packages/scripts/dev-thing.ts"),
+    "coupling finding should name the file",
+  );
+}
+
+// 13. The SAME token becomes clean once the file+token is allowlisted with a reason.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/dev-thing.ts":
+        'const SKIP = ["@elizaos/plugin-wallet"];\n',
+      "packages/scripts/script-plugin-coupling.allowlist.json": JSON.stringify([
+        {
+          file: "packages/scripts/dev-thing.ts",
+          tokens: ["@elizaos/plugin-wallet"],
+          reason: "systemic: exercises the wallet plugin by name",
+        },
+      ]),
+    },
+  });
+  assert(
+    report.ok,
+    `allowlisted plugin token should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
+// 14. A STALE allowlist entry — the token no longer appears in the file — fails.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      // File exists but its plugin token changed to plugin-sql.
+      "packages/scripts/dev-thing.ts":
+        'const SKIP = ["@elizaos/plugin-sql"];\n',
+      "packages/scripts/script-plugin-coupling.allowlist.json": JSON.stringify([
+        {
+          file: "packages/scripts/dev-thing.ts",
+          tokens: ["@elizaos/plugin-wallet"],
+          reason: "systemic: exercises the wallet plugin by name",
+        },
+      ]),
+    },
+  });
+  assert(!report.ok, "stale allowlist token should fail");
+  assert(
+    hasFinding(report, "[coupling-stale]"),
+    "expected a [coupling-stale] finding for the vanished token",
+  );
+  // And the still-present plugin-sql token is now unallowlisted → also fails.
+  assert(
+    hasFinding(report, "[coupling]"),
+    "the newly-introduced unallowlisted token should also fail",
+  );
+}
+
+// 15. A stale entry whose FILE no longer has any plugin token fails.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      // Fully decoupled — no plugin tokens left.
+      "packages/scripts/dev-thing.ts":
+        "import { listPackages } from './lib/workspaces.mjs';\n",
+      "packages/scripts/script-plugin-coupling.allowlist.json": JSON.stringify([
+        {
+          file: "packages/scripts/dev-thing.ts",
+          tokens: ["@elizaos/plugin-wallet"],
+          reason: "systemic: exercises the wallet plugin by name",
+        },
+      ]),
+    },
+  });
+  assert(!report.ok, "allowlist entry for a decoupled file should fail");
+  assert(
+    hasFinding(report, "[coupling-stale]"),
+    "expected a [coupling-stale] finding for the decoupled file",
+  );
+}
+
+// 16. A malformed allowlist entry (missing reason) fails loudly.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/dev-thing.ts":
+        'const SKIP = ["@elizaos/plugin-wallet"];\n',
+      "packages/scripts/script-plugin-coupling.allowlist.json": JSON.stringify([
+        {
+          file: "packages/scripts/dev-thing.ts",
+          tokens: ["@elizaos/plugin-wallet"],
+        },
+      ]),
+    },
+  });
+  assert(!report.ok, "malformed allowlist entry should fail");
+  assert(
+    hasFinding(report, "[coupling-allowlist]"),
+    "expected a [coupling-allowlist] malformed-entry finding",
+  );
+}
+
+// 17. Tests / self-tests / __tests__ are exempt from the coupling scan.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/thing.test.ts":
+        'expect(load("@elizaos/plugin-wallet")).toBeTruthy();\n',
+      "packages/scripts/__tests__/other.ts":
+        'const p = "plugins/plugin-sql";\n',
+    },
+  });
+  assert(
+    report.ok,
+    `test files should be exempt, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
 console.log("audit-scripts self-test passed");

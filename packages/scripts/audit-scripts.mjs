@@ -189,7 +189,10 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["cloud:e2e", "cloud E2E package entrypoint"],
   ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
   ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
-  ["bench:personality:calibrate", "personality benchmark calibration entrypoint"],
+  [
+    "bench:personality:calibrate",
+    "personality benchmark calibration entrypoint",
+  ],
   ["bench:eliza-1", "benchmark suite root entrypoint"],
   ["bench:recall", "benchmark suite root entrypoint"],
   ["bench:recall:1k", "benchmark suite root entrypoint"],
@@ -417,6 +420,145 @@ function auditScriptFiles(root) {
   return failures;
 }
 
+// Directories the plugin-coupling check scans for generic scripts. Both trees
+// hold plugin-agnostic build/test/dev automation that must discover plugins via
+// the shared seam + per-package metadata, not by naming plugin sets inline.
+const PLUGIN_COUPLING_SCAN_DIRS = ["scripts", path.join("packages", "scripts")];
+const PLUGIN_COUPLING_FILE_TOKEN = /\.(mjs|cjs|js|mts|cts|ts|tsx)$/;
+// A `plugins/plugin-<name>` or `@elizaos/plugin-<name>` literal hardcoded in a
+// generic script. `<name>` is the package suffix; subpaths/quotes are trimmed by
+// the capture so a token normalises to its bare package identity.
+const PLUGIN_TOKEN_RE =
+  /(?:plugins\/plugin-[a-z0-9][a-z0-9-]*|@elizaos\/plugin-[a-z0-9][a-z0-9-]*)/g;
+const PLUGIN_COUPLING_ALLOWLIST_FILE = "script-plugin-coupling.allowlist.json";
+
+// Files exempt from the coupling scan: tests + self-tests (they assert on
+// plugin behavior by name), generated files, and the allowlist itself.
+function isCouplingExemptFile(relPath) {
+  const norm = relPath.split(path.sep).join("/");
+  const base = path.basename(norm);
+  return (
+    /\.(test|self-test)\.[cm]?[jt]sx?$/.test(base) ||
+    norm.includes("/__tests__/") ||
+    /\.generated\./.test(base) ||
+    base === PLUGIN_COUPLING_ALLOWLIST_FILE
+  );
+}
+
+function readCouplingAllowlist(root) {
+  const file = path.join(
+    root,
+    "packages",
+    "scripts",
+    PLUGIN_COUPLING_ALLOWLIST_FILE,
+  );
+  if (!existsSync(file)) return [];
+  const parsed = JSON.parse(readFileSync(file, "utf8"));
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `${PLUGIN_COUPLING_ALLOWLIST_FILE} must be a JSON array of { file, tokens, reason }`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Distinct plugin tokens hardcoded in a file, sorted. Empty for a file that
+ * discovers plugins through the shared seam instead of naming them.
+ */
+function pluginTokensInFile(absFile) {
+  const matches = readTextIfReadable(absFile).match(PLUGIN_TOKEN_RE) ?? [];
+  return [...new Set(matches)].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * (f) PLUGIN COUPLING — a generic build/test/dev script must not name a plugin
+ * set inline; it discovers plugins through the shared workspace seam + per-package
+ * `elizaos.scripts` metadata (#12334). A hardcoded `plugins/plugin-*` /
+ * `@elizaos/plugin-*` token fails unless the file+token is allowlisted with a
+ * reason in script-plugin-coupling.allowlist.json (systemic couplings only). A
+ * stale allowlist entry — a listed file/token no longer present — also fails, so
+ * the allowlist cannot rot into permanent cover.
+ */
+function auditPluginCoupling(root) {
+  const failures = [];
+  const allowlist = readCouplingAllowlist(root);
+
+  // Index the allowlist by normalised repo-relative file → allowed token set.
+  const allowByFile = new Map();
+  for (const entry of allowlist) {
+    if (
+      !entry ||
+      typeof entry.file !== "string" ||
+      !Array.isArray(entry.tokens) ||
+      typeof entry.reason !== "string" ||
+      entry.reason.trim().length === 0
+    ) {
+      failures.push(
+        `[coupling-allowlist] malformed entry ${JSON.stringify(entry)} — each ` +
+          `entry needs { file: string, tokens: string[], reason: non-empty string }.`,
+      );
+      continue;
+    }
+    allowByFile.set(
+      entry.file.split(path.sep).join("/"),
+      new Set(entry.tokens),
+    );
+  }
+
+  // Actual tokens present per scanned file.
+  const tokensByFile = new Map();
+  for (const scanDir of PLUGIN_COUPLING_SCAN_DIRS) {
+    const base = path.join(root, scanDir);
+    walk(base, (file) => {
+      if (!PLUGIN_COUPLING_FILE_TOKEN.test(file)) return;
+      const rel = path.relative(root, file).split(path.sep).join("/");
+      if (isCouplingExemptFile(rel)) return;
+      const tokens = pluginTokensInFile(file);
+      if (tokens.length > 0) tokensByFile.set(rel, tokens);
+    });
+  }
+
+  // Fail on hardcoded tokens not covered by an allowlist entry for that file.
+  for (const [rel, tokens] of tokensByFile) {
+    const allowed = allowByFile.get(rel) ?? new Set();
+    const unallowed = tokens.filter((token) => !allowed.has(token));
+    if (unallowed.length > 0) {
+      failures.push(
+        `[coupling] ${rel} hardcodes plugin token(s) ${JSON.stringify(unallowed)}. ` +
+          `Discover plugins via the shared seam + per-package elizaos.scripts ` +
+          `metadata, or add the file+token to ${PLUGIN_COUPLING_ALLOWLIST_FILE} ` +
+          `with a systemic-coupling reason.`,
+      );
+    }
+  }
+
+  // Fail on stale allowlist entries — a listed file/token no longer present.
+  for (const entry of allowlist) {
+    if (!entry || typeof entry.file !== "string") continue;
+    const rel = entry.file.split(path.sep).join("/");
+    const present = tokensByFile.get(rel);
+    if (!present) {
+      failures.push(
+        `[coupling-stale] ${PLUGIN_COUPLING_ALLOWLIST_FILE} allowlists "${rel}" ` +
+          `but it has no plugin tokens (file removed or already decoupled). ` +
+          `Drop the entry.`,
+      );
+      continue;
+    }
+    for (const token of entry.tokens ?? []) {
+      if (!present.includes(token)) {
+        failures.push(
+          `[coupling-stale] ${PLUGIN_COUPLING_ALLOWLIST_FILE} allowlists token ` +
+            `"${token}" for "${rel}" but it no longer appears there. Drop the token.`,
+        );
+      }
+    }
+  }
+
+  return failures;
+}
+
 function auditScripts(root) {
   const failures = [];
   const corpus = buildReferenceCorpus(root);
@@ -492,6 +634,9 @@ function auditScripts(root) {
 
   // (d) Orphan script files inside packages/scripts/.
   failures.push(...auditScriptFiles(root));
+
+  // (f) Plugin coupling — generic scripts must discover plugins, not name them.
+  failures.push(...auditPluginCoupling(root));
 
   return failures;
 }
