@@ -64,6 +64,16 @@ function isNonSpeech(text: string): boolean {
   return text.length === 0 || NON_SPEECH_PATTERN.test(text);
 }
 
+function hasLocalInferenceTranscription(runtime: IAgentRuntime): boolean {
+  return runtime
+    .getModelRegistrations()
+    .some(
+      (registration) =>
+        registration.modelType === ModelType.TRANSCRIPTION &&
+        registration.provider === LOCAL_INFERENCE_PROVIDER,
+    );
+}
+
 /**
  * Default ASR backend: `runtime.useModel(ModelType.TRANSCRIPTION)` with
  * retry/backoff (ported from Vexa's transcription-client). The params object
@@ -106,7 +116,16 @@ export class RuntimeModelAsrBackend implements AsrBackend {
       ...(opts.signal ? { signal: opts.signal } : {}),
     };
     const provider =
-      opts.purpose === "interim" ? LOCAL_INFERENCE_PROVIDER : undefined;
+      opts.purpose === "interim" && hasLocalInferenceTranscription(this.runtime)
+        ? LOCAL_INFERENCE_PROVIDER
+        : undefined;
+
+    if (opts.purpose === "interim" && !provider) {
+      logger.debug(
+        "[MeetingPipeline] Skipping interim LocalAgreement ASR window; local inference TRANSCRIPTION provider is unavailable",
+      );
+      return { text: "" };
+    }
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {

@@ -20,8 +20,24 @@ interface CapturedParams {
   signal?: AbortSignal;
 }
 
-function runtimeWith(useModel: ReturnType<typeof vi.fn>): IAgentRuntime {
-  return { useModel } as unknown as IAgentRuntime;
+function runtimeWith(
+  useModel: ReturnType<typeof vi.fn>,
+  opts?: { localTranscription?: boolean },
+): IAgentRuntime {
+  return {
+    useModel,
+    getModelRegistrations: () =>
+      opts?.localTranscription
+        ? [
+            {
+              modelType: "TRANSCRIPTION",
+              provider: "eliza-local-inference",
+              priority: 0,
+              registrationOrder: 0,
+            },
+          ]
+        : [],
+  } as unknown as IAgentRuntime;
 }
 
 const WAV = float32ToWav(new Float32Array(1600));
@@ -62,7 +78,9 @@ describe("RuntimeModelAsrBackend", () => {
 
   it("routes interim LocalAgreement windows to local inference as non-billable", async () => {
     const useModel = vi.fn().mockResolvedValue("partial window");
-    const backend = new RuntimeModelAsrBackend(runtimeWith(useModel));
+    const backend = new RuntimeModelAsrBackend(
+      runtimeWith(useModel, { localTranscription: true }),
+    );
 
     await expect(
       backend.transcribe(WAV, { purpose: "interim" }),
@@ -83,6 +101,19 @@ describe("RuntimeModelAsrBackend", () => {
       billable: false,
       reason: "meeting-local-agreement-overlap",
     });
+  });
+
+  it("skips interim LocalAgreement windows when local inference is unavailable", async () => {
+    const useModel = vi.fn(async () => {
+      throw new Error("should not route interim windows to hosted STT");
+    });
+    const backend = new RuntimeModelAsrBackend(runtimeWith(useModel));
+
+    await expect(
+      backend.transcribe(WAV, { purpose: "interim" }),
+    ).resolves.toEqual({ text: "" });
+
+    expect(useModel).not.toHaveBeenCalled();
   });
 
   it("maps blank-audio / non-speech markers and empty output to silence", async () => {

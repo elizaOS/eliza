@@ -3,11 +3,11 @@
 ## Local proof captured
 
 - `bunx vitest run plugins/plugin-meetings/src/pipeline/__tests__/transcriber.test.ts plugins/plugin-meetings/src/pipeline/__tests__/pipeline.test.ts plugins/plugin-meetings/src/pipeline/__tests__/speaker-streams.test.ts`
-  - Result: 3 files passed, 31 tests passed.
+  - Result: 3 files passed, 32 tests passed.
 - `bunx @biomejs/biome check packages/core/src/types/model.ts plugins/plugin-meetings/src/pipeline/speaker-streams.ts plugins/plugin-meetings/src/pipeline/transcriber.ts plugins/plugin-meetings/src/pipeline/pipeline.ts plugins/plugin-meetings/src/pipeline/__tests__/transcriber.test.ts plugins/plugin-meetings/src/pipeline/__tests__/pipeline.test.ts plugins/plugin-meetings/src/pipeline/__tests__/speaker-streams.test.ts`
   - Result: clean.
 - `bun run --cwd packages/core typecheck`
-  - Result: clean.
+  - Result: blocked in this checkout by existing declaration-resolution noise through `/home/shaw/milady/eliza/dist/node_modules` (`drizzle-orm`, `yaml`, `fs-extra`, `adze`, etc.); no reported error was in the changed model type.
 - `bun run --cwd plugins/plugin-meetings typecheck`
   - Result: clean.
 - `git diff --check origin/develop...HEAD`
@@ -17,6 +17,7 @@
 
 - Cadence-driven overlapping LocalAgreement windows are marked `purpose: "interim"`.
 - Interim windows route through provider hint `eliza-local-inference`.
+- Interim windows are skipped instead of retried/escalated when no `eliza-local-inference` TRANSCRIPTION provider is registered.
 - Interim transcription params include `billing.billable: false` with reason `meeting-local-agreement-overlap`.
 - Idle/final no-transcript flush submissions are marked `purpose: "final"`.
 - Final transcription params include `billing.billable: true` with reason `meeting-final-window`.
