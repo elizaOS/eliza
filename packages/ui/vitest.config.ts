@@ -277,6 +277,9 @@ export default defineConfig({
       "__tests__/**/*.test.ts",
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
+      // Pure-logic unit tests for the story-gate audit scripts (e.g. the
+      // console/a11y baseline-allowlist ratchet) run in the standard suite.
+      "test/**/*.test.mjs",
     ],
     exclude: [
       "dist/**",

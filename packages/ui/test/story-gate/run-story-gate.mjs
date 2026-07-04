@@ -267,6 +267,86 @@ function normalizeConsole(text) {
   return normalized;
 }
 
+/**
+ * Classify per-story render results against the console / a11y / broken
+ * allowlist baselines and produce the failure list + regenerated baselines.
+ *
+ * Doctrine (matches the `broken-baseline` ratchet): each baseline is a pure
+ * ALLOWLIST of pre-existing violations, never an on/off switch. A violation
+ * whose key is NOT in the allowlist reds the run. An empty or absent baseline
+ * therefore means fail-on-ANY violation (zero tolerance). This is the corrected
+ * behaviour after the inverted `Object.keys(baseline).length > 0` gate (which
+ * silently disabled the check whenever a baseline was emptied/reset).
+ *
+ * Pure + deterministic so it is unit-testable without a browser (see
+ * story-gate-classify.test.mjs). `main()` calls it with the live run results.
+ *
+ * @param {object} params
+ * @param {Array<object>} params.results per-story render results
+ * @param {Record<string, string[]>} params.consoleBaseline allowlisted console keys per story id
+ * @param {Record<string, string[]>} params.a11yBaseline allowlisted a11y rule ids per story id
+ * @param {Record<string, unknown>} params.brokenBaseline allowlisted known-broken story ids
+ * @param {boolean} [params.updateBaseline] when true, skip console/a11y failures (regeneration mode)
+ */
+export function classifyStoryGateFailures({
+  results,
+  consoleBaseline,
+  a11yBaseline,
+  brokenBaseline,
+  updateBaseline = false,
+}) {
+  const newConsoleBaseline = {};
+  const newA11yBaseline = {};
+  const newBrokenBaseline = {};
+  const failures = [];
+
+  for (const r of results) {
+    if (r.verdict === "broken") {
+      newBrokenBaseline[r.id] = (r.issues ?? []).join(" | ").slice(0, 200);
+    }
+    // console errors -> baseline keys
+    const consoleKeys = (r.consoleErrors ?? [])
+      .map(normalizeConsole)
+      .filter(Boolean);
+    if (consoleKeys.length)
+      newConsoleBaseline[r.id] = [...new Set(consoleKeys)];
+    const allowedConsole = new Set(consoleBaseline[r.id] || []);
+    const newConsole = consoleKeys.filter((k) => !allowedConsole.has(k));
+
+    // a11y -> baseline keys (rule id)
+    const a11yKeys = [...new Set((r.a11y ?? []).map((v) => v.id))];
+    if (a11yKeys.length) newA11yBaseline[r.id] = a11yKeys;
+    const allowedA11y = new Set(a11yBaseline[r.id] || []);
+    const newA11y = a11yKeys.filter((k) => !allowedA11y.has(k));
+
+    if (r.verdict === "broken" && !(r.id in brokenBaseline)) {
+      failures.push({
+        id: r.id,
+        kind: "broken",
+        detail: (r.issues ?? []).join(" | "),
+      });
+    }
+    // Console + a11y gating is ALWAYS on (baseline is a pure allowlist); a key
+    // absent from the allowlist reds regardless of how many rows it holds.
+    if (!updateBaseline && newConsole.length) {
+      failures.push({
+        id: r.id,
+        kind: "new-console-error",
+        detail: newConsole.join(" | "),
+      });
+    }
+    if (!updateBaseline && newA11y.length) {
+      failures.push({
+        id: r.id,
+        kind: "new-a11y-violation",
+        detail: newA11y.join(", "),
+      });
+    }
+  }
+
+  return { failures, newConsoleBaseline, newA11yBaseline, newBrokenBaseline };
+}
+
 // ---------------------------------------------------------------------------
 // per-story render + assert
 // ---------------------------------------------------------------------------
@@ -535,12 +615,15 @@ async function main() {
   // "no NEW broken stories" from day one while the existing set is fixed. Shape:
   // { "<story-id>": "<reason>" }. Regenerate via `--update-baseline`.
   const brokenBaseline = await loadBaseline("broken-baseline.json");
-  // Console + a11y gating is opt-in: it only enforces once a non-empty baseline
-  // has been committed (the team has captured the existing backlog). Until then
-  // the gate still HARD-fails on NEW broken/blank/threw stories — so it is
-  // useful and CI-safe from day one, then tightens as the baselines populate.
-  const enforceConsole = Object.keys(consoleBaseline).length > 0;
-  const enforceA11y = Object.keys(a11yBaseline).length > 0;
+  // Console + a11y gating is ALWAYS on, exactly like the broken-baseline ratchet
+  // above: each baseline is a pure ALLOWLIST of pre-existing violations, never a
+  // switch. An empty or absent baseline therefore means fail-on-ANY violation
+  // (zero tolerance) — the same shape as `broken-baseline.json = {}`.
+  //
+  // The old `Object.keys(baseline).length > 0` gate INVERTED this: emptying or
+  // resetting a baseline silently DISABLED the check (the opposite of a burn-down
+  // ratchet), so green-washing was one `echo '{}' > a11y-baseline.json` away.
+  // Enforcement now lives in classifyStoryGateFailures() and is unconditional.
 
   rmRecursive(outDir);
   await mkdir(outDir, { recursive: true });
@@ -584,46 +667,14 @@ async function main() {
   // -------------------------------------------------------------------------
   // classify against baselines
   // -------------------------------------------------------------------------
-  const newConsoleBaseline = {};
-  const newA11yBaseline = {};
-  const newBrokenBaseline = {};
-  const failures = [];
-
-  for (const r of results) {
-    if (r.verdict === "broken") {
-      newBrokenBaseline[r.id] = r.issues.join(" | ").slice(0, 200);
-    }
-    // console errors -> baseline keys
-    const consoleKeys = r.consoleErrors.map(normalizeConsole).filter(Boolean);
-    if (consoleKeys.length)
-      newConsoleBaseline[r.id] = [...new Set(consoleKeys)];
-    const allowedConsole = new Set(consoleBaseline[r.id] || []);
-    const newConsole = consoleKeys.filter((k) => !allowedConsole.has(k));
-
-    // a11y -> baseline keys (rule id)
-    const a11yKeys = [...new Set(r.a11y.map((v) => v.id))];
-    if (a11yKeys.length) newA11yBaseline[r.id] = a11yKeys;
-    const allowedA11y = new Set(a11yBaseline[r.id] || []);
-    const newA11y = a11yKeys.filter((k) => !allowedA11y.has(k));
-
-    if (r.verdict === "broken" && !(r.id in brokenBaseline)) {
-      failures.push({ id: r.id, kind: "broken", detail: r.issues.join(" | ") });
-    }
-    if (!args.updateBaseline && enforceConsole && newConsole.length) {
-      failures.push({
-        id: r.id,
-        kind: "new-console-error",
-        detail: newConsole.join(" | "),
-      });
-    }
-    if (!args.updateBaseline && enforceA11y && newA11y.length) {
-      failures.push({
-        id: r.id,
-        kind: "new-a11y-violation",
-        detail: newA11y.join(", "),
-      });
-    }
-  }
+  const { failures, newConsoleBaseline, newA11yBaseline, newBrokenBaseline } =
+    classifyStoryGateFailures({
+      results,
+      consoleBaseline,
+      a11yBaseline,
+      brokenBaseline,
+      updateBaseline: args.updateBaseline,
+    });
 
   // -------------------------------------------------------------------------
   // write artifacts
@@ -849,7 +900,11 @@ async function writeManualReview(dir, results, failures) {
   await writeFile(join(dir, "manual-review.md"), md);
 }
 
-main().catch((err) => {
-  console.error("story-gate: fatal", err);
-  process.exit(1);
-});
+// Only auto-run as a CLI; importing this module (e.g. from the classifier unit
+// test) must NOT launch a browser run.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error("story-gate: fatal", err);
+    process.exit(1);
+  });
+}
