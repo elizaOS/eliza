@@ -1,9 +1,28 @@
 /**
- * Builds and maintains the agent's own voice centroid from its TTS output, so
- * the speaker-attribution pipeline can recognize (and exclude) the assistant's
- * playback as self rather than mis-attributing it to a human speaker. Encodes
- * recent agent-TTS segments through the speaker encoder into a running centroid.
+ * Bounded centroid of the agent's own synthesized voice, with the
+ * agent-specific self-voice decision the echo defense's third layer gates on
+ * (#12256, layered after the cooldown gate and the NLMS canceller).
+ *
+ * The live mic path already gets WeSpeaker embeddings from attribution. This
+ * helper observes the PCM the agent actually renders (Pipeline B: the
+ * scheduler's audio chunks; Pipeline A: the playback frames the renderer
+ * streams back), embeds that audio, and exposes cosine similarity of future
+ * mic turns against the centroid. The decision threshold is
+ * `AGENT_SELF_VOICE_IMPRINT_THRESHOLD` (0.28): the agent's synthetic voice
+ * embeds ~0.37 self-similar vs ~0.15 for humans (VOICE_8785_ASSESSMENT §6) —
+ * a real margin, but far below the 0.78 human-enrollment bar, which is why the
+ * imprint carries its own threshold instead of reusing the profile store's.
+ *
+ * Handle contract for #12255 (speaker-gated barge-in), mirroring the
+ * profile-store factory's (#12257): the production pipelines register their
+ * live imprint here at construction; barge-in gating calls
+ * `getAgentSelfVoiceImprint()` (no args) and uses `isAgentSelfVoice(embedding)`
+ * — never constructs its own imprint or re-derives the threshold. A `null`
+ * gate result means "no centroid yet" (the agent has not spoken enough) and
+ * MUST fail open (treat as not-self), never as self-voice.
  */
+
+import { AGENT_SELF_VOICE_IMPRINT_THRESHOLD } from "@elizaos/shared/voice/respond-gate";
 import { averageEmbeddings, type SpeakerEncoder } from "./speaker/encoder";
 import {
 	SPEAKER_GGML_MIN_SAMPLES,
@@ -11,6 +30,8 @@ import {
 } from "./speaker/encoder-ggml";
 import { cosineSimilarity } from "./speaker-imprint";
 import { resampleLinear } from "./transcriber";
+
+export { AGENT_SELF_VOICE_IMPRINT_THRESHOLD };
 
 export interface AgentSelfVoiceImprintOptions {
 	encoder: SpeakerEncoder;
@@ -20,6 +41,12 @@ export interface AgentSelfVoiceImprintOptions {
 	maxSamples?: number;
 	/** Number of recent agent-TTS embeddings retained in the centroid. */
 	maxEmbeddings?: number;
+	/**
+	 * Cosine at/above which a turn embedding is decided to be the agent's own
+	 * voice. Default {@link AGENT_SELF_VOICE_IMPRINT_THRESHOLD} (0.28; safe
+	 * range 0.25–0.30 per the measured self/human margins).
+	 */
+	similarityThreshold?: number;
 }
 
 function concatSegments(
@@ -35,18 +62,12 @@ function concatSegments(
 	return out;
 }
 
-/**
- * Maintains a bounded centroid of the agent's own synthesized voice.
- *
- * The live mic path already gets WeSpeaker embeddings from attribution. This
- * helper observes the PCM that the scheduler hands to audio output, embeds that
- * actual TTS audio, and exposes cosine similarity against future mic turns.
- */
 export class AgentSelfVoiceImprint {
 	private readonly encoder: SpeakerEncoder;
 	private readonly minSamples: number;
 	private readonly maxSamples: number;
 	private readonly maxEmbeddings: number;
+	private readonly similarityThreshold: number;
 	private readonly pendingSegments: Float32Array[] = [];
 	private pendingSamples = 0;
 	private readonly embeddings: Float32Array[] = [];
@@ -58,6 +79,19 @@ export class AgentSelfVoiceImprint {
 		this.minSamples = options.minSamples ?? SPEAKER_GGML_MIN_SAMPLES;
 		this.maxSamples = options.maxSamples ?? SPEAKER_GGML_SAMPLE_RATE * 6;
 		this.maxEmbeddings = Math.max(1, options.maxEmbeddings ?? 8);
+		this.similarityThreshold =
+			options.similarityThreshold ?? AGENT_SELF_VOICE_IMPRINT_THRESHOLD;
+	}
+
+	/** The agent-specific decision threshold this imprint applies. Consumers
+	 * that forward the raw similarity into a gate pass this alongside it. */
+	get threshold(): number {
+		return this.similarityThreshold;
+	}
+
+	/** True once at least one centroid update has been encoded. */
+	get ready(): boolean {
+		return this.centroid !== null;
 	}
 
 	observeAudio(pcm: Float32Array, sampleRate: number): Promise<void> {
@@ -73,6 +107,17 @@ export class AgentSelfVoiceImprint {
 		if (!this.centroid) return null;
 		if (embedding.length !== this.centroid.length) return null;
 		return cosineSimilarity(embedding, this.centroid);
+	}
+
+	/**
+	 * The speaker-gate decision for #12255: does this turn embedding match the
+	 * agent's own TTS voice? `null` while no centroid exists yet (or on a
+	 * dimension mismatch) — callers MUST fail open on `null`.
+	 */
+	async isAgentSelfVoice(embedding: Float32Array): Promise<boolean | null> {
+		const similarity = await this.similarity(embedding);
+		if (similarity === null) return null;
+		return similarity >= this.similarityThreshold;
 	}
 
 	private async observeAudioLocked(
@@ -105,4 +150,44 @@ export class AgentSelfVoiceImprint {
 		}
 		this.centroid = averageEmbeddings(this.embeddings);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Shared per-process handle (#12255 consumes this)
+// ---------------------------------------------------------------------------
+
+/** Which production pipeline registered an imprint. The speak-back loop's is
+ * preferred: barge-in runs inside it, and its imprint observes the exact PCM
+ * the scheduler hands to audio output. */
+export type AgentSelfVoiceImprintSource = "speak-back-loop" | "live-frames";
+
+const registeredImprints = new Map<
+	AgentSelfVoiceImprintSource,
+	AgentSelfVoiceImprint
+>();
+
+/** Register a production imprint under its pipeline source. Re-registration
+ * (a voice restart) replaces the previous instance for that source. */
+export function registerAgentSelfVoiceImprint(
+	source: AgentSelfVoiceImprintSource,
+	imprint: AgentSelfVoiceImprint,
+): void {
+	registeredImprints.set(source, imprint);
+}
+
+/**
+ * The live production imprint, or null when no voice pipeline has constructed
+ * one yet. Prefers the speak-back loop's (see {@link AgentSelfVoiceImprintSource}).
+ */
+export function getAgentSelfVoiceImprint(): AgentSelfVoiceImprint | null {
+	return (
+		registeredImprints.get("speak-back-loop") ??
+		registeredImprints.get("live-frames") ??
+		null
+	);
+}
+
+/** Drop all registered imprints. Test-only. */
+export function __resetAgentSelfVoiceImprintsForTest(): void {
+	registeredImprints.clear();
 }

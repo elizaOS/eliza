@@ -78,7 +78,10 @@ import {
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
-import { AgentSelfVoiceImprint } from "./self-voice-imprint";
+import {
+	AgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
@@ -1267,6 +1270,10 @@ export class EngineVoiceBridge {
 				selfVoiceImprint = new AgentSelfVoiceImprint({
 					encoder: lazyEncoder,
 				});
+				// #12255's speaker-gated barge-in reads the live imprint through the
+				// shared handle (getAgentSelfVoiceImprint) — the speak-back loop's
+				// registration takes precedence over Pipeline A's.
+				registerAgentSelfVoiceImprint("speak-back-loop", selfVoiceImprint);
 				// Fused diarizer (optional). When the build does not advertise the
 				// diarizer ABI, attribution runs without it — a single-speaker turn
 				// collapses to one segment (the attribution-pipeline localSpeakerId=0
@@ -2056,8 +2063,15 @@ export class EngineVoiceBridge {
 						await handleLiveVoiceAttribution(eventRuntime, output, {
 							...resolveLiveAttributionOptions(liveAttribution, transcript),
 							agentSpeaking: this.scheduler.bargeIn.isAgentSpeaking,
-							...(typeof selfVoiceSimilarity === "number"
-								? { selfVoiceSimilarity }
+							// The imprint's cosine is on the WeSpeaker-embedding scale —
+							// its own threshold (~0.28) travels with it so the fold does
+							// not compare it against the 0.7 MFCC bar (#12256).
+							...(typeof selfVoiceSimilarity === "number" &&
+							this.selfVoiceImprint
+								? {
+										selfVoiceSimilarity,
+										selfVoiceThreshold: this.selfVoiceImprint.threshold,
+									}
 								: {}),
 						});
 					}

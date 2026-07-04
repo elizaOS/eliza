@@ -59,11 +59,26 @@ export {
 	platformPlaybackDelayMs,
 	platformPlaybackDelaySamples,
 } from "./echo-delay";
-export { computeErle } from "./echo-metrics";
+export {
+	type AecCaptureReplayInput,
+	type AecCaptureReplayResult,
+	computeErle,
+	computeFarActiveErle,
+	replayAecCaptureErle,
+} from "./echo-metrics";
 export {
 	EchoReferenceBuffer,
 	type EchoReferenceBufferOptions,
 } from "./echo-reference-buffer";
+export {
+	cancelEchoInWavUtterance,
+	type DesktopAecPassthroughReason,
+	type DesktopAecResult,
+	type DesktopAecUtteranceSummary,
+	FarEndReference,
+	type FarEndReferenceStatus,
+	getSharedFarEndReference,
+} from "./far-end-reference";
 export type {
 	LlamaContextLike as Eliza1EotLlamaContext,
 	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
@@ -265,6 +280,14 @@ export {
 	SharedResourceRegistry,
 	type SharedTokenizer,
 } from "./shared-resources";
+export {
+	AGENT_SELF_VOICE_IMPRINT_THRESHOLD,
+	AgentSelfVoiceImprint,
+	type AgentSelfVoiceImprintOptions,
+	type AgentSelfVoiceImprintSource,
+	getAgentSelfVoiceImprint,
+	registerAgentSelfVoiceImprint,
+} from "./self-voice-imprint";
 export {
 	type VoiceAttributionOutput,
 	VoiceAttributionPipeline,

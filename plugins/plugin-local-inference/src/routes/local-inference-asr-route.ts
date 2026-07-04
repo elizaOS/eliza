@@ -11,8 +11,12 @@
  */
 
 import type http from "node:http";
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { localInferenceEngine } from "../services/engine";
+import {
+	cancelEchoInWavUtterance,
+	getSharedFarEndReference,
+} from "../services/voice/far-end-reference";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -153,13 +157,43 @@ export async function handleLocalInferenceAsrRoute(
 			});
 			return true;
 		}
+		// Desktop speak-back AEC (#12256 layer 2): cancel the agent's own TTS
+		// playback (streamed to /api/voice/playback-frames by the renderer) out
+		// of the utterance before transcription, so the agent stops transcribing
+		// its echo. Passthrough is bit-exact whenever no correlated far-end
+		// reference exists — cancellation is never applied speculatively.
+		const aec = cancelEchoInWavUtterance(getSharedFarEndReference(), audio);
+		if (aec.result?.applied) {
+			logger.info(
+				{
+					erleDb: aec.result.erleDb,
+					offsetSamples: aec.result.offsetSamples,
+					confidence: aec.result.confidence,
+					farActiveSamples: aec.result.farActiveSamples,
+				},
+				"[LocalInferenceAsrRoute] echo-cancelled utterance before ASR",
+			);
+		}
 		const { text, words } = await transcribeWavWithWords(
 			runtime,
-			audio,
+			aec.bytes,
 			abortController.signal,
 		);
 		completed = true;
-		sendJson(res, 200, { text, words });
+		sendJson(res, 200, {
+			text,
+			words,
+			...(aec.result
+				? {
+						aec: {
+							applied: aec.result.applied,
+							...(aec.result.reason ? { reason: aec.result.reason } : {}),
+							erleDb: aec.result.erleDb,
+							confidence: aec.result.confidence,
+						},
+					}
+				: {}),
+		});
 	} catch (err) {
 		if (!clientClosed && !abortController.signal.aborted && !isClosed(res)) {
 			sendJson(res, 502, {
