@@ -265,7 +265,9 @@ export function ElizaTransactionsSection({
                       {truncate(tx.request.to)}
                     </span>
                   ) : (
-                    <span className="font-mono text-xs-tight text-muted">—</span>
+                    <span className="font-mono text-xs-tight text-muted">
+                      —
+                    </span>
                   )}
                 </div>
                 <div className="bg-card px-3 py-2.5">
@@ -305,7 +307,9 @@ export function ElizaTransactionsSection({
                       />
                     </a>
                   ) : (
-                    <span className="font-mono text-xs-tight text-muted">—</span>
+                    <span className="font-mono text-xs-tight text-muted">
+                      —
+                    </span>
                   )}
                 </div>
               </div>

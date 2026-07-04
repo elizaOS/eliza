@@ -158,7 +158,8 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-status-warning-bg text-status-warning border-status-warning/30",
   approved: "bg-bg-muted text-muted-strong border-border",
   processing: "bg-bg-muted text-muted-strong border-border",
-  completed: "bg-status-success-bg text-status-success border-status-success/30",
+  completed:
+    "bg-status-success-bg text-status-success border-status-success/30",
   failed: "bg-destructive-subtle text-destructive border-destructive/30",
   rejected: "bg-destructive-subtle text-destructive border-destructive/30",
 };
@@ -885,10 +886,7 @@ export function EarningsPageClient() {
           </div>
 
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setShowRedeemDialog(false)}
-            >
+            <Button variant="ghost" onClick={() => setShowRedeemDialog(false)}>
               {t("cloud.earnings.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button

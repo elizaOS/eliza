@@ -461,9 +461,7 @@ function markdownText(value) {
  * @returns {string}
  */
 function markdownCell(value) {
-  return markdownText(value)
-    .replace(/\|/g, "\\|")
-    .replace(/\r?\n/g, "<br />");
+  return markdownText(value).replace(/\|/g, "\\|").replace(/\r?\n/g, "<br />");
 }
 
 /**
@@ -534,7 +532,10 @@ function renderProviderMarkdown(provider) {
     markdownText(provider.description),
     "",
   ];
-  if (typeof provider.position === "number" || typeof provider.dynamic === "boolean") {
+  if (
+    typeof provider.position === "number" ||
+    typeof provider.dynamic === "boolean"
+  ) {
     lines.push(
       `- **Position:** ${typeof provider.position === "number" ? provider.position : "-"}`,
       `- **Dynamic:** ${provider.dynamic === true ? "yes" : "no"}`,

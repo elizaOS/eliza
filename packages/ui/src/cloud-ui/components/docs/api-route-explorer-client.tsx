@@ -109,7 +109,11 @@ function CopyButton({ text }: { text: string }) {
       className="absolute top-2 right-2 inline-flex min-h-touch items-center gap-1.5 rounded-sm border border-border bg-bg-elevated px-2.5 py-1 text-2xs font-medium uppercase tracking-wider text-muted transition-colors hover:border-border-strong hover:bg-bg-hover hover:text-txt"
     >
       {copied ? (
-        <Check aria-hidden="true" className="size-3.5 text-status-success" strokeWidth={2} />
+        <Check
+          aria-hidden="true"
+          className="size-3.5 text-status-success"
+          strokeWidth={2}
+        />
       ) : (
         <Copy aria-hidden="true" className="size-3.5" strokeWidth={2} />
       )}
@@ -319,7 +323,9 @@ export function ApiRouteExplorerClient({
                                 <div
                                   className={cn(
                                     "text-sm font-medium truncate transition-colors",
-                                    active ? "text-txt-strong" : "text-muted-strong",
+                                    active
+                                      ? "text-txt-strong"
+                                      : "text-muted-strong",
                                   )}
                                 >
                                   {title}
@@ -385,7 +391,11 @@ export function ApiRouteExplorerClient({
                         key={tag}
                         className="inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wider rounded-sm px-2 py-1 bg-bg-muted border border-border text-muted"
                       >
-                        <Tag aria-hidden="true" className="size-3" strokeWidth={2} />
+                        <Tag
+                          aria-hidden="true"
+                          className="size-3"
+                          strokeWidth={2}
+                        />
                         {tag}
                       </span>
                     ))}

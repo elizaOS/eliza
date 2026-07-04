@@ -273,7 +273,9 @@ export default function AgentDetailPage() {
                   plural: agent.errorCount !== 1 ? "s" : "",
                 })}
               </p>
-              <p className="text-sm text-destructive/70">{agent.errorMessage}</p>
+              <p className="text-sm text-destructive/70">
+                {agent.errorMessage}
+              </p>
             </div>
           </div>
         )}
