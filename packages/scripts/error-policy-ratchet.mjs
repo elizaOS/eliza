@@ -1,24 +1,38 @@
 #!/usr/bin/env node
 /**
- * Non-blocking ratchet guarding against NEW fallback-slop error handling (#12263 / #12182).
+ * Diff-scoped guard against NEW fallback-slop error handling (#12263 / #12182).
  *
  * The repo carries thousands of pre-existing empty catches and server-side
- * `console.*` calls; a strict biome rule at error level would red `bun run
- * verify` for everyone. Instead this guard records the current baseline counts
- * and FAILS ONLY WHEN a count INCREASES — today's verify stays green, new slop
- * is blocked. Two kinds are tracked, classified via the TypeScript AST so tokens
- * inside strings/comments are never miscounted:
- *   - `emptyCatch`  — `catch { }` with an empty body (repo-wide production src).
+ * `console.*` calls; a repo-wide count-vs-baseline gate cannot work here: any
+ * static baseline goes stale the moment `develop` merges an unrelated PR that
+ * adds one more empty catch, which then reds `bun run verify` for everyone who
+ * rebases. So enforcement is scoped to the diff, not the repo:
+ *
+ *   base = git merge-base <base-ref> HEAD        (default base-ref origin/develop)
+ *   for each production source file the branch touches (base..HEAD):
+ *     fail iff its CURRENT (working-tree) empty-catch / server-console count is
+ *     GREATER than the same file's count at `base`.
+ *
+ * This enforces exactly "a PR may not ADD slop in the files it touches" while
+ * being completely immune to drift in files the PR does not touch. On `develop`
+ * itself (nothing differs from origin/develop) the diff is empty and the guard
+ * is a no-op that passes. When no base ref is resolvable (e.g. a shallow clone
+ * without origin/develop) the guard cannot scope a diff and passes rather than
+ * block on an unknowable baseline.
+ *
+ * Two kinds are tracked, classified via the TypeScript AST so tokens inside
+ * strings/comments are never miscounted:
+ *   - `emptyCatch`  — `catch { }` with an empty body (production src, repo-wide).
  *   - `serverConsole` — `console.*` calls in server-side runtime packages
  *     (SERVER_CONSOLE_SCOPE); CLI stdout (packages/elizaos), scripts, and build
  *     files are intentionally out of scope.
  *
- * Batches under #12182 shrink the baseline as they delete slop; the ratchet
- * mechanically prevents backsliding. Modeled on type-safety-ratchet.mjs.
+ * The repo-wide totals remain available for #12182 sweep tracking via `--report`
+ * (informational only — never affects the exit code).
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -26,12 +40,6 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const BASELINE_PATH = path.join(
-  ROOT,
-  "packages",
-  "scripts",
-  "error-policy-ratchet-baseline.json",
-);
 
 const KIND_LABELS = {
   emptyCatch: "empty catch block (`catch {}`)",
@@ -67,15 +75,22 @@ const EXCLUDED_SEGMENTS = new Set([
 const args = new Set(process.argv.slice(2));
 const JSON_FLAG = args.has("--json");
 const SELF_TEST = args.has("--self-test");
-const UPDATE_BASELINE = args.has("--update-baseline");
+const REPORT = args.has("--report");
 
 function usage() {
   console.log(`Usage: node packages/scripts/error-policy-ratchet.mjs [options]
 
+Diff-scoped: fails only when a production source file the branch touches
+increases its own empty-catch / server-console count vs the merge-base with
+origin/develop. Immune to unrelated develop drift.
+
 Options:
-  --json             Print machine-readable summary JSON.
-  --self-test        Run the AST classifier + comparison self-test.
-  --update-baseline  Rewrite the checked-in baseline to current counts.
+  --json        Print machine-readable diff-scoped result JSON.
+  --report      Also compute + print the repo-wide totals (informational only).
+  --self-test   Run the AST classifier + comparison self-test.
+
+Env:
+  ERROR_POLICY_BASE_REF  Override the base ref (default: origin/develop, then develop).
 `);
 }
 
@@ -152,17 +167,6 @@ export function collectFindings(sourceText, relPath) {
   return findings;
 }
 
-function trackedSourceFiles() {
-  const output = execFileSync("git", ["ls-files"], {
-    cwd: ROOT,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return [...new Set(output.split("\n").filter(Boolean))]
-    .filter(isProductionSourceFile)
-    .sort();
-}
-
 function summarize(findings) {
   const counts = Object.fromEntries(
     Object.keys(KIND_LABELS).map((kind) => [kind, 0]),
@@ -171,117 +175,149 @@ function summarize(findings) {
   return counts;
 }
 
-function scanFiles(files) {
+function countText(sourceText, relPath) {
+  return summarize(collectFindings(sourceText, relPath));
+}
+
+function git(argv, { allowFailure = false } = {}) {
+  try {
+    return execFileSync("git", argv, {
+      cwd: ROOT,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", allowFailure ? "ignore" : "inherit"],
+    });
+  } catch (err) {
+    if (allowFailure) return null;
+    throw err;
+  }
+}
+
+/** First resolvable ref among the env override, origin/develop, develop. */
+function resolveBaseRef() {
+  const candidates = [
+    process.env.ERROR_POLICY_BASE_REF,
+    "origin/develop",
+    "develop",
+  ].filter(Boolean);
+  for (const ref of candidates) {
+    if (git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+      allowFailure: true,
+    })) {
+      return ref;
+    }
+  }
+  return null;
+}
+
+/** Merge-base of the base ref and HEAD; null if it cannot be computed. */
+function mergeBaseWith(ref) {
+  const out = git(["merge-base", ref, "HEAD"], { allowFailure: true });
+  return out ? out.trim() : null;
+}
+
+/** Production source files the branch touches relative to the merge-base. */
+function changedProductionFiles(base) {
+  const out = git(["diff", "--name-only", "-z", `${base}`, "HEAD"], {
+    allowFailure: true,
+  });
+  if (!out) return [];
+  return [...new Set(out.split("\0").filter(Boolean))]
+    .filter(isProductionSourceFile)
+    .sort();
+}
+
+/** File content at `base`, or null if the file did not exist there. */
+function baseContent(base, relPath) {
+  return git(["show", `${base}:${relPath}`], { allowFailure: true });
+}
+
+/** Working-tree content, or null if the file was deleted on the branch. */
+function workingTreeContent(relPath) {
+  try {
+    return readFileSync(path.join(ROOT, relPath), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+const ZERO_COUNTS = Object.fromEntries(
+  Object.keys(KIND_LABELS).map((kind) => [kind, 0]),
+);
+
+/**
+ * Pure per-file comparison: which kinds increased vs the base counts.
+ * Exported for the self-test.
+ */
+export function compareFileCounts(current, baseCounts) {
+  const regressions = [];
+  for (const kind of Object.keys(KIND_LABELS)) {
+    const cur = current[kind] ?? 0;
+    const prev = baseCounts[kind] ?? 0;
+    if (cur > prev) regressions.push({ kind, current: cur, base: prev });
+  }
+  return regressions;
+}
+
+/**
+ * For each changed production file, compare its working-tree count to its
+ * count at the merge-base. New files compare against zero.
+ */
+function diffScopedRegressions(base, files) {
+  const perFile = [];
+  const regressions = [];
+  for (const relPath of files) {
+    const currentText = workingTreeContent(relPath);
+    if (currentText === null) continue; // deleted on the branch — nothing added.
+    const current = countText(currentText, relPath);
+
+    const baseText = baseContent(base, relPath);
+    const baseCounts =
+      baseText === null ? { ...ZERO_COUNTS } : countText(baseText, relPath);
+
+    perFile.push({ file: relPath, current, base: baseCounts });
+    for (const r of compareFileCounts(current, baseCounts)) {
+      regressions.push({ file: relPath, ...r });
+    }
+  }
+  return { perFile, regressions };
+}
+
+/** Repo-wide informational totals (never gates). */
+function repoWideTotals() {
+  const output = git(["ls-files"]);
+  const files = [...new Set(output.split("\n").filter(Boolean))].filter(
+    isProductionSourceFile,
+  );
   const findings = [];
   for (const relPath of files) {
-    const sourceText = readFileSync(path.join(ROOT, relPath), "utf8");
-    findings.push(...collectFindings(sourceText, relPath));
+    findings.push(...collectFindings(readFileSync(path.join(ROOT, relPath), "utf8"), relPath));
   }
-  return findings;
+  return { filesScanned: files.length, counts: summarize(findings) };
 }
 
-function loadBaseline() {
-  if (!existsSync(BASELINE_PATH)) {
-    throw new Error(
-      `Missing baseline ${path.relative(ROOT, BASELINE_PATH)}. Run with --update-baseline first.`,
-    );
-  }
-  return JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-}
-
-function baselinePayload(files, counts) {
-  return {
-    schema: "eliza_error_policy_ratchet_v1",
-    parent: "#12182",
-    updatedAt: new Date().toISOString(),
-    scope: {
-      enumeration: "git ls-files",
-      productionSourceOnly: true,
-      serverConsoleScope: SERVER_CONSOLE_SCOPE,
-    },
-    limits: counts,
-    filesScanned: files.length,
-  };
-}
-
-/** Exported for the self-test. */
-export function compareToBaseline(counts, baseline) {
-  const limits = baseline.limits ?? {};
-  const regressions = [];
-  const improvements = [];
-  for (const kind of Object.keys(KIND_LABELS)) {
-    const current = counts[kind] ?? 0;
-    const limit = limits[kind];
-    if (!Number.isInteger(limit)) {
-      regressions.push({
-        kind,
-        current,
-        limit: null,
-        message: `baseline is missing ${kind}`,
-      });
-      continue;
-    }
-    if (current > limit) regressions.push({ kind, current, limit });
-    else if (current < limit) improvements.push({ kind, current, limit });
-  }
-  return { regressions, improvements };
-}
-
-function groupTopFiles(findings, kind, limit = 10) {
-  const byFile = new Map();
-  for (const finding of findings) {
-    if (finding.kind !== kind) continue;
-    byFile.set(finding.file, (byFile.get(finding.file) ?? 0) + 1);
-  }
-  return [...byFile.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([file, count]) => ({ file, count }));
-}
-
-function printHumanSummary({
-  files,
-  counts,
-  baseline,
-  findings,
-  regressions,
-  improvements,
-}) {
+function printHumanSummary({ baseRef, base, files, perFile, regressions }) {
   console.log(
-    `[error-policy-ratchet] scanned ${files.length} tracked production source files`,
+    `[error-policy-ratchet] base ${baseRef} (${base.slice(0, 10)}); ${files.length} changed production source file(s)`,
   );
-  for (const kind of Object.keys(KIND_LABELS)) {
-    const limit = baseline?.limits?.[kind];
-    const limitText = Number.isInteger(limit) ? String(limit) : "missing";
-    console.log(
-      `[error-policy-ratchet] ${KIND_LABELS[kind]}: ${counts[kind]} / ${limitText}`,
-    );
+  for (const row of perFile) {
+    const deltas = Object.keys(KIND_LABELS)
+      .map((kind) => `${kind} ${row.base[kind] ?? 0}->${row.current[kind] ?? 0}`)
+      .join(", ");
+    console.log(`[error-policy-ratchet]   ${row.file}: ${deltas}`);
   }
-  if (improvements.length > 0) {
-    console.log(
-      "[error-policy-ratchet] baseline can shrink:",
-      improvements
-        .map((i) => `${KIND_LABELS[i.kind]} ${i.limit} -> ${i.current}`)
-        .join(", "),
-    );
+  if (regressions.length === 0) {
+    console.log("[error-policy-ratchet] no new fallback-slop in touched files");
+    return;
   }
-  if (regressions.length === 0) return;
-  console.error("[error-policy-ratchet] error-policy baseline exceeded");
-  for (const regression of regressions) {
-    const label = KIND_LABELS[regression.kind];
-    if (regression.limit === null) {
-      console.error(`  - ${label}: ${regression.message}`);
-    } else {
-      console.error(
-        `  - ${label}: ${regression.current} current > ${regression.limit} baseline`,
-      );
-    }
-    for (const row of groupTopFiles(findings, regression.kind)) {
-      console.error(`      ${row.count} ${row.file}`);
-    }
+  console.error("[error-policy-ratchet] new fallback-slop added in touched files:");
+  for (const r of regressions) {
+    console.error(
+      `  - ${r.file}: ${KIND_LABELS[r.kind]} ${r.base} -> ${r.current}`,
+    );
   }
   console.error(
-    "\nNew fallback-slop error handling is blocked. Fix the failure (throw/typed error, logger over console) instead of adding it. See the Error-Handling Simplification policy in AGENTS.md.",
+    "\nA PR may not ADD empty catches or server-side console calls to the files it touches. Fix the failure (throw/typed error, logger over console) instead of adding it. See the Error-Handling Simplification policy in AGENTS.md.",
   );
 }
 
@@ -298,9 +334,7 @@ function runSelfTest() {
       obj.console.log("not global console");
     }
   `;
-  const inScope = summarize(
-    collectFindings(sample, "packages/core/src/sample.ts"),
-  );
+  const inScope = countText(sample, "packages/core/src/sample.ts");
   if (inScope.emptyCatch !== 2 || inScope.serverConsole !== 2) {
     console.error(
       `[error-policy-ratchet] self-test failed (in-scope): ${JSON.stringify(inScope)}`,
@@ -309,9 +343,7 @@ function runSelfTest() {
   }
 
   // Out-of-scope file: empty catches still count, console does not.
-  const outScope = summarize(
-    collectFindings(sample, "packages/ui/src/sample.ts"),
-  );
+  const outScope = countText(sample, "packages/ui/src/sample.ts");
   if (outScope.emptyCatch !== 2 || outScope.serverConsole !== 0) {
     console.error(
       `[error-policy-ratchet] self-test failed (scope leak): ${JSON.stringify(outScope)}`,
@@ -319,40 +351,45 @@ function runSelfTest() {
     process.exit(1);
   }
 
-  // Comparison: an injected new violation over baseline must regress; equal or
-  // fewer must not.
-  const baseline = { limits: { emptyCatch: 2, serverConsole: 2 } };
-  const clean = compareToBaseline(
+  // Diff-scoped comparison: only an INCREASE over the same file's base regresses.
+  const unchanged = compareFileCounts(
     { emptyCatch: 2, serverConsole: 2 },
-    baseline,
+    { emptyCatch: 2, serverConsole: 2 },
   );
-  const regressed = compareToBaseline(
+  const added = compareFileCounts(
     { emptyCatch: 3, serverConsole: 2 },
-    baseline,
+    { emptyCatch: 2, serverConsole: 2 },
   );
-  const improved = compareToBaseline(
+  const removed = compareFileCounts(
     { emptyCatch: 1, serverConsole: 2 },
-    baseline,
+    { emptyCatch: 2, serverConsole: 2 },
   );
-  if (clean.regressions.length !== 0) {
-    console.error(
-      "[error-policy-ratchet] self-test failed: clean counts regressed",
-    );
+  const newFileClean = compareFileCounts(
+    { emptyCatch: 0, serverConsole: 0 },
+    { ...ZERO_COUNTS },
+  );
+  const newFileSlop = compareFileCounts(
+    { emptyCatch: 1, serverConsole: 0 },
+    { ...ZERO_COUNTS },
+  );
+  if (unchanged.length !== 0) {
+    console.error("[error-policy-ratchet] self-test failed: unchanged file regressed");
     process.exit(1);
   }
-  if (
-    regressed.regressions.length !== 1 ||
-    regressed.regressions[0].kind !== "emptyCatch"
-  ) {
-    console.error(
-      "[error-policy-ratchet] self-test failed: injected violation not caught",
-    );
+  if (added.length !== 1 || added[0].kind !== "emptyCatch") {
+    console.error("[error-policy-ratchet] self-test failed: added slop not caught");
     process.exit(1);
   }
-  if (improved.improvements.length !== 1) {
-    console.error(
-      "[error-policy-ratchet] self-test failed: improvement not detected",
-    );
+  if (removed.length !== 0) {
+    console.error("[error-policy-ratchet] self-test failed: removal counted as regression");
+    process.exit(1);
+  }
+  if (newFileClean.length !== 0) {
+    console.error("[error-policy-ratchet] self-test failed: clean new file regressed");
+    process.exit(1);
+  }
+  if (newFileSlop.length !== 1 || newFileSlop[0].kind !== "emptyCatch") {
+    console.error("[error-policy-ratchet] self-test failed: new-file slop not caught");
     process.exit(1);
   }
   console.log("[error-policy-ratchet] self-test passed");
@@ -363,50 +400,62 @@ if (SELF_TEST) {
   process.exit(0);
 }
 
-const files = trackedSourceFiles();
-const findings = scanFiles(files);
-const counts = summarize(findings);
+const baseRef = resolveBaseRef();
+const base = baseRef ? mergeBaseWith(baseRef) : null;
 
-let baseline;
-if (UPDATE_BASELINE) {
-  const next = baselinePayload(files, counts);
-  writeFileSync(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`);
-  baseline = next;
-  if (!JSON_FLAG) {
+if (!base) {
+  const reason = baseRef
+    ? `no merge-base with ${baseRef}`
+    : "no base ref (origin/develop) resolvable";
+  const repoWide = REPORT ? repoWideTotals() : null;
+  if (JSON_FLAG) {
     console.log(
-      `[error-policy-ratchet] wrote ${path.relative(ROOT, BASELINE_PATH)}`,
+      JSON.stringify(
+        { ok: true, skipped: reason, baseRef, mergeBase: null, repoWide },
+        null,
+        2,
+      ),
     );
+  } else {
+    console.log(
+      `[error-policy-ratchet] ${reason}; diff-scoped check skipped (pass)`,
+    );
+    if (repoWide) {
+      console.log(
+        `[error-policy-ratchet] repo-wide (informational): emptyCatch ${repoWide.counts.emptyCatch}, serverConsole ${repoWide.counts.serverConsole} across ${repoWide.filesScanned} files`,
+      );
+    }
   }
-} else {
-  baseline = loadBaseline();
+  process.exit(0);
 }
 
-const { regressions, improvements } = compareToBaseline(counts, baseline);
+const files = changedProductionFiles(base);
+const { perFile, regressions } = diffScopedRegressions(base, files);
+const repoWide = REPORT ? repoWideTotals() : null;
 
 if (JSON_FLAG) {
   console.log(
     JSON.stringify(
       {
         ok: regressions.length === 0,
-        filesScanned: files.length,
-        counts,
-        limits: baseline.limits,
+        baseRef,
+        mergeBase: base,
+        changedFiles: files,
+        perFile,
         regressions,
-        improvements,
+        repoWide,
       },
       null,
       2,
     ),
   );
 } else {
-  printHumanSummary({
-    files,
-    counts,
-    baseline,
-    findings,
-    regressions,
-    improvements,
-  });
+  printHumanSummary({ baseRef, base, files, perFile, regressions });
+  if (repoWide) {
+    console.log(
+      `[error-policy-ratchet] repo-wide (informational): emptyCatch ${repoWide.counts.emptyCatch}, serverConsole ${repoWide.counts.serverConsole} across ${repoWide.filesScanned} files`,
+    );
+  }
 }
 
 if (regressions.length > 0) process.exit(1);

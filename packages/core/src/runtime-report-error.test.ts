@@ -89,20 +89,46 @@ describe("AgentRuntime.reportError", () => {
 		expect(runtime.getRecentReportedErrors()).toHaveLength(1);
 	});
 
-	it("is self-safe: a handler that re-enters reportError does not recurse infinitely", () => {
+	it("suppresses a synchronously re-entering ERROR_REPORTED handler via the inReportError latch", () => {
 		const runtime = makeRuntime();
-		const spy = vi.spyOn(runtime, "reportError");
+		const warnSpy = vi.spyOn(runtime.logger, "warn");
+
+		// emitEvent invokes handlers synchronously (Array.map before its await), so
+		// this handler body runs while the outer reportError is still on the stack
+		// with inReportError === true. Each full report path emits ERROR_REPORTED,
+		// so WITHOUT the latch the nested report would re-emit -> re-invoke this
+		// handler -> re-report, recursing synchronously until the stack overflows.
+		let handlerInvocations = 0;
 		runtime.registerEvent(EventType.ERROR_REPORTED, async () => {
-			// A handler that itself reports an error must be dropped (warn-only),
-			// not loop back through the full report path.
+			handlerInvocations += 1;
 			runtime.reportError("Nested", new ElizaError("nested", { code: "N" }));
 		});
-		runtime.reportError("Outer", new ElizaError("outer", { code: "O" }));
-		// Only the outer failure is recorded in the ring; the nested re-entry is
-		// dropped by the latch.
-		const recent = runtime.getRecentReportedErrors();
-		expect(recent.map((e) => e.code)).toEqual(["O"]);
-		spy.mockRestore();
+
+		// The latch turns the nested re-entry into a warn-only no-op; the outer
+		// call returns normally instead of blowing the stack.
+		expect(() =>
+			runtime.reportError("Outer", new ElizaError("outer", { code: "O" })),
+		).not.toThrow();
+
+		// Handler fired exactly once: the nested reportError was short-circuited
+		// before it could emit a second ERROR_REPORTED event. (Removing the latch
+		// makes this grow without bound / overflow the stack.)
+		expect(handlerInvocations).toBe(1);
+
+		// Records exactly once — only the outer failure reached the ring; the
+		// nested re-entry recorded nothing.
+		expect(runtime.getRecentReportedErrors().map((e) => e.code)).toEqual(["O"]);
+
+		// The latch took its documented warn-only drop path for the nested entry.
+		expect(
+			warnSpy.mock.calls.some(
+				([, msg]) =>
+					typeof msg === "string" &&
+					msg.includes("re-entered while already reporting"),
+			),
+		).toBe(true);
+
+		warnSpy.mockRestore();
 	});
 
 	it("forwards to the AgentEventService error stream when registered", async () => {

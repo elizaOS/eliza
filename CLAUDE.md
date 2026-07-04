@@ -205,12 +205,13 @@ fallback code paths whose only purpose is masking a primary failure. Every catch
 without an annotation must be either newly-obvious slop or a J1 route boundary in
 a directory documented as such in the batch PR.
 
-**Regression guard (non-blocking ratchet).** `bun run audit:error-policy-ratchet`
-baselines the current count of empty catches (repo-wide) and server-side
-`console.*` calls and fails only when a count **increases** — new slop is
-blocked while existing violations stay green. Sweep batches shrink the baseline
-as they delete slop (`node packages/scripts/error-policy-ratchet.mjs
---update-baseline`). Logger only, never `console`, in server code.
+**Regression guard (diff-scoped ratchet).** `bun run audit:error-policy-ratchet`
+compares every production source file the branch touches against that file's own
+content at the merge-base with `origin/develop`, and fails only when a touched
+file **adds** an empty catch or server-side `console.*` call. It is immune to
+unrelated `develop` drift (files the branch does not touch are never counted)
+and is a no-op on `develop` itself. Run `... --report` for the repo-wide totals
+the #12182 sweeps drive down. Logger only, never `console`, in server code.
 
 ## Slop and Comment Cleanup
 
