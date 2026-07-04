@@ -1858,7 +1858,8 @@
       "dependsOn": [],
       "channels": [],
       "kind": "plugin",
-      "subtype": "voice"
+      "subtype": "voice",
+      "defaultTextToSpeech": true
     },
     {
       "id": "elevenlabs",

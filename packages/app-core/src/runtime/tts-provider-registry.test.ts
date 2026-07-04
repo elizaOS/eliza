@@ -55,16 +55,68 @@ describe("TTS provider registry", () => {
   });
 
   it("does not throw at import-time when the default registry entry is absent", () => {
-    expect(
-      __ttsProviderRegistryTestHooks.findDefaultTtsPluginName([]),
-    ).toBeNull();
+    expect(__ttsProviderRegistryTestHooks.findDefaultTtsEntry([])).toBeNull();
     expect(() =>
       __ttsProviderRegistryTestHooks.resolveDefaultTextToSpeechProviderFromEntries(
         [],
       ),
     ).toThrow(
-      "First-party registry entry edge-tts did not expose a voice plugin package name",
+      "First-party registry has no default voice plugin (defaultTextToSpeech + npmName)",
     );
+  });
+
+  it("selects the default by the data-driven flag, not a hard-coded id", () => {
+    // Drift/fallback mode that made the old id-keyed special case unsafe: a
+    // registry whose default voice plugin is NOT edge-tts must resolve to that
+    // plugin, carrying its own id through as the config key + provider name.
+    const provider =
+      __ttsProviderRegistryTestHooks.resolveDefaultTextToSpeechProviderFromEntries(
+        [
+          {
+            id: "edge-tts",
+            subtype: "voice",
+            npmName: "@elizaos/plugin-edge-tts",
+          },
+          {
+            id: "acme-voice",
+            subtype: "voice",
+            npmName: "@acme/plugin-voice",
+            defaultTextToSpeech: true,
+          },
+        ],
+      );
+    expect(provider).toMatchObject({
+      pluginName: "@acme/plugin-voice",
+      pluginConfigKey: "acme-voice",
+      providerName: "acme-voice",
+      priority: 0,
+    });
+  });
+
+  it("ignores the flag on a non-voice entry (invariant guard)", () => {
+    expect(
+      __ttsProviderRegistryTestHooks.findDefaultTtsEntry([
+        {
+          id: "not-voice",
+          subtype: "feature",
+          npmName: "@acme/plugin-feature",
+          defaultTextToSpeech: true,
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("resolves the default with no hard-coded plugin id in the selector", () => {
+    const registrySource = readFileSync(
+      resolve(appCoreRoot, "src/runtime/tts-provider-registry.ts"),
+      "utf8",
+    );
+    // Grep guard: the executable resolution path must not string-match a plugin
+    // id. `edge-tts` may still appear in prose (rationale) or via the cache
+    // wrapper import, but never as `candidate.id === "edge-tts"` selector.
+    expect(registrySource).not.toMatch(/\.id\s*===\s*["'`]edge-tts["'`]/);
+    expect(registrySource).not.toMatch(/===\s*["'`]edge-tts["'`]/);
+    expect(registrySource).toContain("defaultTextToSpeech === true");
   });
 
   it("keeps runtime glue free of the default TTS package literal", () => {
