@@ -187,7 +187,6 @@
     "test:e2e": "TEST_LANE=pr node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud --exclude eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts --exclude eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
     "test:e2e:heavy": "TEST_LANE=post-merge bunx vitest run --config packages/test/vitest/real.config.ts --passWithNoTests eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts packages/app-core/test/app/memory-relationships.real.e2e.test.ts eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
     "test:e2e:live": "TEST_LANE=post-merge node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud",
-    "test:lifeops": "node packages/scripts/run-all-tests.mjs --filter=plugins/plugin-personal-assistant --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts",
     "personality:judge": "bun --bun packages/benchmarks/personality-bench/src/runner.ts",
     "personality:bench:calibrate": "bun --filter @elizaos/personality-bench calibrate",
