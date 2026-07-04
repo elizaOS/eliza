@@ -257,6 +257,7 @@ def build_dataset(
 _TRACKED_DESTS = (
     "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
     "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
+    "max_grad_norm",
 )
 
 _FALLBACK_DEFAULTS: dict[str, Any] = {
@@ -268,6 +269,7 @@ _FALLBACK_DEFAULTS: dict[str, Any] = {
     "apollo_rank": 256,
     "max_samples": 0,
     "epochs": 3.0,
+    "max_grad_norm": 1.0,
     # memory_budget_gb intentionally stays None — downstream treats None
     # as "no enforcement", matching the original behavior.
 }
@@ -317,6 +319,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument("--batch-size", type=int, default=None)
     ap.add_argument("--grad-accum", type=int, default=None)
+    ap.add_argument(
+        "--max-grad-norm", type=float, default=None,
+        help="Gradient clipping norm forwarded to TRL SFTConfig. Default "
+             "None falls back to the registry tier value, or 1.0 when no "
+             "registry key is set. Pass 0 to disable HF Trainer clipping."
+    )
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument(
         "--max-seq-len", type=int, default=None,
@@ -442,9 +450,12 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
             args.apollo_rank = entry.optimizer_rank
         if not user_passed["memory_budget_gb"]:
             args.memory_budget_gb = entry.train_mem_gb_budget
-        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB",
+        if not user_passed["max_grad_norm"]:
+            args.max_grad_norm = entry.max_grad_norm
+        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB max_grad_norm=%.3g",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
-                 args.max_seq_len, args.optimizer, args.memory_budget_gb or 0)
+                 args.max_seq_len, args.optimizer, args.memory_budget_gb or 0,
+                 args.max_grad_norm)
 
     # --low-vram-smoke overrides applied AFTER the registry merge so the
     # preset wins regardless of which registry key was passed. The numbers
@@ -767,6 +778,7 @@ def main() -> int:
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=max(1, args.batch_size // 2),
         gradient_accumulation_steps=args.grad_accum,
+        max_grad_norm=args.max_grad_norm,
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,

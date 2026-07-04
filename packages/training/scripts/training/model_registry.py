@@ -98,6 +98,12 @@ class ModelEntry:
 
     micro_batch: int
     grad_accum: int
+    max_grad_norm: float
+    """Per-tier gradient clipping norm forwarded to TRL's ``SFTConfig``.
+
+    Larger Gemma 4 unified tiers get tighter clipping than the local tiers so
+    transient gradient spikes cannot silently rely on HF's global default.
+    """
 
     train_mem_gb_budget: float
     """Predicted peak GPU memory for training, world-aggregate across the FSDP
@@ -332,6 +338,7 @@ REGISTRY: dict[str, ModelEntry] = {
         optimizer_rank=1,
         micro_batch=1,
         grad_accum=16,
+        max_grad_norm=1.0,
         train_mem_gb_budget=15.5,
         train_dtype="bf16",
         infer_max_in=131072,
@@ -368,6 +375,7 @@ REGISTRY: dict[str, ModelEntry] = {
         optimizer_rank=1,
         micro_batch=1,
         grad_accum=16,
+        max_grad_norm=1.0,
         train_mem_gb_budget=28.0,
         train_dtype="bf16",
         infer_max_in=131072,
@@ -401,6 +409,7 @@ REGISTRY: dict[str, ModelEntry] = {
         optimizer_rank=512,
         micro_batch=2,
         grad_accum=8,
+        max_grad_norm=0.5,
         train_mem_gb_budget=80.0,
         train_dtype="bf16",
         # gemma4_unified (dense 12B/31B) has no validated Liger kernel path —
@@ -439,6 +448,7 @@ REGISTRY: dict[str, ModelEntry] = {
         optimizer_rank=512,
         micro_batch=1,
         grad_accum=8,
+        max_grad_norm=0.5,
         train_mem_gb_budget=210.0,
         train_dtype="bf16",
         # See gemma4-12b: gemma4_unified has no validated Liger path; keep it

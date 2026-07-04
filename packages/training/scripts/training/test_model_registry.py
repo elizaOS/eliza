@@ -228,3 +228,15 @@ def test_local_gemma4_tiers_keep_liger() -> None:
     rely on it for their seq_len budgets — they must stay enabled."""
     assert REGISTRY["gemma4-e2b"].use_liger is True
     assert REGISTRY["gemma4-e4b"].use_liger is True
+
+
+def test_registry_owns_per_tier_grad_clip() -> None:
+    """Stage 2 numerics guard: every tier must carry an explicit gradient
+    clipping norm instead of inheriting TRL/HF defaults by accident."""
+    for key in VERIFIED_KEYS:
+        assert get(key).max_grad_norm > 0
+
+    assert get("gemma4-e2b").max_grad_norm == 1.0
+    assert get("gemma4-e4b").max_grad_norm == 1.0
+    assert get("gemma4-12b").max_grad_norm == 0.5
+    assert get("gemma4-31b").max_grad_norm == 0.5

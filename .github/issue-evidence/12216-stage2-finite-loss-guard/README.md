@@ -9,6 +9,12 @@ Slice covered here:
   hard-fail when the loss tensor contains NaN or Inf.
 - Extends CPU-only finite-guard tests to cover finite scalar loss, NaN scalar
   loss, and mixed finite/Inf/NaN vector loss.
+- Adds a registry-owned `max_grad_norm` per Gemma 4 tier and wires it through
+  `train_local.py` into TRL's `SFTConfig`, with tighter clipping on the
+  12B/31B tiers.
+- Extends CPU-only registry/default-merge tests so the per-tier clip is
+  explicit, large tiers do not inherit HF defaults accidentally, and an
+  explicit `--max-grad-norm` still wins over the registry.
 
 Verification run from repo root:
 
@@ -24,6 +30,18 @@ python3 -m py_compile \
 # exit 0
 
 git diff --check
+# exit 0
+
+python3 -m pytest \
+  packages/training/scripts/training/test_model_registry.py \
+  packages/training/scripts/test_train_local_low_vram_smoke.py -q
+# 37 passed
+
+python3 -m py_compile \
+  packages/training/scripts/train_local.py \
+  packages/training/scripts/training/model_registry.py \
+  packages/training/scripts/training/test_model_registry.py \
+  packages/training/scripts/test_train_local_low_vram_smoke.py
 # exit 0
 ```
 
