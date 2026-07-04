@@ -2,7 +2,7 @@
 
 // Unit-tests the shared push-to-talk hold state machine against a real button
 // mounted in jsdom, driving pointerdown/up/cancel and fake hold timers. This is
-// the one implementation both the overlay and ChatComposer now share, so the
+// the one implementation the overlay and ChatComposer both share, so the
 // hold/quick-tap/slide-off/click-suppression contract is verified here once.
 
 import { cleanup, fireEvent, render } from "@testing-library/react";

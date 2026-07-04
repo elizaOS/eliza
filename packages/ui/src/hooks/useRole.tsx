@@ -1,12 +1,10 @@
 /**
- * useRole — the single canonical role-gating primitive for the UI (#9948).
+ * The single canonical role-gating primitive for the UI (#9948).
  *
- * Before this, role gating in the UI was ad-hoc: every surface pulled its own
- * `isOwner` boolean from a different endpoint (e.g. `LocalInferencePanel` reads
- * `prefsResp.isOwner`), and there was no `useRole`/`RoleGate` anywhere in
- * `packages/ui`. This provides one context + hook so "user can chat but not see
- * the wallet" is expressible declaratively, ranked by the SAME canonical role
- * model the server uses (`roleRank` over the canonical rank table).
+ * One context + hook so "user can chat but not see the wallet" is expressible
+ * declaratively, ranked by the SAME canonical role model the server uses
+ * (`roleRank` over the canonical rank table) — surfaces gate through this rather
+ * than pulling their own `isOwner` boolean from a per-surface endpoint.
  *
  * The app populates `RoleProvider` from whatever authoritative signal it has
  * (the server-resolved boundary role, or the owner flag); components below it

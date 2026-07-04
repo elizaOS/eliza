@@ -1,21 +1,18 @@
 /**
- * Continuous-chat orchestration on top of `useVoiceChat` (R10 §1, §2.2).
+ * Continuous-chat orchestration layered on top of `useVoiceChat`.
  *
- * WHY a sibling hook (not a refactor of useVoiceChat):
- * - `useVoiceChat` is a 1961-line monolith that already handles STT (Web Speech
- *   + native TalkMode), TTS (ElevenLabs + browser + native), interruption,
- *   cancellation, and audio cache. Rewriting it for this wave is out of scope
- *   and risky — R10 §10 calls this out explicitly.
- * - The continuous-chat semantics (mode switch, status, latency badge, speaker
- *   pill, cancellation token plumbing) are a thin orchestration layer that
- *   reads `useVoiceChat`'s state + invokes its `startListening("passive")` /
- *   `stopListening()` API. Keeping that orchestration in this sibling makes
- *   the diff reviewable and the contract testable.
+ * Kept as a sibling hook rather than folded into `useVoiceChat`: that hook
+ * already owns the whole voice engine (STT via Web Speech + native TalkMode;
+ * TTS via ElevenLabs + browser + native; interruption, cancellation, audio
+ * cache), and the continuous-chat semantics — mode switch, status, latency
+ * badge, speaker pill, cancellation-token plumbing — are a thin layer that reads
+ * `useVoiceChat`'s state and drives its `startListening("passive")` /
+ * `stopListening()` API. Separating them keeps the orchestration testable
+ * independently of the engine.
  *
- * The cancellation token defined here is intentionally minimal (R11 will spec
- * the full cross-layer cancellation contract; this layer only exposes the UI
- * surface). When R11 lands, swap the local `CancellationToken` shape for the
- * runtime one and propagate the abort signal through the cloud relay.
+ * The `CancellationToken` shape defined here only exposes the UI surface; the
+ * full cross-layer cancellation contract (abort signal propagated through the
+ * cloud relay) is not yet wired.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

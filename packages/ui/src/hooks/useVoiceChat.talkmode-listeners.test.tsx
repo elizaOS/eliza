@@ -4,16 +4,13 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * FIX 1 — ensureTalkModeListeners re-entrancy (useVoiceChat.ts).
- *
- * talkModeHandlesRef is only assigned after all three `addListener` awaits
- * resolve, so two overlapping ensureTalkModeListeners calls would both pass
- * the `handles.length > 0` guard and register SIX native listeners — the
- * first three leaked forever (double transcripts, un-removable). The fix
- * serializes registration through an in-flight-promise ref
- * (talkModeListenersRegistrationRef); this suite drives two concurrent
- * startListening calls against a deferred fake TalkMode plugin and asserts
- * exactly three listeners are registered and all of them are removable.
+ * Guards ensureTalkModeListeners re-entrancy in useVoiceChat: two overlapping
+ * registration passes must serialize through the in-flight-promise ref
+ * (talkModeListenersRegistrationRef) rather than both clearing the
+ * `handles.length > 0` guard and registering SIX native listeners, three of
+ * which would leak forever (double transcripts, un-removable). Drives two
+ * concurrent startListening calls against a deferred fake TalkMode plugin and
+ * asserts exactly three listeners register and all are removable.
  */
 
 const h = vi.hoisted(() => {

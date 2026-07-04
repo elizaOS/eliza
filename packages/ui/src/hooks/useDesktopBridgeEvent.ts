@@ -4,12 +4,11 @@
  *
  * The underlying bridge API takes a structured options object with both an
  * `rpcMessage` (the Electrobun renderer-side message name) and an
- * `ipcChannel` (the bun-side IPC channel). Both are required by the bridge,
- * so this hook surfaces them rather than the simplified `eventType: string`
- * signature originally proposed — calling the bridge with only one would
- * either drop the renderer-side subscription or break IPC routing.
+ * `ipcChannel` (the bun-side IPC channel). Both are required by the bridge, so
+ * this hook surfaces both: supplying only one would either drop the
+ * renderer-side subscription or break IPC routing.
  *
- * Resolved signature:
+ * Signature:
  *
  *   useDesktopBridgeEvent<T>(
  *     options: { rpcMessage: string; ipcChannel: string },

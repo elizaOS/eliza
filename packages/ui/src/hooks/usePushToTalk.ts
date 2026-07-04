@@ -10,9 +10,8 @@
  * The phase is a single ref (`idle → pending → holding → idle`) so it is the
  * one source of truth; pointer capture keeps move/up/cancel routed to the same
  * element even when the finger slides off. The overlay (dictation-into-draft)
- * and the ChatComposer (STT-then-submit) previously hand-rolled this machine
- * with divergent 200ms/180ms timings — {@link PUSH_TO_TALK_HOLD_MS} is now the
- * single hold duration for both.
+ * and the ChatComposer (STT-then-submit) both drive this machine, sharing the
+ * single {@link PUSH_TO_TALK_HOLD_MS} hold duration.
  */
 
 import type { PointerEvent as ReactPointerEvent } from "react";

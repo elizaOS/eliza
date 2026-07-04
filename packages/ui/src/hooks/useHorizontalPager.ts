@@ -29,8 +29,8 @@ const EDGE_RESISTANCE = 0.35;
 const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 // Velocity-aware momentum settle (#10717): after a drag release, the settle
 // duration is derived from the release velocity instead of a constant rate — a
-// fast flick settles quickly, a slow drag eases in — so the rail no longer
-// snaps home at the same speed regardless of how the finger left it.
+// fast flick settles quickly, a slow drag eases in — so the rail's snap-home
+// speed reflects how the finger left it.
 const MIN_SETTLE_MS = 130;
 const MAX_SETTLE_MS = 440;
 // Slowest settle speed (px/ms): a near-zero release velocity eases the

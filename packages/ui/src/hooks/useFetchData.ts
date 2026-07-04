@@ -1,10 +1,8 @@
 /**
- * useFetchData — canonical wrapper for the "fetch in an effect" pattern.
+ * Canonical wrapper for the "fetch in an effect" pattern across the dashboard.
  *
- * Replaces the ~35 ad-hoc `useEffect(() => { let cancelled = false; ... })`
- * implementations scattered across the dashboard. Always passes an
- * `AbortSignal` to the fetcher so an in-flight request is cancelled on
- * unmount or when `deps` change.
+ * Always passes an `AbortSignal` to the fetcher so an in-flight request is
+ * cancelled on unmount or when `deps` change.
  *
  * AbortError is treated as silent: a cancelled request never lands in
  * `error` state. Every other failure surfaces — this hook does NOT

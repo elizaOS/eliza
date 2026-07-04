@@ -1,13 +1,9 @@
 /**
- * Fetches available views from GET /api/views.
+ * Fetches the available views from `GET /api/views` — the primary data source
+ * for Launcher, returning the `ViewRegistryEntry` list.
  *
- * This hook is the primary data source for Launcher. When the
- * /api/views endpoint is live, it will return the full ViewRegistryEntry list.
- * Until then it returns an empty list so Launcher renders gracefully.
- *
- * Polling interval: 30s. The endpoint is expected to be cheap (in-memory list).
- * Polling can be replaced with a WebSocket subscription when
- * plugins are installed or uninstalled at runtime.
+ * Polls every 30s (the endpoint is a cheap in-memory registry list). An
+ * unreachable endpoint degrades to an empty list so Launcher still renders.
  */
 
 import type { AppShellBackgroundPolicy, ViewKind } from "@elizaos/core";
@@ -208,10 +204,8 @@ const EMPTY_VIEWS: ViewRegistryEntry[] = [];
 
 // Per-tab Lucide glyph names for the builtin shell views, so each launcher
 // tile renders a DISTINCT icon instead of collapsing onto the generic
-// LayoutGrid fallback (every builtin entry previously shipped no `icon`, so
-// Settings/Files/Tasks all rendered the same 4-square placeholder). Names must
-// exist in ViewIcon's ICONS map; an id with no entry here falls through to the
-// keyword guesser, then LayoutGrid.
+// LayoutGrid fallback. Names must exist in ViewIcon's ICONS map; an id with no
+// entry here falls through to the keyword guesser, then LayoutGrid.
 const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   chat: "MessageSquare",
   phone: "Phone",
