@@ -27,6 +27,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { resolvePlatform } from "@elizaos/shared";
 import { StreamingEchoDelayCalibrator } from "@elizaos/shared/voice/aec";
 import {
 	type AttributedTurn,
@@ -273,10 +274,11 @@ function resolveEchoDelaySamples(): number {
 		// `linux`. Using the resolved id makes the iOS (25 ms) / AOSP-Android
 		// (45 ms) seeds in the #9653 table reachable on device instead of
 		// collapsing to the host's darwin (20 ms) / linux (30 ms) seed.
+		const resolvedPlatform = resolvePlatform();
 		const platformId =
-			process.env.ELIZA_PLATFORM === "ios"
+			resolvedPlatform === "ios"
 				? "ios"
-				: process.env.ELIZA_PLATFORM === "android"
+				: resolvedPlatform === "android"
 					? "android"
 					: process.platform;
 		return platformPlaybackDelaySamples(platformId, AUDIO_FRAME_SAMPLE_RATE);

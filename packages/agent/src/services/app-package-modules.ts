@@ -22,6 +22,7 @@ import {
   type AppSessionState,
   type AppViewerAuthMessage,
   hasAppInterface,
+  isMobilePlatform,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
@@ -395,9 +396,7 @@ function bridgeExportToSpecifier(
 function isMobileBundleRuntime(): boolean {
   return (
     (globalThis as { __ELIZA_MOBILE_BUNDLE__?: boolean })
-      .__ELIZA_MOBILE_BUNDLE__ === true ||
-    process.env.ELIZA_PLATFORM === "android" ||
-    process.env.ELIZA_PLATFORM === "ios"
+      .__ELIZA_MOBILE_BUNDLE__ === true || isMobilePlatform()
   );
 }
 

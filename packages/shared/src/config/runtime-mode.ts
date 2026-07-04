@@ -5,6 +5,7 @@
  */
 import type { DeploymentTargetConfig } from "../contracts/service-routing.js";
 import { normalizeDeploymentTargetConfig } from "../contracts/service-routing.js";
+import { isIosMobile } from "../runtime-env.js";
 import { isPlainObject } from "../type-guards.js";
 
 export const RUNTIME_EXECUTION_MODES = [
@@ -140,10 +141,7 @@ export function resolveRuntimeExecutionMode(
   const clampForPlatform = (
     mode: RuntimeExecutionMode,
   ): RuntimeExecutionMode =>
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" &&
-    mode === "local-yolo"
-      ? "local-safe"
-      : mode;
+    isIosMobile() && mode === "local-yolo" ? "local-safe" : mode;
 
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
     const fromSetting = normalizeRuntimeExecutionMode(

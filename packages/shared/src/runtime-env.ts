@@ -431,15 +431,31 @@ export function syncResolvedApiPort(
 const MOBILE_PLATFORM_VALUES = new Set(["android", "ios"]);
 
 export function isMobilePlatform(env: RuntimeEnvRecord = process.env): boolean {
-  const raw = resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase();
+  const raw = resolvePlatform(env);
   if (!raw) return false;
   return MOBILE_PLATFORM_VALUES.has(raw);
 }
 
 export function isAndroidMobile(env: RuntimeEnvRecord = process.env): boolean {
-  return (
-    resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase() === "android"
-  );
+  return resolvePlatform(env) === "android";
+}
+
+export function isIosMobile(env: RuntimeEnvRecord = process.env): boolean {
+  return resolvePlatform(env) === "ios";
+}
+
+/**
+ * The normalized `ELIZA_PLATFORM` value (trimmed + lowercased), resolved through
+ * the brand<->eliza alias table so a rebranded `<PREFIX>_PLATFORM` is honoured
+ * WITHOUT depending on the `syncBrandEnvToEliza` mirror mutation (arch-audit
+ * #12251). Returns `undefined` when neither the canonical key nor a branded
+ * alias is set — callers that only care about the mobile embeddings should
+ * prefer {@link isMobilePlatform} / {@link isAndroidMobile} / {@link isIosMobile}.
+ */
+export function resolvePlatform(
+  env: RuntimeEnvRecord = process.env,
+): string | undefined {
+  return resolveEnvValue(env, "ELIZA_PLATFORM")?.trim().toLowerCase();
 }
 
 export function resolveElizaRuntimeEnv(

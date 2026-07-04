@@ -22,6 +22,7 @@ import path from "node:path";
 import process from "node:process";
 import { sanitizeSpawnEnv } from "@elizaos/core";
 import {
+  isIosMobile,
   type RuntimeExecutionMode,
   resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
@@ -465,5 +466,5 @@ function isInsideOrEqual(root: string, target: string): boolean {
 }
 
 function isIosPlatform(): boolean {
-  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+  return isIosMobile();
 }
