@@ -91,7 +91,7 @@ export function CustomActionsView() {
           ),
         );
       } catch {
-        // toggle failure: optimistic update will be stale until next load
+        // A failed toggle leaves the displayed state to be reconciled by the next load.
       }
     },
     [],
@@ -114,7 +114,7 @@ export function CustomActionsView() {
         await client.deleteCustomAction(id);
         setActions((prev) => prev.filter((action) => action.id !== id));
       } catch {
-        // deletion failure: item remains in list
+        // A failed delete keeps the item visible for retry.
       }
     },
     [t],

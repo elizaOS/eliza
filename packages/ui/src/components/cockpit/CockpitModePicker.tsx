@@ -1,3 +1,7 @@
+/**
+ * Renders the cockpit mode cards and Eliza Cloud tier toggle without importing
+ * plugin or server code into the UI package.
+ */
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
@@ -25,7 +29,7 @@ const BADGE_CLASS: Record<CockpitModeBadge, string> = {
 export interface CockpitModePickerProps {
   /** The currently-selected mode config. */
   value: CockpitModeConfig;
-  /** Called with the new config when the user picks a mode or flips the tier. */
+  /** Called with the selected config when the user picks a mode or flips the tier. */
   onChange: (config: CockpitModeConfig) => void;
   /** Arm the TOS-unsafe experimental options (hidden by default). */
   experimentalEnabled?: boolean;

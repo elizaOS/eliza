@@ -221,7 +221,7 @@ function deriveTitle(text: string, max = 80): string {
 }
 
 /**
- * Build the orchestrator create-task input for a new cockpit session from a
+ * Build the orchestrator create-task input for a cockpit session from a
  * free-text goal + the selected mode. `title` defaults to the goal's first line.
  */
 export function buildCockpitCreateTaskInput(opts: {

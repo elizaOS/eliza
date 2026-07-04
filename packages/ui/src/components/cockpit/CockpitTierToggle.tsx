@@ -1,10 +1,14 @@
+/**
+ * Presents the Fast/Smart tier selector that a running cockpit session pane
+ * uses to persist the desired Eliza Cloud provider policy.
+ */
 import { SegmentedControl } from "../ui/segmented-control";
 import type { ElizaCloudTier } from "./cockpit-modes";
 
 export interface CockpitTierToggleProps {
   /** Current Eliza Cloud tier of the running session. */
   value: ElizaCloudTier;
-  /** Called with the new tier when the user flips it. */
+  /** Called with the selected tier when the user flips it. */
   onChange: (tier: ElizaCloudTier) => void;
   disabled?: boolean;
   className?: string;

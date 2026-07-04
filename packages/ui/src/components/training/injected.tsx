@@ -1,3 +1,7 @@
+/**
+ * Bridges the app shell's training route to the fine-tuning view injected by
+ * the Training plugin, with a lightweight unavailable-state fallback.
+ */
 import type { FineTuningViewProps } from "../../config/boot-config";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
 

@@ -1,3 +1,7 @@
+/**
+ * Collects a coding-agent goal and cockpit mode selection, then emits the
+ * orchestrator create-task input used to start a session.
+ */
 import { useState } from "react";
 
 import type { CodingAgentCreateTaskInput } from "../../api/client-types-cloud";
@@ -29,7 +33,7 @@ export interface CockpitNewSessionFormProps {
 }
 
 /**
- * The "spawn a new coding session" form for the cockpit: a free-text goal + the
+ * The "spawn a coding session" form for the cockpit: a free-text goal + the
  * per-session {@link CockpitModePicker}. On submit it lowers the selected mode to
  * the orchestrator `providerPolicy` (via `buildCockpitCreateTaskInput`) and hands
  * the parent a ready `CodingAgentCreateTaskInput` to POST to

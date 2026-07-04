@@ -1,3 +1,7 @@
+/**
+ * Composes the mobile-first coding cockpit deck, active room entry points, and
+ * session-start form without owning the live orchestrator wiring.
+ */
 import { TerminalSquare } from "lucide-react";
 
 import type {
@@ -36,7 +40,7 @@ export interface CockpitViewProps {
  *
  *   - the live **deck** (`OrchestratorRoomView`, shaw's room-view widget) — one
  *     card per active task room with its swarm of sub-agents, and
- *   - the **new-session** form (mode picker → create-task `providerPolicy`).
+ *   - the **session-start** form (mode picker → create-task `providerPolicy`).
  *
  * The driver bubble (host chat) manages these rooms; tapping a room drills into
  * its focused session pane (transcript + `TaskInspector` controls + a terminal-

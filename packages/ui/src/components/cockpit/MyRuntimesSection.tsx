@@ -1,3 +1,7 @@
+/**
+ * Renders the prop-driven runtime switcher used by Settings and the coding
+ * cockpit to show local, cloud, and remote Eliza agent runtimes.
+ */
 import { Check, Cloud, HardDrive, Server } from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
