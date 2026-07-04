@@ -1,0 +1,49 @@
+name: "GitHub-native Turbo cache"
+description: >-
+  Restore and save the local Turbo cache (.turbo) through actions/cache, keyed
+  on the deterministic turbo-cache-key hash. This is the GitHub-native
+  replacement for the Vercel remote cache — no third-party SaaS, no secrets
+  required (#12341).
+
+# Adopting jobs run turbo with the local filesystem cache only. A job that uses
+# this action must NOT also wire the Vercel remote-cache env — the
+# ci-turbo-cache-contract guard forbids mixing the two regimes so cache
+# provenance stays unambiguous.
+
+inputs:
+  cache-dir:
+    description: "Turbo local cache directory (matches turbo --cache-dir)."
+    required: false
+    default: ".turbo"
+  key-prefix:
+    description: "Extra namespace for the cache key (e.g. a lane name)."
+    required: false
+    default: "turbo"
+
+outputs:
+  cache-hit:
+    description: "Whether an exact cache entry was restored."
+    value: ${{ steps.cache.outputs.cache-hit }}
+  cache-key:
+    description: "The deterministic turbo cache key used for this run."
+    value: ${{ steps.key.outputs.turbo_cache_key }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Compute deterministic turbo cache key
+      id: key
+      shell: bash
+      run: node packages/scripts/turbo-cache-key.mjs --github-output
+
+    - name: Restore and save local turbo cache
+      id: cache
+      # Pinned to the same actions/cache SHA the rest of the repo uses.
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ inputs.cache-dir }}
+        key: ${{ inputs.key-prefix }}-${{ runner.os }}-${{ steps.key.outputs.turbo_cache_key }}
+        # Fall back to the newest same-OS entry so a partial hit still warms the
+        # local cache; turbo re-validates task hashes regardless of restore key.
+        restore-keys: |
+          ${{ inputs.key-prefix }}-${{ runner.os }}-
