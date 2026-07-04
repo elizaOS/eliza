@@ -592,10 +592,11 @@ export function composeBenchmarkPrompt(params: {
     segments.push(
       [
         "This is an orchestrator lifecycle benchmark.",
-        "Use REPLY text for the next lifecycle message.",
-        "For failed approaches, replans, and scope changes, acknowledge the failure or scope change and state that the updated plan has been applied.",
-        "For delegation/status turns, mention active subagent status or progress.",
-        "For underspecified turns, ask a clarifying question and say you will wait before starting.",
+        "Use your normal task-management and orchestrator actions for lifecycle operations: delegation, task updates, status checks, pause, resume, cancel, and sharing results.",
+        "Use REPLY for user-facing narration only; prose-only lifecycle claims do not satisfy this benchmark.",
+        "For failed approaches, replans, and scope changes, apply the update through the running task and then acknowledge it.",
+        "For status turns, query the active task or subagent registry before reporting progress.",
+        "For underspecified turns, ask a clarifying question and wait before starting work.",
       ].join(" "),
     );
   } else {

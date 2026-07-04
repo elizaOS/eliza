@@ -256,8 +256,10 @@ describe("composeBenchmarkPrompt", () => {
     });
 
     expect(prompt).toContain("orchestrator lifecycle benchmark");
-    expect(prompt).toContain("updated plan has been applied");
-    expect(prompt).toContain("active subagent status or progress");
+    expect(prompt).toContain("normal task-management and orchestrator actions");
+    expect(prompt).toContain("prose-only lifecycle claims do not satisfy");
+    expect(prompt).toContain("query the active task or subagent registry");
+    expect(prompt).not.toContain("Use REPLY text for the next lifecycle message");
   });
 });
 
@@ -403,8 +405,14 @@ describe("benchmark plugin LifeOps tool capture", () => {
     expect(rendered?.text).toContain(
       "This is an orchestrator lifecycle benchmark",
     );
-    expect(rendered?.text).toContain("updated plan has been applied");
-    expect(rendered?.text).toContain("active subagent");
+    expect(rendered?.text).toContain(
+      "normal task-management and orchestrator actions",
+    );
+    expect(rendered?.text).toContain(
+      "query the active task or subagent registry",
+    );
+    expect(rendered?.text).toContain("prose-only status claims do not satisfy");
+    expect(rendered?.text).not.toContain("Respond with actions: REPLY");
 
     setBenchmarkContext(null);
   });
