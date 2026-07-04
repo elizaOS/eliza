@@ -24,6 +24,9 @@ function resolveTokenizerEncoding(modelName: string): Tiktoken {
   try {
     return encodingForModel(modelName as TiktokenModel);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — js-tiktoken throws on model
+    // names outside its static registry (custom/newer models); fall back to the
+    // closest base encoding so token estimates stay usable instead of throwing.
     return getEncoding(fallbackEncoding as TiktokenEncoding);
   }
 }

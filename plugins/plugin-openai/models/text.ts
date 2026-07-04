@@ -660,6 +660,9 @@ function parseJsonIfPossible(value: unknown): unknown {
   try {
     return JSON.parse(value);
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — tool-call `arguments` may be a
+    // plain (non-JSON) string; returning the raw value is the correct parse of a
+    // non-JSON argument, not a swallowed failure.
     return value;
   }
 }
@@ -1010,9 +1013,10 @@ function buildNativeTextResult(
 function handledPromise<T>(value: T | PromiseLike<T>): Promise<T> {
   const promise = Promise.resolve(value);
   promise.catch(() => {
-    // The streaming path primarily consumes `textStream`. AI SDK companion
-    // promises such as `text` can reject later on empty streams even when no
-    // caller requested them, which otherwise surfaces as an unhandled rejection.
+    // error-policy:J5 unhandled-rejection suppression — the streaming path
+    // primarily consumes `textStream`. AI SDK companion promises such as `text`
+    // can reject later on empty streams even when no caller requested them; the
+    // real error is still observed by whoever awaits `textStream`.
   });
   return promise;
 }
@@ -1120,6 +1124,9 @@ function toTrajectoryJsonSafe(value: unknown): unknown {
       })
     ) as unknown;
   } catch {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — trajectory JSON
+    // serialization is a telemetry artifact; on a non-serializable value fall
+    // back to a string repr rather than failing the model call being logged.
     return String(value);
   }
 }
@@ -1205,6 +1212,8 @@ async function generateTextWithTransientRetry(
         // biome-ignore lint/suspicious/noExplicitAny: see above.
       )) as any;
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — terminal or retry-exhausted
+      // errors rethrow unchanged; only bounded transient provider errors retry.
       if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
       attempt++;
       const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
@@ -1269,6 +1278,8 @@ async function consumeStreamWithTransientRetry(
       if (capturedError) throw capturedError;
       return { text, toolCalls, usage, finishReason };
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — terminal or retry-exhausted
+      // errors rethrow unchanged; only bounded transient provider errors retry.
       if (attempt >= maxRetries || !isTransientProviderError(error)) throw error;
       attempt++;
       const backoffMs = Math.min(3000, 300 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 200);
@@ -1522,6 +1533,8 @@ async function generateTextByModelType(
             yield chunk;
           }
         } catch (error) {
+          // error-policy:J2 context-adding rethrow — capture the stream-iteration
+          // error so `finally` can finalize telemetry, then rethrow it below.
           streamIterationError = error;
         } finally {
           await finalizeStreamingTelemetry();

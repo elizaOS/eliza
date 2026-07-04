@@ -49,6 +49,9 @@ async function validateOpenAIConfiguration(runtime: IAgentRuntime): Promise<void
       return;
     }
   } catch (error) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — key validation is an
+    // advisory startup probe; a network/transport failure must not block plugin
+    // init. The real request failure surfaces at call time on the model path.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(`[OpenAI] API validation error: ${message}. OpenAI functionality may be limited.`);
   }
