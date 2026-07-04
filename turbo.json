@@ -244,7 +244,11 @@
       "outputs": ["chrome/dist/**", "safari/Chat with Webpage/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": ["@elizaos/contracts#build", "@elizaos/logger#build"],
+      "dependsOn": [
+        "@elizaos/contracts#build",
+        "@elizaos/logger#build",
+        "@elizaos/cloud-routing#build"
+      ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**", "src/i18n/generated/**"],
       "inputs": [
@@ -256,6 +260,10 @@
       ]
     },
     "@elizaos/contracts#build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/cloud-routing#build": {
       "dependsOn": [],
       "outputs": ["dist/**"]
     },
