@@ -1,3 +1,6 @@
+/**
+ * Shared smart music fetch service accessors for action handlers.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 
 export type MusicFetchProgress = {

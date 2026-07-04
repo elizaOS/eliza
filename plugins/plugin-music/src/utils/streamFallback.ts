@@ -1,3 +1,6 @@
+/**
+ * Stream fallback helpers for readable audio sources.
+ */
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { createYtdlpStream } from "./ytdlpFallback";

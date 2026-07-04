@@ -1,3 +1,9 @@
+/**
+ * Permanent music archive utility for high-quality downloaded tracks.
+ *
+ * This standalone service is exported for callers that want durable storage
+ * outside the playback cache.
+ */
 import { exec } from "node:child_process";
 import {
   createReadStream,

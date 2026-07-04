@@ -1,3 +1,9 @@
+/**
+ * Search category registration for YouTube and Wikipedia music lookups.
+ *
+ * These categories let the shared search registry delegate music-specific
+ * queries to MusicLibraryService.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 
 export const YOUTUBE_SEARCH_CATEGORY: SearchCategoryRegistration = {

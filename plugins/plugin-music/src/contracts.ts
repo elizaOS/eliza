@@ -1,3 +1,6 @@
+/**
+ * Shared broadcast contracts for music playback and streaming surfaces.
+ */
 import type { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 

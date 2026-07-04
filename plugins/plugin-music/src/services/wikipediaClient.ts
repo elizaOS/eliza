@@ -1,3 +1,9 @@
+/**
+ * Wikipedia API client for raw music encyclopedia extracts.
+ *
+ * Extracted text is later reduced by the Wikipedia extraction service before it
+ * enters provider context.
+ */
 import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 

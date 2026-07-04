@@ -1,3 +1,6 @@
+/**
+ * tsup build config for the music plugin runtime bundle.
+ */
 import { defineConfig } from "tsup";
 
 export default defineConfig({

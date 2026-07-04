@@ -1,3 +1,6 @@
+/**
+ * yt-dlp command helpers for metadata and media extraction.
+ */
 import { basename, dirname } from "node:path";
 
 /**

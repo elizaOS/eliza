@@ -1,3 +1,9 @@
+/**
+ * LLM-backed music entity detector for songs, artists, and albums.
+ *
+ * It turns conversational text into structured entities consumed by metadata
+ * and Wikipedia providers.
+ */
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { parseJsonObjectResponse } from "../utils/json";
 

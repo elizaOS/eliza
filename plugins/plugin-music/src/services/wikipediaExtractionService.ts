@@ -1,3 +1,9 @@
+/**
+ * LLM extraction service for turning Wikipedia text into music metadata.
+ *
+ * It prompts the runtime model with entity context and parses structured
+ * extraction results for providers.
+ */
 import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { parseJsonObjectResponse } from "../utils/json";

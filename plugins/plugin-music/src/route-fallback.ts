@@ -1,3 +1,9 @@
+/**
+ * Fallback music-player status route for hosts that mount plugin routes late.
+ *
+ * It answers status-like requests directly from MusicService when the normal
+ * plugin route table did not handle the request.
+ */
 import type { ServerResponse } from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 

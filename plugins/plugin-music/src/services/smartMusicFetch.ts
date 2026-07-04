@@ -1,3 +1,9 @@
+/**
+ * Smart fetch pipeline for resolving, downloading, and preparing music tracks.
+ *
+ * It combines YouTube search, yt-dlp, audio caching, and progress reporting for
+ * action handlers.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 
 // Local contracts for the optional torrent peer plugins. They aren't always

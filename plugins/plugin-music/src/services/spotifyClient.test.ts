@@ -1,3 +1,6 @@
+/**
+ * Spotify client tests for recommendation request shaping.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SpotifyClient, testExports } from "./spotifyClient";
 

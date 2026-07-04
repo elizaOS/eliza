@@ -1,3 +1,6 @@
+/**
+ * Opus stream normalization helpers for broadcast-compatible audio output.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { PassThrough, type Readable } from "node:stream";
 import { logger } from "@elizaos/core";

@@ -1,3 +1,9 @@
+/**
+ * YouTube search helper backed by yt-dlp metadata extraction.
+ *
+ * It produces playable video candidates for library search and smart music
+ * fetch flows.
+ */
 import { logger } from "@elizaos/core";
 
 const YOUTUBE_SEARCH_SERVICE_NAME = "youtubeSearch";

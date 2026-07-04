@@ -1,3 +1,9 @@
+/**
+ * Progressive callback helper for long-running music actions.
+ *
+ * It coalesces user-visible status updates while downloads, searches, or
+ * playback preparation continue.
+ */
 import type { HandlerCallback } from "@elizaos/core";
 
 /**

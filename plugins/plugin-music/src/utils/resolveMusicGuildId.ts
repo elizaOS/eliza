@@ -1,3 +1,6 @@
+/**
+ * Guild/server id resolution helpers for music playback operations.
+ */
 import type { Memory } from "@elizaos/core";
 import type { MusicService } from "../service";
 

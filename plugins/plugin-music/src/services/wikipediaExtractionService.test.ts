@@ -1,3 +1,6 @@
+/**
+ * Wikipedia extraction tests for LLM response parsing and fallback behavior.
+ */
 import { type IAgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { WikipediaClient } from "./wikipediaClient";

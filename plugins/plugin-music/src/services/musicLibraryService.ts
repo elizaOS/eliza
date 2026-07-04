@@ -1,3 +1,9 @@
+/**
+ * Aggregated music library service for persistence, discovery, and metadata.
+ *
+ * It wraps component stores, playlist helpers, metadata clients, Spotify, and
+ * YouTube search behind the plugin's library service boundary.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import {
   type DJAnalytics,

@@ -1,3 +1,9 @@
+/**
+ * Spotify Web API client for track lookup and recommendations.
+ *
+ * It manages client-credentials auth and translates plugin recommendation
+ * inputs into Spotify seed and audio-feature parameters.
+ */
 import { logger } from "@elizaos/core";
 import { Buffer } from "buffer";
 import type {

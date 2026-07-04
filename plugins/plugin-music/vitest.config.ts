@@ -1,3 +1,6 @@
+/**
+ * Vitest config for the music plugin unit test suite.
+ */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

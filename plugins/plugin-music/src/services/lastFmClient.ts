@@ -1,3 +1,6 @@
+/**
+ * Last.fm API client for artist, track, and album metadata enrichment.
+ */
 import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { type RetryableError, retryWithBackoff } from "../utils/retry";

@@ -1,3 +1,9 @@
+/**
+ * Audio cache service for yt-dlp downloads and ffmpeg transcoding.
+ *
+ * It stores reusable audio artifacts and returns playable cached paths for the
+ * playback service.
+ */
 import { exec, execFile } from "node:child_process";
 import {
   createReadStream,

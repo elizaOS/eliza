@@ -1,3 +1,6 @@
+/**
+ * yt-dlp discovery helpers for the music download pipeline.
+ */
 import { execSync } from "node:child_process";
 import { accessSync, constants, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";

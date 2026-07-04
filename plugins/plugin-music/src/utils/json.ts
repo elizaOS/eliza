@@ -1,3 +1,6 @@
+/**
+ * JSON parsing helpers for model and service responses.
+ */
 export function parseJsonObjectResponse<T = Record<string, unknown>>(
   response: string,
 ): T | null {

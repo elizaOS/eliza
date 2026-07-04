@@ -1,3 +1,6 @@
+/**
+ * Search category tests for the music library integrations.
+ */
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

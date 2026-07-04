@@ -1,3 +1,10 @@
+/**
+ * Core music playback service for queues, broadcasts, routing, and Discord
+ * voice wiring.
+ *
+ * The service owns per-guild playback state and bridges cached audio into
+ * stream consumers and voice targets.
+ */
 import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
 import type { BroadcastTrackMetadata, IAudioBroadcast } from "./contracts";
 import { Broadcast } from "./core";

@@ -1,3 +1,6 @@
+/**
+ * FFmpeg and ffprobe path resolution for music transcoding.
+ */
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, dirname } from "node:path";

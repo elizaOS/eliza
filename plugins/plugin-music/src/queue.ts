@@ -1,3 +1,9 @@
+/**
+ * Per-guild music queue and voice playback model for direct audio streaming.
+ *
+ * It tracks queued tracks, current playback handles, and the voice manager used
+ * by MusicService.
+ */
 import { EventEmitter } from "node:events";
 import { PassThrough, type Readable } from "node:stream";
 import { type IAgentRuntime, logger } from "@elizaos/core";
@@ -41,6 +47,9 @@ interface DiscordServiceLike {
 
 /**
  * Represents a track in the music queue
+ */
+/**
+ * Per-guild music queue model for playback order and now-playing state.
  */
 export interface QueuedTrack {
   id: string;

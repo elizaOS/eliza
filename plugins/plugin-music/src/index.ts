@@ -1,3 +1,9 @@
+/**
+ * Plugin entrypoint for music playback, library, providers, routes, and search.
+ *
+ * It registers the umbrella MUSIC action, services, providers, HTTP routes, and
+ * search categories used by Eliza agents.
+ */
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { musicAction } from "./actions/music";
 import { musicInfoProvider } from "./providers/musicInfoProvider";

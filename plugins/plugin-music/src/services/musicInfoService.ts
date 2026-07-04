@@ -1,3 +1,9 @@
+/**
+ * Music information service that aggregates metadata sources.
+ *
+ * It combines MusicBrainz, Last.fm, Genius, TheAudioDB, and Wikipedia clients
+ * behind track, artist, and album lookup helpers.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AlbumInfo,

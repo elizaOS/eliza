@@ -1,3 +1,9 @@
+/**
+ * HTTP streaming and control routes for the music player surface.
+ *
+ * Routes expose live audio streams, queue/status JSON, and authenticated
+ * transport controls under the plugin mount path.
+ */
 import { Transform, type TransformCallback } from "node:stream";
 import type {
   IAgentRuntime,

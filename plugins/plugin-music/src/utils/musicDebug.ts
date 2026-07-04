@@ -1,3 +1,6 @@
+/**
+ * Debug logging helpers gated by the music debug environment flag.
+ */
 import { logger } from "@elizaos/core";
 
 /** Set `ELIZA_MUSIC_DEBUG=1` for verbose music-player / cache / stream logs. */

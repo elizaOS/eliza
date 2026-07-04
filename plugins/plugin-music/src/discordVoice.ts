@@ -1,3 +1,9 @@
+/**
+ * Discord voice compatibility bridge for the music plugin.
+ *
+ * The shapes stay local so music can integrate with Discord voice services
+ * without a hard runtime dependency on the Discord plugin.
+ */
 import type { VoiceManagerLike } from "./queue";
 
 /**

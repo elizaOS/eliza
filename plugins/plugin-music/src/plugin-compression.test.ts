@@ -1,3 +1,9 @@
+/**
+ * Plugin compression tests for music action registration.
+ *
+ * They verify promoted subactions stay discoverable after the plugin object is
+ * built.
+ */
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import musicPlugin from "./index";

@@ -1,3 +1,9 @@
+/**
+ * MusicBrainz API client for zero-config music metadata lookup.
+ *
+ * It uses the configured user agent and rate-friendly requests for artist,
+ * release, and recording data.
+ */
 import { logger } from "@elizaos/core";
 import type { AlbumInfo, ArtistInfo, TrackInfo } from "../types";
 import { retryWithBackoff } from "../utils/retry";
