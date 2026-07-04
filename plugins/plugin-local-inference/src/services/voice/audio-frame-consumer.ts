@@ -41,9 +41,11 @@ import {
 	type ResidualSuppressionOptions,
 } from "./nlms-echo-canceller.js";
 import type {
+	IncrementalTurnAttributor,
 	VoiceAttributionOutput,
 	VoiceAttributionPipeline,
 } from "./speaker/attribution-pipeline.js";
+import { PYANNOTE_WINDOW_SECONDS } from "./speaker/diarizer.js";
 import type { PcmFrame, VadEvent, VoiceInputSource } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -167,11 +169,18 @@ export interface VadSegmenter {
 
 /**
  * The structural slice of `VoiceAttributionPipeline` the consumer needs.
+ * `beginTurn` is optional: when the injected pipeline exposes it, the consumer
+ * diarizes long turns window-by-window during capture (#12257); otherwise it
+ * falls back to the one-shot whole-turn `attribute` (fakes in tests, older
+ * callers).
  */
 export interface AttributionPipelineLike {
 	attribute(
 		req: Parameters<VoiceAttributionPipeline["attribute"]>[0],
 	): Promise<VoiceAttributionOutput>;
+	beginTurn?(
+		init: Parameters<VoiceAttributionPipeline["beginTurn"]>[0],
+	): IncrementalTurnAttributor;
 }
 
 /**
@@ -332,6 +341,18 @@ export class AudioFrameConsumer {
 	private attributing: Promise<void> = Promise.resolve();
 	private closed = false;
 
+	// ---- windowed long-turn attribution (#12257) --------------------------
+	/** True when the injected pipeline supports incremental `beginTurn` windowing. */
+	private readonly incrementalCapable: boolean;
+	/** Samples per pyannote decode window (5 s @ 16 kHz). */
+	private readonly windowSamples: number;
+	/** The in-flight windowed turn, or null on the one-shot fallback path. */
+	private incrementalTurn: IncrementalTurnAttributor | null = null;
+	/** Turn-relative sample count already handed to `pushWindow` this turn. */
+	private diarizedSamples = 0;
+	/** Turn id allocated at speech-start (both incremental + one-shot paths). */
+	private currentTurnId = "";
+
 	/** Count of frames that failed to decode (surfaced via getters, not thrown). */
 	droppedFrames = 0;
 
@@ -372,6 +393,8 @@ export class AudioFrameConsumer {
 			0,
 			Math.round((config.preRollSeconds ?? 0.3) * sr),
 		);
+		this.windowSamples = PYANNOTE_WINDOW_SECONDS * sr;
+		this.incrementalCapable = typeof deps.pipeline.beginTurn === "function";
 		this.unsubscribeVad = this.vad.onVadEvent((event) =>
 			this.onVadEvent(event),
 		);
@@ -475,6 +498,10 @@ export class AudioFrameConsumer {
 		if (this.closed) return;
 		this.closed = true;
 		this.unsubscribeVad();
+		// A turn left open at close never reaches speech-end: cancel its
+		// speculative match so the encoder promise cannot dangle.
+		this.incrementalTurn?.speculativeMatch.cancel();
+		this.incrementalTurn = null;
 		await this.attributing;
 		this.turnListeners.clear();
 		this.turnChunks = [];
@@ -510,6 +537,21 @@ export class AudioFrameConsumer {
 		this.turnSamples = this.preRollSampleCount;
 		this.preRoll = [];
 		this.preRollSampleCount = 0;
+		this.currentTurnId = `aframe_${this.turnSeq++}`;
+		this.diarizedSamples = 0;
+		// Windowed long-turn attribution (#12257): begin the incremental turn so
+		// the speech-start speculative match fires and each 5 s window decodes as
+		// it fills (see `emitFilledWindows`) instead of one whole-turn decode at
+		// speech-end. Falls back to one-shot `attribute` when the pipeline has no
+		// `beginTurn` (test fakes / older callers).
+		this.incrementalTurn =
+			this.incrementalCapable && this.pipeline.beginTurn
+				? this.pipeline.beginTurn({
+						turnId: this.currentTurnId,
+						...(this.source ? { source: this.source } : {}),
+						startedAtMs,
+					})
+				: null;
 	}
 
 	private finalizeTurn(endedAtMs: number): void {
@@ -517,17 +559,47 @@ export class AudioFrameConsumer {
 		this.capturing = false;
 		const chunks = this.turnChunks;
 		const total = this.turnSamples;
+		const turnId = this.currentTurnId;
+		const startedAtMs = this.turnStartedAtMs;
+		const incrementalTurn = this.incrementalTurn;
+		const diarizedSamples = this.diarizedSamples;
 		this.turnChunks = [];
 		this.turnSamples = 0;
-		if (total === 0) return;
+		this.incrementalTurn = null;
+		this.diarizedSamples = 0;
+		if (total === 0) {
+			// No buffered audio — release the speculative match so it can't dangle.
+			incrementalTurn?.speculativeMatch.cancel();
+			return;
+		}
 		const pcm = concatFloat32(chunks, total);
-		const turnId = `aframe_${this.turnSeq++}`;
-		const startedAtMs = this.turnStartedAtMs;
 		// Serialize attribution so turns surface in order and a slow turn can't
 		// interleave with the next one's buffer.
-		this.attributing = this.attributing.then(() =>
-			this.attributeTurn({ turnId, pcm, startedAtMs, endedAtMs }),
-		);
+		if (incrementalTurn) {
+			// Only the trailing (< 5 s) window is left to decode — the full windows
+			// were already decoded during capture (#12257).
+			const finalWindow =
+				total > diarizedSamples
+					? sliceFromChunks(chunks, diarizedSamples, total)
+					: undefined;
+			const finalWindowStartMs =
+				(diarizedSamples / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
+			this.attributing = this.attributing.then(() =>
+				this.finalizeIncrementalTurn({
+					turnId,
+					incrementalTurn,
+					fullPcm: pcm,
+					finalWindow,
+					finalWindowStartMs,
+					startedAtMs,
+					endedAtMs,
+				}),
+			);
+		} else {
+			this.attributing = this.attributing.then(() =>
+				this.attributeTurn({ turnId, pcm, startedAtMs, endedAtMs }),
+			);
+		}
 	}
 
 	private async attributeTurn(args: {
@@ -543,19 +615,67 @@ export class AudioFrameConsumer {
 			endedAtMs: args.endedAtMs,
 			...(this.source ? { source: this.source } : {}),
 		});
-		// Join the ASR transcript for this turn (#8786) so VOICE_TURN_OBSERVED
-		// carries the real text and live name/entity extraction can fire. ASR is
-		// best-effort: a decode failure degrades to a transcript-less turn (the
-		// diarized speaker is still emitted), never a dropped turn.
-		const opts = await this.resolveTurnOptions(args.pcm, output);
+		await this.emitAttributedTurn({
+			turnId: args.turnId,
+			output,
+			pcm: args.pcm,
+			startedAtMs: args.startedAtMs,
+			endedAtMs: args.endedAtMs,
+		});
+	}
+
+	/**
+	 * Finalize a windowed turn: decode only the trailing partial window plus the
+	 * one embedding/profile-match over the already-diarized windows (#12257),
+	 * then emit the attributed turn exactly as the one-shot path does.
+	 */
+	private async finalizeIncrementalTurn(args: {
+		turnId: string;
+		incrementalTurn: IncrementalTurnAttributor;
+		fullPcm: Float32Array;
+		finalWindow: Float32Array | undefined;
+		finalWindowStartMs: number;
+		startedAtMs: number;
+		endedAtMs: number;
+	}): Promise<void> {
+		const output = await args.incrementalTurn.finalize({
+			fullPcm: args.fullPcm,
+			...(args.finalWindow ? { finalWindowPcm: args.finalWindow } : {}),
+			finalWindowStartMs: args.finalWindowStartMs,
+			endedAtMs: args.endedAtMs,
+		});
+		await this.emitAttributedTurn({
+			turnId: args.turnId,
+			output,
+			pcm: args.fullPcm,
+			startedAtMs: args.startedAtMs,
+			endedAtMs: args.endedAtMs,
+		});
+	}
+
+	/**
+	 * Join the ASR transcript for this turn (#8786) so VOICE_TURN_OBSERVED
+	 * carries the real text and live name/entity extraction can fire, run the
+	 * live-attribution gate, and surface the finalized turn to listeners. ASR is
+	 * best-effort: a decode failure degrades to a transcript-less turn (the
+	 * diarized speaker is still emitted), never a dropped turn.
+	 */
+	private async emitAttributedTurn(args: {
+		turnId: string;
+		output: VoiceAttributionOutput;
+		pcm: Float32Array;
+		startedAtMs: number;
+		endedAtMs: number;
+	}): Promise<void> {
+		const opts = await this.resolveTurnOptions(args.pcm, args.output);
 		const signal = await handleLiveVoiceAttribution(
 			this.runtime as Parameters<typeof handleLiveVoiceAttribution>[0],
-			output,
+			args.output,
 			opts,
 		);
 		const turn: AttributedTurn = {
 			turnId: args.turnId,
-			output,
+			output: args.output,
 			signal,
 			startedAtMs: args.startedAtMs,
 			endedAtMs: args.endedAtMs,
@@ -607,10 +727,36 @@ export class AudioFrameConsumer {
 	private appendTurnChunk(pcm: Float32Array): void {
 		this.turnChunks.push(pcm);
 		this.turnSamples += pcm.length;
+		this.emitFilledWindows();
 		// Hard cap: force-finalize a runaway turn at the current frame edge.
 		if (this.turnSamples >= this.maxTurnSamples) {
 			this.finalizeTurn(this.lastFrameEndMs);
 			this.vad.reset();
+		}
+	}
+
+	/**
+	 * Decode each 5 s window through the diarizer the moment it fills, so a long
+	 * turn's diarization is already done by speech-end (#12257). Slices the
+	 * turn-relative window [diarizedSamples, +windowSamples) out of the running
+	 * buffer and chains it onto the serialized attribution queue; the trailing
+	 * partial window is decoded in `finalizeTurn`. No-op on the one-shot path.
+	 */
+	private emitFilledWindows(): void {
+		const turn = this.incrementalTurn;
+		if (!turn) return;
+		while (this.turnSamples - this.diarizedSamples >= this.windowSamples) {
+			const start = this.diarizedSamples;
+			const window = sliceFromChunks(
+				this.turnChunks,
+				start,
+				start + this.windowSamples,
+			);
+			const windowStartMs = (start / AUDIO_FRAME_PIPELINE_SAMPLE_RATE) * 1000;
+			this.diarizedSamples += this.windowSamples;
+			this.attributing = this.attributing.then(() =>
+				turn.pushWindow(window, windowStartMs),
+			);
 		}
 	}
 
@@ -639,6 +785,35 @@ function concatFloat32(
 	for (const c of chunks) {
 		out.set(c, cursor);
 		cursor += c.length;
+	}
+	return out;
+}
+
+/**
+ * Copy samples [start, end) out of a list of Float32 chunks (oldest first),
+ * walking across chunk boundaries — carves a diarization window out of the
+ * in-flight turn buffer without flattening the whole turn each time (#12257).
+ */
+function sliceFromChunks(
+	chunks: readonly Float32Array[],
+	start: number,
+	end: number,
+): Float32Array {
+	const length = Math.max(0, end - start);
+	const out = new Float32Array(length);
+	if (length === 0) return out;
+	let chunkStart = 0;
+	let written = 0;
+	for (const chunk of chunks) {
+		const chunkEnd = chunkStart + chunk.length;
+		if (chunkEnd > start && chunkStart < end) {
+			const from = Math.max(start, chunkStart) - chunkStart;
+			const to = Math.min(end, chunkEnd) - chunkStart;
+			out.set(chunk.subarray(from, to), written);
+			written += to - from;
+		}
+		chunkStart = chunkEnd;
+		if (chunkStart >= end) break;
 	}
 	return out;
 }
