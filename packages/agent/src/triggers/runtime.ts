@@ -254,7 +254,7 @@ interface AutonomyRoomService {
 async function dispatchPrompt(
   runtime: IAgentRuntime,
   trigger: PromptTriggerConfig,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; executionId?: undefined } | { ok: false; error: string }> {
   const instructions = trigger.instructions.trim();
   if (!instructions) {
     return { ok: false, error: "prompt trigger missing instructions" };
@@ -372,8 +372,9 @@ export async function executeTriggerTask(
       ? await dispatchWorkflow(runtime, task, trigger, options.event)
       : await dispatchPrompt(runtime, trigger);
   if (result.ok === true) {
-    workflowExecutionId =
-      "executionId" in result ? result.executionId : undefined;
+    // Only workflow dispatch carries an execution id; prompt dispatch types it
+    // as `undefined`, so this reads `string | undefined` without a cast.
+    workflowExecutionId = result.executionId;
   } else {
     status = "error";
     errorMessage = result.error;
