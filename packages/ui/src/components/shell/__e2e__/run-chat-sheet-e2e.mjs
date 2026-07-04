@@ -1,7 +1,10 @@
 /**
  * Real-browser e2e for the iOS-style three-detent continuous-chat sheet — no app
- * server. Bundles chat-sheet-fixture.tsx with esbuild, loads it in headless
- * chromium via Playwright, and drives the sheet with REAL pointer gestures.
+ * server. Bundles chat-sheet-fixture.tsx, loads it in headless chromium via
+ * Playwright, and drives the sheet with REAL pointer gestures. A bespoke
+ * multi-page/multi-viewport runner (desktop + mobile against one browser) that
+ * composes the shared e2e-runner's lower-level helpers — esbuild stubs, fixture
+ * bundling, the assert gate, snapper, Chromium scope, and exit.
  *
  * Coverage (the user asked for exhaustive interaction + state testing):
  *   - DETENTS: peek (76px) → half (46vh) → full (72vh), stepped by pulls.
@@ -20,12 +23,18 @@
  * Exits non-zero on any failed assertion / console error.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
-import { chromium } from "playwright";
+import {
+  createAssertGate,
+  createSnapper,
+  finishRun,
+  stubElizaCore,
+  stubNodeBuiltins,
+  stubPromptSuggestions,
+  withChromium,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 import {
   touchDragHold,
   touchSwipe,
@@ -34,102 +43,35 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
-await mkdir(outDir, { recursive: true });
 
-let failures = 0;
-function assert(cond, msg) {
-  console.log(`${cond ? "✓" : "✗"} ${msg}`);
-  if (!cond) failures += 1;
-  return cond;
-}
+// The ✓/✗ gate + numbered snapper come from the shared e2e-runner; this bespoke
+// multi-page/multi-viewport runner composes them (rather than the one-page
+// orchestrator) and drives many pages against one browser through one shared
+// gate/snap counter.
+const gate = createAssertGate();
+const { assert } = gate;
+const snap = createSnapper({ outDir });
 function near(a, b, tol) {
   return Math.abs(a - b) <= tol;
 }
 
-// 1) Bundle the fixture (stub the API-touching prompt-suggestions hook).
-const stubPromptSuggestions = {
-  name: "stub-prompt-suggestions",
-  setup(b) {
-    b.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-      path: join(here, "usePromptSuggestions.stub.ts"),
-    }));
-  },
-};
-// The overlay's import graph transitively reaches server-only @elizaos/core
-// features (plugin-manager, working-memory, todos, …) whose module-init touches
-// the `process` global and node builtins — DEAD code in the browser (never
-// executed at render; the only render-path core symbol, findInteractionRegions,
-// is test-only). Production Vite resolves core's `browser` export condition;
-// this raw-esbuild bundle does not, so replace `@elizaos/core` with a no-op
-// Proxy (mirrors run-home-screen-e2e) instead of bundling its Node graph.
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy(
-          {
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-const result = await build({
-  entryPoints: [join(here, "chat-sheet-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
-  write: false,
+// Bundle the fixture with the shared esbuild stubs: the API-touching
+// prompt-suggestions hook, `@elizaos/core` (its module-init reaches the Node
+// graph — dead in a headless page; only the test-only render symbols are kept),
+// and node builtins. Wrap it in the shared HTML skeleton and load over file://.
+const url = await writeFixturePage({
+  entry: join(here, "chat-sheet-fixture.tsx"),
+  outDir,
+  htmlName: "chat-sheet.html",
+  title: "chat sheet e2e",
+  plugins: [
+    stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
+    stubElizaCore(),
+    stubNodeBuiltins(),
+  ],
+  processShim: true,
+  background: "#0a0d16",
 });
-const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat sheet e2e</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-<style>html,body{margin:0;height:100%;background:#0a0d16}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "chat-sheet.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
 
 // --- DOM probes ----------------------------------------------------------
 const variant = (p) =>
@@ -192,14 +134,6 @@ const panelRadii = (p) =>
   });
 const SHEET_TOP_MARGIN = 72;
 const grabberBox = (p) => p.getByTestId("chat-sheet-grabber").boundingBox();
-
-let shot = 0;
-async function snap(p, name) {
-  shot += 1;
-  const file = `${String(shot).padStart(2, "0")}-${name}.png`;
-  await p.screenshot({ path: join(outDir, file) });
-  console.log(`  📸 ${file}`);
-}
 
 function attachConsole(p, sink) {
   p.on("console", (m) => sink.logs.push(`[${m.type()}] ${m.text()}`));
@@ -458,9 +392,8 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-nudge-snapback`);
 }
 
-const browser = await chromium.launch();
 const sink = { logs: [], errors: [] };
-try {
+await withChromium({}, async (browser) => {
   // ===== DESKTOP + MOUSE =====
   const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
   attachConsole(desktop, sink);
@@ -2017,9 +1950,7 @@ try {
     await snap(p, "state-onboarding-bottom-anchored");
     await p.close();
   }
-} finally {
-  await browser.close();
-}
+});
 
 // --- Logs + errors review ---
 console.log("\n── browser console (sample) ──");
@@ -2038,9 +1969,9 @@ assert(
   "fixture logged a voice interaction (mic tap → hands-free / recording)",
 );
 
-console.log(`\nScreenshots (${shot}) written to ${outDir}`);
-if (failures > 0) {
-  console.error(`\nCHAT-SHEET E2E FAILED (${failures} assertion(s))`);
-  process.exit(1);
-}
-console.log("\nCHAT-SHEET E2E PASSED");
+console.log(`\nScreenshots written to ${outDir}`);
+finishRun({
+  failures: gate.failures,
+  passMessage: "\nCHAT-SHEET E2E PASSED",
+  failMessage: `\nCHAT-SHEET E2E FAILED (${gate.failures} assertion(s))`,
+});
