@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Component tests for AuthorizeContent, the app-authorize consent screen. Drives
+ * the signed-in and signed-out branches and the OAuth-start / cancel-redirect
+ * paths against a mocked `@stwd/react` auth hook (deterministic; no live Steward
+ * backend), asserting on rendered controls and redirect behaviour in jsdom.
+ */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

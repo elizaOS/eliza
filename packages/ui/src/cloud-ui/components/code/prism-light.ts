@@ -1,10 +1,12 @@
 /// <reference path="../../types/react-syntax-highlighter.d.ts" />
 
-// Subset of grammars registered for the cloud-frontend code surfaces
-// (docs, blog, api-explorer, sensitive requests, chat code blocks,
-// character JSON editor). The full Prism bundle ships ~280 grammars and
-// dominates the docs vendor chunk; registering only what we use cuts the
-// shipped grammars by ~95%.
+/**
+ * PrismLight syntax highlighter with only the grammars the cloud-frontend code
+ * surfaces use (docs, blog, api-explorer, sensitive requests, chat code blocks,
+ * character JSON editor). The full Prism bundle ships ~280 grammars and dominates
+ * the docs vendor chunk; registering only what we use cuts the shipped grammars
+ * by ~95%.
+ */
 
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
 import css from "react-syntax-highlighter/dist/esm/languages/prism/css";
