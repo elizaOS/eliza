@@ -107,6 +107,7 @@
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-aosp-local-inference": "workspace:*",
         "@elizaos/plugin-app-control": "workspace:*",
+        "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-birdclaw": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",

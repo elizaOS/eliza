@@ -368,6 +368,14 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/ui#build",
+        "@elizaos/app-core#build",
+        "@elizaos/agent#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {
