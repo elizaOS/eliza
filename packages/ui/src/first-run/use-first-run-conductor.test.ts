@@ -61,7 +61,10 @@ import {
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
-import { tryHandleFirstRunAction } from "./first-run-action-channel";
+import {
+  tryHandleFirstRunAction,
+  tryHandleFirstRunText,
+} from "./first-run-action-channel";
 import {
   clearCloudLoginPending,
   markCloudLoginPending,
@@ -1112,5 +1115,68 @@ describe("persistFirstRun (driven through runFirstRunFinish)", () => {
     const retried = await runFirstRunFinish(draft, ports);
     expect(retried.kind).toBe("done");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", () => {
+  it("echoes typed text as a local user turn + a friendly not-ready reply, never touching the server", async () => {
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // Before any runtime is picked, typing is answered with the "choosing"
+    // persona. The conductor renders the user's text as a real user turn.
+    expect(tryHandleFirstRunText("will this work yet?")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some(
+          (m) => m.role === "user" && m.text === "will this work yet?",
+        ),
+      ).toBe(true);
+    });
+    const reply = transcript.current.find(
+      (m) => m.role === "assistant" && m.id.startsWith("first-run:reply:"),
+    );
+    expect(reply?.text).toContain("pick one of the options above");
+    // The hard rule: no first-run POST happened just from typing.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("varies the reply by flow position: wrap-up copy once provisioning is done", async () => {
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // Drive the LOCAL path to completion so the wrap-up (tutorial) step is live.
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+      true,
+    );
+    await waitForTurn(turn, "first-run:tutorial");
+
+    expect(tryHandleFirstRunText("what now?")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some(
+          (m) =>
+            m.role === "assistant" &&
+            m.id.startsWith("first-run:reply:") &&
+            m.text.includes("Almost there"),
+        ),
+      ).toBe(true);
+    });
+    unmount();
+  });
+
+  it("consumes blank text as a no-op (no empty turn, no reply)", async () => {
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+    const before = transcript.current.length;
+    expect(tryHandleFirstRunText("   ")).toBe(true);
+    expect(transcript.current.length).toBe(before);
+    unmount();
   });
 });

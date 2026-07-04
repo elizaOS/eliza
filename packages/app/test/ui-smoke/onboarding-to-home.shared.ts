@@ -791,14 +791,19 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
   await expect(page.getByTestId(RUNTIME_CHOICE("remote"))).toBeVisible();
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
 
-  // Onboarding gating: the chat is NON-INTERACTIVE except the choice widgets.
-  // The composer is locked (disabled textarea + "choose" placeholder) and the
-  // pinned-open sheet is non-dismissable — Escape must NOT collapse it.
+  // Onboarding surface (#12178): the composer is UNLOCKED (typed text is
+  // answered by the in-chat conductor, never the server) with an inviting
+  // placeholder, the backdrop is OPAQUE so the launcher/home is hidden, and the
+  // pinned-open sheet is still non-dismissable — Escape must NOT collapse it.
   const composer = page.getByTestId("chat-composer-textarea");
-  await expect(composer).toBeDisabled();
+  await expect(composer).toBeEnabled();
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Pick an option to continue",
+    "Ask me anything — or pick an option",
+  );
+  await expect(page.getByTestId("chat-first-run-backdrop")).toHaveAttribute(
+    "data-first-run-opaque",
+    "true",
   );
   await expect(chatOverlay).toHaveAttribute("data-open", "true");
   await page.keyboard.press("Escape");

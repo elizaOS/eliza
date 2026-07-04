@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
-// the sheet opens pinned at FULL, every collapse path (Escape, outside tap,
-// grabber pull-down/close) is a no-op, the composer (text/attach/voice/send) is
-// locked while the transcript's CHOICE widgets stay interactive, and the sheet
-// auto-collapses exactly once on the completion (falling) edge.
+// the sheet opens pinned at FULL with an OPAQUE backdrop, every collapse path
+// (Escape, outside tap, grabber pull-down/close) is a no-op, the composer TEXT
+// + SEND are UNLOCKED (#12178 — typed text is answered by the in-chat conductor
+// and never reaches the server) while attach + mic stay disabled, the CHOICE
+// widgets stay interactive, and the sheet auto-collapses (with the backdrop
+// fading to the normal scrim) exactly once on the completion (falling) edge.
 
 import {
   act,
@@ -125,14 +127,15 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(screen.getByTestId("chat-thread")).toBeTruthy();
   });
 
-  it("locks the composer during onboarding: disabled textarea with a choice placeholder, attach + mic inert", () => {
+  it("unlocks the composer text during onboarding with an inviting placeholder; attach + mic stay inert", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    expect(input.disabled).toBe(true);
-    expect(input.placeholder).toBe("Pick an option to continue");
+    expect(input.disabled).toBe(false);
+    expect(input.placeholder).toBe("Ask me anything — or pick an option");
 
+    // Attach + mic have no agent to serve them yet — still inert (pre-runtime).
     const attach = screen.getByTestId("chat-composer-attach");
     expect(attach.getAttribute("aria-disabled")).toBe("true");
 
@@ -145,12 +148,13 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(controller.toggleHandsFree).not.toHaveBeenCalled();
   });
 
-  it("keeps the send control disabled during onboarding even when a prefill lands a draft", () => {
+  it("routes composer free text to the in-chat conductor during onboarding — send stays live but the server is never reached", () => {
+    const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
-    // CHAT_PREFILL_EVENT is a real non-keyboard draft entry point; it must not
-    // become a send path around the disabled textarea.
+    // CHAT_PREFILL_EVENT is a real non-keyboard draft entry point; the composer
+    // is unlocked now, so it lands a draft and the send control goes live.
     act(() => {
       window.dispatchEvent(
         new CustomEvent(CHAT_PREFILL_EVENT, {
@@ -160,9 +164,57 @@ describe("ContinuousChatOverlay first-run gating", () => {
     });
 
     const send = screen.getByTestId("chat-composer-action");
-    expect(send.getAttribute("aria-disabled")).toBe("true");
+    expect(send.getAttribute("aria-disabled")).not.toBe("true");
     fireEvent.click(send);
+    // The typed text goes to the conductor via the shared action funnel — the
+    // HARD rule: nothing reaches the server pre-completion.
     expect(controller.send).not.toHaveBeenCalled();
+    expect(sendActionMessage).toHaveBeenCalledWith("free text mid-onboarding");
+  });
+
+  it("answers Enter-typed free text through the conductor funnel, never controller.send", () => {
+    const sendActionMessage = seedAppStoreWithActionSpy();
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "will this work yet?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(sendActionMessage).toHaveBeenCalledWith("will this work yet?");
+    expect(controller.send).not.toHaveBeenCalled();
+    // The composer clears after the conductor consumes the turn.
+    expect(input.value).toBe("");
+  });
+
+  it("paints an OPAQUE bg-bg backdrop while onboarding is open (no launcher/home shows through)", () => {
+    render(<ContinuousChatOverlay controller={makeController()} firstRunOpen />);
+    const backdrop = screen.getByTestId("chat-first-run-backdrop");
+    expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
+    expect(backdrop.className).toContain("bg-bg");
+  });
+
+  it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
+    const controller = makeController();
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={controller} firstRunOpen />,
+    );
+    expect(
+      screen
+        .getByTestId("chat-first-run-backdrop")
+        .getAttribute("data-first-run-opaque"),
+    ).toBe("true");
+
+    // Onboarding completes: the opaque layer fades to the normal scrim (or has
+    // already unmounted under reduced-motion) — either way it is no longer the
+    // full-opacity launcher-hiding layer.
+    rerender(
+      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+    );
+    const after = screen.queryByTestId("chat-first-run-backdrop");
+    expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
+      "true",
+    );
   });
 
   it("opens pinned at FULL and ignores Escape while onboarding is active", () => {
@@ -223,9 +275,8 @@ describe("ContinuousChatOverlay first-run gating", () => {
   });
 
   it("ignores tutorial chat-control events (rest/reset/prefill) while onboarding is active", () => {
-    render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
-    );
+    const controller = makeController();
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("full");
 
@@ -242,9 +293,9 @@ describe("ContinuousChatOverlay first-run gating", () => {
     }
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
-    // The composer stays locked (prefill did not open a send path).
-    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    expect(input.disabled).toBe(true);
+    // The composer is unlocked now (#12178), but a stray prefill only lands a
+    // draft — it never auto-sends, so nothing reaches the server.
+    expect(controller.send).not.toHaveBeenCalled();
   });
 
   it("keeps the transcript CHOICE widgets interactive while the composer is locked", () => {

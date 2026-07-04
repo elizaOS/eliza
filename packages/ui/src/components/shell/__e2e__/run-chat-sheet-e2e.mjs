@@ -2005,8 +2005,14 @@ try {
     assert(
       (await p
         .getByTestId("chat-composer-textarea")
-        .getAttribute("placeholder")) === "Pick an option to continue",
-      "ONBOARDING: composer placeholder is 'Pick an option to continue'",
+        .getAttribute("placeholder")) === "Ask me anything — or pick an option",
+      "ONBOARDING: composer placeholder invites typing (#12178 unlock)",
+    );
+    assert(
+      (await p
+        .getByTestId("chat-composer-textarea")
+        .isEnabled()),
+      "ONBOARDING: composer textarea is unlocked (#12178)",
     );
     await snap(p, "state-onboarding-bottom-anchored");
     await p.close();

@@ -21,6 +21,7 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import {
   classifyActionMessage,
   tryHandleFirstRunAction,
+  tryHandleFirstRunText,
 } from "../first-run/first-run-action-channel";
 import {
   isMobileLocalAgentIpcBase,
@@ -1165,20 +1166,23 @@ function AppProviderInner({
   // after onboarding completes (conductor unregistered), a tap on a leftover
   // onboarding widget in the transcript is dropped here instead of sending the
   // literal sentinel to the agent as a chat message. While onboarding is
-  // ACTIVE (firstRunComplete false) every other value is dropped too: the
-  // transcript is choice-driven, so free text must never reach the server
-  // mid-setup (the overlay disables its composer; this is the send-seam
-  // backstop). Once onboarding completes, every non-first-run value falls
-  // through to the real send funnel unchanged. Widgets stay 100% display-only
-  // — both InlineWidgetText and MessageContent route picks through this single
-  // `sendActionMessage`.
+  // ACTIVE (firstRunComplete false) free text is routed to the conductor's
+  // in-chat reply persona (`tryHandleFirstRunText`) and never reaches the
+  // server — the #12178 composer unlock keeps chat interactive without
+  // breaking the "no server send pre-completion" property, which is enforced
+  // HERE (the `"conductor"` case never calls `rawSendActionMessage`). Once
+  // onboarding completes, every non-first-run value falls through to the real
+  // send funnel unchanged. Widgets stay 100% display-only — both
+  // InlineWidgetText and MessageContent route picks through this single
+  // `sendActionMessage`, and so does the unlocked composer during onboarding.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
       switch (classifyActionMessage(text, firstRunComplete === true)) {
         case "first-run":
           tryHandleFirstRunAction(text);
           return Promise.resolve();
-        case "dropped":
+        case "conductor":
+          tryHandleFirstRunText(text);
           return Promise.resolve();
         case "send":
           return rawSendActionMessage(text);

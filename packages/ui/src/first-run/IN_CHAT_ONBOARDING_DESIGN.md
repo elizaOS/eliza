@@ -22,25 +22,38 @@ choices and should keep negative assertions for deleted surfaces such as
 Current end-to-end evidence for issue #10709 lives in
 `.github/issue-evidence/10709-onboarding-chat/`.
 
-## The onboarding lock (#9952 follow-up)
+## The onboarding surface (#9952 → relaxed by #12178)
 
 While first-run is pending, the shell passes `firstRunOpen={firstRunComplete
 === false}` to `ContinuousChatOverlay` (`App.tsx`). `firstRunOpen` turns the
-overlay into a **modal onboarding surface** — the chat is the first painted
-surface, it is non-interactive except for the seeded choices, and it cannot be
-dismissed until onboarding completes. The contract, enforced in
+overlay into a **full-screen onboarding surface** — the chat is the first
+painted surface with an opaque backdrop, and it cannot be dismissed until
+onboarding completes. #9952 shipped this as a hard *lock* (composer disabled,
+free text dropped); **#12178 deliberately reverses the lock**: the composer is
+unlocked and typing is answered in-chat, while the "no server send
+pre-completion" property is preserved. The contract, enforced in
 `ContinuousChatOverlay.tsx` and covered by `ContinuousChatOverlay.firstrun.test.tsx`:
 
 - **Opens pinned at FULL.** Initial detent is `full` when `firstRunOpen`; a
   falling-edge-guarded effect re-pins to FULL on every change while
   `firstRunOpen` is true, so nothing can step it down.
-- **Composer is locked.** The textarea is `disabled` with the placeholder
-  "Choose an option to continue"; attach, mic/push-to-talk, and send are all
-  disabled. `submitText` hard-returns while `firstRunOpen`, closing the
-  non-keyboard side doors (chat-prefill event, dictation, slash commands). The
-  `AppContext` `sendActionMessage` backstop additionally drops any non
-  `__first_run__:` value while first-run is incomplete — nothing reaches the
-  server before a runtime exists.
+- **Opaque backdrop (#12178).** While `firstRunOpen` the backdrop is an opaque
+  `bg-bg` layer (`data-testid="chat-first-run-backdrop"`,
+  `data-first-run-opaque="true"`) stacked above the translucent gradient scrim
+  and below the glass panel, so no launcher/home pixel shows through — including
+  behind the panel glass. It matches the shell's `app-opaque-background` idiom
+  (token, not hardcoded black). The launcher stays mounted behind it, warm for
+  the reveal.
+- **Composer is UNLOCKED (#12178).** The textarea and send are live with the
+  placeholder "Ask me anything — or pick an option"; attach and mic/push-to-talk
+  stay disabled (no agent to serve media yet). Typed text is answered by the
+  conductor's local echo persona, never forwarded to the server: `submitText`
+  routes it through the shared `sendActionMessage` funnel, where
+  `classifyActionMessage` returns `"conductor"` and the value is delivered via
+  `tryHandleFirstRunText` (the `"conductor"` branch never calls the real send).
+  `submit` skips slash/shortcut resolution while `firstRunOpen`, so no command
+  runs and nothing reaches the server before a runtime exists. The `__first_run__:`
+  prefix is still reserved unconditionally.
 - **Undismissable.** Every collapse path is a no-op while `firstRunOpen`:
   `collapse()` (the single funnel for Escape on document/thread/composer,
   outside-tap, and the grabber close/tap), the live drag (`onDragOffset`),
@@ -51,15 +64,18 @@ dismissed until onboarding completes. The contract, enforced in
   a stray/adversarial event cannot collapse the pinned sheet).
 - **Auto-collapses once on completion.** A one-shot falling-edge (`firstRunOpen`
   true → false, tracked by `wasFirstRunOpenRef`) collapses the sheet to the
-  input bar, revealing the home screen. An ordinary session (onboarding never
-  active) never triggers this collapse, and the collapse gate is released so
+  input bar, and the opaque backdrop fades to the normal scrim over ~400ms in
+  step with the collapse (cut under `prefers-reduced-motion`), revealing the
+  home screen underneath. An ordinary session (onboarding never active) never
+  triggers this collapse, and the collapse gate is released so
   Escape/outside-tap/etc. work normally afterward.
 
 The desktop `?shellMode=chat-overlay` shell mounts the (headless,
 `firstRunComplete`-gated) conductor too, so a fresh chat-first desktop install
 seeds the same in-chat onboarding; once first-run completes the mount is a
-no-op (`App.chat-overlay-first-run.test.tsx`). Only the transcript's CHOICE
-widgets and any OAuth/secret blocks stay interactive during onboarding.
+no-op (`App.chat-overlay-first-run.test.tsx`). The transcript's CHOICE widgets,
+any OAuth/secret blocks, and the unlocked composer are the interactive surfaces
+during onboarding.
 
 ## Confused-user guards (conductor + send funnel)
 

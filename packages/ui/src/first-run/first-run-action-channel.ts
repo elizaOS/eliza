@@ -19,14 +19,27 @@
 export const FIRST_RUN_ACTION_PREFIX = "__first_run__:";
 
 type FirstRunActionHandler = (value: string) => boolean;
+type FirstRunTextHandler = (text: string) => boolean;
 
 let handler: FirstRunActionHandler | null = null;
+let textHandler: FirstRunTextHandler | null = null;
 
 /** The conductor registers (and on unmount/finish clears) its action handler. */
 export function setFirstRunActionHandler(
   next: FirstRunActionHandler | null,
 ): void {
   handler = next;
+}
+
+/**
+ * The conductor registers (and on unmount/finish clears) its free-text handler:
+ * the seam that lets the user type freely during onboarding and get a
+ * deterministic in-chat reply WITHOUT the text ever reaching the server.
+ */
+export function setFirstRunTextHandler(
+  next: FirstRunTextHandler | null,
+): void {
+  textHandler = next;
 }
 
 /**
@@ -41,20 +54,34 @@ export function tryHandleFirstRunAction(value: string): boolean {
 }
 
 /**
+ * Offer free text to the active onboarding conductor. Returns true when the
+ * conductor consumed it (rendered a local turn + reply); false when no
+ * conductor is active. The caller must NEVER forward the text to the server
+ * while onboarding is open — the hard "no server send pre-completion" property
+ * lives at the AppContext funnel, this is just the delivery seam.
+ */
+export function tryHandleFirstRunText(text: string): boolean {
+  if (!textHandler) return false;
+  return textHandler(text);
+}
+
+/**
  * How the chat's single send funnel must treat an action value:
  * - `"first-run"` — reserved-prefix value: offer it to the conductor and DROP
  *   it unconditionally. Even after onboarding completes (conductor
  *   unregistered), a tap on a leftover onboarding widget must never reach the
  *   server as a literal `__first_run__:` chat message.
- * - `"dropped"` — onboarding is still active: the transcript is choice-driven,
- *   so free text never reaches the server mid-setup (the composer is locked;
- *   this is the send-seam backstop).
+ * - `"conductor"` — onboarding is still active: free text is answered locally
+ *   by the in-chat conductor (`tryHandleFirstRunText`) and never reaches the
+ *   server mid-setup. The composer is unlocked (#12178, a deliberate reversal
+ *   of the #9952 onboarding lock), so this is the real delivery path, not a
+ *   backstop.
  * - `"send"` — a normal post-onboarding value: forward to the real send.
  */
 export function classifyActionMessage(
   value: string,
   firstRunComplete: boolean,
-): "first-run" | "dropped" | "send" {
+): "first-run" | "conductor" | "send" {
   if (value.startsWith(FIRST_RUN_ACTION_PREFIX)) return "first-run";
-  return firstRunComplete ? "send" : "dropped";
+  return firstRunComplete ? "send" : "conductor";
 }

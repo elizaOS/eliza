@@ -60,6 +60,7 @@ import {
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
   readChatDraft,
@@ -1657,12 +1658,15 @@ export function ContinuousChatOverlay({
   slash?: SlashCommandController;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
-   * false` upstream). The overlay opens to FULL and LOCKS there: every
-   * collapse path (Escape, outside tap, grabber pull-down/close, header
-   * launcher) is a no-op and the composer (text, attach, voice, send) is
-   * disabled, so the seeded choice/OAuth widgets are the only input. On the
-   * falling edge — onboarding just completed — the sheet auto-collapses to the
-   * input bar, revealing the home screen.
+   * false` upstream). The overlay opens to FULL and pins there: every collapse
+   * path (Escape, outside tap, grabber pull-down/close, header launcher) is a
+   * no-op, and the backdrop is OPAQUE (`bg-bg`) so the launcher/home behind is
+   * hidden. The composer TEXT + SEND are unlocked (#12178) — typed text is
+   * answered locally by the in-chat conductor and never reaches the server —
+   * while attach + mic stay disabled (no agent to take media yet); the seeded
+   * choice/OAuth widgets remain the primary input. On the falling edge —
+   * onboarding just completed — the sheet auto-collapses to the input bar and
+   * the opaque backdrop fades to the normal scrim, revealing the home screen.
    */
   firstRunOpen?: boolean;
 }): React.JSX.Element {
@@ -1698,6 +1702,14 @@ export function ContinuousChatOverlay({
   // True once the server has reported no LLM/model provider is configured (a
   // `no_provider` assistant turn). Defaulted for minimal mock controllers.
   const noProviderConfigured = controller.noProviderConfigured ?? false;
+  // The shared action funnel — the SAME seam the transcript's CHOICE widgets
+  // use. During onboarding the unlocked composer routes free text through it so
+  // it reaches the in-chat conductor (and never the server); post-onboarding it
+  // is unused here (the composer sends via `controller.send`). In stories/tests
+  // with no AppContext the store returns an inert no-op.
+  const { sendActionMessage } = useAppSelectorShallow((s) => ({
+    sendActionMessage: s.sendActionMessage,
+  }));
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -2411,11 +2423,24 @@ export function ContinuousChatOverlay({
     (text: string, images: ImageAttachment[] = []) => {
       const trimmed = text.trim();
       // An image-only turn is valid; only bail when there's nothing to send.
-      if ((!trimmed && images.length === 0) || !canSend) return;
-      // During onboarding the transcript is choice-driven: free text never
-      // reaches the server. The composer controls are disabled too — this
-      // guards the event-driven entry points (prefill, dictation, slash).
-      if (firstRunOpen) return;
+      if (!trimmed && images.length === 0) return;
+      // During onboarding the composer is unlocked (#12178) but free text is
+      // answered locally by the in-chat conductor and NEVER reaches the server.
+      // Route it through the shared action funnel (classify → "conductor" →
+      // conductor text handler) — `controller.send` is never called here, so
+      // "no server send pre-completion" holds. Attach is disabled during
+      // onboarding, so any images are dropped (text-only echo).
+      if (firstRunOpen) {
+        if (trimmed) void sendActionMessage(trimmed);
+        setDraft("");
+        setSlashDismissed(false);
+        setPendingImages([]);
+        setImageError(null);
+        inputRef.current?.focus();
+        return;
+      }
+      // Post-onboarding: a stopped agent can't take a turn.
+      if (!canSend) return;
       // Successful submit: drop the persisted draft for this conversation NOW
       // (not just via the debounced persist of the now-empty draft) so a reload
       // in the debounce window can't restore an already-sent draft.
@@ -2462,7 +2487,7 @@ export function ContinuousChatOverlay({
       detentHaptic();
       inputRef.current?.focus();
     },
-    [canSend, firstRunOpen, send, viewChatBinding],
+    [canSend, firstRunOpen, sendActionMessage, send, viewChatBinding],
   );
 
   // Tapping a suggestion sends it immediately (same path as submit), so the
@@ -3151,6 +3176,26 @@ export function ContinuousChatOverlay({
     if (was) goToDetent("collapsed");
   }, [firstRunOpen, goToDetent]);
 
+  // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
+  // the backdrop is an OPAQUE `bg-bg` layer that hides the launcher/home behind
+  // the chat — the normal translucent gradient scrim would let them show
+  // through. On the falling edge (onboarding just completed) it fades opaque →
+  // transparent over ~400ms in step with the one-shot auto-collapse above,
+  // revealing home/launcher underneath (kept mounted, warm); reduced-motion
+  // cuts straight to hidden. `off` unmounts the layer for ordinary sessions.
+  const [firstRunBackdrop, setFirstRunBackdrop] = React.useState<
+    "opaque" | "revealing" | "off"
+  >(firstRunOpen ? "opaque" : "off");
+  React.useEffect(() => {
+    if (firstRunOpen) {
+      setFirstRunBackdrop("opaque");
+      return;
+    }
+    setFirstRunBackdrop((prev) =>
+      prev === "opaque" ? (reduce ? "off" : "revealing") : prev,
+    );
+  }, [firstRunOpen, reduce]);
+
   // Onboarding grows from the BOTTOM: size the sheet to its content (capped at
   // full) via the freeH rest-height seam, so the greeting + choice widget sit
   // just above the composer instead of floating under a tall empty panel. Drags
@@ -3611,6 +3656,13 @@ export function ContinuousChatOverlay({
   );
 
   const submit = React.useCallback(() => {
+    // Onboarding: skip slash/shortcut resolution entirely — every submit is
+    // answered by the in-chat conductor, so nothing runs a command or reaches
+    // the server (submitText routes free text to the conductor).
+    if (firstRunOpen) {
+      submitText(draft, pendingImages);
+      return;
+    }
     const shortcut =
       pendingImages.length === 0
         ? resolveClientShortcutExecution(
@@ -3632,7 +3684,7 @@ export function ContinuousChatOverlay({
       return;
     }
     submitText(draft, pendingImages);
-  }, [draft, pendingImages, runExecution, slash, submitText]);
+  }, [draft, pendingImages, firstRunOpen, runExecution, slash, submitText]);
 
   const pickSlashItem = React.useCallback(
     (index: number) => {
@@ -4265,6 +4317,35 @@ export function ContinuousChatOverlay({
           pointerEvents: "none",
         }}
       />
+
+      {/* First-run opaque backdrop (#12178): while onboarding is open this
+          OPAQUE `bg-bg` layer sits ABOVE the gradient scrim and BELOW the glass
+          panel, so no launcher/home pixel shows through — including behind the
+          translucent panel glass. On completion it fades to transparent (~400ms)
+          in step with the one-shot collapse, revealing the launcher warm
+          underneath; reduced-motion cuts. Pointer-transparent like the scrim. */}
+      {firstRunBackdrop !== "off" ? (
+        <motion.div
+          aria-hidden="true"
+          data-testid="chat-first-run-backdrop"
+          data-first-run-opaque={
+            firstRunBackdrop === "opaque" ? "true" : "false"
+          }
+          className="fixed inset-0 bg-bg"
+          initial={false}
+          animate={{ opacity: firstRunBackdrop === "opaque" ? 1 : 0 }}
+          transition={{
+            duration: firstRunBackdrop === "revealing" ? 0.4 : 0,
+            ease: "easeInOut",
+          }}
+          onAnimationComplete={() => {
+            setFirstRunBackdrop((prev) =>
+              prev === "revealing" ? "off" : prev,
+            );
+          }}
+          style={{ pointerEvents: "none" }}
+        />
+      ) : null}
 
       {/* No live interim transcript is shown above the composer while
           listening — the spoken words land as the sent message when the turn
@@ -4989,14 +5070,14 @@ export function ContinuousChatOverlay({
                     collapse();
                   }
                 }}
-                // During onboarding the transcript's choice widgets are the
-                // only input: typing is disabled until first-run completes.
+                // The composer is unlocked during onboarding (#12178): typing is
+                // always allowed. Free text is answered locally by the in-chat
+                // conductor and never reaches the server (submitText routes it).
                 // (This surface's strings are plain literals by design — see
                 // the imageError note above.)
-                disabled={firstRunOpen}
                 placeholder={
                   firstRunOpen
-                    ? "Pick an option to continue"
+                    ? "Ask me anything — or pick an option"
                     : noProviderConfigured
                       ? "Connect a model provider in Settings to chat"
                       : booting
@@ -5014,10 +5095,9 @@ export function ContinuousChatOverlay({
                 // and only when a slash catalog is wired in — a plain message
                 // box otherwise.
                 {...comboboxAria}
-                // During onboarding the composer is frozen (choice widgets are
-                // the only input), so brighten the placeholder from the resting
-                // 45% to 70% — a directive hint the user can actually read,
-                // rather than a greyed-out box that reads as dead.
+                // During onboarding the placeholder is a directive hint ("Ask me
+                // anything — or pick an option"), so brighten it from the resting
+                // 45% to 70% so it reads clearly beside the seeded choices.
                 className={`max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-white/[0.92] outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
                   firstRunOpen
                     ? "placeholder:text-white/70"
@@ -5071,7 +5151,11 @@ export function ContinuousChatOverlay({
                             ? "send another"
                             : "send"
                       }
-                      disabled={!canSend || firstRunOpen}
+                      // During onboarding the send button stays live regardless
+                      // of agent readiness — a typed message reaches the in-chat
+                      // conductor, not the (absent) agent. Post-onboarding a
+                      // stopped agent disables it as before.
+                      disabled={!firstRunOpen && !canSend}
                       // Keep focus in the textarea on tap: without this the
                       // button steals focus, the textarea blurs, the keyboard
                       // retracts and the composer relayouts between pointerdown
