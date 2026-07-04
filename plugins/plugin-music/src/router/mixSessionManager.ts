@@ -1,3 +1,9 @@
+/**
+ * Runtime mix-session manager for temporary music routing configurations.
+ *
+ * Sessions collect zone mappings, routing mode, metadata, and optional cleanup
+ * timers for multi-target playback setups.
+ */
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import type { AudioRoutingMode } from "./audioRouter";
 

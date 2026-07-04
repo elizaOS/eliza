@@ -1,3 +1,9 @@
+/**
+ * Stream multiplexer tests for backpressure behavior.
+ *
+ * They pin blocking policy pause/resume behavior and source recovery after slow
+ * consumers are removed.
+ */
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { StreamMultiplexer } from "./streamMultiplexer";

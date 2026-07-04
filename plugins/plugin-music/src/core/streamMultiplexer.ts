@@ -1,3 +1,9 @@
+/**
+ * Fan-out stream multiplexer for live music broadcast consumers.
+ *
+ * It isolates slow subscribers with configurable backpressure policies so one
+ * listener cannot stall the shared audio source.
+ */
 import { PassThrough, type Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 

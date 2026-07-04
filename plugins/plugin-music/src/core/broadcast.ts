@@ -1,3 +1,9 @@
+/**
+ * Public audio broadcast facade for music stream consumers.
+ *
+ * It hides StreamCore and StreamMultiplexer internals behind the IAudioBroadcast
+ * contract used by Discord, web streaming, and other playback targets.
+ */
 import { EventEmitter } from "node:events";
 import type { Readable } from "node:stream";
 import { logger } from "@elizaos/core";

@@ -1,3 +1,6 @@
+/**
+ * Barrel exports for the music broadcast core.
+ */
 export { Broadcast } from "./broadcast";
 export type { StreamCoreState, TrackMetadata } from "./streamCore";
 export { StreamCore } from "./streamCore";

@@ -1,3 +1,9 @@
+/**
+ * Long-lived per-song memory for playback and request statistics.
+ *
+ * Song memory records identity, engagement, timing, requester, and room
+ * patterns across the music library.
+ */
 import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 import {

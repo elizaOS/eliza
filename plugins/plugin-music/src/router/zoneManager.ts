@@ -1,3 +1,8 @@
+/**
+ * Zone registry for named groups of music voice targets.
+ *
+ * Zones provide a stable routing abstraction above raw target ids.
+ */
 import { logger } from "@elizaos/core";
 
 /**

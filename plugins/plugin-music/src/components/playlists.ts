@@ -1,3 +1,9 @@
+/**
+ * Playlist persistence helpers for user-owned music collections.
+ *
+ * Playlists are stored as entity components and reused by music actions for
+ * save, load, delete, and add operations.
+ */
 import { type IAgentRuntime, logger, type UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 import {

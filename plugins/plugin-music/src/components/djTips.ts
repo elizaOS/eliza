@@ -1,3 +1,9 @@
+/**
+ * Tip ledger and aggregate tip statistics for the music DJ surface.
+ *
+ * Records are stored at agent scope so tip totals and top supporters can span
+ * rooms while preserving room references on individual tips.
+ */
 import {
   createUniqueUuid,
   type IAgentRuntime,

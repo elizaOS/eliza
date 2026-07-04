@@ -1,3 +1,9 @@
+/**
+ * Persistent music library helpers for global track history.
+ *
+ * They store songs as memories, track play counts and requesters, and expose
+ * library summaries used by providers and playlist operations.
+ */
 import {
   type IAgentRuntime,
   logger,

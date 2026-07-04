@@ -1,3 +1,9 @@
+/**
+ * Audio routing manager for sending music streams to registered voice targets.
+ *
+ * It supports simulcast and independent routes without depending directly on a
+ * Discord plugin type.
+ */
 import { PassThrough, type Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 

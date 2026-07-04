@@ -1,3 +1,9 @@
+/**
+ * In-memory repetition guard for music playback queues.
+ *
+ * It tracks recent plays by guild and rejects tracks that replay inside the
+ * configured interval.
+ */
 import { logger } from "@elizaos/core";
 
 /**

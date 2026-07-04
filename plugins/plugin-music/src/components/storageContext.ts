@@ -1,3 +1,9 @@
+/**
+ * Storage context helpers for music components that need room or agent scope.
+ *
+ * Room-scoped helpers require an existing world, while agent-scoped helpers
+ * create deterministic backing world and room records.
+ */
 import {
   createUniqueUuid,
   type IAgentRuntime,

@@ -1,3 +1,9 @@
+/**
+ * User music preference persistence for recommendations and history.
+ *
+ * Preferences merge favorite and disliked music signals with request and
+ * listening-session history in entity components.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { v4 } from "uuid";
 import {

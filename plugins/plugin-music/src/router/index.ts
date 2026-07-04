@@ -1,3 +1,6 @@
+/**
+ * Barrel exports for music routing, zones, and mix sessions.
+ */
 export {
   type AudioRouteConfig,
   AudioRouter,

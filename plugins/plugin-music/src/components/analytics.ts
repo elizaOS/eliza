@@ -1,3 +1,9 @@
+/**
+ * DJ analytics persistence for guild-scoped music sessions.
+ *
+ * It stores play counts, listener snapshots, popular times, and session
+ * milestones in room-scoped components.
+ */
 import {
   type Component,
   createUniqueUuid,

@@ -1,3 +1,9 @@
+/**
+ * DJ introduction and commentary configuration stored per music room.
+ *
+ * The options describe LLM/template behavior, tone, timing, and metadata usage
+ * for track introductions.
+ */
 import {
   createUniqueUuid,
   type IAgentRuntime,

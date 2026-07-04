@@ -1,3 +1,9 @@
+/**
+ * Per-guild DJ behavior settings stored in room-scoped components.
+ *
+ * These settings control autonomy, auto-fill, commentary, events, station
+ * metadata, and audio behavior for a music room.
+ */
 import {
   createUniqueUuid,
   type IAgentRuntime,

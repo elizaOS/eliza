@@ -1,3 +1,9 @@
+/**
+ * Component data serialization helpers for music persistence.
+ *
+ * They keep component payloads JSON-safe before storing library, playlist,
+ * preference, and analytics state in runtime components.
+ */
 import type { Component, MetadataValue } from "@elizaos/core";
 
 type ComponentData = NonNullable<Component["data"]>;

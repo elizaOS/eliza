@@ -1,3 +1,9 @@
+/**
+ * Canonical audio stream engine for music broadcasts.
+ *
+ * It keeps one never-ending output stream alive, swaps track and silence
+ * sources, and emits state changes for broadcast consumers.
+ */
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough, type Readable } from "node:stream";
