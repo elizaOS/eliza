@@ -1,3 +1,5 @@
+// Mobile agent bundle shim for the app-core runtime hooks that the on-device
+// agent can safely import without pulling in the desktop dashboard stack.
 "use strict";
 
 // Mobile agent bundle shim for @elizaos/app-core.

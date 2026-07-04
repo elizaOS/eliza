@@ -1,3 +1,5 @@
+// Minimal source-map API stub for mobile bundles that only need constructors
+// and stringification shapes at module-evaluation time.
 "use strict";
 
 class SourceNode {

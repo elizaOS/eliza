@@ -1,3 +1,5 @@
+// Mobile bundle stub for DOCX extraction, which is not shipped into the
+// on-device agent runtime.
 "use strict";
 
 async function extractRawText() {

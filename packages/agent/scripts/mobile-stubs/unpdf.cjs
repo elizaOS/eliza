@@ -1,3 +1,5 @@
+// Mobile bundle stub for PDF extraction, which is excluded from the on-device
+// agent runtime.
 "use strict";
 
 function unavailable() {

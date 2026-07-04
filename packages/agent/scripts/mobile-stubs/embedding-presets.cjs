@@ -1,3 +1,5 @@
+// Compact embedding preset table for mobile agent bundles, pinned to the small
+// CPU-safe local embedding model.
 "use strict";
 
 const COMPACT_ELIZA_1_EMBEDDING = {
