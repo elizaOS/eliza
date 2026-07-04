@@ -1,3 +1,5 @@
+/** Validates that the curated training-app registry entries load and match the first-party schema; vitest, deterministic. */
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearRegistryCacheForTests,

@@ -1,3 +1,5 @@
+/** Tests SKILL.md frontmatter parse/serialize plus metadata/invocation-policy resolution; bun:test, deterministic. */
+
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {

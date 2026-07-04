@@ -1,3 +1,5 @@
+/** Tests skill provenance resolution (human vs. agent-generated, optimization lineage); bun:test, deterministic. */
+
 import assert from "node:assert";
 import {
   mkdirSync,

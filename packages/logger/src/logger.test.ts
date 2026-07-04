@@ -1,3 +1,5 @@
+/** Unit tests for the logger implementation — env-driven level/format resolution and redaction; vitest with a stubbed env. */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

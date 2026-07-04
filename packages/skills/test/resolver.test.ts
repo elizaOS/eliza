@@ -1,3 +1,5 @@
+/** Tests skills-directory resolution and the curated active/proposed/promote flow; bun:test over temp fixtures. */
+
 import assert from "node:assert";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

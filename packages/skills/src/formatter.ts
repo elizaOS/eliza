@@ -1,3 +1,12 @@
+/**
+ * Renders loaded skills into the text surfaces that consume them.
+ *
+ * `formatSkillsForPrompt`/`formatSkillEntriesForPrompt` build the compact
+ * skills block injected into the agent's system prompt (skills with
+ * `disable-model-invocation` are omitted); `buildSkillCommandSpecs` derives the
+ * sanitized `/skill:name` command specs for the chat UI's command dispatch.
+ */
+
 import type { Skill, SkillCommandSpec, SkillEntry } from "./types.js";
 
 function compactPromptField(str: string): string {

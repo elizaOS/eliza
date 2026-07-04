@@ -1,3 +1,13 @@
+/**
+ * YAML frontmatter parsing and serialization for `SKILL.md` files.
+ *
+ * `parseFrontmatter`/`stripFrontmatter` split a skill markdown string into its
+ * frontmatter object and body; `resolveSkillMetadata`/`resolveSkillInvocationPolicy`/
+ * `resolveSkillProvenance` normalize the raw frontmatter into the typed shapes the
+ * loader uses. `serializeSkillFile` is the inverse, used by the curated learning
+ * loop to rewrite a skill after refining its provenance or content.
+ */
+
 import { parse, stringify } from "yaml";
 import type {
   SkillFrontmatter,

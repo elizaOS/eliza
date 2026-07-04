@@ -1,3 +1,5 @@
+/** Tests `compressPromptDescription` — filler removal plus protected-span (code/URL/path/SCREAMING_CASE) preservation; vitest, deterministic. */
+
 import { describe, expect, it } from "vitest";
 import { compressPromptDescription } from "../src/prompt-compression.js";
 

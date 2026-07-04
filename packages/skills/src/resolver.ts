@@ -1,3 +1,14 @@
+/**
+ * Resolves the on-disk locations skills load from.
+ *
+ * `getSkillsDir` finds this package's bundled `skills/` directory (overridable
+ * via `ELIZAOS_BUNDLED_SKILLS_DIR`, cached after first resolution);
+ * `getCuratedActiveDir`/`getProposedSkillsDir` sit under the state dir and back
+ * the curated learning loop, and `promoteSkill` atomically moves a proposed
+ * skill into `active/` so it starts loading. Consumed by `loader.ts` and the
+ * agent runtime's startup skill discovery.
+ */
+
 import {
   existsSync,
   mkdirSync,

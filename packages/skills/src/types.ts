@@ -1,3 +1,12 @@
+/**
+ * Shared type system for the bundled skills library (`@elizaos/skills`).
+ *
+ * Describes a loaded skill and its `SKILL.md` frontmatter — invocation policy,
+ * OS/binary/env requirements, and provenance (human vs. agent-generated, plus
+ * optimization lineage from the learning loop). `loader`, `frontmatter`,
+ * `formatter`, and `resolver` all build on these types.
+ */
+
 export interface SkillProvenance {
   source: "human" | "agent-generated" | "agent-refined";
   derivedFromTrajectory?: string;

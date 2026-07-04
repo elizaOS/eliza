@@ -1,3 +1,5 @@
+/** Regression assertions on the exported prompt template wording; bun:test, deterministic. */
+
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

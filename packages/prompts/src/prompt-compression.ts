@@ -1,3 +1,13 @@
+/**
+ * Deterministic compressor for action/provider descriptions.
+ *
+ * Shrinks verbose descriptions (drops filler phrases, normalizes wording) while
+ * protecting spans that must survive verbatim — code fences, inline code, URLs,
+ * paths, and SCREAMING_CASE identifiers (`PROTECTED_PATTERNS`). Used by the
+ * action-docs generator and re-exported by `@elizaos/core`, so the same
+ * compression runs at build time and at runtime.
+ */
+
 const PROTECTED_PATTERNS = [
   /```[\s\S]*?```/g,
   /`[^`\n]+`/g,

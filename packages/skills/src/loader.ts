@@ -1,3 +1,14 @@
+/**
+ * Discovers and loads skills from disk into `Skill` / `SkillEntry` objects.
+ *
+ * `loadSkills` merges skills across the precedence chain (bundled → managed →
+ * curated/active → project → explicit paths; later names win), validating that a
+ * skill's `name` matches its directory and dropping ones with no description.
+ * Symlinks are resolved and duplicate real paths deduped. `loadSkillEntries`
+ * additionally parses full frontmatter/metadata. The curated `proposed/` dir is
+ * never loaded here — it requires human promotion first.
+ */
+
 import {
   existsSync,
   readdirSync,

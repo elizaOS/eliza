@@ -1,3 +1,9 @@
+/**
+ * Filesystem helpers (readText / readJson / ensureDirectory) shared by the
+ * prompts package codegen scripts (the plugin-action-spec and action-docs
+ * generators).
+ */
+
 import fs from "node:fs";
 
 export function readText(filePath) {

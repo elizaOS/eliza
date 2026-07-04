@@ -1,3 +1,5 @@
+/** Tests the provider→plugin map derived from the first-party registry; vitest, deterministic. */
+
 import { describe, expect, it } from "vitest";
 import { collectProviderPluginMap } from "./generate";
 import providerPluginMap from "./provider-plugin-map.json" with {

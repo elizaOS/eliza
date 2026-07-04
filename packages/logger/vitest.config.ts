@@ -1,3 +1,5 @@
+/** Vitest config for the `@elizaos/logger` unit tests. */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

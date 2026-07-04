@@ -1,3 +1,5 @@
+/** Tests `formatSkillsForPrompt` / `buildSkillCommandSpecs` output (invocation-policy filtering, name sanitization); bun:test, deterministic. */
+
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {

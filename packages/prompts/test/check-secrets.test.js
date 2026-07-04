@@ -1,3 +1,5 @@
+/** Tests the prompt-file secret/PII scanner (`scripts/check-secrets.js`) against planted fixtures; bun:test, deterministic. */
+
 import assert from "node:assert";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

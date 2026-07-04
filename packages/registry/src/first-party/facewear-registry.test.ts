@@ -1,3 +1,5 @@
+/** Validates the curated facewear registry entries against the first-party schema; vitest reading the committed JSON. */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

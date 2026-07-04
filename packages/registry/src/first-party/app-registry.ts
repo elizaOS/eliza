@@ -1,3 +1,12 @@
+/**
+ * Runtime store of curated-app name aliases for the first-party registry.
+ *
+ * `registerCuratedApp` records a curated app's canonical name plus aliases so
+ * name matching can resolve a user/agent-supplied name to a slug. Backed by a
+ * global-symbol-keyed store so a single registry persists across bundled copies
+ * of the package.
+ */
+
 export interface ElizaCuratedAppDefinition {
   slug: string;
   canonicalName: string;

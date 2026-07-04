@@ -1,3 +1,13 @@
+/**
+ * The `@elizaos/logger` structured-logger implementation (adze + fast-redact).
+ *
+ * Resolves level/format/redaction from env (`LOG_LEVEL`, `LOG_JSON_FORMAT`, …)
+ * via `./env` and exports `logger`, which `@elizaos/core` re-exports — so this is
+ * the single logger every package and plugin uses (`console` is disallowed in
+ * server code). Leaf module: no `@elizaos/*` dependency, keeping logging off the
+ * core runtime's module graph.
+ */
+
 // Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
   clearEnvCacheForTests: () => {},
