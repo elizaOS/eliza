@@ -9,7 +9,8 @@
     "start": "bun run --cwd backend start",
     "test": "bun test smoke.test.js && bun run --cwd frontend test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
-    "build": "echo 'No build step configured; skipping build'"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   }
 }

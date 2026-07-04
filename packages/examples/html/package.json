@@ -6,8 +6,9 @@
     "start": "python3 -m http.server 3000 --directory ../../..",
     "test": "bun test html.test.js",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
-    "build": "echo 'No build step configured; skipping build'"
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
     "@elizaos/plugin-anthropic": "workspace:*",
