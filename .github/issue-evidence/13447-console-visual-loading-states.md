@@ -1,50 +1,65 @@
-# #13447 console visual loading-state evidence
+# #13447 console visual/loading-state evidence
 
 Date: 2026-07-04
 
-## Changes verified
+## Scope retained after syncing with develop
 
-- `/dashboard/apps` renders loading stat skeletons before app data resolves, so the page no longer shows success-shaped zero stats or a blank light rectangle during load/error transitions.
-- `/dashboard/agents` no longer renders the pricing/empty banner while the agents table query is still loading, and renders a real error state when the query fails.
-- Billing disabled buy-credit states use explicit dark styling instead of inherited blank/gray button states; invoice fetch failures render an error row rather than silently looking empty.
-- Account UI consumes the shared linked-account DTO exported by `@elizaos/shared`, and `useWalletState` has an explicit `WalletEntry` callback annotation so the console typecheck remains clean.
+This PR was reduced to the still-unmerged #13447 UI-state fixes. Already-merged
+or superseded work was intentionally dropped:
 
-## Commands
+- Billing selected-state and disabled button styling: covered by #13437.
+- Apps/Create App white-on-white CTA styling: covered by #13546.
+- Console title/sidebar changes: covered by #13552.
+- Account DTO and wallet callback type cleanup: covered by #13450.
+
+## Changes verified in this branch
+
+- `/dashboard/apps` renders stat-card skeletons while the session/app query is
+  loading, instead of success-shaped zero stats.
+- `/dashboard/apps` suppresses success stats when the apps query fails and shows
+  the existing dashboard error state.
+- `/dashboard/agents` renders the table skeleton before the pricing banner, so
+  loading does not look like an empty/no-agent state.
+- `/dashboard/agents` renders an explicit error state when the agents query
+  fails, instead of collapsing to an empty table.
+
+## Local checks
 
 ```bash
-bunx @biomejs/biome check --write packages/ui/src/api/client-agent.ts packages/ui/src/hooks/useAccounts.ts packages/ui/src/components/accounts/AddAccountDialog.tsx packages/ui/src/state/useWalletState.ts packages/ui/src/cloud/applications/ApplicationsPage.tsx packages/ui/src/cloud/instances/AgentsPage.tsx packages/ui/src/cloud/billing/components/billing-tab.tsx
+bunx @biomejs/biome check packages/ui/src/cloud/instances/AgentsPage.tsx packages/ui/src/cloud/instances/AgentsPage.test.tsx packages/ui/src/cloud/applications/ApplicationsPage.tsx packages/ui/src/cloud/applications/ApplicationsPage.test.tsx
 ```
 
 Result: passed.
 
 ```bash
-bun run --cwd packages/contracts build
-bun run --cwd packages/cloud/routing build
-bun run --cwd packages/shared build:i18n
-bun run --cwd packages/ui typecheck
+git diff --check
 ```
 
-Result: passed. This first reproduced the linked-account and wallet type errors in a fresh worktree; after the fix, `packages/ui` typecheck exits cleanly.
+Result: passed.
+
+## Focused tests
+
+Added component regression tests:
+
+- `packages/ui/src/cloud/instances/AgentsPage.test.tsx`
+- `packages/ui/src/cloud/applications/ApplicationsPage.test.tsx`
+
+Attempted command:
+
+```bash
+bun run --cwd packages/ui test -- src/cloud/instances/AgentsPage.test.tsx src/cloud/applications/ApplicationsPage.test.tsx
+```
+
+Result: blocked before test execution in the sparse checkout because the local
+workspace install does not expose `react/package.json`. A fresh `bun install`
+was not run because this machine was at the disk limit during the cleanup wave.
+
+## Visual audit
+
+Not rerun in this sparse checkout for the same disk/install reason. Required
+before final merge if CI does not provide equivalent coverage:
 
 ```bash
 bun run --cwd packages/app audit:app
-```
-
-Result: passed, `373 passed (13.5m)`. Summary: `broken=0`, `needs-work=0`, `needs-eyeball=25`, `good=347`, `minimalism-budget-failures=0`.
-
-```bash
 bun run --cwd packages/app audit:cloud
 ```
-
-Result: passed, `69 passed (3.2m)`. Summary: `broken=0`, `needs-work=0`, `needs-eyeball=68`.
-
-## Manual review targets
-
-Generated cloud-audit artifacts were written under `packages/app/aesthetic-audit-output-cloud/`.
-
-- `desktop/dashboard-agents.png`, `mobile/dashboard-agents.png`, plus hover captures: no console errors, no blue-color hits, no hover violations, no screenshot quality issues.
-- `desktop/dashboard-apps.png`, `mobile/dashboard-apps.png`, plus hover captures: no console errors, no blue-color hits, no hover violations, no screenshot quality issues.
-- `desktop/dashboard-billing-success.png`, `mobile/dashboard-billing-success.png`: no console errors, no blue-color hits, no hover violations, no screenshot quality issues.
-- `desktop/dashboard-invoice-detail.png`, `mobile/dashboard-invoice-detail.png`, plus hover captures: no console errors, no blue-color hits, no hover violations, no screenshot quality issues.
-
-The full cloud report is `packages/app/aesthetic-audit-output-cloud/report.json`; the contact sheet is `packages/app/aesthetic-audit-output-cloud/contact-sheet.html`.
