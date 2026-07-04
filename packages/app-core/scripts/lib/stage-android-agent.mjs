@@ -251,6 +251,8 @@ const LAUNCH_SCRIPT = `#!/system/bin/sh
 #   AGENT_BUNDLE_PATH  Absolute bundle path; defaults AGENT_ROOT/AGENT_BUNDLE.
 #   AGENT_COMMAND      Optional agent CLI command, e.g. android-bridge.
 #   LOG_FILE           Defaults to agent.log in AGENT_ROOT.
+#   DIAGNOSTICS_FILE   JSONL restart diagnostics path; defaults beside agent.log.
+#   ELIZA_STARTUP_TRACE_ID  Per-launch id mirrored into diagnostics.
 
 DEVICE_DIR=\${DEVICE_DIR:-/data/local/tmp}
 RUNTIME_DIR=\${RUNTIME_DIR:-\${DEVICE_DIR}}
@@ -262,6 +264,8 @@ LD_PATH=\${LD_PATH:-\${RUNTIME_DIR}/\${LD_NAME}}
 AGENT_BUNDLE_PATH=\${AGENT_BUNDLE_PATH:-\${AGENT_ROOT}/\${AGENT_BUNDLE}}
 AGENT_COMMAND=\${AGENT_COMMAND:-}
 LOG_FILE=\${LOG_FILE:-\${AGENT_ROOT}/agent.log}
+DIAGNOSTICS_FILE=\${DIAGNOSTICS_FILE:-\${AGENT_ROOT}/agent-restart-diagnostics.jsonl}
+STARTUP_TRACE_ID=\${ELIZA_STARTUP_TRACE_ID:-}
 RUNTIME_LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:-\${RUNTIME_DIR}}
 
 cd "$AGENT_ROOT" || exit 1
@@ -276,7 +280,24 @@ else
 fi
 
 (
-  setsid sh -c 'log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; shift 4; exec </dev/null >"$log_file" 2>&1; cd "$agent_root" || exit 1; if [ -n "$port" ]; then export PORT="$port"; fi; LD_LIBRARY_PATH="$runtime_ld" exec "$@"' sh "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "$@" &
+  setsid sh -c 'log_file=$1; agent_root=$2; runtime_ld=$3; port=$4; diagnostics_file=$5; startup_trace_id=$6; shift 6
+append_diag() {
+  event=$1
+  child_pid=$2
+  exit_code=$3
+  ts="$(date +%s 2>/dev/null || echo 0)000"
+  printf "{\"ts\":%s,\"event\":\"%s\",\"status\":\"launcher-child\",\"detachedAgentMode\":true,\"restartAttempts\":-1,\"details\":{\"childPid\":\"%s\",\"exitCode\":\"%s\",\"startupTraceId\":\"%s\"}}\\n" "$ts" "$event" "$child_pid" "$exit_code" "$startup_trace_id" >> "$diagnostics_file" 2>/dev/null || true
+}
+exec </dev/null >"$log_file" 2>&1
+cd "$agent_root" || exit 1
+if [ -n "$port" ]; then export PORT="$port"; fi
+LD_LIBRARY_PATH="$runtime_ld" "$@" &
+agent_pid=$!
+append_diag "agent-child-started" "$agent_pid" ""
+wait "$agent_pid"
+status=$?
+append_diag "agent-child-exited" "$agent_pid" "$status"
+exit "$status"' sh "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "\${DIAGNOSTICS_FILE}" "\${STARTUP_TRACE_ID}" "$@" &
 ) &
 disown 2>/dev/null || true
 exit 0

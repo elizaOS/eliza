@@ -27,6 +27,7 @@ import ai.elizaos.app.R;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -1818,6 +1819,10 @@ public class ElizaAgentService extends Service {
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
+            agentEnv.put(
+                "DIAGNOSTICS_FILE",
+                new File(root, AGENT_RESTART_DIAGNOSTICS_NAME).getAbsolutePath()
+            );
             // Port-free by default: the WebView reaches the agent over the
             // abstract-namespace request socket below, so the agent binds NO TCP
             // listener (localAgentMode in android/bridge.ts → startEliza). The
@@ -2458,6 +2463,7 @@ public class ElizaAgentService extends Service {
             updateNotification();
             final long startedAtMs = System.currentTimeMillis();
             final long launchStartedAtMs = detachedLaunchStartedAtMs;
+            final String startupTraceId = agentEnv.get("ELIZA_STARTUP_TRACE_ID");
             final long pidForLog = safePid(started);
             Map<String, String> launchDetails = new LinkedHashMap<>();
             launchDetails.put("launcherPid", String.valueOf(pidForLog));
@@ -2483,19 +2489,38 @@ public class ElizaAgentService extends Service {
                     return;
                 }
                 long aliveMs = System.currentTimeMillis() - startedAtMs;
+                boolean localAgentSocketListening = false;
+                boolean checkedLocalAgentSocket = false;
+                if (detachedAgentMode && code == 0) {
+                    localAgentSocketListening = isLocalAgentSocketListening();
+                    checkedLocalAgentSocket = true;
+                }
+                Map<String, String> exitDetails = new LinkedHashMap<>();
+                exitDetails.put("launcherPid", String.valueOf(pidForLog));
+                exitDetails.put("launcherPidAvailable", String.valueOf(pidForLog >= 0L));
+                exitDetails.put("exitCode", String.valueOf(code));
+                exitDetails.put("aliveMs", String.valueOf(aliveMs));
+                exitDetails.put("detachedAgentMode", String.valueOf(detachedAgentMode));
+                if (checkedLocalAgentSocket) {
+                    exitDetails.put(
+                        "localAgentSocketListening",
+                        String.valueOf(localAgentSocketListening)
+                    );
+                    exitDetails.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
+                    exitDetails.put(
+                        "launcherCompletedBeforeSocketReady",
+                        String.valueOf(!localAgentSocketListening)
+                    );
+                }
+                appendDiagnosticEvent("agent-launcher-exited", exitDetails);
                 if (detachedAgentMode && code == 0) {
                     Log.i(TAG, "Agent launcher exited after detached start (pid="
-                            + pidForLog + " alive=" + aliveMs + "ms).");
+                            + pidForLog + " alive=" + aliveMs + "ms"
+                            + " socketListening=" + localAgentSocketListening + ").");
                 } else {
                     Log.w(TAG, "Agent process exited early (pid=" + pidForLog
                             + " code=" + code + " alive=" + aliveMs + "ms).");
                 }
-                Map<String, String> exitDetails = new LinkedHashMap<>();
-                exitDetails.put("launcherPid", String.valueOf(pidForLog));
-                exitDetails.put("exitCode", String.valueOf(code));
-                exitDetails.put("aliveMs", String.valueOf(aliveMs));
-                exitDetails.put("detachedAgentMode", String.valueOf(detachedAgentMode));
-                appendDiagnosticEvent("agent-launcher-exited", exitDetails);
                 boolean stillThisProcess;
                 synchronized (processLock) {
                     stillThisProcess = (agentProcess == watched);
@@ -2504,7 +2529,7 @@ public class ElizaAgentService extends Service {
                     }
                 }
                 if (stillThisProcess && !shuttingDown && detachedAgentMode && code == 0) {
-                    startDetachedStartupProbe(launchStartedAtMs);
+                    startDetachedStartupProbe(launchStartedAtMs, startupTraceId);
                     return;
                 }
                 if (stillThisProcess && !shuttingDown) {
@@ -2658,6 +2683,18 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    private static final class AgentChildExit {
+        final long timestampMs;
+        final String childPid;
+        final String exitCode;
+
+        AgentChildExit(long timestampMs, String childPid, String exitCode) {
+            this.timestampMs = timestampMs;
+            this.childPid = childPid;
+            this.exitCode = exitCode;
+        }
+    }
+
     /**
      * Drain a process stream into the agent log file and tee to logcat.
      * One thread per stream; both exit cleanly when the stream closes
@@ -2719,7 +2756,65 @@ public class ElizaAgentService extends Service {
         return t;
     }
 
-    private void startDetachedStartupProbe(final long launchStartedAtMs) {
+    private AgentChildExit readLatestAgentChildExit(long launchStartedAtMs, String startupTraceId) {
+        File log = new File(agentRoot(), AGENT_RESTART_DIAGNOSTICS_NAME);
+        if (!log.isFile()) {
+            return null;
+        }
+        long maxBytes = Math.min(log.length(), AGENT_RESTART_DIAGNOSTICS_MAX_BYTES);
+        if (maxBytes <= 0L) {
+            return null;
+        }
+        byte[] bytes = new byte[(int) maxBytes];
+        int read = 0;
+        try (FileInputStream input = new FileInputStream(log)) {
+            while (read < bytes.length) {
+                int n = input.read(bytes, read, bytes.length - read);
+                if (n < 0) break;
+                read += n;
+            }
+        } catch (IOException error) {
+            // error-policy:J7 diagnostic JSONL read failures must not kill the watchdog loop.
+            Log.w(TAG, "Could not read agent child diagnostics", error);
+            return null;
+        }
+        String content = new String(bytes, 0, read, StandardCharsets.UTF_8);
+        AgentChildExit latest = null;
+        long cutoffMs = Math.max(0L, launchStartedAtMs - 2_000L);
+        for (String line : content.split("\\n")) {
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+            try {
+                JSONObject json = new JSONObject(line);
+                if (!"agent-child-exited".equals(json.optString("event", ""))) {
+                    continue;
+                }
+                long timestampMs = json.optLong("ts", 0L);
+                if (timestampMs > 0L && timestampMs < cutoffMs) {
+                    continue;
+                }
+                JSONObject details = json.optJSONObject("details");
+                String childPid = details != null ? details.optString("childPid", "") : "";
+                String exitCode = details != null ? details.optString("exitCode", "") : "";
+                String eventTraceId = details != null ? details.optString("startupTraceId", "") : "";
+                if (startupTraceId != null
+                        && !startupTraceId.isEmpty()
+                        && !startupTraceId.equals(eventTraceId)) {
+                    continue;
+                }
+                latest = new AgentChildExit(timestampMs, childPid, exitCode);
+            } catch (JSONException ignored) {
+                // error-policy:J3 partial or malformed diagnostic lines are invalid records, not healthy exits.
+                // The diagnostics file is append-only and may contain a partial
+                // tail while the launcher writes; ignore that one line and keep
+                // scanning for complete child-exit records.
+            }
+        }
+        return latest;
+    }
+
+    private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId) {
         Thread probe = new Thread(() -> {
             long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
             while (!shuttingDown && System.currentTimeMillis() < deadline) {
@@ -2734,6 +2829,21 @@ public class ElizaAgentService extends Service {
                     }
                     updateNotification();
                     Log.i(TAG, "Detached agent health check passed.");
+                    return;
+                }
+                AgentChildExit childExit = readLatestAgentChildExit(launchStartedAtMs, startupTraceId);
+                if (childExit != null) {
+                    Map<String, String> details = new LinkedHashMap<>();
+                    details.put("launchStartedAtMs", String.valueOf(launchStartedAtMs));
+                    details.put("startupTraceId", String.valueOf(startupTraceId));
+                    details.put("childExitTimestampMs", String.valueOf(childExit.timestampMs));
+                    details.put("childPid", childExit.childPid);
+                    details.put("exitCode", childExit.exitCode);
+                    appendDiagnosticEvent("detached-agent-child-exited-before-ready", details);
+                    Log.w(TAG, "Detached agent child exited before readiness"
+                        + " (pid=" + childExit.childPid
+                        + " code=" + childExit.exitCode + "). Scheduling restart.");
+                    scheduleRestart();
                     return;
                 }
                 try {
