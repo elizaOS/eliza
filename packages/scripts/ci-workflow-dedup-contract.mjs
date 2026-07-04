@@ -78,6 +78,21 @@ assertDeepEqual(
   ["develop"],
   "test.yml PR branches",
 );
+assertDeepEqual(
+  parseInlineBranches(tests, "merge_group", ".github/workflows/test.yml"),
+  ["develop"],
+  "test.yml merge queue branches",
+);
+assertIncludes(
+  tests,
+  "name: ci-ok",
+  "test.yml required aggregate status",
+);
+assertIncludes(
+  tests,
+  'if [ "${GITHUB_EVENT_NAME}" = "merge_group" ]; then',
+  "test.yml merge queue path-gate bypass",
+);
 
 const scenarioPr = read(".github/workflows/scenario-pr.yml");
 assertDeepEqual(

@@ -9,6 +9,9 @@ on:
   pull_request:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
+  merge_group:
+    branches: [develop]
+    types: [checks_requested]
   push:
     branches: [develop]
   workflow_dispatch:
@@ -64,13 +67,33 @@ jobs:
         shell: bash
         env:
           PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
         run: |
           set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "merge_group" ]; then
+            {
+              echo "server=true"
+              echo "client=true"
+              echo "plugins=true"
+              echo "desktop=true"
+              echo "zero_key=true"
+              echo "cloud=true"
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "### Tests path gate"
+              echo
+              echo "Merge queue runs validate the synthesized queue SHA, so path"
+              echo "diffs are deliberately not used. Running the full required"
+              echo "test suite for the \`ci-ok\` aggregate check."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           node packages/scripts/ci-path-gate.mjs \
             --config test \
             --event "${{ github.event_name }}" \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
             --labels "$PR_LABELS" \
             --output "$GITHUB_OUTPUT" \
             --summary "$GITHUB_STEP_SUMMARY"
@@ -1228,8 +1251,8 @@ jobs:
         if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
-  test-status:
-    name: All Tests Passed
+  ci-ok:
+    name: ci-ok
     if: ${{ !cancelled() && always() }}
     needs:
       - changes
@@ -1262,7 +1285,7 @@ jobs:
           echo "provider-live-e2e:${{ needs.provider-live-e2e.result }}"
           echo "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"
           echo "==================================="
-          strict_results="${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
+          strict_results="${{ github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
           for pair in \
             "changes:${{ needs.changes.result }}" \
@@ -1278,6 +1301,10 @@ jobs:
             "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
+            if [ "$name" = "github-live-artifact-validate" ] && [ "$result" = "skipped" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "${{ github.event_name }}" != "schedule" ]; then
+              echo "::notice title=Test gate::Live artifact validation is observed only on workflow_dispatch/schedule, so its skip is allowed for ${{ github.event_name }}."
+              continue
+            fi
             if [ "$name" = "github-live-artifact-validate" ] && [ "$result" = "skipped" ] && [ "${{ needs.cloud-live-e2e.outputs.capability_skip }}" = "true" ] && [ "${{ needs.provider-live-e2e.outputs.skip }}" = "true" ]; then
               echo "::notice title=Test gate::Live artifact validation skipped because no live report producers were configured."
               continue
@@ -1294,4 +1321,4 @@ jobs:
           if [ "$bad" -ne 0 ]; then
             exit 1
           fi
-          echo "All required test jobs passed."
+          echo "All required test jobs passed. Required develop ruleset check: ci-ok."
