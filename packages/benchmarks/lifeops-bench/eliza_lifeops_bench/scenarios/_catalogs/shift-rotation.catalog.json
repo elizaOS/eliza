@@ -1,0 +1,207 @@
+{
+  "catalogId": "shift-rotation",
+  "title": "Rotating-shift LifeOpsBench pack",
+  "source": {
+    "issue": "https://github.com/elizaOS/eliza/issues/12278",
+    "persona": "marcus_shift",
+    "notes": [
+      "Executable scenarios live in scenarios/shift_rotation.py and scenarios/live/shift_rotation.py.",
+      "The Scenario dataclass has no tags field in this checkout, so tier and adversarial markers are catalog metadata plus description markers.",
+      "Registered in the LifeOpsBench static and live scenario registries in this PR."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "shiftrotation.capture_nights_starting_monday",
+      "title": "Capture night shift pattern starting Monday",
+      "mode": "static",
+      "domain": "calendar",
+      "tierTag": "[T1]",
+      "tags": ["shift-rotation", "pattern-capture"],
+      "persona": "marcus_shift",
+      "coverage": "Plain statement of nights starting Monday updates planning assumptions.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.protect_post_shift_sleep_window",
+      "title": "Protect post-shift sleep window",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T1]",
+      "tags": ["shift-rotation", "sleep-protection"],
+      "persona": "marcus_shift",
+      "coverage": "Protects a post-night-shift sleep window as quiet hours.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.normalize_d_e_n_week_pattern",
+      "title": "Normalize D/E/N rotation pattern",
+      "mode": "static",
+      "domain": "calendar",
+      "tierTag": "[T1]",
+      "tags": ["shift-rotation", "pattern-normalization"],
+      "persona": "marcus_shift",
+      "coverage": "Normalizes D D E E N N off week pattern.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.reanchor_recurring_reminders_new_shift",
+      "title": "Re-anchor recurring reminders to new shift",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "reanchor"],
+      "persona": "marcus_shift",
+      "coverage": "Moves existing recurring reminders relative to evening shifts without re-entry.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.tomorrow_resolves_against_shift_boundary",
+      "title": "Tomorrow resolves against shift boundary",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "shift-day-boundary"],
+      "persona": "marcus_shift",
+      "coverage": "Resolves tomorrow after a night shift against shift boundary rather than midnight.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.quiet_hours_move_with_rotation",
+      "title": "Quiet hours move with rotation",
+      "mode": "static",
+      "domain": "sleep",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "moving-quiet-hours"],
+      "persona": "marcus_shift",
+      "coverage": "Keeps protected sleep moving with day/evening/night rotation.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.forward_rotation_transition_leniency",
+      "title": "Lenient planning after forward rotation",
+      "mode": "static",
+      "domain": "calendar",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "transition-leniency"],
+      "persona": "marcus_shift",
+      "coverage": "Avoids stacking errands immediately after a forward rotation change.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "shiftrotation.dedup_habit_survives_shift_change",
+      "title": "Dedup habit definition across shift change",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "dedup"],
+      "persona": "marcus_shift",
+      "coverage": "Reanchors hydration habit for nights without creating a duplicate.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.sleep_protection_violation_requires_confirm",
+      "title": "Sleep-window conflict must be flagged and fail closed without confirmation",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T4]",
+      "tags": ["shift-rotation", "sleep-protection", "live", "adversarial", "verbatim-exemplar"],
+      "persona": "marcus_shift",
+      "coverage": "Verbatim issue exemplar for failing closed when a requested event conflicts with protected sleep.",
+      "baselineCanary": false,
+      "adversarialTrap": "sleep-window violation"
+    },
+    {
+      "id": "live.shiftrotation.night_to_day_transition_plan",
+      "title": "Plan transition from nights to days",
+      "mode": "live",
+      "domain": "sleep",
+      "tierTag": "[T3]",
+      "tags": ["shift-rotation", "transition-plan", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Plans recovery sleep while moving from nights to a Monday day shift.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.swap_shift_chain_replan",
+      "title": "Replan after a shift swap",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T3]",
+      "tags": ["shift-rotation", "rule-change", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Confirmed shift swap cascades through surrounding sleep and family windows.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.medication_cadence_across_rotation",
+      "title": "Adjust meds across rotating weeks",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T3]",
+      "tags": ["shift-rotation", "medication", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Medication reminder follows wake timing across evening and night rotations.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.family_event_vs_recovery_sleep",
+      "title": "Protect recovery sleep around family event",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T3]",
+      "tags": ["shift-rotation", "recovery-sleep", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Balances a family event with post-night-shift recovery sleep.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.short_notice_overtime_triage",
+      "title": "Triage short-notice overtime request",
+      "mode": "live",
+      "domain": "messages",
+      "tierTag": "[T4]",
+      "tags": ["shift-rotation", "sleep-protection", "messages", "live", "adversarial"],
+      "persona": "marcus_shift",
+      "coverage": "Staffing overtime request during protected sleep must be triaged safely.",
+      "baselineCanary": false,
+      "adversarialTrap": "protected-sleep interruption"
+    },
+    {
+      "id": "live.shiftrotation.week_at_a_time_brief_after_handoff",
+      "title": "Create week-at-a-time shift brief",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "weekly-brief", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Weekly post-handoff brief covers rotation, sleep, meds, and family conflicts.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.shiftrotation.focus_between_evening_shifts",
+      "title": "Find focus block between evening shifts",
+      "mode": "live",
+      "domain": "focus",
+      "tierTag": "[T2]",
+      "tags": ["shift-rotation", "focus", "live"],
+      "persona": "marcus_shift",
+      "coverage": "Finds one admin focus block before evening shift without cutting into sleep, commute, or meal prep.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    }
+  ]
+}

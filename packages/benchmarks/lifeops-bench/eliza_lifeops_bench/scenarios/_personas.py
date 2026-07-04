@@ -230,6 +230,36 @@ PERSONA_DRE_FLOOD = Persona(
     patience_turns=12,
 )
 
+PERSONA_NOOR_NIGHT = Persona(
+    id="noor_night",
+    name="Noor Haddad",
+    traits=["night-owl", "no-fixed-schedule", "resents-morning-defaults"],
+    background=(
+        "Indie game developer who sleeps roughly 04:00-11:30 and works in long night "
+        "sessions. 'Morning' means noon. Rejects any plan that assumes a 9-to-5."
+    ),
+    communication_style=(
+        "dry, precise, pushes back on assumptions, references her own wake time rather "
+        "than clock times ('an hour after I get up')"
+    ),
+    patience_turns=14,
+)
+
+PERSONA_MARCUS_SHIFT = Persona(
+    id="marcus_shift",
+    name="Marcus Oyelaran",
+    traits=["rotating-shift-nurse", "sleep-protective", "week-at-a-time-planner"],
+    background=(
+        "ER nurse on a rotating day/evening/night schedule that changes weekly. Sleep "
+        "is a protected asset; his 'day' shifts by 8 hours at each rotation."
+    ),
+    communication_style=(
+        "brief, schedule-literate ('I'm on nights starting Monday'), expects the "
+        "assistant to move everything relative to his shift, not ask him to re-enter it"
+    ),
+    patience_turns=14,
+)
+
 PERSONA_DEL_LOW = Persona(
     id="del_low",
     name="Del Ferreira",
@@ -270,5 +300,7 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_ELENA_ROAD,
     PERSONA_CAM_COMMS,
     PERSONA_DRE_FLOOD,
+    PERSONA_NOOR_NIGHT,
+    PERSONA_MARCUS_SHIFT,
     PERSONA_DEL_LOW,
 ]
