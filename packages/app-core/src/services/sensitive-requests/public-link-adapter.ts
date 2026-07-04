@@ -16,6 +16,7 @@ import {
   type SensitiveRequestWithPaymentContext,
   toRuntimeSettings,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 
 const CLOUD_BASE_FALLBACK = "https://elizacloud.ai/api/v1";
 
@@ -54,7 +55,7 @@ function resolveCloudBaseUrl(runtime: unknown): string {
       return stripTrailingSlashes(fromSetting.trim());
     }
   }
-  const fromEnv = nonEmpty(process.env.ELIZAOS_CLOUD_BASE_URL);
+  const fromEnv = nonEmpty(readAliasedEnv("ELIZAOS_CLOUD_BASE_URL"));
   if (fromEnv) return stripTrailingSlashes(fromEnv);
   return stripTrailingSlashes(CLOUD_BASE_FALLBACK);
 }

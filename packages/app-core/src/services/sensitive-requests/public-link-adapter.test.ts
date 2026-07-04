@@ -8,8 +8,14 @@ import type {
   SensitiveRequest,
   SensitiveRequestWithPaymentContext,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { getBootConfig, setBootConfig } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { publicLinkSensitiveRequestAdapter } from "./public-link-adapter";
+
+const SAVED_ENV_KEYS = [
+  "ELIZAOS_CLOUD_BASE_URL",
+  "ELIZA_CLOUD_BASE_URL",
+] as const;
 
 function buildRequest(
   overrides: Partial<SensitiveRequestWithPaymentContext> = {},
@@ -76,6 +82,24 @@ function runtimeWithSetting(value: string | undefined) {
 }
 
 describe("publicLinkSensitiveRequestAdapter", () => {
+  const savedConfig = getBootConfig();
+  let savedEnv: Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
+
+  beforeEach(() => {
+    savedEnv = Object.fromEntries(
+      SAVED_ENV_KEYS.map((key) => [key, process.env[key]]),
+    ) as Record<(typeof SAVED_ENV_KEYS)[number], string | undefined>;
+  });
+
+  afterEach(() => {
+    setBootConfig(savedConfig);
+    for (const key of SAVED_ENV_KEYS) {
+      const value = savedEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
   it("declares the public_link target", () => {
     expect(publicLinkSensitiveRequestAdapter.target).toBe("public_link");
   });
@@ -96,21 +120,17 @@ describe("publicLinkSensitiveRequestAdapter", () => {
   });
 
   it("falls back to the default cloud base when no setting or env is provided", async () => {
-    const previous = process.env.ELIZAOS_CLOUD_BASE_URL;
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
-    try {
-      const result = await publicLinkSensitiveRequestAdapter.deliver({
-        request: buildRequest(),
-        runtime: runtimeWithSetting(undefined),
-      });
-      expect(result.delivered).toBe(true);
-      if (!result.delivered) throw new Error("expected success");
-      expect(result.url).toBe(
-        "https://elizacloud.ai/api/v1/payment/app-charge/app_demo/req_pay_1/public",
-      );
-    } finally {
-      if (previous !== undefined) process.env.ELIZAOS_CLOUD_BASE_URL = previous;
-    }
+    delete process.env.ELIZA_CLOUD_BASE_URL;
+    const result = await publicLinkSensitiveRequestAdapter.deliver({
+      request: buildRequest(),
+      runtime: runtimeWithSetting(undefined),
+    });
+    expect(result.delivered).toBe(true);
+    if (!result.delivered) throw new Error("expected success");
+    expect(result.url).toBe(
+      "https://elizacloud.ai/api/v1/payment/app-charge/app_demo/req_pay_1/public",
+    );
   });
 
   it("refuses kind=secret with a structured error", async () => {
@@ -189,5 +209,26 @@ describe("publicLinkSensitiveRequestAdapter", () => {
     expect(result.url).toBe(
       "https://cloud.example.com/payment/app-charge/app%2Fwith%2Fslash/req%20with%20space/public",
     );
+  });
+
+  it("resolves the public cloud base from an aliased env key without mutating canonical env", async () => {
+    setBootConfig({
+      ...savedConfig,
+      envAliases: [["ELIZA_CLOUD_BASE_URL", "ELIZAOS_CLOUD_BASE_URL"]],
+    });
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    process.env.ELIZA_CLOUD_BASE_URL = "https://legacy.example.com/api/v1/";
+
+    const result = await publicLinkSensitiveRequestAdapter.deliver({
+      request: buildRequest(),
+      runtime: runtimeWithSetting(undefined),
+    });
+
+    expect(result.delivered).toBe(true);
+    if (!result.delivered) throw new Error("expected success");
+    expect(result.url).toBe(
+      "https://legacy.example.com/api/v1/payment/app-charge/app_demo/req_pay_1/public",
+    );
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
   });
 });
