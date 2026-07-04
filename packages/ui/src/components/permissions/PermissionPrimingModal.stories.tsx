@@ -1,3 +1,9 @@
+/**
+ * Storybook states for the post-login PermissionPrimingModal, driven by injected
+ * controller stubs: the per-permission soft-ask cards (microphone / location /
+ * notifications), the requesting state, the two denied variants (retryable vs
+ * settings-only), and the initial loading state.
+ */
 import type { PermissionId } from "@elizaos/shared/contracts/permissions";
 import type { Meta, StoryObj } from "@storybook/react";
 import { MockAppProvider } from "../../storybook/mock-providers";
