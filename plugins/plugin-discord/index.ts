@@ -12,6 +12,7 @@ import { registerDiscordTargetSource } from "./discord-target-source";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
+import { registerDiscordTriageAdapter } from "./triage-adapter";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
@@ -56,6 +57,9 @@ const discordPlugin: Plugin = {
 		}
 
 		registerDiscordDmSensitiveRequestAdapter(runtime);
+
+		// Register the cross-connector triage adapter for the "discord" source.
+		registerDiscordTriageAdapter();
 
 		// Register the Discord target-source enumerator so the host's
 		// connector-target-catalog can surface guild/channel quick-picks.

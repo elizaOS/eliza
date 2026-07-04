@@ -1,22 +1,18 @@
 /**
  * TriageService — coordinates adapters, scoring, and the draft store.
  *
- * Usage:
- *   const service = new TriageService();
- *   service.register(new GmailMessageAdapter());
- *   await service.triage(runtime, { sources: ["gmail"] });
+ * Concrete adapters live in their owning connector plugin and register
+ * themselves during plugin init via `service.register(adapter)`. Core owns only
+ * the registry + `BaseMessageAdapter`; it never pre-registers connector adapters.
+ *
+ * Usage (from a connector plugin's init):
+ *   getDefaultTriageService().register(new MyConnectorAdapter());
+ *   await getDefaultTriageService().triage(runtime, { sources: ["my-source"] });
  */
 
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
 import { filterInMemory } from "./adapters/base.ts";
-import { DiscordMessageAdapter } from "./adapters/discord-adapter.ts";
-import { GmailMessageAdapter } from "./adapters/gmail-adapter.ts";
-import { IMessageMessageAdapter } from "./adapters/imessage-adapter.ts";
-import { SignalMessageAdapter } from "./adapters/signal-adapter.ts";
-import { TelegramMessageAdapter } from "./adapters/telegram-adapter.ts";
-import { TwitterMessageAdapter } from "./adapters/twitter-adapter.ts";
-import { WhatsappMessageAdapter } from "./adapters/whatsapp-adapter.ts";
 import {
 	getDefaultMessageRefStore,
 	type MessageRefStore,
@@ -401,27 +397,12 @@ function enqueueLocalDeferredSend(
 	return scheduledId;
 }
 
-/**
- * Convenience factory that registers all built-in adapters. Availability is
- * evaluated at request time so new plugins become usable without rewiring.
- */
-export function createDefaultTriageService(
-	store?: MessageRefStore,
-): TriageService {
-	const service = new TriageService(store);
-	service.register(new GmailMessageAdapter());
-	service.register(new DiscordMessageAdapter());
-	service.register(new TelegramMessageAdapter());
-	service.register(new TwitterMessageAdapter());
-	service.register(new IMessageMessageAdapter());
-	service.register(new SignalMessageAdapter());
-	service.register(new WhatsappMessageAdapter());
-	return service;
-}
-
+// Shared, process-wide triage registry. Connector plugins register their
+// adapters into it during init; core actions and connector consumers resolve it
+// here. Starts empty — no connector adapters are pre-registered.
 let singleton: TriageService | null = null;
 export function getDefaultTriageService(): TriageService {
-	if (!singleton) singleton = createDefaultTriageService();
+	if (!singleton) singleton = new TriageService();
 	return singleton;
 }
 

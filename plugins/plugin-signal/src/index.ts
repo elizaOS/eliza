@@ -7,6 +7,9 @@ import { DEFAULT_SIGNAL_CLI_PATH, SignalService } from "./service";
 // Setup routes (QR pairing / disconnect)
 import { signalSetupRoutes } from "./setup-routes";
 
+// Cross-connector triage adapter
+import { registerSignalTriageAdapter } from "./triage-adapter";
+
 // Types
 import { normalizeE164 } from "./types";
 import { SignalWorkflowCredentialProvider } from "./workflow-credential-provider";
@@ -48,6 +51,9 @@ const signalPlugin: Plugin = {
         "Failed to register Signal provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "signal" source.
+    registerSignalTriageAdapter();
 
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;

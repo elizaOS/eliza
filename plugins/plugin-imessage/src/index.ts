@@ -20,6 +20,7 @@ import {
   parseMessagesFromAppleScript,
 } from "./service.js";
 import { imessageSetupRoutes } from "./setup-routes.js";
+import { registerIMessageTriageAdapter } from "./triage-adapter.js";
 
 // Account management exports
 export {
@@ -142,6 +143,9 @@ const imessagePlugin: Plugin = {
         "Failed to register iMessage provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "imessage" source.
+    registerIMessageTriageAdapter();
 
     const isMacOS = platform() === "darwin";
 

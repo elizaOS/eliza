@@ -16,6 +16,7 @@ import { registerTelegramDmSensitiveRequestAdapter } from "./sensitive-request-a
 import { TelegramService } from "./service";
 import { telegramSetupRoutes } from "./setup-routes";
 import { TelegramTestSuite } from "./tests";
+import { registerTelegramTriageAdapter } from "./triage-adapter";
 
 const telegramPlugin: Plugin = {
   name: TELEGRAM_SERVICE_NAME,
@@ -62,6 +63,9 @@ const telegramPlugin: Plugin = {
     // Deliver secret / OAuth requests as a DM link-out (the value never transits
     // the chat transport). Mirrors the Discord DM adapter.
     registerTelegramDmSensitiveRequestAdapter(runtime);
+
+    // Register the cross-connector triage adapter for the "telegram" source.
+    registerTelegramTriageAdapter();
   },
   async dispose(runtime: IAgentRuntime) {
     await TelegramService.stop(runtime);

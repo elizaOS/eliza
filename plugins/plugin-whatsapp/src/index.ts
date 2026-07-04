@@ -2,6 +2,7 @@ import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } f
 import { createWhatsAppConnectorAccountProvider } from "./connector-account-provider";
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
+import { registerWhatsappTriageAdapter } from "./triage-adapter";
 import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const whatsappPlugin: Plugin = {
@@ -40,6 +41,9 @@ const whatsappPlugin: Plugin = {
         "Failed to register WhatsApp provider with ConnectorAccountManager"
       );
     }
+
+    // Register the cross-connector triage adapter for the "whatsapp" source.
+    registerWhatsappTriageAdapter();
   },
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<WhatsAppConnectorService>(WhatsAppConnectorService.serviceType);
