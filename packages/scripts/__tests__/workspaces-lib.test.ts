@@ -97,6 +97,22 @@ describe("expandWorkspaceGlobs — glob semantics", () => {
     ]);
   });
 
+  test("`*` skips hidden and build-output dirs (e.g. a stray `.next` marker)", () => {
+    const root = makeRepo();
+    fs.mkdirSync(path.join(root, "examples/real"), { recursive: true });
+    // A Next.js build dir carries a `{"type":"commonjs"}` package.json marker;
+    // it is not a workspace member and must not be matched by a `*` segment.
+    fs.mkdirSync(path.join(root, "examples/real/.next"), { recursive: true });
+    fs.mkdirSync(path.join(root, "examples/real/dist"), { recursive: true });
+
+    expect(expandWorkspaceGlobs(["examples/*"], { repoRoot: root })).toEqual([
+      "examples/real",
+    ]);
+    expect(expandWorkspaceGlobs(["examples/*/*"], { repoRoot: root })).toEqual(
+      [],
+    );
+  });
+
   test("negation subtracts an earlier match (exclude-wins)", () => {
     const root = makeRepo();
     fs.mkdirSync(path.join(root, "packages/keep"), { recursive: true });

@@ -72,6 +72,29 @@ function workspaceGlobToRegExp(glob) {
   return new RegExp(`^${pattern}$`);
 }
 
+// Hidden and heavy build/vendor dir names that are never workspace members and
+// never worth descending into. Bun/npm workspace resolution likewise ignores
+// dotfile dirs, and these build outputs (e.g. a Next.js `.next/package.json`
+// marker) are not real packages — so a `*` segment must skip them just as a
+// `**` walk does, or a stray `.next` gets matched as a workspace.
+const WALK_SKIP_DIRS = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "storybook-static",
+]);
+
+// A directory child is traversable/matchable as a workspace only if it is not
+// hidden and not a build/vendor dir. Applied uniformly to `*` and `**` so both
+// segment kinds agree on membership.
+function isTraversableChild(name) {
+  return !name.startsWith(".") && !WALK_SKIP_DIRS.has(name);
+}
+
 // Walk the tree expanding one positive glob into concrete directories. A `*`
 // segment enumerates children; a `**` segment matches this directory and every
 // descendant directory; a literal segment descends by name.
@@ -89,7 +112,9 @@ function expandPositiveGlob(repoRoot, pattern) {
       }
       if (part === "*") {
         for (const entry of readDirEntries(dir)) {
-          if (entry.isDirectory()) next.push(path.join(dir, entry.name));
+          if (entry.isDirectory() && isTraversableChild(entry.name)) {
+            next.push(path.join(dir, entry.name));
+          }
         }
         continue;
       }
@@ -116,23 +141,11 @@ function readDirEntries(dir) {
 
 // Depth-first directory list rooted at `start` (inclusive), skipping hidden and
 // heavy build/vendor dirs so `**` expansion stays bounded and deterministic.
-const WALK_SKIP_DIRS = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "storybook-static",
-]);
-
 function walkDirs(start) {
   const out = [start];
   for (const entry of readDirEntries(start)) {
     if (!entry.isDirectory()) continue;
-    if (entry.name.startsWith(".")) continue;
-    if (WALK_SKIP_DIRS.has(entry.name)) continue;
+    if (!isTraversableChild(entry.name)) continue;
     out.push(...walkDirs(path.join(start, entry.name)));
   }
   return out;
