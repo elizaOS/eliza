@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * The AppContext selector store (`app-store`): field-level subscriptions via
+ * `useAppSelector` / `useAppSelectorShallow` and the shallow-equality gate that
+ * suppresses re-renders. Real hooks under jsdom; no live model.
+ */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

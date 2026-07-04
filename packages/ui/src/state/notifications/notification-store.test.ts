@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * The notification store (`notification-store`): list/read/remove/clear flows,
+ * unread counting, and WebSocket-event ingestion. jsdom with the API client and
+ * desktop bridge mocked — deterministic, no real server or WS.
+ */
 import type { AgentNotification } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * The notification deep-link guard (`navigate-deep-link`): `isSafeDeepLink`
+ * scheme allowlisting and `navigateDeepLink` routing (new-tab for http(s),
+ * in-app event for root-relative). jsdom; pure guard logic, no network.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isSafeDeepLink, navigateDeepLink } from "./navigate-deep-link";
 

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * The restoring-session phase over the desktop RPC bridge
+ * (`startup-phase-restore.runRestoringSession`): backend-startup timeout
+ * handling and the force-fresh-first-run gate under Electrobun. jsdom with the
+ * desktop bridge and first-run bootstrap mocked — no real host process.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   enableForceFreshFirstRun,

@@ -1,5 +1,5 @@
 /**
- * Agent export/import state — extracted from AppContext.
+ * Agent export/import state, one of the domain hooks AppContext composes.
  *
  * Manages the export/import UI state and the download/upload
  * callbacks. Uses the client singleton directly, matching the

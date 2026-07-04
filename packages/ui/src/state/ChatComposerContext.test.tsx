@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Per-conversation composer draft persistence (`ChatComposerContext.hooks`):
+ * the localStorage-keyed read/write/clear helpers and the debounced hook that
+ * saves and restores drafts across conversation switches. Real hook under
+ * jsdom + real `localStorage`; no live model or network.
+ */
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

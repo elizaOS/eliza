@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Background config + undo/redo history in `useDisplayPreferences`: the
+ * versioned push/undo/redo semantics, the history/data-URL caps, and
+ * home-time-widget visibility persistence. Real hook under jsdom + real
+ * `localStorage`.
+ */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {

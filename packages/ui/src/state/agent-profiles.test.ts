@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * The agent-profile registry (`agent-profiles`): token scrub on sign-out,
+ * add/upsert/activate, and query resolution over jsdom `localStorage`. Pure
+ * store logic — no live model or network.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addAgentProfile,

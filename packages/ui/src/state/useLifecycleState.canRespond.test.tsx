@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * `useLifecycleState.setAgentStatusIfChanged` change detection: a
+ * `canRespond`-only flip must apply rather than being deduped away. Real hook
+ * under jsdom; no live agent.
+ */
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AgentStatus } from "../api";

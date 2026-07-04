@@ -9,9 +9,9 @@ import { useResyncReconcile } from "./useResyncReconcile";
 
 /**
  * AppContext dispatches RESYNC_EVENT after a WebSocket reconnect so the active
- * conversation can be reconciled. Historically the event had NO listener — the
- * reconcile was dead code. These tests pin the live wiring: on resync the active
- * conversation is reloaded, and only the active one.
+ * conversation can be reconciled. Pins the `useResyncReconcile` wiring: on
+ * resync the active conversation is reloaded, and only the active one. Real hook
+ * under jsdom.
  */
 function dispatchResync(conversationId: string | null): void {
   window.dispatchEvent(

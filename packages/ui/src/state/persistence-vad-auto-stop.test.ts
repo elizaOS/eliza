@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * VAD auto-stop persistence (`persistence`): `loadVadAutoStop` /
+ * `saveVadAutoStop` round-trip and the canonical defaults returned when nothing
+ * is stored. jsdom + real `localStorage`.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import { loadVadAutoStop, saveVadAutoStop } from "./persistence";

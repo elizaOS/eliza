@@ -1,5 +1,5 @@
 /**
- * Wallet / Inventory / Registry / Drop / Whitelist state — extracted from AppContext.
+ * Wallet / Inventory / Registry / Drop / Whitelist state, one of the domain hooks AppContext composes.
  *
  * Manages:
  * - Wallet addresses, config, balances, NFTs, export flow

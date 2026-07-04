@@ -1,5 +1,5 @@
 /**
- * Eliza Cloud state — extracted from AppContext.
+ * Eliza Cloud state, one of the domain hooks AppContext composes.
  *
  * Manages:
  * - Cloud connection state (enabled, connected, persisted key, user ID)

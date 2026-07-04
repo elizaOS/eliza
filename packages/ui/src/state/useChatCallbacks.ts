@@ -1,5 +1,5 @@
 /**
- * Chat callbacks — extracted from AppContext.
+ * Chat callbacks, one of the domain hooks AppContext composes.
  *
  * Assembler hook: composes useChatLifecycle + useChatSend and owns the
  * greeting / conversation-management callbacks that depend on both.

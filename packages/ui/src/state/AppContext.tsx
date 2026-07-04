@@ -146,7 +146,7 @@ function AppProviderInner({
   }, []);
   // uiLanguage + t live in TranslationContext; consumed via useTranslation()
   const { t, uiLanguage, setUiLanguage } = useTranslation();
-  // --- Display preferences (extracted to useDisplayPreferences) ---
+  // --- Display preferences (via useDisplayPreferences) ---
   const displayPrefs = useDisplayPreferences();
   const {
     state: {
@@ -281,7 +281,7 @@ function AppProviderInner({
   const uiShellMode = deriveUiShellModeForTab(tab);
 
   // --- Pairing ---
-  // --- Pairing (extracted to usePairingState) ---
+  // --- Pairing (via usePairingState) ---
   const pairingHook = usePairingState();
   const {
     state: {
@@ -389,7 +389,7 @@ function AppProviderInner({
     [addUnread, removeUnread],
   );
 
-  // --- Triggers (extracted to useTriggersState) ---
+  // --- Triggers (via useTriggersState) ---
   const triggersHook = useTriggersState();
   const {
     state: {
@@ -411,7 +411,7 @@ function AppProviderInner({
     runTriggerNow,
   } = triggersHook;
 
-  // --- Plugins / Skills / Store / Catalog (extracted to usePluginsSkillsState) ---
+  // --- Plugins / Skills / Store / Catalog (via usePluginsSkillsState) ---
   const pluginsSkillsHook = usePluginsSkillsState({
     setActionNotice,
     setPendingRestart,
@@ -523,7 +523,7 @@ function AppProviderInner({
     setCatalogUninstalling,
   } = pluginsSkillsHook;
 
-  // --- Logs (extracted to useLogsState) ---
+  // --- Logs (via useLogsState) ---
   const logsHook = useLogsState();
   const {
     state: {
@@ -542,7 +542,7 @@ function AppProviderInner({
     loadLogs,
   } = logsHook;
 
-  // --- Character (extracted to useCharacterState) ---
+  // --- Character (via useCharacterState) ---
   const characterHook = useCharacterState({ agentStatus, setAgentStatus });
   const {
     state: {
@@ -606,7 +606,7 @@ function AppProviderInner({
 
   // Updates, Extension, and Workbench state are now in useDataLoaders (dataLoaders).
 
-  // --- Agent export/import (extracted to useExportImportState) ---
+  // --- Agent export/import (via useExportImportState) ---
   const exportImportHook = useExportImportState();
   const {
     state: {
@@ -736,7 +736,7 @@ function AppProviderInner({
 
   // startupStatus is now derived in useLifecycleState
 
-  // --- Command palette / emote picker / MCP / game / dropped files (extracted to useMiscUiState) ---
+  // --- Command palette / emote picker / MCP / game / dropped files (via useMiscUiState) ---
   const miscUiHook = useMiscUiState();
   const {
     state: {
@@ -798,28 +798,16 @@ function AppProviderInner({
     closeEmotePicker,
   } = miscUiHook;
 
-  // chatPendingImages now comes from useChatState
-
   // --- Refs for timers ---
-  // actionNoticeTimer, shownOnceNotices, agentStatusRef, lifecycleBusyRef,
-  // lifecycleActionRef, setAgentStatusIfChanged are now in useLifecycleState
-  // elizaCloudPollInterval, elizaCloudDisconnectInFlightRef,
-  // elizaCloudPreferDisconnectedUntilLoginRef, lastElizaCloudPollConnectedRef,
-  // elizaCloudLoginPollTimer are now in useCloudState (cloudHook)
   const _restartNotificationSignatureRef = useRef<string | null>(null);
   const _heartbeatNotificationKeyRef = useRef<string | null>(null);
-  // First-run refs now come from useFirstRunState
   const firstRunCompletionCommittedRef = firstRunCompletionCommittedRefFromHook;
-  // exportBusyRef and importBusyRef are now managed inside useExportImportState (exportImportHook)
-  // walletApiKeySavingRef is now managed inside useWalletState (walletHook)
-  // elizaCloudLoginBusyRef, elizaCloudAuthNoticeSentRef
-  // are now managed inside useCloudState (cloudHook)
 
   // --- Confirm Modal ---
   const { modalProps } = useConfirm();
   const { prompt: promptModal, modalProps: promptModalProps } = usePrompt();
 
-  // --- Wallet / Inventory / Registry / Drop / Whitelist (extracted to useWalletState) ---
+  // --- Wallet / Inventory / Registry / Drop / Whitelist (via useWalletState) ---
   // Placed after characterHook (characterDraft) and promptModal — both are required params.
   const walletHook = useWalletState({
     setActionNotice,
@@ -890,7 +878,7 @@ function AppProviderInner({
 
   // setActionNotice is now provided by useLifecycleState
 
-  // ── Cloud state (extracted to useCloudState) ───────────────────────
+  // ── Cloud state (via useCloudState) ───────────────────────
   // Placed after walletHook so loadWalletConfig is available.
   const cloudHook = useCloudState({
     setActionNotice,
@@ -947,7 +935,7 @@ function AppProviderInner({
 
   // Language is managed by TranslationProvider (see useTranslation() above)
 
-  // ── Navigation (extracted to useNavigationState) ──────────────────
+  // ── Navigation (via useNavigationState) ──────────────────
   const navHook = useNavigationState({
     tab,
     setTabRaw,
@@ -967,7 +955,7 @@ function AppProviderInner({
 
   // loadLogs is now in useLogsState (logsHook)
 
-  // ── Data loading (extracted to useDataLoaders) ────────────────────
+  // ── Data loading (via useDataLoaders) ────────────────────
   const dataLoaders = useDataLoaders({
     autonomousStoreRef,
     autonomousEventsRef,
@@ -1039,7 +1027,7 @@ function AppProviderInner({
 
   // beginLifecycleAction / finishLifecycleAction are now provided by useLifecycleState
 
-  // ── Chat callbacks (extracted to useChatCallbacks) ──────────────────
+  // ── Chat callbacks (via useChatCallbacks) ──────────────────
   const chatCallbacks = useChatCallbacks({
     t,
     uiLanguage,
@@ -1275,7 +1263,7 @@ function AppProviderInner({
   // ── Inventory / Registry / Drop / Whitelist actions are provided by useWalletState (walletHook) ──
   // ── Character actions are provided by useCharacterState (characterHook) ──
 
-  // ── First-run callbacks (extracted to useFirstRunCallbacks) ──────
+  // ── First-run callbacks (via useFirstRunCallbacks) ──────
   const firstRunCallbacks = useFirstRunCallbacks({
     firstRun,
     setPostFirstRunChecklistDismissed,

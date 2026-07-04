@@ -1,18 +1,17 @@
 // @vitest-environment jsdom
 //
-// Hidden keep-alive views must STAY paused across app-resume / tab refocus.
+// Hidden keep-alive views must STAY paused across app-resume / tab refocus;
+// only the ACTIVE view may wake on resume.
 //
 // A pausable keep-alive view's resting phase while hidden IS "paused" —
 // `setActive` pauses it the moment another view becomes active (see the
 // "retains + pauses a keep-alive view when hidden" case in
-// view-lifecycle.test.tsx). The bug: `resumeAll` (fired on APP_RESUME and on
-// every `visibilitychange` back to visible) transitioned EVERY paused record,
-// flipping hidden retained views to "inactive" — un-pausing them. Concretely:
-// open Calendar (keepAlive+pausable), go Home (calendar retained+paused, its
-// polling stopped), switch browser tabs away and back — calendar's timers/
-// polling/media restarted (`usePausableInterval` gates on `isPaused`, and its
-// `onResume` handler fired) while the view was still hidden. Only the ACTIVE
-// view may wake on resume.
+// view-lifecycle.test.tsx). `resumeAll` fires on APP_RESUME and on every
+// `visibilitychange` back to visible; it must skip hidden retained records so
+// their timers/polling/media (gated by `usePausableInterval` on `isPaused`)
+// stay stopped. Concretely: open Calendar (keepAlive+pausable), go Home
+// (calendar retained+paused, polling stopped), tab away and back — calendar
+// must NOT restart while still hidden.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";

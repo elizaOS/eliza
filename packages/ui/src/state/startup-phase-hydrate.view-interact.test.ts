@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * The ready-phase view-interact wiring (`startup-phase-hydrate.bindReadyPhase`):
+ * agent-driven navigate-view WS events are dispatched to the shell and
+ * view-interact requests are forwarded. jsdom with the API client and
+ * view-interact dispatch mocked — no live agent.
+ */
 import {
   NAVIGATE_VIEW_EVENT,
   SHELL_NAVIGATE_VIEW_WS_EVENT,

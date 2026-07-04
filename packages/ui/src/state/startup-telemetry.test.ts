@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * The startup trace recorder (`startup-telemetry`): mark/measure accumulation,
+ * the window-mirrored trace, and per-window trace-id isolation. jsdom; pure
+ * in-memory + `window` state, no real timers or backend.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   __resetStartupTraceForTests,

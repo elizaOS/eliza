@@ -1,5 +1,5 @@
 /**
- * Data-loading callbacks — extracted from AppContext.
+ * Data-loading callbacks, one of the domain hooks AppContext composes.
  *
  * Covers: autonomy event merge / replay / append, conversation loaders,
  * BSC trade + steward wrappers, loadInventory, ownerName hydration,

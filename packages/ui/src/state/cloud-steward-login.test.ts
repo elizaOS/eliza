@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * The Steward login seam (`cloud-steward-login`): stored-JWT usability checks
+ * (expiry parsing), launcher registration, and `launchStewardLogin` dispatch.
+ * jsdom + real `localStorage`; JWTs are synthetic (unsigned) — no real Steward
+ * service.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   hasStewardLoginLauncher,

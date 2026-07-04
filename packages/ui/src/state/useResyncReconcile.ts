@@ -2,10 +2,9 @@
  * Live consumer for the WebSocket-reconnect resync signal.
  *
  * `AppContext` dispatches {@link RESYNC_EVENT} on `client.onReconnect` after a
- * dropped socket comes back. Historically that event had NO listener, so the
- * reconcile it was meant to trigger never ran: messages the agent emitted while
- * the socket was down stayed hidden until a manual refresh. This hook wires the
- * missing listener and performs the reconcile.
+ * dropped socket comes back; this hook is its listener and performs the
+ * reconcile. Without it, messages the agent emitted while the socket was down
+ * stay hidden until a manual refresh.
  */
 
 import { type MutableRefObject, useEffect } from "react";

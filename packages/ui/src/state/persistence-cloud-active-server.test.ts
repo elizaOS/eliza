@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Active-server persistence for the Cloud path (`persistence` +
+ * `startup-phase-restore`): the invariant that the Eliza Cloud control plane is
+ * never persisted or restored as a runtime API base, plus token scrub. jsdom +
+ * real `localStorage`; no network.
+ */
 import { logger } from "@elizaos/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";

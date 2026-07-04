@@ -1,4 +1,10 @@
 // @vitest-environment jsdom
+/**
+ * Accent-preset selection in `useDisplayPreferences`: id normalization, color
+ * resolution, `localStorage` persistence, and applying the resolved `--accent`
+ * CSS variable to the document root. Real hook under jsdom + real
+ * `localStorage`.
+ */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyUiAccent, loadUiAccentId, saveUiAccentId } from "./persistence";

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Steward token-refresh arming under Electrobun (`useCloudState`): the
+ * desktop-runtime branch of the stored-token lifecycle refresh. jsdom with the
+ * cloud client, desktop bridge, and boot config mocked — no real Steward
+ * service.
+ */
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

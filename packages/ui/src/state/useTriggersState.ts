@@ -1,5 +1,5 @@
 /**
- * Trigger (heartbeat) state — extracted from AppContext.
+ * Trigger (heartbeat) state, one of the domain hooks AppContext composes.
  *
  * Manages trigger CRUD, run history, and health polling. Zero coupling to
  * the startup sequence — triggers are only loaded post-ready.

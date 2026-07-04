@@ -1,5 +1,5 @@
 /**
- * Character / avatar state — extracted from AppContext.
+ * Character / avatar state, one of the domain hooks AppContext composes.
  *
  * Manages character data, draft editing, VRM avatar selection, and save
  * callbacks. The handleSaveCharacter callback depends on lifecycle state

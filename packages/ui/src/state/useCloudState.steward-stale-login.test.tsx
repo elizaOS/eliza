@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 //
-// Sign-in first-click dead-end regression. With a stored-but-EXPIRED Steward
-// JWT and NO mounted Steward launcher (registerStewardLoginLauncher has no
-// production caller today, so the dashboard always runs launcher-less),
-// handleCloudLogin used to enter the Steward branch anyway: launchStewardLogin
-// drained the stale token and then threw "the Steward login surface is not
-// mounted", so the FIRST click surfaced a sign-in error and only the SECOND
-// click (token now gone) reached the working device-code flow. These tests
-// lock the fix: the first click drains the stale token and proceeds straight
-// to the device-code flow, while a still-usable token and a mounted launcher
-// keep their existing Steward-branch behavior.
+// `useCloudState.handleCloudLogin` sign-in first-click behavior. With a
+// stored-but-EXPIRED Steward JWT and NO mounted Steward launcher
+// (registerStewardLoginLauncher has no production caller today, so the
+// dashboard runs launcher-less), the first click must drain the stale token and
+// proceed straight to the device-code flow — not enter the Steward branch,
+// which would throw "the Steward login surface is not mounted" and dead-end the
+// first click. A still-usable token and a mounted launcher keep the
+// Steward-branch behavior. jsdom with the API client mocked.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

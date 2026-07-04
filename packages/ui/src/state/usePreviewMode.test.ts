@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+/**
+ * The preview-mode toggle (`usePreviewMode`): default-off, `localStorage`
+ * persistence, and the in-memory cache that mirrors it. jsdom + real
+ * `localStorage`.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isPreviewModeEnabled, setPreviewMode } from "./usePreviewMode";
 
