@@ -401,8 +401,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				// error and lets the caller surface it (HTTP 502 / UI error state). The
 				// only legitimate multi-provider TTS chain is one the user explicitly
 				// configured via `manual` policy. Non-TTS slots keep transient failover.
-				const ttsFailsClosed =
-					slot === "TEXT_TO_SPEECH" && policy !== "manual";
+				const ttsFailsClosed = slot === "TEXT_TO_SPEECH" && policy !== "manual";
 
 				if (manualPreferred || !hasAlternative || ttsFailsClosed) {
 					if (ttsFailsClosed && hasAlternative) {

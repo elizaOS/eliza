@@ -69,7 +69,11 @@ function setup() {
 			[
 				ModelType.TEXT_TO_SPEECH,
 				[
-					{ provider: "eliza-local-inference", priority: 0, handler: localHandler },
+					{
+						provider: "eliza-local-inference",
+						priority: 0,
+						handler: localHandler,
+					},
 					{ provider: "edge-tts", priority: 0, handler: edgeHandler },
 				],
 			],

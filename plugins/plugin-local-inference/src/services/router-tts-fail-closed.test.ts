@@ -67,7 +67,13 @@ function installFor(slot: string): Map<string, Handler> {
 	} as unknown as AgentRuntime;
 	installRouterHandler(installTarget, {
 		skipSlots: (
-			["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING", "TEXT_TO_SPEECH", "TRANSCRIPTION"] as const
+			[
+				"TEXT_SMALL",
+				"TEXT_LARGE",
+				"TEXT_EMBEDDING",
+				"TEXT_TO_SPEECH",
+				"TRANSCRIPTION",
+			] as const
 		).filter((s) => s !== slot),
 	});
 	return routerHandlers;

@@ -40,7 +40,10 @@ describe("provider error hygiene", () => {
 		const kokoroDownloadError = new Error("fetch failed");
 		expect(isModelProviderFallbackError(kokoroDownloadError)).toBe(true);
 		expect(
-			isModelProviderFallbackError(kokoroDownloadError, ModelType.TEXT_TO_SPEECH),
+			isModelProviderFallbackError(
+				kokoroDownloadError,
+				ModelType.TEXT_TO_SPEECH,
+			),
 		).toBe(false);
 		// A genuine 5xx from a TTS provider is likewise not a swap trigger.
 		const serviceError = Object.assign(new Error("service unavailable"), {
