@@ -28,7 +28,7 @@ import {
   resolveViewKind,
 } from "@elizaos/core";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import { pathForTab } from "../../navigation";
+import { LAUNCHER_AOSP_ONLY_VIEW_IDS, pathForTab } from "../../navigation";
 
 /** Everyday apps, in display order. They lead the single launcher page; other
  *  loaded apps append after (alphabetically). */
@@ -78,15 +78,12 @@ export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
 /**
  * Native-OS surfaces that only belong on the AOSP ElizaOS fork. Appended to the
  * end of the launcher page when the AOSP shell is active; hidden on web,
- * desktop, iOS, and stock Play-Store Android.
+ * desktop, iOS, and stock Play-Store Android. Sourced from the canonical
+ * `LAUNCHER_AOSP_ONLY_VIEW_IDS` in `../../navigation` so this launcher gate and
+ * the router-level `NATIVE_OS_VIEW_IDS` filter never drift.
  */
-export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] = [
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-  "files",
-];
+export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] =
+  LAUNCHER_AOSP_ONLY_VIEW_IDS;
 
 /**
  * Views that never appear in the launcher grid:

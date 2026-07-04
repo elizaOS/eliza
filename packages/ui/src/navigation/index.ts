@@ -163,6 +163,36 @@ export function isAospShellEnabled(
   );
 }
 
+/**
+ * The AOSP-ElizaOS-fork-only native device-OS surfaces (dialer, SMS, contacts,
+ * camera). They are gated to the fork via {@link isAospShellEnabled} everywhere
+ * they appear, so this is the single source of truth those gates read instead of
+ * each redeclaring the id set (which let the router filter and the launcher
+ * curation drift). Consumers:
+ *  - `useAvailableViews` strips these from the routable view set + view manager
+ *    on every non-fork build.
+ *  - `launcher-curation` appends {@link LAUNCHER_AOSP_ONLY_VIEW_IDS} to the
+ *    launcher only on the fork.
+ *  - `App.tsx` route gates (`renderPhoneSurface`) mount their pages only on the
+ *    fork.
+ */
+export const NATIVE_OS_VIEW_IDS = [
+  "phone",
+  "messages",
+  "contacts",
+  "camera",
+] as const;
+
+/**
+ * Native-OS launcher tiles: the routable native-OS surfaces plus Files — a
+ * cross-platform view (`/apps/files`) that stays routable everywhere but is only
+ * surfaced as a launcher tile on the fork.
+ */
+export const LAUNCHER_AOSP_ONLY_VIEW_IDS = [
+  ...NATIVE_OS_VIEW_IDS,
+  "files",
+] as const;
+
 interface WindowNavigationLocation {
   protocol: string;
   search: string;

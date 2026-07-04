@@ -24,6 +24,7 @@ import {
 import {
   type BuiltinTab,
   isAospShellEnabled,
+  NATIVE_OS_VIEW_IDS,
   TAB_PATHS,
   titleForTab,
 } from "../navigation";
@@ -115,16 +116,12 @@ interface UseAvailableViewsOptions {
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Native device-OS surfaces that only exist on the AOSP ElizaOS fork. They are
- * stripped from the routable view set on every other build (web, desktop, iOS,
- * stock Play-Store Android).
+ * Native device-OS surfaces that only exist on the AOSP ElizaOS fork, as a set
+ * for O(1) filtering. The id list is the canonical `NATIVE_OS_VIEW_IDS` in
+ * `../navigation`; they are stripped from the routable view set on every other
+ * build (web, desktop, iOS, stock Play-Store Android).
  */
-const NATIVE_OS_VIEW_IDS: ReadonlySet<string> = new Set([
-  "phone",
-  "messages",
-  "contacts",
-  "camera",
-]);
+const NATIVE_OS_VIEW_ID_SET: ReadonlySet<string> = new Set(NATIVE_OS_VIEW_IDS);
 
 async function fetchViewList(
   viewType?: "gui" | "tui" | "xr",
@@ -422,7 +419,7 @@ export function useAvailableViews(
     // else — web, desktop, iOS, and stock Play-Store Android — matching the
     // AOSP-gated home tiles (`nativeOs`) and the route gates in App.tsx.
     if (isAospShellEnabled()) return merged;
-    return merged.filter((view) => !NATIVE_OS_VIEW_IDS.has(view.id));
+    return merged.filter((view) => !NATIVE_OS_VIEW_ID_SET.has(view.id));
   }, [networkViews, appShellViews]);
 
   return {
