@@ -2,23 +2,27 @@
  * Android counterpart to the iOS stdio bridge — the native-side of the
  * port-free local-agent transport (#12352, #12180 phase 2).
  *
- * On Android the elizaOS agent runs as a Bun child process managed by
- * `ElizaAgentService`. This module boots that runtime with `localAgentMode`
+ * On Android the elizaOS agent runs as a DETACHED Bun child process managed by
+ * `ElizaAgentService` (launch.sh setsid double-fork, so it outlives the service
+ * and survives app-swipe). This module boots that runtime with `localAgentMode`
  * so it binds NO TCP listener (unless `ELIZA_API_EXPOSE_PORT` re-opens it for
- * dev/LAN/e2e), then serves the WebView over an NDJSON pipe on stdin/stdout —
- * the same in-process `dispatchRoute` kernel the HTTP server used, with no
- * loopback hop. `ElizaAgentService.requestLocalAgent` / `requestLocalAgentStream`
- * write request frames to this process's stdin and read response frames from its
- * stdout; the WebView `Agent.request` / `requestStream` Capacitor contract is
- * unchanged.
+ * dev/LAN/e2e), then serves the WebView over an abstract-namespace AF_UNIX
+ * socket — the same in-process `dispatchRoute` kernel the HTTP server used, with
+ * no loopback hop. True stdin/stdout piping is impossible here: the detach
+ * severs the parent pipe, and the priv_app SELinux domain denies pipe ioctl. The
+ * abstract UDS is the sanctioned Android IPC (the bionic inference host uses the
+ * same). `ElizaAgentService.requestLocalAgent` / `requestLocalAgentStream`
+ * connect to this socket per call; the WebView `Agent.request` / `requestStream`
+ * Capacitor contract is unchanged.
  *
- * Frame protocol (shared kernel `createStdioBridge`):
+ * Frame protocol (shared kernel `createStdioBridge`), one connection per call:
  *   in:  {"id","method":"http_request"|"http_request_stream","stream?":true,"payload":{path,method,headers,body}}
  *   out (buffered):  {"id","ok":true,"result":{status,statusText,headers,body,bodyBase64,bodyEncoding}}
  *   out (streaming): {"id","stream":"response",status,statusText,headers}
  *                    {"id","stream":"chunk","dataBase64"}
  *                    {"id","stream":"complete"[,"error"]}
- * stdout is reserved for the protocol; all logging goes to the file logger.
+ * All logging goes to the file logger (stdout is /dev/null on the detached
+ * process); the socket carries only protocol frames.
  *
  * This module is imported by the agent bundle's `android-bridge` CLI command:
  *   `bun agent-bundle.js android-bridge`
@@ -28,7 +32,11 @@
  * before spawning the bundle; this module only fills gaps for direct runs.
  */
 
-import { Buffer } from "node:buffer";
+import {
+	createServer as createNetServer,
+	type Server as NodeServer,
+	type Socket as NodeSocket,
+} from "node:net";
 import process from "node:process";
 
 // ── Step 1: set Android env vars before any elizaOS module import ──────────
@@ -168,55 +176,37 @@ function _logToFile(line: string): void {
 	}
 }
 
-// ── Step 3: reserve stdout for the NDJSON protocol ─────────────────────────
+// ── Step 3: abstract-namespace AF_UNIX request server ──────────────────────
 //
-// stdin/stdout are the request/response pipe to ElizaAgentService. Any stray
-// runtime write to stdout (a stray console.log, a plugin banner) would corrupt
-// the protocol, so route all console output to the file logger and expose the
-// original stdout only through `writeProtocolLine`. Must run before any runtime
-// import so nothing has captured the original stdout first.
+// The bun agent runs DETACHED (launch.sh setsid double-fork, stdin from
+// /dev/null, stdout to a log file) so it survives the service that spawned it —
+// which severs any stdin/stdout pipe to the parent. And on the priv_app SELinux
+// domain a Java ProcessBuilder PIPE (fifo_file) is denied ioctl and kills bun on
+// stdio init. So the "stdio" transport is realized as an abstract-namespace
+// AF_UNIX socket — the same IPC the bionic inference host already uses under
+// priv_app ("no filesystem path, avoids SELinux file-label issues"). The bun
+// agent BINDS the socket; ElizaAgentService connects as a client per request.
+//
+// The socket name (no leading NUL — the connectors add it) is
+// ELIZA_LOCAL_AGENT_SOCKET, defaulting to a stable per-app name. Each accepted
+// connection gets its own NDJSON kernel over the socket byte stream; the WebView
+// contract (buffered result / agentStream* frames) is served by the same shared
+// createStdioBridge used on iOS.
 
-const _protocolWrite = process.stdout.write.bind(process.stdout);
+const DEFAULT_LOCAL_AGENT_SOCKET = "eliza_local_agent_v1";
 
-function writeProtocolLine(frame: StdioBridgeResponseFrame): void {
-	_protocolWrite(`${JSON.stringify(frame)}\n`);
+function localAgentSocketName(): string {
+	const name = process.env.ELIZA_LOCAL_AGENT_SOCKET?.trim();
+	return name && name.length > 0 ? name : DEFAULT_LOCAL_AGENT_SOCKET;
 }
 
-function reserveStdoutForProtocol(): void {
-	const stderrWrite = process.stderr.write.bind(process.stderr);
-	try {
-		process.stdout.write = ((chunk: unknown, ...rest: unknown[]) =>
-			(stderrWrite as (c: unknown, ...r: unknown[]) => boolean)(
-				chunk,
-				...rest,
-			)) as typeof process.stdout.write;
-	} catch {
-		// Some embedded Bun builds expose stdout.write as readonly; protocol
-		// writes still use the captured `_protocolWrite`, this only means stray
-		// third-party stdout noise can't be force-rerouted.
-	}
-	console.log = (...args: unknown[]) =>
-		_logToFile(`[console.log] ${args.map(String).join(" ")}`);
-	console.info = (...args: unknown[]) =>
-		_logToFile(`[console.info] ${args.map(String).join(" ")}`);
-	console.debug = (...args: unknown[]) =>
-		_logToFile(`[console.debug] ${args.map(String).join(" ")}`);
-}
-
-// ── Step 4: NDJSON stdio request loop ──────────────────────────────────────
-//
-// Feeds newline-delimited request frames from stdin into the shared bridge
-// kernel and writes response frames back on the reserved stdout. Buffered
-// `http_request` frames dispatch in-process and return one result; streaming
-// `http_request_stream` frames push response/chunk/complete frames as the SSE
-// body arrives (mirrors the iOS bridge stdin reader).
-
-function runStdioRequestLoop(
+/** Serve one accepted connection: NDJSON frames in, response frames out. */
+function serveConnection(
+	socket: NodeSocket,
 	runtime: IAgentRuntime,
 	dispatchRoute: AndroidDispatchRoute,
-	onStop: () => void,
 ): void {
-	const stdioBridge = createStdioBridge({
+	const bridge = createStdioBridge({
 		request: async (frame) =>
 			dispatchBufferedRequest(
 				runtime,
@@ -230,47 +220,64 @@ function runStdioRequestLoop(
 				(frame.payload ?? {}) as AndroidRequestPayload,
 				sink,
 			),
-		writeFrame: writeProtocolLine,
+		writeFrame: (frame: StdioBridgeResponseFrame) => {
+			if (!socket.destroyed) socket.write(`${JSON.stringify(frame)}\n`);
+		},
 	});
 
 	let buffered = "";
-	const stdin = process.stdin as typeof process.stdin & {
-		setEncoding?: (encoding: BufferEncoding) => void;
-		resume?: () => void;
-	};
-	stdin.setEncoding?.("utf8");
-	stdin.on("data", (chunk: Buffer | string) => {
-		buffered += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+	socket.setEncoding("utf8");
+	socket.on("data", (chunk: string) => {
+		buffered += chunk;
 		for (;;) {
 			const newline = buffered.indexOf("\n");
 			if (newline < 0) break;
 			const line = buffered.slice(0, newline).replace(/\r$/, "");
 			buffered = buffered.slice(newline + 1);
-			void stdioBridge.handleLine(line);
+			void bridge.handleLine(line);
 		}
 	});
-	stdin.once("end", () => {
+	socket.once("end", () => {
 		if (buffered.trim()) {
 			const line = buffered;
 			buffered = "";
-			void stdioBridge.handleLine(line);
+			void bridge.handleLine(line);
 		}
-		void stdioBridge.drain().finally(onStop);
+		void bridge.drain().finally(() => {
+			if (!socket.destroyed) socket.end();
+		});
 	});
-	stdin.once("error", (err) => {
-		_logToFile(
-			`[android-bridge] stdin error: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		onStop();
+	socket.once("error", (err: Error) => {
+		_logToFile(`[android-bridge] connection error: ${err.message}`);
 	});
-	stdin.resume?.();
 }
 
-// ── Step 5: boot the runtime + serve over stdio ────────────────────────────
+/** Bind the abstract-namespace request server. Rejects if the name is taken. */
+function startLocalAgentServer(
+	runtime: IAgentRuntime,
+	dispatchRoute: AndroidDispatchRoute,
+): Promise<NodeServer> {
+	const name = localAgentSocketName();
+	// Abstract namespace: a leading NUL byte in the path (Linux). Mirrors
+	// BionicHostLoader's `net.connect({ path: "\0" + name })`.
+	const abstractPath = `\0${name}`;
+	const server = createNetServer((socket) => {
+		serveConnection(socket, runtime, dispatchRoute);
+	});
+	return new Promise<NodeServer>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen({ path: abstractPath }, () => {
+			server.removeListener("error", reject);
+			_logToFile(`[android-bridge] listening on abstract UDS "${name}"`);
+			resolve(server);
+		});
+	});
+}
+
+// ── Step 4: boot the runtime + serve over the abstract UDS ─────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
 	setupAndroidBridgeEnvironment();
-	reserveStdoutForProtocol();
 
 	// Log the process exit code for every exit (including process.exit(N) calls
 	// from deep inside the runtime that bypass our try/catch).
@@ -388,10 +395,11 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		}
 	}
 
-	// ── Serve WebView requests over the stdin/stdout NDJSON pipe ──────────────
+	// ── Serve WebView requests over the abstract UDS ──────────────────────────
 	// The runtime is up with the in-process route kernel wired but no TCP
-	// listener; drive dispatchRoute from native request frames until stdin closes
-	// or ElizaAgentService sends SIGTERM (user stops the service / app swiped).
+	// listener; ElizaAgentService connects per request/stream and drives
+	// dispatchRoute over the socket until the user stops the service (SIGTERM /
+	// app swiped away).
 	let stop: (() => void) | null = null;
 	const stopped = new Promise<void>((resolve) => {
 		stop = resolve;
@@ -399,14 +407,20 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	process.once("SIGINT", () => stop?.());
 	process.once("SIGTERM", () => stop?.());
 
-	runStdioRequestLoop(runtime, dispatchRoute, () => stop?.());
-
-	// Bun's stdio does not always keep the event loop alive while a native pipe
-	// is idle; this host-owned timer holds the process up until an explicit stop.
-	const keepAlive = setInterval(() => {}, 2_147_483_647);
-	_logToFile("[android-bridge] stdio request loop ready");
+	let server: NodeServer;
+	try {
+		server = await startLocalAgentServer(runtime, dispatchRoute);
+	} catch (err) {
+		_logToFile(
+			`[android-bridge] failed to bind local-agent socket: ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+		);
+		throw err;
+	}
+	_logToFile("[android-bridge] local-agent request server ready");
 
 	await stopped;
-	clearInterval(keepAlive);
+	server.close();
 	_logToFile("[android-bridge] shutdown signal received, exiting.");
 }
