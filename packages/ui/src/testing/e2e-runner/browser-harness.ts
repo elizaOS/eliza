@@ -143,6 +143,8 @@ export interface BrowserFixtureConfig {
   record?: { name: string };
   /** Chromium launch timeout (ms). */
   launchTimeoutMs?: number;
+  /** Scripts injected via `page.addInitScript` before `goto` (pre-boot collectors). */
+  initScripts?: string[];
   /** Selector to `waitForSelector` after `goto`, before the scenario runs. */
   waitFor?: string;
   /** Screenshot prefix / pad passed to the snapper. */
@@ -197,6 +199,9 @@ export async function runBrowserFixtureE2E(
       logs.push(`[${message.type()}] ${message.text()}`),
     );
     page.on("pageerror", (error) => errors.push(String(error)));
+    for (const script of config.initScripts ?? []) {
+      await page.addInitScript(script);
+    }
     await page.goto(url);
     if (config.waitFor) await page.waitForSelector(config.waitFor);
 
