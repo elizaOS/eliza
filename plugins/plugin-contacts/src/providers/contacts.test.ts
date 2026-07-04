@@ -70,4 +70,28 @@ describe("androidContacts provider", () => {
       starred: true,
     });
   });
+
+  it("reports the failure and surfaces it in the result when the bridge rejects", async () => {
+    const boom = new Error("contacts permission denied");
+    contactsMock.listContacts.mockRejectedValue(boom);
+    const reportError = vi.fn();
+
+    const result = await contactsProvider.get(
+      { reportError } as unknown as IAgentRuntime,
+      {} as Memory,
+      {} as State,
+    );
+
+    // Native-bridge failure surfaces observably (RECENT_ERRORS) and in the
+    // provider values — never a silently fabricated empty contact list.
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError.mock.calls[0]?.[1]).toBe(boom);
+    expect(result.values).toMatchObject({
+      contactsAvailable: false,
+      contactsCount: 0,
+      contactsError: "contacts permission denied",
+    });
+    const data = result.data as { error?: string };
+    expect(data.error).toBe("contacts permission denied");
+  });
 });

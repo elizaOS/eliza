@@ -24,7 +24,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import type { TriageEntry } from "../inbox/types.ts";
 
@@ -49,7 +48,8 @@ async function resolveSenderLabel(
       name =
         entity?.names?.[0] ?? (typeof metaName === "string" ? metaName : null);
     } catch {
-      // entity lookup is best-effort
+      // error-policy:J4 explicit user-facing degrade — sender display-name
+      // enrichment is optional; on failure we proceed with the raw entityId.
     }
   }
 
@@ -135,7 +135,12 @@ export const crossChannelContextProvider: Provider = {
     let repo: InboxRepository;
     try {
       repo = new InboxRepository(runtime);
-    } catch {
+    } catch (error) {
+      // error-policy:J4 explicit user-facing degrade — if the inbox store is
+      // unavailable this provider omits cross-channel context (empty, never a
+      // fabricated "no related messages"); reportError makes the failure
+      // observable in RECENT_ERRORS instead of being silently swallowed.
+      runtime.reportError?.("cross-channel-context.provider", error);
       return EMPTY;
     }
 
@@ -148,7 +153,10 @@ export const crossChannelContextProvider: Provider = {
         limit: MAX_ENTRIES,
       });
     } catch (error) {
-      logger.debug("[cross-channel-context] DB query failed:", String(error));
+      // error-policy:J4 explicit user-facing degrade — a store-read failure
+      // omits cross-channel context (empty, never a fabricated "no related
+      // messages"); reportError surfaces it observably in RECENT_ERRORS.
+      runtime.reportError?.("cross-channel-context.provider", error);
       return EMPTY;
     }
 

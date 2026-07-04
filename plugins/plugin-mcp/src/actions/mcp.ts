@@ -214,6 +214,8 @@ async function handleCallTool(
       success: true,
     };
   } catch (error) {
+    // error-policy:J4 action boundary — handleMcpError logs, replies to the user,
+    // and returns success:false with the error; no fabricated success value.
     return await handleMcpError(
       composedState,
       mcpProvider,
@@ -338,6 +340,8 @@ async function handleReadResource(
       success: true,
     };
   } catch (error) {
+    // error-policy:J4 action boundary — handleMcpError logs, replies to the user,
+    // and returns success:false with the error; no fabricated success value.
     return await handleMcpError(
       composedState,
       mcpProvider,

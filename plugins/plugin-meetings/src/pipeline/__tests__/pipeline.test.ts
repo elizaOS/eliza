@@ -257,6 +257,29 @@ describe("createMeetingTranscriptionPipeline", () => {
     ]);
   });
 
+  it("surfaces an ASR window failure via runtime.reportError (not a silent empty transcript)", async () => {
+    const backend = new ScriptedBackend();
+    backend.failNext(1);
+    const reportError = vi.fn();
+    const pipeline = createMeetingTranscriptionPipeline(
+      options({ runtime: { reportError } as unknown as IAgentRuntime }),
+      backend,
+    );
+
+    pipeline.pushSpeakerAudio("t0", seconds(2));
+    await tick(2000); // ASR rejects — window dropped, failure must be reported
+
+    expect(reportError).toHaveBeenCalledTimes(1);
+    const [scope, err, context] = reportError.mock.calls[0];
+    expect(scope).toBe("MeetingPipeline.transcribe");
+    expect((err as Error).message).toBe("scripted ASR failure");
+    expect(context).toMatchObject({ sessionId: SESSION_ID, speakerKey: "t0" });
+
+    // Dropping the window still yields an empty (not fabricated) transcript.
+    const segments = await pipeline.finalize();
+    expect(segments).toEqual([]);
+  });
+
   it("flushSpeaker (sink) force-finalizes a speaker's forming transcript", async () => {
     const backend = new ScriptedBackend();
     backend.enqueue({ text: "handing over to bob now" });

@@ -95,6 +95,39 @@ describe("ENTITY_GRAPH provider", () => {
     expect(result.data).toEqual({ entities: [], relationships: [] });
   });
 
+  it("reports the failure and degrades to empty when a store read rejects", async () => {
+    const boom = new Error("entity store unavailable");
+    const service = {
+      getEntityStore: () => ({
+        list: vi.fn(async () => {
+          throw boom;
+        }),
+      }),
+      getRelationshipStore: () => ({ list: vi.fn(async () => []) }),
+    };
+    mocks.resolveKnowledgeGraphService.mockReturnValue(service);
+    const reportError = vi.fn();
+    const failingRuntime = {
+      agentId: "agent-1" as UUID,
+      reportError,
+    } as unknown as IAgentRuntime;
+
+    const result = await entityGraphProvider.get(
+      failingRuntime,
+      message,
+      state,
+    );
+
+    // Failure surfaces observably — never a silent debug-swallow.
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError.mock.calls[0]?.[1]).toBe(boom);
+    // Degrades to an empty projection (never a fabricated populated graph).
+    expect(result).toEqual({
+      text: "",
+      data: { entities: [], relationships: [] },
+    });
+  });
+
   it("projects entities + ego edges and resolves target names", async () => {
     const { service, entityStore, relationshipStore } = makeService({
       entities: [

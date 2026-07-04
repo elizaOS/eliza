@@ -23,7 +23,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 
 import { RELATIONSHIPS_CONTEXTS, RELATIONSHIPS_LOG_PREFIX } from "../types.js";
@@ -124,10 +123,12 @@ export const entityGraphProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        `${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH projection failed:`,
-        error instanceof Error ? error.message : String(error),
-      );
+      // error-policy:J4 explicit user-facing degrade — a knowledge-graph read
+      // failure omits the graph projection from planner context (an empty
+      // projection, never a fabricated "no known entities"), and reportError
+      // makes the underlying failure observable in RECENT_ERRORS +
+      // owner-escalation instead of being silently swallowed at debug level.
+      runtime.reportError?.(`${RELATIONSHIPS_LOG_PREFIX} ENTITY_GRAPH`, error);
       return { text: "", data: { entities: [], relationships: [] } };
     }
   },

@@ -55,6 +55,8 @@ export async function withModelRetry<T>({
         : input;
     validationResult = validationFn(parsedInput);
   } catch (error) {
+    // error-policy:J3 untrusted model output — a parse failure becomes an explicit
+    // invalid ValidationResult that drives the re-prompt/retry loop below.
     const errorMessage = error instanceof Error ? error.message : String(error);
     validationResult = { success: false, error: errorMessage };
   }

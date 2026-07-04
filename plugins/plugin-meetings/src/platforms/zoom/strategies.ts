@@ -598,7 +598,13 @@ export function createZoomStrategies(
             speakerName.toLowerCase().includes(botName.toLowerCase());
           attributor.onActiveSpeakerPoll(isBotTile ? null : speakerName);
 
-          // Roster from visible tile names (excluding the bot).
+          // Roster from visible tile names (excluding the bot). A transient DOM
+          // read failure (page navigating, execution context destroyed) yields
+          // null — NOT an empty roster. Treating a failed read as `[]` would
+          // spuriously fire participantLeft for everyone and trip the alone
+          // auto-leave timeout; skip this poll tick and re-read on the next one
+          // (removal is owned by startRemovalMonitor). Mirrors the msteams
+          // roster guard.
           const tileNames = await page
             .evaluate((footerSelector: string) => {
               return Array.from(
@@ -607,7 +613,8 @@ export function createZoomStrategies(
                 .map((s) => s.textContent?.trim())
                 .filter((n): n is string => !!n);
             }, zoomParticipantNameSelector)
-            .catch(() => [] as string[]);
+            .catch(() => null);
+          if (tileNames === null) continue;
           const nowMs = Date.now();
           const current = new Set(
             tileNames.filter(

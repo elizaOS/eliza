@@ -129,11 +129,22 @@ describe("inboxTriage provider", () => {
     expect(data.urgentItems).toHaveLength(1);
   });
 
-  it("returns empty when the DB query throws (schema not yet migrated)", async () => {
+  it("reports the failure and degrades to empty when the DB query throws", async () => {
+    const boom = new Error("relation does not exist");
     const runtime = makeRuntime(() => {
-      throw new Error("relation does not exist");
+      throw boom;
     });
+    const reportError = vi.fn();
+    (runtime as unknown as { reportError: typeof reportError }).reportError =
+      reportError;
+
     const result = await inboxTriageProvider.get(runtime, message, state);
+
+    // A store-read failure surfaces observably instead of being swallowed at
+    // debug level, but still degrades to an empty digest (never a fabricated
+    // "no items pending").
+    expect(reportError).toHaveBeenCalledTimes(1);
+    expect(reportError.mock.calls[0]?.[1]).toBe(boom);
     expect(result.text).toBe("");
     expect(result.values?.inboxUnresolved).toBe(0);
   });

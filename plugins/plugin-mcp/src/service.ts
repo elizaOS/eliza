@@ -286,6 +286,8 @@ export class McpService extends Service {
     if (state.pingInterval) clearInterval(state.pingInterval);
     state.pingInterval = setInterval(() => {
       this.sendPing(name).catch((err: Error) => {
+        // error-policy:J5 fire-and-forget ping; the rejection is observed in
+        // handlePingFailure, which counts failures and drives disconnection.
         logger.warn({ error: err.message, serverName: name }, `Ping failed for ${name}`);
         this.handlePingFailure(name, err);
       });
@@ -335,6 +337,8 @@ export class McpService extends Service {
         try {
           await this.initializeConnection(name, JSON.parse(config));
         } catch (err) {
+          // error-policy:J5 background reconnect; failure is observed in
+          // handleDisconnection, which records lastError and backs off (capped).
           this.handleDisconnection(name, err);
         }
       }

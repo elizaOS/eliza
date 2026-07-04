@@ -282,10 +282,20 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
           segments,
         );
       } catch (err) {
+        // error-policy:J7 a single ASR window failing (already retried in the
+        // backend) must not stall live transcription — drop the window and let
+        // the stream keep moving. But surface the failure via reportError so a
+        // *systemically* broken TRANSCRIPTION model becomes observable to the
+        // agent/owner (RECENT_ERRORS + escalation) instead of silently yielding
+        // an empty transcript.
         logger.error(
           { err },
           `[MeetingPipeline] ASR failed for speaker ${speakerKey}; window dropped`,
         );
+        this.options.runtime.reportError?.("MeetingPipeline.transcribe", err, {
+          sessionId: this.options.sessionId,
+          speakerKey,
+        });
         // Clear the in-flight flag so the stream keeps moving.
         this.manager.handleTranscriptionResult(speakerKey, "");
       }

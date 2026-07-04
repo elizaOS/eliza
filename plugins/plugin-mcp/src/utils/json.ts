@@ -75,6 +75,8 @@ export function parseStructuredModelOutput<T = Record<string, unknown>>(input: s
   try {
     return parseJSON<T>(input);
   } catch {
+    // error-policy:J3 untrusted model output — accumulate the parse failure and
+    // rethrow a typed error below; never returns a fabricated object.
     errors.push("JSON object parse failed");
   }
 

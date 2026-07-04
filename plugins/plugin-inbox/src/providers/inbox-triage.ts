@@ -13,7 +13,6 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import type { TriageEntry } from "../inbox/types.ts";
 
@@ -59,7 +58,12 @@ export const inboxTriageProvider: Provider = {
     let repo: InboxRepository;
     try {
       repo = new InboxRepository(runtime);
-    } catch {
+    } catch (error) {
+      // error-policy:J4 explicit user-facing degrade — if the inbox store is
+      // unavailable this provider omits the triage summary (empty, never a
+      // fabricated "no items pending"); reportError makes the failure
+      // observable in RECENT_ERRORS instead of being silently swallowed.
+      runtime.reportError?.("inbox-triage.provider", error);
       return EMPTY;
     }
 
@@ -74,10 +78,10 @@ export const inboxTriageProvider: Provider = {
         repo.getRecentAutoReplies(5),
       ]);
     } catch (error) {
-      logger.debug(
-        "[inbox-triage-provider] DB query failed (schema may not exist yet):",
-        String(error),
-      );
+      // error-policy:J4 explicit user-facing degrade — a store-read failure
+      // omits the triage summary (empty, never a fabricated "no items
+      // pending"); reportError surfaces it observably in RECENT_ERRORS.
+      runtime.reportError?.("inbox-triage.provider", error);
       return EMPTY;
     }
 
