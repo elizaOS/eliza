@@ -188,27 +188,27 @@ export function AffiliatesPageClient() {
       {/* Introduction Banner */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <UserCog className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
+          <UserCog className="h-5 w-5 text-accent mt-0.5 shrink-0" />
           <div>
-            <h3 className="text-xl font-semibold text-white mb-2">
+            <h3 className="text-xl font-semibold text-txt-strong mb-2">
               {t("cloud.affiliates.programTitle", {
                 defaultValue: "Affiliate Program",
               })}
             </h3>
-            <p className="text-sm text-white/60 mb-2">
+            <p className="text-sm text-muted mb-2">
               {t("cloud.affiliates.programIntro", {
                 defaultValue:
                   "Share your customized affiliate link with your users and partners to earn a percentage of their marked-up top-ups and MCP usage.",
               })}
             </p>
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted">
               {t("cloud.affiliates.programDetailPre", {
                 defaultValue:
                   "When a user signs up using your link, you get a direct cut (your markup percentage) of their activity forever. You can track this revenue in your",
               })}
               <Link
                 to="/dashboard/earnings"
-                className="text-[var(--brand-orange)] hover:underline mx-1"
+                className="text-accent hover:underline mx-1"
               >
                 {t("cloud.affiliates.earnings", {
                   defaultValue: "Earnings",
@@ -228,17 +228,17 @@ export function AffiliatesPageClient() {
           economics, and copy from the affiliate card below. */}
       <BrandCard
         corners={false}
-        className="border-l-4 border-l-[var(--brand-orange)] border border-white/10"
+        className="border-l-4 border-l-accent border border-border"
       >
         <div className="flex items-start gap-3 mb-4">
-          <Users className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
+          <Users className="h-5 w-5 text-accent mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-semibold text-white mb-1">
+            <h3 className="text-lg font-semibold text-txt-strong mb-1">
               {t("cloud.affiliates.inviteFriends", {
                 defaultValue: "Invite friends",
               })}
             </h3>
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted">
               {t("cloud.affiliates.inviteFriendsDesc", {
                 defaultValue:
                   "Share your invite link—you both earn bonus credits when they sign up, and you earn a share of their purchases on Eliza Cloud.",
@@ -251,7 +251,7 @@ export function AffiliatesPageClient() {
           <Skeleton className="h-14 rounded-sm" />
         ) : referralFetchFailed || !referralMe ? (
           <div className="flex items-center gap-3">
-            <p className="text-sm text-white/74">
+            <p className="text-sm text-muted">
               {t("cloud.affiliates.couldNotLoadInvite", {
                 defaultValue: "Could not load your invite link.",
               })}
@@ -259,27 +259,27 @@ export function AffiliatesPageClient() {
             <Button
               variant="secondary"
               size="sm"
-              className="shrink-0 bg-white/10 hover:bg-foreground hover:text-background text-white"
+              className="shrink-0"
               onClick={() => refetchReferral()}
             >
               {t("cloud.affiliates.retry", { defaultValue: "Retry" })}
             </Button>
           </div>
         ) : !referralMe.is_active ? (
-          <div className="rounded-sm border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100/90">
-            <p className="font-medium text-orange-100">
+          <div className="rounded-sm border border-status-warning/30 bg-status-warning-bg p-3 text-sm text-status-warning">
+            <p className="font-medium text-status-warning">
               {t("cloud.affiliates.inviteInactive", {
                 defaultValue: "Invite link inactive",
               })}
             </p>
-            <p className="mt-1 text-orange-100/80">
+            <p className="mt-1 text-status-warning">
               {t("cloud.affiliates.inviteInactiveDesc", {
                 defaultValue:
                   "Your referral code is turned off for new signups. Only an Eliza Cloud administrator can re-enable it. If you believe this is a mistake,",
               })}{" "}
               <a
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
-                className="text-white/80 underline hover:text-white"
+                className="text-txt-strong underline hover:opacity-75"
               >
                 {t("cloud.affiliates.emailSupport", {
                   defaultValue: "email support@eliza.cloud",
@@ -287,13 +287,13 @@ export function AffiliatesPageClient() {
               </a>
               .
             </p>
-            <p className="mt-2 font-mono text-xs text-white/74 break-all">
+            <p className="mt-2 font-mono text-xs text-muted break-all">
               {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
             </p>
           </div>
         ) : (
           <>
-            <p className="text-xs text-white/60 mb-3">
+            <p className="text-xs text-muted mb-3">
               {referralMe.total_referrals === 0
                 ? t("cloud.affiliates.noFriendsJoined", {
                     defaultValue:
@@ -309,14 +309,14 @@ export function AffiliatesPageClient() {
                         "{{count}} friends have joined with your link.",
                     })}
             </p>
-            <div className="flex items-center gap-3 bg-white/5 border border-[var(--brand-orange)]/20 rounded-sm p-3">
-              <LinkIcon className="h-5 w-5 text-[var(--brand-orange)]/60 shrink-0" />
-              <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
+            <div className="flex items-center gap-3 bg-bg-hover border border-accent/20 rounded-sm p-3">
+              <LinkIcon className="h-5 w-5 text-accent/60 shrink-0" />
+              <div className="flex-1 font-mono text-txt overflow-hidden text-ellipsis whitespace-nowrap text-sm">
                 {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0 bg-white/10 hover:bg-foreground hover:text-background text-white"
+                className="shrink-0"
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {
@@ -350,7 +350,7 @@ export function AffiliatesPageClient() {
                 }}
               >
                 {referralCopied ? (
-                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-400" />
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-status-success" />
                 ) : (
                   <Copy className="h-4 w-4 mr-2" />
                 )}
@@ -365,32 +365,32 @@ export function AffiliatesPageClient() {
 
       {/* Affiliate Link */}
       <BrandCard corners={false}>
-        <h3 className="text-lg font-semibold text-white mb-1">
+        <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.yourAffiliateLink", {
             defaultValue: "Your Affiliate Link",
           })}
         </h3>
-        <p className="text-sm text-white/60 mb-4">
+        <p className="text-sm text-muted mb-4">
           {t("cloud.affiliates.yourAffiliateLinkDesc", {
             defaultValue:
               "Copy this link and share it anywhere. Users who sign up with it are tracked as your affiliate signups for marked-up top-ups and MCP usage—not the same as friend invites above.",
           })}
         </p>
 
-        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-sm p-3">
-          <LinkIcon className="h-5 w-5 text-white/40 shrink-0" />
-          <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
+        <div className="flex items-center gap-3 bg-bg-hover border border-border rounded-sm p-3">
+          <LinkIcon className="h-5 w-5 text-muted shrink-0" />
+          <div className="flex-1 font-mono text-txt overflow-hidden text-ellipsis whitespace-nowrap text-sm">
             {typeof window !== "undefined"
               ? `${window.location.origin}/login?affiliate=${affiliateData?.code}`
               : `${getAppUrl()}/login?affiliate=${affiliateData?.code}`}
           </div>
           <Button
             variant="secondary"
-            className="shrink-0 bg-white/10 hover:bg-white/20 text-white border-transparent"
+            className="shrink-0"
             onClick={handleCopyLink}
           >
             {copied ? (
-              <CheckCircle2 className="h-4 w-4 mr-2 text-green-400" />
+              <CheckCircle2 className="h-4 w-4 mr-2 text-status-success" />
             ) : (
               <Copy className="h-4 w-4 mr-2" />
             )}
@@ -405,12 +405,12 @@ export function AffiliatesPageClient() {
       <BrandCard corners={false}>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-white mb-1">
+            <h3 className="text-lg font-semibold text-txt-strong mb-1">
               {t("cloud.affiliates.feeMarkupSetting", {
                 defaultValue: "Fee Markup Setting",
               })}
             </h3>
-            <p className="text-sm text-white/60 max-w-xl">
+            <p className="text-sm text-muted max-w-xl">
               {t("cloud.affiliates.feeMarkupDesc", {
                 defaultValue:
                   "Set the exact percentage you want to charge your referred users on top of base elizaOS prices. This fee applies to credit top-ups and exact usage cost for MCPs/Agents.",
@@ -418,13 +418,13 @@ export function AffiliatesPageClient() {
             </p>
           </div>
 
-          <div className="p-3 bg-white/5 border border-white/10 rounded-sm text-center min-w-[120px]">
-            <span className="block text-xs text-white/40 mb-1">
+          <div className="p-3 bg-bg-hover border border-border rounded-sm text-center min-w-[120px]">
+            <span className="block text-xs text-muted mb-1">
               {t("cloud.affiliates.currentMarkup", {
                 defaultValue: "Current Markup",
               })}
             </span>
-            <span className="block text-xl font-bold text-[var(--brand-orange)]">
+            <span className="block text-xl font-bold text-accent">
               {affiliateData?.markup_percent}%
             </span>
           </div>
@@ -434,7 +434,7 @@ export function AffiliatesPageClient() {
           <div className="flex-1">
             <label
               htmlFor="affiliate-markup-percent"
-              className="text-sm text-white/60 mb-2 block"
+              className="text-sm text-muted mb-2 block"
             >
               {t("cloud.affiliates.markupPercentLabel", {
                 defaultValue: "Your Markup Percentage (0 - 1000%)",
@@ -445,7 +445,7 @@ export function AffiliatesPageClient() {
               type="number"
               value={markupPercent}
               onChange={(e) => setMarkupPercent(e.target.value)}
-              className="bg-white/5 border-white/10 text-white font-mono"
+              className="bg-bg-hover border-border text-txt font-mono"
               min={0}
               max={1000}
               step={0.1}
@@ -456,7 +456,7 @@ export function AffiliatesPageClient() {
             disabled={
               isSaving || markupPercent === affiliateData?.markup_percent
             }
-            className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white min-w-[100px]"
+            className="min-w-[100px]"
           >
             {isSaving
               ? t("cloud.affiliates.saving", { defaultValue: "Saving..." })
@@ -466,9 +466,9 @@ export function AffiliatesPageClient() {
           </Button>
         </div>
 
-        <div className="mt-4 p-4 rounded-sm bg-yellow-500/10 border border-yellow-500/20 flex gap-3 text-sm">
-          <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
-          <div className="text-yellow-500/90">
+        <div className="mt-4 p-4 rounded-sm bg-status-warning-bg border border-status-warning/20 flex gap-3 text-sm">
+          <AlertTriangle className="h-5 w-5 text-status-warning shrink-0" />
+          <div className="text-status-warning">
             <strong>
               {t("cloud.affiliates.pricingExampleLabel", {
                 defaultValue: "Pricing Example:",
@@ -484,21 +484,21 @@ export function AffiliatesPageClient() {
 
       {/* API Integration Snippet */}
       <BrandCard corners={false}>
-        <h3 className="text-lg font-semibold text-white mb-1">
+        <h3 className="text-lg font-semibold text-txt-strong mb-1">
           {t("cloud.affiliates.devApiTitle", {
             defaultValue: "Developer API Integration (SKUs)",
           })}
         </h3>
-        <p className="text-sm text-white/60 mb-4">
+        <p className="text-sm text-muted mb-4">
           {t("cloud.affiliates.devApiDesc", {
             defaultValue:
               "Embed your affiliate code directly into your API calls. All users passing your code header will automatically generate marked-up revenue for you on every inference.",
           })}
         </p>
 
-        <div className="bg-[#0A0A0A] rounded-sm border border-white/10 overflow-hidden relative group">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/[0.02]">
-            <span className="text-xs font-mono text-white/40">
+        <div className="bg-card rounded-sm border border-border overflow-hidden relative group">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-muted">
+            <span className="text-xs font-mono text-muted">
               {t("cloud.affiliates.curlExample", {
                 defaultValue: "cURL Example",
               })}
@@ -506,7 +506,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 text-white/40 hover:text-white"
+              className="h-6 w-6 p-0"
               onClick={() => {
                 void (async () => {
                   const codeSnippet = `curl -X POST https://api.elizacloud.ai/v1/chat/completions \\
@@ -536,26 +536,26 @@ export function AffiliatesPageClient() {
               <Copy className="h-3 w-3" />
             </Button>
           </div>
-          <pre className="p-4 overflow-x-auto text-sm font-mono text-white/80 leading-relaxed">
-            <span className="text-green-400">curl</span> -X POST
+          <pre className="p-4 overflow-x-auto text-sm font-mono text-txt leading-relaxed">
+            <span className="text-status-success">curl</span> -X POST
             https://api.elizacloud.ai/v1/chat/completions \<br />
             {"  "}-H{" "}
-            <span className="text-yellow-300">
+            <span className="text-status-warning">
               "Authorization: Bearer YOUR_API_KEY"
             </span>{" "}
             \
             <br />
             {"  "}-H{" "}
-            <span className="text-yellow-300">
+            <span className="text-status-warning">
               "X-Affiliate-Code:{" "}
-              <span className="text-[var(--brand-orange)] break-all">
+              <span className="text-accent break-all">
                 {affiliateData?.code || "YOUR_CODE_HERE"}
               </span>
               "
             </span>{" "}
             \<br />
             {"  "}-d{" "}
-            <span className="text-yellow-300">
+            <span className="text-status-warning">
               '{"{"}
               <br />
               {"    "}"model": "google/gemini-2.5-flash",
