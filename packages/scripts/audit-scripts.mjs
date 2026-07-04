@@ -96,7 +96,6 @@ const ALLOWED_EXACT = new Set([
   "test",
   "lint",
   "lint:check",
-  "lint:all",
   "format",
   "typecheck",
   "start",
