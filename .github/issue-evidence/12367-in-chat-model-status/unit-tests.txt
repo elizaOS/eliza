@@ -1,0 +1,36 @@
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns not-required and never blocks when no slot is assigned 2ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns ready and unblocks send when every assigned slot is ready 1ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns downloading with max percent/eta and blocks send 1ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns missing and blocks send when an assigned model is absent 0ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns loading when downloaded to disk but not yet active 0ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > returns error with deduped messages when a slot failed 1ms
+ ✓ src/services/local-inference/home-model-status.test.ts > deriveHomeModelStatus > prioritizes error over downloading when slots are mixed 0ms
+ ✓ src/first-run/model-status-copy.test.ts > formatEta > formats seconds, minutes, and hours 2ms
+ ✓ src/first-run/model-status-copy.test.ts > formatEta > returns null for unknown or non-positive ETAs 0ms
+ ✓ src/first-run/model-status-copy.test.ts > modelStatusTurnText > renders downloading progress with a percent and ETA 0ms
+ ✓ src/first-run/model-status-copy.test.ts > modelStatusTurnText > offers cancel / switch-cloud / keep-waiting while downloading 0ms
+ ✓ src/first-run/model-status-copy.test.ts > modelStatusTurnText > swaps cancel for retry in the error state and surfaces the reason 0ms
+ ✓ src/first-run/model-status-copy.test.ts > modelStatusTurnText > describes loading distinctly from downloading 0ms
+ ✓ src/first-run/model-status-copy.test.ts > modelCancelledTurnText > re-offers download + switch-cloud so cancel is never a dead end 0ms
+ ✓ src/first-run/model-status-copy.test.ts > typedWhileBlockedReply > acknowledges a typed message with live progress 0ms
+ ✓ src/first-run/model-status-copy.test.ts > misc > exposes a stable turn id and a cloud-switched confirmation 0ms
+ ✓ src/first-run/model-action-channel.test.ts > model action channel > does not intercept when no conductor is registered 3ms
+ ✓ src/first-run/model-action-channel.test.ts > model action channel > routes a prefixed control to the active conductor's handler 3ms
+ ✓ src/first-run/model-action-channel.test.ts > model action channel > never intercepts a non-prefixed value, even with an active conductor 1ms
+ ✓ src/first-run/model-action-channel.test.ts > model action channel > stops intercepting once the conductor clears its handler 0ms
+ ✓ src/first-run/model-action-channel.test.ts > model action channel > recognises the reserved prefix regardless of a registered handler 0ms
+ ✓ src/first-run/model-action-channel.test.ts > typed-while-blocked observer > returns false when no observer is registered 0ms
+ ✓ src/first-run/model-action-channel.test.ts > typed-while-blocked observer > delegates to the registered observer and returns its verdict 0ms
+ ✓ src/first-run/model-action-channel.test.ts > typed-while-blocked observer > reports not-blocking when the observer says the model is ready 0ms
+stderr | src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > retry re-enqueues the failed model download
+stderr | src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > retry re-enqueues the failed model download
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > seeds ONE live status turn while the model is downloading 35ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > clears the turn and unblocks once the model is ready 10ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > cancel calls the cancel API and flips the turn to a non-dead-end 13ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > retry re-enqueues the failed model download 8ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > switch-cloud forces cloud-only routing on the text slots 6ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > switch-cloud opens login first when not connected 9ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > acknowledges a typed message while blocked so it is not lost 4ms
+ ✓ src/first-run/use-model-status-conductor.test.ts > useModelStatusConductor > does not acknowledge when the model is ready (send not blocked) 4ms
+ Test Files  4 passed (4)
+      Tests  32 passed (32)

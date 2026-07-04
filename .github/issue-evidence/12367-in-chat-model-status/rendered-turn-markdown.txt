@@ -1,0 +1,30 @@
+=== DOWNLOADING TURN ===
+Downloading eliza-1-2b — 43% · ~2m left. You can keep typing; I'll reply as soon as it's ready.
+
+[CHOICE:first-run id=model-status]
+__model__:cancel=Cancel download
+__model__:switch-cloud=Switch to Eliza Cloud
+__model__:keep-waiting=Keep waiting
+[/CHOICE]
+
+=== ERROR TURN ===
+eliza-1-2b couldn't finish downloading (disk full). Retry, or switch to Eliza Cloud.
+
+[CHOICE:first-run id=model-status]
+__model__:retry=Retry download
+__model__:switch-cloud=Switch to Eliza Cloud
+[/CHOICE]
+
+=== CANCELLED TURN ===
+Cancelled the eliza-1-2b download. Pick how to continue.
+
+[CHOICE:first-run id=model-status]
+__model__:download=Download eliza-1-2b
+__model__:switch-cloud=Switch to Eliza Cloud
+[/CHOICE]
+
+=== TYPED-WHILE-BLOCKED ACK ===
+Still getting eliza-1-2b ready — 43%, ~2m left. I'll answer as soon as I'm loaded.
+
+=== SWITCHED-TO-CLOUD ===
+Switched to Eliza Cloud inference — you're ready to chat.

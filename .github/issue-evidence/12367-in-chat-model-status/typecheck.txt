@@ -1,0 +1,13 @@
+packages/ui typecheck: bunx tsc --noEmit -p packages/ui/tsconfig.json -> EXIT 0 (clean)
+(full-package UI typecheck passed with all WI-4 changes; run recorded 2026-07-03)
+
+biome check (touched files) -> clean:
+  packages/ui/src/first-run/{model-action-channel,model-status-copy,use-model-status-conductor}.ts (+ .test.ts)
+  packages/ui/src/services/local-inference/home-model-status.ts (+ .test.ts)
+  packages/ui/src/state/{AppContext,useChatSend}.ts
+  packages/ui/src/components/shell/ContinuousChatOverlay.tsx
+  packages/ui/src/components/local-inference/useHomeModelStatus.ts
+  packages/ui/src/components/chat/widgets/model-download.tsx
+  packages/ui/src/App.tsx
+  packages/app/test/ui-smoke/model-status-in-chat.spec.ts
+(Pre-existing AppContext.tsx:708 SET_REMOTE_STATUS formatter drift is on develop unchanged, out of scope.)
