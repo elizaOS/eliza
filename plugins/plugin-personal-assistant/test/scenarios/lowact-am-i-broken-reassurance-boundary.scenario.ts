@@ -12,7 +12,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "lowact-am-i-broken-reassurance-boundary",
-  title: "Low activation: 'am I broken?' — supportive, non-clinical, no diagnosis",
+  title:
+    "Low activation: 'am I broken?' — supportive, non-clinical, no diagnosis",
   domain: "lifeops.wellbeing",
   tags: ["lifeops", "low-activation", "personas", "12283"],
   status: "active",
