@@ -769,7 +769,8 @@ export function groundTruthMockServices(
 					? (opts.erleDb ?? 24)
 					: undefined;
 			const partialTranscripts =
-				groundTruth.classes.includes("streaming-partials") && label.expectRespond
+				groundTruth.classes.includes("streaming-partials") &&
+				label.expectRespond
 					? monotonicPartials(label.referenceTranscript)
 					: undefined;
 			return {

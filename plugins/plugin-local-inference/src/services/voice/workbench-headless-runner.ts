@@ -26,6 +26,7 @@ import type {
 	GeneratedVoiceCorpus,
 } from "./corpus-generator";
 import {
+	type DiarizationTurnSample,
 	scoreBargeInGating,
 	scoreDiarizationTimeline,
 	scoreEchoRejection,
@@ -38,7 +39,6 @@ import {
 	scoreRespondDecision,
 	scoreTtsAsrRoundTrip,
 	scoreVoiceEntityMatch,
-	type DiarizationTurnSample,
 	type VoiceE2eCaseResult,
 } from "./e2e-harness";
 import type { VoiceScenario } from "./voice-scenario";
