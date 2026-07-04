@@ -1,3 +1,10 @@
+/**
+ * Catalog browser for the local-inference hub: groups models by capability
+ * bucket (small/mid/large/xl), marks the hardware-recommended bucket, and
+ * renders each model as a compact row with download/activate/verify actions.
+ * Off-platform generic-GGUF picks are flagged not-runnable.
+ */
+
 import { CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import type {

@@ -1,3 +1,9 @@
+/**
+ * Full-detail card for one catalog model: fit-for-hardware badge, runtime class,
+ * size/quant metadata, and the download / activate / verify / uninstall
+ * actions. The compact row variant used by the hub grid lives in ModelHubView.
+ */
+
 import type {
   ActiveModelState,
   CatalogModel,

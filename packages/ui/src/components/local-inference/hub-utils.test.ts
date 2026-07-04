@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the model-hub display helpers (pure functions, no DOM).
+ */
+
 import { describe, expect, it } from "vitest";
 import { displayModelName } from "./hub-utils";
 

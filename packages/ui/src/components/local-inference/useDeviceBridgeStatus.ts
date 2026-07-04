@@ -1,3 +1,10 @@
+/**
+ * Subscribes to the device-bridge status SSE stream and returns the latest
+ * `DeviceBridgeStatus`, or null on native IPC bases that EventSource cannot
+ * open. `buildDeviceBridgeStatusStreamUrl` appends the auth token as a query
+ * param since EventSource cannot set headers.
+ */
+
 import { useEffect, useState } from "react";
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { resolveApiUrl } from "../../utils/asset-url";

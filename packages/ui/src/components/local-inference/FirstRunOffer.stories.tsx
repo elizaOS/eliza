@@ -1,3 +1,5 @@
+/** Storybook stories for FirstRunOffer — needs-download, in-progress, default-enqueued, no-recommendation, and hidden-when-satisfied states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type {
   CatalogModel,

@@ -1,3 +1,10 @@
+/**
+ * First-run banner prompting download of the default local model when no
+ * Eliza-owned model is installed (or one is still downloading). Picks the
+ * recommended model for the detected hardware and hides itself once a local
+ * model is present and no download is in flight.
+ */
+
 import type {
   CatalogModel,
   DownloadJob,

@@ -1,3 +1,10 @@
+/**
+ * Top-level local-inference settings surface: the model hub (curated catalog +
+ * download queue), active-model bar, hardware badge, connected device bridges,
+ * and the voice sub-model updater. Streams live download/active deltas over SSE
+ * and drives the hub through the local-inference API client.
+ */
+
 import type { VoiceModelId } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -443,9 +450,8 @@ function VoiceModelUpdatesSection() {
     autoUpdateOnCellular: false,
     autoUpdateOnMetered: false,
   });
-  // #12087 Item 25: owner-tier gating comes from the canonical role context, not
-  // a per-endpoint `isOwner` flag threaded through fetched state. The
-  // voice-preferences endpoint's owner flag is no longer consumed here.
+  // #12087 Item 25: owner-tier gating comes from the canonical role context
+  // (useRole), not a per-endpoint `isOwner` flag threaded through fetched state.
   const { isOwner } = useRole();
   const [installations, setInstallations] = useState<
     ReadonlyArray<VoiceModelInstallationView>

@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for the device-bridge stream URL builder — token query-param
+ * handling and separator choice; pure, no EventSource.
+ */
+
 import { describe, expect, it } from "vitest";
 import { buildDeviceBridgeStatusStreamUrl } from "./useDeviceBridgeStatus";
 

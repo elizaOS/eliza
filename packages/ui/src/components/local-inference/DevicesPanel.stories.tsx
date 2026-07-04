@@ -1,3 +1,5 @@
+/** Storybook stories for DevicesPanel — multi-device, single CPU-only, and empty/null states. */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { TranslationProvider } from "../../state/TranslationProvider";

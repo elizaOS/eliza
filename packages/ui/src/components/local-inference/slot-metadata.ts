@@ -1,3 +1,8 @@
+/**
+ * Descriptors for the agent model slots surfaced in the local-inference routing
+ * and assignment UIs — a user-facing label and description per ModelType slot.
+ */
+
 import type { AgentModelSlot } from "../../api/client-local-inference";
 
 export type LocalInferenceSlotDescriptor = {
