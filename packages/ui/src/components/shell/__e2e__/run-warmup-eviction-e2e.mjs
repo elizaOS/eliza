@@ -50,6 +50,7 @@ await runBrowserFixtureE2E(
       background: "#0a0d16",
     },
     context: { viewport: { width: 430, height: 932 } },
+    record: { name: "warmup-eviction.webm" },
     waitFor: '[data-testid="chat-sheet"]',
     passMessage: `\nPASS — screenshots in ${outDir}`,
   },

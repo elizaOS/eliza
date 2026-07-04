@@ -20,13 +20,18 @@
  * Exits non-zero on any failed assertion / console error.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "esbuild";
 import { PNG } from "pngjs";
 import { chromium } from "playwright";
+import {
+  renameRecordedVideo,
+  stubElizaCore,
+  stubNodeBuiltins,
+  stubPromptSuggestions,
+  writeFixturePage,
+} from "../../../testing/e2e-runner/index.ts";
 import {
   touchDragHold,
   touchSwipe,
@@ -35,7 +40,9 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
+const videoDir = join(outDir, "video");
 await mkdir(outDir, { recursive: true });
+await mkdir(videoDir, { recursive: true });
 
 let failures = 0;
 function assert(cond, msg) {
@@ -47,91 +54,27 @@ function near(a, b, tol) {
   return Math.abs(a - b) <= tol;
 }
 
-// 1) Bundle the fixture (stub the API-touching prompt-suggestions hook).
-const stubPromptSuggestions = {
-  name: "stub-prompt-suggestions",
-  setup(b) {
-    b.onResolve({ filter: /usePromptSuggestions$/ }, () => ({
-      path: join(here, "usePromptSuggestions.stub.ts"),
-    }));
-  },
-};
-// The overlay's import graph transitively reaches server-only @elizaos/core
-// features (plugin-manager, working-memory, todos, …) whose module-init touches
-// the `process` global and node builtins — DEAD code in the browser (never
-// executed at render; the only render-path core symbol, findInteractionRegions,
-// is test-only). Production Vite resolves core's `browser` export condition;
-// this raw-esbuild bundle does not, so replace `@elizaos/core` with a no-op
-// Proxy (mirrors run-home-screen-e2e) instead of bundling its Node graph.
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        module.exports = new Proxy(
-          {
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-const result = await build({
-  entryPoints: [join(here, "chat-sheet-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubPromptSuggestions, stubElizaCore, stubNodeBuiltins],
-  write: false,
+// Bundle the fixture with the shared stubs: the API-touching prompt-suggestions
+// hook is replaced with a local stub, and @elizaos/core + node builtins (dead at
+// render in the browser; the only render-path core symbol, findInteractionRegions,
+// is test-only) with no-op proxies, mirroring the sibling shell runners.
+const url = await writeFixturePage({
+  entry: join(here, "chat-sheet-fixture.tsx"),
+  outDir,
+  htmlName: "chat-sheet.html",
+  title: "chat sheet e2e",
+  plugins: [
+    stubPromptSuggestions(join(here, "usePromptSuggestions.stub.ts")),
+    stubElizaCore(),
+    stubNodeBuiltins(),
+  ],
+  processShim: true,
+  background: "#0a0d16",
+  // Register the `bg` color token so CDN Tailwind resolves the `bg-bg` utility
+  // to the shell background — the #12178/#12364 onboarding backdrop pixel-proof
+  // below asserts the opaque backdrop paints this exact dark color.
+  headHtml: `<script>tailwind.config={theme:{extend:{colors:{bg:"#0a0d16"}}}};</script>`,
 });
-const js = result.outputFiles[0].text;
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>chat sheet e2e</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config={theme:{extend:{colors:{bg:"#0a0d16"}}}};</script>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
-<style>html,body{margin:0;height:100%;background:#0a0d16}</style>
-</head><body><div id="root"></div><script>${js}</script></body></html>`;
-const htmlPath = join(outDir, "chat-sheet.html");
-await writeFile(htmlPath, html);
-const url = `file://${htmlPath}`;
 
 // --- DOM probes ----------------------------------------------------------
 const variant = (p) =>
@@ -481,18 +424,27 @@ try {
   await desktop.waitForTimeout(700);
   await runDragSuite(desktop, "mouse", "desktop");
 
-  // ===== MOBILE + TOUCH =====
-  const mobile = await browser.newPage({
+  // ===== MOBILE + TOUCH (recorded — the continuous detent drag-suite video) =====
+  const mobileCtx = await browser.newContext({
     viewport: { width: 402, height: 874 },
     hasTouch: true,
     isMobile: true,
     deviceScaleFactor: 2,
+    recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
   });
+  const mobile = await mobileCtx.newPage();
   attachConsole(mobile, sink);
   await mobile.goto(url);
   await mobile.waitForSelector('[data-testid="chat-sheet"]');
   await mobile.waitForTimeout(700);
   await runDragSuite(mobile, "touch", "mobile");
+  await mobile.close(); // flush the recorded touch drag-suite video
+  await mobileCtx.close();
+  await renameRecordedVideo({
+    videoDir,
+    outDir,
+    name: "chat-sheet-drag-suite.webm",
+  });
 
   // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
   // The collapsed grabber's horizontal swipe pages home → launcher through the
