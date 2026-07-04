@@ -242,7 +242,7 @@ The implementation intentionally separates direct G1 BLE transports from the Eve
 For the full software proof from the repository root:
 
 ```bash
-npm run verify:smartglasses-software
+bun run audit:smartglasses-software
 ```
 
 That command runs the Facewear plugin lint/typecheck/test/app-registration

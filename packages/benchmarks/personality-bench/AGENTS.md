@@ -15,7 +15,7 @@ bun run packages/benchmarks/personality-bench/src/runner.ts \
   --output-json report.json
 
 # Via the root workspace script
-bun run personality:judge --agent eliza
+bun run bench:personality --agent eliza
 
 # Via the package script (from this directory)
 bun run grade -- --run-dir <path> --output report.md --output-json report.json

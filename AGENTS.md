@@ -82,6 +82,15 @@ above is the day-to-day set. Use `bun run` with no args to print them all.
 | `bun run smartglasses:dev:simulator` | `bun run --cwd packages/examples/smartglasses dev:simulator` |
 | `bun run smartglasses:simulator` | `bun run --cwd packages/examples/smartglasses simulator` |
 | `bun run smartglasses:smoke:simulator` | `bun run --cwd packages/examples/smartglasses smoke:simulator` |
+| `bun run test:ci:live` | `bun run test:live` |
+| `bun run test:lint` | `bun run audit:test-integrity:all` |
+| `bun run test:lint:no-vi-mocks` | `bun run audit:test-integrity:no-vi-mocks` |
+| `bun run test:lint:lane-coverage` | `bun run audit:test-integrity:lane-coverage` |
+| `bun run test:lint:test-integrity` | `bun run audit:test-integrity` |
+| `bun run test:lint:test-integrity:self-test` | `bun run audit:test-integrity:self-test` |
+| `bun run verify:smartglasses-software` | `bun run audit:smartglasses-software` |
+| `bun run personality:judge` | `bun run bench:personality` |
+| `bun run personality:bench:calibrate` | `bun run bench:personality:calibrate` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 

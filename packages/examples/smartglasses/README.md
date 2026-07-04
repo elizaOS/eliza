@@ -23,7 +23,7 @@ bun run --cwd packages/examples/smartglasses start
 For the canonical software proof from the repository root, run:
 
 ```bash
-npm run verify:smartglasses-software
+bun run audit:smartglasses-software
 ```
 
 That command runs the Facewear plugin lint/typecheck/test/app-registration

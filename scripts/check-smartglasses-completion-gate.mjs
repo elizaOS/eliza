@@ -99,7 +99,7 @@ function softwareGateFailures() {
   const rootPackage = readJson("package.json");
   const rootScripts = rootPackage?.scripts ?? {};
   const rootSoftwareVerifyScript = String(
-    rootScripts["verify:smartglasses-software"] ?? "",
+    rootScripts["audit:smartglasses-software"] ?? "",
   );
   if (
     !rootSoftwareVerifyScript.includes(
@@ -107,7 +107,7 @@ function softwareGateFailures() {
     )
   ) {
     failures.push(
-      "package.json: missing verify:smartglasses-software root verification script",
+      "package.json: missing audit:smartglasses-software root verification script",
     );
   }
   for (const scriptName of [
@@ -342,7 +342,7 @@ function softwareGateFailures() {
     ...sourceTokenFailures(
       "plugins/plugin-facewear/docs/smartglasses-completion-audit.md",
       [
-        "npm run verify:smartglasses-software",
+        "bun run audit:smartglasses-software",
         "workspace `tsup` binary",
         "stable `vite@7.2.7`",
         "20 plugin test files / 185 tests",
@@ -862,7 +862,7 @@ function softwareGateFailures() {
     "plugins/plugin-facewear/docs/smartglasses.md",
   );
   for (const expected of [
-    "npm run verify:smartglasses-software",
+    "bun run audit:smartglasses-software",
     "bun run --cwd packages/examples/smartglasses dev:hardware",
     "bun run --cwd packages/examples/smartglasses dev:simulator",
     "bun run --cwd packages/examples/smartglasses simulator",
@@ -894,7 +894,7 @@ function softwareGateFailures() {
 
   const exampleReadme = readText("packages/examples/smartglasses/README.md");
   for (const expected of [
-    "npm run verify:smartglasses-software",
+    "bun run audit:smartglasses-software",
     "For the final auditable hardware proof run, use the root latest-report helpers.",
     "Check current setup state first:",
     "bun run --cwd packages/examples/smartglasses hardware:doctor",
@@ -935,7 +935,7 @@ function softwareGateFailures() {
     "audit:even-research:self-test",
     "audit:smartglasses-completion",
     "audit:smartglasses-completion:self-test",
-    "verify:smartglasses-software",
+    "audit:smartglasses-software",
   ]) {
     if (!rootScripts[scriptName])
       failures.push(`package.json: missing script ${scriptName}`);
