@@ -194,7 +194,11 @@ async function loadDiscordProfileAvatarBytes(
 			if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
 				remoteUrl = parsedUrl;
 			}
-		} catch {}
+		} catch {
+			// error-policy:J3 the avatar source is untrusted input that may be a data URI,
+			// URL, or local path; a URL parse failure just means "not a remote URL" and
+			// falls through to the local-candidate reader below — not an error.
+		}
 
 		if (remoteUrl) {
 			const fetchImpl = runtime.fetch ?? globalThis.fetch;

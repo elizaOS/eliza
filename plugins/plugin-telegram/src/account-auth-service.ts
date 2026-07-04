@@ -821,6 +821,8 @@ export class TelegramAccountAuthSession
       return;
     }
     this.persistSession();
+    // error-policy:J6 best-effort teardown; the client is being discarded regardless,
+    // so a disconnect error must not block cleanup.
     await this.client.disconnect().catch(() => undefined);
     this.client = null;
   }

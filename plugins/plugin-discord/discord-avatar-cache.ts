@@ -124,7 +124,10 @@ export async function cacheDiscordAvatarUrl(
 		if (stat.isFile()) {
 			return getDiscordAvatarPublicPath(requestedFileName);
 		}
-	} catch {}
+	} catch {
+		// error-policy:J3 stat probe for a cache hit; a miss (ENOENT and peers) is the
+		// expected path and falls through to the download below.
+	}
 
 	const existing = inflightDiscordAvatarDownloads.get(requestedFileName);
 	if (existing) {
@@ -162,7 +165,10 @@ export async function cacheDiscordAvatarUrl(
 			if (stat.isFile()) {
 				return getDiscordAvatarPublicPath(finalFileName);
 			}
-		} catch {}
+		} catch {
+			// error-policy:J3 stat probe for a concurrently-materialized cache entry; a
+			// miss is expected and falls through to the atomic write below.
+		}
 
 		const tempFilePath = `${finalFilePath}.${process.pid}.${Date.now()}.tmp`;
 		await fs.writeFile(tempFilePath, bytes, { mode: 0o600 });
