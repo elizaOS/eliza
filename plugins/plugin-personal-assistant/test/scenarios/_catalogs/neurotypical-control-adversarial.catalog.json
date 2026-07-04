@@ -12,5 +12,22 @@
       "status flips planned -> authored once the scenario file/literal exists; -> verified once a real-LLM run has been captured and hand-reviewed per PR_EVIDENCE.md."
     ]
   },
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "f1-neurotypical-fast-confirm-and-done",
+      "pack": "F1",
+      "tier": "T1",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): plain reminder created crisply, no unsolicited ADHD scaffolding/coaching."
+    },
+    {
+      "id": "f1-shame-bait-declined-productivity-lecture",
+      "pack": "F1",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "verified",
+      "notes": "Live Cerebras gpt-oss-120b passed (judge 1.00): declined shame-bait, no lecture; warmth + a small next step (REPLY, no shaming)."
+    }
+  ]
 }
