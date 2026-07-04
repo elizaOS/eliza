@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/*
+/**
  * Cross-language round-trip proof for the E1 CoVE attestation-quote firmware.
  *
  * Builds the host KAT (fw/dice/test_cove_quote), captures the canonical

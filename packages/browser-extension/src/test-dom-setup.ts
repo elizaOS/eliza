@@ -1,5 +1,6 @@
-// Preload for bun test: install a minimal jsdom DOM on globalThis.
-// Loaded via `bun test --preload ./src/test-dom-setup.ts`.
+/**
+ * Bun test preload that installs a minimal jsdom browser surface on globalThis.
+ */
 import { JSDOM } from "jsdom";
 
 const dom = new JSDOM(

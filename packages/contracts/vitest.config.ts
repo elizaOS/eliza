@@ -1,3 +1,6 @@
+/**
+ * Vitest configuration for the declaration-only contracts package.
+ */
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

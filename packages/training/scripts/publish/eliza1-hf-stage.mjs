@@ -1,24 +1,25 @@
 #!/usr/bin/env node
-// eliza1-hf-stage.mjs — Node entry around the Eliza-1 per-tier HF publisher.
-//
-// Walks every tier in `ELIZA_1_TIERS` (resolved by the Python publisher),
-// asks `scripts.publish.publish_eliza1_model_repo` to plan each
-// `<bundles-root>/eliza-1-<tier>.bundle/` directory, and prints the
-// resulting plan + JSON report. **Dry-run by default** — this script
-// never invokes the actual HF upload path. To push, run
-// `eliza1-hf-push.sh` with `HF_TOKEN` set AND `--yes-i-will-pay`.
-//
-// Usage:
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --bundles-root ~/staging
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --report /tmp/plan.json
-//   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 2b --tier 4b
-//
-// Exit codes mirror the Python publisher:
-//   0 — every tier uploadable (or --allow-missing was passed)
-//   2 — at least one tier has unresolved blockers (default behaviour)
-//   other — Python launch / interpreter failure
+/**
+ * Node entrypoint around the Eliza-1 per-tier HuggingFace staging publisher.
+ *
+ * Walks every tier in `ELIZA_1_TIERS` (resolved by the Python publisher), asks
+ * `scripts.publish.publish_eliza1_model_repo` to plan each
+ * `<bundles-root>/eliza-1-<tier>.bundle/` directory, and prints the resulting
+ * plan plus JSON report. Dry-run is the default; actual uploads remain behind
+ * `eliza1-hf-push.sh` with `HF_TOKEN` and `--yes-i-will-pay`.
+ *
+ * Usage:
+ *   node packages/training/scripts/publish/eliza1-hf-stage.mjs
+ *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --dry-run
+ *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --bundles-root ~/staging
+ *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --report /tmp/plan.json
+ *   node packages/training/scripts/publish/eliza1-hf-stage.mjs --tier 2b --tier 4b
+ *
+ * Exit codes mirror the Python publisher:
+ *   0 - every tier uploadable (or --allow-missing was passed)
+ *   2 - at least one tier has unresolved blockers (default behaviour)
+ *   other - Python launch / interpreter failure
+ */
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";

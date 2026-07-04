@@ -1,6 +1,10 @@
-// ---- Three.js AR overlay: trees, character, sphere on camera feed ----
-// Loaded as ES module. Uses inverse homography + solvePnP camera pose
-// to align 3D objects with the real camera view.
+/**
+ * Three.js AR overlay for aligning virtual scene objects with the robot camera
+ * feed.
+ *
+ * The module consumes inverse homography and solvePnP pose estimates from the
+ * tracking visualizer so rendered objects share the real camera projection.
+ */
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
