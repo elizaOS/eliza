@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+/**
+ * Version resolution for the release pipeline: derives the release version from
+ * package.json (with a nightly-epoch fallback), converts semver to Chrome's
+ * 4-part scheme and Safari's build versions, and builds GitHub release and
+ * store URLs. Shared by every packaging script.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,9 @@
+/**
+ * Persistence and agent-API discovery over chrome.storage.local. Loads and
+ * normalizes the companion pairing config and cached background state, and
+ * probes loopback candidates — likely-Eliza open tabs first, then the default
+ * ports — to locate the local agent API (default http://127.0.0.1:31337).
+ */
 import type { BackgroundState, CompanionConfig } from "./protocol";
 import {
   type ExtensionTab,

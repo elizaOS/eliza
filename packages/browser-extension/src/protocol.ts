@@ -1,3 +1,9 @@
+/**
+ * Runtime message contracts exchanged between the extension's contexts —
+ * popup UI, background service worker, and content script — plus the
+ * companion-sync aliases re-exported from `@elizaos/shared` and the local
+ * browser-bridge contracts. Type-only; no runtime code.
+ */
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,

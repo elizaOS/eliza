@@ -1,4 +1,11 @@
 #!/usr/bin/env bun
+/**
+ * Bun build for the extension: bundles the entrypoints to IIFE, stamps the
+ * versioned manifest.json, and emits per-browser output under
+ * dist/<chrome|safari>/. Exports BROWSER_BRIDGE_HOST_ALLOWLIST — the
+ * SOC2-scoped default host grant baked into the manifest and checked by the
+ * smoke tests.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +15,7 @@ import {
 } from "./release-version.mjs";
 import { run } from "./script-utils.mjs";
 
-// SOC2 L-4: explicit host allowlist replacing the legacy `<all_urls>` grant.
+// SOC2 L-4: explicit host allowlist instead of a blanket `<all_urls>` grant.
 // Documented in README.md. Hosts beyond this list require runtime opt-in
 // through chrome.permissions.request against `optional_host_permissions`.
 export const BROWSER_BRIDGE_HOST_ALLOWLIST = [

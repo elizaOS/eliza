@@ -1,3 +1,7 @@
+/**
+ * Unit tests for runDomAction over a jsdom DOM (test-dom-setup): click / type /
+ * submit behavior and handling of hostile input and invalid targets.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
 import { runDomAction } from "./dom-actions";

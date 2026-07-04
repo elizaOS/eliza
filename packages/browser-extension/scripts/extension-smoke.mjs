@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Node smoke test for the Chrome build: verifies the dist/chrome artifacts
+ * (manifest, bundles, host allowlist) and exercises the pairing/sync flow
+ * against a stub agent HTTP server. Real build output, mocked agent.
+ */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";

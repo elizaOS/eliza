@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+/**
+ * Node smoke test for the Safari Web Extension build: checks the dist/safari
+ * artifacts and, on macOS, inspects Safari's Extensions.plist to confirm the
+ * extension registered. The plist checks require a real macOS/Safari host.
+ */
 import { spawn } from "node:child_process";
 import http from "node:http";
 import os from "node:os";

@@ -1,3 +1,7 @@
+/**
+ * Shared helpers for the extension build/packaging scripts: a promisified
+ * child-process `run` and small fs utilities.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";

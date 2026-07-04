@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+/**
+ * Assembles the store-listing bundle — screenshots, descriptions, and
+ * release-metadata JSON — for the Chrome and Safari store submissions.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

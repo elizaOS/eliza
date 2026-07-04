@@ -1,4 +1,9 @@
 #!/usr/bin/env bun
+/**
+ * Orchestrates a full extension release: builds, packages the Chrome and Safari
+ * artifacts and store assets, and emits release metadata (GitHub release URLs
+ * and versioned artifact names) for the publish step.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

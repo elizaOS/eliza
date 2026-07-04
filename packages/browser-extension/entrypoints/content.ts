@@ -1,3 +1,8 @@
+/**
+ * Content script injected into allowlisted pages: routes capture-page and
+ * DOM-action messages from the background worker to page-extract / dom-actions
+ * and returns the result. Thin adapter — all logic lives in src/.
+ */
 import { runDomAction } from "../src/dom-actions";
 import { capturePageContext } from "../src/page-extract";
 import type {

@@ -1,3 +1,9 @@
+/**
+ * Content script injected at document_start that installs an EVM + Solana
+ * wallet provider into the page's JS context, routing dapp signing requests
+ * through the agent's wallet over the companion API. The in-page provider body
+ * is inlined at build time via the __WALLET_SHIM_TEMPLATE__ define.
+ */
 declare const __WALLET_SHIM_TEMPLATE__: string;
 
 interface WalletShimStored {

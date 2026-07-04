@@ -1,3 +1,9 @@
+/**
+ * Executes agent-directed DOM actions — click, type, submit, history
+ * back/forward — inside a page's content-script context. Because it acts on
+ * live untrusted pages, it validates selectors and refuses missing, non-element,
+ * or disabled targets before mutating anything.
+ */
 import type { DomActionRequest } from "./protocol";
 
 function requireElement(selector?: string | null): HTMLElement {

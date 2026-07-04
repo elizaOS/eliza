@@ -1,3 +1,10 @@
+/**
+ * Promise-based facade over the raw `chrome.*` / `browser.*` extension APIs
+ * (runtime messaging, storage, tabs, windows, alarms, scripting, permissions,
+ * declarativeNetRequest). Every extension-API call in the package routes through
+ * here so Chrome/Safari differences and callback-vs-promise quirks are
+ * normalized in one place.
+ */
 type Callback<T> = (value: T) => void;
 
 type RawRuntime = {

@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+/**
+ * Wraps dist/safari into a Safari Web Extension via xcrun, producing the
+ * versioned app bundle for the Safari release.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

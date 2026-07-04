@@ -1,3 +1,7 @@
+/**
+ * Unit tests for capturePageContext over a jsdom DOM (test-dom-setup): field
+ * extraction, visibility filtering, and length caps.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./test-dom-setup";
 import { capturePageContext } from "./page-extract";

@@ -1,3 +1,9 @@
+/**
+ * BrowserBridgeRelayClient — typed HTTP client for the companion endpoints on
+ * the agent API (`/companions/sync`, `/progress`, `/complete`), authenticated
+ * with the Bearer pairing token from the companion config. Non-2xx responses
+ * are wrapped in RelayApiError carrying the HTTP status and server error code.
+ */
 import type { LifeOpsBrowserCompanionSyncResponse } from "@elizaos/shared";
 import type {
   CompanionConfig,
