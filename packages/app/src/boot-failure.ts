@@ -1,7 +1,7 @@
 /**
  * Last-resort boot error surface.
  *
- * `main()` awaits several fallible pre-mount steps (the dynamic `app-core` and
+ * `main()` awaits several fallible pre-mount steps (e.g. the dynamic
  * `@elizaos/ui/voice` chunks). If any rejects, React never mounts and the user
  * is stranded on a permanent blank page with no recovery — most commonly a
  * stale `index.html` pointing at purged hashed chunks right after a prod

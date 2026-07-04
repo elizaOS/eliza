@@ -70,7 +70,6 @@ import {
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
-import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -194,7 +193,6 @@ declare const __ELIZA_WEB_SHELL__: boolean | undefined;
 declare global {
   interface Window {
     __ELIZA_APP_SHARE_QUEUE__?: ShareTargetPayload[];
-    __ELIZA_APP_CHARACTER_EDITOR__?: typeof CharacterEditor;
     __ELIZA_APP_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
@@ -226,13 +224,6 @@ function cachedDynamicImport<T>(
   const promise = loader();
   appModuleCache.set(key, promise);
   return promise;
-}
-
-function importAppCore() {
-  return cachedDynamicImport(
-    "@elizaos/app-core",
-    () => import("@elizaos/app-core"),
-  );
 }
 
 function importPersonalAssistant() {
@@ -301,7 +292,6 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
 
 const BRANDED_WINDOW_KEYS = {
   apiBase: `__${APP_ENV_PREFIX}_API_BASE__`,
-  characterEditor: `__${APP_ENV_PREFIX}_CHARACTER_EDITOR__`,
   shareQueue: `__${APP_ENV_PREFIX}_SHARE_QUEUE__`,
 } as const;
 
@@ -463,9 +453,6 @@ if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
-window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
-Reflect.set(window, BRANDED_WINDOW_KEYS.characterEditor, CharacterEditor);
-
 const APP_STYLE_PRESETS = getStylePresets();
 
 const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
@@ -576,7 +563,6 @@ function buildAppBootConfig(): AppBootConfig {
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
     vrmAssets: APP_VRM_ASSETS,
     firstRunStyles: APP_STYLE_PRESETS,
-    characterEditor: CharacterEditor,
     codingAgentTasksPanel: CodingAgentTasksPanel,
     codingAgentSettingsSection: CodingAgentSettingsSection,
     codingAgentControlChip: CodingAgentControlChip,
@@ -618,13 +604,18 @@ const BOOT_CONFIG_DEFERRED_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] 
   ];
 
 function initializeAppModules(): Promise<void> {
-  appModulesInitialized ??= (async () => {
-    // app-core owns the AppBootConfig singleton, so it must load before the
-    // config is assembled. Everything else exposed through the boot config is a
-    // React.lazy handle that loads on render, so its import is deferred onto the
-    // idle path instead of gating the first visible shell (#9565).
-    await importAppCore();
+  appModulesInitialized ??= (() => {
+    // app-core owns the AppBootConfig singleton and is already evaluated: this
+    // module statically imports its desktop bindings, so the whole package
+    // loads with the entry chunk before main() runs. A dynamic
+    // import("@elizaos/app-core") here would be a runtime no-op, but its
+    // escaping namespace would force Rollup to retain every export of the
+    // barrel (`export * from "@elizaos/ui/browser"`) in the startup-critical
+    // entry chunk (#13187). Everything else exposed through the boot config is
+    // a React.lazy handle that loads on render, so its import is deferred onto
+    // the idle path instead of gating the first visible shell (#9565).
     setBootConfig(buildAppBootConfig());
+    return Promise.resolve();
   })();
 
   return appModulesInitialized;
