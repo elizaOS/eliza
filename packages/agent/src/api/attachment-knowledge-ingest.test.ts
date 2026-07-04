@@ -397,6 +397,64 @@ describe("ingestMessageAttachmentsAsKnowledge", () => {
     });
   });
 
+  it("throws typed lookup errors instead of fabricating room/role defaults", async () => {
+    const { service } = makeDocumentService();
+    const message = messageWithAttachments({
+      entityId: OWNER_ENTITY,
+      roomId: DM_ROOM,
+      attachments: [
+        {
+          id: "lookup",
+          url: STORED_IMAGE_URL,
+          contentType: ContentType.IMAGE,
+          mimeType: "image/png",
+        },
+      ],
+    });
+
+    const roomLookupRuntime = makeRuntime({
+      roomType: ChannelType.DM,
+      roomId: DM_ROOM,
+      ownerId: OWNER_ENTITY,
+    }) as Record<string, unknown>;
+    roomLookupRuntime.getRoom = vi.fn(async () => {
+      throw new Error("room store down");
+    });
+
+    await expect(
+      ingestMessageAttachmentsAsKnowledge(
+        {
+          runtime: roomLookupRuntime,
+          documents: service,
+        } as never,
+        message,
+      ),
+    ).rejects.toMatchObject({
+      code: "ATTACHMENT_KNOWLEDGE_ROOM_LOOKUP_FAILED",
+    });
+
+    const worldLookupRuntime = makeRuntime({
+      roomType: ChannelType.DM,
+      roomId: DM_ROOM,
+      ownerId: OWNER_ENTITY,
+    }) as Record<string, unknown>;
+    worldLookupRuntime.getWorld = vi.fn(async () => {
+      throw new Error("world store down");
+    });
+
+    await expect(
+      ingestMessageAttachmentsAsKnowledge(
+        {
+          runtime: worldLookupRuntime,
+          documents: service,
+        } as never,
+        message,
+      ),
+    ).rejects.toMatchObject({
+      code: "ATTACHMENT_KNOWLEDGE_WORLD_LOOKUP_FAILED",
+    });
+  });
+
   it("gives the SAME bytes distinct content per (room, sender, scope) so dedupe doesn't drop facets", async () => {
     const attachment = {
       id: "dup",

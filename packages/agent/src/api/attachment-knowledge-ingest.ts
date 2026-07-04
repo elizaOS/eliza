@@ -262,19 +262,72 @@ export async function ingestMessageAttachmentsAsKnowledge(
   const roomId = message.roomId as UUID;
 
   // Resolve room trust + sender role once for the whole message.
-  const room = await runtime.getRoom(roomId).catch(() => null);
+  let room: Awaited<ReturnType<IAgentRuntime["getRoom"]>>;
+  try {
+    room = await runtime.getRoom(roomId);
+  } catch (err) {
+    // error-policy:J2 room trust is required for the write-boundary spill
+    // guard; fabricating a default surface would hide a broken data path.
+    throw new ElizaError("attachment→knowledge ingest could not load room", {
+      code: "ATTACHMENT_KNOWLEDGE_ROOM_LOOKUP_FAILED",
+      cause: err instanceof Error ? err : new Error(String(err)),
+      severity: "ephemeral",
+      context: { roomId },
+    });
+  }
+  if (!room) {
+    throw new ElizaError("attachment→knowledge ingest room was not found", {
+      code: "ATTACHMENT_KNOWLEDGE_ROOM_NOT_FOUND",
+      severity: "ephemeral",
+      context: { roomId },
+    });
+  }
   const channelType = room?.type;
   const worldId = (message.worldId ?? room?.worldId ?? agentId) as UUID;
 
-  const world = worldId
-    ? await runtime.getWorld(worldId).catch(() => null)
-    : null;
-  const roleName = await resolveEntityRole(
-    runtime,
-    world,
-    (world?.metadata ?? undefined) as never,
-    senderEntityId,
-  ).catch(() => "USER");
+  let world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
+  try {
+    world = await runtime.getWorld(worldId);
+  } catch (err) {
+    // error-policy:J2 sender role depends on the room's world; defaulting to
+    // USER would make an owner/DM attachment look successfully user-scoped.
+    throw new ElizaError("attachment→knowledge ingest could not load world", {
+      code: "ATTACHMENT_KNOWLEDGE_WORLD_LOOKUP_FAILED",
+      cause: err instanceof Error ? err : new Error(String(err)),
+      severity: "ephemeral",
+      context: { roomId, worldId },
+    });
+  }
+  if (!world) {
+    throw new ElizaError("attachment→knowledge ingest world was not found", {
+      code: "ATTACHMENT_KNOWLEDGE_WORLD_NOT_FOUND",
+      severity: "ephemeral",
+      context: { roomId, worldId },
+    });
+  }
+
+  let roleName: string;
+  try {
+    roleName = await resolveEntityRole(
+      runtime,
+      world,
+      (world.metadata ?? undefined) as never,
+      senderEntityId,
+    );
+  } catch (err) {
+    // error-policy:J2 sender role is part of the persisted knowledge facets and
+    // owner spill guard; a fallback role would make broken role resolution look
+    // like a healthy USER write.
+    throw new ElizaError(
+      "attachment→knowledge ingest could not resolve sender role",
+      {
+        code: "ATTACHMENT_KNOWLEDGE_ROLE_LOOKUP_FAILED",
+        cause: err instanceof Error ? err : new Error(String(err)),
+        severity: "ephemeral",
+        context: { roomId, worldId, senderEntityId },
+      },
+    );
+  }
   const senderIsOwner = roleName === "OWNER";
   const addedByRole = addedByRoleForRoleName(roleName);
 
@@ -359,9 +412,9 @@ export async function ingestMessageAttachmentsAsKnowledge(
         scope,
       });
     } catch (err) {
-      // Fail fast with a typed error: never a silent skip that makes an
-      // attachment vanish from knowledge. The pipeline-hook boundary catches
-      // this and routes it to reportError.
+      // error-policy:J2 add the attachment identity/scope context before the
+      // pipeline boundary reports the failure; never silently skip a failed
+      // document write and make the attachment vanish from knowledge.
       throw new ElizaError(
         `attachment→knowledge ingest failed for ${fileName} (${mediaFileName})`,
         {
@@ -437,8 +490,9 @@ export function registerAttachmentKnowledgeIngestHook(
           message,
         );
       } catch (err) {
-        // Boundary: a typed ingest failure surfaces through RECENT_ERRORS /
-        // owner escalation instead of aborting the message pipeline.
+        // error-policy:J1 pipeline-hook boundary: a typed ingest failure
+        // surfaces through RECENT_ERRORS / owner escalation instead of aborting
+        // the message pipeline.
         rt.reportError("attachment-knowledge-ingest", err, {
           roomId: message.roomId,
         });

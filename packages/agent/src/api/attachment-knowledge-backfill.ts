@@ -150,6 +150,9 @@ export function registerAttachmentKnowledgeBackfillTask(
           );
         }
       } catch (err) {
+        // error-policy:J7 the one-time metadata sweep must not kill runtime
+        // startup, but the failure needs to reach RECENT_ERRORS/escalation.
+        rt.reportError("knowledge-backfill", err);
         rt.logger.warn(
           `[knowledge-backfill] sweep failed: ${
             err instanceof Error ? err.message : String(err)
@@ -176,6 +179,9 @@ export function registerAttachmentKnowledgeBackfillTask(
         metadata: { updatedAt: Date.now() },
       });
     } catch (err) {
+      // error-policy:J7 scheduling is diagnostic/background work; report it
+      // observably while allowing the agent to continue booting.
+      runtime.reportError("knowledge-backfill-schedule", err);
       runtime.logger.warn(
         `[knowledge-backfill] failed to schedule backfill task: ${
           err instanceof Error ? err.message : String(err)
