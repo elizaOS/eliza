@@ -15,11 +15,13 @@ from benchmarks.orchestrator_lifecycle.evaluator import LifecycleEvaluator
 from benchmarks.orchestrator_lifecycle.types import Scenario, ScenarioTurn, TurnRecord
 
 
-def _scenario(turns: list[ScenarioTurn], scenario_id: str = "case") -> Scenario:
+def _scenario(
+    turns: list[ScenarioTurn], scenario_id: str = "case", category: str = "test"
+) -> Scenario:
     return Scenario(
         scenario_id=scenario_id,
         title=scenario_id,
-        category="test",
+        category=category,
         turns=turns,
     )
 
@@ -288,6 +290,7 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
             )
         ],
         scenario_id="final_stakeholder_summary",
+        category="completion_summary",
     )
     cancel_pass = evaluator.evaluate_scenario(
         cancel_scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
@@ -299,6 +302,45 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
     metrics = evaluator.compute_metrics([cancel_pass, summary_fail])
     assert metrics.overall_score == 0.5
     assert metrics.completion_summary_quality == 0.0
+
+
+def test_category_metrics_use_structural_category_not_scenario_id_substrings() -> None:
+    evaluator = LifecycleEvaluator()
+    status_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Check in on the running work.",
+                expected_behaviors=["report_active_subagent_status"],
+            )
+        ],
+        scenario_id="check_in_while_running",
+        category="status",
+    )
+    interrupt_scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Cancel the task now.",
+                expected_behaviors=["cancel_task"],
+            )
+        ],
+        scenario_id="cancel_task",
+        category="interrupt",
+    )
+
+    status_pass = evaluator.evaluate_scenario(
+        status_scenario,
+        [TurnRecord(reply_text="Analysis is running.", events=["status_query"])],
+    )
+    interrupt_pass = evaluator.evaluate_scenario(
+        interrupt_scenario,
+        [TurnRecord(reply_text="Shut down.", events=["cancel"])],
+    )
+
+    metrics = evaluator.compute_metrics([status_pass, interrupt_pass])
+    assert metrics.status_accuracy_rate == 1.0
+    assert metrics.interruption_handling_rate == 1.0
 
 
 def test_compute_metrics_aggregates_pass_rate() -> None:
