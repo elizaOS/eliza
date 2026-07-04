@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the mobile filesystem sandbox wrappers.
+ *
+ * The suite exercises resolver installation, path-like normalization, open-mode
+ * detection, multi-path wrapping, and native-binary write blocking without
+ * patching the real `node:fs` module.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	guardMobileFsWritePath,

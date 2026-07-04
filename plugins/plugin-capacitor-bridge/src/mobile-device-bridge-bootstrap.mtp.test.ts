@@ -1,3 +1,11 @@
+/**
+ * Tests for Gemma mobile speculative-decoding bundle resolution.
+ *
+ * The suite builds temporary local model bundles and verifies that bootstrap
+ * load arguments enable MTP only when the staged drafter GGUF is actually
+ * present beside or inside the shipped text model bundle.
+ */
+
 import {
 	existsSync,
 	mkdirSync,

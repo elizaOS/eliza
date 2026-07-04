@@ -1,9 +1,11 @@
-// #11498: getMobileDeviceBridgeServingStatus must report the in-process
-// bionic host as serving ONLY when the capacitor-llama handlers were actually
-// bound via the bionic-host trigger AND the host's abstract UDS accepts a
-// connection right now — never from env configuration or plugin presence
-// alone. This is the signal the mobile-local-chat-smoke readiness gate and
-// GET /api/local-inference/providers (servingVia) rely on.
+/**
+ * Serving-status coverage for the mobile bionic host path.
+ *
+ * `getMobileDeviceBridgeServingStatus` reports the host as serving only after
+ * handler registration and a live abstract-UDS probe, which is the readiness
+ * signal consumed by smoke tests and local-inference provider status.
+ */
+
 import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

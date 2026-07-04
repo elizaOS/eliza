@@ -235,11 +235,11 @@ export interface ReferenceMatch<T> {
  *      shorter prefix. When two or more items tie for the top score the result
  *      is AMBIGUOUS: `item` is null and `candidates` holds the tied items.
  *
- * Never silently returns the first of several equally-good matches — the old
- * raw-substring `find()` let a one-message "delete Prod API Backup" resolve to
- * (and tear down) the wrong "Prod API" app, "delete my chatbot helper" match
- * an app named "Bot" via the "bot" inside "chatbot", and an adversarially
- * named influencer profile capture someone else's booking.
+ * Never silently returns the first of several equally-good matches: destructive
+ * references such as "delete Prod API Backup" must not resolve to the shorter
+ * "Prod API" prefix, "delete my chatbot helper" must not match an app named
+ * "Bot", and adversarial influencer names must not capture someone else's
+ * booking.
  */
 export function matchByReference<T>(
   items: T[],

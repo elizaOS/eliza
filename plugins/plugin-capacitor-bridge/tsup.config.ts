@@ -1,3 +1,10 @@
+/**
+ * Build configuration for the Capacitor bridge package.
+ *
+ * The bundle publishes lazy CLI entries and shared fs-shim utilities while
+ * keeping elizaOS workspace packages and native llama bindings external.
+ */
+
 import { defineConfig } from "tsup";
 
 export default defineConfig({

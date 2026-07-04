@@ -1,3 +1,10 @@
+/**
+ * Deterministic coverage for the iOS local model grind helpers.
+ *
+ * The tests exercise WAV decoding, PCM resampling, WER scoring, and injected
+ * model-grind dependencies without invoking native llama, TTS, or ASR engines.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	decodeWavToPcm,

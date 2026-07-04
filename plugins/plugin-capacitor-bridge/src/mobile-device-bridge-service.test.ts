@@ -1,6 +1,10 @@
-// Item 35 (#12091): the mobile device bridge is modeled as a runtime Service
-// (ServiceType.MOBILE_DEVICE_BRIDGE) registered by the mobile-host plugin and
-// consumed via runtime.getService — NOT via the deleted core Symbol.for slot.
+/**
+ * Runtime service coverage for the Capacitor mobile device bridge.
+ *
+ * The bridge is registered through the mobile-host plugin under
+ * `ServiceType.MOBILE_DEVICE_BRIDGE` and consumed via the runtime service API.
+ */
+
 import { AgentRuntime, ServiceType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

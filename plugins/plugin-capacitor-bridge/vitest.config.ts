@@ -1,3 +1,10 @@
+/**
+ * Vitest configuration for the Capacitor bridge package.
+ *
+ * Bridge tests run serially in Node because several suites mutate process env,
+ * module caches, abstract sockets, or singleton bridge state.
+ */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

@@ -26,8 +26,8 @@ describe("matchAppByReference / findAppByReference — ambiguity-safe resolution
   });
 
   it("REGRESSION: a sentence naming the longer app resolves to it, not its prefix sibling", () => {
-    // The old raw-substring find() returned the first (prefix) match, so a
-    // single "delete Prod API Backup — yes" tore down the wrong "Prod API".
+    // Prefix siblings are dangerous for destructive confirms: the sentence must
+    // bind to the full named app, not the first shorter substring match.
     const apps = [app("Prod API"), app("Prod API Backup")]; // "Prod API" is first
     expect(
       matchAppByReference(apps, "delete Prod API Backup — yes").app?.name,
@@ -81,7 +81,7 @@ describe("extractAppReference — planner options (nested `parameters` first)", 
 
   it("REGRESSION: reads the real planner shape — args nested under options.parameters", () => {
     // execute-planned-tool-call.ts puts validated args at options.parameters;
-    // the old top-level-only read missed them and fell back to the raw text.
+    // falling back to raw text can lose the planner's resolved app reference.
     expect(
       extractAppReference(msg, { parameters: { appName: "Acme Bot" } }),
     ).toBe("Acme Bot");

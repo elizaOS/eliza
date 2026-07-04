@@ -1,7 +1,11 @@
-// #11913: the bionic host decodes `streamStep` tokens per native call before
-// flushing a token frame. The agent side threads the shared streaming knob
-// (ELIZA_LOCAL_STREAM_TOKENS_PER_STEP) into the op="generateStream" request;
-// unset/invalid values are omitted so the host applies its own default (8).
+/**
+ * Unit coverage for the bionic streaming step-size environment knob.
+ *
+ * The agent side forwards `ELIZA_LOCAL_STREAM_TOKENS_PER_STEP` only when it is
+ * a positive integer; unset or invalid values let the native host apply its
+ * decode-step default.
+ */
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveBionicStreamStep } from "./mobile-device-bridge-bootstrap";
 

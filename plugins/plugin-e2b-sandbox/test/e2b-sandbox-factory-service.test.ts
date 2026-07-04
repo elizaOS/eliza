@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the E2B sandbox factory service contract.
+ *
+ * The E2B SDK boundary is faked while service registration, entry-type
+ * normalization, delegated file operations, command execution, and sandbox
+ * teardown behavior run through the real adapter code.
+ */
+
 import {
   E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   type SandboxCommandRunOptions,

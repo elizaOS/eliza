@@ -1,3 +1,11 @@
+/**
+ * Sandboxed `node:fs/promises` facade for the iOS bridge runtime.
+ *
+ * Every path-taking promise API is wrapped through the mobile filesystem
+ * resolver so bridge code can import familiar fs helpers without escaping the
+ * native workspace root.
+ */
+
 import * as realPromises from "node:fs/promises";
 import type { AnyFn, FsAccessMode } from "./fs-sandbox.ts";
 import {
