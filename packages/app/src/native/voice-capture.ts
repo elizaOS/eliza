@@ -1,8 +1,10 @@
-// Thin JS wrapper over the native Android `VoiceCapture` Capacitor plugin
-// (packages/app-core/platforms/android/.../VoiceCapturePlugin.java). It
-// starts/stops `ElizaVoiceCaptureService` — the microphone foreground
-// service that keeps continuous-chat capture alive when the WebView is
-// backgrounded. No-ops on non-Android platforms.
+/**
+ * Thin JS wrapper over the native Android `VoiceCapture` Capacitor plugin
+ * (packages/app-core/platforms/android/.../VoiceCapturePlugin.java). It
+ * starts/stops `ElizaVoiceCaptureService` — the microphone foreground service
+ * that keeps continuous-chat capture alive when the WebView is backgrounded.
+ * No-ops on non-Android platforms.
+ */
 
 import { Capacitor } from "@capacitor/core";
 

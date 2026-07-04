@@ -1,3 +1,16 @@
+/**
+ * HTTP routes under `/api/sensitive-requests` for collecting secrets and
+ * private info out-of-band. POST creates a request — validating the secret or
+ * private_info target, forcing a private-delivery policy, and resolving a
+ * delivery plan (owner-app instruction, DM fallback, or authenticated tunnel
+ * link) from the current environment. `/:id` GET returns a redacted view;
+ * `/:id/submit` consumes a single-use, timing-safe submit token and fulfills
+ * via the vault (secrets) or a caller-supplied hook (private info); `/:id/cancel`
+ * cancels a pending request. Callers must pass the trusted-local / API-token /
+ * session gate; tunnel-delivered requests additionally require local
+ * sensitive-request auth to be configured, else 403. Responses are always
+ * redacted so raw values and submit tokens never leak.
+ */
 import type http from "node:http";
 import {
   defaultSensitiveRequestPolicy,

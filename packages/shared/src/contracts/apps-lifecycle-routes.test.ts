@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the app-lifecycle route Zod schemas — launch, install, stop, relaunch,
+ * create, overlay-presence, refresh, install-progress events, and the install response's
+ * success/failure discriminated union. Exercises trimming, strict parsing, and each accept/reject
+ * branch directly against the schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   InstallProgressEventSchema,

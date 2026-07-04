@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the memory route request schemas: remember (create) and
+ * patch (edit). Both require a non-blank text field that is trimmed, reject
+ * whitespace-only text with the canonical message, and reject any extra field
+ * (e.g. source/embedding). Pure in-process schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PatchMemoryRequestSchema,

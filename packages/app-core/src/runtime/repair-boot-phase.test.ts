@@ -1,3 +1,13 @@
+/**
+ * Unit coverage for the post-ready boot tail phase split in `eliza.ts`:
+ * `getDeferAppRoutesEnabled` (the ELIZA_DEFER_APP_ROUTES === "1" truth table) and
+ * `runPostReadyBootTail`, which runs the post-ready-safe boot steps — TTS, app
+ * routes, runtime hooks, sensitive-request adapters, credential bridge, trigger
+ * bridge, connector catalog, voice warmup — in declared order. Tests drive
+ * injected step stubs to assert step ordering, deferred-mode dispatch (the caller
+ * returns before a hung app-route load settles), the superseded-runtime teardown
+ * guard, and per-step error isolation.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

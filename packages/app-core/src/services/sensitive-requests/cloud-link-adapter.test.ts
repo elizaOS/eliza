@@ -1,3 +1,11 @@
+/**
+ * Covers the cloud_authenticated_link sensitive-request delivery adapter: it
+ * builds the Eliza Cloud link the owner opens to satisfy a request
+ * (/sensitive-requests/<id> for secret/oauth/private_info,
+ * /payment/app-charge/<appId>/<id> for payment), returns "cloud not paired" when
+ * unpaired, a structured error for a payment request missing an appId, and
+ * URL-encodes the request id. The cloud base is injected via resolveCloudBase.
+ */
 import type {
   DispatchSensitiveRequest,
   SensitiveRequest,

@@ -1,3 +1,10 @@
+/**
+ * Browser-bundle shim aliased in place of the `extend` npm module, replicating
+ * its jQuery-style deep/shallow merge: an optional leading boolean selects deep
+ * mode, then later sources are folded onto the target left-to-right. Deep mode
+ * recurses into plain objects and arrays; shallow mode assigns by reference.
+ * Prototype-pollution keys (__proto__, constructor, prototype) are skipped.
+ */
 type AnyRecord = Record<PropertyKey, unknown>;
 
 function isPlainObject(value: unknown): value is AnyRecord {

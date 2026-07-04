@@ -1,3 +1,13 @@
+/**
+ * Structured telemetry for outbound integration boundaries (cloud, wallet,
+ * marketplace, mcp). `createIntegrationTelemetrySpan` opens a span for one
+ * boundary operation and returns settle-once `success`/`failure` callbacks;
+ * whichever fires first computes `durationMs` and emits a single
+ * `integration_boundary_v1` JSON event prefixed `[integration]` — `info` on
+ * success, `warn` on failure — to the core logger (or an injected sink). Error
+ * kinds are inferred (AbortError/TimeoutError/"timeout" → `timeout`) and every
+ * token is lowercased/sanitized to `[a-z0-9_-]` and capped at 64 chars.
+ */
 import { logger } from "@elizaos/core";
 
 export type IntegrationBoundary = "cloud" | "wallet" | "marketplace" | "mcp";

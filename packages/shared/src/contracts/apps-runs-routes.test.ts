@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the app-run route Zod schemas: the run-message request (content field with
+ * a `message` alias and trimming) and the run-control action request (pause/resume). Drives the
+ * real schemas with accept/reject fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostRunControlRequestSchema,

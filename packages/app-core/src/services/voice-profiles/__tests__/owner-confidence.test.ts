@@ -1,3 +1,9 @@
+/**
+ * Unit tests for scoreOwnerConfidence: per-signal weighting (challenge,
+ * recent auth, the device-trust step, context expectation, and capped voice
+ * similarity), the reason strings attached to each contributing signal, and
+ * clamping of the final score to [0, 1].
+ */
 import { describe, expect, it } from "vitest";
 import {
   type OwnerConfidenceInput,

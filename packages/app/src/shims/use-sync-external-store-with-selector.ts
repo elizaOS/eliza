@@ -1,3 +1,11 @@
+/**
+ * Browser shim reimplementing `use-sync-external-store/shim/with-selector`.
+ * Wraps React's native `useSyncExternalStore` with a memoized selector so a
+ * store subscription only re-renders when the selected slice actually changes,
+ * comparing successive selections with the optional `isEqual` equality fn and
+ * caching the last committed value across snapshots. Lets the app depend on the
+ * selector-aware store hook without bundling the upstream package.
+ */
 import {
   useDebugValue,
   useEffect,

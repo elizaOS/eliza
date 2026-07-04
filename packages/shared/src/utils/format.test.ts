@@ -1,3 +1,8 @@
+/**
+ * Shared display formatters (uptime / byte size / USD). These render values in
+ * dashboard views; the unit thresholds, precision, and fallback handling are
+ * pinned so the displayed figures stay correct and stable.
+ */
 import { describe, expect, it } from "vitest";
 import {
   formatByteSize,
@@ -5,12 +10,6 @@ import {
   formatUptime,
   formatUsd,
 } from "./format";
-
-/**
- * Shared display formatters (uptime / byte size / USD). These render values in
- * dashboard views; the unit thresholds, precision, and fallback handling are
- * pinned so the displayed figures stay correct and stable.
- */
 
 describe("formatUptime", () => {
   it("renders compact units and handles invalid input", () => {

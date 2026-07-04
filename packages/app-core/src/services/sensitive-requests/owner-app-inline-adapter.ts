@@ -1,3 +1,15 @@
+/**
+ * SensitiveRequestDeliveryAdapter for `target === "owner_app_inline"`: delivers
+ * `kind: "secret"` sensitive-requests inline into the owner-app private DM chat.
+ * It builds a status-only `secretRequest` envelope (rendered by the UI's
+ * `SensitiveRequestBlock`) and dispatches it via the runtime's
+ * `sendMessageToTarget`. Delivery is gated on the request classifying as
+ * `owner_app_private` (`classifySensitiveRequestSource`), so secrets are only
+ * collected on the local owner surface. Supports multi-key tunnel requests
+ * (sub-agent credential scopes) and per-field image/file upload inputs. The
+ * runtime is type-narrowed at the boundary instead of importing `IAgentRuntime`,
+ * so the registry can pass `unknown`.
+ */
 import {
   ChannelType,
   type Content,

@@ -1,3 +1,12 @@
+/**
+ * Hardens the compat wallet-export route on top of `@elizaos/agent`'s upstream
+ * rejection check. Adds per-IP rate limiting (one export per 10 minutes), a
+ * two-phase confirmation nonce with a forced delay before an export is allowed,
+ * audit logging of every outcome, and compat auth-context + header mirroring
+ * around each upstream call. `resolveWalletExportRejection` is the hardened
+ * entry point consumed by the API server; it returns a rejection (status +
+ * reason) or `null` when the export may proceed.
+ */
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";

@@ -1,3 +1,10 @@
+/**
+ * Exercises the credential resolver (`resolveProviderCredential`,
+ * `resolveProviderCredentialMulti`, `scanAllCredentials`) against the real
+ * core model-provider secret catalog and `SECRET_KEY_ALIASES`, driving actual
+ * `process.env` values (no mocks) and restoring them per test. Covers env-alias
+ * normalization, full-catalog scanning, and refusal of subscription selections.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   resolveProviderCredential,

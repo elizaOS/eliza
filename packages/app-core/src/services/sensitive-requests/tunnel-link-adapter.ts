@@ -1,3 +1,11 @@
+/**
+ * SensitiveRequestDeliveryAdapter factory for
+ * `target === "tunnel_authenticated_link"`: routes a sensitive-request to the
+ * device's active tunnel by returning `${tunnelBase}/api/sensitive-requests/<id>`.
+ * The tunnel-status resolver is injectable (for tests) and defaults to the core
+ * `getTunnelService`; when no tunnel is active it fails with "no active tunnel".
+ * Also exports a ready-made singleton (`tunnelLinkSensitiveRequestAdapter`).
+ */
 import type {
   DeliveryResult,
   IAgentRuntime,

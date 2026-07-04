@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `sanitizeSpeechText` (`spoken-text.ts`): strips internal
+ * thinking/reasoning blocks (closed and unterminated), fenced code, and URLs (while
+ * keeping markdown link labels and inline-code words), then collapses stage
+ * directions and repeated punctuation before text is handed to TTS.
+ */
 import { describe, expect, it } from "vitest";
 
 import { sanitizeSpeechText } from "./spoken-text";

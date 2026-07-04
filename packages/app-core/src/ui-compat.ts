@@ -1,6 +1,12 @@
-// Registration-surface contracts + registries (overlay apps, detail extensions)
-// are owned by @elizaos/shared — the React-free canonical home — so this
-// Node-reachable shim registers app surfaces without touching the React package.
+/**
+ * `./ui-compat` subpath export — a Node-reachable UI-compat shim that lets app
+ * plugins register dashboard surfaces and pull a curated slice of the UI kit
+ * without dragging the React component graph into the API process at boot.
+ *
+ * Registration-surface contracts + registries (overlay apps, detail extensions)
+ * are owned by @elizaos/shared — the React-free canonical home — so this shim
+ * registers app surfaces without touching the React package.
+ */
 export type {
   AppDetailExtensionProps,
   OverlayApp,

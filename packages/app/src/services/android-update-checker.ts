@@ -1,6 +1,12 @@
-// Checks for APK updates on Android sideload builds only.
-// Not used in Play Store builds (Play Store handles updates natively).
-// Detected via VITE_ANDROID_BUILD_VARIANT=sideload env var.
+/**
+ * Android OTA update checker for sideload builds. Polls a GitHub-hosted update
+ * manifest (stable or beta channel) at most once per day, compares its
+ * versionCode against the installed app's build, and — when newer — confirms
+ * with the user and opens the APK download page in the system browser. A no-op
+ * on Play Store builds (the Play Store handles updates natively); the sideload
+ * variant is detected via the `VITE_ANDROID_BUILD_VARIANT=sideload` build flag
+ * plus an Android platform check.
+ */
 
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";

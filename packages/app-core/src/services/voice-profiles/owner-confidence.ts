@@ -1,3 +1,10 @@
+/**
+ * Scores how confident the runtime is that the current speaker is the device
+ * owner. Combines weighted signals — a recently passed private challenge,
+ * recent authentication, voice similarity to the owner profile (capped),
+ * device trust level, and whether context expects the owner — into a clamped
+ * [0,1] `OwnerConfidence` score plus the reason tags that contributed to it.
+ */
 import type { OwnerConfidence } from "./types.ts";
 
 export interface OwnerConfidenceInput {

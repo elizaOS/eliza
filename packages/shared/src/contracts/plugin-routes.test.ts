@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the plugin-management route request schemas (install, update,
+ * uninstall, core-toggle, PUT plugin, secrets, curated skill source): covers name
+ * trimming, config/secret value typing, the release-stream enum, and strict
+ * extra-field rejection. Parses through the real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostPluginCoreToggleRequestSchema,

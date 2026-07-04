@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { autoLabel } from "./labels";
-
 /**
  * `autoLabel` derives the human-readable label shown next to a plugin config
  * field from its env-key + plugin id — strip the plugin prefix, title-case the
@@ -8,6 +5,9 @@ import { autoLabel } from "./labels";
  * regression in prefix stripping or the acronym set would silently mangle every
  * generated settings label. Pure.
  */
+import { describe, expect, it } from "vitest";
+import { autoLabel } from "./labels";
+
 describe("autoLabel", () => {
   it("strips the underscored plugin prefix and preserves acronyms", () => {
     expect(autoLabel("PLUGIN_API_KEY", "plugin")).toBe("API Key");

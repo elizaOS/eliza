@@ -1,3 +1,11 @@
+/**
+ * Drift guard for the desktop view-window catalog. This lane can import the
+ * @elizaos/agent BUILTIN_VIEWS catalog that neither the renderer bundle nor the
+ * bun main process can, so it asserts that the renderer DESKTOP_VIEW_WINDOWS and
+ * the menu-bar VIEW_MENU_ENTRIES both match the desktop-eligible builtin views
+ * (id, label, path) and cover the same set, and that tray view-item ids
+ * round-trip through parse/build.
+ */
 import { BUILTIN_VIEWS } from "@elizaos/agent/api/builtin-views";
 import { describe, expect, it } from "vitest";
 import {

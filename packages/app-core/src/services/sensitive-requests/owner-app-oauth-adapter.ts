@@ -1,3 +1,12 @@
+/**
+ * SensitiveRequestDeliveryAdapter for `target === "owner_app_oauth"`: the OAuth
+ * sibling of the inline-secret adapter. Delivers `kind: "oauth"` requests as an
+ * inline chat message whose `secretRequest.form.kind === "oauth"` envelope is
+ * rendered by the UI's `OAuthRequestPanel`. Delivery is gated on the request
+ * classifying as `owner_app_private`, and the authorization URL travels only
+ * inside the envelope's `form.authorizationUrl` — never in the chat `text` (see
+ * the security note on the runtime interface below).
+ */
 import {
   ChannelType,
   type Content,

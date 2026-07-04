@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the connector-source alias registry
+ * (normalizeConnectorSource plus the register/expand/metadata helpers): alias
+ * normalization, filter expansion, and passive-source metadata lookup against
+ * runtime-registered declarations.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

@@ -1,8 +1,10 @@
-// Thin JS wrapper over the native iOS `ElizaKeyboard` Capacitor plugin
-// (packages/app-core/platforms/ios/App/App/ElizaKeyboardBridge.swift). The
-// app-side dictation session publishes its state through these methods into
-// the shared App Group, where the ElizaKeyboard extension polls it and inserts
-// the transcript. Returns null off iOS — the handoff only exists there.
+/**
+ * Thin JS wrapper over the native iOS `ElizaKeyboard` Capacitor plugin
+ * (packages/app-core/platforms/ios/App/App/ElizaKeyboardBridge.swift). The
+ * app-side dictation session publishes its state through these methods into the
+ * shared App Group, where the ElizaKeyboard extension polls it and inserts the
+ * transcript. Returns null off iOS — the handoff only exists there.
+ */
 
 import { Capacitor } from "@capacitor/core";
 

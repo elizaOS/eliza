@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the `page-scope` guard: asserts `isPageScope` accepts every
+ * value in the declared `PAGE_SCOPES` set and rejects undeclared, malformed, and
+ * non-string inputs. Exercises the real guard synchronously — no mocks.
+ */
 import { describe, expect, it } from "vitest";
 
 import { isPageScope, PAGE_SCOPES } from "./page-scope.js";

@@ -1,3 +1,13 @@
+/**
+ * Policy table plus selectors that decide which in-process runtime backs the
+ * local iOS agent. Enumerates the three candidate backends (`full-bun-engine`,
+ * `swift-bun-jscore`, `ittp-jscontext`) with their readiness/capability flags,
+ * then resolves a selection from availability plus opt-in flags. The invariant
+ * the table and the blocker checks enforce: the agent runtime always stays in
+ * the TypeScript bundle and native code is bridge-only, so only the full Bun
+ * engine is approved for production / App-Store local-runtime builds — the
+ * others are explicitly-enabled compatibility paths surfaced as warnings.
+ */
 export type IosLocalRuntimeBackendId =
   | "full-bun-engine"
   | "swift-bun-jscore"

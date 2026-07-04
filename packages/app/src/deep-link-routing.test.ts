@@ -1,3 +1,13 @@
+/**
+ * Unit and property tests for the deep-link routing table
+ * (`buildAssistantLaunchHashRoute` / `resolveDeepLinkNavigationIntent`): asserts
+ * chat-launch paths fold into `#chat?…` with the trusted `assistant-entry`
+ * source and a stable launch id, top-level-surface paths resolve to the right
+ * tab/subview navigation intent, and unknown paths stay non-routable. The pure
+ * functions are called directly; fast-check fuzzes arbitrary query strings and
+ * unknown paths to prove no unsafe route (`javascript:`, CR/LF injection) or
+ * accidental chat fall-through ever escapes.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

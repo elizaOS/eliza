@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the shared vault facade: sharedSecretsManager() memoizes a
+ * single process-wide SecretsManager and sharedVault() returns its vault,
+ * while _resetSharedVaultForTesting() swaps the cached facade for a fresh one.
+ * Exercises real createTestVault instances, disposed after each test.
+ */
 import { createTestVault, type TestVault } from "@elizaos/vault";
 import { afterEach, describe, expect, it } from "vitest";
 import {

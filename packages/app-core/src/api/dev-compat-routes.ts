@@ -1,3 +1,11 @@
+/**
+ * Loopback-only dev observability route surface mounted under /api/dev/*.
+ * handleDevCompatRoutes dispatches GET probes (stack, route-catalog,
+ * cursor-screenshot, console-log, voice/inference/device-resource metrics,
+ * boot-history, route-timings), gating each on a loopback origin plus route
+ * authorization and short-circuiting to 404 when NODE_ENV is production. Returns
+ * true once it owns a request, false to let the caller keep dispatching.
+ */
 import type http from "node:http";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {

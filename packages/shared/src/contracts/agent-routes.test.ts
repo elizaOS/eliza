@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the /api/agents/* request Zod schemas (autonomy, export, and
+ * registry register / update-uri / sync): boolean and password validation,
+ * string trimming, whitespace absorption, and strict extra-field rejection.
+ */
 import { describe, expect, it } from "vitest";
 import {
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,

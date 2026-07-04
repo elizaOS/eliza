@@ -1,3 +1,12 @@
+/**
+ * Mounts POST `/api/credential-tunnel` (and the legacy `/submit` alias): the
+ * owner-only endpoint that tunnels a single secret to a sub-agent session.
+ * Requires the OWNER role, validates the child-session/scope identifiers and
+ * key against strict allow-lists, then delegates to the runtime's
+ * SubAgentCredentialBridge service. Translates each `CredentialScopeError.code`
+ * to its HTTP status (invalid→400, unknown→404, expired→410, mismatch/redeemed
+ * →403, no_ciphertext→409) and returns 503 when no bridge is registered.
+ */
 import type http from "node:http";
 import {
   CredentialScopeError,

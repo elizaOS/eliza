@@ -1,3 +1,12 @@
+/**
+ * Contract tests for the assorted "misc" route request schemas: share ingest,
+ * agent-event injection, terminal command runs, and the custom-action
+ * lifecycle (create/update/generate/test). Covers trimming and defaulting
+ * (enabled/similes/parameters), the discriminated handler union
+ * (http/shell/code) with per-variant required fields, clientId/params
+ * passthrough, and strict extra-field rejection across every schema. Pure
+ * in-process schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostAgentEventRequestSchema,

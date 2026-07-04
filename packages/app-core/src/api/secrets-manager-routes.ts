@@ -1,3 +1,14 @@
+/**
+ * Mounts the Settings → Secrets Manager HTTP surface: `/api/secrets/manager/*`
+ * (backend detection, preferences, install-method discovery, SSE-streamed
+ * install jobs, and vendor sign-in/out) and `/api/secrets/logins/*` (in-app
+ * browser saved-login list/reveal/CRUD plus per-domain autofill toggles). Every
+ * route is OWNER-gated in the handler itself, not only by the dispatch prefix,
+ * and wraps `@elizaos/vault`'s SecretsManager, which routes sensitive writes to
+ * the user's chosen password manager with `in-house` as the always-available
+ * fallback. See the block above `getManager` for the per-process-singleton and
+ * shared-vault-mutex rationale.
+ */
 import type http from "node:http";
 import {
   type BackendId,

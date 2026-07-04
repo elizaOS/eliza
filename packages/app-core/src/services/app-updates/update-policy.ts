@@ -1,3 +1,19 @@
+/**
+ * Derives the update policy and snapshots that the dashboard's "Updates" surface
+ * renders, for both the app shell itself and the connected agent.
+ *
+ * `resolveAppUpdatePolicy` maps platform + native flag + build variant + elizaOS
+ * image to a distribution channel, update authority, and the set of allowed
+ * affordances (auto-update, manual check, release notes) plus display labels —
+ * encoding each channel's constraint: desktop-direct self-updates from GitHub;
+ * store / App Store / Google Play / AOSP builds are host-managed and cannot
+ * self-update; sideload builds are manual-only. `mapAgentUpdateStatusToSnapshot`
+ * turns a connected agent's AgentUpdateStatus into a UI snapshot keyed on its
+ * install method (npm/bun/homebrew/snap/apt/flatpak/local-dev).
+ * `getApplicationUpdateSnapshot` detects the current platform via Capacitor and
+ * combines native app info with the resolved policy. Pure derivation — clients
+ * render these DTO fields, they do not recompute them.
+ */
 import { Capacitor } from "@capacitor/core";
 import {
   type AgentUpdateAuthority,

@@ -1,3 +1,12 @@
+/**
+ * Pre-Commander parsing and env wiring for the CLI's `--profile <name>` /
+ * `--dev` flags, which isolate an agent's state, config, and ports under a
+ * named XDG namespace. `parseCliProfileArgs` extracts and validates the profile
+ * (rejecting `--dev` combined with `--profile`) and strips the flag from argv
+ * ahead of the command word; `applyCliProfileEnv` fills ELIZA_PROFILE /
+ * ELIZA_NAMESPACE / ELIZA_STATE_DIR / ELIZA_CONFIG_PATH (and the dev gateway
+ * port) as defaults only, never overriding explicit env.
+ */
 import os from "node:os";
 import path from "node:path";
 import { isValidProfileName } from "./profile-utils";

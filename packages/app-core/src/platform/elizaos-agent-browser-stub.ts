@@ -1,7 +1,11 @@
-// Browser-side inert alias for @elizaos/agent. Server-only runtime — every export
-// resolves to an inert/empty value so the renderer graph can statically
-// satisfy named imports from app-core dist files without pulling in any
-// Node-only code.
+/**
+ * Browser-side inert alias for the server-only `@elizaos/agent` package. Browser
+ * bundlers resolve `@elizaos/agent` to this module so the renderer's dependency
+ * graph can statically satisfy the named imports that app-core dist files pull
+ * from it, without dragging in any Node-only runtime code. Every named export is
+ * a noop or empty collection, and the default export is a Proxy that yields
+ * `noop` for any key/apply — nothing here executes.
+ */
 
 const noop = () => undefined;
 const noopProxyHandler: ProxyHandler<typeof noop> = {

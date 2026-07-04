@@ -1,3 +1,11 @@
+/**
+ * Exercises the coding-agent account selector bridge (getCodingAgentSelectorBridge)
+ * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
+ * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
+ * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
+ * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
+ * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
+ */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

@@ -1,3 +1,9 @@
+/**
+ * Constant-time token equality for API auth. `tokenMatches` compares an expected
+ * secret/bearer token against a provided one without leaking length or content
+ * through timing: it pads both buffers to equal length before a timing-safe
+ * compare and folds the true length check into the returned boolean.
+ */
 import crypto from "node:crypto";
 
 /** Timing-safe token comparison (constant-time regardless of input length). */

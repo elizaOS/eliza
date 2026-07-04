@@ -1,3 +1,9 @@
+/**
+ * Unit test for `normalizeCharacterLanguage`: covers canonical pass-through,
+ * Chinese-variant collapsing, regional/script-tag normalization (incl.
+ * `fil`→`tl`), whitespace trimming, and the `en` fallback for unknown or
+ * non-string input. Pure string logic, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeCharacterLanguage } from "./character-language";
 

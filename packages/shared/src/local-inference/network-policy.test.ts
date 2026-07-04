@@ -1,3 +1,11 @@
+/**
+ * Covers the network-aware model-update policy: classifyNetwork (the five
+ * canonical connection classes plus unknown), applyNetworkPolicy (auto/ask
+ * decisions per class, quiet-hours downgrade, headless explicit-only override),
+ * inQuietHours (same-day and across-midnight windows), the evaluateNetworkPolicy
+ * composition, and the shipped DEFAULT_NETWORK_POLICY_PREFERENCES. Pure Vitest
+ * with injected clocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   applyNetworkPolicy,

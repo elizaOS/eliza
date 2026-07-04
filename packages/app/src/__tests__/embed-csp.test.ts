@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the Cloudflare Pages `functions/_middleware` embed CSP policy.
+ * Asserts `embedFrameAncestors` and the `/embed` `onRequest` handler emit
+ * per-platform `frame-ancestors` (telegram/discord only, stripping
+ * X-Frame-Options), deny unknown/missing platforms with `'none'`, and leave
+ * non-embed SPA paths and their inherited framing headers untouched. Requests
+ * run through the real handler with a stubbed SPA `next()`; no network.
+ */
 import { describe, expect, it } from "vitest";
 import {
   type EmbedPlatform,

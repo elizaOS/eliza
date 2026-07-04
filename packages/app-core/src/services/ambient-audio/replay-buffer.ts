@@ -1,3 +1,10 @@
+/**
+ * Fixed-duration rolling buffer of the most recent ambient audio. Accepts only
+ * 16 kHz mono Int16 frames, copies their samples, and caps retained audio to
+ * `maxSeconds` (default 30) by trimming the oldest samples as new ones arrive.
+ * `readTail(seconds)` returns the newest N seconds as a contiguous Int16Array,
+ * letting the service replay the moment just before a response decision.
+ */
 import type { AudioFrame } from "./types.ts";
 
 interface StoredFrame {

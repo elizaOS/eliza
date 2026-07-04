@@ -1,3 +1,10 @@
+/**
+ * Pins `discoverSideEffectAppModules` against the real plugin/package tree:
+ * every plugin that self-declares `elizaos.appRegister` must be discovered in a
+ * stable order, resolve a real entry file, and be a `workspace:*` dependency of
+ * this app — and the first-render `/register` module must still be imported by
+ * main.tsx. Reads the live filesystem (no mocks).
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

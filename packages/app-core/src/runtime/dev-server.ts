@@ -1,3 +1,15 @@
+/**
+ * Combined dev-server / desktop-agent process entry. Binds the app-core API
+ * server first (state "starting") so the dashboard can connect immediately,
+ * then bootstraps the AgentRuntime in the background with retry + PGlite
+ * corrupt-data auto-reset, hot-swaps the runtime on restart (RESTART_AGENT /
+ * POST /api/agent/restart via setRestartHandler), and owns SIGINT/SIGTERM
+ * graceful shutdown (startEliza runs headless and defers signal handling here).
+ * Emits startup-timing plus RSS/heap instrumentation; timing anchors to a
+ * parent-spawn env timestamp when present so logs include dependency import
+ * time. The heavy ./eliza runtime graph is imported lazily to keep it out of the
+ * eager import path before the API port binds.
+ */
 // Static ESM imports evaluate before this module body runs. Prefer a parent
 // spawn timestamp so startup logs include dependency import/evaluation time.
 const MODULE_BODY_START = Date.now();

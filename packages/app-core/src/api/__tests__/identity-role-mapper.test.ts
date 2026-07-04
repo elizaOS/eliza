@@ -1,3 +1,8 @@
+/**
+ * Unit test for `roleForIdentityKind`, the single identity-kind → canonical-role
+ * mapper (owner→OWNER, machine→USER, absent→NONE). Pure function call; no mocks
+ * or harness.
+ */
 import { describe, expect, it } from "vitest";
 import { roleForIdentityKind } from "../auth.js";
 

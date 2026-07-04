@@ -1,3 +1,11 @@
+/**
+ * Browser-bundle shim aliased in place of Handlebars, exposing just `compile`
+ * for the small templating dependencies use. It resolves dotted `{{path}}` /
+ * unescaped `{{{path}}}` interpolations against the render context, treating
+ * missing/nullish values as empty strings. Block helpers, partials, and
+ * comments are intentionally unsupported (tags starting with #/`/`>`/`!` are
+ * skipped), keeping the real Handlebars engine out of the renderer.
+ */
 type TemplateContext = Record<string, unknown>;
 type TemplateDelegate = (context: TemplateContext) => string;
 

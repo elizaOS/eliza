@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the wallet market-overview shared domain helpers in
+ * ./market-overview.ts: the stablecoin id/symbol filter sets, the
+ * CoinGecko/Polymarket provider metadata, the CoinGecko markets request URL,
+ * raw-row mapping/parsing (dropping incomplete records), mover ranking, and
+ * per-coin price snapshots. Assertions run entirely in-memory over fixture
+ * rows with no network or mocks, pinning the domain data so the Cloud
+ * market-preview service and the iOS agent kernel fallback cannot drift.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildCoinGeckoMarketsUrl,

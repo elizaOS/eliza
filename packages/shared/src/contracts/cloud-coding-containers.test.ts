@@ -1,3 +1,11 @@
+/**
+ * Contract tests for the cloud coding-container surface: the canonical
+ * CLOUD_CONTAINER runtime service-type slot and the schema that promotes a
+ * VFS snapshot into a cloud container. Confirms the promotion request stays
+ * strict — unrecognized keys (e.g. a legacy `legacyServiceType`) are rejected
+ * with the exact issue message. Pure in-process schema parsing, no server or
+ * mocks: it validates the same exported objects the live routes consume.
+ */
 import { describe, expect, it } from "vitest";
 import {
   CLOUD_CONTAINER_SERVICE_TYPE,

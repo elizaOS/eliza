@@ -1,3 +1,8 @@
+/**
+ * Tests `classifyRuntimeActionNode`'s tag-based classification: an action carrying
+ * the agent-orchestration / delegate tags maps to the `"agent"` node class, while
+ * an ordinary tagged action stays in the `"action"` class.
+ */
 import { describe, expect, it } from "vitest";
 import { classifyRuntimeActionNode } from "./automation-action-classifier.ts";
 

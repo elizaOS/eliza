@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the native-permission route request schemas
+ * (`PutPermissionsShellRequestSchema`, `PutPermissionsStateRequestSchema`):
+ * verifies accepted shapes, boolean/enum enforcement, the permission-status map,
+ * and strict rejection of unknown fields. Parses through the real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PutPermissionsShellRequestSchema,

@@ -1,3 +1,9 @@
+/**
+ * Profile-name validation for the CLI's `--profile` / `--dev` state
+ * namespacing: `isValidProfileName` enforces a path- and shell-safe charset,
+ * and `normalizeProfileName` trims and folds the reserved "default" name (and
+ * anything invalid) to null so callers fall back to the base state dir.
+ */
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 export function isValidProfileName(value: string): boolean {

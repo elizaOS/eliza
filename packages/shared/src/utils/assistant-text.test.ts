@@ -1,3 +1,10 @@
+/**
+ * Covers `extractAssistantReplyText` and `stripAssistantStageDirections`:
+ * recovering user-facing reply text from leaked response-handler JSON and
+ * argument fragments, unwrapping bare {reply}/{response} objects (primitives
+ * only, guarded against unrelated payloads), stripping stage directions, and
+ * degrading safely on null/undefined input. Pure string assertions.
+ */
 import { describe, expect, it } from "vitest";
 import {
   extractAssistantReplyText,

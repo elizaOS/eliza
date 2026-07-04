@@ -1,3 +1,11 @@
+/**
+ * Coverage for `detectHostCapabilities`, which classifies the runtime host
+ * (Cloudflare Worker, Capacitor foreground-only, Capacitor + BackgroundRunner,
+ * browser tab, full Node) from environment signals into a capability profile.
+ * Each case pins the exact flag set (fs/inbound/longRunning/childProcess/net/
+ * mobile/browser + label) a host kind exposes, which gates scheduling and
+ * feature availability across surfaces.
+ */
 import { describe, expect, it } from "vitest";
 import { detectHostCapabilities } from "./host-capabilities";
 

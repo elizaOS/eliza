@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `ownerAppOAuthSensitiveRequestAdapter`: verifies the OAuth
+ * envelope shape, owner-app-private channel gating, kind/target validation, and
+ * that the authorization URL never leaks into the chat `text`. Uses a `vi.fn`
+ * `sendMessageToTarget` mock that captures each dispatched message.
+ */
 import {
   ChannelType,
   type Content,

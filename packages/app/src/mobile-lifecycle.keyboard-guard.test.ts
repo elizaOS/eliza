@@ -1,3 +1,10 @@
+/**
+ * Regression test (#12030 item 4): an iOS Keyboard-bridge throw inside
+ * `createMobileLifecycle().initializeKeyboard()` must be swallowed + logged and
+ * still resolve, so a pod/plugin skew cannot strand the awaited lifecycle
+ * bootstrap. jsdom harness; `@capacitor/keyboard` is mocked to throw on
+ * setResizeMode.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMobileLifecycle } from "./mobile-lifecycle";
 

@@ -1,3 +1,17 @@
+/**
+ * Auth-policy table plus enforcement gate for the app-core compat HTTP surface.
+ *
+ * Each declaration binds a route to a required tier — `public`, `session`, or
+ * `OWNER` — matched against method + pathname by exact path, path prefix, or
+ * regex. `resolveCompatRouteAuthPolicy` returns the first matching declaration;
+ * `isCompatManagedRoute` reports whether a path falls under an app-core-owned
+ * prefix. `enforceCompatRouteAuthPolicy` is the dispatcher gate: it allows
+ * public routes, runs session/OWNER checks via `ensureRouteAuthorized` /
+ * `ensureRouteMinRole`, fails closed with 401 for any managed-prefix path that
+ * has no explicit policy, and returns "unmanaged" so unrelated paths fall
+ * through to the upstream agent server. The policy list and the managed-prefix
+ * list must stay in sync — a managed prefix with no matching policy 401s.
+ */
 import type http from "node:http";
 import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";

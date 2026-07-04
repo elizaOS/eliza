@@ -1,3 +1,8 @@
+/**
+ * Unit tests for MOCK_DIARIZATION_PIPELINE: an empty audioRef yields no
+ * segments, and a non-empty ref returns two deterministic mock speaker
+ * segments with ordered, non-degenerate time ranges.
+ */
 import { describe, expect, it } from "vitest";
 import { MOCK_DIARIZATION_PIPELINE } from "../diarization-pipeline.ts";
 

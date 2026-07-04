@@ -1,3 +1,11 @@
+/**
+ * Browser-bundle shim aliased in place of `react-is`, providing the element
+ * type-guards (isElement/isFragment/isForwardRef/isMemo/isPortal) plus `typeOf`
+ * that libraries use to introspect React nodes. It matches against the
+ * `$$typeof`/`type` symbols directly (covering both the transitional and legacy
+ * element tags) so it stays correct on the installed React without depending on
+ * react-is internals.
+ */
 import { Fragment, isValidElement } from "react";
 
 const REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element");

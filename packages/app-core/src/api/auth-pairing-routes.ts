@@ -1,3 +1,14 @@
+/**
+ * Mounts the device-pairing and first-run/auth-status compat HTTP routes:
+ * `GET /api/first-run/status`, `GET /api/auth/status`, `GET /api/auth/pair-code`,
+ * and `POST /api/auth/pair`. The rotating short pair code lives in process
+ * memory with a TTL and is disclosed only to trusted-loopback callers;
+ * `POST /api/auth/pair` rate-limits by client IP, validates the code, and (when
+ * a runtime DB is available) mints a revocable machine session bound to the
+ * owner or a `paired-device` identity — returning the session id rather than the
+ * forever-valid static API token. `/api/auth/status` is a public, secret-free
+ * probe the dashboard uses to decide whether to show the pairing/login UI.
+ */
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";

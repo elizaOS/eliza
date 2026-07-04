@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the voice-model version catalog (`voice-models.ts`): semver
+ * ordering, HuggingFace resolve-URL construction, and integrity bookkeeping over
+ * `VOICE_MODEL_VERSIONS` — every published version carries a valid semver, hf
+ * repo/revision, changelog, ISO publish timestamp, and pinned sha256 + byte size
+ * per GGUF asset. Pure data/URL assertions; no network or model download.
+ */
 import { describe, expect, it } from "vitest";
 import {
   compareVoiceModelSemver,

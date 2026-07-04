@@ -1,3 +1,12 @@
+/**
+ * Browser shim for the `cron-parser` package, mirroring the
+ * `CronExpressionParser.parse(expr).next().toDate()` surface the app consumes.
+ * `parse` validates a 5-field expression (rejecting malformed fields or
+ * out-of-range values), but the returned iterator is intentionally minimal: each
+ * `next()` advances the cursor by one minute from `currentDate` rather than
+ * resolving the true next matching instant — enough to satisfy validation and
+ * the API shape in the bundle without the full scheduler engine.
+ */
 type ParseOptions = {
   currentDate?: Date | string | number;
 };

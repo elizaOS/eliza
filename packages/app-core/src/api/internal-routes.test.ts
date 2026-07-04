@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the `POST /api/internal/wake` handler and `getDeviceSecret`,
+ * driving fake req/res objects. Covers device-secret bearer auth (401s), wake
+ * body validation, the happy path (runDueTasks fired, telemetry mirrored),
+ * runtime / task-service unavailability, error capture, deadline→maxWallTimeMs
+ * clamping, routing pass-through, and on-disk device-secret persistence + mode.
+ */
 import fs from "node:fs";
 import * as http from "node:http";
 import { Socket } from "node:net";

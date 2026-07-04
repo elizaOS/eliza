@@ -1,3 +1,13 @@
+/**
+ * H5 (#12228): the app-core compat dispatcher must be default-deny. The
+ * declarative policy table + `enforceCompatRouteAuthPolicy` landed in #12214;
+ * this test pins the behavior through the REAL dispatcher entrypoint
+ * (`handleElizaCompatRoute` → `handleCompatRoute` → `handleCompatRouteInner`),
+ * proving the gate short-circuits an un-gated (undeclared) compat route with a
+ * 401 BEFORE any `handle*` module runs — i.e. a future handler that forgets its
+ * own `ensureRoute*` call still cannot ship an unauthenticated compat route as
+ * long as its prefix is compat-managed.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,17 +28,6 @@ vi.mock(import("@elizaos/core"), async (importOriginal) => {
 
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { handleElizaCompatRoute } from "./server";
-
-/**
- * H5 (#12228): the app-core compat dispatcher must be default-deny. The
- * declarative policy table + `enforceCompatRouteAuthPolicy` landed in #12214;
- * this test pins the behavior through the REAL dispatcher entrypoint
- * (`handleElizaCompatRoute` → `handleCompatRoute` → `handleCompatRouteInner`),
- * proving the gate short-circuits an un-gated (undeclared) compat route with a
- * 401 BEFORE any `handle*` module runs — i.e. a future handler that forgets its
- * own `ensureRoute*` call still cannot ship an unauthenticated compat route as
- * long as its prefix is compat-managed.
- */
 
 const STATE: CompatRuntimeState = {
   current: null,

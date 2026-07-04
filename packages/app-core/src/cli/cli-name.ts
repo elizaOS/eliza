@@ -1,3 +1,10 @@
+/**
+ * Resolves the CLI's display name (`APP_CLI_NAME`, default "eliza") and rewrites
+ * command strings so generated help and examples show the active binary name.
+ * `replaceCliName` swaps a leading `eliza`/`elizaos` token — with an optional
+ * `bun`/`npm`/`bunx`/`npx` runner prefix matched by `CLI_PREFIX_RE` — for the
+ * resolved name, leaving unrelated commands untouched.
+ */
 import path from "node:path";
 
 /** CLI name — reads from APP_CLI_NAME env var, defaults to "eliza". */

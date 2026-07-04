@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for `installProcessCrashGuards` (`process-guards.ts`) and the
+ * `shouldIgnoreUnhandledRejection` classifier: idempotent install, non-fatal
+ * handling of background unhandled rejections, credit-exhaustion downgrade to warn,
+ * and the uncaught-exception policies (default supervised restart / keep-alive /
+ * exit). Listeners are captured by stubbing `process.on` so a deliberately triggered
+ * rejection never escapes into the test runner.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { shouldIgnoreUnhandledRejection } from "./error-classification.js";

@@ -1,8 +1,13 @@
-// === Phase 5D: extracted from main.tsx ===
-// Host trust policy for the white-label app shell. Decides whether a given
-// apiBase / deep-link target / native WebSocket URL is safe to dial. The
-// strict iOS path (store builds, cloud-runtime modes) and the dev-friendly
-// loopback path live side by side so the boot orchestration stays in main.
+/**
+ * Host trust policy for the white-label app shell: decides whether a given
+ * apiBase, deep-link target, or native WebSocket URL is safe to dial, keeping
+ * that decision out of the boot orchestration in `main.tsx`. A strict iOS path
+ * (App Store / TestFlight builds and cloud-runtime modes, which App Review
+ * forbids from reaching non-HTTPS or private-network hosts) and a dev-friendly
+ * loopback/private-LAN path live side by side. `createUrlTrustPolicy` closes
+ * over a `UrlTrustPolicyContext` and returns the per-URL guards; URL parse
+ * failures fail closed (treated as untrusted).
+ */
 
 import {
   IOS_LOCAL_AGENT_IPC_BASE,

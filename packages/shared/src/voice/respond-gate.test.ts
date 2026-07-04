@@ -1,3 +1,9 @@
+/**
+ * Tests the voice respond-gate (shouldRespondToVoiceTurn, buildVoiceTurnSignal):
+ * disfluency/echo suppression, bystander vs enrolled-speaker gating, wake-word
+ * rescue, and acoustic self-voice rejection of the agent's own mis-transcribed
+ * output. Pure functions, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   AGENT_SELF_VOICE_THRESHOLD,

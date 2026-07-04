@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the build-variant resolver: verify that getBuildVariant /
+ * isStoreBuild / isDirectBuild read ELIZA_BUILD_VARIANT, honor "store" vs
+ * "direct", and fall back to the direct default when the env var is unset or
+ * unrecognized. Pure env-driven with no runtime harness — each case resets the
+ * memoized value via _resetBuildVariantForTests.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   _resetBuildVariantForTests,

@@ -1,3 +1,10 @@
+/**
+ * Contract tests for PostInboxMessageRequestSchema, the schema for injecting
+ * an inbound message into a room. Locks in the required roomId/source/text
+ * shape, trimming and source lower-casing, required-field and empty-text
+ * rejection, treatment of blank replyToMessageId as absent, and strict
+ * extra-field rejection. Pure in-process schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import { PostInboxMessageRequestSchema } from "./inbox-routes.js";
 

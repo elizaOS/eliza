@@ -1,3 +1,12 @@
+/**
+ * Browser shim for the `set-cookie-parser` npm package, aliased into the app
+ * bundle in place of the Node-oriented original. Parses one or more raw
+ * Set-Cookie header strings (or a `Headers` / header-record input) into
+ * structured `{ name, value, ...attributes }` cookie objects, splitting a
+ * comma-joined header back into individual cookies and tolerating malformed
+ * percent-encoding the way a browser does. Exposes `parse`, `parseString`, and
+ * `splitCookiesString` matching the upstream surface.
+ */
 type ParseOptions = {
   decodeValues?: boolean;
   map?: boolean;

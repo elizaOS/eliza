@@ -1,3 +1,12 @@
+/**
+ * Covers the app-route-plugin skip/normalize/load helpers exported from
+ * `eliza.ts`: `getSkippedAppRoutePluginIds` (parsing the
+ * `ELIZA_SKIP_APP_ROUTE_PLUGINS` env list), `normalizeAppRoutePluginId` (id
+ * canonicalization), and `__loadAppRoutePluginFromSpecifierForTest` (loading a
+ * real first-party route plugin and surfacing missing transitive imports). One
+ * case writes a throwaway plugin package into `node_modules`; another asserts
+ * eliza.ts hardcodes no first-party route-loader fallbacks.
+ */
 import { readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";

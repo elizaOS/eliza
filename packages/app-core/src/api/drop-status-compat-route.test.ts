@@ -1,3 +1,9 @@
+/**
+ * Unit test for handleDropStatusCompatRoute: GET /api/drop/status is claimed
+ * (returns true) only when the sensitive-route auth gate rejects; authorized or
+ * non-matching requests fall through (returns false). The auth gate is mocked
+ * under both `./auth` and `./auth.ts` specifiers, with per-test module resets.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";

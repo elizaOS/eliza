@@ -1,3 +1,12 @@
+/**
+ * Contract tests for the connector-management request schemas:
+ * PostConnectorRequestSchema (create/update a connector) and
+ * PostProviderSwitchRequestSchema (swap the model provider). Locks in name
+ * trimming, rejection of reserved/prototype-pollution keys, strict extra-field
+ * rejection, and the provider/apiKey/primaryModel trimming plus apiKey size
+ * cap. Pure in-process schema parsing — the exported schemas are exercised
+ * directly, with no HTTP server or mocks in the loop.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostConnectorRequestSchema,

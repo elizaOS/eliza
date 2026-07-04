@@ -1,3 +1,9 @@
+/**
+ * Runtime-side recovery seam for a corrupt or in-use PGlite data directory:
+ * exposes {@link resetPluginSqlPgliteSingleton}, which the eliza.ts auto-reset
+ * path calls (after quarantining the `.elizadb` dir) so the next
+ * `createDatabaseAdapter()` rebuilds a fresh PGlite manager from clean state.
+ */
 import { logger } from "@elizaos/core";
 import { closePgliteSingleton } from "@elizaos/plugin-sql";
 import { formatError } from "@elizaos/shared";

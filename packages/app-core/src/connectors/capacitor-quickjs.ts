@@ -1,8 +1,13 @@
-// Native boundary contract for the `CapacitorQuickJs` Capacitor plugin.
-// Android is the primary target: the Kotlin plugin must run QuickJS in a
-// service with `android:isolatedProcess="true"` so interpreter faults and
-// untrusted code stay outside the host process. iOS may register the same
-// plugin only as the fallback runtime when JavaScriptCore is unavailable.
+/**
+ * Native boundary contract for the `CapacitorQuickJs` Capacitor plugin: declares
+ * the marshalled-value wire format and the native method surface, then registers
+ * the `quickjs-android` and `quickjs-ios-fallback` factories with
+ * `@elizaos/agent`'s JS-runtime registry. Android is the primary target: the
+ * Kotlin plugin must run QuickJS in a service with
+ * `android:isolatedProcess="true"` so interpreter faults and untrusted code stay
+ * outside the host process. iOS registers the same plugin only as the fallback
+ * runtime when JavaScriptCore is unavailable.
+ */
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
 

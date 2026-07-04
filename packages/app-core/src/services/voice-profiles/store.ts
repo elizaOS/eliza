@@ -1,3 +1,10 @@
+/**
+ * Voice-profile persistence contract plus an in-memory implementation. Stores
+ * `VoiceProfile` records keyed by id and answers similarity queries by cosine
+ * similarity against each profile's embedding previews — a profile's score is
+ * its best-matching embedding, and hits are returned sorted descending and
+ * capped at `limit`. `InMemoryVoiceProfileStore` is the default, non-durable store.
+ */
 import type { VoiceProfile } from "./types.ts";
 
 export interface VoiceProfileSearchHit {

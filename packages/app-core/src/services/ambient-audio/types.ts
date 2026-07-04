@@ -1,3 +1,9 @@
+/**
+ * Shared type definitions for the ambient-audio subsystem: capture modes, the
+ * owner consent record, the raw audio frame (fixed 16 kHz mono Int16), a
+ * transcribed segment, the response-gate signals/decision, and the
+ * `AmbientAudioService` interface that concrete capture backends implement.
+ */
 export type AmbientAudioMode = "stopped" | "listening" | "paused";
 
 export interface ConsentRecord {

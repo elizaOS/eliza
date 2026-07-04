@@ -1,3 +1,10 @@
+/**
+ * Deterministic nickname extraction over voice transcripts: scans each
+ * transcript entry for self-naming phrases ("call me …", "my name is …",
+ * "I go by …") and emits `NicknameProposal`s tagged owner/household with a
+ * fixed per-pattern confidence. `NAIVE_NICKNAME_EVALUATOR` is the default,
+ * regex-only implementation of the `NicknameEvaluator` contract — no model call.
+ */
 export interface NicknameProposal {
   nickname: string;
   subject: "owner" | "household";

@@ -1,3 +1,12 @@
+/**
+ * Exercises `handleCredentialTunnelRoute` — the POST `/api/credential-tunnel`
+ * (+ legacy `/submit` alias) handler that hands a credential from the owner
+ * runtime to a sub-agent session via the SubAgentCredentialBridge service.
+ * Drives both a vi-mocked bridge and the real bridge adapter (over a real
+ * credential-tunnel + dispatch registry) with fake http req/res; asserts the
+ * OWNER-auth gate, no-bridge 503, identifier validation, single-redemption, and
+ * the full CredentialScopeError-code → HTTP-status mapping.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { createSensitiveRequestDispatchRegistry } from "@elizaos/core";

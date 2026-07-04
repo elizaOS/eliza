@@ -1,3 +1,10 @@
+/**
+ * Tests `registerSubAgentCredentialBridge` against a minimal AgentRuntime fake:
+ * a parent runtime registers the bridge under both service names + the actions
+ * plugin and round-trips declareScope/tunnelCredential through the adapter
+ * (idempotently), while a sandboxed child with no ACP service registers nothing
+ * and degrades to the 503 path.
+ */
 import type {
   AgentRuntime,
   Service,

@@ -1,3 +1,10 @@
+/**
+ * Process-management helpers for the Steward sidecar. `findStewardEntryPoint`
+ * locates the Steward API entry on disk (env override, then `@stwd/api`
+ * module resolution), and `pipeOutput` streams a spawned process's stdout/stderr
+ * line-by-line into the structured logger (warn for stderr, info for stdout),
+ * invoking an optional per-line callback.
+ */
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";

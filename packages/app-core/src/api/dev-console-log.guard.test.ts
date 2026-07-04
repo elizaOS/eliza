@@ -1,15 +1,16 @@
+/**
+ * Tests for the dev-console-log path guard (#8801 / #9943): isAllowedDevConsole
+ * LogPath gates a file READ exposed over the dev API, so without it a traversal
+ * could read arbitrary files. Only `desktop-dev-console.log` UNDER the resolved
+ * state dir (incl. nested) is allowed; wrong basenames, paths outside the state
+ * dir, and `..` escapes are rejected.
+ */
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { isAllowedDevConsoleLogPath } from "./dev-console-log";
 
-/**
- * Tests for the dev-console-log path guard (#8801 / #9943). isAllowedDevConsole
- * LogPath gates a file READ exposed over the dev API; without it a traversal
- * could read arbitrary files. It must allow only `desktop-dev-console.log` UNDER
- * the state dir. It was untested.
- */
 describe("isAllowedDevConsoleLogPath", () => {
   let stateDir: string;
   const prev = process.env.ELIZA_STATE_DIR;

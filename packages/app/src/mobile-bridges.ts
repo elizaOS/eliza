@@ -1,10 +1,14 @@
-// === Phase 5D: extracted from main.tsx ===
-// Mobile (iOS/Android) device bridge + agent tunnel + background runner
-// orchestration. The device bridge tunnels llama.cpp + native plugin calls
-// from the WebView to the on-device agent; the agent tunnel exposes the
-// local agent over a relay for tunnel-to-mobile pairings; the background
-// runner keeps the host informed of apiBase + auth token so it can serve
-// requests when the WebView is backgrounded.
+/**
+ * Mobile (iOS/Android) device bridge + agent tunnel + background runner
+ * orchestration as a standalone factory (`createMobileBridges`). The device
+ * bridge tunnels llama.cpp + native plugin calls from the WebView to the
+ * on-device agent; the agent tunnel exposes the local agent over a relay for
+ * tunnel-to-mobile pairings; the background runner keeps the native host
+ * informed of apiBase + auth token so it can serve requests while the WebView
+ * is backgrounded. Runtime-mode changes re-wire the active transport; AOSP
+ * Eliza-derived Android builds skip the redundant device bridge. No-op off
+ * native platforms.
+ */
 
 import { BackgroundRunner } from "@capacitor/background-runner";
 import type { PluginListenerHandle } from "@capacitor/core";

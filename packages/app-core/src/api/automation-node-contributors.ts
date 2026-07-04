@@ -1,3 +1,12 @@
+/**
+ * Registry and builder for automation-catalog node contributors. Plugins register
+ * a contributor keyed by id; `listAutomationNodeContributors` returns them so the
+ * automation-catalog route can collect each plugin's `AutomationNodeDescriptor`s,
+ * keeping catalog ownership with the owning plugin. `buildRuntimeCapabilityNodes`
+ * turns declarative `RuntimeCapabilityNodeSpec`s into descriptors, gating each
+ * node's availability on the runtime's loaded actions/plugins (marked disabled
+ * with a `disabledReason` when the backing capability is absent).
+ */
 import type { loadElizaConfig } from "@elizaos/agent";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import type { AutomationNodeDescriptor } from "@elizaos/shared";

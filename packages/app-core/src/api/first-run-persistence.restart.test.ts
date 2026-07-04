@@ -1,18 +1,3 @@
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-// Import from narrow subpaths, not the "@elizaos/agent" barrel: the barrel's
-// runtime/eliza.ts has dynamic plugin imports (e.g. @elizaos/plugin-birdclaw)
-// that the test bundler cannot resolve. These are the same production functions.
-import { applyCanonicalFirstRunConfig } from "@elizaos/agent/api/provider-switch-config";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import {
-  normalizeDeploymentTargetConfig,
-  normalizeServiceRoutingConfig,
-} from "@elizaos/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { hasCompatPersistedFirstRunState } from "./compat-route-shared";
-
 /**
  * Regression guard for issue #11506 (symptom 2: "onboarding never persists").
  *
@@ -39,6 +24,20 @@ import { hasCompatPersistedFirstRunState } from "./compat-route-shared";
  * first-run filesystem (no config on disk), then simulates a restart by calling
  * `loadElizaConfig()` again against that same on-disk state.
  */
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+// Import from narrow subpaths, not the "@elizaos/agent" barrel: the barrel's
+// runtime/eliza.ts has dynamic plugin imports (e.g. @elizaos/plugin-birdclaw)
+// that the test bundler cannot resolve. These are the same production functions.
+import { applyCanonicalFirstRunConfig } from "@elizaos/agent/api/provider-switch-config";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  normalizeDeploymentTargetConfig,
+  normalizeServiceRoutingConfig,
+} from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hasCompatPersistedFirstRunState } from "./compat-route-shared";
 
 let stateDir: string;
 let priorStateDir: string | undefined;

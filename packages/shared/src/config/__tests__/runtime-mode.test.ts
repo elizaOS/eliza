@@ -1,3 +1,10 @@
+/**
+ * Exercises the runtime-execution-mode helpers: normalizing raw mode strings
+ * (cloud / local-safe / local-yolo, trimming and casing), the
+ * cloud/local/safe/yolo predicates, deriving a default mode from a deployment
+ * target, and reading the effective mode from config (explicit executionMode
+ * wins, else the deployment target, else local-safe).
+ */
 import { describe, expect, it } from "vitest";
 
 import {

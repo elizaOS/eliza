@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `parseMeetingUrl` (`meetings.ts`): platform detection and
+ * native-id canonicalization for Google Meet / Teams / Zoom links, plus the
+ * malformed percent-escape Teams id that must return null rather than throw a
+ * URIError (which previously crashed the Transcripts/Calendar views).
+ */
 import { describe, expect, it } from "vitest";
 import { parseMeetingUrl } from "./meetings.js";
 

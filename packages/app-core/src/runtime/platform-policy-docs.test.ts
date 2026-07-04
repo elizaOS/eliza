@@ -1,3 +1,11 @@
+/**
+ * Documentation-drift guard: reads the shipped mobile + sandbox docs and the
+ * `run-mobile-build.mjs` Android build script straight from the repo tree and
+ * asserts they stay in sync about what the Android "cloud" build strips (the
+ * in-process agent service, elevated permissions, bundled agent assets/native
+ * libs) and how the sandbox docs gate the shell / coding-tools /
+ * agent-orchestrator plugins. Fails if a doc claim and the build behavior diverge.
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

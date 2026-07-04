@@ -1,3 +1,11 @@
+/**
+ * App-identity re-exports for the shell. Surfaces the package-root
+ * `app.config.ts` as `APP_CONFIG` and derives the values the rest of
+ * `packages/app` reads: the branding base (`APP_BRANDING_BASE`), log prefix,
+ * namespace, and desktop URL scheme. Namespace and URL scheme fall back to the
+ * CLI name when unset. This is the white-label seam — swap `app.config.ts` to
+ * rebrand.
+ */
 import { resolveAppBranding } from "@elizaos/app-core";
 import appConfig from "../app.config";
 

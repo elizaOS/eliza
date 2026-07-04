@@ -1,3 +1,9 @@
+/**
+ * Compat guard for GET /api/drop/status. When the sensitive-route auth gate
+ * rejects, it logs and claims the request (returns true) so the caller stops;
+ * for authorized or non-matching requests it returns false to fall through to
+ * the real handler. It never serves drop status itself — only the auth gate.
+ */
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import { ensureCompatSensitiveRouteAuthorized } from "./auth.ts";

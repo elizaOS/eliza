@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the runtime-env host security helpers (`runtime-env.ts`):
+ * loopback/wildcard bind-host classification, URL/bracketed host stripping, and
+ * `resolveApiSecurityConfig` — proving malformed `127.*` binds are never promoted to
+ * loopback and that the origin/host allow-lists are trimmed into arrays.
+ */
 import { describe, expect, it } from "vitest";
 import {
   isLoopbackBindHost,

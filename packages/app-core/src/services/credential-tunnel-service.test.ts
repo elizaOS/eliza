@@ -1,3 +1,12 @@
+/**
+ * Covers the credential tunnel service and its sub-agent credential bridge
+ * adapter: a one-shot tunnel where a parent declares a scope (64-hex scoped token
+ * + scope id + TTL), tunnels a ciphertext, and retrieves it exactly once — with
+ * guards for replay, expiry, session isolation, undeclared keys, and bad token
+ * shapes. Also asserts the bridge dispatches an owner-only sensitive request
+ * without leaking the scoped token or value, and that registration skips
+ * sandbox/child runtimes. Uses in-process services with an injected fake clock.
+ */
 import {
   createSensitiveRequestDispatchRegistry,
   SENSITIVE_REQUEST_DISPATCH_REGISTRY_SERVICE,

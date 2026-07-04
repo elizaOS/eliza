@@ -1,3 +1,10 @@
+/**
+ * Formats and emits the one-time CLI startup banner — title (from
+ * `APP_CLI_NAME`, default "eliza"), version, and short commit hash, themed when
+ * the TTY is rich. `emitCliBanner` is idempotent via a module-level guard and
+ * stays silent for non-TTY output and for `--json` / `--version` invocations so
+ * machine-readable output is never polluted.
+ */
 import { isRich, theme } from "@elizaos/shared";
 import { resolveCommitHash } from "./git-commit";
 

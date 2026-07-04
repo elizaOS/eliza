@@ -1,3 +1,11 @@
+/**
+ * Coverage for the macOS permission deep-link helpers. `getMacPermissionDeepLink`
+ * maps each permission id to its System Settings privacy-pane URL (falling back
+ * to the root Privacy pane for unmapped ids), and `openPermissionSettings`
+ * invokes the opener with that URL on darwin while warning and skipping on
+ * win32/linux. The opener and console are injected, so no real System Settings
+ * launch occurs.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   getMacPermissionDeepLink,

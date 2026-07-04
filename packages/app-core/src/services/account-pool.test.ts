@@ -1,3 +1,12 @@
+/**
+ * Unit tests for AccountPool — provider-scoped linked-account selection and
+ * eligibility gating. Covers id-collision resolution across providers,
+ * priority/round-robin/session-affinity/usage-aware strategies, least-used
+ * burst spreading, and the eligibility guard (exclude set, enabled flag,
+ * accountIds allow-list, rate-limit re-admission). The pool is driven through
+ * injected readAccounts/writeAccount and a stubbed fetch, so no real credential
+ * store or provider API is touched.
+ */
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { AccountPool } from "./account-pool";

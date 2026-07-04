@@ -1,3 +1,8 @@
+/**
+ * Wraps a CLI command action in error handling: runs the async action and, on
+ * failure, either delegates to the optional `onError` callback or reports
+ * through the runtime's `error` and exits with code 1.
+ */
 export async function runCommandWithRuntime(
   runtime: { error: (message: string) => void; exit: (code: number) => void },
   action: () => Promise<void>,

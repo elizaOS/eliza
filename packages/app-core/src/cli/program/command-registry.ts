@@ -1,3 +1,10 @@
+/**
+ * Registers every top-level `eliza` CLI command onto the Commander program —
+ * start, benchmark, capability-router, setup, doctor, db, configure, config,
+ * dashboard, update, auth, and the delegated sub-CLIs — each defined in its own
+ * `register.<name>` module. Sub-CLI registration receives argv for lazy
+ * dispatch.
+ */
 import type { Command } from "commander";
 import { registerAuthCommand } from "./register.auth";
 import { registerBenchmarkCommand } from "./register.benchmark";

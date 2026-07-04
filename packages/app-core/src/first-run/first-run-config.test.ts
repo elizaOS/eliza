@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for `buildFirstRunRuntimeConfig`, the pure onboarding config
+ * builder: asserts a Cerebras first-run selection resolves to direct-transport
+ * Cerebras text inference under a local deployment target with no cloud linkage.
+ * Pure function, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 import { buildFirstRunRuntimeConfig } from "./first-run-config";
 

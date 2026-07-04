@@ -1,6 +1,3 @@
-import { describe, expect, it } from "vitest";
-import { checkHostConfig } from "./checks.ts";
-
 /**
  * `checkHostConfig` is the doctor preflight that warns an operator when the
  * agent's HTTP API is bound somewhere reachable without a stable token (#8801 —
@@ -9,6 +6,9 @@ import { checkHostConfig } from "./checks.ts";
  * exposed-vs-safe branch is pinned. It reads only the injected env, so no global
  * state is touched.
  */
+import { describe, expect, it } from "vitest";
+import { checkHostConfig } from "./checks.ts";
+
 describe("checkHostConfig", () => {
   it("passes for the default loopback bind", () => {
     const r = checkHostConfig({});

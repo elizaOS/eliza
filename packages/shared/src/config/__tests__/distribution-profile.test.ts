@@ -1,3 +1,11 @@
+/**
+ * Exercises the distribution-profile resolver driven by
+ * ELIZA_DISTRIBUTION_PROFILE: resolveDistributionProfile defaults to
+ * "unrestricted" on unset/blank input, accepts known profiles
+ * case-insensitively, and throws on unknown values rather than silently
+ * defaulting; plus the isDistributionProfile guard and the canonical
+ * DISTRIBUTION_PROFILES list.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

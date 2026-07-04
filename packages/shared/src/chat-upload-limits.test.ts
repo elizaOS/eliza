@@ -1,3 +1,10 @@
+/**
+ * Exercises the chat-upload size and MIME contracts: maxRawBytesForBase64
+ * derives a raw-byte cap whose base64 encoding stays under each base64 ceiling
+ * (checked against Node's real base64 encoder), and the image/upload MIME
+ * allowlists stay lowercase, mutually consistent, and free of the phone-photo
+ * formats (HEIC/HEIF/SVG) the client must re-encode before upload.
+ */
 import { describe, expect, it } from "vitest";
 import {
   CHAT_IMAGE_MIME_TYPE_SET,

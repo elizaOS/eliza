@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the Mac-side TunnelToMobileClient relay dialer: URL
+ * construction (deviceId + pairing-token query params), state-machine
+ * transitions, the register frame emitted on socket open, frame delivery with
+ * malformed-JSON tolerance, and the guard that rejects construction when no
+ * WebSocket implementation is available. Drives a synchronous in-process
+ * FakeSocket double rather than a live relay connection.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   TunnelToMobileClient,

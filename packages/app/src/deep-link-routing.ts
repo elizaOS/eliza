@@ -1,3 +1,19 @@
+/**
+ * Deep-link routing table for the app shell: maps custom-URL-scheme
+ * (`eliza://…`) and universal-link paths onto the two in-app navigation
+ * primitives.
+ *
+ * `resolveDeepLinkNavigationIntent()` handles top-level surfaces (Settings,
+ * Wallet/Inventory, Browser, Cloud Apps, Settings → Connectors), returning a
+ * `DeepLinkNavigationIntent` the caller dispatches on the `eliza:navigate:view`
+ * event bus. `buildAssistantLaunchHashRoute()` handles chat-launch entries
+ * (ask / chat / voice / smart-reply / LifeOps briefs and tasks, plus Android
+ * feature-open aliases), folding them into a single `#chat?…` hash route that
+ * carries the trusted `assistant-entry` source and a stable launch id the
+ * always-mounted ContinuousChatOverlay claims. Both return `null` for
+ * unrecognized paths, so an unknown deep link is non-routable rather than
+ * silently opening chat.
+ */
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
 const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 

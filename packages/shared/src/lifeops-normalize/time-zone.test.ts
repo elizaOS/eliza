@@ -1,10 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-  isValidTimeZone,
-  normalizeTimeZone,
-  resolveDefaultTimeZone,
-} from "./time-zone";
-
 /**
  * IANA time-zone normalization (LifeOps normalize primitives). A scheduled
  * reminder fired in the wrong zone is a real user-facing bug, so the
@@ -13,6 +6,13 @@ import {
  * compare against `resolveDefaultTimeZone()` rather than a hardcoded string so
  * they hold on any CI machine.
  */
+import { describe, expect, it } from "vitest";
+import {
+  isValidTimeZone,
+  normalizeTimeZone,
+  resolveDefaultTimeZone,
+} from "./time-zone";
+
 describe("isValidTimeZone", () => {
   it("accepts real IANA zones and rejects nonsense", () => {
     expect(isValidTimeZone("UTC")).toBe(true);

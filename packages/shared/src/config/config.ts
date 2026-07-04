@@ -1,3 +1,11 @@
+/**
+ * Backward-compatibility shims for elizaOS cloud configuration: re-exports the
+ * `ElizaConfig` type and provides the legacy "cloud.enabled" → `providers[]`
+ * migration helpers. `migrateCloudEnabledToProviders` upgrades an old config
+ * that set `cloud.enabled` into the modern representation (an "elizacloud"
+ * entry in `providers`); `isCloudActiveFromProviders` reports whether that
+ * entry is present.
+ */
 // CYCLE BREAK: re-exporting from @elizaos/agent here created an
 // agent ↔ shared cycle that broke node ESM resolution at the bench
 // server boot. Consumers should import these directly from

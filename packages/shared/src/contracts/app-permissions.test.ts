@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the app-permission manifest parser: parseAppIsolation (worker/none
+ * fallback) and parseAppPermissions, which validates the fs/net permission slices, enforces the
+ * MAX_PATTERN_LENGTH glob cap, and preserves unknown namespaces under `raw` for forward
+ * compatibility. Drives the real parser directly with accept/reject fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import {
   MAX_PATTERN_LENGTH,

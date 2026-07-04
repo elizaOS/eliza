@@ -1,7 +1,11 @@
-// Browser-side inert alias for @elizaos/plugin-elizacloud. The plugin's runtime
-// surface (cloud secrets, TTS/billing/relay routes, wallet provisioning, the
-// cloud client) only runs server-side; the renderer just needs the named
-// imports to statically resolve. Every export here is inert.
+/**
+ * Browser-side inert alias for the server-only `@elizaos/plugin-elizacloud`
+ * package. The plugin's real surface (cloud secrets, TTS/billing/relay routes,
+ * wallet provisioning, the cloud client) runs only server-side; the renderer
+ * only needs the named imports to statically resolve. Sync resolvers are noops,
+ * async cloud-route handlers return `false` ("not handled here"), data fetchers
+ * return empty results, and `isCloudProvisionedContainer` is a hard `false`.
+ */
 
 const noop = () => undefined;
 const noopProxyHandler: ProxyHandler<typeof noop> = {

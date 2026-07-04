@@ -1,3 +1,14 @@
+/**
+ * Pure translator from first-run onboarding answers into the runtime config the
+ * app persists. `buildFirstRunRuntimeConfig` takes the collected selections
+ * (runtime target local/remote/elizacloud, provider + API key, primary and
+ * tiered model ids, remote-connect and cloud-key state, capability toggles) and
+ * derives: the `deploymentTarget` (local/remote/cloud), `linkedAccounts` flags,
+ * the `serviceRouting` llmText route plus cloud service-routing defaults,
+ * `credentialInputs`, a `featureSetup` describing selected connectors and
+ * capabilities, and `needsProviderSetup` (true only when a non-omitted target
+ * resolved no LLM route). Side-effect free; callers apply the result.
+ */
 import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,

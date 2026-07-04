@@ -1,3 +1,10 @@
+/**
+ * Covers Ed25519 manifest signature verification
+ * (`verifyManifestSignature` / `verifyManifestSignatureText`): acceptance under
+ * the current key and during a two-key rotation, and rejection of wrong-key,
+ * tampered-body, empty-key-list, and malformed or wrong-length signature/key
+ * inputs. Signs bodies with real key pairs generated via Node webcrypto.
+ */
 import { webcrypto } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {

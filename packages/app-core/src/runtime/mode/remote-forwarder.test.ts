@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for the remote-mode request forwarder that a local controller
+ * uses to relay traffic to its private remote Eliza target.
+ * `shouldForwardToRemoteTarget` decides which cloud-auth mutations get forwarded
+ * (POST login/disconnect and billing/v1 writes — never GETs or unrelated paths),
+ * and `buildForwardHeaders` rewrites the outbound header set: preserving
+ * multi-valued `set-cookie`, stripping hop-by-hop headers, rewriting Host to the
+ * target, and injecting a Bearer token only when a remote access token is set.
+ */
 import { describe, expect, test } from "vitest";
 import {
   buildForwardHeaders,

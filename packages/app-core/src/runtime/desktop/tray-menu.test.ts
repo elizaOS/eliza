@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the desktop tray Notifications entry (#10706): asserts the
+ * static tray catalog and click-audit table in tray-menu.ts expose the
+ * `tray-open-notifications` item, and grep-guards DesktopTrayRuntime.tsx source
+ * so the tray id actually routes to dispatchOpenNotificationCenter(). Reads the
+ * real module + runtime source — no runtime boot.
+ */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

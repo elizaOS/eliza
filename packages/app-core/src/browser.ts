@@ -1,3 +1,11 @@
+/**
+ * Browser-safe surface of `@elizaos/app-core`, aliased in by browser bundlers in
+ * place of the Node `index.ts`. Re-exports the dashboard React/UI components,
+ * registration contracts, and Electrobun desktop runtimes from `@elizaos/ui` and
+ * `@elizaos/shared`, and provides inert stubs for the server-only helpers
+ * (`sendJson`, `ensureRouteAuthorized`, `sharedVault`, …) so browser code links
+ * against the same names without pulling in Node server modules.
+ */
 // Registration-surface contracts live in @elizaos/shared (React-free canonical
 // home); import them from there rather than the React package.
 export {

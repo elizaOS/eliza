@@ -1,3 +1,23 @@
+/**
+ * App-core Eliza runtime loader: the single boot chokepoint every app-core agent
+ * process funnels through. Wraps `@elizaos/agent`'s startEliza / bootElizaRuntime
+ * with app-shell concerns — installs the agent host bridge (vault, account pool,
+ * wallet-key hydration, cloud-pair route), syncs brand env aliases, binds the
+ * API server (bind-first, then background runtime boot), and runs the post-ready
+ * boot tail: local-inference + TTS handler registration, autonomy service +
+ * bootstrap context, app-route plugins and registry runtime-hooks (drained
+ * concurrently with per-loader failure isolation), sensitive-request + sub-agent
+ * credential adapters, the trigger event bridge, connector-target catalog, and
+ * background embedding + voice model warmup.
+ *
+ * Also owns PGlite startup-error normalization + auto-reset (quarantine a
+ * corrupt `.elizadb` and retry once), the ELIZA_SKIP_APP_ROUTE_PLUGINS /
+ * ELIZA_DEFER_APP_ROUTES boot knobs (both default to byte-identical boot), the
+ * local-agent IPC port gate (#12180), and a direct-run CLI (help/version) when
+ * executed as a script. Mobile platforms take a trimmed boot path. Several seams
+ * (PostReadyBootSteps, __setLatestBootTailRuntimeForTest) exist only for focused
+ * unit tests.
+ */
 import "@elizaos/shared";
 import { existsSync } from "node:fs";
 import { rename } from "node:fs/promises";

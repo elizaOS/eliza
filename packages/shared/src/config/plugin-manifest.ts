@@ -1,37 +1,36 @@
-// Plugin manifest evaluation engine.
-//
-// Each plugin declares its auto-enable conditions in its package.json under
-// `elizaos.plugin`, optionally pointing at a small JS module that implements
-// the actual `shouldEnable(ctx)` check:
-//
-//   {
-//     "elizaos": {
-//       "plugin": {
-//         "autoEnableModule": "./dist/auto-enable.js",
-//         "force": false,
-//         "capabilities": ["text-large", "tool-use"]
-//       }
-//     }
-//   }
-//
-// The check module exports:
-//
-//   export function shouldEnable(ctx: PluginAutoEnableContext): boolean | Promise<boolean>;
-//   export function shouldForce?(ctx: PluginAutoEnableContext): boolean;  // optional override
-//
-// The engine here:
-//   1. Walks a list of candidate plugin packages.
-//   2. Reads each package.json for the elizaos.plugin block.
-//   3. Dynamic-imports the autoEnableModule (cheap if it stays small — convention,
-//      not enforced; consumers can lint via knip or import-graph if drift becomes a problem).
-//   4. Evaluates shouldEnable + shouldForce against the runtime context.
-//   5. Returns a verdict per plugin.
-//
-// This replaces the centralized maps in plugin-auto-enable-engine.ts. Both
-// engines coexist during the migration: the new one runs first, the old one
-// fills gaps for plugins that haven't migrated yet. When all plugins ship a
-// manifest, the central maps and the old engine can be deleted.
-
+/**
+ * Plugin manifest evaluation engine — decides which plugins auto-enable by
+ * reading each plugin's own manifest instead of a centralized map.
+ *
+ * Each plugin declares its auto-enable conditions in its package.json under
+ * `elizaos.plugin`, optionally pointing at a small JS module that implements
+ * the actual `shouldEnable(ctx)` check:
+ *
+ *   {
+ *     "elizaos": {
+ *       "plugin": {
+ *         "autoEnableModule": "./dist/auto-enable.js",
+ *         "force": false,
+ *         "capabilities": ["text-large", "tool-use"]
+ *       }
+ *     }
+ *   }
+ *
+ * The check module exports:
+ *
+ *   export function shouldEnable(ctx: PluginAutoEnableContext): boolean | Promise<boolean>;
+ *   export function shouldForce?(ctx: PluginAutoEnableContext): boolean;  // optional override
+ *
+ * The engine walks candidate plugin packages, reads each package.json for the
+ * elizaos.plugin block, dynamic-imports the autoEnableModule, evaluates
+ * shouldEnable + shouldForce against the runtime context, and returns a verdict
+ * per plugin (never throwing — failures surface in the verdict's `error`).
+ *
+ * This replaces the centralized maps in plugin-auto-enable-engine.ts. Both
+ * engines coexist during the migration: the new one runs first, the old one
+ * fills gaps for plugins that haven't migrated yet. When all plugins ship a
+ * manifest, the central maps and the old engine can be deleted.
+ */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";

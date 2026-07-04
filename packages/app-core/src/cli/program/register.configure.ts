@@ -1,3 +1,8 @@
+/**
+ * Registers the `configure` CLI command: prints static configuration guidance —
+ * how to read/edit config values and the common provider API-key environment
+ * variables — plus a docs link. Guidance only; it does not mutate any config.
+ */
 import { formatDocsLink, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 

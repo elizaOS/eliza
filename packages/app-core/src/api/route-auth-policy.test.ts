@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the compat route auth-policy table and its enforcement gate,
+ * driving real `http.IncomingMessage` / `ServerResponse` doubles through
+ * `enforceCompatRouteAuthPolicy` to assert tier resolution, prefix-bleed
+ * safety, fail-closed 401s for undeclared managed routes, and pass-through of
+ * unmanaged paths to the upstream server.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it } from "vitest";

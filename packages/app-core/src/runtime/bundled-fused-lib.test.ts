@@ -1,3 +1,12 @@
+/**
+ * Unit tests for bundled fused-library discovery. findBundledFusedLibDir walks
+ * up from the runtime module URL to a sibling local-inference/lib that holds the
+ * platform fused binary, and ensureBundledFusedLibDir points
+ * ELIZA_INFERENCE_LIB_DIR at it while respecting explicit
+ * ELIZA_INFERENCE_LIB_DIR / ELIZA_INFERENCE_LIBRARY overrides. Runs against real
+ * temp dirs staged on disk (no mocks); both return null in dev/mobile layouts
+ * where nothing is bundled.
+ */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

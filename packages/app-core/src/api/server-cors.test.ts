@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the server CORS origin allowlist. Verifies the packaged
+ * Electrobun `views://` scheme and native mobile schemes are trusted only for
+ * local hosts, that localhost is allowed on every env-configured port
+ * (API / UI / single-process / gateway / home plus Electrobun dev ports), that
+ * explicit `ELIZA_ALLOWED_ORIGINS` remote origins normalize and gate correctly,
+ * and that the env-derived port cache recomputes after invalidation.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildCorsAllowedPorts,

@@ -1,10 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_WALLET_RPC_SELECTIONS,
-  normalizeWalletRpcProviderId,
-  normalizeWalletRpcSelections,
-} from "./wallet.ts";
-
 /**
  * Wallet RPC provider selection. Normalization resolves legacy aliases
  * (elizacloud → eliza-cloud, helius → helius-birdeye), is case/space-insensitive,
@@ -12,6 +5,12 @@ import {
  * rejected on a chain that doesn't offer it (solana). Unknown/blank values fall
  * back to the safe Eliza Cloud default rather than a broken provider id.
  */
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  normalizeWalletRpcProviderId,
+  normalizeWalletRpcSelections,
+} from "./wallet.ts";
 
 describe("normalizeWalletRpcProviderId", () => {
   it("accepts valid ids case/space-insensitively", () => {

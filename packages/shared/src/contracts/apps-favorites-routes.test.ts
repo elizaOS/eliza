@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the app-favorites route Zod schemas: the toggle-one PUT, the replace-all
+ * POST, and the favorites list response. Verifies appName trimming, strict extra-field
+ * rejection, and element typing against the real schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   FavoritesResponseSchema,

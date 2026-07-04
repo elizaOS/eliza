@@ -1,3 +1,10 @@
+/**
+ * Verifies character-preset resolution when several personas share one VRM
+ * avatar art index (the default Eliza and Chen both render asset 1). Pins that
+ * id lookup, avatarIndex lookup, the default-preset accessor, and the catalog
+ * builder each resolve to the intended persona against the real bundled
+ * CHARACTER_DEFINITIONS — no mocks.
+ */
 import { describe, expect, it } from "vitest";
 
 import { CHARACTER_DEFINITIONS } from "./character-presets.characters.js";

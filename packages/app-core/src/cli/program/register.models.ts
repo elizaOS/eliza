@@ -1,3 +1,8 @@
+/**
+ * Registers the `models` CLI command, which reports which model providers are
+ * configured by probing a fixed list of provider API-key / base-URL env vars
+ * and printing each as "configured" or "not set". Read-only; sets nothing.
+ */
 import { getLogPrefix } from "@elizaos/shared";
 import type { Command } from "commander";
 

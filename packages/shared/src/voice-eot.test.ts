@@ -1,3 +1,9 @@
+/**
+ * Tests the canonical end-of-turn scoring heuristic (scoreEndOfTurnHeuristic):
+ * the ordered rule table (trail-off, sentence-final punctuation, question tags,
+ * conjunctions/prepositions, short utterances, neutral fallback), rule ordering,
+ * and that scores stay finite within [0,1] on adversarial input. Pure function.
+ */
 import { describe, expect, it } from "vitest";
 import { scoreEndOfTurnHeuristic as score } from "./voice-eot";
 

@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the local sensitive-request HTTP routes: the create → submit
+ * lifecycle over an in-memory `LocalSensitiveRequestStore` with an injected
+ * clock and fulfillment hooks. Covers the no-tunnel fallback (no public link
+ * issued), authenticated-tunnel delivery, the tunnel-auth-required 403,
+ * expired/replayed submit-token rejection, and that secret / private-info
+ * values and submit tokens never appear in any response body.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

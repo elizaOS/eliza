@@ -1,3 +1,12 @@
+/**
+ * Derives the opaque, per-install vault id that namespaces an agent's secrets in
+ * the OS keychain. The id is a deterministic sha256 over the canonical state dir
+ * (XDG / `ELIZA_STATE_DIR` precedence, realpath-normalized), base64url-truncated
+ * behind a stable `mldy1-` prefix, so one install always resolves the same vault
+ * and two state dirs never collide. Kept dependency-light for the Electrobun
+ * bootstrap path (no `@elizaos/core` barrel import), and pairs the vault id with
+ * a secret kind to form the keychain account handle.
+ */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";

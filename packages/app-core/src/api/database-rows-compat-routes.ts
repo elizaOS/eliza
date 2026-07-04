@@ -1,3 +1,13 @@
+/**
+ * Mounts GET `/api/database/tables/:name/rows` — the dashboard table browser's
+ * raw-row read. Requires OWNER (raw reads can expose secrets/sessions/identity
+ * tables), then introspects the table's schema and column list (cached with a
+ * short TTL and bounded size), resolving an ambiguous unqualified name to
+ * `public` where possible. Returns a paginated, searchable (ILIKE across all
+ * columns), sortable page plus an exact `count(*)`; identifiers are sanitized
+ * and quoted and literals escaped for the raw SQL. A count that cannot be parsed
+ * raises a typed `DB_COUNT_UNAVAILABLE` rather than fabricating zero.
+ */
 import type http from "node:http";
 import { ElizaError } from "@elizaos/core";
 import {

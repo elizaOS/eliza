@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the core apps domain Zod schemas shared across the dashboard: JSON session
+ * values, viewer auth/config, session state and activity, run health facets/details, run events
+ * and summaries, and the launch/stop/verify/relaunch result shapes. Parses canonical fixtures for
+ * accept/reject cases against the real schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   AppLaunchDiagnosticSchema,

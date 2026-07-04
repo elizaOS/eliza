@@ -1,9 +1,13 @@
-// iOS full-Bun smoke harness: when the host build sets the smoke-request
-// flag in localStorage / Capacitor Preferences, this module boots the
-// in-process ElizaBunRuntime, drives a sequence of WebView-fetch and direct
-// bridge probes against the local agent, and persists the result back into
-// Preferences so the simulator host can read it. The probe runs once per
-// page load and stays inactive when the flag is absent.
+/**
+ * iOS full-Bun smoke harness. When the host build sets the smoke-request flag in
+ * localStorage / Capacitor Preferences, this module boots the in-process
+ * `ElizaBunRuntime`, drives a sequence of WebView-fetch and direct-bridge probes
+ * against the local agent (health, the local-inference hub/providers/device,
+ * model activation, then a real chat + streamed reply), and persists each step's
+ * result back into Preferences so the simulator host can poll it. The probe runs
+ * once per page load and stays inactive when the flag is absent or the runtime
+ * is in cloud / cloud-hybrid mode.
+ */
 import { Preferences } from "@capacitor/preferences";
 import { formatError } from "@elizaos/shared";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";

@@ -1,3 +1,10 @@
+/**
+ * JSON response helpers for the app-core HTTP API. `sendJson` writes a status
+ * plus an `application/json` body (and is a no-op once headers are sent);
+ * `sendJsonError` wraps a message as `{ error }`. Every payload is serialized
+ * through a replacer that strips stack traces so error internals never leak to
+ * clients.
+ */
 import type http from "node:http";
 
 /**

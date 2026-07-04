@@ -1,3 +1,12 @@
+/**
+ * Contract tests pinning the Cerebras first-run provider and guarding the
+ * core/shared provider-catalog mirror against drift. Verifies Cerebras is
+ * registered as an OpenAI-compatible api-key provider (CEREBRAS_API_KEY,
+ * @elizaos/plugin-openai), that id/casing/alias normalization and the
+ * cerebras-api direct-account mapping resolve, and that the shared catalog +
+ * direct-account map deep-equal their canonical copies imported directly from
+ * `packages/core`. Pure in-process assertions over the real exported catalogs.
+ */
 import { describe, expect, it } from "vitest";
 // Core is the innermost package (`packages/shared` depends on `@elizaos/core`,
 // never the reverse), so the first-run provider catalog is duplicated in both:

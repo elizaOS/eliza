@@ -1,12 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { parseDurationMs } from "./parse-duration";
-
 /**
  * Duration string parser used by CLI/config knobs. Unit suffixes must convert
  * to the right millisecond count, the default unit applies only when no suffix
  * is given, and malformed/negative input must throw rather than silently
  * yielding a bogus timeout.
  */
+import { describe, expect, it } from "vitest";
+import { parseDurationMs } from "./parse-duration";
 
 describe("parseDurationMs", () => {
   it("converts each unit suffix to milliseconds", () => {

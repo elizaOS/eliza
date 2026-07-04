@@ -1,3 +1,9 @@
+/**
+ * Tests voice-model warmup: `shouldWarmupVoice` gating (desktop-only, skipped on
+ * mobile / cloud-only / dev hot-reload respawns), the silent RIFF/WAVE warmup
+ * buffer, and `warmVoiceModels` loading TTS then STT in order without rejecting
+ * when a model load fails.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   buildSilentWarmupWav,

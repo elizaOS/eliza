@@ -1,5 +1,14 @@
 // @vitest-environment jsdom
 
+/**
+ * Unit tests for the app-shell deep-link dispatcher (`createDeepLinkHandler`)
+ * and its `isTrustedAppLink` host guard. Verifies custom-scheme and trusted
+ * `https://` universal links route top-level surfaces (wallet, connectors,
+ * apps/deploy) onto the navigation-intent bus rather than the hash, that
+ * notifications/keyboard-dictation fire their injected side effects, and that
+ * untrusted or unconfigured hosts are ignored. Runs under jsdom with `window`,
+ * `location.hash`, and event listeners; dispatch seams are `vi.fn()` spies.
+ */
 import { NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

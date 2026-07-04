@@ -1,3 +1,12 @@
+/**
+ * Browser-bundle shim aliased in place of the lodash/es-toolkit helper set the
+ * dashboard's dependencies reach for, exposing only the subset actually used
+ * (get, isPlainObject, uniqBy, sortBy, throttle, last, maxBy/minBy, range,
+ * omit, sumBy) so no full utility library ships in the renderer. Path access
+ * and merges guard against prototype-pollution keys (__proto__, constructor,
+ * prototype). Iteratees may be a function, a property path, or a matcher
+ * object, mirroring the lodash calling convention callers expect.
+ */
 type PathSegment = string | number | symbol;
 type Iteratee<T> =
   | ((item: T) => unknown)

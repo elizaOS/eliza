@@ -1,3 +1,9 @@
+/**
+ * Tests speaker owner-candidate inference (resolveOwnerCandidate) over a stream
+ * of confidence-scored observations: dominance/share/margin thresholds, tie
+ * ambiguity, the confidence floor and unrecognized-speaker filtering, and the
+ * undecided path. Pure function.
+ */
 import { describe, expect, it } from "vitest";
 import { resolveOwnerCandidate } from "./owner-inference";
 

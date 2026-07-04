@@ -1,3 +1,13 @@
+/**
+ * Contract tests for PostFirstRunRequestSchema, the onboarding payload that
+ * seeds a new agent's character. Covers the required trimmed name, rejection
+ * of every deprecated field key with the canonical legacy message, the full
+ * character body (bio/systemPrompt/style/examples/theme/preset), both the
+ * current and legacy messageExamples shapes, strict style keys, structured
+ * sections (deployment/linked accounts/service routing/credentials/connectors/
+ * features/inventory providers), and voice-preset passthrough. Pure in-process
+ * schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   FIRST_RUN_DEPRECATED_FIELD_KEYS,

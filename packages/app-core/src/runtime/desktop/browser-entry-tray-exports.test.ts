@@ -1,3 +1,10 @@
+/**
+ * Guards the browser-safe barrel (src/browser.ts): asserts it re-exports
+ * DESKTOP_TRAY_MENU_ITEMS from the real ./runtime/desktop runtime rather than the
+ * Node index or @elizaos/ui, and never ships an empty stub menu. Source-text
+ * assertions over browser.ts plus a sanity check that the live menu carries a
+ * "quit" item.
+ */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

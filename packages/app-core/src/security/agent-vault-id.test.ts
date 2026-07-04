@@ -1,15 +1,15 @@
+/**
+ * Tests the agent vault id: a deterministic sha256 over the canonical state dir
+ * (base64url-truncated, stable `mldy1-` prefix) that namespaces an agent's
+ * secrets in the OS keychain, plus the `<vaultId>:<kind>` keychain-account
+ * derivation. The same install always resolves the same vault, and two
+ * different state dirs never collide onto one keychain namespace.
+ */
 import { describe, expect, it } from "vitest";
 import {
   deriveAgentVaultId,
   keychainAccountForSecretKind,
 } from "./agent-vault-id.ts";
-
-/**
- * The agent vault id namespaces an agent's secrets in the OS keychain. It is a
- * deterministic sha256 over the canonical state dir (base64url-truncated, with
- * a stable `mldy1-` prefix) so the same install always resolves the same vault,
- * and two different state dirs never collide onto one keychain namespace.
- */
 
 describe("deriveAgentVaultId", () => {
   it("is deterministic for a given state dir and prefixed", () => {

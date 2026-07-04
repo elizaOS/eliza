@@ -1,3 +1,8 @@
+/**
+ * Contract tests for `PostRelationshipLinkRequestSchema`: targetEntityId trimming,
+ * optional evidence passthrough, and strict rejection of blank/missing ids and
+ * unknown fields. Parses through the real Zod schema.
+ */
 import { describe, expect, it } from "vitest";
 import { PostRelationshipLinkRequestSchema } from "./relationships-routes.js";
 

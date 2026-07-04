@@ -1,3 +1,10 @@
+/**
+ * Mounts the public `GET /api/i18n/locale` endpoint, which suggests a UI
+ * language for a fresh client. Prefers a configured non-English `ui.language`
+ * from `ElizaConfig`, otherwise selects the best-supported `Accept-Language`
+ * match in q-value order, and falls back to English. The selection logic lives
+ * in `resolveSuggestedUiLanguage` and is exercised directly by the unit tests.
+ */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { normalizeLanguage } from "@elizaos/shared";

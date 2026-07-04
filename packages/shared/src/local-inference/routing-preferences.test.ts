@@ -1,3 +1,10 @@
+/**
+ * Covers the local/cloud routing-policy union: that ROUTING_POLICIES exposes
+ * local-only, cloud-only, and auto with no duplicates, that
+ * DEFAULT_ROUTING_POLICY is a member, and that the isRoutingPolicy type guard
+ * accepts every member and rejects non-members. Pure Vitest over the exported
+ * constants.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ROUTING_POLICY,

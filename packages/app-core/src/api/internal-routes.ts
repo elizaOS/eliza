@@ -1,3 +1,20 @@
+/**
+ * Mounts `POST /api/internal/wake`, the internal wake surface called by
+ * sandboxed background-runner JSContexts (Capacitor BackgroundRunner on iOS
+ * QuickJS / Android V8) and other host shims that cannot use cookie-based
+ * session auth. A wake POST fires the TaskService's `runDueTasks` once
+ * (coalescing concurrent calls) and records `WakeTelemetry` that /api/health
+ * reads to surface the last background tick.
+ *
+ * Auth model: a single device-secret bearer token. The runner JS is shipped
+ * with the secret as one of its event args at build/launch time, so the secret
+ * travels in-process and is not user input.
+ *
+ * The bearer secret is persisted under the Eliza state dir so background
+ * runners rebuilt independently of the host process can be seeded with a stable
+ * value across restarts. `ELIZA_DEVICE_SECRET` still wins when present and
+ * sufficiently long, which keeps managed deployments deterministic.
+ */
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
@@ -6,21 +23,6 @@ import { resolveStateDir, type Service, ServiceType } from "@elizaos/core";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson } from "./response";
-
-/**
- * Internal routes called by sandboxed background-runner JSContexts (Capacitor
- * BackgroundRunner on iOS QuickJS / Android V8) and by other host shims that
- * cannot use the cookie-based session auth.
- *
- * Auth model: a single device-secret bearer token. The runner JS is shipped
- * with the secret as one of its event args at build/launch time, so the
- * secret travels in-process and is not user input.
- *
- * The bearer secret is persisted under the Eliza state dir so background
- * runners rebuilt independently of the host process can be seeded with a
- * stable value across restarts. `ELIZA_DEVICE_SECRET` still wins when present
- * and sufficiently long, which keeps managed deployments deterministic.
- */
 
 /**
  * The runtime contract is `runDueTasks(): Promise<void>`. The optional

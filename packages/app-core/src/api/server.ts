@@ -1,3 +1,16 @@
+/**
+ * app-core wrapper around `@elizaos/agent`'s dashboard HTTP API. Monkey-patches
+ * `http.createServer` so every request first runs the compat pipeline — CORS for
+ * local renderers (Vite/WKWebView), env-alias and config-file sync, header
+ * mirroring, and `/api/status` body rewriting — then dispatches app-core compat
+ * routes (auth/session/pairing, cloud proxy + billing, secrets, sensitive
+ * requests, first-run, plugins, catalog, local-inference, agent reset) before
+ * delegating to the upstream listener. `startApiServer` wraps upstream start,
+ * seeds the module-scoped shared compat runtime state so the early and late
+ * patch sites share one reference, hydrates wallet keys, and installs the
+ * hardened wallet-export guard. Route helpers are re-exported here so tests can
+ * import them from `./server`.
+ */
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -216,12 +229,6 @@ const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 // Internal helpers used by the monkey-patch handler (stay in server.ts)
 // ---------------------------------------------------------------------------
 
-// extractHeaderValue — now imported from ./auth
-// tokenMatches — now imported from ./auth
-// Pairing infrastructure — now in ./auth-pairing-routes
-// getProvidedApiToken, ensureCompatApiAuthorized, isDevEnvironment,
-// ensureCompatSensitiveRouteAuthorized — now imported from ./auth
-
 function hydrateWalletOsStoreFlagFromConfig(): void {
   if (process.env.ELIZA_WALLET_OS_STORE?.trim()) {
     return;
@@ -391,8 +398,6 @@ async function clearCompatPgliteDataDir(
 }
 
 export const _clearCompatPgliteDataDirForTests = clearCompatPgliteDataDir;
-
-// sendJsonResponse, sendJsonErrorResponse — now imported from ./response
 
 function resolveCompatStatusAgentName(
   state: CompatRuntimeState,

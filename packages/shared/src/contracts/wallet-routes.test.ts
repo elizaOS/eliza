@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the wallet route request schemas (import, generate, set-primary):
+ * covers privateKey trimming, chain/source enums, optional-chain auto-detect on
+ * import, and strict extra-field rejection. Parses through the real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostWalletGenerateRequestSchema,

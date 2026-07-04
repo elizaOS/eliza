@@ -1,3 +1,9 @@
+/**
+ * Registers the `db` CLI command group. `db reset` deletes the local agent
+ * database directory (`<stateDir>/workspace/.elizadb`), which is re-created on
+ * the next start, after an interactive confirmation prompt unless `--yes` is
+ * passed. Runs inside `runCommandWithRuntime` for consistent error/exit handling.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";

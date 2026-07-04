@@ -1,3 +1,9 @@
+/**
+ * Tests the voice cancellation token and its per-room registry: abort
+ * idempotency (first reason wins), synchronous onAbort fan-out including late
+ * registration and listener-error isolation, AbortSignal linking, and registry
+ * arm/abort/abortAll/clear semantics. Uses vitest spies; no external I/O.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   createAbortedVoiceCancellationToken,

@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the device-pairing auth route Zod schemas: the pair request (non-empty
+ * code) and the pair response (token). Exercises strict parsing and accept/reject cases against
+ * the real schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostAuthPairRequestSchema,

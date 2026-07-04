@@ -1,3 +1,10 @@
+/**
+ * Zod request-schema contracts for the workbench API (todo CRUD plus the VFS
+ * project / file / snapshot / rollback endpoints). Pins the trimming, coercion
+ * (priority accepted as number, string, or null), and strict no-extra-fields
+ * behavior that every workbench route relies on. Exercises the real exported
+ * schemas directly, with no route or server harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostWorkbenchTodoCompleteRequestSchema,

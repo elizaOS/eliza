@@ -1,3 +1,11 @@
+/**
+ * Brand env-var alias table. `buildBrandEnvAliases(prefix)` maps a white-label
+ * distribution's `<PREFIX>_*` environment variables (API/auth, cloud-service
+ * toggles, ports) onto their canonical `ELIZA_*` names, so a rebranded app can
+ * be configured under its own prefix while the runtime still reads `ELIZA_*`.
+ * `APP_ENV_ALIASES` is the concrete table resolved for this app's configured
+ * prefix (`APP_ENV_PREFIX`).
+ */
 import { APP_CONFIG } from "./app-config";
 import { normalizeEnvPrefix } from "./env-prefix.js";
 

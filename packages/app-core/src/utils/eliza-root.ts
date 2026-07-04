@@ -1,3 +1,11 @@
+/**
+ * Locates the elizaOS core package root at runtime by walking ancestor
+ * directories until it finds a `package.json` whose name is `"eliza"`. Candidate
+ * start dirs are derived from a module URL, `argv[1]` (including
+ * `node_modules/.bin` shim resolution), and the cwd. Exposes async
+ * (`resolveElizaPackageRoot`) and sync (`resolveElizaPackageRootSync`) variants;
+ * both return null when no matching root is found.
+ */
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";

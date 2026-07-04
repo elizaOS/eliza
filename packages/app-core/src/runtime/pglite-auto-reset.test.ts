@@ -1,3 +1,11 @@
+/**
+ * The app-core DB auto-reset (invoked by attemptPgliteAutoReset when a corrupt
+ * `.elizadb` dir is detected) must recover the PGlite singleton through
+ * plugin-sql's PUBLIC closePgliteSingleton() API — not by hand-copying the
+ * plugin's private global-singletons Symbol. These tests seed and inspect the
+ * singleton exclusively via the exported getPgliteSingletonCache() accessor,
+ * proving the seam is real.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
@@ -7,14 +15,6 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { resetPluginSqlPgliteSingleton } from "./pglite-auto-reset";
 
-/**
- * The app-core DB auto-reset (invoked by attemptPgliteAutoReset when a corrupt
- * `.elizadb` dir is detected) must recover the PGlite singleton through
- * plugin-sql's PUBLIC closePgliteSingleton() API — not by hand-copying the
- * plugin's private global-singletons Symbol. These tests
- * seed and inspect the singleton exclusively via the exported
- * getPgliteSingletonCache() accessor, proving the seam is real.
- */
 describe("resetPluginSqlPgliteSingleton (app-core DB auto-reset)", () => {
   const originalPgliteDataDir = process.env.PGLITE_DATA_DIR;
 

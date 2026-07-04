@@ -1,3 +1,9 @@
+/**
+ * Declares the side-effect app-module loader list the renderer runs at boot. The
+ * `SideEffectAppModuleLoader` type below pairs a stable key with a lazy
+ * `import()`; the exported array is a build-time seam populated by vite (see its
+ * own doc for the plugin-discovery mechanism).
+ */
 export type SideEffectAppModuleLoader = {
   key: string;
   load: () => Promise<unknown>;

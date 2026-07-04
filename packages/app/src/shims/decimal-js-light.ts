@@ -1,3 +1,11 @@
+/**
+ * Browser shim for the `decimal.js-light` package: a minimal `Decimal` class
+ * exposing the arithmetic and comparison surface (abs, add, sub, mul, div, mod,
+ * pow, log, lt, lte, isint) plus number/string coercion. Backed by a native JS
+ * `number` rather than true arbitrary-precision math, so it trades exactness for
+ * a tiny bundle — adequate for the app's display-side calculations, not for
+ * high-precision financial arithmetic.
+ */
 type DecimalInput = Decimal | number | string;
 
 export default class Decimal {

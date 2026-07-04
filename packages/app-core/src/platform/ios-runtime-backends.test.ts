@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the iOS local-runtime backend policy (`ios-runtime-backends`):
+ * backend selection precedence (full Bun engine vs. gated SwiftBun / ITTP
+ * compatibility fallbacks), the invariant that every backend stays
+ * TypeScript-owned + bridge-only, and the production/App-Store blocker list.
+ * Pure in-memory assertions, no simulator.
+ */
 import { describe, expect, it } from "vitest";
 import {
   getIosLocalRuntimeBackendDefinition,

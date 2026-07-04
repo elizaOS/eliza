@@ -1,3 +1,11 @@
+/**
+ * Boot-time hydration of wallet (and steward) secrets into `process.env`.
+ * Wallet keys are read from the shared vault (now the source of truth), with a
+ * one-shot migration of any legacy values still only in the OS keystore; steward
+ * env vars stay on the OS-keystore path because that backend's lifecycle is
+ * independent of the unified vault. Runs before upstream `startApiServer` merges
+ * `config.env`, so persisted config only fills gaps neither store supplies.
+ */
 import { logger } from "@elizaos/core";
 
 import { sharedVault } from "../services/vault-mirror";

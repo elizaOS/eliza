@@ -1,3 +1,10 @@
+/**
+ * Registers the `config` CLI command group: `get <key>` reads a dot-path value
+ * from the loaded Eliza config, `path` prints the resolved config file path, and
+ * `show` renders all values grouped by section (honoring UI hints for labels,
+ * grouping, sensitive-value masking, and advanced/hidden fields), with a
+ * `--json` raw dump. Helpers flatten the nested config and infer group names.
+ */
 import type { ElizaConfig } from "@elizaos/agent";
 import { getLogPrefix, theme } from "@elizaos/shared";
 import type { Command } from "commander";

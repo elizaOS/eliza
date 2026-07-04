@@ -1,3 +1,14 @@
+/**
+ * Browser shim for the `cookie` package: a dependency-free implementation of
+ * HTTP cookie parsing and serialization for the app bundle. `parse` splits a
+ * `Cookie` header into a name→value map (first key wins, optional decode);
+ * `serialize` builds a `Set-Cookie` string from a name/value plus attribute
+ * options; `parseSetCookie` reads a single `Set-Cookie` line back into a
+ * structured record. Re-exported under the several names cookie's consumers
+ * expect (parseCookie / stringifyCookie / stringifySetCookie) plus a default
+ * aggregate, so it can be aliased in place of the real package in the browser
+ * build.
+ */
 type CookieOptions = {
   domain?: string;
   encode?: (value: string) => string;

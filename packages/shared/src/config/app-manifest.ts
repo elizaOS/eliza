@@ -1,41 +1,20 @@
-// App-level plugin manifest.
-//
-// Each host app (eliza, eliza, custom downstream apps) declares which
-// plugins it considers candidates and how they default in its own
-// `package.json` under `elizaos.app`:
-//
-//   {
-//     "elizaos": {
-//       "app": {
-//         "candidates": [
-//           "@elizaos/plugin-anthropic",
-//           "@elizaos/plugin-openai",
-//           "@elizaos/plugin-wallet"
-//         ],
-//         "defaults": {
-//           "@elizaos/plugin-cua": { "enabled": false },
-//           "wallet": { "enabled": true }
-//         },
-//         "capabilities": {
-//           "browser": "required",
-//           "wallet": "optional"
-//         }
-//       }
-//     }
-//   }
-//
-// The plugin auto-enable engine reads the host app's manifest at boot:
-//   - If `candidates` is set, restrict the discovered plugin list to that
-//     allow-list (apps that haven't explicitly listed a plugin won't
-//     load it even if its own auto-enable matches).
-//   - If `defaults` is set, prepopulate `config.plugins.entries` with the
-//     declared `{ enabled }` flags BEFORE the manifest evaluator runs, so
-//     the user's own config still overrides app defaults.
-//   - `capabilities` is informational today — surfaced via the verdict so
-//     UIs can show "this app requires X" / "this app needs you to wire up Y".
-//
-// Apps that don't declare `elizaos.app` are unrestricted (every discovered
-// plugin is a candidate, no defaults applied).
+/**
+ * App-level plugin manifest helpers. A host app declares which plugins it
+ * considers candidates and how they default in its own package.json under an
+ * `elizaos.app` block (AppManifestBlock below documents the exact shape).
+ *
+ * The plugin auto-enable engine consumes that block at boot:
+ *   - `candidates` restricts the discovered plugin list to an allow-list; an
+ *     app that doesn't list a plugin won't load it even if that plugin's own
+ *     auto-enable would match.
+ *   - `defaults` prepopulates `config.plugins.entries` with `{ enabled }` flags
+ *     before the manifest evaluator runs, so a user's saved config still wins.
+ *   - `capabilities` is informational — surfaced via the verdict so UIs can
+ *     warn when a required capability isn't satisfied by any enabled plugin.
+ *
+ * An app that declares no `elizaos.app` block is unrestricted: every discovered
+ * plugin is a candidate and no defaults are applied.
+ */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";

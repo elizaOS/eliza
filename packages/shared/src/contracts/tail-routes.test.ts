@@ -1,3 +1,10 @@
+/**
+ * Contract tests for the tail bug-report and update-channel route schemas:
+ * `PostBugReportRequestSchema` required/optional fields including the nested startup
+ * diagnostics object and category enum, plus `PutUpdateChannelRequestSchema` channel
+ * enum validation. Both enforce strict extra-field rejection. Parses through the
+ * real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostBugReportRequestSchema,

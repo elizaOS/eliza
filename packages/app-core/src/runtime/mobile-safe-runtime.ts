@@ -1,3 +1,17 @@
+/**
+ * Host-agnostic contracts + detection for running untrusted code on mobile app
+ * shells that have no Node/Bun runtime. Probes which sandbox boundaries the
+ * current shell actually exposes (detectMobileSafeRuntimeFeatures) — iOS
+ * JavaScriptCore / QuickJS, Android AVF-Microdroid and isolated-process,
+ * WebAssembly, and a dev-only in-process safe-JS applet — and never advertises a
+ * provider until its native boundary is attached. Provides provider factories +
+ * preference-ordered selection, a capability broker with a stable
+ * request/response envelope, a mobile-safe virtual file system (in-memory impl
+ * with quotas, snapshots, diff, and rollback, plus an adapter over the agent
+ * VFS), and the safe-JS applet compile/load/run pipeline whose sandbox denies
+ * imports, eval, shell, and other host escapes. Types-and-pure-functions only —
+ * no device APIs are called here.
+ */
 import { formatError } from "@elizaos/shared";
 
 export type MobileSafeRuntimePlatform = "ios" | "android" | "web" | "unknown";

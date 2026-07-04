@@ -1,9 +1,11 @@
-// Unit tests for the plugin manifest auto-enable engine.
-//
-// These tests use a temp directory with fake plugin packages — each one has a
-// package.json declaring elizaos.plugin.autoEnableModule and a small check
-// module that exports shouldEnable / shouldForce. The engine reads them
-// without booting the actual plugin runtime.
+/**
+ * Unit tests for the plugin-manifest auto-enable engine (pluginShortId,
+ * evaluatePluginManifest, evaluatePluginManifests, applyPluginManifestVerdicts).
+ * Each test writes a fake plugin package to a temp dir — a package.json
+ * declaring `elizaos.plugin.autoEnableModule` plus a small check module that
+ * exports shouldEnable / shouldForce — and the engine loads them for real,
+ * without booting the plugin runtime.
+ */
 
 import fs from "node:fs/promises";
 import os from "node:os";

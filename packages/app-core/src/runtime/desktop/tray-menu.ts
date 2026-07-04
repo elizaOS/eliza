@@ -1,3 +1,16 @@
+/**
+ * Static catalog + label localization for the desktop (Electrobun) system-tray
+ * menu. Declares the tray item tree (DESKTOP_TRAY_MENU_ITEMS), the
+ * desktop-eligible builtin views surfaced under the "Views" submenu
+ * (DESKTOP_VIEW_WINDOWS), the `tray-open-view-<id>` item-id codec, and the
+ * click-audit table (DESKTOP_TRAY_CLICK_AUDIT) that pins each tray id to its
+ * expected renderer action. `buildLocalizedTrayMenu()` resolves labelKeys
+ * through a translator at desktop boot. Everything here is pure so the tray
+ * shape stays unit-testable and out of the `@elizaos/agent` view-catalog import
+ * graph — the renderer bundle builds the tray synchronously, with no /api/views
+ * round-trip. DesktopTrayRuntime consumes these to build and dispatch the native
+ * tray.
+ */
 import type { DesktopClickAuditItem } from "@elizaos/ui/utils/desktop-workspace";
 
 interface DesktopTrayMenuItem {

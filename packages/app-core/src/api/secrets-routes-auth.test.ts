@@ -1,16 +1,16 @@
+/**
+ * #12087 Item 4: the secrets handlers must reject non-OWNER callers on their own,
+ * not merely rely on the `/api/secrets/*` prefix gate in server.ts. These tests
+ * call each handler DIRECTLY (bypassing the dispatch prefix) with a remote,
+ * unauthenticated caller and assert a 401 before any secrets logic runs, plus a
+ * false return (no auth side effects) for paths outside the secrets prefix.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompatStateLike } from "./auth.ts";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
-
-/**
- * #12087 Item 4: the secrets handlers must reject non-OWNER callers on their own,
- * not merely rely on the `/api/secrets/*` prefix gate in server.ts. These tests
- * call each handler DIRECTLY (bypassing the dispatch prefix) with a remote,
- * unauthenticated caller and assert a 401 before any secrets logic runs.
- */
 
 interface FakeRes {
   res: http.ServerResponse;

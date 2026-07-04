@@ -1,3 +1,9 @@
+/**
+ * Unit tests for InMemoryChallengeService: issuing a challenge with a
+ * sha256-hashed expected answer, single-use correct verification, rejection of
+ * wrong/unknown/expired challenges, and the id+seed default-hash path used
+ * when no expected answer is configured. Uses an injectable clock for expiry.
+ */
 import { describe, expect, it } from "vitest";
 import { InMemoryChallengeService } from "../private-challenge.ts";
 

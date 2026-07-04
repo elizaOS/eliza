@@ -1,3 +1,10 @@
+/**
+ * Node-side OS secure-store backends for agent secrets: macOS Keychain (the
+ * `security` CLI, passwords passed via stdin to keep them out of argv / `ps`),
+ * Linux libsecret (`secret-tool`), and an explicit unavailable backend on
+ * platforms with no adapter. Exposes the platform factory plus availability and
+ * env-gated (`ELIZA_WALLET_OS_STORE`) enablement checks for the wallet key path.
+ */
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";

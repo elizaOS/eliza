@@ -1,5 +1,14 @@
-// Node/runtime barrel for @elizaos/app-core.
-// Frontend surfaces live in @elizaos/ui; pure contracts/utilities live in @elizaos/shared.
+/**
+ * Node/runtime barrel for `@elizaos/app-core` (the `.` export): re-exports the
+ * dashboard HTTP API plus auth/response helpers, the Eliza runtime loader and
+ * runtime-mode/desktop surfaces, the curated registry, security/vault/steward
+ * services, first-run config, and diagnostics. Frontend surfaces live in
+ * `@elizaos/ui`; pure contracts/utilities live in `@elizaos/shared`. Star
+ * re-exports are used except where a name collides with `@elizaos/ui`
+ * (`ConfigField`/`getPlugins`, re-exported explicitly); `./platform/empty-node-module`
+ * is deliberately excluded so its browser aliases can't shadow the real Node
+ * exports.
+ */
 
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";

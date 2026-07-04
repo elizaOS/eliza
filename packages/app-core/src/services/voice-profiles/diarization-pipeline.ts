@@ -1,3 +1,10 @@
+/**
+ * Speaker-diarization contract for voice-profile audio: a DiarizationPipeline
+ * splits an audio reference into per-speaker DiarizationSegment time ranges.
+ * MOCK_DIARIZATION_PIPELINE is the deterministic placeholder implementation
+ * (empty for an empty ref, two fixed speaker segments otherwise) used until a
+ * real diarization backend is wired in.
+ */
 import type { DiarizationSegment } from "./types.ts";
 
 export interface DiarizationPipeline {

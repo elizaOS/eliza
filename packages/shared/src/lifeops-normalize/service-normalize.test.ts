@@ -1,3 +1,8 @@
+/**
+ * Shared LifeOps input normalizers (#8795). Phone numbers normalize to E.164,
+ * priority/integers clamp to valid ranges, and enum-like fields canonicalize or
+ * reject — these gate untrusted assistant input into the scheduling pipelines.
+ */
 import { describe, expect, it } from "vitest";
 import {
   normalizeOptionalFiniteNumber,
@@ -9,12 +14,6 @@ import {
   normalizeReminderUrgency,
   normalizeValidTimeZone,
 } from "./service-normalize.ts";
-
-/**
- * Shared LifeOps input normalizers (#8795). Phone numbers normalize to E.164,
- * priority/integers clamp to valid ranges, and enum-like fields canonicalize or
- * reject — these gate untrusted assistant input into the scheduling pipelines.
- */
 
 describe("normalizePhoneNumber", () => {
   it("normalizes US and international numbers to E.164", () => {

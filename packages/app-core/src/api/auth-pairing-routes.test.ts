@@ -1,3 +1,14 @@
+/**
+ * Covers `handleAuthPairingCompatRoutes` — the device-pairing compat routes
+ * (`GET /api/auth/pair-code`, `POST /api/auth/pair`): the pair code is visible
+ * only to trusted-loopback callers, a successful remote pair mints a revocable
+ * machine session (returning the session id, never the static API token) and
+ * reuses an existing owner identity when present, and the flow stays dark when
+ * pairing is disabled. Harness mocks core logger/`stringToUuid`, the agent
+ * config loader, shared loopback/token helpers, the `auth` module overrides,
+ * the session and `AuthStore` layers, and first-run provisioning; drives
+ * synthetic Node http request/response objects.
+ */
 import crypto from "node:crypto";
 import * as http from "node:http";
 import { Socket } from "node:net";

@@ -1,3 +1,10 @@
+/**
+ * Route tests for handleEmbedAuthRoutes (POST /api/embed/auth): a platform
+ * launch handshake (Telegram/Discord, dependency-injected verifyEmbedLaunch) is
+ * validated and, on success, minted into a scoped embed-session token that the
+ * compat API auth gate accepts through the same reader. Covers the 503/400/403
+ * fail-closed paths and env-only vs runtime-only signing-secret sources.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

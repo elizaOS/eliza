@@ -1,3 +1,14 @@
+/**
+ * Sensitive-request delivery adapter for the `cloud_authenticated_link` target:
+ * resolves the paired Eliza Cloud site base URL (from runtime settings or env,
+ * the default resolver gated on ELIZAOS_CLOUD_API_KEY) and builds the
+ * authenticated cloud link the owner opens to satisfy the request —
+ * `/sensitive-requests/<id>` for secret/oauth/private_info, and
+ * `/payment/app-charge/<appId>/<id>` for payment (appId from the target or the
+ * request callback). Returns a structured DeliveryResult: delivered with url +
+ * expiresAt, or delivered:false with a reason when cloud is not paired or a
+ * payment request is missing its appId.
+ */
 import type {
   DeliveryResult,
   DispatchSensitiveRequest as SensitiveRequest,

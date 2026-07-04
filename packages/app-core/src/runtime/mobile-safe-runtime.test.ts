@@ -1,3 +1,11 @@
+/**
+ * Unit coverage for mobile-safe-runtime.ts: feature detection across iOS
+ * (JavaScriptCore/QuickJS), Android (AVF/Microdroid + isolated-process), and web
+ * hosts, provider selection/fallback ordering, the in-memory virtual file system
+ * (paths, quotas, snapshots/diff/rollback), the capability broker response
+ * shape, and the unavailable-provider placeholders. Pure in-process assertions
+ * with synthetic probes — no native bridge attached.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createAndroidAvfMicrodroidProvider,

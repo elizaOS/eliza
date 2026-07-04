@@ -1,3 +1,27 @@
+/**
+ * Renderer boot entry and composition root for the cross-platform Eliza app
+ * shell (web browser, Electrobun desktop, and Capacitor iOS/Android). Runs
+ * before React mounts: starts cold-start telemetry, registers host-external
+ * view importers, and resolves cloud-only branding from the injected API base
+ * / desktop runtime mode.
+ *
+ * `main()` drives the boot pipeline — embed-iframe session handshake, app-window
+ * and model-tester route shortcuts, managed cloud launch connection, the
+ * headless iOS full-Bun backend smoke gate, popout and detached/overlay window
+ * shells, then the per-platform bridge stack (storage + Capacitor bridges, iOS
+ * local-agent fetch/native-request bridges, Android native agent fetch bridge,
+ * screen-capture / OCR / voice harnesses) — before mounting the React tree
+ * (`@elizaos/ui` App, optionally wrapped by the web-only CloudRouterShell) and
+ * running `initializePlatform()` concurrently after paint.
+ *
+ * Also owns deep-link handling (custom `<scheme>://` + `eliza.app` universal
+ * links → hash routes, navigate-view events, or first-run remote connect), the
+ * trusted-apiBase / native-WebSocket URL policy (tightened for iOS store + cloud
+ * builds; a bearer token is never accepted from an OS deep link), the mobile
+ * device bridge + agent tunnel + background runner, and the desktop tray /
+ * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
+ * deferred onto the idle path. Exports the resolved platform flags.
+ */
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications

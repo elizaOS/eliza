@@ -1,3 +1,13 @@
+/**
+ * Registers the `doctor` and `doctor:mtp` Commander CLI commands, which run
+ * environment health checks and render the results. `doctor` groups
+ * CheckResults by category (system/config/storage/network) for human output,
+ * emits a machine-readable summary under `--json`, and with `--fix` auto-runs
+ * remediation for autoFixable checks — but only when the fix string is an
+ * `eliza …` sub-command, since arbitrary shell fixes are printed, never
+ * executed. `doctor:mtp` probes MTP llama-server acceleration readiness. Both
+ * exit non-zero when any check fails.
+ */
 import { spawnSync } from "node:child_process";
 import { theme } from "@elizaos/shared";
 import type { Command } from "commander";

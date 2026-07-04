@@ -1,3 +1,11 @@
+/**
+ * Exercises `handleCloudPairRoute` — the `/pair` HTTP handler that redeems a
+ * cloud pairing token against the cloud API and returns an HTML handoff page
+ * that stores the returned apiKey in sessionStorage. Drives real
+ * http.IncomingMessage/ServerResponse fakes and stubs `globalThis.fetch` to
+ * simulate the cloud API; covers the missing-token, expired, unreachable, no-key,
+ * XSS-escaping, origin-forwarding, and per-IP rate-limit branches.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import {

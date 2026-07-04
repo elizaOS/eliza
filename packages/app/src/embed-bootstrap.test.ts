@@ -1,3 +1,14 @@
+/**
+ * Tests for the `/embed` bootstrap handshake (`isEmbedPath` + `runEmbedHandshake`)
+ * that authenticates Telegram Mini App / Discord Activity embeds: it detects the
+ * platform (explicit `?platform=` or auto-detected from injected Telegram
+ * initData or a Discord `?code=` redirect), POSTs the signed launch payload to
+ * `<base>/api/embed/auth`, and installs the returned token on the client. The
+ * client, fetch, and window are injected fakes; the suite drives the real
+ * handshake and asserts it fails closed (no token installed) on unknown
+ * platform, missing payload/OAuth state, non-2xx responses, token-less bodies,
+ * network errors, and timeouts.
+ */
 import { describe, expect, it, vi } from "vitest";
 import {
   type EmbedClient,

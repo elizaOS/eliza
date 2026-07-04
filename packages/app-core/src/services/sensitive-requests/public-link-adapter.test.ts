@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `publicLinkSensitiveRequestAdapter`: verifies it emits a public
+ * app-charge URL only for `any_payer` payment requests carrying an `appId`,
+ * resolves the cloud base from the runtime setting / env / default, URL-encodes
+ * path components, and refuses secrets, verified-payer payments, and missing appId.
+ */
 import type {
   SensitiveRequest,
   SensitiveRequestWithPaymentContext,

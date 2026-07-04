@@ -1,3 +1,10 @@
+/**
+ * Headless desktop runtime (renders null) that routes Electrobun tray/menu clicks
+ * into main-shell navigation. Subscribes to the desktopTrayMenuClick bridge event
+ * and, for "show-main:" / "navigate-" item ids in the allowed tab sets, switches
+ * to the desktop shell view and sets the active tab; the "open-notifications" item
+ * opens the notification center in place instead of navigating a tab.
+ */
 import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
 import { dispatchOpenNotificationCenter } from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";

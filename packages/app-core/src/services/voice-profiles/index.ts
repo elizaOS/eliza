@@ -1,3 +1,9 @@
+/**
+ * Barrel for the voice-profiles service surface: re-exports the subsystem's
+ * public types and default implementations — the diarization pipeline, the
+ * naive (regex-only) nickname evaluator, the owner-confidence scorer, the
+ * in-memory owner challenge service, and the in-memory voice-profile store.
+ */
 export type { DiarizationPipeline } from "./diarization-pipeline.ts";
 export { MOCK_DIARIZATION_PIPELINE } from "./diarization-pipeline.ts";
 export type {

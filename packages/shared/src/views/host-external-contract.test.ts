@@ -1,3 +1,8 @@
+/**
+ * Guards that the host-external URL query-param name contract stays in sync with
+ * the dependency-free agent runtime transform that mirrors the names as string
+ * literals. Reads the real `.mjs` off disk — the transform itself is not mocked.
+ */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";

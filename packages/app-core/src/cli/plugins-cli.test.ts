@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the `eliza plugins` CLI input helpers: `normalizePluginName`,
+ * `parsePluginSpec`, and the `validatePluginPath` boundary guard. Exercises
+ * shorthand expansion, version parsing, and rejection of path-escape and
+ * symlink-escape attempts against real temp-dir cwd/home fixtures.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

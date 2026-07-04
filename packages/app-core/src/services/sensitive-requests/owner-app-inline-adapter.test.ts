@@ -1,3 +1,12 @@
+/**
+ * Covers the owner_app_inline sensitive-request delivery target: for an owner-app
+ * private secret request it sends an inline sensitive-request form envelope via
+ * runtime.sendMessageToTarget, and this suite asserts the envelope/form shape
+ * (fields, labels, sub-agent tunnel metadata without leaking the scoped token,
+ * image-field metadata per #8910) and the rejections (non-owner-app-private
+ * channel, non-secret kind, missing sendMessageToTarget, transport failure).
+ * Uses a vi.fn runtime capture plus core's real resolveSensitiveRequestDelivery.
+ */
 import {
   ChannelType,
   type Content,

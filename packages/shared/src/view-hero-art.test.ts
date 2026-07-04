@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the deterministic view hero-art generator (view-hero-art.ts):
+ * SVG rendering, stable per-key hue derivation that avoids the blue band,
+ * keyword/tag/icon-name to glyph mapping, XML escaping, and per-slug element-id
+ * namespacing. Pure functions, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   generateViewHeroSvgFor,

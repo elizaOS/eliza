@@ -1,3 +1,10 @@
+/**
+ * Exercises the Android AVF/Microdroid native bridge helpers against in-process
+ * fake `ElizaNative` bridges (no real Android): the feature probe's mapping of
+ * native virtualization JSON to availability flags/env, the ready vs
+ * payload-missing gating, and the request boundary's fail-closed and
+ * malformed-response paths.
+ */
 import { describe, expect, it } from "vitest";
 import {
   ANDROID_AVF_MICRODROID_REQUEST_CONTRACT_VERSION,

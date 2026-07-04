@@ -1,5 +1,9 @@
-// Unit tests for app-level manifest helpers (elizaos.app block in
-// the host app's package.json).
+/**
+ * Unit tests for the app-level manifest helpers (readAppManifest,
+ * filterCandidatesByAppManifest, applyAppManifestDefaults) that read the
+ * `elizaos.app` block from a host app's package.json. Runs against real
+ * package.json files written to a temp dir — no fs mocks.
+ */
 
 import fs from "node:fs/promises";
 import os from "node:os";

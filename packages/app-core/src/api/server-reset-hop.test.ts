@@ -1,3 +1,12 @@
+/**
+ * Regression tests for #7409: `_clearCompatPgliteDataDirForTests` must stop the
+ * runtime and delete the `.elizadb` PGlite data dir purely in-process, never
+ * issuing a loopback HTTP request (which would deadlock the reset hop). Also
+ * asserts the delete still runs when `runtime.stop()` never resolves (watchdog
+ * timeout via fake timers), the safety guard refusing any dir not named
+ * `.elizadb`, and tolerance of a missing data dir. `@elizaos/core` logger and
+ * `@elizaos/agent` path resolvers are mocked to keep the reset hermetic.
+ */
 import fs, { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

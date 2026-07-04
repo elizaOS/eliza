@@ -1,3 +1,10 @@
+/**
+ * Exercises `selectBestEliza1Fit` device-tier selection: the biggest tier that
+ * fits a given RAM budget, always at the QJL KV quant, targeting the 128k window
+ * — downscaling context near the floor and returning null (route to Cloud) when
+ * not even a minimal local window fits. Also checks monotonicity in RAM and that
+ * no sub-2B tier is ever picked. Pure Vitest over MODEL_CATALOG.
+ */
 import { describe, expect, it } from "vitest";
 import { MODEL_CATALOG } from "./catalog";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Browser-bundle shim aliased in place of `fast-redact` (a pino transitive dep).
+ * Log redaction is a no-op in the renderer: the factory always returns an
+ * identity redactor with an identity `restore`, satisfying the call signature
+ * without shipping the real string-path compiler or mutating any payload.
+ */
 type FastRedactOptions = {
   paths?: string[];
   serialize?: false | ((value: unknown) => string);

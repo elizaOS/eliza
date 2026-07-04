@@ -1,3 +1,10 @@
+/**
+ * Unit test for runVaultBootstrap startup resilience: when only the
+ * process.env mirroring step cannot reach the vault, boot must not fail — the
+ * run resolves reporting the unreachable key as failed rather than throwing.
+ * @elizaos/agent, @elizaos/core, and the registry are mocked, and the vault is
+ * a hand-rolled stub whose set() always throws.
+ */
 import type { Vault } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

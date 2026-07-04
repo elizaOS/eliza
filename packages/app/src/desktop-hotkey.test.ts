@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `decideChatOverlayToggle`, the desktop global-hotkey decision
+ * that maps the chat overlay's {focused, visible} state to a `show`/`hide`
+ * action: dismiss only when focused AND visible, otherwise summon (including
+ * when the overlay is visible but backgrounded behind another app). Pure
+ * function, called directly.
+ */
 import { describe, expect, it } from "vitest";
 import { decideChatOverlayToggle } from "./desktop-hotkey";
 

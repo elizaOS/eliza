@@ -1,3 +1,12 @@
+/**
+ * LifeOps email classifier: the deterministic rule fast-path
+ * (classifyEmailByRules — known-contact, list-unsubscribe, billing, and
+ * transactional signals), the enabled + configured-model settings resolvers,
+ * and classifyEmail's rule-first-then-LLM-fallback orchestration, plus the
+ * untrusted-content fencing helper. @elizaos/core and the runtime are stubbed
+ * (getSetting / useModel), so the LLM branch runs against a canned useModel
+ * rather than a live model.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", () => ({

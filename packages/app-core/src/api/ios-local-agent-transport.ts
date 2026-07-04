@@ -1,3 +1,20 @@
+/**
+ * App-core copy of the iOS in-process local-agent transport. Bridges renderer
+ * HTTP — the global `fetch`, the `iosLocalAgentRequest` window-bridge
+ * capability, and the ITTP `AgentRequestTransport` — to the on-device agent
+ * instead of real network I/O, dispatching through either the full-Bun
+ * Capacitor runtime (`ElizaBunRuntime`, engine `"bun"`) or, in dev, the
+ * JSContext ITTP compatibility kernel.
+ *
+ * Enforces the iOS network policy: store/cloud builds block cleartext loopback
+ * and private-network hosts, and cloud mode only permits local-inference / TTS
+ * IPC. Chat token streams route through the streaming bridge (#12354), and
+ * watchdog restart requests re-run the full-Bun start path. Invariant: never
+ * await the raw Capacitor plugin proxy — its fabricated `then` trap resolves to
+ * a native method that never settles, so the runtime is always wrapped into a
+ * plain bound-method object first (#11030). A sibling copy lives in
+ * `@elizaos/ui`; both share one module-level boot-progress state.
+ */
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { getElizaApiBase } from "@elizaos/shared";
 import {

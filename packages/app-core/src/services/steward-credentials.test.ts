@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `saveStewardCredentials` / `loadStewardCredentials`: verifies
+ * steward secrets (apiKey, agentToken) land in the PlatformSecureStore rather
+ * than the plaintext metadata file, that legacy plaintext secrets are migrated
+ * and scrubbed on load, and that scrubbing still happens when the secure store
+ * is unavailable. Uses an in-memory secure store and a temp `ELIZA_STATE_DIR`.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the character-field generation route request schema: the target field enum
+ * (bio/system/style/chatExamples/postExamples), append/replace mode, and strict context parsing.
+ * Drives the real schema with accept/reject fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import { PostCharacterGenerateRequestSchema } from "./character-routes.js";
 

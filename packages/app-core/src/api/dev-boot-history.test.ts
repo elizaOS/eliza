@@ -1,3 +1,9 @@
+/**
+ * Unit test for buildBootHistoryPayload — the /api/dev/boot-history payload
+ * builder. Verifies plugin-load failures surface via the mocked
+ * getLastFailedPluginDetails() accessor from @elizaos/agent (and that an empty
+ * accessor yields no failures), exercised against a real temp state dir.
+ */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

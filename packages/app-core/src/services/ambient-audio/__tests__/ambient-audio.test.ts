@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the ambient-audio subsystem: consent expiry gating, the
+ * replay buffer's newest-samples-within-maxSeconds trimming and frame-format
+ * rejection, the response-gate decision thresholds, and the in-memory service's
+ * consent enforcement + audio clearing on stop. Runs fully in-memory against
+ * synthetic Int16 frames — no real capture device or transcription.
+ */
 import { describe, expect, it } from "vitest";
 import { AmbientAudioConsentState } from "../consent.ts";
 import { ReplayBuffer } from "../replay-buffer.ts";

@@ -1,3 +1,11 @@
+/**
+ * Contract tests for the conversation route request schemas: create
+ * (optional title/greeting/lang/metadata), truncate (trimmed messageId +
+ * optional inclusive flag), patch (title/generate/metadata, with `null`
+ * clearing metadata), and cleanup-empty (optional trimmed keepId). Asserts
+ * trimming, strict extra-field rejection, and nested-metadata strictness.
+ * Pure in-process schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PatchConversationRequestSchema,

@@ -1,3 +1,10 @@
+/**
+ * Covers the HuggingFace hub-auth helpers: token resolution across the
+ * documented env aliases (in precedence order, trimmed, blank-as-unset), strict
+ * huggingface.co host recognition, and bearer-header attachment that fires only
+ * for HF hosts so a token is never leaked to mirrors. The harness saves/restores
+ * the HF_* token env vars around each case.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   hasHuggingFaceToken,

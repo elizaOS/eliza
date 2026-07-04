@@ -1,3 +1,12 @@
+/**
+ * Android sideload OTA update checker. Active only on Android sideload builds:
+ * `check()` fetches the GitHub release update manifest for the requested
+ * channel (stable/beta), compares its `versionCode` against the installed
+ * build, and reports whether an update is available — throttled to once per 24h
+ * via `localStorage`. `promptIfUpdateAvailable()` confirms with the user and
+ * opens the APK download page through the Capacitor Browser. Best-effort: any
+ * network/parse failure degrades to no-update this cycle and never blocks boot.
+ */
 import { App } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
 import { Device } from "@capacitor/device";

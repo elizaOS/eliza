@@ -1,3 +1,8 @@
+/**
+ * CLI argv parsing. argv is [node, script, ...args]; the helpers must respect
+ * the `--` terminator, support `--flag value` and `--flag=value`, and the
+ * state-migration gate must skip read-only subcommands (health/status/agent).
+ */
 import { describe, expect, it } from "vitest";
 import {
   getCommandPath,
@@ -10,12 +15,6 @@ import {
   shouldMigrateState,
   shouldMigrateStateFromPath,
 } from "./argv.js";
-
-/**
- * CLI argv parsing. argv is [node, script, ...args]; the helpers must respect
- * the `--` terminator, support `--flag value` and `--flag=value`, and the
- * state-migration gate must skip read-only subcommands (health/status/agent).
- */
 
 const cli = (...args: string[]): string[] => ["node", "eliza", ...args];
 

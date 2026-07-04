@@ -1,9 +1,13 @@
-// === Phase 5D: extracted from main.tsx ===
-// Idempotent Capacitor lifecycle wiring for iOS/Android: status bar overlay
-// + dark style, keyboard accessory/resize, app foreground/background events,
-// back-button navigation, deep-link bootstrap (cold + warm), and the network
-// connectivity bridge that lets the WebSocket reconnect scheduler stop
-// burning backoff during airplane mode.
+/**
+ * Idempotent Capacitor lifecycle wiring for iOS/Android, built by
+ * `createMobileLifecycle` and driven from the app-shell boot: status-bar
+ * overlay + dark style, keyboard accessory/resize, app foreground/background
+ * events (with a `visibilitychange` fallback), hardware back-button navigation,
+ * deep-link bootstrap (cold + warm launch URLs), and the network connectivity
+ * bridge that lets the WebSocket reconnect scheduler stop burning backoff during
+ * airplane mode. Each Capacitor call is guarded so a missing or throwing plugin
+ * degrades to a log instead of stranding the rest of the wiring.
+ */
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";

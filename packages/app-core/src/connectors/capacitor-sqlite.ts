@@ -1,6 +1,12 @@
-// Boundary facade for `@capacitor-community/sqlite`. The native side is the
-// published community plugin; this module keeps app code on a stable,
-// parameterized API instead of exposing the plugin's wider surface.
+/**
+ * Boundary facade over `@capacitor-community/sqlite`, exposing a small
+ * `SqliteDatabase` handle (`execute`/`query`/`close`), `openDatabase`, and an
+ * `isSqliteAvailable` probe. Keeps app code on a stable, parameterized API
+ * instead of the community plugin's wider surface, and refuses SQL containing a
+ * `${` template-interpolation marker so bound `values` stay the only path for
+ * dynamic data. Off-native (no registered plugin) `openDatabase` throws and
+ * `isSqliteAvailable` returns false.
+ */
 
 import { Capacitor } from "@capacitor/core";
 import {

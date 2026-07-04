@@ -1,5 +1,10 @@
-// CLI palette tokens for CLI/UI theming.
-// Keep in sync with docs/cli/index.md (CLI palette section).
+/**
+ * Accent and status color tokens for CLI / terminal-adjacent UI theming.
+ *
+ * `CLI_PALETTE` is the single source of hex values for accent, info, success,
+ * warn, error, and muted terminal output. Keep in sync with the CLI palette
+ * section of `docs/cli/index.md`.
+ */
 export const CLI_PALETTE = {
   accent: "#FF5A2D",
   accentBright: "#FF7A3D",

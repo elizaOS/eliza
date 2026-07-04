@@ -1,3 +1,10 @@
+/**
+ * In-memory store of ambient-audio capture consent, keyed by owner id. Tracks
+ * grant/revoke and honours per-record expiry: `get` returns null once a record
+ * has lapsed, and `require` throws when no active consent exists. This is the
+ * gate the capture service consults before it may start or resume listening —
+ * capture must never begin without a live (non-expired) consent record.
+ */
 import type { ConsentRecord } from "./types.ts";
 
 export class AmbientAudioConsentState {

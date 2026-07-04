@@ -1,3 +1,11 @@
+/**
+ * Pure decision helpers for runtime bootstrap failures — no I/O, no runtime
+ * dependency. Classifies a boot error as retryable or terminal: fatal PGlite
+ * conditions (data-dir in use, corrupt data, manual-reset-required) stop retries
+ * immediately, otherwise callers back off via `nextRuntimeBootRetryDelayMs`
+ * (exponential, capped at 30s) and flip to the terminal error state once the
+ * attempt-count or elapsed-duration threshold is crossed.
+ */
 const FATAL_PGLITE_CODES = new Set([
   "ELIZA_PGLITE_DATA_DIR_IN_USE",
   "ELIZA_PGLITE_CORRUPT_DATA",

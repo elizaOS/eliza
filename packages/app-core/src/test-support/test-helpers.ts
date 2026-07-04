@@ -1,13 +1,16 @@
+/**
+ * Shared helpers for app-core unit tests: an environment-variable sandbox,
+ * plugin-shape predicates and export extractors, package/connector import
+ * resolvers (Telegram, Lens, Farcaster, Nostr, Matrix, Feishu), mock
+ * update-check payloads, lightweight mocked HTTP request/response objects, and
+ * optional-dynamic-import guards that swallow missing-module errors.
+ */
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-/**
- * Test helper utilities shared across unit tests.
- */
 
 const OPTIONAL_IMPORT_ERROR_MARKERS = [
   "Cannot find module",

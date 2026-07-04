@@ -1,3 +1,10 @@
+/**
+ * In-memory owner-verification challenge service. `issue()` mints an
+ * `OwnerChallenge` (uuid, prompt, sha256 hash of the expected answer, TTL);
+ * `verify()` hashes the submitted answer against the stored digest, rejecting
+ * expired challenges and consuming a challenge on success or expiry. Backs the
+ * private-phrase step of owner authentication; the default TTL is five minutes.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import type { OwnerChallenge } from "./types.ts";
 

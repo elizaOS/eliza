@@ -1,3 +1,8 @@
+/**
+ * Unit coverage for `resolveApiExposePort` (`runtime-env.ts`): parses the single
+ * `ELIZA_API_EXPOSE_PORT` env key into a boolean, asserting the truthy/falsy value
+ * table (with surrounding-whitespace tolerance) and the unset default of false.
+ */
 import { describe, expect, it } from "vitest";
 import { API_EXPOSE_PORT_KEYS, resolveApiExposePort } from "./runtime-env";
 

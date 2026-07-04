@@ -1,3 +1,7 @@
+/**
+ * Unit-tests `isRuntimeAutonomyEnabled` — the ENABLE_AUTONOMY env gate that
+ * defaults the autonomy loop off and enables it only for "true"/"1".
+ */
 import { describe, expect, it } from "vitest";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy";
 

@@ -1,3 +1,12 @@
+/**
+ * Browser shim for the `style-to-js` npm package used by the app bundle.
+ * Converts a raw CSS inline-style string into a React-compatible style object,
+ * camelCasing property names (honoring vendor prefixes and the `reactCompat`
+ * `-ms-` special case) and leaving CSS custom properties (`--foo`) untouched.
+ * Declaration and property/value splitting are quote- and paren-aware so
+ * `url(...)`, `calc(...)`, and quoted values survive `;`/`:` inside them.
+ * Exposes the callable `StyleToJS` as both named and default export.
+ */
 const CUSTOM_PROPERTY_REGEX = /^--[a-zA-Z0-9_-]+$/;
 const HYPHEN_REGEX = /-([a-z])/g;
 const NO_HYPHEN_REGEX = /^[^-]+$/;

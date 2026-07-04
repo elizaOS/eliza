@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `resolveIosRuntimeConfig`, the iOS runtime-config resolver:
+ * asserts the env precedence (iOS-specific → mobile fallback → Android as a
+ * last resort), that a trailing-slash apiBase is normalized and the
+ * device-bridge WebSocket URL is derived from it, and that the App Store-safe
+ * full-Bun runtime is flagged available. Pure function, called directly.
+ */
 import { describe, expect, it } from "vitest";
 import { resolveIosRuntimeConfig } from "./ios-runtime";
 

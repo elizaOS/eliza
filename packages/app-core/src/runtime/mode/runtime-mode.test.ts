@@ -1,10 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-  isLocalRemoteHost,
-  isLocalRuntime,
-  validateRemoteApiBase,
-} from "./runtime-mode.ts";
-
 /**
  * Remote mode is a thin controller for ANOTHER local/private Eliza instance —
  * never Eliza Cloud or a public model API. validateRemoteApiBase is the guard
@@ -13,6 +6,12 @@ import {
  * would let the controller drive an untrusted instance, so each rejection here
  * is a real safety boundary.
  */
+import { describe, expect, it } from "vitest";
+import {
+  isLocalRemoteHost,
+  isLocalRuntime,
+  validateRemoteApiBase,
+} from "./runtime-mode.ts";
 
 describe("isLocalRemoteHost", () => {
   it("accepts loopback, .local, link-local, and private ranges", () => {

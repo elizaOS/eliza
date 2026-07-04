@@ -1,3 +1,11 @@
+/**
+ * Asserts the Eliza-1 tier metadata baked into `catalog.ts`: the canonical tier
+ * id set (kept in three-file sync with the Python manifest + publish shell),
+ * size-cased display names, the 128k context floor, safe runtime/quant
+ * optimizations, hosted-MTP and voice/vision component paths, and the
+ * on-device-only mobile QAT/LiteRT bundle gating. Pure Vitest over the static
+ * MODEL_CATALOG; one case exercises the ELIZA_PUBLISH_STATUS_OVERRIDES env gate.
+ */
 import { describe, expect, it } from "vitest";
 import {
   ELIZA_1_HOSTED_MTP_TIER_IDS,

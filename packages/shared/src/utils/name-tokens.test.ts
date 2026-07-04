@@ -1,16 +1,15 @@
-import { describe, expect, it } from "vitest";
-import {
-  replaceIndexedNameTokens,
-  replaceNameTokens,
-  tokenizeNameOccurrences,
-} from "./name-tokens";
-
 /**
  * Character-name token helpers. `replaceNameTokens` expands `{{name}}` /
  * `{{agentName}}` into the literal name; `tokenizeNameOccurrences` reverses
  * it during rename so every text field keeps propagating. Both run on
  * user-entered names, so `$`-sequences and non-ASCII names must round-trip.
  */
+import { describe, expect, it } from "vitest";
+import {
+  replaceIndexedNameTokens,
+  replaceNameTokens,
+  tokenizeNameOccurrences,
+} from "./name-tokens";
 
 describe("replaceNameTokens", () => {
   it("replaces both token spellings with the name", () => {

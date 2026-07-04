@@ -1,3 +1,9 @@
+/**
+ * Tests the embed session-token codec: HMAC-signed mint/verify round-trips,
+ * fail-closed rejection of wrong-secret / tampered / expired / malformed tokens,
+ * and the `isEmbedRole` / `EMBED_ELEVATED_ROLES` elevated-role gate. Pure
+ * functions exercised directly with a fixed secret — no server or clock harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   EMBED_ELEVATED_ROLES,

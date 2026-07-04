@@ -1,3 +1,12 @@
+/**
+ * Browser-bundle shim aliased in place of the `eventemitter3` package, backing
+ * the classic Node EventEmitter surface (on/once/emit/off/removeListener/
+ * removeAllListeners plus the eventNames/listeners/listenerCount introspection
+ * helpers) with a single Map of event name to listener entries. Supports the
+ * optional per-listener `context` binding and once-semantics that eventemitter3
+ * consumers rely on, so dependencies keep working without pulling the real
+ * dependency into the renderer.
+ */
 type EventName = string | symbol;
 type Listener = (...args: unknown[]) => void;
 

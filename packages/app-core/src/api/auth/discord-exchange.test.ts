@@ -1,3 +1,11 @@
+/**
+ * Tests `resolveDiscordExchange`, the server-side Discord Activity OAuth2 code →
+ * user-id exchange: it fails closed (undefined) when the client id/secret are
+ * unconfigured, round-trips a valid code through the two-step token+user fetch
+ * (bearering the minted access token, never the secret), returns null on every
+ * upstream failure/empty-payload/thrown path, and never logs the client secret.
+ * Uses a sequenced fetch stub and a settings-backed fake runtime.
+ */
 import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

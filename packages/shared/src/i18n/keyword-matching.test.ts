@@ -1,3 +1,9 @@
+/**
+ * Keyword matching backs i18n action routing. Normalization (NFKC + lowercase +
+ * whitespace collapse), ASCII word-boundary matching (so "cat" doesn't match
+ * "category"), and longest-term-first selection must all hold — a loose match
+ * here fires the wrong action.
+ */
 import { describe, expect, it } from "vitest";
 import {
   collectKeywordTermMatches,
@@ -6,13 +12,6 @@ import {
   splitKeywordDoc,
   textIncludesKeywordTerm,
 } from "./keyword-matching";
-
-/**
- * Keyword matching backs i18n action routing. Normalization (NFKC + lowercase +
- * whitespace collapse), ASCII word-boundary matching (so "cat" doesn't match
- * "category"), and longest-term-first selection must all hold — a loose match
- * here fires the wrong action.
- */
 
 describe("normalizeKeywordMatchText", () => {
   it("lowercases, collapses whitespace, trims", () => {

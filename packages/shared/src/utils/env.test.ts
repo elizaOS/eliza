@@ -1,3 +1,8 @@
+/**
+ * Env value normalization + the boolean-disabled check. Empty/whitespace must
+ * normalize to absent, and isEnvDisabled must treat only explicit falsy tokens
+ * as "off" (default-enabled) — a loose check here would flip feature defaults.
+ */
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_APP_ROUTE_PLUGIN_MODULES,
@@ -6,12 +11,6 @@ import {
   normalizeEnvValueOrNull,
   syncElizaEnvAliases,
 } from "./env";
-
-/**
- * Env value normalization + the boolean-disabled check. Empty/whitespace must
- * normalize to absent, and isEnvDisabled must treat only explicit falsy tokens
- * as "off" (default-enabled) — a loose check here would flip feature defaults.
- */
 
 describe("normalizeEnvValue / normalizeEnvValueOrNull", () => {
   it("trims, maps empty/non-string to absent", () => {

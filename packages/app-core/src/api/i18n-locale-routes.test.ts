@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `resolveSuggestedUiLanguage` and the `GET /api/i18n/locale`
+ * route handler, driving fake `http.IncomingMessage`/`ServerResponse` objects
+ * with a mocked `loadElizaConfig`. Covers configured-language preference,
+ * Accept-Language q-value fallback, and unrelated-route pass-through.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";

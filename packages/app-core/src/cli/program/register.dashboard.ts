@@ -1,3 +1,11 @@
+/**
+ * Registers the `dashboard` CLI command, which opens the Control UI in the
+ * browser. It probes the given `--port` (then the default) for a listening
+ * server and opens that URL; failing that it locates the eliza package root,
+ * spawns the app's Vite dev server, and opens the dev URL once Vite reports
+ * "Local:" (or after a timeout). Cross-platform browser launch and dev-server
+ * teardown (including a Windows taskkill tree-kill) are handled here.
+ */
 import { theme } from "@elizaos/shared";
 import type { Command } from "commander";
 

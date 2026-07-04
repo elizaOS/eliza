@@ -1,3 +1,10 @@
+/**
+ * Covers `resolveHfDownloadBase` / `resolveHfDownloadBases`, which decide where
+ * local-inference bundle `resolve` traffic goes: explicit mirror overrides, the
+ * Eliza Cloud HF proxy (when a cloud API key is set), then direct
+ * huggingface.co. The harness saves/restores the relevant env vars and resets
+ * the cloud-secrets cache around each case.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetCloudSecretsForTesting } from "../elizacloud/cloud-secrets.js";
 import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";

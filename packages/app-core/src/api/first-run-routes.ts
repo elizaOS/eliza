@@ -1,3 +1,16 @@
+/**
+ * Mounts `POST /api/first-run`, the onboarding submit endpoint. Parses the
+ * first-run payload, rejects deprecated field shapes, and persists the chosen
+ * deployment target / linked accounts / service routing into `ElizaConfig`
+ * (flipping `meta.firstRunComplete`). When the run is cloud-linked it resolves
+ * the Eliza Cloud API key from config, sealed secrets, or env and writes it
+ * back so the upstream config save keeps it, then mirrors the merged config to
+ * the live runtime through a loopback `PUT /api/config`.
+ *
+ * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
+ * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
+ * workaround for an unreproduced upstream race, logged at warn on failure.
+ */
 import type http from "node:http";
 import {
   applyCanonicalFirstRunConfig,

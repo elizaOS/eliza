@@ -1,3 +1,12 @@
+/**
+ * Renders the "API — effective settings" developer banner printed after the API
+ * server binds its listen socket. Reads the post-start environment and the
+ * resolved API security config to summarize bind host/port, the API token and
+ * how it was sourced (user env vs auto-generated), CORS origins, allowed hosts,
+ * the auto-token disable flag, renderer/log paths, and the dev hook endpoints —
+ * giving each row its effective value, where it came from, and how to change it.
+ * Output is a figlet-headed table for console display only.
+ */
 import process from "node:process";
 import {
   type DevSettingsRow,

@@ -1,3 +1,9 @@
+/**
+ * Tests the password-strength guard enforced at the auth sign-up/reset boundary:
+ * `assertPasswordStrong` acceptance, and the too-short / missing-letter /
+ * missing-digit-or-symbol rejections plus the typed `WeakPasswordError.reason`.
+ * Pure-function assertions, no server harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   assertPasswordStrong,

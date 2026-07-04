@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the Steward OAuth PKCE helpers (`steward-oauth-pkce.ts`):
+ * verifies the S256 code challenge derives from its verifier and that
+ * `buildStewardOAuthAuthorizeUrl` includes the PKCE query params (code_challenge +
+ * S256 method) when a challenge is supplied and omits them when it is not.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildStewardOAuthAuthorizeUrl,

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for `createTunnelLinkSensitiveRequestAdapter`: verifies the
+ * tunnel-served URL is built from the reported tunnel base (trailing slashes
+ * trimmed), the "no active tunnel" failure paths, payment kind without an appId,
+ * and the fallback to the runtime `tunnel` service when no status resolver is injected.
+ */
 import type {
   DispatchSensitiveRequest,
   SensitiveRequestKind,

@@ -1,3 +1,10 @@
+/**
+ * Covers the Eliza API base/token accessors in `eliza-globals.ts`: get/set/clear
+ * resolve through the boot-config store rather than mutable `window.__ELIZA*__`
+ * globals (which must be ignored even when forged), values are trimmed, and a
+ * blank write clears the current value. Harness stubs `window` via vitest and
+ * resets boot config after each test.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store.js";
 import {

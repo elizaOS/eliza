@@ -1,3 +1,11 @@
+/**
+ * Lazy registration for nested sub-CLIs (`plugins`, `models`) on the Commander
+ * program. Each entry is registered as a placeholder command that, on first
+ * invocation, swaps itself out for the real sub-CLI module and re-parses argv so
+ * the intended sub-command runs — keeping their heavy imports off the startup
+ * path. `registerSubCliByName` force-loads one eagerly by name; setting
+ * ELIZA_DISABLE_LAZY_SUBCOMMANDS registers every sub-CLI up front.
+ */
 import { isTruthyEnvValue } from "@elizaos/shared";
 import type { Command } from "commander";
 import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv";

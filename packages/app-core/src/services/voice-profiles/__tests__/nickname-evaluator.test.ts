@@ -1,3 +1,9 @@
+/**
+ * Unit tests for NAIVE_NICKNAME_EVALUATOR: pattern-based nickname extraction
+ * from transcript lines ("call me X", "my name is X", "I go by X"), the
+ * no-match and multi-transcript cases, and the capitalization filter that
+ * rejects lowercase candidates.
+ */
 import { describe, expect, it } from "vitest";
 import { NAIVE_NICKNAME_EVALUATOR } from "../nickname-evaluator.ts";
 

@@ -1,3 +1,16 @@
+/**
+ * On-device iOS attachment round-trip smoke, run inside the shipped app (not a
+ * unit test) when the CI/QA harness stages a request in localStorage/Preferences
+ * (`eliza:ios-attachment-smoke:request`). `runIosAttachmentSmokeIfRequested()`
+ * waits for any pending onboarding smoke, uploads a 1×1 PNG to
+ * `/api/device-e2e/upload-image`, asserts the returned content-addressed
+ * `/api/media/<sha256>.png` URL and the re-fetched served bytes match the source
+ * sha256, writes those bytes through the Capacitor Filesystem CACHE directory
+ * and reads them back (sha256 re-verified), then opens the native Share sheet
+ * with the file URI. Every phase and the final ok/failed verdict are persisted
+ * to Preferences (`…:result`) for the simulator harness to poll; runs at most
+ * once per app launch.
+ */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 

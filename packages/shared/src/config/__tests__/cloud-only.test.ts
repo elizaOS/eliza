@@ -1,3 +1,10 @@
+/**
+ * Exercises shouldUseCloudOnlyBranding, the predicate that decides when a
+ * surface is locked to Eliza Cloud branding. Covers production web with no
+ * injected host backend, injected loopback backends, native shells and their
+ * runtime modes (cloud / cloud-hybrid / elizacloud alias), and the desktop
+ * runtime-mode override that forces cloud-only even in dev.
+ */
 import { describe, expect, it } from "vitest";
 import { shouldUseCloudOnlyBranding } from "../cloud-only.js";
 

@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the config-catalog JSON Pointer path helpers (getByPath /
+ * setByPath): RFC 6901 escape handling (~0 / ~1), array-index coercion rules,
+ * and prototype-pollution guarding on write.
+ */
 import { describe, expect, it } from "vitest";
 import { getByPath, setByPath } from "./config-catalog.js";
 

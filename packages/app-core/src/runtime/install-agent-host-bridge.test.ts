@@ -1,3 +1,10 @@
+/**
+ * Verifies installAgentHostBridge() swaps the agent host-bridge seam from its
+ * no-op default to the app-core implementation, exposing real vault /
+ * account-pool / shared-vault / build-variant / cloud-pair-route capabilities.
+ * Drives the real host-bridge singleton (reset before and after) — no runtime
+ * boot.
+ */
 import {
   _resetAgentHostBridge,
   defaultAgentHostBridge,

@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the /api/apps permissions route Zod schemas: the granted-permissions view,
+ * its list response, and the PUT request that grants/revokes namespaces. Exercises the real
+ * schemas from app-permissions-routes.js — strict parsing, enum and namespace whitelists, and
+ * accept/reject cases; no server or transport is involved.
+ */
 import { describe, expect, it } from "vitest";
 import {
   AppPermissionsViewSchema,

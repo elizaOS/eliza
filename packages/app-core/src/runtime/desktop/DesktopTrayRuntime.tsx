@@ -1,3 +1,13 @@
+/**
+ * Headless desktop runtime (renders null) that binds the Electrobun tray/menu to
+ * app actions. Publishes the tray-popover launcher catalog from
+ * DESKTOP_VIEW_WINDOWS to the renderer store, subscribes to desktopTrayMenuClick
+ * to drive the App-menu "Reset App…" flow, and handles TRAY_ACTION_EVENT items:
+ * opening views in their own desktop windows, navigating chat/plugins/
+ * notifications, toggling agent lifecycle, firing a test notification, and window
+ * show/hide/quit — all through the electrobun-rpc bridge. Only active under
+ * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
+ */
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,

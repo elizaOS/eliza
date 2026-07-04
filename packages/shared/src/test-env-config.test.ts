@@ -1,3 +1,9 @@
+/**
+ * Covers the test-only env catalog in `test-env-config.ts`: the tracked
+ * TEST_ENV_FAMILIES/TEST_ENV_NAMES enumeration, the acme fixture credential
+ * accessors, phase2/phase3 smoke-flag normalization, and voice-E2E default
+ * merging. Runs over in-memory TestEnvRecord objects, never real process.env.
+ */
 import { describe, expect, it } from "vitest";
 import {
   listTestEnvFamilyNames,

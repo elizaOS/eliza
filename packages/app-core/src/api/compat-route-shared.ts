@@ -1,3 +1,14 @@
+/**
+ * Shared primitives for the app-core compat HTTP API (the `*-compat-routes`
+ * handlers). Holds the mutable `CompatRuntimeState` container (live runtime +
+ * pending restart reasons) and the helpers those routes lean on: a bounded
+ * restart-reason queue, same-machine trust (`isTrustedLocalRequest`, delegating
+ * to the canonical `@elizaos/shared` classifier with app-core's env gates), a
+ * size-capped JSON body reader that honours a pre-parsed `req.body`, first-run
+ * completion detection from persisted config, and a best-effort grab of the
+ * live Drizzle DB handle. `null` from the DB grab means "service unavailable",
+ * never authentication.
+ */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { AgentRuntime } from "@elizaos/core";

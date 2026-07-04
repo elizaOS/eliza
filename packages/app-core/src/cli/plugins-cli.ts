@@ -1,3 +1,13 @@
+/**
+ * Registers the `eliza plugins` command group — browse, search, info, install,
+ * uninstall, list installed, refresh, test drop-ins, add-path, list paths,
+ * config, and open — backed by the agent's PluginManagerService and the
+ * `@elizaos/plugin-registry` installer. Also exports the input guards
+ * (`normalizePluginName`, `parsePluginSpec`, `validatePluginPath`) and the
+ * `findPluginExport` heuristic that locates a Plugin-shaped export in a loaded
+ * module. Plugin names and paths are validated before install to reject
+ * path-escape and shell-unsafe input.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import nodePath from "node:path";

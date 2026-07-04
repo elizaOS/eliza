@@ -1,3 +1,11 @@
+/**
+ * Browser-bundle shim aliased in place of the `nprogress` slim progress-bar
+ * library, reimplementing its singleton API (configure/set/start/done/inc/
+ * trickle plus status introspection) against a single `#nprogress` DOM node.
+ * Progress is clamped to [0,1]; reaching 1 resets status to null and removes
+ * the element. Both the default export and the named function exports mirror
+ * nprogress so existing imports resolve unchanged.
+ */
 type NProgressSettings = {
   minimum: number;
   easing: string;

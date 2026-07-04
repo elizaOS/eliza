@@ -1,3 +1,12 @@
+/**
+ * Tests `verifyEmbedLaunch`, the shared connector-embed launch handshake:
+ * accepts a correctly HMAC-signed Telegram Mini App `initData` (and an injected
+ * Discord code exchange) for OWNER/ADMIN principals, and fails closed with 403
+ * on insufficient role, forged signature, stale `auth_date`, missing bot token,
+ * or a failed/empty Discord exchange — with role checks skipped once the payload
+ * is rejected. Builds real signed Telegram payloads and injects a stub
+ * `hasRoleAccess`/`discordExchange`; the clock is a fixed constant.
+ */
 import { createHmac } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";

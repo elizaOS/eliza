@@ -1,3 +1,8 @@
+/**
+ * Stub module that stands in for the real cloud router shell in builds that
+ * exclude the cloud/web dashboard surface. See the component doc below for the
+ * passthrough contract.
+ */
 import type { ReactNode } from "react";
 
 /**

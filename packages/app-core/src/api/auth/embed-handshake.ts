@@ -1,3 +1,8 @@
+/**
+ * Home of `verifyEmbedLaunch` — the shared, fail-closed launch handshake that
+ * every connector embed (Telegram Mini App, Discord Activity) passes through
+ * before a scoped session token is minted.
+ */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   hasRoleAccess as coreHasRoleAccess,

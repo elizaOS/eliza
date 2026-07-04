@@ -1,3 +1,12 @@
+/**
+ * Exercises the DB-aware route role gates `ensureRouteMinRole` and
+ * `ensureRouteAuthorized`: an owner browser session reaches OWNER routes, a
+ * machine session is treated as USER (blocked from OWNER), CSRF rejection
+ * precedes any role check on cookie writes, and the Android static-token
+ * local-auth path still resolves as OWNER. Harness mocks core `roleRank`,
+ * shared token resolution, the session store, `isTrustedLocalRequest`, and the
+ * `AuthStore` identity lookup; requests/responses are synthetic Node http objects.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

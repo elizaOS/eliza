@@ -1,3 +1,8 @@
+/**
+ * Contract tests for the load-apps-from-directory route Zod schemas: the request (absolute-path
+ * requirement) and the success response carrying registered items plus rejected-manifest
+ * diagnostics. Parses real fixtures for accept/reject cases.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostLoadFromDirectoryRequestSchema,

@@ -1,3 +1,10 @@
+/**
+ * In-memory reference implementation of `AmbientAudioService`. Drives the
+ * capture mode state machine (stopped → listening ⇄ paused) and feeds incoming
+ * frames into a `ReplayBuffer`. `start`/`resume` require an active consent
+ * record via `AmbientAudioConsentState`, `pushFrame` is rejected unless
+ * listening, and `stop` clears both the owner binding and all retained audio.
+ */
 import type { AmbientAudioConsentState } from "./consent.ts";
 import { ReplayBuffer } from "./replay-buffer.ts";
 import type {

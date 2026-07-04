@@ -1,3 +1,8 @@
+/**
+ * Covers resolveIosPersistenceAdapter: it selects the iOS SQLite persistence
+ * adapter when the plugin is available and otherwise falls back to Capacitor
+ * Preferences. Deps are in-memory fake adapters + vi.fn availability probes.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import {

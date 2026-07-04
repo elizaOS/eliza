@@ -1,3 +1,9 @@
+/**
+ * Unit + route tests for buildRouteCatalog and GET /api/dev/route-catalog: the
+ * catalog covers every TAB_PATHS entry and mirrors SETTINGS_SECTION_META from
+ * @elizaos/ui exactly, and the route is loopback-only and disabled in
+ * production. Auth, config, and port resolution are mocked to true/fixed values.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { SETTINGS_SECTION_META } from "@elizaos/ui/components/settings/settings-section-meta";

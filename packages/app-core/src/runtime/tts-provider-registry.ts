@@ -1,3 +1,13 @@
+/**
+ * Resolves the default text-to-speech provider from the first-party plugin
+ * registry. The default is data-driven: the owning voice plugin marks its
+ * registry entry `defaultTextToSpeech: true` (guarded by `subtype: "voice"`),
+ * and its `id`/`npmName` flow through as the provider name, config key, and
+ * disable-flag lookup — no plugin id is hard-coded in the resolution path.
+ * Entries are metadata-only (the concrete handler self-registers at plugin
+ * load); this module also exposes the config/env disable check for the resolved
+ * provider.
+ */
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import firstPartyRegistry from "@elizaos/registry/first-party/generated.json" with {

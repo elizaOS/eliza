@@ -1,3 +1,9 @@
+/**
+ * Fallback loader for the default (edge-tts) text-to-speech handler, used only
+ * on boot paths where the edge-tts plugin did not self-register its
+ * `ModelType.TEXT_TO_SPEECH` model, so streaming / swarm voice can still resolve
+ * a handler.
+ */
 import { ModelType } from "@elizaos/core";
 import type { TtsModelHandler } from "./tts-provider-registry.js";
 

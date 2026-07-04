@@ -1,13 +1,13 @@
-// Catalog routes — surfaces the registry SoT to the frontend.
-//
-// /api/catalog/apps  → static apps known to the registry (internal-tool apps,
-//                      curated apps, plugin-shipped apps). Lets AppsView stop
-//                      depending on the hardcoded internal-tool app table
-//                      and the ELIZA_CURATED_APP_DEFINITIONS list.
-//
-// Server-discovered apps (npm packages installed at runtime) and overlay
-// apps (runtime-registered) are still merged on the frontend; this endpoint
-// covers the static, declared catalog only.
+/**
+ * Catalog routes — surfaces the static app registry as JSON for the dashboard.
+ *
+ * Mounts `GET /api/catalog/apps`, returning the apps the registry declares
+ * (internal-tool, curated, and plugin-shipped apps) as `RegistryAppInfo` so the
+ * frontend's AppsView need not hardcode the internal-tool app table or the
+ * ELIZA_CURATED_APP_DEFINITIONS list. Server-discovered apps (npm packages
+ * installed at runtime) and runtime-registered overlay apps are merged in on the
+ * frontend; this endpoint covers only the static, declared catalog.
+ */
 
 import type http from "node:http";
 import { resolveAppHeroImage } from "@elizaos/agent";

@@ -1,3 +1,11 @@
+/**
+ * Resolves the short (7-char) git commit hash of the running build, used to
+ * stamp version and diagnostics output. Probes sources in priority order:
+ * `GIT_COMMIT` / `GIT_SHA` env, a bundled `build-info.json`, the package's
+ * `gitHead` field, then a walk up to the enclosing `.git/HEAD` (following
+ * `gitdir:` worktree pointers and ref indirection). The first hit is memoized
+ * for the process; an unresolved hash yields null rather than throwing.
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

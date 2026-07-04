@@ -1,3 +1,9 @@
+/**
+ * Runtime type guards used to validate untrusted/unknown payloads at boundaries
+ * before they're treated as records. They must distinguish plain objects from
+ * arrays and null, and asNonEmptyString must reject whitespace-only strings so
+ * blank values don't pass as present.
+ */
 import { describe, expect, it } from "vitest";
 import {
   asNonEmptyString,
@@ -6,13 +12,6 @@ import {
   asRecordOrUndefined,
   isPlainObject,
 } from "./type-guards.ts";
-
-/**
- * Runtime type guards used to validate untrusted/unknown payloads at boundaries
- * before they're treated as records. They must distinguish plain objects from
- * arrays and null, and asNonEmptyString must reject whitespace-only strings so
- * blank values don't pass as present.
- */
 
 describe("isPlainObject", () => {
   it("accepts plain objects, rejects arrays / null / primitives", () => {

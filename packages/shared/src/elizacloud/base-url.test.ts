@@ -1,3 +1,10 @@
+/**
+ * Eliza Cloud base-URL resolution. normalizeCloudSiteUrl collapses api/www host
+ * aliases to the apex origin, strips query and hash, preserves loopback origins
+ * but coerces other origins to https, and sanitizes malformed input rather than
+ * echoing it back; resolveCloudApiBaseUrl appends the canonical /api/v1 path.
+ * The ELIZAOS_CLOUD_BASE_URL env override takes precedence over the passed URL.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import { normalizeCloudSiteUrl, resolveCloudApiBaseUrl } from "./base-url";
 

@@ -1,3 +1,10 @@
+/**
+ * Configures the root CLI program's help presentation: the program name,
+ * version, and global flags (--verbose / --debug / --dev / --profile /
+ * --no-color), themed term and heading coloring, the one-shot startup banner,
+ * and the trailing Examples plus docs-link block. Rendering only — it defines
+ * no command behavior.
+ */
 import { formatDocsLink, isRich, theme } from "@elizaos/shared";
 import type { Command } from "commander";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";

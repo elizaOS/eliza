@@ -1,3 +1,10 @@
+/**
+ * Contract tests for the diagnostics log-export request schema: json/csv
+ * format selection plus optional source/level/tags/since/limit filters.
+ * Covers tags accepted as either an array or a single string, `since` as a
+ * number or ISO string, and strict rejection of unknown formats and extra
+ * fields. Pure in-process schema parsing — no server or mocks.
+ */
 import { describe, expect, it } from "vitest";
 import { PostLogExportRequestSchema } from "./diagnostics-routes.js";
 

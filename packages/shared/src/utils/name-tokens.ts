@@ -1,9 +1,15 @@
-// `replaceNameTokens` (`{{name}}` / `{{agentName}}`) and
-// `replaceIndexedNameTokens` (`{{name1}}` / `{{user1}}` example slots) are owned
-// by `@elizaos/core` — both whitespace-tolerant and `$`-sequence safe — and
-// re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
-// their import path. The core symbols are exported from both the node and
-// browser barrels, so this re-export resolves in browser bundles too.
+/**
+ * Character-name token helpers for the character / config surfaces.
+ *
+ * `replaceNameTokens` (`{{name}}` / `{{agentName}}`) and
+ * `replaceIndexedNameTokens` (`{{name1}}` / `{{user1}}` example slots) are owned
+ * by `@elizaos/core` — both whitespace-tolerant and `$`-sequence safe — and
+ * re-exported here so existing `@elizaos/shared` / `@elizaos/ui` consumers keep
+ * their import path (core exports them from both the node and browser barrels,
+ * so this re-export resolves in browser bundles too). `tokenizeNameOccurrences`
+ * below is the inverse: it rewrites literal name occurrences back into
+ * `{{name}}` tokens so a later rename keeps propagating.
+ */
 export { replaceIndexedNameTokens, replaceNameTokens } from "@elizaos/core";
 
 /**

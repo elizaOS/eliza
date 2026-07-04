@@ -1,3 +1,12 @@
+/**
+ * Pre-Commander CLI argument parsing helpers that operate on the raw `argv`
+ * (`[node, script, ...args]`). Detects help/version flags, reads flag presence
+ * and `--flag value` / `--flag=value` values while honoring the `--` terminator,
+ * extracts the positional command path, and normalizes argv so a program name or
+ * a `node`/`bun` executable prefix is handled uniformly. `shouldMigrateState` is
+ * the gate that lets read-only subcommands (health, status, agent, memory
+ * status) run without triggering state migration.
+ */
 import { parsePositiveInteger } from "@elizaos/shared";
 
 const HELP_FLAGS = new Set(["-h", "--help"]);

@@ -1,3 +1,14 @@
+/**
+ * Maps the Android native virtualization bridge (AVF / Microdroid, exposed on
+ * `globalThis.ElizaNative`) into the mobile-safe runtime surface. Reads the
+ * native probe JSON to build a feature probe — capability state, availability
+ * flags, and the `ELIZA_ANDROID_*` env hints the runtime consumes — and, when a
+ * request bridge is present, wraps it as an `AndroidAvfMicrodroidBoundary` that
+ * forwards capability requests to native (stamping each with the contract
+ * version) and fails closed unless the probe reports a `ready` Microdroid
+ * payload. All native JSON is parsed defensively: malformed or mismatched
+ * responses become structured, non-retryable errors rather than throwing.
+ */
 import type {
   AndroidAvfMicrodroidBoundary,
   AndroidAvfMicrodroidCapabilityState,

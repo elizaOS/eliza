@@ -1,3 +1,10 @@
+/**
+ * Contract tests for the skills + marketplace route request schemas (catalog
+ * install/uninstall, acknowledge, create, source PUT, marketplace install/uninstall):
+ * covers slug/name trimming, whitespace-as-absent version/description, the source
+ * enum, the at-least-one-of marketplace-install constraint, and strict extra-field
+ * rejection. Parses through the real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostMarketplaceInstallRequestSchema,

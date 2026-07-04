@@ -1,3 +1,10 @@
+/**
+ * Covers createElizaConnectorTargetCatalog: aggregating registered connector
+ * target sources into groups, re-reading the source registry on every call,
+ * platform filtering without invoking non-matching sources, forwarding the
+ * getConfig/fetch/clock/logger seams into enumerate, and concatenating groups
+ * across multiple sources. Sources are in-test fakes / vi.fn stubs.
+ */
 import type { TargetSource } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Tests the word-error-rate metric (normalizeWerText, wordErrorRate): text
+ * normalization and Levenshtein-based scoring, plus that the voice self-test
+ * quality gate (0.34) genuinely discriminates good from degraded ASR rather than
+ * rubber-stamping a verbatim mock transcript. Pure functions, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 
 import { normalizeWerText, wordErrorRate } from "./voice-wer";

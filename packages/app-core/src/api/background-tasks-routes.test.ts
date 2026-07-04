@@ -1,3 +1,12 @@
+/**
+ * Tests `handleBackgroundTasksRoute`, the POST /api/background/run-due-tasks
+ * handler that routes native background wakes into the canonical core
+ * `TaskService.runDueTasks()`. Covers the happy run, the 503 when no task
+ * service is present, coalescing of concurrent wakes into one in-flight run, and
+ * pass-through of unrelated paths (with a stubbed `getService`/auth) — then an
+ * end-to-end pass against a real `AgentRuntime` + `TaskService` that seeds, runs,
+ * and deletes a real due one-shot task.
+ */
 import * as http from "node:http";
 import { Socket } from "node:net";
 import {

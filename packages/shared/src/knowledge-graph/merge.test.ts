@@ -1,3 +1,10 @@
+/**
+ * Identity-merge engine. Matching is case-insensitive on (platform, handle);
+ * the observe decision is create / merge (>= auto threshold) / conflict (low
+ * confidence or multiple candidates); and folding an identity must dedupe
+ * evidence and keep the higher-confidence claim — losing provenance here
+ * silently corrupts the knowledge graph.
+ */
 import { describe, expect, it } from "vitest";
 import type { Entity, EntityIdentity } from "./entity-types";
 import {
@@ -6,14 +13,6 @@ import {
   findIdentityMatches,
   foldIdentity,
 } from "./merge";
-
-/**
- * Identity-merge engine. Matching is case-insensitive on (platform, handle);
- * the observe decision is create / merge (>= auto threshold) / conflict (low
- * confidence or multiple candidates); and folding an identity must dedupe
- * evidence and keep the higher-confidence claim — losing provenance here
- * silently corrupts the knowledge graph.
- */
 
 const ident = (o: Partial<EntityIdentity>): EntityIdentity =>
   ({

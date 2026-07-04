@@ -1,3 +1,10 @@
+/**
+ * Pure decision function that decides whether the agent should speak in
+ * response to ambient audio. Weighs the gate signals — direct address, wake
+ * intent, owner confidence, whether the context expects a reply, and VAD
+ * activity — and returns a `ResponseDecision` carrying the winning reason and a
+ * confidence score. Signal values are clamped to [0,1]; no side effects.
+ */
 import type { ResponseDecision, ResponseGateSignals } from "./types.ts";
 
 const clamp01 = (value: number): number =>

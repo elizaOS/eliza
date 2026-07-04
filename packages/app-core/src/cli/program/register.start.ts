@@ -1,3 +1,12 @@
+/**
+ * Registers the `start` command (and its `run` alias), which boot the elizaOS
+ * agent runtime in server-only mode (API server, no interactive chat loop) via
+ * startEliza. Resolves the API connection key: an explicit --connection-key
+ * value is used verbatim, the bare flag or a network (non-loopback) bind with no
+ * existing token auto-generates one, and loopback access stays open. Once the
+ * server is ready, prints the local URL, the masked connection key, and any
+ * remote-access pairing code.
+ */
 import crypto from "node:crypto";
 import {
   formatDocsLink,

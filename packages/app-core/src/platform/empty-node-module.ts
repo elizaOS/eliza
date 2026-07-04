@@ -1,3 +1,14 @@
+/**
+ * Universal empty-module alias target for browser builds. tsconfig-paths maps
+ * both a handful of Node built-ins (stream `pipeline`/`finished`, the WHATWG
+ * stream globals, `util/types` `isX` guards) and a large roster of server-only
+ * `@elizaos/agent` / `@elizaos/plugin-elizacloud` exports onto this file, so the
+ * renderer graph resolves every named import without pulling in Node-only code.
+ * Exports are noops / empty collections / typed-empty shapes; the default export
+ * is a catch-all Proxy. Intentionally NOT re-exported from `index.ts` — doing so
+ * would shadow the real Node `api/server` / `runtime/eliza` exports; Node imports
+ * the originals while bundlers alias in this stub.
+ */
 const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const falseNoop = () => false;

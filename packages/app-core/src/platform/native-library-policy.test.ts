@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `resolveNativeLibraryCandidate`: direct builds accept any
+ * existing dylib, store builds accept only the expected-basename library inside
+ * the signed `.app` bundle, and symlink / relative / out-of-bundle candidates
+ * are rejected (returning null, not throwing). Exercises real temp dirs and
+ * symlinks on the local filesystem.
+ */
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

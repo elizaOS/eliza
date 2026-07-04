@@ -1,3 +1,10 @@
+/**
+ * Browser-bundle shim aliased in place of `picocolors`. Terminal ANSI styling
+ * is meaningless in the renderer, so every color/style function is a plain
+ * String() passthrough, `isColorSupported` is false, and `createColors`
+ * returns the same object. Preserves the picocolors call surface for
+ * dependencies without emitting escape codes.
+ */
 const passthrough = (value: unknown): string => String(value);
 
 const colors = {

@@ -1,3 +1,11 @@
+/**
+ * Tests for the `capability-router` CLI helpers: `buildCapabilityRouterConnectPayload`
+ * (shaping and validating direct/provider/cloud connect payloads) and
+ * `runCapabilityRouterConformance` (driving a remote endpoint through every
+ * plugin-protocol surface). Uses the shared `CAPABILITY_ROUTER_PROTOCOL_FIXTURE`
+ * and a mocked `fetch` to assert payload shape, method call ordering, and bearer
+ * auth without a live endpoint.
+ */
 import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {

@@ -1,11 +1,12 @@
+/**
+ * Tests for the dev SIWE wallet login (`runDevWalletLogin`): generate an
+ * ephemeral Ethereum wallet, sign the SIWE challenge, and exchange it for a
+ * cloud API key with no browser/OAuth. A fixed private key plus a mocked fetch
+ * keep the suite offline and deterministic; covers the mint-without-save happy
+ * path, a transient nonce-failure retry, and a verify rejection.
+ */
 import { describe, expect, it } from "vitest";
 import { runDevWalletLogin } from "./register.auth";
-
-/**
- * Dev SIWE wallet login: generate an ephemeral Ethereum wallet, sign the SIWE
- * challenge, exchange it for a cloud API key — no browser/OAuth. These tests
- * use a fixed private key + a mocked fetch so they are offline + deterministic.
- */
 
 const FIXED_PK =
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";

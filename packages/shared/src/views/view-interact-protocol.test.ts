@@ -1,3 +1,9 @@
+/**
+ * Pins the frozen view-interact capability contract shared by the agent views
+ * route and the UI DynamicViewLoader: the standard capability values, the
+ * agent-surface capability ids handled by the shell registry, and that the two
+ * id sets stay disjoint.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

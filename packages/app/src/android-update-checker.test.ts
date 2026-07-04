@@ -1,3 +1,11 @@
+/**
+ * Unit tests for `AndroidUpdateChecker.check()` — the Android sideload OTA
+ * flow. Covers platform/build-variant gating, versionCode comparison
+ * (update available vs. not), network- and HTTP-error tolerance, the 24h
+ * check-throttle backed by localStorage, and the per-channel manifest URL.
+ * Capacitor App/Device/Browser bridges and `fetch` are mocked; `localStorage`
+ * and `import.meta.env` are stubbed per test.
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock @capacitor/app, @capacitor/browser, @capacitor/device before importing the module under test.

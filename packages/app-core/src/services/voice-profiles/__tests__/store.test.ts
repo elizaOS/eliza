@@ -1,3 +1,8 @@
+/**
+ * Unit tests for InMemoryVoiceProfileStore: upsert/get/list/delete roundtrips,
+ * cosine-similarity search sorted descending with the limit honored, and a
+ * 200-profile scale case asserting top-k results stay ordered by similarity.
+ */
 import { describe, expect, it } from "vitest";
 import { InMemoryVoiceProfileStore } from "../store.ts";
 import type { VoiceProfile } from "../types.ts";

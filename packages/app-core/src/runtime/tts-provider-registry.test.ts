@@ -1,3 +1,10 @@
+/**
+ * Tests the TTS provider registry: the default provider entry is metadata-only
+ * (no importable handler), config/env disable controls resolve through the
+ * provider config key, and the default is selected by the data-driven
+ * `defaultTextToSpeech` flag — asserted partly via source-grep guards against a
+ * hard-coded `edge-tts` id or a variable-specifier `import()`.
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";

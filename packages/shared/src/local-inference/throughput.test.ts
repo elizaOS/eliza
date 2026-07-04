@@ -1,3 +1,10 @@
+/**
+ * Covers `computeGenerationThroughput` — splitting prefill vs decode tok/s from
+ * output counters and a measured TTFT, reporting null (never a fabricated zero)
+ * when a window is unmeasurable (absent/impossible TTFT, non-positive duration,
+ * nothing decoded, zero prompt tokens) — and the `isGenerationCounters` frame
+ * guard. Pure Vitest over synthetic counter frames.
+ */
 import { describe, expect, it } from "vitest";
 import {
   computeGenerationThroughput,

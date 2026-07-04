@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the app-core iOS in-process local-agent transport bridge,
+ * driving `handleIosLocalAgentNativeRequest`, the fetch bridge, and the ITTP
+ * transport with hoisted Capacitor / build-variant / kernel mocks. Covers
+ * full-Bun native dispatch + start, the ITTP dev fallback, network-policy
+ * gating across local / cloud / store modes, watchdog restart handling, IPC
+ * path extraction (incl. Chromium custom-scheme URLs), and the #11030 hostile
+ * Capacitor-proxy deadlock guard.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalGlobalFetch = globalThis.fetch;

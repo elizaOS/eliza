@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for runtime-mode resolution and the route-visibility matrix.
+ * `resolveRuntimeMode` maps deployment config to local / local-only / cloud /
+ * remote (accepting only private remote targets), and `isRouteVisible` /
+ * `findRouteModeRule` / `findRegisteredRouteModeRule` decide which API routes are
+ * exposed per mode: local-inference routes hidden off local runtimes, `/api/cloud`
+ * hidden in local-only, plugin-declared route modes honored, and un-matrixed
+ * routes default-allow.
+ */
 import { describe, expect, test } from "vitest";
 import { findRegisteredRouteModeRule } from "./route-mode-guard";
 import { findRouteModeRule, isRouteVisible } from "./route-mode-matrix";

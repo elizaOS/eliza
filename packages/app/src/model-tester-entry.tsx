@@ -1,3 +1,13 @@
+/**
+ * Standalone Model Tester page entry, served from `model-tester.html`.
+ * Imperatively builds its own DOM — no React —
+ * rendering one probe card per model capability (text small/large, embedding,
+ * TTS, transcription, VAD, image description, image generation). Reads
+ * `/api/model-tester/status` for availability and POSTs each probe to
+ * `/api/model-tester/run`, rendering audio/image results inline. All
+ * provider-supplied output is HTML-escaped before it enters innerHTML (XSS
+ * guard mirrored from the app-model-tester routes).
+ */
 type TestStatus = {
   id: string;
   label: string;

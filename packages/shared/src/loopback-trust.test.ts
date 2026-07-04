@@ -1,3 +1,12 @@
+/**
+ * Unit coverage for the shared local-trust gate (`loopback-trust.ts`) that both
+ * `@elizaos/app-core` and `@elizaos/agent` use to decide whether an inbound HTTP
+ * request may bypass auth. Exercises loopback peer detection, proxy-client-header
+ * spoofing rejection, Host/Origin/Referer classification, and the per-consumer env
+ * policy gates — running the shared host/origin cases under both option bundles to
+ * prove identical logic while the divergent cloud/dev-bypass gates are tested apart.
+ * Requests are synthesized via a stubbed `http.IncomingMessage`.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

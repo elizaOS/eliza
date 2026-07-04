@@ -1,3 +1,12 @@
+/**
+ * Tests the auth audit emitter (`appendAuditEvent` + `redactMetadata`): events
+ * are written to the JSONL audit log and the auth store with token-shaped
+ * metadata redacted and user-agents truncated, the JSONL write still happens
+ * (and the store error rethrows) when the store fails, the store write is still
+ * attempted when the log path can't be created, and the log rotates once it
+ * hits the size limit. Uses a real temp `ELIZA_STATE_DIR` and a fake in-memory
+ * auth store.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

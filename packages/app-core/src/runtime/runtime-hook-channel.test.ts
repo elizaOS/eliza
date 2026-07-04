@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for `drainRuntimeHookContributors`, the generic runtime-hook
+ * channel the boot tail drains. It invokes each registry-declared contributor's
+ * `invoke(runtime)` in declared order, silently skips a contributor whose
+ * optional plugin is absent (OptionalAppRoutePluginUnavailableError), and
+ * rethrows any real failure — short-circuiting the remaining contributors.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { OptionalAppRoutePluginUnavailableError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

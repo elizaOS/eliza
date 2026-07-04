@@ -1,3 +1,10 @@
+/**
+ * Covers the pure transcript helpers in `transcripts.ts`: speaker counting,
+ * duration, plain-text/preview rendering, word flattening, the active-word
+ * binary search, list-row summarization (including meeting-metadata
+ * projection), and ASR word-timing validation. All assertions run over
+ * in-memory transcript fixtures.
+ */
 import { describe, expect, it } from "vitest";
 import {
   activeWordIndex,

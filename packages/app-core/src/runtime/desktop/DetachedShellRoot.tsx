@@ -1,3 +1,12 @@
+/**
+ * Renders the root of a detached desktop window — a single non-"main"
+ * WindowShellRoute (browser, chat, plugins, triggers, or a settings section)
+ * inside the shared app workspace chrome. Gates on app state first: startup
+ * failure, pairing, and a first-run-blocked notice each short-circuit before the
+ * routed content. Heavy page views are lazy-loaded behind Suspense so they stay
+ * off every window's first-paint graph; PluginsPageView is imported statically
+ * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
+ */
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";

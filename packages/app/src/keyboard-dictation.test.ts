@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-// App-side keyboard app-handoff dictation session (#12185): App-Group state
-// ordering, transcript publication, explicit error states, cancel semantics,
-// and the missing-bridge (non-iOS) path. Bridge + capture are injected fakes;
-// the state machine and DOM overlay under test are real.
+/**
+ * App-side keyboard app-handoff dictation session (#12185): covers App-Group
+ * state ordering, transcript publication, explicit error states, cancel
+ * semantics, and the missing-bridge (non-iOS) path. Bridge + capture are
+ * injected fakes; the state machine and DOM overlay under test are real.
+ */
 
 import type {
   VoiceCaptureFactoryOptions,

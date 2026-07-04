@@ -1,3 +1,13 @@
+/**
+ * Load-path allow policy for native libraries (e.g. macOS `.dylib` bridges).
+ * `resolveNativeLibraryCandidate` returns the realpath to load or null: direct
+ * (non-store) builds accept any existing file, while store builds
+ * (`ELIZA_BUILD_VARIANT=store`) are hardened — the candidate must carry an
+ * expected basename and, after symlink resolution, still resolve inside a
+ * trusted signed `.app` bundle (derived from `execPath` / `moduleDir`).
+ * Rejections warn and fall through rather than throw;
+ * `resolveFirstNativeLibraryCandidate` walks a list and returns the first pass.
+ */
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 

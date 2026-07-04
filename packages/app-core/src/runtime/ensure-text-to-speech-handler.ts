@@ -1,3 +1,12 @@
+/**
+ * Registers the runtime fallback TEXT_TO_SPEECH model handler so streaming and
+ * swarm voice paths always have a synthesizer even when no provider plugin
+ * claimed the slot. Reads eliza.json to honor a disabled TTS provider, resolves
+ * the default provider (Edge TTS), loads its handler, wraps it with the
+ * provider's first-sentence LRU cache when available, and registers it at the
+ * provider's priority — a no-op when a handler is already registered or the
+ * runtime lacks getModel/registerModel. Invoked from the post-ready boot tail.
+ */
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";

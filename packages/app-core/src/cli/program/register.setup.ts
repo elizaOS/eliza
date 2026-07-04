@@ -1,3 +1,14 @@
+/**
+ * Registers the `setup` CLI command and the interactive model-provider wizard
+ * behind it. Bootstraps the XDG state-dir config and the agent workspace:
+ * sets a provider key non-interactively from --provider/--key/--key-stdin flags
+ * or walks the TTY wizard, persists it into the config's `env` section, ensures
+ * the workspace directory exists, then prints a doctor summary. Also exports the
+ * config read/write helpers (loadConfig/saveConfig/resolveConfigPath),
+ * hasModelKey provider detection, and runProviderWizard for reuse elsewhere.
+ * Secret entry suppresses terminal echo; --key-stdin is preferred over --key so
+ * keys never land in shell history or process lists.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveConfigPath } from "@elizaos/agent";

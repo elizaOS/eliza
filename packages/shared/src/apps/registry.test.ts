@@ -1,3 +1,11 @@
+/**
+ * Tests the shared overlay-app and detail-extension registries: the AOSP-gating
+ * rules that decide which `androidOnly` overlay apps are visible per platform +
+ * user-agent (real elizaOS AOSP, white-label AOSP, stock Android, iOS, desktop,
+ * and the legacy string-context API) and the panel-id roundtrip for detail
+ * extensions. Runs against the real registries with synthetic UA strings,
+ * resetting the UI registry host around each case.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../contracts/apps.js";
 import { resetUiRegistryHostForTests } from "../registry-host.js";

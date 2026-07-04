@@ -1,3 +1,12 @@
+/**
+ * Unit tests for the app-update policy resolver. Asserts that
+ * `resolveAppUpdatePolicy` maps each platform/build-variant/elizaOS combination
+ * to the correct update channel, authority, and auto-update/manual-check
+ * capabilities (desktop direct vs store, App Store/Play, Android sideload vs
+ * AOSP, iOS sideload), and that `mapAgentUpdateStatusToSnapshot` renders the
+ * package-manager-constrained agent status snapshot, prioritising check errors.
+ * Both targets are pure functions, so these run without any I/O.
+ */
 import { describe, expect, it } from "vitest";
 import {
   mapAgentUpdateStatusToSnapshot,

@@ -1,3 +1,12 @@
+/**
+ * App-core wrapper around `@elizaos/agent`'s `buildCharacterFromConfig` that
+ * layers dashboard branding onto the built character. Syncs the Eliza/app env
+ * aliases before and after the upstream build, normalizes message examples, and
+ * fills style, adjectives, topics, and post/message examples from the matched
+ * bundled style preset (resolved by preset id, avatar index, then name) — but
+ * only where both the agent-list entry and the built character leave them unset,
+ * so explicit config always wins.
+ */
 import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
   getDefaultStylePreset,

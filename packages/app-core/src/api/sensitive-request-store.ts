@@ -1,3 +1,14 @@
+/**
+ * In-memory store backing the local sensitive-request routes. Holds
+ * `SensitiveRequest` records keyed by id, each carrying a SHA-256 hash of a
+ * single-use submit token (never the token itself), a TTL-derived expiry, and a
+ * bounded audit trail. Enforces the submit-token lifecycle — timing-safe hash
+ * comparison, lazy expiry, single-use (replay yields 409), pending-only — and
+ * transitions records through fulfilled/failed/canceled/expired. Metadata is
+ * redacted on every audit append, and `redactLocalSensitiveRequest` strips the
+ * token hash before a record is serialized to a client.
+ * `localSensitiveRequestStore` is the shared process singleton.
+ */
 import crypto from "node:crypto";
 import {
   type JsonObject,

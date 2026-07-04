@@ -1,8 +1,13 @@
-// Native boundary contract for the `CapacitorJsc` Capacitor plugin. The Swift
-// class (target name: `CapacitorJscPlugin`, registered with
-// `@objc(CapacitorJscPlugin)`) must implement the methods declared on
-// `CapacitorJscPlugin` below. Use a host JSContext (JavaScriptCore), not a
-// WKWebView, so App Review treats the runtime as a sandboxed scripting engine.
+/**
+ * Native boundary contract for the `CapacitorJsc` Capacitor plugin: declares the
+ * marshalled-value wire format and the native method surface, then registers a
+ * `jsc-ios` factory with `@elizaos/agent`'s JS-runtime registry so the agent can
+ * evaluate/import untrusted JS on iOS. The Swift class (target name
+ * `CapacitorJscPlugin`, registered with `@objc(CapacitorJscPlugin)`) must
+ * implement the methods declared on `CapacitorJscPlugin` below. Uses a host
+ * JSContext (JavaScriptCore), not a WKWebView, so App Review treats the runtime
+ * as a sandboxed scripting engine.
+ */
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
 

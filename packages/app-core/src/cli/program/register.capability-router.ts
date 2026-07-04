@@ -1,3 +1,15 @@
+/**
+ * Registers the `capability-router` CLI command group for wiring remote
+ * capability-router plugin endpoints into a running agent. `connect` POSTs a
+ * connect payload to the agent's `/api/capability-router/connect` route — for a
+ * direct/provider endpoint or an Eliza Cloud-provisioned one; the exported
+ * `buildCapabilityRouterConnectPayload` shapes and validates that body.
+ * `conformance` drives an endpoint through the plugin protocol (actions,
+ * providers, routes, view assets, models, lifecycle/event/service/app-bridge
+ * hooks, and the evaluator families) via `runCapabilityRouterConformance`,
+ * returning an exercised-surface report. Remaining helpers normalize/validate
+ * options and parse capability-invoke responses.
+ */
 import { theme } from "@elizaos/shared";
 import type { Command } from "commander";
 

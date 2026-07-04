@@ -1,3 +1,11 @@
+/**
+ * Covers the runtime-class helpers for the Eliza-1-only local stack:
+ * classifyCatalogModelRuntimeClass / classifyInstalledModelRuntimeClass both
+ * always return "fused-eliza1" (the generic-GGUF path was removed in #8808), and
+ * withRuntimeClass backfills that field on legacy rows while returning the same
+ * reference when it is already set. Pure Vitest over MODEL_CATALOG plus
+ * synthetic InstalledModel rows.
+ */
 import { describe, expect, it } from "vitest";
 
 import { MODEL_CATALOG } from "./catalog.js";

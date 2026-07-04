@@ -1,11 +1,17 @@
+/**
+ * Verifies the window `online`/`offline` connectivity fallback in
+ * `createMobileLifecycle().initializeNetworkListener` — the path that drives
+ * NETWORK_STATUS_CHANGE_EVENT when the Capacitor Network plugin is absent from
+ * the Android WebView bridge (mocked to throw here), including transition
+ * de-duplication. jsdom harness.
+ */
 import { NETWORK_STATUS_CHANGE_EVENT } from "@elizaos/ui/events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMobileLifecycle } from "./mobile-lifecycle";
 
 // The live Android/Capacitor entrypoint (main.tsx `getMobileLifecycle()`)
 // delegates its network listener to this helper's `initializeNetworkListener`,
-// so the #10472 window `online`/`offline` fallback runs in production. Before
-// that wiring the fallback lived only in this helper and had zero importers.
+// so the #10472 window `online`/`offline` fallback runs in production.
 //
 // Simulate the exact on-device failure that motivated the fallback: the
 // Capacitor `Network` plugin is absent from the Android WebView bridge, so

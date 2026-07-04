@@ -1,3 +1,10 @@
+/**
+ * Coverage for the strict numeric parsers (`parsePositiveInteger`,
+ * `parsePositiveFloat`, `parseClampedFloat`, `parseClampedInteger`) used to
+ * sanitize config / env / form inputs. Pins the fallback behaviour and the
+ * rejection of partial, malformed, non-finite, and unsafe-integer strings
+ * rather than silently coercing them.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

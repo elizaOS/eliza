@@ -1,3 +1,13 @@
+/**
+ * `runCli()` — the CLI process entrypoint. Installs the restart handler, loads
+ * `.env`, normalizes provider key aliases (Z_AI_API_KEY→ZAI_API_KEY,
+ * KIMI_API_KEY→MOONSHOT_API_KEY), builds the Commander program, eagerly loads
+ * the primary sub-CLI when one is named, then parses argv. Also owns the global
+ * error handlers: long-running server commands (`start`/`serve`) install crash
+ * guards that keep the process alive on background rejections and hand uncaught
+ * exceptions to the supervisor for restart, while one-shot commands fail fast;
+ * tests opt out so a rejection still fails the test.
+ */
 import process from "node:process";
 import {
   getLogPrefix,

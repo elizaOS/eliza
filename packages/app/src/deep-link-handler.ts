@@ -1,8 +1,14 @@
-// === Phase 5D: extracted from main.tsx ===
-// App-shell deep-link dispatcher. Recognizes the white-label `<scheme>://`
-// links emitted by the iOS/Android intents, the desktop share target, and
-// first-run redirects. Pure routing logic — share-target persistence and
-// CONNECT event dispatch are injected so the dispatcher stays test-friendly.
+/**
+ * App-shell deep-link dispatcher. Recognizes the white-label `<scheme>://`
+ * links — and trusted `https://` universal/App links — delivered by the
+ * iOS/Android intents, the desktop share target, and first-run redirects, then
+ * routes them: top-level surfaces (settings, wallet, browser, connectors,
+ * apps/deploy) onto the `eliza:navigate:view` bus; assistant-launch,
+ * messaging, and contacts paths onto hash routes; plus dedicated
+ * connect/share/notifications/keyboard-dictation handlers. Pure routing logic —
+ * navigation, share-target persistence, and CONNECT event dispatch are injected
+ * so the dispatcher stays test-friendly.
+ */
 
 import {
   CONNECT_EVENT,

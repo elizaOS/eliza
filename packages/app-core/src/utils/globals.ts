@@ -1,3 +1,11 @@
+/**
+ * Process-global CLI flags and the gated verbose logger for the app-core CLI.
+ * Holds the one-shot `verbose` and non-interactive `yes` flags (set once from
+ * parsed command options), and `logVerbose`, which mirrors a message to the
+ * structured logger and — only when `--verbose` is on — echoes it to stdout in
+ * muted styling. `shouldLogVerbose` OR-combines the flag with the `LOG_LEVEL`
+ * threshold, so verbose output also follows an elevated log level.
+ */
 import { logger } from "@elizaos/core";
 import { theme } from "@elizaos/shared";
 

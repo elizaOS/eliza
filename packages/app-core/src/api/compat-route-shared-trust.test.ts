@@ -1,3 +1,8 @@
+/**
+ * Verifies that app-core's `isTrustedLocalRequest` wrapper wires the correct
+ * policy gates into the shared trust classifier, using real
+ * http.IncomingMessage fakes with spoofable Host / X-Forwarded-For headers.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

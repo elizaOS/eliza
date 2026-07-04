@@ -1,3 +1,10 @@
+/**
+ * Shell navigate-view event contract (from events/index): the
+ * eliza:navigate:view DOM CustomEvent factory and its name constant, payload
+ * normalization (valid fields kept, malformed optionals dropped, non-string
+ * view ids filtered out), and the websocket frame builder. Pure contract
+ * assertions, with no DOM or socket harness.
+ */
 import { describe, expect, it } from "vitest";
 import {
   createNavigateViewEvent,

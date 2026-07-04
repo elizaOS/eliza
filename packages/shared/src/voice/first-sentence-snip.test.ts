@@ -1,3 +1,9 @@
+/**
+ * Tests first-sentence extraction for TTS opener caching (firstSentenceSnip,
+ * wordCount, normalizeForKey, and the version pin): sentence-boundary detection
+ * across abbreviations, decimals, quotes, and CJK; the word-count ceiling; and
+ * deterministic cache-key normalization. Pure functions, no mocks.
+ */
 import { describe, expect, it } from "vitest";
 import {
   FIRST_SENTENCE_MAX_WORDS,

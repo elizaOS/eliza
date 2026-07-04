@@ -1,3 +1,10 @@
+/**
+ * Covers `isSafeExecutableValue`: it accepts bare executable names and explicit
+ * paths while rejecting shell-metacharacter, flag-leading, and quoted values so
+ * an executable string can never smuggle in a shell command. Uses fast-check to
+ * fuzz that any injected metacharacter is always unsafe and that accepted bare
+ * names match the documented `[A-Za-z0-9._+-]` (non-dash-leading) character set.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { isSafeExecutableValue } from "./exec-safety";

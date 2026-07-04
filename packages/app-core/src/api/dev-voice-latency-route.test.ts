@@ -1,3 +1,9 @@
+/**
+ * Route test for GET /api/dev/voice-latency via handleDevCompatRoutes, driving
+ * the real voiceLatencyTracer from @elizaos/plugin-local-inference: asserts the
+ * traces + histograms + metadata payload, ?limit= truncation (newest last),
+ * loopback-only rejection, and prod-disabled behavior.
+ */
 import { Socket } from "node:net";
 import {
   afterEach,

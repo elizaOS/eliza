@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the LifeOps shared connector definitions: `capabilitiesForSide`
+ * scoping (owner side stays read-only, agent side gets the full declared set) and the
+ * frozen provider / capability / degradation-axis id lists that persisted connector
+ * status records depend on. Asserts against the real exported constants.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

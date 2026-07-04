@@ -1,3 +1,9 @@
+/**
+ * Contract tests for the LLM-subscription OAuth route schemas (Anthropic code
+ * exchange + setup token, OpenAI code exchange): covers code/token trimming, the
+ * required sk-ant-oat01 token prefix, waitForCallback handling, and strict
+ * extra-field rejection. Parses through the real Zod schemas.
+ */
 import { describe, expect, it } from "vitest";
 import {
   PostSubscriptionAnthropicExchangeRequestSchema,

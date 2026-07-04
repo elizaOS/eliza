@@ -1,3 +1,11 @@
+/**
+ * Tests the sensitive-auth rate limiters: per-IP attempt budgets
+ * (`SENSITIVE_RATE_LIMIT_MAX` over the window), isolation between named route
+ * buckets, rejection of empty limiter names, window-expiry reset, the shared
+ * null-IP "unknown" bucket, and the `_resetSensitiveLimiters` test hook (which
+ * also clears the shared `bootstrapExchangeLimiter`). Time is passed explicitly,
+ * so there is no fake clock.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
   _resetSensitiveLimiters,

@@ -1,3 +1,12 @@
+/**
+ * Browser shim for the `debug` package: namespaced debug loggers gated by a
+ * namespace filter. `createDebug(namespace)` returns a logger that emits to
+ * `console.debug` only when its namespace is enabled; enablement is driven by
+ * `enable`/`disable` and persisted in `localStorage["debug"]`, matched against
+ * comma/space-separated namespaces with `*` wildcard and trailing-`*` prefix
+ * support. Exposes the same statics (enable/disable/enabled/coerce) and the
+ * default/named exports the real module provides.
+ */
 type DebugLogger = ((...args: unknown[]) => void) & {
   namespace: string;
   enabled: boolean;

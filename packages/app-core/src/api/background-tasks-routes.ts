@@ -1,3 +1,10 @@
+/**
+ * Mounts POST /api/background/run-due-tasks, the entry point for platform-native
+ * background wakes. It authorizes the request, resolves the canonical core
+ * `TaskService` off the current runtime, and drives `runDueTasks()` — coalescing
+ * concurrent wakes into a single in-flight run rather than standing up a second
+ * scheduler. Returns 503 when the runtime or task service is unavailable.
+ */
 import type http from "node:http";
 import { type Service, ServiceType } from "@elizaos/core";
 import { ensureRouteAuthorized } from "./auth.ts";

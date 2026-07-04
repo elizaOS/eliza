@@ -1,3 +1,11 @@
+/**
+ * Exercises `handleDatabaseRowsCompatRoute` — the dashboard table-browser raw
+ * row read — with its OWNER-role gate as the focus. Drives the real
+ * `ensureRouteMinRole` through mocked session/identity primitives (and the
+ * injectable `ensureOwner` seam) so a USER-tier session is denied 403 before any
+ * SQL runs; mocks `@elizaos/shared` SQL helpers with canned introspection/count
+ * results to cover the OWNER read, malformed-count, and numeric-string paths.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -243,8 +251,8 @@ describe("handleDatabaseRowsCompatRoute", () => {
 describe("GET /api/database/tables/:name/rows OWNER gate", () => {
   it("rejects a USER-role machine session with 403 and never reads the table", async () => {
     // A machine identity resolves to the USER tier: an active session, but
-    // not OWNER. Before the fix this reached raw SELECT * FROM <table>; now
-    // it must be denied at the gate.
+    // not OWNER. A raw SELECT * FROM <table> must be denied at the gate before
+    // any SQL runs.
     mocks.findActiveSession.mockResolvedValue(
       makeSession({ id: "machine-session", kind: "machine" }),
     );

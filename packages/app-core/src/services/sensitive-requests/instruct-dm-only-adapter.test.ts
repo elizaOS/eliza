@@ -1,3 +1,9 @@
+/**
+ * Covers the instruct_dm_only sensitive-request delivery target: the last-resort
+ * adapter that, when no private or authenticated route exists, reports success
+ * with no url and formRendered=false (instructing the owner to move to a DM or
+ * the owner app), for every request kind including payment.
+ */
 import type { DispatchSensitiveRequest, SensitiveRequest } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { instructDmOnlySensitiveRequestAdapter } from "./instruct-dm-only-adapter";

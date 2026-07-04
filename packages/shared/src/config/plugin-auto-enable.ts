@@ -1,9 +1,11 @@
-// Backward-compat surface for callers that imported from the old wrapper path.
-//
-// Auto-enable now lives in ./plugin-manifest.ts (per-plugin manifest pattern).
-// What's left here are the connector / streaming reverse-lookup maps and
-// the configured-detection helpers that several other packages still consume —
-// they're not auto-enable, just shared data.
+/**
+ * Backward-compat re-export surface for callers that imported from the old
+ * plugin-auto-enable wrapper path. Auto-enable itself now lives in
+ * ./plugin-manifest.ts (per-plugin manifest pattern); what this module
+ * forwards are the connector / streaming reverse-lookup maps and the
+ * configured-detection helpers several other packages still consume — shared
+ * data, not auto-enable logic.
+ */
 export {
   CONNECTOR_PLUGINS,
   isConnectorConfigured,

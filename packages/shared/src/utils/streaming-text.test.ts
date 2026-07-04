@@ -1,3 +1,11 @@
+/**
+ * Coverage for the streaming-text reconciler (`mergeStreamingText`,
+ * `computeStreamingDelta`, `resolveStreamingUpdate`) that folds incoming token
+ * snapshots into the already-displayed chat text. Combines named regressions
+ * (repeated single-char deltas, suffix/prefix overlap dedupe, cumulative
+ * snapshots, in-place revisions) with fast-check property fuzzing of the
+ * append / replace / unchanged classification.
+ */
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

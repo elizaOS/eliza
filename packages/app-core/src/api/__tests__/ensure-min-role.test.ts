@@ -1,3 +1,10 @@
+/**
+ * Pins the tokenless authorization branch of the compat sensitive-route helper
+ * (`ensureCompatSensitiveRouteAuthorized`): a trusted same-machine loopback
+ * caller is granted OWNER, while remote or local-auth-required callers fail
+ * closed with 403. Drives the real helper against hand-built Node
+ * `http.IncomingMessage`/`ServerResponse` objects — no live server.
+ */
 import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
