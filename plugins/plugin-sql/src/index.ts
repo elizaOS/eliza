@@ -29,6 +29,11 @@ export {
   sql,
 } from "drizzle-orm";
 
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
@@ -187,8 +192,22 @@ export const plugin: Plugin = {
                 runtimeWithAdapter.databaseAdapter ??
                 runtimeWithAdapter.adapter;
               return Boolean(existing);
-            } catch {
-              return false;
+            } catch (error) {
+              if (isMissingDatabaseAdapterError(error)) {
+                return false;
+              }
+              runtime.logger.error(
+                {
+                  src: "plugin:sql",
+                  agentId: runtime.agentId,
+                  error: describeAdapterReadinessError(error),
+                },
+                "Database adapter detection failed"
+              );
+              throw createAdapterReadinessError(error, {
+                agentId: runtime.agentId,
+                entrypoint: "default",
+              });
             }
           })();
 

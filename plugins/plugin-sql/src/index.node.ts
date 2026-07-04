@@ -10,6 +10,11 @@
 import { mkdirSync } from "node:fs";
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 
 export {
   and,
@@ -186,19 +191,22 @@ export const plugin: Plugin = {
       .isReady()
       .then(() => true)
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("Database adapter not registered")) {
+        const message = describeAdapterReadinessError(error);
+        if (isMissingDatabaseAdapterError(error)) {
           runtime.logger.info(
             { src: "plugin:sql", agentId: runtime.agentId },
             "No pre-registered database adapter detected; registering adapter"
           );
-        } else {
-          runtime.logger.warn(
-            { src: "plugin:sql", agentId: runtime.agentId, error: message },
-            "Database adapter readiness check error; proceeding to register adapter"
-          );
+          return false;
         }
-        return false;
+        runtime.logger.error(
+          { src: "plugin:sql", agentId: runtime.agentId, error: message },
+          "Database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "node",
+        });
       });
     if (adapterRegistered) {
       runtime.logger.info(

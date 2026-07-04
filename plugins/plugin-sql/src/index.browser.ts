@@ -12,6 +12,11 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
 import {
@@ -123,7 +128,27 @@ export const plugin: Plugin = {
         );
         return;
       }
-    } catch (_error) {}
+    } catch (error) {
+      if (isMissingDatabaseAdapterError(error)) {
+        logger.info(
+          { src: "plugin:sql", agentId: runtime.agentId },
+          "No pre-registered database adapter detected; registering browser adapter"
+        );
+      } else {
+        logger.error(
+          {
+            src: "plugin:sql",
+            agentId: runtime.agentId,
+            error: describeAdapterReadinessError(error),
+          },
+          "Browser database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "browser",
+        });
+      }
+    }
 
     const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
     runtimeWithAdapter.registerDatabaseAdapter(dbAdapter);
