@@ -83,9 +83,11 @@ test.describe("cloud-only onboarding (production default)", () => {
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const { surface } = await completeCloudOnlySessionInjectionToHome(page, {
-      state,
-    });
+    const { surface } = await completeCloudOnlySessionInjectionToHome(
+      page,
+      desktopClick,
+      { state },
+    );
     await settleHomeEntrance(page);
     await screenshot(page, "cloud-only-session-injection-home");
     expect(await surface.getAttribute("data-page")).toBe("home");
@@ -94,13 +96,14 @@ test.describe("cloud-only onboarding (production default)", () => {
   test("existing cloud agents surface the one-tap picker before completion", async ({
     page,
   }) => {
+    await injectCloudAuthToken(page);
     const state = await installHomeRoutes(page);
     await installCloudRoutes(page);
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const { surface } = await completeCloudOnlyOnboardingToHome(
+    const { surface } = await completeCloudOnlySessionInjectionToHome(
       page,
       desktopClick,
       { state, pickAgent: true },

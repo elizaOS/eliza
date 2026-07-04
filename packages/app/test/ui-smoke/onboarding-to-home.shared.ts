@@ -1118,16 +1118,17 @@ async function expectCloudOnlyCompletion(
 
 /**
  * Drive cloud-only onboarding via the sign-in tap: greeting → the session
- * lands during the (mocked) login the tap launches → provision → home.
- * With `agentCount: 1` the cloud-agent picker still appears and is picked;
- * with 0 the bind is silent.
+ * lands during the (mocked) login the tap launches → silent provision → home.
+ * Zero-agent lane only: seeding the token in-page also arms the conductor's
+ * token poll, so a picker lane here would race two legitimate provision flows
+ * and seed duplicate picker widgets — the picker is covered by the injection
+ * flow below instead.
  */
 export async function completeCloudOnlyOnboardingToHome(
   page: Page,
   click: (locator: Locator) => Promise<void>,
-  opts: { state: OnboardingRouteState; pickAgent?: boolean },
+  opts: { state: OnboardingRouteState },
 ): Promise<{ surface: Locator }> {
-  const { state, pickAgent = false } = opts;
   await expectCloudOnlySignInOnboarding(page);
 
   // The session token lands as the login flow the tap launches completes
@@ -1137,22 +1138,19 @@ export async function completeCloudOnlyOnboardingToHome(
   }, CLOUD_AUTH_TOKEN);
   await click(page.getByTestId(RUNTIME_CHOICE("cloud")));
 
-  if (pickAgent) {
-    const agentChoice = page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID));
-    await expect(agentChoice).toBeVisible({ timeout: 30_000 });
-    await click(agentChoice);
-  }
-
-  return expectCloudOnlyCompletion(page, state);
+  return expectCloudOnlyCompletion(page, opts.state);
 }
 
 /**
  * Session injection: a usable stored session at boot skips the sign-in ask
- * entirely — zero interactions from fresh boot to onboarded home.
+ * entirely. With zero cloud agents this is zero interactions from fresh boot
+ * to the onboarded home; with an existing agent the one-tap picker is the
+ * only interaction.
  */
 export async function completeCloudOnlySessionInjectionToHome(
   page: Page,
-  opts: { state: OnboardingRouteState },
+  click: (locator: Locator) => Promise<void>,
+  opts: { state: OnboardingRouteState; pickAgent?: boolean },
 ): Promise<{ surface: Locator }> {
   await expect(
     page.getByText("Welcome back — you're already signed in", {
@@ -1161,6 +1159,13 @@ export async function completeCloudOnlySessionInjectionToHome(
   ).toBeVisible({ timeout: 30_000 });
   // The sign-in ask never rendered.
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toHaveCount(0);
+
+  if (opts.pickAgent) {
+    const agentChoice = page.getByTestId(CLOUD_AGENT_CHOICE(CLOUD_AGENT_ID));
+    await expect(agentChoice).toBeVisible({ timeout: 30_000 });
+    await click(agentChoice);
+  }
+
   return expectCloudOnlyCompletion(page, opts.state);
 }
 
