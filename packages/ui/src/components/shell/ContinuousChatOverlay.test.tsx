@@ -2214,14 +2214,14 @@ describe("ContinuousChatOverlay", () => {
 });
 
 /**
- * Swipe-between-conversations integration (#8929). Drives the REAL overlay with
- * the REAL `usePullGesture` binding and a REAL `conversationNav` (built via the
- * production `buildConversationNav` helper) — not the isolated `__e2e__` fixture
- * mock. A committed horizontal swipe on the thread must (a) light the edge hint
- * with the live drag offset and (b) select the adjacent conversation through
- * `handleSelectConversation`, proving the active conversation actually changes.
+ * Single infinite thread (#13531): the chat-to-chat horizontal swipe was
+ * REMOVED. This suite drives the REAL overlay with a REAL `conversationNav`
+ * (built via the production `buildConversationNav` helper) and proves a
+ * committed horizontal drag on the transcript NO LONGER selects an adjacent
+ * conversation and NO swipe edge hint renders. (The collapsed-composer
+ * home↔launcher swipe is a separate binding, covered elsewhere.)
  */
-describe("ContinuousChatOverlay swipe-nav", () => {
+describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
   function conv(id: string): Conversation {
     return {
       id,
@@ -2233,7 +2233,7 @@ describe("ContinuousChatOverlay swipe-nav", () => {
   }
 
   // The list is most-recent-first: [newest "a", "b", oldest "c"]. Active "b" is
-  // in the middle so both directions are navigable.
+  // in the middle so both directions WOULD have been navigable pre-#13531.
   const CONVERSATIONS = [conv("a"), conv("b"), conv("c")];
 
   function makeSwipeController() {
@@ -2258,145 +2258,136 @@ describe("ContinuousChatOverlay swipe-nav", () => {
     return el;
   }
 
-  it("a committed LEFT swipe selects the next (older) conversation", () => {
+  it("a committed LEFT drag does NOT switch to the next conversation", () => {
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
-    // Drag LEFT: clientX decreases. The first move commits the X axis (>8px);
-    // total travel of 120px clears the 64px horizontal distance threshold.
+    // The exact gesture that used to navigate LEFT (→ "c") pre-#13531.
     fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 2 });
     fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 2 });
     fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 2 });
 
-    // "b" → next/older is "c".
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("c");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("a committed RIGHT swipe selects the previous (newer) conversation", () => {
+  it("a committed RIGHT drag does NOT switch to the previous conversation", () => {
     const { controller, onSelect } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
-    // Drag RIGHT: clientX increases.
+    // The exact gesture that used to navigate RIGHT (→ "a") pre-#13531.
     fireEvent.pointerDown(el, { clientX: 180, clientY: 300, pointerId: 2 });
     fireEvent.pointerMove(el, { clientX: 200, clientY: 302, pointerId: 2 });
     fireEvent.pointerUp(el, { clientX: 300, clientY: 302, pointerId: 2 });
 
-    // "b" → prev/newer is "a".
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("a");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("lights an edge hint with the live drag offset while swiping", async () => {
+  it("never renders a conversation-swipe edge hint mid-drag", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
-    // Hold mid-drag (no pointerUp) so swipeDx is live and the hint is mounted.
-    // Dragging LEFT (clientX decreases) drives swipeDx > 0 — the next/older
-    // conversation slides in from the RIGHT edge, so the RIGHT hint lights.
+    // Hold mid-drag (no pointerUp): pre-#13531 this lit the RIGHT edge hint.
     fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 3 });
     fireEvent.pointerMove(el, { clientX: 240, clientY: 302, pointerId: 3 });
 
-    const hint = await waitFor(() =>
-      screen.getByTestId("conversation-swipe-hint-right"),
-    );
-    expect(hint).toBeTruthy();
-    // Opacity scales with the drag distance (60px of 96px ≈ 0.625).
-    expect(Number.parseFloat(hint.style.opacity)).toBeGreaterThan(0);
-    // The opposite (left) hint stays inert while dragging left.
+    expect(screen.queryByTestId("conversation-swipe-hint-right")).toBeNull();
     expect(screen.queryByTestId("conversation-swipe-hint-left")).toBeNull();
   });
 
-  it("does NOT switch conversations on a mostly-vertical drag (axis lock)", () => {
-    const { controller, onSelect } = makeSwipeController();
+  it("exposes no maximize / minimize / clear (new-chat) header buttons", () => {
+    const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
-    const el = thread();
-    // Vertical travel dominates → the gesture commits to the Y axis and never
-    // fires a swipe, so the active conversation is unchanged.
-    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 4 });
-    fireEvent.pointerMove(el, { clientX: 290, clientY: 220, pointerId: 4 });
-    fireEvent.pointerUp(el, { clientX: 285, clientY: 140, pointerId: 4 });
-
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("chat-full-maximize")).toBeNull();
+    expect(screen.queryByTestId("chat-full-clear")).toBeNull();
+    // The launcher (the sole remaining header control) still renders.
+    expect(screen.getByTestId("chat-full-launcher")).toBeTruthy();
   });
 
-  it("does NOT switch conversations when a mouse drag was highlighting bubble text", () => {
-    // The swipe binding lives on the transcript, which contains the selectable
-    // message bubbles. A horizontal MOUSE drag to highlight text would commit as
-    // a swipe and navigate away — destroying the selection. A live (non-
-    // collapsed) selection at release means the gesture was a highlight, so the
-    // swipe is skipped (mirrors the ThreadLine tap-reveal guard).
-    const { controller, onSelect } = makeSwipeController();
+  // Maximize is a PULL now, not a button (#13531). A big upward over-pull of the
+  // grabber — far past the FULL detent — flips the sheet to edge-to-edge
+  // full-bleed (data-maximized="true", data-chat-state="MAXIMIZED").
+  function bigPullUp() {
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    // Start low, drag all the way to the very top: a deliberate slow over-pull
+    // whose peak raw height clears the maximize threshold.
+    fireEvent.pointerDown(grabber, { clientY: 760, pointerId: 7 });
+    fireEvent.pointerMove(grabber, { clientY: 400, pointerId: 7 });
+    fireEvent.pointerMove(grabber, { clientY: 40, pointerId: 7 });
+    fireEvent.pointerMove(grabber, { clientY: 0, pointerId: 7 });
+    fireEvent.pointerUp(grabber, { clientY: 0, pointerId: 7 });
+  }
+
+  it("a big upward over-pull of the grabber maximizes to full-bleed", () => {
+    const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+  });
+
+  it("renders the top-20% pull-down restore zone ONLY while maximized", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    // Not present at rest / half.
     openSheet();
-
-    const getSelection = vi.spyOn(window, "getSelection").mockReturnValue({
-      toString: () => "selected bubble text",
-    } as unknown as Selection);
-    try {
-      const el = thread();
-      // The exact gesture that DOES navigate in the passing test above — only
-      // the live selection differs.
-      fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 6 });
-      fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 6 });
-      fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 6 });
-
-      expect(onSelect).not.toHaveBeenCalled();
-    } finally {
-      getSelection.mockRestore();
-    }
+    expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
+    // Appears once maximized.
+    bigPullUp();
+    expect(screen.getByTestId("chat-maximize-restore-zone")).toBeTruthy();
   });
 
-  it("does not bind the swipe gesture while the sheet is collapsed", () => {
-    const { controller, onSelect } = makeSwipeController();
+  it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
+    const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
 
-    // No openSheet(): the transcript target is not mounted while collapsed, so
-    // there is nothing to bind and no hidden layer can catch a swipe.
-    expect(document.getElementById("continuous-thread")).toBeNull();
-    expect(onSelect).not.toHaveBeenCalled();
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    // A committed downward pull starting in the top-20% zone.
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 8 });
+    fireEvent.pointerMove(zone, { clientY: 200, pointerId: 8 });
+    fireEvent.pointerUp(zone, { clientY: 320, pointerId: 8 });
+
+    // Back to the inset overlay: no longer maximized, but the sheet stays OPEN
+    // (the thread didn't collapse to the input).
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("still navigates (no crash) when swiping while the thread is loading/empty", () => {
-    // The exact reported state: after a reset the thread is empty and the
-    // loading spinner is up, and the user "thumbs back and forth". The swipe
-    // must stay bound and select the adjacent conversation instead of throwing.
-    const onSelect = vi.fn<(id: string) => void>();
-    const conversationNav = buildConversationNav(CONVERSATIONS, "b", onSelect);
-    const make = (over: Partial<ShellController>) =>
-      makeController({
-        conversationNav,
-        ...over,
-      } as unknown as Partial<ShellController>);
+  it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
 
-    const { rerender } = render(
-      <ContinuousChatOverlay controller={make({})} />,
-    );
-    openSheet(); // opens into the (present) default thread
+    fireEvent.keyDown(screen.getByTestId("chat-maximize-restore-zone"), {
+      key: "ArrowDown",
+    });
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+  });
 
-    // Conversation cleared, a fresh one loading: empty thread + spinner.
-    rerender(
-      <ContinuousChatOverlay
-        controller={make({
-          messages: [],
-          conversationLoading: true,
-        })}
-      />,
-    );
-    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+  it("Escape from maximized collapses the whole sheet (not just restore)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    bigPullUp();
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
 
-    const el = thread();
-    fireEvent.pointerDown(el, { clientX: 300, clientY: 300, pointerId: 6 });
-    fireEvent.pointerMove(el, { clientX: 280, clientY: 302, pointerId: 6 });
-    fireEvent.pointerUp(el, { clientX: 180, clientY: 302, pointerId: 6 });
-
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("c");
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 });
 

@@ -89,7 +89,24 @@ const COMMANDS: SlashCommandCatalogItem[] = [
     requiresAuth: false,
     requiresElevated: false,
     surfaces: ["gui", "tui"],
+    // Single infinite thread (#13531): the overlay treats clear-chat as inert.
     target: { kind: "client", clientAction: "clear-chat" },
+    source: "builtin",
+  },
+  {
+    key: "commands",
+    nativeName: "commands",
+    description: "Show commands",
+    textAliases: ["/commands"],
+    scope: "text",
+    acceptsArgs: false,
+    args: [],
+    requiresAuth: false,
+    requiresElevated: false,
+    surfaces: ["gui", "tui"],
+    // A client command the overlay STILL forwards — exercises the generic
+    // client-action dispatch path now that clear-chat is inert (#13531).
+    target: { kind: "client", clientAction: "open-command-palette" },
     source: "builtin",
   },
   {
@@ -193,10 +210,24 @@ describe("ContinuousChatOverlay slash commands", () => {
   it("Enter on a client command runs the client action", () => {
     const slash = makeSlash();
     const { input, controller } = renderOverlay(slash);
+    // `/commands` → open-command-palette, a client action the overlay still
+    // forwards (clear-chat is intentionally inert under one-infinite-thread,
+    // #13531).
+    fireEvent.change(input, { target: { value: "/commands" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(slash.openCommandPalette).toHaveBeenCalled();
+    expect(controller.send).not.toHaveBeenCalled();
+  });
+
+  it("Enter on /clear is inert — no clear, no send (single infinite thread, #13531)", () => {
+    const slash = makeSlash();
+    const { input, controller } = renderOverlay(slash);
     fireEvent.change(input, { target: { value: "/clear" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(slash.clearChat).toHaveBeenCalled();
+    expect(slash.clearChat).not.toHaveBeenCalled();
     expect(controller.send).not.toHaveBeenCalled();
+    // The draft is still consumed (the command resolved), not left in the box.
+    expect(input.value).toBe("");
   });
 
   it("natural navigation stays inert when the feature flag is off", () => {
