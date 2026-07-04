@@ -178,6 +178,7 @@ export function ChatView({
     handleChatSend: s.handleChatSend,
     handleChatStop: s.handleChatStop,
     handleChatEdit: s.handleChatEdit,
+    handleChatDelete: s.handleChatDelete,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     elizaCloudHasPersistedKey: s.elizaCloudHasPersistedKey,
@@ -205,6 +206,7 @@ export function ChatView({
     handleChatSend,
     handleChatStop,
     handleChatEdit,
+    handleChatDelete,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
     elizaCloudHasPersistedKey,
@@ -654,6 +656,15 @@ export function ChatView({
     },
     [copyToClipboard],
   );
+  // Persistent per-message delete (#13533): the server DELETE + optimistic
+  // removal with rollback lives in handleChatDelete. Distinct from
+  // handleDismissSuggestion, which is a local-only (#8792) removal.
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      void handleChatDelete(messageId);
+    },
+    [handleChatDelete],
+  );
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
@@ -682,7 +693,7 @@ export function ChatView({
         onEdit={handleEditMessage}
         onSpeak={handleSpeakMessage}
         onCopy={handleCopyMessageText}
-        onDelete={removeConversationMessage}
+        onDelete={handleDeleteMessage}
         onDismissSuggestion={handleDismissSuggestion}
         onAcceptSuggestion={handleAcceptSuggestion}
         renderMessageContent={renderChatMessageContent}

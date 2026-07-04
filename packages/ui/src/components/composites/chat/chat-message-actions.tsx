@@ -130,6 +130,14 @@ export function ChatMessageActions({
             onClick={onEdit}
           />
         ) : null}
+        {canDelete && onDelete ? (
+          <GlassActionButton
+            label={labels.delete ?? "Delete"}
+            testId="thread-line-delete"
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            onClick={onDelete}
+          />
+        ) : null}
       </>
     );
   }

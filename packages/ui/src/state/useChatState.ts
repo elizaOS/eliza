@@ -86,6 +86,7 @@ type ChatAction =
   | { type: "SET_MESSAGES"; value: ConversationMessage[] }
   | { type: "APPEND_MESSAGE"; message: ConversationMessage }
   | { type: "UPDATE_MESSAGE"; id: string; update: Partial<ConversationMessage> }
+  | { type: "REMOVE_MESSAGE"; id: string }
   | { type: "SET_AUTONOMOUS_EVENTS"; value: StreamEventEnvelope[] }
   | { type: "SET_AUTONOMOUS_LATEST_EVENT_ID"; value: string | null }
   | { type: "SET_AUTONOMOUS_RUN_HEALTH"; value: AutonomyRunHealthMap }
@@ -146,6 +147,15 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         conversationMessages: state.conversationMessages.map((m) =>
           m.id === action.id ? { ...m, ...action.update } : m,
+        ),
+      };
+    // Remove a single message by id (#13533). Backs the persistent per-message
+    // delete: optimistic removal here, re-hydrate on server failure.
+    case "REMOVE_MESSAGE":
+      return {
+        ...state,
+        conversationMessages: state.conversationMessages.filter(
+          (m) => m.id !== action.id,
         ),
       };
     case "SET_AUTONOMOUS_EVENTS":

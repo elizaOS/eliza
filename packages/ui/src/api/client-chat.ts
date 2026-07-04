@@ -425,6 +425,15 @@ declare module "./client-base" {
       messageId: string,
       options?: { inclusive?: boolean },
     ): Promise<{ ok: boolean; deletedCount: number }>;
+    /**
+     * Delete a single message from a conversation and its backing memory row
+     * (#13533). Persists across reloads — distinct from the local-only
+     * suggestion dismissal (#8792) and from truncate (edit-and-resend).
+     */
+    deleteConversationMessage(
+      id: string,
+      messageId: string,
+    ): Promise<{ ok: boolean; deletedCount: number }>;
     sendConversationMessage(
       id: string,
       text: string,
@@ -1172,6 +1181,19 @@ ElizaClient.prototype.truncateConversationMessages = async function (
         inclusive: options?.inclusive === true,
       }),
     },
+  );
+};
+
+ElizaClient.prototype.deleteConversationMessage = async function (
+  this: ElizaClient,
+  id,
+  messageId,
+) {
+  return this.fetch(
+    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(
+      messageId,
+    )}`,
+    { method: "DELETE" },
   );
 };
 

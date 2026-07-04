@@ -1019,9 +1019,14 @@ export function ContinuousChatOverlay({
   // it reaches the in-chat conductor (and never the server); post-onboarding it
   // is unused here (the composer sends via `controller.send`). In stories/tests
   // with no AppContext the store returns an inert no-op.
-  const { sendActionMessage } = useAppSelectorShallow((s) => ({
-    sendActionMessage: s.sendActionMessage,
-  }));
+  const { sendActionMessage, handleChatDelete } = useAppSelectorShallow(
+    (s) => ({
+      sendActionMessage: s.sendActionMessage,
+      // Persistent per-message delete (#13533): server DELETE + optimistic
+      // removal with rollback. Inert no-op in stories/tests with no AppContext.
+      handleChatDelete: s.handleChatDelete,
+    }),
+  );
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -1203,6 +1208,18 @@ export function ContinuousChatOverlay({
       return true;
     },
     [send],
+  );
+
+  // Persistent per-message delete from the glass row (#13533). Routes through
+  // the app-level handler so the server DELETE + optimistic removal + rollback
+  // are identical to the panel (ChatView) surface; the shell transcript mirrors
+  // conversationMessages, so the row disappears optimistically and re-appears
+  // if the DELETE fails.
+  const handleDeleteMessage = React.useCallback(
+    (id: string) => {
+      void handleChatDelete?.(id);
+    },
+    [handleChatDelete],
   );
 
   // Retry a failed/interrupted assistant turn by re-sending its preceding user
@@ -1654,6 +1671,7 @@ export function ContinuousChatOverlay({
           onLongPressCopy={handleLongPressCopy}
           onSpeak={handleSpeakMessage}
           onEdit={handleEditResend}
+          onDelete={handleDeleteMessage}
           onRetry={handleRetry}
           playing={speaking && playingMessageId === m.id}
           renderContent={renderRowBody}
@@ -1670,6 +1688,7 @@ export function ContinuousChatOverlay({
       handleLongPressCopy,
       handleSpeakMessage,
       handleEditResend,
+      handleDeleteMessage,
       handleRetry,
       speaking,
       playingMessageId,

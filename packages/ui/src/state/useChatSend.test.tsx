@@ -48,6 +48,9 @@ const mocks = vi.hoisted(() => ({
     stopCodingAgent: vi.fn(),
     renameConversation: vi.fn(() => Promise.resolve()),
     truncateConversationMessages: vi.fn(() => Promise.resolve()),
+    deleteConversationMessage: vi.fn(() =>
+      Promise.resolve({ ok: true, deletedCount: 1 }),
+    ),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -1659,5 +1662,110 @@ describe("useChatSend — structured SSE error surfaces the gate (#10231)", () =
 
     // No structured gate → the existing generic-notice path is preserved.
     expect(deps.setActionNotice).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useChatSend — handleChatDelete persistent single-message delete (#13533)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.deleteConversationMessage.mockResolvedValue({
+      ok: true,
+      deletedCount: 1,
+    });
+  });
+
+  function seedMessages(
+    deps: UseChatSendDeps,
+    messages: ConversationMessage[],
+  ): void {
+    deps.conversationMessagesRef.current = messages;
+  }
+
+  function userMsg(id: string, text = "hi"): ConversationMessage {
+    return {
+      id,
+      role: "user",
+      text,
+      timestamp: 1,
+    } as ConversationMessage;
+  }
+
+  it("optimistically removes the message and fires the server DELETE", async () => {
+    const deps = makeDeps({ activeConversationId: "c-1" });
+    seedMessages(deps, [userMsg("m-1"), userMsg("m-2"), userMsg("m-3")]);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.handleChatDelete("m-2");
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.client.deleteConversationMessage).toHaveBeenCalledWith(
+      "c-1",
+      "m-2",
+    );
+    // Target gone, neighbors intact (single-row delete, not truncate).
+    const ids = deps.conversationMessagesRef.current.map((m) => m.id);
+    expect(ids).toEqual(["m-1", "m-3"]);
+  });
+
+  it("rolls back the removal and surfaces an error when the server DELETE fails", async () => {
+    const deps = makeDeps({ activeConversationId: "c-1" });
+    const seeded = [userMsg("m-1"), userMsg("m-2"), userMsg("m-3")];
+    seedMessages(deps, seeded);
+    mocks.client.deleteConversationMessage.mockRejectedValueOnce(
+      new Error("boom"),
+    );
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.handleChatDelete("m-2");
+    });
+
+    expect(ok).toBe(false);
+    // Message restored — never a silent local-only removal on failure.
+    expect(deps.conversationMessagesRef.current.map((m) => m.id)).toEqual([
+      "m-1",
+      "m-2",
+      "m-3",
+    ]);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete message"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("removes an optimistic (temp-) message locally without a server call", async () => {
+    const deps = makeDeps({ activeConversationId: "c-1" });
+    seedMessages(deps, [userMsg("temp-abc"), userMsg("m-2")]);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let ok = false;
+    await act(async () => {
+      ok = await result.current.handleChatDelete("temp-abc");
+    });
+
+    expect(ok).toBe(true);
+    expect(mocks.client.deleteConversationMessage).not.toHaveBeenCalled();
+    expect(deps.conversationMessagesRef.current.map((m) => m.id)).toEqual([
+      "m-2",
+    ]);
+  });
+
+  it("no-ops (returns false) when there is no active conversation", async () => {
+    const deps = makeDeps({ activeConversationId: null });
+    seedMessages(deps, [userMsg("m-1")]);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let ok = true;
+    await act(async () => {
+      ok = await result.current.handleChatDelete("m-1");
+    });
+
+    expect(ok).toBe(false);
+    expect(mocks.client.deleteConversationMessage).not.toHaveBeenCalled();
   });
 });

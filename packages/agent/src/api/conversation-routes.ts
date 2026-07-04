@@ -6,6 +6,7 @@
  *   GET    /api/conversations             – list
  *   GET    /api/conversations/:id/messages – get messages
  *   POST   /api/conversations/:id/messages/truncate – truncate
+ *   DELETE /api/conversations/:id/messages/:messageId – delete one message
  *   POST   /api/conversations/:id/messages/stream   – stream message
  *   POST   /api/conversations/:id/messages           – send message
  *   POST   /api/conversations/:id/greeting            – get/store greeting
@@ -1321,6 +1322,42 @@ async function ensureConversationGreetingStored(
   };
 }
 
+/**
+ * Delete a SINGLE message from a conversation by id (#13533). Unlike
+ * `truncateConversationMessages` (which drops the target and everything after —
+ * the edit-and-resend primitive), this removes exactly one row and leaves the
+ * rest of the thread intact.
+ *
+ * The id is resolved by store lookup and its `roomId` verified against the
+ * conversation's room the same way `?around` guards a forged pivot
+ * (`loadConversationMessagesAround`): a message id from another room yields a 404
+ * ("not found"), never a cross-room delete. A `messageId` that resolves to no
+ * memory is a 404.
+ */
+async function deleteConversationMessage(
+  runtime: AgentRuntime,
+  conv: ConversationMeta,
+  messageId: string,
+): Promise<{ deletedCount: number }> {
+  const [memory] = await runtime.getMemoriesByIds(
+    [messageId as UUID],
+    "messages",
+  );
+  // Not found, or a forged id pointing at another room: treat both as 404 so a
+  // cross-room id can't confirm existence or delete foreign content.
+  if (!memory || memory.roomId !== conv.roomId) {
+    const notFoundError = new Error(
+      "Conversation message not found",
+    ) as Error & { status?: number };
+    notFoundError.status = 404;
+    throw notFoundError;
+  }
+  const deletedCount = await deleteConversationMemories(runtime, [
+    messageId as UUID,
+  ]);
+  return { deletedCount };
+}
+
 async function truncateConversationMessages(
   runtime: AgentRuntime,
   conv: ConversationMeta,
@@ -2095,6 +2132,53 @@ export async function handleConversationRoutes(
           inclusive: inclusive === true,
         },
       );
+      conv.updatedAt = new Date().toISOString();
+      state.broadcastWs?.({
+        type: "conversation-updated",
+        conversation: conv,
+      });
+      json(res, { ok: true, deletedCount: result.deletedCount });
+    } catch (err) {
+      const status =
+        typeof (err as { status?: number }).status === "number"
+          ? (err as { status: number }).status
+          : 500;
+      error(res, getErrorMessage(err), status);
+    }
+    return true;
+  }
+
+  // ── DELETE /api/conversations/:id/messages/:messageId ──────────────
+  // Delete ONE message from the conversation and its backing memory row
+  // (#13533). Distinct from truncate (edit-and-resend) and from the local-only
+  // `removeConversationMessage` suggestion dismissal (#8792): this persists.
+  if (
+    method === "DELETE" &&
+    /^\/api\/conversations\/[^/]+\/messages\/[^/]+$/.test(pathname)
+  ) {
+    const segments = pathname.split("/");
+    const convId = decodeURIComponent(segments[3]);
+    const messageId = decodeURIComponent(segments[5]);
+    const conv = await getConversationWithRestore(state, convId);
+    if (!conv) {
+      error(res, "Conversation not found", 404);
+      return true;
+    }
+    // Non-admin waifu callers may only mutate their own conversation; the
+    // access-scoped 404 keeps a foreign conv id from leaking existence.
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
+
+    const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Agent is not running", 503);
+      return true;
+    }
+
+    try {
+      const result = await deleteConversationMessage(runtime, conv, messageId);
       conv.updatedAt = new Date().toISOString();
       state.broadcastWs?.({
         type: "conversation-updated",

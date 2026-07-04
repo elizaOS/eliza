@@ -2208,6 +2208,61 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
 
+  // Persistently delete a single message (#13533). Optimistically removes the
+  // bubble, fires the server DELETE, and re-hydrates from the store on failure
+  // so a network/authz error never leaves a locally-hidden-but-still-persisted
+  // message. Distinct from the local-only `removeConversationMessage`
+  // suggestion dismissal (#8792), which is intentionally server-free.
+  const handleChatDelete = useCallback(
+    async (messageId: string): Promise<boolean> => {
+      const convId = activeConversationIdRef.current;
+      if (!convId) return false;
+
+      const currentMessages = conversationMessagesRef.current;
+      const target = currentMessages.find((m) => m.id === messageId);
+      // An optimistic (temp-) or local command turn has no persisted memory row
+      // to delete; drop it locally so the UI stays consistent.
+      if (
+        !target ||
+        target.id.startsWith("temp-") ||
+        target.source === "local_command"
+      ) {
+        const nextMessages = currentMessages.filter((m) => m.id !== messageId);
+        conversationMessagesRef.current = nextMessages;
+        setConversationMessages(nextMessages);
+        return true;
+      }
+
+      // Optimistic removal, remembering the prior list for rollback.
+      const preserved = currentMessages;
+      const nextMessages = currentMessages.filter((m) => m.id !== messageId);
+      conversationMessagesRef.current = nextMessages;
+      setConversationMessages(nextMessages);
+
+      try {
+        await client.deleteConversationMessage(convId, messageId);
+        return true;
+      } catch (err) {
+        // Roll back to the pre-delete list so the message stays visible; never
+        // a silent local-only removal on failure.
+        conversationMessagesRef.current = preserved;
+        setConversationMessages(preserved);
+        setActionNotice(
+          `Failed to delete message: ${err instanceof Error ? err.message : "network error"}`,
+          "error",
+          4200,
+        );
+        return false;
+      }
+    },
+    [
+      activeConversationIdRef,
+      conversationMessagesRef,
+      setConversationMessages,
+      setActionNotice,
+    ],
+  );
+
   const handleChatClear = useCallback(async () => {
     const convId = activeConversationId;
     if (!convId) {
@@ -2269,6 +2324,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     handleChatStop,
     handleChatRetry,
     handleChatEdit,
+    handleChatDelete,
     handleChatClear,
   };
 }
