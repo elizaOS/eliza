@@ -128,7 +128,7 @@ A plugin "has keyless e2e" when at least one such scenario names it in its
 
 ```bash
 bun run audit:e2e-coverage          # the gate (exit 1 on failure)
-bun run audit:e2e-coverage:test     # the unit tests
+bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
 bun packages/scripts/e2e-coverage/check-e2e-coverage.ts --list-uncovered
 bun packages/scripts/e2e-coverage/check-e2e-coverage.ts --json
 ```
