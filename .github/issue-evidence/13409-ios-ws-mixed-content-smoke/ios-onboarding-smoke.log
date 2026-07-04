@@ -1,0 +1,13 @@
+[ios-onboarding-smoke] reusing booted simulator F165C3A3-5069-4174-A40C-89F0BCC4B9FB
+[ios-onboarding-smoke] installing /Users/shawwalters/Library/Developer/Xcode/DerivedData/App-cxkmijzlfyvpshcwbpdohrghqmuk/Build/Products/Debug-iphonesimulator/App.app
+[ios-onboarding-smoke] started iOS simulator recording for F165C3A3-5069-4174-A40C-89F0BCC4B9FB: /private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/onboarding-to-home.mp4
+[ios-onboarding-smoke] launching ai.elizaos.app on F165C3A3-5069-4174-A40C-89F0BCC4B9FB
+[ios-onboarding-smoke] armed in-app first-run remote connect for http://127.0.0.1:31338
+[ios-onboarding-smoke] wrote iOS simulator screenshot: /private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/fresh-onboarding.png
+[ios-onboarding-smoke] still running (15/180): {"ok":false,"phase":"running","startedAt":"2026-07-04T21:14:43.182Z","apiBase":"http://127.0.0.1:31338","updatedAt":"2026-07-04T21:14:43.182Z"}
+[ios-onboarding-smoke] wrote iOS simulator screenshot: /private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/home-landing.png
+[ios-onboarding-smoke] terminating ai.elizaos.app for cold relaunch proof
+[ios-onboarding-smoke] relaunching ai.elizaos.app for cold relaunch proof
+[ios-onboarding-smoke] wrote iOS simulator screenshot: /private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/cold-relaunch-home.png
+[ios-onboarding-smoke] wrote iOS simulator recording: /private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/onboarding-to-home.mp4
+[ios-onboarding-smoke] PASS {"screenshot":"/private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/home-landing.png","relaunchScreenshot":"/private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/cold-relaunch-home.png","video":"/private/tmp/eliza-13405-ios-relaunch/packages/app/test-results/ios-onboarding-to-home/onboarding-to-home.mp4"}

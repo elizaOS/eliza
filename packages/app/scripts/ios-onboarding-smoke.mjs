@@ -28,6 +28,8 @@ const REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const RELAUNCH_REQUEST_KEY = "eliza:ios-onboarding-relaunch-smoke:request";
 const RELAUNCH_RESULT_KEY = "eliza:ios-onboarding-relaunch-smoke:result";
+const MIXED_CONTENT_REQUEST_KEY = "eliza:ios-mixed-content-smoke:request";
+const MIXED_CONTENT_RESULT_KEY = "eliza:ios-mixed-content-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
 const DEFAULT_API_BASE = "http://127.0.0.1:31338";
@@ -323,6 +325,8 @@ const FIRST_RUN_STATE_KEYS = [
   RESULT_KEY,
   RELAUNCH_REQUEST_KEY,
   RELAUNCH_RESULT_KEY,
+  MIXED_CONTENT_REQUEST_KEY,
+  MIXED_CONTENT_RESULT_KEY,
   ATTACHMENT_REQUEST_KEY,
   ATTACHMENT_RESULT_KEY,
   "elizaos:active-server",
@@ -436,6 +440,42 @@ async function pollRelaunchResult(udid, appId) {
   );
 }
 
+async function pollMixedContentResult(udid, appId) {
+  const attempts = Number.parseInt(
+    process.env.IOS_ONBOARDING_SMOKE_ATTEMPTS ?? "180",
+    10,
+  );
+  const delayMs = Number.parseInt(
+    process.env.IOS_ONBOARDING_SMOKE_DELAY_MS ?? "1000",
+    10,
+  );
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastRaw = defaultsReadString(udid, appId, MIXED_CONTENT_RESULT_KEY) ?? "";
+    if (lastRaw) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(lastRaw);
+      } catch {
+        parsed = null;
+      }
+      if (parsed?.ok === true) return parsed;
+      if (parsed?.phase === "failed" || parsed?.error) {
+        throw new Error(`iOS mixed-content smoke failed: ${lastRaw}`);
+      }
+      if (attempt % 15 === 0) {
+        log(
+          `still proving mixed-content fallback (${attempt}/${attempts}): ${lastRaw}`,
+        );
+      }
+    }
+    await sleep(delayMs);
+  }
+  throw new Error(
+    `iOS mixed-content smoke timed out after ${attempts} attempts. Last result: ${lastRaw || "<none>"}`,
+  );
+}
+
 async function main() {
   const { appId, urlScheme } = readAppIdentity();
   const apiBase = val("--api-base", DEFAULT_API_BASE);
@@ -453,6 +493,24 @@ async function main() {
     udid,
     appId,
     RESULT_KEY,
+    JSON.stringify({
+      ok: false,
+      phase: "requested",
+      apiBase,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+  flushPreferences(udid);
+  defaultsWriteString(
+    udid,
+    appId,
+    MIXED_CONTENT_REQUEST_KEY,
+    JSON.stringify({ apiBase }),
+  );
+  defaultsWriteString(
+    udid,
+    appId,
+    MIXED_CONTENT_RESULT_KEY,
     JSON.stringify({
       ok: false,
       phase: "requested",
@@ -491,6 +549,42 @@ async function main() {
     if (typeof activeServer !== "string" || !activeServer.includes(apiBase)) {
       throw new Error(
         `iOS onboarding smoke did not persist active server ${apiBase}: ${JSON.stringify(result.storage)}`,
+      );
+    }
+    const mixedContentResult = await pollMixedContentResult(udid, appId);
+    if (
+      !String(mixedContentResult.webViewOrigin).startsWith("https://localhost")
+    ) {
+      throw new Error(
+        `iOS mixed-content smoke did not run from https://localhost: ${JSON.stringify(mixedContentResult)}`,
+      );
+    }
+    if (mixedContentResult.mixedContentWouldBlockWebSocket !== true) {
+      throw new Error(
+        `iOS mixed-content smoke did not prove an insecure ws:// would be mixed content: ${JSON.stringify(mixedContentResult)}`,
+      );
+    }
+    if (
+      !Array.isArray(mixedContentResult.webSocketConstructorCalls) ||
+      mixedContentResult.webSocketConstructorCalls.length !== 0
+    ) {
+      throw new Error(
+        `iOS mixed-content smoke attempted a WebSocket: ${JSON.stringify(mixedContentResult.webSocketConstructorCalls)}`,
+      );
+    }
+    if (mixedContentResult.connectionState?.state !== "connected") {
+      throw new Error(
+        `iOS mixed-content smoke was not connected-over-REST: ${JSON.stringify(mixedContentResult.connectionState)}`,
+      );
+    }
+    if (mixedContentResult.lostBackendOverlayAbsent !== true) {
+      throw new Error(
+        `iOS mixed-content smoke found the lost backend overlay: ${JSON.stringify(mixedContentResult)}`,
+      );
+    }
+    if (mixedContentResult.restHealth?.ok !== true) {
+      throw new Error(
+        `iOS mixed-content smoke REST health failed: ${JSON.stringify(mixedContentResult.restHealth)}`,
       );
     }
     defaultsWriteString(
@@ -539,6 +633,7 @@ async function main() {
           ...result,
           screenshot,
           video,
+          mixedContent: mixedContentResult,
           coldRelaunch: {
             ...relaunchResult,
             screenshot: relaunchScreenshot,

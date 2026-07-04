@@ -1,0 +1,46 @@
+Simulator:
+== Devices ==
+-- iOS 18.1 --
+    iPhone 16 Pro (F165C3A3-5069-4174-A40C-89F0BCC4B9FB) (Booted) 
+-- iOS 26.4 --
+
+macOS:
+ProductName:		macOS
+ProductVersion:		26.2
+BuildVersion:		25C56
+
+Xcode:
+Xcode 26.4.1
+Build version 17E202
+
+App product:
+2026-07-04T17:12:02-0400 /Users/shawwalters/Library/Developer/Xcode/DerivedData/App-cxkmijzlfyvpshcwbpdohrghqmuk/Build/Products/Debug-iphonesimulator/App.app
+
+Git:
+c535a9e1f47206c22b71e32976554b1af13b5067
+ M packages/app/capacitor.config.ts
+ M packages/app/scripts/ios-onboarding-smoke.mjs
+ M packages/app/src/main.tsx
+ M packages/ui/src/bridge/storage-bridge.ts
+?? .github/issue-evidence/13409-ios-ws-mixed-content-smoke/
+
+HTTPS cert:
+subject=CN=localhost
+issuer=CN=localhost
+notBefore=Jul  4 21:10:11 2026 GMT
+notAfter=Jul  6 21:10:11 2026 GMT
+X509v3 Subject Alternative Name: 
+    DNS:localhost, IP Address:127.0.0.1
+
+Artifact SHA-256:
+1d17a325b08ea06297b177dcdca5dce85ba3551537be0696b8b7f14dc82bc7d3  build-and-environment.txt
+f0b2d16c92742e39681f0ddb4d2a5152bd8a34173894cf38028ae4bc52ba4596  capacitor.config.json
+889c14adbc34e22863ba6796ff768feceb281564cdecbc1b476b6ee9bfbcd2b1  cold-relaunch-home.png
+48fc7989bfd2defe5d5b3ab727401e6d887aaf9446c3e9e60e0c50e597f3fe1f  fresh-onboarding.png
+f41fb8739c782e1e1daa3d0c2573e1a9b15cddc2f59e116a9e90b3ba3f901683  home-landing.png
+672c6a35c09affcdeb074a37257bfc6d335de8ddee2ebe5c4134edadbefc7e8c  host-agent.log
+e6df4c0018f5e82b019772cba7de9f795b5ee088ad9f0a16d4221b5f5d5f2cad  https-renderer-server.log
+de248a53392a8986313850df1225f1d2b8bed81a21ba5538a94edb9f780d3b21  ios-onboarding-smoke.log
+3f4c87ec46e08cb3ca23cc9f953b84b58c2580a29e9f54fdbc4be14bdb39453f  onboarding-to-home.mp4
+b8a4362ca479e4c70dc95c682c5485af9933b4b9cb246bbd45b00d323179fede  result.json
+d94e9bd538c9f473b69531764d9396301a2081b4192a6e73c6a2f72e11b8341f  simulator-app.log
