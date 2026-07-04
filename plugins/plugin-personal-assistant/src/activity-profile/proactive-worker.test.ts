@@ -170,10 +170,25 @@ function createTripwireRuntime(): {
     },
   };
 
+  // In-memory cache so the rhythm-window learner (run at the end of the tick)
+  // can read/write the OwnerFactStore. A real runtime always provides these.
+  const cache = new Map<string, unknown>();
+
   const runtime = {
     agentId: "agent-0000-0000-0000-000000000001" as UUID,
     character: { name: "TripwireAgent" },
     logger: console,
+    async getCache<T>(key: string): Promise<T | null> {
+      const value = cache.get(key);
+      return value === undefined ? null : (value as T);
+    },
+    async setCache<T>(key: string, value: T): Promise<boolean> {
+      cache.set(key, value);
+      return true;
+    },
+    async deleteCache(key: string): Promise<boolean> {
+      return cache.delete(key);
+    },
     // No useModel → the WS5 planner throws BackgroundPlannerError, which the
     // tick catches and logs; nothing else may depend on a model.
     getService: (type: string) =>
