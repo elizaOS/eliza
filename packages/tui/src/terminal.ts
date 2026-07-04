@@ -249,6 +249,9 @@ export class ProcessTerminal implements Terminal {
       try {
         fs.appendFileSync(this.writeLogPath, data, { encoding: "utf8" });
       } catch (err) {
+        // error-policy:J6 best-effort diagnostic — TUI_WRITE_LOG is an opt-in
+        // debug capture, not the render path. Surface the failure to stderr and
+        // disable the log so a bad path never stalls every subsequent write.
         const path = this.writeLogPath;
         this.writeLogPath = null;
         process.stderr.write(

@@ -575,7 +575,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
             const fullPath = join(searchDir, entry.name);
             isDirectory = statSync(fullPath).isDirectory();
           } catch {
-            // Broken symlink or permission error - treat as file
+            // error-policy:J4 a broken symlink or unreadable target cannot be a
+            // navigable directory; it stays a file entry (no trailing slash) so
+            // the completion is offered, just not as a directory to descend into.
           }
         }
 
@@ -635,8 +637,12 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
       });
 
       return suggestions;
-    } catch (_e) {
-      // Directory doesn't exist or not accessible
+    } catch {
+      // error-policy:J4 path-completion is a best-effort convenience over a live
+      // filesystem: a partial/nonexistent path or an unreadable dir (deleted
+      // mid-keystroke, permission-denied) yields no candidates, which the caller
+      // renders as no popup. Empty here means "nothing to complete", never masked
+      // data — completion has no valid non-empty result for an unreadable path.
       return [];
     }
   }
@@ -724,6 +730,9 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
       return suggestions;
     } catch {
+      // error-policy:J4 fuzzy `@`-file search is a best-effort convenience: an fd
+      // spawn/parse failure yields no candidates, which the caller renders as no
+      // popup. Empty means "nothing to complete", never masked data.
       return [];
     }
   }

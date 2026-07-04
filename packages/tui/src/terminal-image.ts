@@ -225,6 +225,8 @@ export function getPngDimensions(base64Data: string): ImageDimensions | null {
 
     return { widthPx: width, heightPx: height };
   } catch {
+    // error-policy:J3 untrusted base64/binary — a decode/read overrun means the
+    // PNG header is unparseable; null is the explicit "unknown dimensions" signal.
     return null;
   }
 }
@@ -268,6 +270,8 @@ export function getJpegDimensions(base64Data: string): ImageDimensions | null {
 
     return null;
   } catch {
+    // error-policy:J3 untrusted base64/binary — a decode/read overrun means the
+    // JPEG markers are unparseable; null is the explicit "unknown dimensions" signal.
     return null;
   }
 }
@@ -290,6 +294,8 @@ export function getGifDimensions(base64Data: string): ImageDimensions | null {
 
     return { widthPx: width, heightPx: height };
   } catch {
+    // error-policy:J3 untrusted base64/binary — a decode/read overrun means the
+    // GIF header is unparseable; null is the explicit "unknown dimensions" signal.
     return null;
   }
 }
@@ -329,6 +335,8 @@ export function getWebpDimensions(base64Data: string): ImageDimensions | null {
 
     return null;
   } catch {
+    // error-policy:J3 untrusted base64/binary — a decode/read overrun means the
+    // WebP header is unparseable; null is the explicit "unknown dimensions" signal.
     return null;
   }
 }

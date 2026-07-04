@@ -22,7 +22,12 @@ export interface ImageOptions {
 export class Image implements Component {
   private base64Data: string;
   private mimeType: string;
-  private dimensions: ImageDimensions;
+  // undefined = pixel dimensions could not be determined (unsupported format or
+  // corrupt/truncated data). Kept undefined rather than a fabricated default so
+  // render() degrades to a distinguishable text placeholder instead of drawing
+  // the image at a fake size — which would corrupt the differential renderer's
+  // height accounting (#12739).
+  private dimensions: ImageDimensions | undefined;
   private theme: ImageTheme;
   private options: ImageOptions;
   private imageId?: number;
@@ -41,11 +46,8 @@ export class Image implements Component {
     this.mimeType = mimeType;
     this.theme = theme;
     this.options = options;
-    this.dimensions = dimensions ||
-      getImageDimensions(base64Data, mimeType) || {
-        widthPx: 800,
-        heightPx: 600,
-      };
+    this.dimensions =
+      dimensions ?? getImageDimensions(base64Data, mimeType) ?? undefined;
     this.imageId = options.imageId;
   }
 
@@ -69,7 +71,11 @@ export class Image implements Component {
     const caps = getCapabilities();
     let lines: string[];
 
-    if (caps.images) {
+    // error-policy:J4 unknown dimensions is a distinguishable degrade, not a
+    // fabricated size — the graphical protocols need real pixel dimensions to
+    // compute row height, so fall through to the text placeholder (which omits
+    // the size), never draw a fake-sized image.
+    if (caps.images && this.dimensions) {
       const result = renderImage(this.base64Data, this.dimensions, {
         maxWidthCells: maxWidth,
         imageId: this.imageId,
