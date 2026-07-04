@@ -439,6 +439,23 @@ async function recordAppScopedPaymentEarnings(
   settlement: Awaited<ReturnType<typeof x402FacilitatorService.settle>>,
   metadata: Record<string, unknown>,
 ): Promise<void> {
+  // Fail closed on a corrupt amount: NaN <= 0 is false, so without the explicit
+  // finiteness check a corrupt metadata amount would flow into
+  // addPurchaseEarnings, an `amount: "NaN"` transaction row, and a
+  // `total_creator_earnings + NaN` SQL update. settle() validates before money
+  // moves; this guard is defense in depth for any other caller.
+  if (!Number.isFinite(amountUsd)) {
+    logger.error("[x402-payment-requests] refusing to record earnings for non-finite amount", {
+      paymentRequestId: payment.id,
+      appId,
+      amountUsd,
+    });
+    throw new X402PaymentRequestError(
+      `Corrupt amountUsd for payment request ${payment.id}`,
+      500,
+      "corrupt_amount",
+    );
+  }
   if (amountUsd <= 0) return;
 
   const app = await appsRepository.findById(appId);
@@ -693,6 +710,27 @@ class X402PaymentRequestsService {
       throw new X402PaymentRequestError("Payment request is missing requirements", 500);
     }
 
+    // Validate the USD amount BEFORE the facilitator moves funds on-chain.
+    // create() guarantees a finite positive amountUsd in metadata, so a
+    // non-finite or non-positive value here means the stored request is
+    // corrupt; settling it would take the payer's money and then credit
+    // earnings from NaN (Number(undefined) is NaN, and NaN survives the old
+    // `<= 0` guard because NaN comparisons are false).
+    const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
+    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
+      logger.error("[x402-payment-requests] refusing to settle request with corrupt amount", {
+        paymentRequestId: payment.id,
+        metadataAmountUsd: metadata.amountUsd,
+        creditsToAdd: payment.credits_to_add,
+      });
+      await this.triggerFailureCallback(payment, "corrupt_amount");
+      throw new X402PaymentRequestError(
+        `Payment request ${payment.id} has a corrupt amount and cannot be settled`,
+        500,
+        "corrupt_amount",
+      );
+    }
+
     let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];
     try {
       paymentPayload = decodePaymentPayload(paymentPayloadInput);
@@ -747,7 +785,6 @@ class X402PaymentRequestsService {
       })) ??
       confirmed ??
       payment;
-    const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
     const appId = typeof metadata.appId === "string" ? metadata.appId : undefined;
 
     if (appId) {
