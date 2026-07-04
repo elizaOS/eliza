@@ -456,8 +456,11 @@ app.get("/", async (c) => {
       }),
     );
 
-    // Fetch user MCPs (public, live)
+    // Fetch user MCPs (public, live). The community subset is an enhancement on
+    // top of the always-available built-in registry, so a lookup failure/timeout
+    // degrades to built-in-only rather than 500-ing the whole public catalog.
     let userMcpRegistry: UserRegistryEntry[] = [];
+    let communityRegistryAvailable = true;
     try {
       const userMcps = await withRegistryTimeout(
         userMcpsService.listPublic({
@@ -477,7 +480,10 @@ app.get("/", async (c) => {
         };
       });
     } catch (error) {
-      // If user MCPs fail to load, continue with built-in only
+      // error-policy:J4 explicit degrade: the built-in catalog stays served, but
+      // the response marks this as a failed load rather than a genuinely-empty
+      // community registry.
+      communityRegistryAvailable = false;
       logger.warn("[MCP Registry] Failed to load user MCPs", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -526,6 +532,7 @@ app.get("/", async (c) => {
       totalInRegistry: registry.length,
       platformMcps: builtInRegistry.length,
       communityMcps: userMcpRegistry.length,
+      communityRegistryAvailable,
       appliedFilters: {
         category: category !== "all" ? category : null,
         status: status !== "all" ? status : null,
