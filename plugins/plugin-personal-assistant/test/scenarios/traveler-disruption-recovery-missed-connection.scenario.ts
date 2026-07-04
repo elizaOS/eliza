@@ -33,7 +33,11 @@ const DELIVERY_CHANNEL_KIND = "scenario_traveler_recovery_delivery";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function futureDateAtUtc(hour: number, minute: number, daysAhead: number): Date {
+function futureDateAtUtc(
+  hour: number,
+  minute: number,
+  daysAhead: number,
+): Date {
   const base = new Date(Date.now() + daysAhead * DAY_MS);
   base.setUTCHours(hour, minute, 0, 0);
   return base;

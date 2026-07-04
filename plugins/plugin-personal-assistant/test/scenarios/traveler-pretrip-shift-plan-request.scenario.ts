@@ -19,14 +19,20 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "traveler-pretrip-shift-plan-request",
-  title: "Traveler: a pre-trip circadian-shift plan is proposed, wellness-framed",
+  title:
+    "Traveler: a pre-trip circadian-shift plan is proposed, wellness-framed",
   domain: "lifeops.calendar",
   tags: ["lifeops", "traveler", "timezone", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Traveler pre-trip" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Traveler pre-trip",
+    },
   ],
   turns: [
     {

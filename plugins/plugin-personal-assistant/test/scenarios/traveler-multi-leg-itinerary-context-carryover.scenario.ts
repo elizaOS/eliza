@@ -29,7 +29,12 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Traveler itinerary" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Traveler itinerary",
+    },
   ],
   turns: [
     {

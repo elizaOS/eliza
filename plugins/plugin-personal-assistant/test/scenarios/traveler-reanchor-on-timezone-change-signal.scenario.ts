@@ -49,7 +49,11 @@ const DAY_MS = 24 * HOUR_MS;
 // The tick is far in the future so ONLY the injected `now` decides dueness. Any
 // daytime instant works — the assertion reads each fire's resolved
 // `occurrenceAtIso`, not the tick instant.
-function futureDateAtUtc(hour: number, minute: number, daysAhead: number): Date {
+function futureDateAtUtc(
+  hour: number,
+  minute: number,
+  daysAhead: number,
+): Date {
   const base = new Date(Date.now() + daysAhead * DAY_MS);
   base.setUTCHours(hour, minute, 0, 0);
   return base;
@@ -198,10 +202,7 @@ function readFires(body: unknown): FireEntry[] | string {
   return fires;
 }
 
-function fireFor(
-  body: unknown,
-  taskId: string | null,
-): FireEntry | string {
+function fireFor(body: unknown, taskId: string | null): FireEntry | string {
   const fires = readFires(body);
   if (typeof fires === "string") return fires;
   if (typeof taskId !== "string") return "captured taskId was not set";

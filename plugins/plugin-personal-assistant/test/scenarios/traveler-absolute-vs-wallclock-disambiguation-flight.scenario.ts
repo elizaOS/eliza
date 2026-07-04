@@ -45,7 +45,11 @@ const DELIVERY_CHANNEL_KIND = "scenario_traveler_disambig_delivery";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-function futureDateAtUtc(hour: number, minute: number, daysAhead: number): Date {
+function futureDateAtUtc(
+  hour: number,
+  minute: number,
+  daysAhead: number,
+): Date {
   const base = new Date(Date.now() + daysAhead * DAY_MS);
   base.setUTCHours(hour, minute, 0, 0);
   return base;
@@ -240,7 +244,11 @@ function assertDisambiguation(
   if (tickInTokyo !== "08:00") {
     return `test setup drift: tick ${TICK.toISOString()} is ${tickInTokyo} in ${DESTINATION_TZ}, expected 08:00`;
   }
-  if (tickInHome === "07:30" || tickInHome === "08:00" || tickInHome === "09:00") {
+  if (
+    tickInHome === "07:30" ||
+    tickInHome === "08:00" ||
+    tickInHome === "09:00"
+  ) {
     return `test setup drift: tick ${TICK.toISOString()} (${tickInHome} in ${HOME_TZ}) must be outside the home morning window`;
   }
 
@@ -295,7 +303,9 @@ export default scenario({
       apply: seedTravelAndChannel,
     },
   ],
-  rooms: [{ id: "main", source: "telegram", title: "Elena Road Disambiguation" }],
+  rooms: [
+    { id: "main", source: "telegram", title: "Elena Road Disambiguation" },
+  ],
   turns: [
     {
       kind: "api",

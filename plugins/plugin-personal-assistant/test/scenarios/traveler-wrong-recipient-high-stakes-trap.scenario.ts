@@ -40,13 +40,19 @@ export default scenario({
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Traveler recipient" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Traveler recipient",
+    },
   ],
   seed: [
     {
       type: "contact",
       name: "Alex Chen",
-      notes: "Client, based in Singapore (SGT). Do not contact overnight their time.",
+      notes:
+        "Client, based in Singapore (SGT). Do not contact overnight their time.",
       handles: [{ platform: "telegram", handle: "@alexchen_sg" }],
     },
     {

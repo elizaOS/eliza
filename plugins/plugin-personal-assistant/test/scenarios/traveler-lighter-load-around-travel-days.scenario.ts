@@ -19,14 +19,20 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "traveler-lighter-load-around-travel-days",
-  title: "Traveler: a non-urgent task is deferred off the travel days, not dropped",
+  title:
+    "Traveler: a non-urgent task is deferred off the travel days, not dropped",
   domain: "lifeops.reminders",
   tags: ["lifeops", "traveler", "timezone", "personas", "12283"],
   status: "active",
   isolation: "per-scenario",
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
   rooms: [
-    { id: "main", source: "dashboard", channelType: "DM", title: "Traveler load" },
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Traveler load",
+    },
   ],
   turns: [
     {
