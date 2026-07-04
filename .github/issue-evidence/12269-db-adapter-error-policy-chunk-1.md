@@ -21,7 +21,7 @@ values:
 Command run after rebasing on `origin/develop`:
 
 ```bash
-bun run test:real:files -- __tests__/integration/error-policy.real.test.ts
+bun run --cwd plugins/plugin-sql test -- __tests__/integration/error-policy.test.ts
 ```
 
 Result:
@@ -55,10 +55,10 @@ Passed:
 ```bash
 git fetch origin && git rebase --autostash origin/develop
 bun install
-bun run test:real:files -- __tests__/integration/error-policy.real.test.ts
+bun run --cwd plugins/plugin-sql test -- __tests__/integration/error-policy.test.ts
 bun run --cwd plugins/plugin-sql typecheck
 bun run --cwd plugins/plugin-sql lint:check
-bunx biome check plugins/plugin-sql/src/base.ts plugins/plugin-sql/src/__tests__/integration/error-policy.real.test.ts
+bunx biome check plugins/plugin-sql/src/base.ts plugins/plugin-sql/src/__tests__/integration/error-policy.test.ts
 bun run --cwd plugins/plugin-sql build
 ```
 
