@@ -1,0 +1,44 @@
+{
+  "schema": "eliza_scenario_native_export",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-04T17:32:26.892Z",
+  "runDir": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live",
+  "trajectoriesDir": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live/trajectories",
+  "jsonlPath": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live/native.jsonl",
+  "manifestPath": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live/native.manifest.json",
+  "privacyAttestationPath": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live/native.privacy-attestation.json",
+  "counts": {
+    "trajectoryFiles": 2,
+    "parsedTrajectories": 2,
+    "skippedFiles": 0,
+    "rows": 6,
+    "passedRows": 6,
+    "failedRows": 0,
+    "skippedScenarioRows": 0,
+    "unknownOutcomeRows": 0
+  },
+  "runIds": [
+    "262b734d-4a99-447e-bae5-dd34220ce221",
+    "e238915b-e5e2-4886-acab-a4387cca9e22"
+  ],
+  "scenarioIds": [
+    "adhd-followthrough-rage-quit-delete-trap"
+  ],
+  "agentIds": [
+    "546ac3ab-0468-01a2-9d5b-52dfa34bf9cc"
+  ],
+  "privacy": {
+    "reviewed": true,
+    "attestationSchema": "eliza.privacy_filter_attestation.v1",
+    "attestationVersion": 1,
+    "attestationPath": "/private/tmp/eliza-13338-rage-delete.gxZxto/.github/issue-evidence/13338-rage-delete-live/native.privacy-attestation.json",
+    "redactions": 40,
+    "residualFindings": 0,
+    "categories": {
+      "secret": 0,
+      "geo": 0,
+      "contact": 40,
+      "backend": 0
+    }
+  }
+}
