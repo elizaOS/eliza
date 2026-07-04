@@ -11,6 +11,8 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
+import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
 
 const repoRoot = path.resolve(
@@ -145,6 +147,16 @@ const ANDROID_CONFLICTING_AGENT_PACKAGES = [
   "ai.eliza.eliza",
   "ai.elizaos.eliza",
 ];
+const IOS_SMOKE_STATE_KEYS = [
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  IOS_FULL_BUN_PREWARM_RESULT_KEY,
+  "eliza:ios-background:request",
+  "eliza:ios-background:result",
+  "elizaos:active-server",
+  "eliza:first-run-complete",
+  "eliza:mobile-runtime-mode",
+];
 
 function printHelp() {
   console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
@@ -266,6 +278,12 @@ function launchIosSimulatorApp() {
   }
 
   const id = appId();
+  clearIosSmokeDefaults({
+    udid,
+    bundleId: id,
+    extraKeys: IOS_SMOKE_STATE_KEYS,
+    log: (message) => console.log(`[local-chat-smoke] ${message}`),
+  });
   let fullBunSmokeRequestedAtMs = null;
   const container = tryExec("xcrun", [
     "simctl",
@@ -310,57 +328,13 @@ function launchIosSimulatorApp() {
  * only on a genuine stale-UI mismatch.
  */
 function assertInstalledIosRendererIsFresh(udid) {
-  const id = appId();
-  const container = tryExec("xcrun", [
-    "simctl",
-    "get_app_container",
+  assertInstalledIosAppRendererFresh({
     udid,
-    id,
-    "app",
-  ]);
-  if (!container) {
-    console.warn(
-      `[local-chat-smoke] cannot verify renderer stamp — ${id} not installed.`,
-    );
-    return;
-  }
-  const installedManifest = path.join(
-    container,
-    "public",
-    "eliza-renderer-build.json",
-  );
-  // Resolve the fresh renderer from the SAME dist the installed shell was built
-  // from. A white-label shell (ELIZA_SMOKE_APP_ID) builds from its own dist
-  // (e.g. apps/app/dist); comparing against packages/app/dist would be a
-  // guaranteed buildId mismatch and a false "stale UI" failure.
-  const rendererDist = process.env.ELIZA_SMOKE_RENDERER_DIST
-    ? path.resolve(process.env.ELIZA_SMOKE_RENDERER_DIST)
-    : path.join(repoRoot, "packages", "app", "dist");
-  const freshManifest = path.join(rendererDist, "eliza-renderer-build.json");
-  if (!fs.existsSync(freshManifest)) {
-    console.warn(
-      `[local-chat-smoke] no freshly built renderer manifest at ${freshManifest}; skipping stamp check.`,
-    );
-    return;
-  }
-  if (!fs.existsSync(installedManifest)) {
-    throw new Error(
-      `[local-chat-smoke] installed app has no renderer build stamp at ${installedManifest} — missing/stale UI.`,
-    );
-  }
-  const fresh = JSON.parse(fs.readFileSync(freshManifest, "utf8"));
-  const installed = JSON.parse(fs.readFileSync(installedManifest, "utf8"));
-  if (installed.buildId !== fresh.buildId) {
-    throw new Error(
-      `[local-chat-smoke] installed renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} — ` +
-        `the simulator is running STALE UI.`,
-    );
-  }
-  console.log(
-    `[local-chat-smoke] renderer build stamp OK: installed == fresh (${String(fresh.buildId).slice(0, 12)} built ${fresh.builtAt}).`,
-  );
+    bundleId: appId(),
+    repoRoot,
+    log: (message) => console.log(`[local-chat-smoke] ${message}`),
+  });
 }
-
 function writeIosDefaultsString(udid, domain, key, value) {
   const nativeKey = `CapacitorStorage.${key}`;
   const dataContainer = tryExec(
@@ -2505,6 +2479,14 @@ async function main() {
       );
     }
   } finally {
+    if (iosContext?.udid) {
+      clearIosSmokeDefaults({
+        udid: iosContext.udid,
+        bundleId: appId(),
+        extraKeys: IOS_SMOKE_STATE_KEYS,
+        log: (message) => console.log(`[local-chat-smoke] ${message}`),
+      });
+    }
     cleanupAndroidAgentForwards(androidContext, "shutdown");
   }
 }
