@@ -865,8 +865,8 @@ function writeIfChanged(target, content) {
  *   - Drop `libsigsys-handler.so` next to it.
  *
  * Returns the number of files changed this call (0 when nothing
- * happened). When no compiled shim exists for the ABI this returns 0 and
- * the Capacitor APK build path keeps the legacy loader.
+ * happened). When no compiled shim exists for an ABI that stock Android
+ * requires, fail the build instead of shipping a known-SIGSYS-dead runtime.
  *
  * Exported for testing.
  */
@@ -881,12 +881,13 @@ export function stageSeccompShimForAbi({
   const cachedWrap = path.join(abiCacheDir, ldName);
   const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
-    log?.(
-      `No compiled SIGSYS shim for ${androidAbi}; leaving the Alpine ` +
-        `loader at ${ldName} (run \`node packages/app-core/scripts/aosp/compile-shim.mjs\` ` +
-        `for the AOSP path).`,
+    throw new Error(
+      `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}. ` +
+        `Stock Android kills the raw Alpine loader with SIGSYS during Bun's ` +
+        `event loop startup; refusing to build an APK that cannot boot. Run ` +
+        `\`node packages/app-core/scripts/aosp/compile-shim.mjs --abi ${androidAbi}\` ` +
+        `or restore ${path.relative(process.cwd(), abiCacheDir)} before building.`,
     );
-    return 0;
   }
 
   const stagedLoader = path.join(abiAssetsDir, ldName);
@@ -1109,8 +1110,8 @@ export async function stageAndroidAgentRuntime({
     //
     // Idempotent: if the wrapper is already in place we just refresh
     // the .real loader and the shim file (handled by copyIfDifferent's
-    // size+mtime check). If shim artifacts are missing we leave the packaged
-    // musl loader in place so the Capacitor APK build still works.
+    // size+mtime check). If shim artifacts are missing we fail here rather
+    // than shipping a stock Android APK whose local agent dies with SIGSYS.
     const shimChanges = stageSeccompShimForAbi({
       androidAbi,
       ldName,

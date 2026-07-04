@@ -7,7 +7,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { __testables } from "./lib/stage-android-agent.mjs";
+import {
+  __testables,
+  stageSeccompShimForAbi,
+} from "./lib/stage-android-agent.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -87,6 +90,30 @@ test("launch script records the real detached agent child status", () => {
   assert.match(script, /agent_pid=\$!/);
   assert.match(script, /wait "\$agent_pid"/);
   assert.doesNotMatch(script, /LD_LIBRARY_PATH="\$runtime_ld" exec "\$@"/);
+});
+
+test("stock Android staging fails when the required SIGSYS shim is missing", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-seccomp-missing-"));
+  try {
+    const abiAssetsDir = path.join(tmp, "assets", "arm64-v8a");
+    fs.mkdirSync(abiAssetsDir, { recursive: true });
+    const ldName = "ld-musl-aarch64.so.1";
+    fs.writeFileSync(path.join(abiAssetsDir, ldName), Buffer.alloc(256 * 1024));
+
+    assert.throws(
+      () =>
+        stageSeccompShimForAbi({
+          androidAbi: "arm64-v8a",
+          ldName,
+          abiAssetsDir,
+          cacheDir: path.join(tmp, "empty-cache"),
+          log: () => {},
+        }),
+      /Missing compiled SIGSYS shim for arm64-v8a/,
+    );
+  } finally {
+    removePathRecursive(tmp);
+  }
 });
 
 test("runtime provenance records repo-local riscv64 artifacts as relative paths", () => {
