@@ -146,6 +146,87 @@ console.log(
   `[verify-chunk-safety] OK: bn.js/crypto graph is confined to lazy vendor chunks (${referencedFiles.size} current chunks scanned).`,
 );
 
+// ── Boot-path eagerness guard ──
+// Confinement alone is not enough: `vendor-crypto` can be perfectly confined
+// yet still be a STATIC import of the entry chunk, which makes the browser
+// fetch + parse the whole multi-MB wallet graph before first paint on every
+// boot (web and the Capacitor iOS/Android WebView alike). The known cause is a
+// manual-chunk pin on a first-party module: Rollup folds a pinned module's
+// entire dependency subtree into the manual chunk, so pinning an app component
+// drags the shared @elizaos/core + UI graph — which the entry needs — into
+// `vendor-crypto`, and the entry then imports the chunk statically (#13187
+// residual). This guard walks the entry's static-import closure and fails if
+// any heavyweight lazy-by-design vendor chunk is reachable without a dynamic
+// `import()` boundary.
+const MUST_STAY_LAZY = /^vendor-(crypto|solana|wallet|three|vrm|draco|phonemizer)-/;
+
+function collectEntryStaticClosure() {
+  let indexHtml;
+  try {
+    indexHtml = readFileSync(indexHtmlPath, "utf8");
+  } catch {
+    return null;
+  }
+  const entryMatch = indexHtml.match(
+    /<script[^>]*type="module"[^>]*src="(?:\/?|\.\/)?(assets\/[^"]+\.js)"/,
+  );
+  if (!entryMatch) return null;
+  const entryFile = entryMatch[1].slice("assets/".length);
+
+  const seen = new Set([entryFile]);
+  const pending = [entryFile];
+  // Static edges only: `from"./x.js"`, bare `import"./x.js"`, and
+  // `export…from"./x.js"`. Dynamic `import("./x.js")` has a paren after
+  // `import`, so it never matches — dynamic boundaries end the walk.
+  const staticImportRe = /(?:from|import)\s*["'](\.\/[^"']+\.js)["']/g;
+  while (pending.length > 0) {
+    const file = pending.pop();
+    const filePath = path.join(distAssets, file);
+    if (!existsSync(filePath)) continue;
+    const body = readFileSync(filePath, "utf8");
+    let m = staticImportRe.exec(body);
+    while (m !== null) {
+      const dep = path.posix.normalize(m[1]).replace(/^\.\//, "");
+      if (dep.endsWith(".js") && !seen.has(dep)) {
+        seen.add(dep);
+        pending.push(dep);
+      }
+      m = staticImportRe.exec(body);
+    }
+    staticImportRe.lastIndex = 0;
+  }
+  return { entryFile, closure: seen };
+}
+
+const entryClosure = collectEntryStaticClosure();
+if (entryClosure) {
+  const eagerHeavy = [...entryClosure.closure].filter((f) =>
+    MUST_STAY_LAZY.test(f),
+  );
+  if (eagerHeavy.length > 0) {
+    console.error(
+      `[verify-chunk-safety] FAIL: lazy-by-design vendor chunk(s) are in the entry's STATIC import closure (fetched+parsed on every boot before first paint):`,
+    );
+    for (const f of eagerHeavy) console.error(`  - ${f}`);
+    console.error(
+      "\nMost likely a manual-chunk pin on a first-party source module: Rollup\n" +
+        "folds a pinned module's whole dependency subtree into the manual chunk,\n" +
+        "which captures the shared core/UI graph the entry needs and anchors the\n" +
+        "chunk into the boot path. Pin only node_modules/facade ids (see\n" +
+        "vite/wallet-chunk-matcher.ts) and keep first-party consumers behind\n" +
+        "dynamic import() boundaries. Do NOT deploy this bundle.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    `[verify-chunk-safety] OK: entry static closure (${entryClosure.closure.size} chunks from ${entryClosure.entryFile}) contains no lazy-by-design vendor chunk.`,
+  );
+} else {
+  console.warn(
+    "[verify-chunk-safety] note: no module-script entry found in dist/index.html — skipping the eagerness guard.",
+  );
+}
+
 // ── Web SPA base regression guard ──
 // build:web sets ELIZA_WEB_ABSOLUTE_BASE=1 → Vite base "/". A relative base
 // ("./assets/…") boots fine at depth-1 routes (/, /login) but 404s its bundle

@@ -101,3 +101,71 @@ describe("verify-chunk-safety gate", () => {
     expect(output).toContain("OK");
   });
 });
+
+// The eagerness guard walks the entry's STATIC import closure from the
+// index.html module script; a confined-but-eager vendor-crypto (the #13187
+// manual-chunk fold: a pinned first-party module drags the shared core/UI
+// graph into vendor-crypto, so the entry statically imports the multi-MB
+// chunk at boot) must fail even though confinement passes.
+describe("verify-chunk-safety eagerness guard", () => {
+  function writeIndexHtml(entryFile: string): void {
+    writeFileSync(
+      join(workDir, "dist", "index.html"),
+      `<!doctype html><html><head><script type="module" crossorigin src="/assets/${entryFile}"></script></head><body></body></html>`,
+      "utf8",
+    );
+  }
+
+  it("FAILS when the entry statically imports vendor-crypto", () => {
+    writeChunk(
+      "index-D9yqvBmw.js",
+      'import{a}from"./vendor-crypto-DRnRpPYP.js";export const app=a;',
+    );
+    writeChunk(
+      "vendor-crypto-DRnRpPYP.js",
+      `export const a=1;function bn(){return ${CRYPTO_MARKER}}`,
+    );
+    writeIndexHtml("index-D9yqvBmw.js");
+
+    const { status, output } = runGate();
+    expect(status).toBe(1);
+    expect(output).toContain("STATIC import closure");
+    expect(output).toContain("vendor-crypto-DRnRpPYP.js");
+  });
+
+  it("FAILS when vendor-crypto is reached transitively through an eager sibling chunk", () => {
+    writeChunk(
+      "index-D9yqvBmw.js",
+      'import{s}from"./shared-Cabc1234.js";export const app=s;',
+    );
+    writeChunk(
+      "shared-Cabc1234.js",
+      'export{a as s}from"./vendor-crypto-DRnRpPYP.js";',
+    );
+    writeChunk(
+      "vendor-crypto-DRnRpPYP.js",
+      `export const a=1;function bn(){return ${CRYPTO_MARKER}}`,
+    );
+    writeIndexHtml("index-D9yqvBmw.js");
+
+    const { status, output } = runGate();
+    expect(status).toBe(1);
+    expect(output).toContain("vendor-crypto-DRnRpPYP.js");
+  });
+
+  it("PASSES when vendor-crypto is only reachable through a dynamic import()", () => {
+    writeChunk(
+      "index-D9yqvBmw.js",
+      'export const load=()=>import("./vendor-crypto-DRnRpPYP.js");',
+    );
+    writeChunk(
+      "vendor-crypto-DRnRpPYP.js",
+      `export const a=1;function bn(){return ${CRYPTO_MARKER}}`,
+    );
+    writeIndexHtml("index-D9yqvBmw.js");
+
+    const { status, output } = runGate();
+    expect(status).toBe(0);
+    expect(output).toContain("entry static closure");
+  });
+});
