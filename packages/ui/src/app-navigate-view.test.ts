@@ -6,9 +6,12 @@
  * views or desktop tabs. Pure functions + injected bridge, no runtime.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __setNavigateViewPayloadForTests,
   consumeNavigateViewPayload,
   createNavigateViewHandler,
   type DesktopBridgeRequest,
@@ -410,6 +413,65 @@ describe("App navigate-view shell handler", () => {
       consumeNavigateViewPayload<{ rowId: string }>("remote-ledger"),
     ).toEqual({ rowId: "row-7" });
     expect(consumeNavigateViewPayload("remote-ledger")).toBeNull();
+  });
+
+  it("delivers a plugin-shaped deep-link payload to any target view id", () => {
+    // A plugin's own navigate helper dispatches with the view id it targets and
+    // a payload shape the view claims — the core stays generic, no view is
+    // special-cased. Mirrors the Contacts→Phone/Messages handoff (#12674).
+    const fixture = createHandlerFixture([
+      view({ id: "phone", label: "Phone", path: "/phone" }),
+    ]);
+
+    fixture.handler(
+      navigateEvent({
+        viewId: "phone",
+        viewPath: "/phone",
+        payload: { number: "+15550100" },
+      }),
+    );
+
+    expect(
+      consumeNavigateViewPayload<{ number: string }>("phone"),
+    ).toEqual({ number: "+15550100" });
+    // Single-shot: a later plain navigation to the same view does not re-seed.
+    expect(consumeNavigateViewPayload("phone")).toBeNull();
+  });
+
+  it("returns null before a payload is seeded (no stale one-shot state)", () => {
+    expect(consumeNavigateViewPayload("messages")).toBeNull();
+    __setNavigateViewPayloadForTests("messages", { recipient: "+15550100" });
+    expect(
+      consumeNavigateViewPayload<{ recipient: string }>("messages"),
+    ).toEqual({ recipient: "+15550100" });
+    expect(consumeNavigateViewPayload("messages")).toBeNull();
+  });
+
+  // Regression guard for #12674: the core navigate module must not name the
+  // Phone/Messages view ids or hold plugin-specific module-global one-shot
+  // state. The generic `payload` channel + per-plugin navigate helpers replace
+  // it. This asserts the removed special case cannot silently return.
+  it("holds no hardcoded Phone/Messages special case or one-shot globals", () => {
+    // Vitest runs with cwd at the package root (packages/ui); the guarded
+    // module is a fixed source path from there.
+    const source = readFileSync(
+      resolve(process.cwd(), "src/app-navigate-view.ts"),
+      "utf8",
+    );
+    for (const banned of [
+      "pendingPhoneNumber",
+      "pendingMessageRecipient",
+      "consumePendingPhoneNumber",
+      "consumePendingMessageRecipient",
+      "navigateToPhoneWithNumber",
+      "navigateToMessagesWithNumber",
+      "normalizePhoneNumber",
+    ]) {
+      expect(source).not.toContain(banned);
+    }
+    // No view id is literally special-cased by the payload channel.
+    expect(source).not.toContain('"phone"');
+    expect(source).not.toContain('"messages"');
   });
 
   it("navigates browser history for normal view navigation", () => {

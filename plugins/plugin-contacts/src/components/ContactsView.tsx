@@ -30,38 +30,16 @@ import {
   type ContactsSnapshot,
   ContactsSpatialView,
 } from "./ContactsSpatialView.tsx";
+import {
+  navigateToMessagesWithNumber,
+  navigateToPhoneWithNumber,
+} from "./contacts-navigate.ts";
 
 const EMPTY_FORM: ContactsFormDraft = {
   displayName: "",
   phoneNumber: "",
   emailAddress: "",
 };
-
-function navigateToPhoneWithNumber(number: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: {
-        viewId: "phone",
-        viewPath: "/phone",
-        payload: { number },
-      },
-    }),
-  );
-}
-
-function navigateToMessagesWithNumber(recipient: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: {
-        viewId: "messages",
-        viewPath: "/messages",
-        payload: { recipient },
-      },
-    }),
-  );
-}
 
 export function ContactsView() {
   const [contacts, setContacts] = useState<ContactSummary[]>([]);

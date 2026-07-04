@@ -43,6 +43,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  navigateToMessagesWithNumber,
+  navigateToPhoneWithNumber,
+} from "./contacts-navigate.ts";
 
 type Mode = "list" | "detail" | "new";
 
@@ -57,32 +61,6 @@ const EMPTY_FORM: NewContactForm = {
   phoneNumber: "",
   emailAddress: "",
 };
-
-function navigateToPhoneWithNumber(number: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: {
-        viewId: "phone",
-        viewPath: "/phone",
-        payload: { number },
-      },
-    }),
-  );
-}
-
-function navigateToMessagesWithNumber(recipient: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent("eliza:navigate:view", {
-      detail: {
-        viewId: "messages",
-        viewPath: "/messages",
-        payload: { recipient },
-      },
-    }),
-  );
-}
 
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
