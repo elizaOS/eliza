@@ -158,22 +158,19 @@ export class ExperienceRelationshipManager {
     allExperiences: Experience[],
   ): Experience[] {
     const contradictions: Experience[] = [];
+    const explicitContradictionIds = new Set(
+      this.findRelationships(experience.id, "contradicts").map((r) => r.toId),
+    );
 
     for (const other of allExperiences) {
       if (other.id === experience.id) continue;
 
-      // Same action, different outcome
-      if (
+      const contradictsByOutcome =
         other.action === experience.action &&
         other.outcome !== experience.outcome &&
-        other.domain === experience.domain
-      ) {
-        contradictions.push(other);
-      }
-
-      // Explicit contradiction relationship
-      const rels = this.findRelationships(experience.id, "contradicts");
-      if (rels.some((r) => r.toId === other.id)) {
+        other.domain === experience.domain;
+      const contradictsByRelationship = explicitContradictionIds.has(other.id);
+      if (contradictsByOutcome || contradictsByRelationship) {
         contradictions.push(other);
       }
     }
