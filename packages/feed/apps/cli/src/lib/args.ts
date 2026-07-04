@@ -1,10 +1,7 @@
 /**
- * @fileoverview Command-line argument parsing utilities
- *
- * Provides functions for parsing CLI arguments into structured formats,
- * extracting flags, options, and positional arguments.
- *
- * @module cli/lib/args
+ * General argv parser for the Feed CLI: splits a raw arg array into a command,
+ * positionals, boolean flags, and `--key value` / `--key=value` options, and
+ * exposes typed accessors over the result. Shared by all `commands/` handlers.
  */
 
 /**

@@ -1,59 +1,11 @@
 /**
- * @fileoverview Actor and Organization Image Generation CLI
- *
- * Generates profile pictures and banner images for all actors and organizations
- * using OpenAI's gpt-image-1.5 model for maximum realism.
- *
- * **Generated Images:**
- * - Actor profile pictures (square, portrait style)
- * - Actor banner images (landscape)
- * - Organization logos (square, satirical parodies)
- * - Organization banners (landscape)
- *
- * **Features:**
- * - Concurrent generation (max 3 at a time for rate limiting)
- * - Automatic skip for existing images (use --force to regenerate all)
- * - Satirical logo generation using company name mappings
- * - Template-based prompt rendering
- * - Progress tracking and error reporting
- * - Automatic directory creation
- *
- * **Requirements:**
- * - `OPENAI_API_KEY` environment variable must be set
- * - Actor data files must exist in `packages/engine/src/data/actors/` and `packages/engine/src/data/organizations/` (TypeScript files)
- * - Output directories must be writable:
- *   - `public/images/actors/`
- *   - `public/images/actor-banners/`
- *   - `public/images/organizations/`
- *   - `public/images/org-banners/`
- *
- * **Image Specifications:**
- * - Actor PFP: Square (1024x1024), high quality portrait
- * - Actor Banner: Landscape (1536x1024), thematic background
- * - Org Logo: Square (1024x1024), satirical parody
- * - Org Banner: Landscape (1536x1024), branded background
- *
- * @module cli/generate-actor-images
- * @category CLI - Content Generation
- *
- * @example
- * ```bash
- * # Set API key
- * export OPENAI_API_KEY=your_key_here
- *
- * # Generate all missing images
- * bun run src/generate-actor-images.ts
- *
- * # Force regenerate all images (overwrite existing)
- * bun run src/generate-actor-images.ts --force
- * ```
- *
- * @see {@link openai} for OpenAI SDK
- * @see {@link ../prompts} for image generation prompts
- * @since v0.2.0
- *
- * **Environment Variables:**
- * @env {string} OPENAI_API_KEY - Required: direct OpenAI API key (gpt-image-1.5 is OpenAI-only)
+ * One-shot CLI that generates profile pictures and banners for every actor and
+ * organization via OpenAI's gpt-image-1.5, writing PNGs into `public/images/{actors,
+ * actor-banners,organizations,org-banners}/`. Reads actor/org definitions from
+ * `packages/engine/src/data/`, renders template prompts, and generates at most 3
+ * images concurrently to stay under rate limits. Existing images are skipped
+ * unless `--force` is passed. Requires `OPENAI_API_KEY` (gpt-image-1.5 is
+ * OpenAI-only). PFPs/logos are square 1024x1024; banners are 1536x1024.
  */
 
 import { access, mkdir, rm, writeFile } from "node:fs/promises";

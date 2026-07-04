@@ -1,7 +1,6 @@
 /**
- * CLI game command tests.
- *
- * The public CLI no longer advertises simulation. These tests verify that the
+ * CLI game command tests. Spawn the real CLI entrypoint and assert on its
+ * output: the public CLI does not advertise simulation, so these verify the
  * help text stays honest and the legacy command fails with a clear message.
  */
 

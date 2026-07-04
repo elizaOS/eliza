@@ -1,3 +1,8 @@
+/**
+ * Tests for the training-artifact manifest writers, exercising real filesystem
+ * writes into temp dirs and asserting the emitted schema/version/tag fields.
+ */
+
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

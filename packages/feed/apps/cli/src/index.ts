@@ -1,13 +1,11 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Feed CLI - Unified command-line interface for Feed operations
- *
- * Provides a comprehensive CLI for managing database, admin users, game state,
- * training pipelines, models, agents, and system status.
- *
- * @module cli/index
- * @packageDocumentation
+ * Entrypoint for the Feed CLI (`bun apps/cli/src/index.ts`). Loads root `.env`
+ * before any other import, then dispatches the first argv token to a domain
+ * handler — db, admin, game, training, models, agents, status. Each domain
+ * lives in `commands/`; this file owns only arg routing, help text, and the
+ * Sentry init/flush wrapper around every run.
  */
 
 import { resolve } from "node:path";

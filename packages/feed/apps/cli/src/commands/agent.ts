@@ -1,12 +1,9 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Agent management commands
- *
- * Provides commands for creating test agents, listing agents, and managing
- * autonomous features for agents. Also includes Agent0 integration configuration.
- *
- * @module cli/commands/agent
+ * `agent` CLI domain: create test agents, list agents, toggle autonomous
+ * features, and configure Agent0 integration. Operates on `@feed/db` records
+ * and the `@feed/agents` factory (`createTestAgent`).
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Database management commands
- *
- * Provides commands for managing the PostgreSQL database container, running migrations,
- * seeding data, and checking database status using Docker and docker-compose.
- *
- * @module cli/commands/db
+ * `db` CLI domain: bring the Postgres container up/down via docker-compose, run
+ * Drizzle migrations, seed game data, and report status. Startup shells out to
+ * `docker`/`docker-compose`; `isRecoverableComposeStartError` classifies stale
+ * Docker-network failures so start can retry rather than hard-fail.
  */
 
 import { existsSync } from "node:fs";

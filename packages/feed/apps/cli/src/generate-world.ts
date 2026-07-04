@@ -1,65 +1,12 @@
 #!/usr/bin/env bun
 
 /**
- * @fileoverview Game World Narrative Generator CLI
- *
- * Generates complete game narratives with all NPC actions, events, conversations,
- * and social media posts. Creates a detailed timeline of events leading to a
- * predetermined outcome (SUCCESS or FAILURE).
- *
- * **Core Features:**
- * - Full narrative generation with NPC behaviors
- * - Day-by-day timeline simulation (default: 30 days)
- * - Configurable outcome (YES/NO for prediction market)
- * - Event-driven architecture with detailed logging
- * - JSON export for integration with other systems
- * - Verbose mode for detailed event tracking
- *
- * **Generated Content:**
- * - NPC actions and behaviors
- * - Conversations between NPCs
- * - News articles and publications
- * - Rumors and speculation
- * - Clues pointing to outcome
- * - Market developments
- * - Feed posts (news, reactions, threads)
- *
- * **Event Types:**
- * - `world:started` - World generation begins
- * - `day:begins` - New day starts
- * - `npc:action` - NPC performs action
- * - `npc:conversation` - NPCs converse
- * - `news:published` - News article published
- * - `rumor:spread` - Rumor spreads
- * - `clue:revealed` - Clue about outcome revealed
- * - `development:occurred` - Major development happens
- * - `feed:post` - Social media post created
- * - `outcome:revealed` - Final outcome revealed
- *
- * @module cli/generate-world
- * @category CLI - Game Generation
- *
- * @example
- * ```bash
- * # Generate with default settings (SUCCESS outcome)
- * bun run src/cli/generate-world.ts
- *
- * # Generate with specific outcome
- * bun run src/cli/generate-world.ts --outcome=FAILURE
- *
- * # Generate with verbose logging
- * bun run src/cli/generate-world.ts --verbose
- *
- * # Save to file
- * bun run src/cli/generate-world.ts --save=world.json
- *
- * # Get JSON output only (for piping)
- * bun run src/cli/generate-world.ts --json
- * ```
- *
- * @see {@link GameWorld} for world generation implementation
- * @see {@link ../engine/GameWorld.ts} for implementation details
- * @since v0.1.0
+ * CLI wrapper over the engine's `GameWorld` narrative generator: simulates a
+ * day-by-day timeline (default 30 days) of NPC actions, conversations, news,
+ * rumors, clues, and feed posts that lead to a predetermined market outcome
+ * (YES/NO). Emits typed lifecycle events (`world:started`, `day:begins`,
+ * `npc:action`, `outcome:revealed`, …) for verbose logging and can export the
+ * result as JSON. Flags: `--outcome`, `--verbose`, `--save=<file>`, `--json`.
  */
 
 import { writeFile } from "node:fs/promises";
