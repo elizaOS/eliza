@@ -1,5 +1,6 @@
 import type { AgentNotification } from "@elizaos/core";
 import { Bell, ChevronRight } from "lucide-react";
+import { memo, useCallback } from "react";
 import { cn } from "../../../lib/utils";
 import { useNow } from "../../../hooks/useNow";
 import { categoryIcon } from "../../../state/notifications/category-icon";
@@ -36,8 +37,13 @@ function groupTitle(category: string, count: number): string {
  * that mirrors the popover NotificationCenter's activate behavior — mark read,
  * then follow a scheme-checked deep link, else open the inbox. Unread rows
  * stand out with an accent dot + stronger title; read rows recede.
+ *
+ * Memoized: the widget re-renders on the shared `useNow()` 60s recency tick
+ * (needed by the home slot's age-gate) and on any store change; with a stable
+ * `onOpen` (see `useCallback` in the widget) the capped row list then skips
+ * re-rendering every minute when nothing about a row actually changed.
  */
-function NotificationRow({
+const NotificationRow = memo(function NotificationRow({
   notification,
   onOpen,
 }: {
@@ -126,7 +132,7 @@ function NotificationRow({
       </button>
     </li>
   );
-}
+});
 
 /**
  * Frontpage Notifications widget (#9143). A "default" home-slot widget showing
@@ -151,14 +157,21 @@ export function NotificationsWidget(props: WidgetProps) {
   // then navigate through the scheme-checked deep-link helper (deepLink is
   // producer/LLM-influenceable — raw pushState both broke https links and
   // skipped the safety allowlist). Unsafe/missing → inbox.
-  const openNotification = (n: AgentNotification) => {
-    if (!n.readAt) void markNotificationRead(n.id);
-    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-      navigateDeepLink(n.deepLink);
-    } else {
-      nav.openView("/inbox", "inbox");
-    }
-  };
+  //
+  // Stable across the `useNow()` 60s recency tick (`nav` is memoized) so the
+  // memoized rows don't re-render every minute just because this closure was
+  // re-created.
+  const openNotification = useCallback(
+    (n: AgentNotification) => {
+      if (!n.readAt) void markNotificationRead(n.id);
+      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+        navigateDeepLink(n.deepLink);
+      } else {
+        nav.openView("/inbox", "inbox");
+      }
+    },
+    [nav],
+  );
 
   // ---- HOME SLOT ----------------------------------------------------------
   // The compact tile only surfaces when a genuinely home-worthy notification

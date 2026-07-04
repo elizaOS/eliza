@@ -97,7 +97,7 @@ export function BuildBadge() {
         title="Build version (tap to hide for this session)"
         aria-label={`Build ${label}. Tap to hide for this session.`}
         onClick={dismiss}
-        className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/80 px-2 py-0.5 text-3xs leading-none text-muted opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+        className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/80 px-2 py-0.5 text-3xs leading-none text-muted opacity-70 transition-opacity hover:opacity-100"
       >
         <span className="font-mono tracking-tight">{label}</span>
         <X aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
