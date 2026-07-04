@@ -150,7 +150,7 @@
     "test:cache-stability": "node packages/scripts/run-vitest.mjs run packages/core/src/runtime/__tests__/cache-key-stability.test.ts",
     "test:plugins": "bun run build:core && TEST_PACKAGE_FILTER='\\(plugins/' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3",
     "test:client": "bun run build:core && bun run check:loadperf-bundle && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/plugin-personal-assistant|plugins/plugin-training)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud --concurrency=3",
-    "test:core": "node packages/scripts/with-test-runtime.mjs node packages/scripts/run-turbo.mjs run test --filter=./packages/core",
+    "test:core": "node packages/scripts/with-test-runtime.mjs node packages/scripts/run-all-tests.mjs --only=test --no-cloud --filter='@elizaos/core \\(packages/core\\)#test'",
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/tui|packages/vault|packages/elizaos|packages/skills|packages/scenario-runner|packages/test)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud --concurrency=3",
     "test:remote-capabilities": "bun run --cwd packages/agent test:remote-capabilities",
     "capability-router:fixture-server": "bun packages/scripts/capability-router-fixture-server.ts",
