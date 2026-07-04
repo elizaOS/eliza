@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit test for the custom validator strategy in secret validation
+ * (features/secrets): validateSecret fails closed when no custom validator is
+ * registered, prefers a key-specific validator, and falls back to the shared
+ * "custom" validator, exercised via registerValidator/unregisterValidator. No
+ * live model or network.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	registerValidator,

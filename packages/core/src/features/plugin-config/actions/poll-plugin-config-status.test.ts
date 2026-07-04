@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the POLL_PLUGIN_CONFIG_STATUS action: it surfaces the
+ * client's ready/missing report and fails cleanly when the PluginConfigClient
+ * service is absent. Runs against an in-memory stub runtime and client — no
+ * live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { pollPluginConfigStatusAction } from "./poll-plugin-config-status";

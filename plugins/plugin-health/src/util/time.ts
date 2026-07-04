@@ -1,3 +1,8 @@
+/**
+ * IANA-timezone date arithmetic. `getZonedDateParts` and its companions project
+ * an instant into a target timezone's calendar parts and back. A local copy (not
+ * an import) so plugin-health takes no build-time dependency on app-lifeops.
+ */
 export interface ZonedDateParts {
   year: number;
   month: number;

@@ -1,10 +1,9 @@
 /**
- * De-echoed for #9310: the old turn assertions ("brush", "teeth", "wake",
- * "bed" / "saved", "brush", "teeth") were satisfiable by parroting the
- * prompt. The persisted twice-daily definition with canonical Morning/Night
- * slots (`definitionCountDelta`) stays the load-bearing outcome; the turn
- * checks now enforce the derived normalization ("when I wake up" -> a morning
- * slot — a word the prompt never used) and the two-phase commit.
+ * Live-model night-owl brushing-habit flow. The load-bearing outcome is the
+ * persisted twice-daily definition with canonical Morning/Night slots
+ * (`definitionCountDelta`); the turn checks enforce the derived normalization
+ * ("when I wake up" -> a morning slot, a word the prompt never uses) and the
+ * two-phase commit (#9310).
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";

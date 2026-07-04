@@ -1,3 +1,7 @@
+/**
+ * Manifest validation tests exercise JSON-like input parsing and issue
+ * reporting for remote plugin manifests received at install boundaries.
+ */
 import { describe, expect, it } from "bun:test";
 import { validateRemotePluginManifest } from "./validation.js";
 

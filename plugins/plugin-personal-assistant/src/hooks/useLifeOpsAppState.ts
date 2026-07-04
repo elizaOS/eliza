@@ -1,3 +1,8 @@
+/**
+ * React hook that reads the LifeOps app-state (whether the LifeOps surface is
+ * enabled) and exposes enabled/loading/saving/error plus a refresh callback for
+ * the settings UI.
+ */
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 

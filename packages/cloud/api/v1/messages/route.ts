@@ -35,6 +35,7 @@ import {
   estimateTokens,
   getProviderFromModel,
   getSafeModelParams,
+  modelUsesReasoningTokens,
   normalizeModelName,
 } from "@/lib/pricing";
 import {
@@ -150,6 +151,36 @@ function normalizeModelId(model: string): string {
   if (model.includes("/")) return model;
   if (model.startsWith("claude-")) return `anthropic/${model}`;
   return model;
+}
+
+const MESSAGES_MIN_RESPONSE_TOKENS = 4096;
+
+/**
+ * Response-token budget for a /v1/messages generation. Mirrors the
+ * chat/completions floor: Anthropic CoT needs headroom for thinking PLUS the
+ * answer, and non-Anthropic reasoning models (cerebras zai-glm-4.7 /
+ * gpt-oss-120b / gemma-4-31b) spend hidden reasoning tokens — without a floor a
+ * small `max_tokens` is consumed by reasoning alone and the caller is billed
+ * for empty output. Non-reasoning models pass their requested budget through.
+ */
+export function messagesEffectiveMaxTokens(
+  requestMaxTokens: number | undefined,
+  cotBudget: number | null,
+  model: string,
+): number | undefined {
+  if (cotBudget != null) {
+    return Math.max(
+      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
+      cotBudget + MESSAGES_MIN_RESPONSE_TOKENS,
+    );
+  }
+  if (modelUsesReasoningTokens(model)) {
+    return Math.max(
+      requestMaxTokens ?? MESSAGES_MIN_RESPONSE_TOKENS,
+      MESSAGES_MIN_RESPONSE_TOKENS,
+    );
+  }
+  return requestMaxTokens;
 }
 
 function inferImageMediaType(urlOrType: string): string {
@@ -795,14 +826,11 @@ async function handleNonStream(
     cotBudget != null
       ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
       : {};
-  const MIN_RESPONSE_BUFFER = 4096;
-  const effectiveMaxTokens =
-    cotBudget != null
-      ? Math.max(
-          request.max_tokens ?? MIN_RESPONSE_BUFFER,
-          cotBudget + MIN_RESPONSE_BUFFER,
-        )
-      : request.max_tokens;
+  const effectiveMaxTokens = messagesEffectiveMaxTokens(
+    request.max_tokens,
+    cotBudget,
+    model,
+  );
 
   try {
     const result = await generateText({
@@ -1158,14 +1186,11 @@ async function handleStream(
     cotBudget != null
       ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
       : {};
-  const MIN_RESPONSE_BUFFER = 4096;
-  const effectiveMaxTokens =
-    cotBudget != null
-      ? Math.max(
-          request.max_tokens ?? MIN_RESPONSE_BUFFER,
-          cotBudget + MIN_RESPONSE_BUFFER,
-        )
-      : request.max_tokens;
+  const effectiveMaxTokens = messagesEffectiveMaxTokens(
+    request.max_tokens,
+    cotBudget,
+    model,
+  );
 
   const result = streamText({
     model: getLanguageModel(model),

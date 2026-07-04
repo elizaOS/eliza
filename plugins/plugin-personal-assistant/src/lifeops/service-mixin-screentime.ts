@@ -1,3 +1,8 @@
+/**
+ * Screen-time service mixin: declares the LifeOps screen-time service surface
+ * and the mixin that composes the screentime domain's summary/breakdown methods
+ * onto the LifeOpsService base.
+ */
 import type {
   ScreenTimeAggregateRow,
   ScreenTimeWeeklyAverageItem,

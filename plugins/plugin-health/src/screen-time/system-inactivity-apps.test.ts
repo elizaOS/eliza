@@ -1,3 +1,7 @@
+/**
+ * Unit test for `isSystemInactivityApp` — asserts OS lock / screen-saver
+ * identities are classified as inactivity so they drop out of screen-time.
+ */
 import { describe, expect, it } from "vitest";
 import { isSystemInactivityApp } from "./system-inactivity-apps.js";
 

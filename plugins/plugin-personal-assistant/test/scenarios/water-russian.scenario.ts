@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: Russian (Cyrillic) phrasing persists a "Drink water"
+ * task.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

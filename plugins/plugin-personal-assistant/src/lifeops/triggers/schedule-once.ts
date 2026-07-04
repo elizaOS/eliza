@@ -1,3 +1,8 @@
+/**
+ * One-shot schedule trigger for LifeOps: creates a single-fire trigger task
+ * (via the shared trigger machinery) so the assistant can schedule a reminder or
+ * action to fire once at a specific instant.
+ */
 import crypto from "node:crypto";
 import {
   buildTriggerConfig,

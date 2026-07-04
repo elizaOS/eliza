@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only recurring-report-chase-metrics scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("sales", "support", "finance", "draft" / "recurring", "Friday", "blockers" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL report state through the LifeOps definition API — the Fairbanks metrics pack owner list and a not-for-distribution Project Longleaf margin bridge — and asserts grounding + the distribution firebreak: the chase must surface the seeded pack (absent from every user turn), the recurring nudges must not carry the embargoed Longleaf material, and no ping may be delivered while drafts are staged.
+ * Live-model scenario (live-only lane): Recurring report chase grounds in the seeded metrics pack and keeps embargoed material out of pings.
  */
 export default scenario({
   lane: "live-only",

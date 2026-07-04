@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a bedtime-pack request routes through the health-owned
+ * sleep planning surface.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

@@ -1,3 +1,9 @@
+/**
+ * Delegation seam from LifeOps to `@elizaos/plugin-google`: resolves the owner's
+ * Google connector accounts and grants from the core connector-account manager
+ * and adapts the google workspace service methods LifeOps' Gmail/Drive/Google
+ * domains call. Keeps Google API specifics out of the LifeOps domains.
+ */
 import {
   type ConnectorAccount,
   getConnectorAccountManager,

@@ -1,3 +1,8 @@
+/**
+ * Browser service mixin: declares the LifeOps browser-companion service surface
+ * and the `withBrowser` mixin that composes the browser domain's pairing,
+ * settings, tab-context, and session methods onto the LifeOpsService base.
+ */
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,

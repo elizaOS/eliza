@@ -1,3 +1,7 @@
+/**
+ * Unit test for the IANA-timezone date arithmetic helpers (local-date add,
+ * minute add, UTC-from-local-parts, RFC-3339 formatting). Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   addDaysToLocalDate,

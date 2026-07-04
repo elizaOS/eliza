@@ -1,3 +1,4 @@
+/** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
 export type ApprovalRequestState =

@@ -1,3 +1,20 @@
+/**
+ * The two evaluators of the advanced-memory capability. `summaryEvaluator` rolls
+ * the room's compact conversation summary forward; `longTermMemoryEvaluator`
+ * extracts high-confidence, durable facts about the user from recent dialogue.
+ * Both are bundled as `memoryItems` and registered by
+ * `createAdvancedMemoryPlugin`; each resolves `MemoryService` via
+ * `runtime.getService("memory")` and persists through it (summaries as session
+ * summaries, facts as long-term memories).
+ *
+ * Dialogue counting keys off the canonical `MemoryType.MESSAGE` (plus two legacy
+ * metadata strings for back-compat) and excludes synthetic-compaction and
+ * action_result rows, so summarization thresholds reflect real turns. Both the
+ * summary prompt and its store operate on a bounded slice of new dialogue
+ * (`summaryMaxNewMessages`) and advance `lastMessageOffset` by exactly that
+ * slice, so busy rooms never over-send and the rolling summary catches up across
+ * runs.
+ */
 import { logger } from "../../../logger.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
 import type {

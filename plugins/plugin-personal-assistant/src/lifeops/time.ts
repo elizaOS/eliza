@@ -1,3 +1,8 @@
+/**
+ * Time-zone-aware date primitives for LifeOps scheduling: convert between UTC
+ * instants and local zoned date parts, using cached Intl formatters, so
+ * reminders and windows resolve correctly in the owner's time zone.
+ */
 export interface ZonedDateParts {
   year: number;
   month: number;

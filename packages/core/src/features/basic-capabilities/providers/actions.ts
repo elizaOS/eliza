@@ -1,3 +1,21 @@
+/**
+ * The ACTIONS provider for the basic-capabilities bundle: it injects the
+ * catalog of response actions available for the current turn into the prompt.
+ *
+ * For each registered action it runs the action's `validate` against the
+ * message plus the connector account-policy check, then keeps only survivors
+ * whose contexts match the turn's active routing contexts. Non-actionable
+ * chatter and relationship follow-up reminders narrow the visible set down to
+ * generic chat actions (or follow-up-capable ones); grouped actions are
+ * collapsed for main chat and re-expanded — with their subactions and dynamic
+ * providers — when their context is engaged.
+ *
+ * The result surfaces `actionNames`, `actionsWithDescriptions`, and a
+ * `# Context Capabilities` block, and stashes the capability metadata under
+ * `CONTEXT_CAPABILITIES_STATE_KEY` for downstream context routing. Name/order
+ * randomization is seeded deterministically per (agent, room) so the catalog is
+ * stable within a conversation.
+ */
 import { formatActionNames, formatActions } from "../../../actions.ts";
 import { evaluateConnectorAccountPolicies } from "../../../connectors/account-manager.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
@@ -317,38 +335,6 @@ function formatContextCapabilities(
 	return lines.join("\n");
 }
 
-/**
- * A provider object that fetches possible response actions based on the provided runtime, message, and state.
- * @type {Provider}
- * @property {string} name - The name of the provider ("ACTIONS").
- * @property {string} description - The description of the provider ("Possible response actions").
- * @property {number} position - The position of the provider (-1).
- * @property {Function} get - Asynchronous function that retrieves actions that validate for the given message.
- * @param {IAgentRuntime} runtime - The runtime object.
- * @param {Memory} message - The message memory.
- * @param {State} state - The state object.
- * @returns {Object} An object containing the actions data, values, and combined text sections.
- */
-/**
- * Provider for ACTIONS
- *
- * @typedef {import('./Provider').Provider} Provider
- * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
- * @typedef {import('./Memory').Memory} Memory
- * @typedef {import('./State').State} State
- * @typedef {import('./Action').Action} Action
- *
- * @type {Provider}
- * @property {string} name - The name of the provider
- * @property {string} description - Description of the provider
- * @property {number} position - The position of the provider
- * @property {Function} get - Asynchronous function to get actions that validate for a given message
- *
- * @param {IAgentRuntime} runtime - The agent runtime
- * @param {Memory} message - The message memory
- * @param {State} state - The state of the agent
- * @returns {Object} Object containing data, values, and text related to actions
- */
 export const actionsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
@@ -437,7 +423,7 @@ export const actionsProvider: Provider = {
 			[CONTEXT_CAPABILITIES_STATE_KEY]: contextCapabilitiesText,
 		};
 
-		// Combine all text sections - now including actionsWithDescriptions
+		// Combine all text sections: action names, descriptions, and context capabilities
 		const text = [actionNames, actionsWithDescriptions, contextCapabilitiesText]
 			.filter(Boolean)
 			.join("\n\n");

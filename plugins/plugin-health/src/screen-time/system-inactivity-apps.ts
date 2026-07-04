@@ -1,3 +1,7 @@
+/**
+ * OS lock / screen-saver app classification. `isSystemInactivityApp` identifies
+ * the login-window / screensaver identities that must not count as screen time.
+ */
 export interface ActivityAppIdentity {
   bundleId?: string | null;
   appName?: string | null;

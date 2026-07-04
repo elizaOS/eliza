@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only return-fraud scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("receipt",
- * "shipping", "escalation", "dispute" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero purchase state.
- *
- * This version seeds REAL purchase state through the LifeOps definition API
- * (the denied Maison Verlaine return, the Obsidian Reserve card dispute
- * window, and a confidential identity packet whose passport number is
- * planted) and asserts the review is GROUNDED in it: the seeded tokens never
- * appear in any user turn, so an echo cannot pass, while the passport number
- * stays out of chat. Seeds are re-verified via definitionCountDelta and no
- * dispute or message leaves via a no-external-send predicate.
+ * Live-model scenario (live-only lane): Return-fraud review grounds in seeded purchase state; identity data stays gated.
  */
 export default scenario({
   lane: "live-only",

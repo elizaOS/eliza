@@ -1,3 +1,4 @@
+/** Barrel for the LifeOps core: owner state, policies, scheduling, connectors, and the assistant engine. */
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
 export * from "./bulk-review.js";

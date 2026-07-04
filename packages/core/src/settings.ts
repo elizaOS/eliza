@@ -1,3 +1,19 @@
+/**
+ * At-rest encryption for secret settings and the SECRET_SALT lifecycle. Secret
+ * values (API keys and the like) are encrypted with AES-256-GCM keyed by
+ * SHA-256(SECRET_SALT) under an "elizaos:settings:v2" AAD; legacy AES-256-CBC
+ * ciphertext still decrypts. getSalt() reads the salt once and caches it with a
+ * short TTL because it runs on every getSetting string-decrypt — the hot path
+ * avoids re-clearing the env cache, and clearSaltCache() is the test seam. In
+ * production a non-default SECRET_SALT is required unless
+ * ELIZA_ALLOW_DEFAULT_SECRET_SALT overrides the check.
+ *
+ * Consumed by the runtime's getSetting/setSetting path and by world/character
+ * setup: saltWorldSettings/unsaltWorldSettings (gated on each setting's `secret`
+ * flag) and encryptedCharacter/decryptedCharacter walk their string values,
+ * round-tripping non-strings untouched. Decryption fails SAFE — a wrong salt
+ * returns the original ciphertext, never a partial plaintext.
+ */
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import type {
@@ -80,10 +96,10 @@ export function getSalt(): string {
 
 	// Fast path: within the TTL, trust the cached salt WITHOUT re-clearing the
 	// whole environment cache. getSalt runs on every getSetting string-decrypt,
-	// and the old unconditional `getEnvironment().clearCache()` made each of
-	// those force a full env re-read. SECRET_SALT is a boot-time constant; a
-	// runtime change is picked up at the next cache refresh (<= TTL) or via the
-	// explicit clearSaltCache() seam tests use.
+	// and unconditionally clearing the env cache here (`getEnvironment().clearCache()`)
+	// would force a full env re-read on each of those. SECRET_SALT is a boot-time
+	// constant; a runtime change is picked up at the next cache refresh (<= TTL)
+	// or via the explicit clearSaltCache() seam tests use.
 	if (saltCache !== null && now - saltCache.timestamp < SALT_CACHE_TTL_MS) {
 		return saltCache.value;
 	}
@@ -112,7 +128,6 @@ export function getSalt(): string {
 		saltErrorLogged = true;
 	}
 
-	// Update cache with latest env-derived salt
 	saltCache = {
 		value: currentEnvSalt,
 		timestamp: now,
@@ -136,9 +151,8 @@ export function clearSaltCache(): void {
  * @returns {string} - The encrypted value in 'iv:encrypted' format
  */
 export function encryptStringValue(value: string, salt: string): string {
-	// Check if value is undefined or null
 	if (value === undefined || value === null) {
-		return value; // Return the value as is (undefined or null)
+		return value;
 	}
 
 	if (typeof value === "boolean" || typeof value === "number") {

@@ -1,3 +1,9 @@
+/**
+ * LLM extractors that turn a natural-language owner goal request into a
+ * structured create or update plan for the OWNER_GOALS flow. Builds the
+ * grounding prompt, runs the extractor pipeline, and merges extracted fields
+ * with the current goal metadata so partial updates don't clobber prior state.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   parseJsonModelRecord,

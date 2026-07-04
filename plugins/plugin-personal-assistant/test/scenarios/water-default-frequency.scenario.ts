@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a drink-water request persists a "Drink water" task with
+ * the default daily frequency.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

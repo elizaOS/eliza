@@ -1,11 +1,9 @@
 /**
  * `@elizaos/plugin-scheduling` — ScheduledTask spine.
  *
- * Public exports for cross-module consumers; this barrel re-exports the typed
- * runner surface other plugins build against. The tick driver
- * (`processDueScheduledTasks`) and the runner Service stay in the host
- * (`@elizaos/plugin-personal-assistant`) during the decomposition; they move
- * here in a later slice.
+ * Public barrel for cross-module consumers: re-exports the typed runner surface,
+ * the extensible registries, the trigger/due math, and the state-log helpers
+ * other plugins build against.
  */
 
 export {

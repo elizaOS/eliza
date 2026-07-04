@@ -1,3 +1,10 @@
+/**
+ * RESOLVE_REQUEST action — owner decision surface for the approval queue.
+ * Approve, reject, or defer a pending request; on approval it dispatches the
+ * queued payload (message send, document signature, travel booking, …) through
+ * `executeApprovedRequest`. Owner-gated; the only path that runs a queued
+ * external side effect.
+ */
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,

@@ -1,16 +1,15 @@
+/**
+ * Unit tests for buildAccessContext against a deterministic fake runtime (no live
+ * model or DB): it must resolve the requester's identity, world, and role by
+ * running role resolution against the SAME world resolveWorldForMessage picks, so
+ * worldId, role, and isOwner always agree on one world. Outside a world (no
+ * resolvable worldId) role/owner are undefined — callers must read that as "no
+ * elevated access", never "unrestricted".
+ */
 import { describe, expect, it } from "vitest";
 import { buildAccessContext } from "./access-context";
 import { createUniqueUuid } from "./entities";
 import type { IAgentRuntime, Memory, UUID } from "./types";
-
-/**
- * buildAccessContext resolves the requester's identity, world, and role from a
- * message by running role resolution against the SAME world that
- * resolveWorldForMessage picks. worldId, role, and isOwner therefore always
- * agree on one world. Outside a world (no resolvable worldId) role/owner are
- * undefined — callers must read that as "no elevated access", never
- * "unrestricted".
- */
 
 const AGENT = "00000000-0000-0000-0000-0000000000a9" as UUID;
 const USER = "00000000-0000-0000-0000-0000000000u5" as UUID;

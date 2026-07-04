@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the PROBE_PLUGIN_CONFIG_REQUIREMENTS action: it returns the
+ * required/optional/present/missing key breakdown from the client and fails
+ * cleanly when no manifest is registered for the plugin. Runs against a
+ * deterministic stub runtime and client — no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { probePluginConfigRequirementsAction } from "./probe-plugin-config-requirements";

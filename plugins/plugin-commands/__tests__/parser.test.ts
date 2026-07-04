@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the command parser: body normalization (whitespace, bot-mention
+ * stripping, colon separators) and `parseCommand` token/argument extraction.
+ */
 import { describe, expect, it } from "vitest";
 import { normalizeCommandBody, parseCommand } from "../src/parser.ts";
 import type { CommandDefinition } from "../src/types.ts";

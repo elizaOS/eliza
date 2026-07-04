@@ -1,3 +1,4 @@
+/** Public surface of the follow-up tracker: its actions and tick worker. */
 export { listOverdueFollowupsAction } from "./actions/listOverdueFollowups.js";
 export { markFollowupDoneAction } from "./actions/markFollowupDone.js";
 export { setFollowupThresholdAction } from "./actions/setFollowupThreshold.js";

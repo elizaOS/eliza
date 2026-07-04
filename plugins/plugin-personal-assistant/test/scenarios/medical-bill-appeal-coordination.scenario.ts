@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only bill-appeal scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("invoice",
- * "insurance", "deadline", "draft" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero billing state.
- *
- * This version seeds REAL billing state through the LifeOps definition API
- * (the disputed Bellhaven Imaging invoice, the Westerly Mutual EOB appeal
- * window, and a private diagnosis-code note) and asserts the coordination is
- * GROUNDED in it: the seeded tokens never appear in any user turn, so an
- * echo cannot pass, while the diagnosis code never surfaces in chat. Seeds
- * are re-verified via definitionCountDelta and the appeal stays staged via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Bill appeal grounds in seeded billing state; diagnosis details never surface.
  */
 export default scenario({
   lane: "live-only",

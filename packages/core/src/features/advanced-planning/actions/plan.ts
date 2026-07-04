@@ -1,3 +1,12 @@
+/**
+ * Implements the PLAN action for the advanced-planning capability: a subaction
+ * router (create | update | finalize | review) that builds and edits multi-phase
+ * project plans. `create` synthesizes a phased plan from parameters; the other
+ * subactions operate on a supplied plan object, or return persistence-ready
+ * patches (`requiresPersistence: true`) when only a planId is given. Plans are
+ * constructed deterministically from parameters with no model call — distinct
+ * from PlanningService's LLM-driven planning. ADMIN role-gated.
+ */
 import { v4 as uuidv4 } from "uuid";
 import {
 	CANONICAL_SUBACTION_KEY,

@@ -1,3 +1,9 @@
+/**
+ * React hook driving the Google (Calendar/Gmail/Tasks) LifeOps connector:
+ * exposes OAuth grants, connect mode, and per-capability status, refreshing on
+ * app resume. The Google API clients live in `@elizaos/plugin-google`; this
+ * hook only manages the owner-facing connection state and controls.
+ */
 import { APP_RESUME_EVENT } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 // isApiError / useAppSelector are exported from the /api and /state subpaths,

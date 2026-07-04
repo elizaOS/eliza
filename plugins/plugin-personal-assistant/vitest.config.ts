@@ -1,3 +1,8 @@
+/**
+ * Base Vitest configuration for the plugin: extends the repo default config and
+ * wires the LifeOps and app-core test setup, stub roots, and workspace aliases
+ * so unit specs resolve source and native-library policy correctly.
+ */
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";

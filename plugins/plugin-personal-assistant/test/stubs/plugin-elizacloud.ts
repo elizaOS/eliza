@@ -1,3 +1,7 @@
+/**
+ * Test stub for the elizacloud plugin: cloud-site-URL and secret normalization helpers used
+ * by LifeOps cloud-feature tests.
+ */
 const DEFAULT_CLOUD_SITE_URL = "https://elizacloud.ai";
 
 function normalizeSecret(value: unknown): string | null {

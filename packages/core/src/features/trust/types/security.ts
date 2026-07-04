@@ -1,3 +1,12 @@
+/**
+ * Type and enum definitions for the trust capability's security subsystem: the
+ * `SecurityContext` a check runs in, the `SecurityCheck`/`ThreatAssessment`
+ * verdicts, the `SecurityEvent` record and its `SecurityEventType` enum, and the
+ * pattern-detection result shapes (multi-account, phishing, impersonation,
+ * coordination, credential theft). Also defines the in-memory `BehavioralProfile`
+ * plus the `Message`/`Action` records the SecurityModule tracks per entity.
+ */
+
 import type { UUID } from "../../../types/index.ts";
 import type { PermissionContext } from "./permissions.ts";
 

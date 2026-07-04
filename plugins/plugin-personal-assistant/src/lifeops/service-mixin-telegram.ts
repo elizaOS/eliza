@@ -1,3 +1,8 @@
+/**
+ * Telegram service mixin: declares the LifeOps Telegram service surface and the
+ * mixin that composes the telegram domain's search/send/verify methods onto the
+ * LifeOpsService base.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsTelegramConnectorStatus,

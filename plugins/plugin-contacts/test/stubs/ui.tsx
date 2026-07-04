@@ -1,3 +1,8 @@
+/**
+ * Test stub for `@elizaos/ui`: minimal Button/Input elements plus no-op overlay
+ * registration and a non-elizaOS `isElizaOS()`, so contacts component tests
+ * render without the real UI package.
+ */
 import React from "react";
 
 export type OverlayAppContext = {

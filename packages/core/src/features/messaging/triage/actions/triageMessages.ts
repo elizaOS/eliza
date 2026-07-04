@@ -1,3 +1,11 @@
+/**
+ * The inbox-triage action for the messaging-triage capability, registered under
+ * the shared `MESSAGE` action name. It fetches unread/recent messages across
+ * connected platforms via the TriageService, scores each with deterministic
+ * contact + urgency heuristics, and returns a priority-ranked summary plus a
+ * per-message list (priority + suggested action). Read-only scan; it never
+ * drafts or sends.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,

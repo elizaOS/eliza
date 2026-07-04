@@ -1,3 +1,9 @@
+/**
+ * Covers the MESSAGE action: the list_connections cross-connector roster, the
+ * op=send owner-binding gate, and i18n-safe op inference (#10471). Uses
+ * createMockRuntime with deterministic mock connectors — no live model, no DB.
+ */
+
 import { describe, expect, it } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
@@ -359,10 +365,10 @@ describe("inferOp is i18n-safe (#10471)", () => {
 	});
 
 	it("does NOT infer the op from natural-language text in any language", () => {
-		// Previously English regexes (e.g. /\b(delete|remove|unsend)\b/) picked the
-		// op from message text — invisible to non-English users and now removed.
-		// With no structured signal the op defaults to the safe `send`; the real
-		// op comes from the planner's `action` enum, which it emits in any language.
+		// Routing never infers the op from natural-language message text (any
+		// language): with no structured signal the op defaults to the safe `send`,
+		// and the real op comes from the planner's `action` enum, which it emits in
+		// any language.
 		expect(inferOp({})).toBe("send");
 		// A `text`-like field is not a recognized structured param and must be
 		// ignored by routing.

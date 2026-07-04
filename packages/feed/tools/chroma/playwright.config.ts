@@ -1,3 +1,9 @@
+/**
+ * Playwright configuration for Feed's Chroma browser regression lane.
+ *
+ * It wires the local dev server, serialized Chromium execution, and retained
+ * failure artifacts for the tests under `tools/chroma/specs`.
+ */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";

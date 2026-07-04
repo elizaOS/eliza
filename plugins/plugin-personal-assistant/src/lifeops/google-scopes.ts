@@ -1,3 +1,4 @@
+/** OAuth scope constants for the owner's Google connector, mapped to LifeOps Google capabilities. */
 import {
   LIFEOPS_GOOGLE_CAPABILITIES,
   type LifeOpsGoogleCapability,

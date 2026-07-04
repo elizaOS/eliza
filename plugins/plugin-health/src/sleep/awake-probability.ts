@@ -1,3 +1,8 @@
+/**
+ * `computeAwakeProbability` — the logistic model that estimates awake vs asleep
+ * from activity signals, schedule regularity, and sleep-cycle state. Gates
+ * check-in timing across the sleep domain.
+ */
 import type {
   LifeOpsActivitySignal,
   LifeOpsAwakeProbability,

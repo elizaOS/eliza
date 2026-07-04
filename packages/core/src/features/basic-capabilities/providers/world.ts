@@ -1,3 +1,11 @@
+/**
+ * WORLD provider — injects world/environment context for the current room: the
+ * world name, the current channel, participant count, and a per-type channel
+ * breakdown (text/voice/dm/feed/thread/other) across every room in the world.
+ * Degrades to an explanatory message when the room, its world id, or the world
+ * record cannot be resolved. Part of the basic-capabilities bundle.
+ */
+
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type {
@@ -13,10 +21,6 @@ import { addHeader } from "../../../utils.ts";
 // Get text content from centralized specs
 const spec = requireProviderSpec("WORLD");
 
-/**
- * Provider that exposes relevant world/environment information to agents.
- * Includes details like channel list, world name, and other world metadata.
- */
 export const worldProvider: Provider = {
 	name: spec.name,
 	description: spec.description,

@@ -1,3 +1,9 @@
+/**
+ * Symbol-keyed global registry of curated Eliza app definitions (slug, canonical
+ * name, aliases). Shared through the ambient singleton so core, shared,
+ * app-core, and plugin consumers read and extend the same list regardless of
+ * which copy of the package they import.
+ */
 import { getAmbientSingleton } from "./ambient-context";
 
 export interface ElizaCuratedAppDefinition {

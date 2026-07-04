@@ -1,3 +1,8 @@
+/**
+ * Owner-facing settings card for the website blocker: shows current block status
+ * and permission state and lets the owner configure and start/stop hosts-file
+ * (SelfControl) blocking. Exported via the plugin's ui module.
+ */
 import type { PermissionStatus } from "@elizaos/shared";
 import { Button } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";

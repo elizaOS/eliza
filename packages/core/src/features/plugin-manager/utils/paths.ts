@@ -1,3 +1,9 @@
+/**
+ * Path helpers for the plugin-manager capability: resolves the `eliza.json`
+ * config path under the state dir (honoring the `ELIZA_CONFIG_PATH` override)
+ * and re-exports the shared `resolveStateDir` / `resolveUserPath` state-dir
+ * utilities the manager's services depend on.
+ */
 import path from "node:path";
 import { resolveStateDir, resolveUserPath } from "../../../utils/state-dir.ts";
 

@@ -1,3 +1,10 @@
+/**
+ * Exercises `deleteSecretHandler`, the SECRETS umbrella's `action=delete` path,
+ * confirming it deletes in a DM channel but refuses in non-DM channels. The
+ * runtime is a deterministic stub whose `SECRETS` service returns a canned
+ * `delete()` result — no live model or database.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { deleteSecretHandler } from "./delete-secret";

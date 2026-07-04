@@ -1,3 +1,8 @@
+/**
+ * Tests that the calendar plan extractor applies the DSPy-optimized prompt when
+ * one is loaded, driving `extractCalendarPlanWithLlm` against a mocked runtime
+ * model (deterministic, no live LLM).
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {

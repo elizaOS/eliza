@@ -1,3 +1,7 @@
+/**
+ * Live end-to-end check of the Apple Reminders bridge: creates, updates, and deletes a real
+ * reminder in Reminders.app. Gated on ELIZA_LIVE_TEST and macOS.
+ */
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";

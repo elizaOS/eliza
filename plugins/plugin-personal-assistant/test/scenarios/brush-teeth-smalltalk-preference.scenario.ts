@@ -1,3 +1,6 @@
+/**
+ * Live-model scenario: a brushing habit emerges from smalltalk about chaotic mornings rather than an explicit reminder request, exercising intent extraction from indirect context.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

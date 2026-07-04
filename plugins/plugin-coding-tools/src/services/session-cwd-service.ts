@@ -105,6 +105,8 @@ async function isDirectory(absPath: string): Promise<boolean> {
   try {
     return (await fs.stat(absPath)).isDirectory();
   } catch {
+    // error-policy:J3 existence/type probe; a stat failure (ENOENT) means the
+    // path is absent — false is the expected-miss signal.
     return false;
   }
 }

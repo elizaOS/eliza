@@ -1,3 +1,8 @@
+/**
+ * Covers the firstRun provider's local-backup affordance: offering restore-vs-start-fresh
+ * when encrypted local backups exist, else the defaults/customize prompt. Deterministic,
+ * stubbed agent backup state.
+ */
 import { ChannelType, type IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

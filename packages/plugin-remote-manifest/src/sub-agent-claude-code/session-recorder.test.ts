@@ -1,3 +1,7 @@
+/**
+ * Session recorder tests verify transcript persistence, retention pruning, and
+ * symlink-safe cleanup for Claude Code remote sub-agent sessions.
+ */
 import { describe, expect, it } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

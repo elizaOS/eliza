@@ -1,3 +1,8 @@
+/**
+ * Small helpers that render arbitrary values into readable, indented text for
+ * inclusion in LLM prompts (nested objects, empty-string placeholders, labeled
+ * sections). Presentation-only; no domain logic.
+ */
 export function formatPromptValue(value: unknown, indent = 0): string {
   const pad = " ".repeat(indent);
   if (value === null || value === undefined) return "null";

@@ -1,3 +1,8 @@
+/**
+ * Raw-SQL helpers for the calendar repository: lazily resolves the runtime's
+ * `sql` tag, exposes the `RuntimeDb.execute` shape, and coerces DB result cells
+ * to text/number/boolean.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {

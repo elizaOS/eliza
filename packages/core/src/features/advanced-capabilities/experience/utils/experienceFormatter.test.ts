@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the experience formatter/aggregation helpers (deterministic, no
+ * runtime or model). Stats drive what the agent believes about its own track
+ * record (success rate, averages), so the counting and averaging must be exact;
+ * keyword extraction feeds retrieval recall.
+ */
 import { describe, expect, it } from "vitest";
 import type { Experience } from "../types";
 import { ExperienceType, OutcomeType } from "../types";
@@ -7,12 +13,6 @@ import {
 	getExperienceStats,
 	groupExperiencesByDomain,
 } from "./experienceFormatter.ts";
-
-/**
- * Experience aggregation + keyword extraction. Stats drive what the agent
- * believes about its own track record (success rate, averages), so the counting
- * and averaging must be exact; keyword extraction feeds retrieval recall.
- */
 
 const exp = (o: Partial<Experience>): Experience =>
 	({

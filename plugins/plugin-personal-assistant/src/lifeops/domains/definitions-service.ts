@@ -1,3 +1,9 @@
+/**
+ * Task-definition domain for LifeOps: CRUD over LifeOps task definitions and
+ * their occurrences (the recurring reminders/check-ins/routines the scheduler
+ * later fires), including reminder-plan normalization and definition-performance
+ * scoring.
+ */
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,

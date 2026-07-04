@@ -47,6 +47,16 @@
 // SOFTWARE.
 
 /**
+ * In-memory keyword search for `@elizaos/core`: a vendored Porter2 (Snowball
+ * English) stemmer, a Unicode-aware {@link Tokenizer}, an Okapi {@link BM25}
+ * ranker, and the hybrid-search utilities (`buildFtsQuery`, `bm25RankToScore`,
+ * `mergeHybridResults`) that fuse BM25 keyword hits with vector-similarity hits.
+ * The stemmer helpers work on raw char codes for speed and stay faithful to the
+ * upstream Snowball spec — treat that section as vendored, not hand-tunable. The
+ * porter2.js / fast-bm25 MIT license above governs this file; keep it intact.
+ */
+
+/**
  * Checks if the character code represents a vowel (a, e, i, o, u, y).
  * @param char - The character code.
  * @returns True if the character is a vowel, false otherwise.

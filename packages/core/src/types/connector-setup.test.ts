@@ -1,3 +1,9 @@
+/**
+ * Exercises the connector-setup contract — the `SetupState` lifecycle union,
+ * `SETUP_ERROR_CODES`, `buildSetupError`, `setupPath`, and `SetupStatusResponse`
+ * that connector plugins and the app-core API host share. Deterministic
+ * assertions with no model or database in the loop.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildSetupError,

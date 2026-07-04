@@ -1,3 +1,9 @@
+/**
+ * OAuth-bridged health readers for Strava, Fitbit, Withings, and Oura. Each
+ * `sync*` normalizer pages the provider's REST resources and maps them onto the
+ * shared `LifeOpsHealth*` record shapes via `syncHealthConnectorData`. Per-provider
+ * URLs and scopes come from the provider registry, not inline switch arms.
+ */
 import { logger } from "@elizaos/core";
 import type {
   LifeOpsHealthMetric,

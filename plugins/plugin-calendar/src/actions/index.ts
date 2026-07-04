@@ -1,3 +1,4 @@
+/** Barrel for the calendar actions: the `CALENDAR` action runner factory, its LLM plan extractor, and the shared plan-instruction constant. */
 export {
   CALENDAR_PLAN_INSTRUCTIONS,
   type CalendarHandlerAction,

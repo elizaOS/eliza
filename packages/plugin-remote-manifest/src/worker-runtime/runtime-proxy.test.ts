@@ -1,3 +1,7 @@
+/**
+ * Runtime proxy tests drive the worker-side API facade over an in-memory
+ * channel, including request correlation and event delivery behavior.
+ */
 import { describe, expect, it } from "bun:test";
 import type { RemotePluginWorkerMessage } from "../index.js";
 import type { WorkerChannel } from "./envelope.js";

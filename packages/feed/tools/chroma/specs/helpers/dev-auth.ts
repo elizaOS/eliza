@@ -1,3 +1,9 @@
+/**
+ * Browser-side dev-auth installer for Feed Chroma specs.
+ *
+ * It shells through the local session seeder, then installs the Steward cookies
+ * and access-token local storage expected by the web app.
+ */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

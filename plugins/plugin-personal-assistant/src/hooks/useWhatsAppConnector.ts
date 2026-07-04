@@ -1,3 +1,8 @@
+/**
+ * React hook exposing the WhatsApp LifeOps connector status and its controls.
+ * The WhatsApp transport client lives in `@elizaos/plugin-whatsapp`; this hook
+ * reads and toggles the normalized connector status for the UI.
+ */
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";

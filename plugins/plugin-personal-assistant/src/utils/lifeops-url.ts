@@ -1,3 +1,4 @@
+/** Builds absolute LifeOps API/app URLs from the current location origin (or the UI client's base). */
 import { client } from "@elizaos/ui";
 
 function resolveLocationOrigin(): string | null {

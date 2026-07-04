@@ -1,13 +1,11 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * OUTCOME rewrite of the routing-only board-prebrief scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("board", "risk",
- * "decisions", "changed" — all present in the user's own turn text).
- *
- * This version seeds REAL prebrief state — an open metric gap ("Westerly churn
+ * Live-model board-meeting prebrief + risk-register flow. Seeds real prebrief
+ * state — an open metric gap ("Westerly churn
  * metric") and a risk-register entry ("Quillon vendor dependency") that appear
- * in NO user turn — and asserts the prebrief is grounded in them. The
+ * in no user turn — so the prebrief is grounded in seeded state rather than
+ * parroted (#9310). The
  * follow-up turn must convert the seeded metric gap into a captured scheduled
  * action whose arguments carry it (selectedActionArguments), not just reply
  * wording.

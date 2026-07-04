@@ -1,3 +1,8 @@
+/**
+ * Persistence store for work threads: create/update/list the long-running owner
+ * work items (with their source refs and event log) the assistant tracks across
+ * turns, over the LifeOps repository.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";

@@ -1,3 +1,9 @@
+/**
+ * Deterministic tests for the canonical `{{name}}` / `{{nameN}}` token helpers
+ * (`name-tokens.ts`) and the `getRecentMessagesData` state accessor. Pure
+ * string/object functions — no model or database in the loop.
+ */
+
 import { describe, expect, it } from "vitest";
 import { replaceIndexedNameTokens, replaceNameTokens } from "./name-tokens";
 import { getRecentMessagesData } from "./recent-messages-state";

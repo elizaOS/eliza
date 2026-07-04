@@ -1,3 +1,7 @@
+/**
+ * Test stub for the Google plugin: a minimal message-adapter-shaped plugin used when
+ * LifeOps tests exercise Gmail/Calendar projections without live Google.
+ */
 import type {
   DraftRequest,
   IAgentRuntime,

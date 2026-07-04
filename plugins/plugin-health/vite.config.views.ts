@@ -1,3 +1,4 @@
+/** Vite build config for the health view bundle (dist/views/bundle.js). */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

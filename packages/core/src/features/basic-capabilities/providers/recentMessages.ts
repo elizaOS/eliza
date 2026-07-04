@@ -1,3 +1,27 @@
+/**
+ * RECENT_MESSAGES provider — builds the canonical bounded conversation
+ * transcript injected into the planner prompt for the current room. Fetches room
+ * memories (honoring the compaction start point), then filters, dedupes, and
+ * formats them into `# Conversation Messages` / `# Posts in Thread` blocks plus a
+ * `# Received Message` / `# Focus your response` framing for the incoming turn.
+ * Part of the basic-capabilities bundle and the single source of dialogue
+ * history — PLATFORM_CHAT_CONTEXT carries connector metadata, not the transcript.
+ *
+ * The filtering is load-bearing for prompt hygiene: internal bridge rows
+ * (sub-agent-router / swarm-synthesis), synthetic provider-failure replies,
+ * transient orchestrator status posts, leaked tool transcripts and local-path
+ * dumps, and consecutive- or assistant-run duplicates are all stripped so the
+ * model never re-reads its own machinery or paraphrases it as fact on a later
+ * turn. Rendered history is hard-capped to the runtime conversation length
+ * regardless of how many rows the adapter returns, and a persisted compaction
+ * ledger is prepended when present. On any error the provider degrades to an
+ * empty, safe result rather than throwing — a throw here would drop the entire
+ * turn's history.
+ *
+ * Also surfaces cross-room `recentInteractions` between the sender's identity
+ * cluster and the agent, rendered as message or post interactions by room type.
+ */
+
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
@@ -303,24 +327,8 @@ async function ensureFormattingEntities(
 	return Array.from(entitiesById.values());
 }
 
-// Move getRecentInteractions outside the provider
-/**
- * Retrieves the recent interactions between two entities in a specific context.
- *
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {UUID} sourceEntityId - The UUID of the source entity.
- * @param {UUID} targetEntityId - The UUID of the target entity.
- * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
- * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
- */
-/**
- * Retrieves the recent interactions between two entities in different rooms excluding a specific room.
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {UUID} sourceEntityId - The UUID of the source entity.
- * @param {UUID} targetEntityId - The UUID of the target entity.
- * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
- * @returns {Promise<Memory[]>} An array of Memory objects representing recent interactions between the two entities.
- */
+// Cross-room history between the sender's identity cluster and the target
+// entity, excluding the current room, capped to the most recent 20 rows.
 const getRecentInteractions = async (
 	runtime: IAgentRuntime,
 	sourceEntityId: UUID,
@@ -347,17 +355,6 @@ const getRecentInteractions = async (
 	});
 };
 
-/**
- * A provider object that retrieves recent messages, interactions, and memories based on a given message.
- * @typedef {object} Provider
- * @property {string} name - The name of the provider ("RECENT_MESSAGES").
- * @property {string} description - A description of the provider's purpose ("Recent messages, interactions and other memories").
- * @property {number} position - The position of the provider (100).
- * @property {Function} get - Asynchronous function that retrieves recent messages, interactions, and memories.
- * @param {IAgentRuntime} runtime - The runtime context for the agent.
- * @param {Memory} message - The message to retrieve data from.
- * @returns {object} An object containing data, values, and text sections.
- */
 export const recentMessagesProvider: Provider = {
 	name: spec.name,
 	description: spec.description,

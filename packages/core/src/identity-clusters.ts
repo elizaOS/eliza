@@ -1,3 +1,10 @@
+/**
+ * Optional-capability bridge to the "relationships" service for identity-cluster
+ * resolution: `getRelatedEntityIds` expands an entity id to its cluster members
+ * and `resolvePrimaryEntityId` collapses an alias to its canonical primary id.
+ * Degrades to the identity function when the service, or the relevant method, is
+ * absent, so callers can treat clustering as best-effort.
+ */
 import type { IAgentRuntime, Service, UUID } from "./types/index.ts";
 
 type IdentityClusterResolver = Service & {

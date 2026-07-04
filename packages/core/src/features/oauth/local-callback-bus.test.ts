@@ -1,3 +1,10 @@
+/**
+ * Unit tests for LocalOAuthCallbackBus and the oauthLocalCallbackRoute HTTP
+ * handler — the in-process rendezvous that lets an awaiting agent turn resolve
+ * when a local OAuth callback lands (publish/waitFor, timeout expiry, supersede,
+ * stop, and the route's 200/400/404/503 status contract). Deterministic
+ * harness with fake timers and a stub response object; no real HTTP server.
+ */
 import { describe, expect, test, vi } from "vitest";
 import type { IAgentRuntime } from "../../types/index.ts";
 import { LocalOAuthCallbackBus } from "./local-callback-bus.ts";

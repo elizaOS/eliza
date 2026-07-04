@@ -1,3 +1,7 @@
+/**
+ * Android host shim tests exercise JSON bridge request dispatch, response
+ * delivery, event fanout, and reset behavior with a fake native bridge.
+ */
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "../index.js";
 import { installAndroidShim, resetAndroidShimForTests } from "./index.js";

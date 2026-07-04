@@ -1,3 +1,12 @@
+/**
+ * Type contracts for the advanced-memory capability: the LongTermMemoryCategory
+ * enum and the LongTermMemory / SessionSummary record shapes, the MemoryConfig
+ * knobs that drive summarization and extraction cadence, and the
+ * MemoryExtraction / SummaryResult model-output shapes. Shared by MemoryService,
+ * the memory providers and evaluators, and the MemoryStorageProvider contract in
+ * types/memory-storage.ts, which re-imports these as its persistence boundary.
+ */
+
 import type { TextGenerationModelType } from "../../types/model.ts";
 import type { JsonPrimitive, JsonValue, UUID } from "../../types/primitives.ts";
 

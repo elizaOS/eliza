@@ -1,3 +1,11 @@
+/**
+ * The SEARCH_EXPERIENCES action for the experience capability: queries the agent's
+ * experience graph through the EXPERIENCE service and returns compact, ranked
+ * learnings plus a small related graph, with a copy-to-clipboard follow-up action
+ * for chaining. Validates on a structured `query`/`q` param, on experience/search
+ * intent in free text, or on an in-scope action context, and derives a query from
+ * the message when none is supplied.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,

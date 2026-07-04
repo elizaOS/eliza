@@ -1,11 +1,16 @@
+/**
+ * Shared types for the LifeOpsService: service options, workflow scheduler
+ * state, and related structural types, plus a re-export of the shared
+ * LifeOpsServiceError.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   LifeOpsCircadianState,
   LifeOpsWorkflowRun,
 } from "../contracts/index.js";
 
-// LifeOpsServiceError is now a runtime-level primitive in `@elizaos/shared`;
-// re-exported here so historical `./service-types.js` callers keep working.
+// LifeOpsServiceError is a runtime-level primitive in `@elizaos/shared`,
+// re-exported here for `./service-types.js` callers.
 export { LifeOpsServiceError } from "@elizaos/shared";
 
 export type LifeOpsWorkflowSchedulerState = {

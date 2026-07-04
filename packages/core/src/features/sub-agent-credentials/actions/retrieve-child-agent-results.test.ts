@@ -1,3 +1,10 @@
+/**
+ * Covers the RETRIEVE_CHILD_AGENT_RESULTS action, which fetches a finished
+ * child session's transcript/artifact bundle via the SubAgentChildResultsClient
+ * service. The harness is deterministic: the client is a `vi.fn` mock, so the
+ * tests assert the resolved bundle is passed through and that both validate and
+ * handler degrade cleanly when the results client is unavailable.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	SUB_AGENT_CHILD_RESULTS_CLIENT_SERVICE,

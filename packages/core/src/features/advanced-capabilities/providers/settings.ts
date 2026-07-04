@@ -1,3 +1,13 @@
+/**
+ * SETTINGS provider: injects a world/server's configuration state into the
+ * prompt context and drives the onboarding / UPDATE_SETTINGS flow. Resolves the
+ * room's world (or, in a DM setup context, the owner's world — creating an empty
+ * settings block if none exists), decrypts stored secret values via
+ * unsaltWorldSettings, and renders either a setup checklist (required settings
+ * first, with explicit UPDATE_SETTINGS action instructions) or a read-only
+ * configuration summary. Secret values are masked outside setup, and total
+ * output is truncated at MAX_SETTINGS_OUTPUT_LENGTH.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { findWorldsForOwner } from "../../../roles.ts";
@@ -146,8 +156,8 @@ function generateStatusMessage(
 }
 
 /**
- * Creates an settings provider with the given configuration
- * Updated to use world metadata instead of cache
+ * Reads world settings from world metadata (secrets decrypted at read time) and
+ * formats them for setup or read-only display; see the file header.
  */
 export const settingsProvider: Provider = {
 	name: spec.name,

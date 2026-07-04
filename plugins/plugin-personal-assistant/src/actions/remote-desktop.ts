@@ -3,10 +3,10 @@
  *
  * The remote-desktop domain (the REMOTE_DESKTOP start/status/end/list/revoke
  * action, the backend-detection engine, and the RemoteSessionService control
- * plane) moved to `@elizaos/plugin-remote-desktop`, which now registers the
- * action. PA loads that plugin via `ensureLifeOpsRemoteDesktopPluginRegistered`.
- * This shim re-exports the moved public symbols so existing PA imports (and
- * tests) keep resolving.
+ * plane) lives in `@elizaos/plugin-remote-desktop`, which registers the
+ * action. PA loads that plugin via `ensureLifeOpsRemoteDesktopPluginRegistered`;
+ * this shim re-exports its public symbols so PA imports and tests keep
+ * resolving.
  */
 
 export {

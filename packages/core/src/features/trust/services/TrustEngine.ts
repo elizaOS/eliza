@@ -1,3 +1,18 @@
+/**
+ * Runs the `TrustEngine` service — the scoring core of the trust capability.
+ * Computes multi-dimensional trust profiles (reliability, competence, integrity,
+ * benevolence, transparency) by aggregating decayed, verification-weighted
+ * evidence, derives an overall score under context-specific dimension weights,
+ * and gates actions via `evaluateTrustDecision` against `TrustRequirements`.
+ *
+ * `recordInteraction` ingests evidence with per-entity hourly rate limiting and
+ * diminishing-returns weighting. Profiles are cached (FIFO-capped) and persisted
+ * as entity `trust_profile` components; evidence is read from both components
+ * and the `trustEvidence` table (`SecurityStore`) and merged. Consumed by the
+ * SecurityModule, ContextualPermissionSystem, trust providers/actions, and the
+ * `TrustEngineServiceWrapper` that registers it with the runtime.
+ */
+
 import { logger } from "../../../logger.ts";
 import {
 	type Component,

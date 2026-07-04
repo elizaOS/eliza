@@ -174,8 +174,11 @@ export function TaskEditor({
           displayName: trimmedName,
           instructions: trimmedPrompt,
           triggerType:
-            scheduleKind === "recurring" ? ("cron" as const) : ("event" as const),
-          cronExpression: scheduleKind === "recurring" ? cron.trim() : undefined,
+            scheduleKind === "recurring"
+              ? ("cron" as const)
+              : ("event" as const),
+          cronExpression:
+            scheduleKind === "recurring" ? cron.trim() : undefined,
           eventKind: scheduleKind === "event" ? eventName.trim() : undefined,
           wakeMode: "inject_now" as const,
           enabled: true,

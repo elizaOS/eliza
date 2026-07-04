@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit tests for the reflection evaluators (reflection-items.ts):
+ * fact keyword dedupe / strengthen without embeddings, the strict-structured-output
+ * schema invariant across every reflection schema, and the tolerant per-op
+ * factExtractor parse. Runtime and model are vi.fn stubs — no live model, no DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { logger } from "../../../logger.ts";
 import type {

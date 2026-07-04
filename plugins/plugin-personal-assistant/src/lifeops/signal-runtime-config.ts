@@ -1,3 +1,4 @@
+/** Reads the Signal connector's runtime config (auth dir, account, enabled) out of the persisted Eliza config. */
 type ConfigRecord = Record<string, unknown> & {
   connectors?: Record<string, unknown>;
 };

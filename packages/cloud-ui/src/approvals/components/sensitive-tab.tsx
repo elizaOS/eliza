@@ -10,8 +10,6 @@
  * work tracked as a follow-up.
  */
 
-import { Loader2, LockKeyhole, Search } from "lucide-react";
-import { type FormEvent, useCallback, useState } from "react";
 import {
   Alert,
   AlertDescription,
@@ -19,6 +17,8 @@ import {
   Button,
   Input,
 } from "@elizaos/ui/components/primitives";
+import { Loader2, LockKeyhole, Search } from "lucide-react";
+import { type FormEvent, useCallback, useState } from "react";
 import {
   formatApprovalTimestamp,
   useCancelSensitiveRequest,

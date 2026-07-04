@@ -1,3 +1,11 @@
+/**
+ * Foundational parsing/identity utilities used throughout the runtime.
+ * stringToUuid must be deterministic (same input → same id, so an external id
+ * always maps to the same entity) and idempotent on an already-valid UUID;
+ * parseJSONObjectFromText must recover an object from chatty model text or
+ * return null; and the boolean/truncation helpers must degrade safely.
+ * Pure deterministic unit test — no model or database.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	parseBooleanFromText,
@@ -6,14 +14,6 @@ import {
 	truncateToCompleteSentence,
 	validateUuid,
 } from "./utils.ts";
-
-/**
- * Foundational parsing/identity utilities used throughout the runtime.
- * stringToUuid must be deterministic (same input → same id, so an external id
- * always maps to the same entity) and idempotent on an already-valid UUID;
- * parseJSONObjectFromText must recover an object from chatty model text or
- * return null; and the boolean/truncation helpers must degrade safely.
- */
 
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -240,6 +240,7 @@ export function WidgetHost({
     );
   }, [plugins]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: registryVersion re-runs resolveWidgetsForSlot so an idle-registered widget is picked up
   const resolved = useMemo(() => {
     const all = resolveWidgetsForSlot(slot, plugins ?? [], serverDeclarations);
     const fullAppShellRoutesEnabled =

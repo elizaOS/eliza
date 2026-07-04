@@ -1,3 +1,15 @@
+/**
+ * Personal-assistant HTTP route plugin — registers the raw `/api/lifeops/*`,
+ * entity/relationship, scheduled-task, sleep, and website-blocker route
+ * handlers on the agent's server and enforces access before dispatch.
+ *
+ * This is the auth/authorization boundary for the LifeOps REST surface: it runs
+ * the framework token check, resolves the session, and applies OWNER/ADMIN role
+ * gating (loosened for trusted-local requests) so downstream handlers such as
+ * `lifeops-routes.ts` can trust the caller. Also exports
+ * `requireLifeOpsRouteOwnerAdminAccess` for reuse by sibling route modules.
+ */
+
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent";

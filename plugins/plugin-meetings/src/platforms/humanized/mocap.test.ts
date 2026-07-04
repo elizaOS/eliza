@@ -1,3 +1,7 @@
+/**
+ * Procedural mocap library plus trajectory selection — seeded determinism of the
+ * generated library and the pointer-lands-in-target selection bounds. Pure.
+ */
 import { describe, expect, it } from "vitest";
 import { MocapEngine, buildMocapLibrary } from "./mocap.js";
 import type { Rect } from "./types.js";

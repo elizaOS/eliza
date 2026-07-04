@@ -1,3 +1,13 @@
+/**
+ * Service in the personality capability that lets the agent safely self-modify
+ * its own character file. It validates proposed changes (a Zod schema plus
+ * name/system/bio/topic safety rules including prompt-injection and XSS guards),
+ * writes timestamped backups capped at `maxBackups`, merges the changes
+ * additively into the runtime character, and routes the durable write through
+ * the character-persistence service — updating `runtime.character` in place only
+ * after persistence succeeds. Also exposes backup/history listing and restore
+ * (from a backup file or a modification-history entry).
+ */
 import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";

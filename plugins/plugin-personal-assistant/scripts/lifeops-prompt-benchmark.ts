@@ -1,3 +1,9 @@
+/**
+ * CLI harness that runs the LifeOps, executive-assistant, and self-care prompt
+ * benchmark suites against a live provider and writes a markdown report plus
+ * serialized Ax optimization rows. Invoked with `--report <path>`; the case
+ * builders and runner live under `test/helpers/`.
+ */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";

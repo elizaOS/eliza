@@ -1,3 +1,8 @@
+/**
+ * Covers screen-context sampling without eagerly loading sharp: sharp stays unloaded on
+ * import, and sampling works through an injected image analyzer. Deterministic, temp-file
+ * frames.
+ */
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

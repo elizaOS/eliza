@@ -1,3 +1,8 @@
+/**
+ * /api/meetings route handlers over a real MeetingService — start (400/409/422
+ * guards), list, fetch-one, and graceful leave. Deterministic: fake runtime plus
+ * scripted adapter, no browser.
+ */
 import type { RouteHandlerContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { MeetingService } from "../service.js";

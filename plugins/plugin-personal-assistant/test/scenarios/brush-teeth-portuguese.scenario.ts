@@ -1,3 +1,6 @@
+/**
+ * Live-model smoke scenario: casual Brazilian Portuguese phrasing yields a daily 8am/9pm brushing habit save.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

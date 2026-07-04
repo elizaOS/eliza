@@ -1,3 +1,8 @@
+/**
+ * Tests `resolveCredentialProxyConfig` — env-map resolution (off unless both URL and
+ * token are set), defaults, strict mode, fail-closed routes-override parsing/validation,
+ * and the raw VCS PAT deny-list. Deterministic; drives a fake env lookup, no real env.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	CREDENTIAL_PROXY_RAW_PAT_VARS,

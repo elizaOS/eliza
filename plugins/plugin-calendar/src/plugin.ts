@@ -1,3 +1,8 @@
+/**
+ * Plugin definition for `@elizaos/plugin-calendar`: registers `CalendarService`,
+ * the non-destructive `CalendarMigrationService`, the `app_calendar` schema, and
+ * the `/api/calendar/*` HTTP routes. Requires `@elizaos/plugin-sql` loaded first.
+ */
 import type { Plugin } from "@elizaos/core";
 import { calendarHttpRoutes } from "./routes/plugin-routes.js";
 import { CalendarService } from "./service/CalendarService.js";

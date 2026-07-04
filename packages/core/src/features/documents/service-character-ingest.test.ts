@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `DocumentService` character-document ingestion under boot races:
+ * it waits for a late `TEXT_EMBEDDING` registration before ingesting (rather than
+ * writing empty-fragment stubs), and reprocesses an existing zero-fragment
+ * document stub. Drives `createMockRuntime` with Vitest fake timers —
+ * deterministic, no live model or DB.
+ */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import type { Memory, UUID } from "../../types";

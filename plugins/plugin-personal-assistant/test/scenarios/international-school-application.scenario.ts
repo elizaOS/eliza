@@ -2,19 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only school-application scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes
- * ("transcripts", "teacher", "passport", "registrar" — all present in the
- * user's own turn text), so a prompt-parroting reply passed against zero
- * application state.
- *
- * This version seeds REAL application state through the LifeOps definition
- * API (the Lycee Rosenhagen deadline, the recommendation ask for Ms. Ilka
- * Vandermeer, and a private student health note) and asserts the packet is
- * GROUNDED in it: the seeded tokens never appear in any user turn, so an
- * echo cannot pass, while the child's sensitive detail stays out of broad
- * drafts. Seeds are re-verified via definitionCountDelta and the nudges stay
- * staged via a no-external-send predicate.
+ * Live-model scenario (live-only lane): School application grounds in seeded packet state; child details stay out of broad drafts.
  */
 export default scenario({
   lane: "live-only",

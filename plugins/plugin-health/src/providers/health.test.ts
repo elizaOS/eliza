@@ -1,3 +1,7 @@
+/**
+ * Unit test for the health provider result builders and `createHealthProvider`,
+ * driven by synthetic summary DTOs (no runtime or live model).
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/health.js";
 import { buildHealthProviderResult, createHealthProvider } from "./health.js";

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for PlanningService.createSimplePlan: verifies action selection
+ * follows the model's `<response>` actions decision, not keyword-matching on
+ * user text. Deterministic — the service runs against stub runtime/state with no
+ * live model.
+ */
 import { describe, expect, it } from "vitest";
 
 import type {

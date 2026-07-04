@@ -1,3 +1,4 @@
+/** Verifies the Duffel connector contribution's config gating and search dispatch. Deterministic vitest with the Duffel client mocked. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDuffelConnectorContribution } from "./duffel.js";

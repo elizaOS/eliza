@@ -1,3 +1,7 @@
+/**
+ * Unit test for `mergeScreenTimeAggregateRows` — asserts per-target rows merge
+ * and accumulate correctly. Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   mergeScreenTimeAggregateRows,

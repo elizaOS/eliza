@@ -1,3 +1,8 @@
+/**
+ * Unit test for the HEALTH action's trajectory `purpose` tag and planning
+ * output, with the optimized-prompt resolver pinned to identity so it runs
+ * deterministically without a live model.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,7 @@
+/**
+ * Hello remote plugin install tests prove the sample plugin can be installed,
+ * bootstrapped, and loaded from a temporary store.
+ */
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

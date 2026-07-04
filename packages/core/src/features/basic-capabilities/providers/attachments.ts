@@ -1,3 +1,18 @@
+/**
+ * The ATTACHMENTS provider for the basic-capabilities bundle: it injects the
+ * conversation's attachments into the prompt. Attachments from the current
+ * message and recent room messages are merged by id (newest wins), sorted
+ * most-recent-first, and capped at `MAX_VISIBLE_ATTACHMENTS`.
+ *
+ * Prompt text is gated: it renders only when the current message carries its
+ * own attachments, or when the current/reply message text both references and
+ * asks to inspect an attachment — stale room attachments never leak into
+ * unrelated turns, and sub-agent result turns are excluded outright. For each
+ * visible attachment it advertises whether the content is readable via
+ * `ATTACHMENT action=read`, keyed on stored `text`; images are the exception,
+ * since the read action re-describes them at read time whenever an
+ * `IMAGE_DESCRIPTION` model is registered.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import {
 	ContentType,
@@ -101,23 +116,6 @@ function shouldRenderAttachmentPromptText(
 	);
 }
 
-/**
- * Provides a list of attachments in the current conversation.
- * @param {IAgentRuntime} runtime - The agent runtime object.
- * @param {Memory} message - The message memory object.
- * @returns {Object} The attachments values, data, and text.
- */
-/**
- * Provides a list of attachments sent during the current conversation, including names, descriptions, and summaries.
- * @type {Provider}
- * @property {string} name - The name of the provider (ATTACHMENTS).
- * @property {string} description - Description of the provider.
- * @property {boolean} dynamic - Indicates if the provider is dynamic.
- * @property {function} get - Asynchronous function that retrieves attachments based on the runtime and message provided.
- * @param {IAgentRuntime} runtime - The runtime environment for the agent.
- * @param {Memory} message - The message object containing content and attachments.
- * @returns {Object} An object containing values, data, and text about the attachments retrieved.
- */
 export const attachmentsProvider: Provider = {
 	name: spec.name,
 	description: spec.description,

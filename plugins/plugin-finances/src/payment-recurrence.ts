@@ -1,3 +1,13 @@
+/**
+ * Detects recurring charges from a transaction history.
+ *
+ * Groups transactions by normalized merchant, then infers a cadence
+ * (weekly / monthly / annual) from the interval regularity of same-merchant
+ * charges. Merchant normalization strips bank-feed noise (locations, refs, URLs)
+ * so variants of one merchant collapse together. Backs FinancesService's
+ * recurring-charge summary.
+ */
+
 import type {
   LifeOpsPaymentTransaction,
   LifeOpsRecurringCadence,

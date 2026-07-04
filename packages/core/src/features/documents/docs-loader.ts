@@ -1,3 +1,14 @@
+/**
+ * Filesystem loader that ingests on-disk files into the documents capability.
+ * `getDocumentsPath` resolves the documents directory (runtime setting →
+ * `DOCUMENTS_PATH` → `./docs`), `loadDocumentsFromPath` recursively walks it
+ * (skipping VCS/build dirs and dotfiles), and `addDocumentFromFilePath` maps a
+ * file extension to a content type, reads the file as UTF-8 or base64 depending
+ * on whether it is text-backed, and forwards it to
+ * `DocumentService.addDocument`. Used for startup ingestion and by the DOCUMENT
+ * import_file subaction; it talks to the service through a minimal local
+ * interface to avoid a circular import with service.ts.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "../../logger";

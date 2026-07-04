@@ -178,7 +178,12 @@ export function isCuratedGameApp(
 export function shouldShowAppInAppsView(
   app: Pick<
     RegistryAppInfo,
-    "category" | "name" | "catalogSection" | "featured" | "defaultHidden" | "scope"
+    | "category"
+    | "name"
+    | "catalogSection"
+    | "featured"
+    | "defaultHidden"
+    | "scope"
   >,
   options: {
     isProd?: boolean;
@@ -338,7 +343,12 @@ export function getDefaultAppsCatalogSelection(
 export function getAppCatalogSectionKey(
   app: Pick<
     RegistryAppInfo,
-    "name" | "displayName" | "description" | "category" | "catalogSection" | "featured"
+    | "name"
+    | "displayName"
+    | "description"
+    | "category"
+    | "catalogSection"
+    | "featured"
   >,
 ): AppCatalogSectionKey {
   if (isFeaturedApp(app)) {
@@ -400,7 +410,12 @@ export function getAppCatalogSectionKey(
 export function getAppCatalogSectionLabel(
   app: Pick<
     RegistryAppInfo,
-    "name" | "displayName" | "description" | "category" | "catalogSection" | "featured"
+    | "name"
+    | "displayName"
+    | "description"
+    | "category"
+    | "catalogSection"
+    | "featured"
   >,
 ): string {
   return APP_CATALOG_SECTION_LABELS[getAppCatalogSectionKey(app)];

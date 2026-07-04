@@ -1,3 +1,10 @@
+/**
+ * Deterministic redirect tests for the legacy Eliza Cloud docs Worker.
+ *
+ * The harness calls the Worker fetch handler directly with synthetic Requests;
+ * no Cloudflare account, DNS, or network access is required.
+ */
+
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import worker from "./worker";

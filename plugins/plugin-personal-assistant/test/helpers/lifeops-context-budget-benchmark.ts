@@ -1,3 +1,7 @@
+/**
+ * Builds the LifeOps context-budget benchmark report: the fixed context provider-id set
+ * plus the per-provider token payload and ablation math consumed by the budget tests.
+ */
 export const LIFEOPS_CONTEXT_PROVIDER_IDS = [
   "lifeops",
   "pendingPrompts",

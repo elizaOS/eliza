@@ -1,3 +1,18 @@
+/**
+ * Runs the `CredentialProtector` service of the trust capability: scans inbound
+ * messages for credential-theft attempts using regex plus obfuscation-aware
+ * keyword matching over sensitive-data mentions, exfiltration-request phrasing,
+ * phishing cues, and prompt-injection markers, while suppressing known
+ * legitimate contexts (password-reset help and the like) to limit false
+ * positives.
+ *
+ * Beyond detection it redacts sensitive data (`protectSensitiveData`), warns
+ * likely victims (`alertPotentialVictims`), and scores whole conversations.
+ * Confirmed threats are logged through the {@link SecurityModule} injected at
+ * `initialize`, which persists them as security incidents and trust evidence.
+ * The runtime-facing wrapper is `CredentialProtectorServiceWrapper`.
+ */
+
 import { logger } from "../../../logger.ts";
 import {
 	type IAgentRuntime,

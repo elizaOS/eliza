@@ -1,3 +1,7 @@
+/**
+ * Hello remote plugin worker exposes a minimal action, provider, and service
+ * through the bootstrap contract used by remote plugin install tests.
+ */
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 

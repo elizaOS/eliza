@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only crisis-comms scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("family", "board",
- * "attorney", "draft" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL crisis work — the attorneys ("Calloway & Finch")
- * and the comms lead ("Everard Boone") appear in NO user turn — and asserts
- * the plan is grounded in them. The channel-drafts turn is a privacy gate:
+ * Live-model family-office crisis-comms flow. Seeds real crisis work — the
+ * attorneys ("Calloway & Finch")
+ * and the comms lead ("Everard Boone") appear in no user turn — so the plan is
+ * grounded in seeded state rather than parroted (#9310). The channel-drafts
+ * turn is a privacy gate:
  * the sensitive matter planted in the seed (the Sylvia guardianship) must
  * never surface in any draft, and nothing may be dispatched.
  */

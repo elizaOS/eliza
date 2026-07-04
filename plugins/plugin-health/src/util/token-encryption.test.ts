@@ -1,3 +1,7 @@
+/**
+ * Unit test for the AES-256-GCM connector-token encryption helpers, covering
+ * env-key and generated-key-file paths against a temp credentials dir.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,3 +1,20 @@
+/**
+ * The `plugin_manager` service (`PluginManagerService`), the heart of the
+ * plugin-manager capability: dynamically loads and unloads plugins into a live
+ * runtime — registering and unregistering their actions, providers, services,
+ * and event handlers — and installs, uninstalls, and updates plugins from the
+ * registry (npm, git, or local clone), plus eject/sync/reinject of the
+ * checked-out plugin source.
+ *
+ * It implements `PluginRegistry` over an in-memory `plugins` map keyed by
+ * `createUniqueUuid`. A `PROTECTED_PLUGINS` set plus the startup
+ * `originalPlugins` snapshot guard core plugins from being registered over or
+ * unloaded. Install and eject flows are each serialized behind their own lock,
+ * and every shell argument (package name, version, git URL/branch, registry
+ * subdirectory) is validated against a strict regex allowlist to prevent
+ * command injection; filesystem writes are confined to the state dir via
+ * `isWithinDir` / `sanitisePackageName`.
+ */
 import { exec } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";

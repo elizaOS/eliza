@@ -221,6 +221,10 @@ export async function durableReplayTryReserve(
       }
       return { ok: true, owner, atomic: true };
     } catch (err) {
+      // error-policy:J4 fail-closed — a durable reservation that faults mid-way
+      // must DENY (`ok: false`), never fabricate a reservation; the inner
+      // release .catch is error-policy:J6 best-effort teardown of the partial
+      // reservations we already acquired on this failed path.
       await releaseSqlReservations(db, resolvedAgentId, acquired, owner).catch(
         () => {},
       );

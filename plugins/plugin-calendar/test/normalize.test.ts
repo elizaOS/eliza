@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the calendar input normalizers (finite number, ISO string,
+ * Google capabilities, timezone) and their `CalendarServiceError` failure paths.
+ * Pure functions.
+ */
 import { describe, expect, it } from "vitest";
 import { CalendarServiceError } from "../src/internal/errors.js";
 import {

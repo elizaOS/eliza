@@ -1,3 +1,16 @@
+/**
+ * The ACTION_STATE provider for the basic-capabilities bundle: it injects what
+ * has already happened in the current action chain into the planner prompt so
+ * later actions can build on earlier ones.
+ *
+ * It assembles up to four sections — the active action plan (steps, progress,
+ * per-step status/errors/results), the current chain's action results, working
+ * memory (top recent entries by timestamp), and recent action history
+ * reconstructed from `action_result` memories in the `messages` table (grouped
+ * by run and trimmed to a character budget). Results are context-agnostic, so
+ * the provider is not cache-stable across a turn; any failure degrades to
+ * "No action state available" rather than throwing.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	ActionResult,
@@ -35,10 +48,6 @@ function formatDataForPrompt(data: unknown): string {
 	}
 }
 
-/**
- * Provider for sharing action execution state and plan between actions
- * Makes previous action results and execution plan available to subsequent actions
- */
 export const actionStateProvider: Provider = {
 	name: spec.name,
 	description: spec.description,

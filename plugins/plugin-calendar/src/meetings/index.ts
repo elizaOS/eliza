@@ -1,3 +1,4 @@
+/** Barrel for the meeting auto-join surface: the reconcile entry points, the fire-time `meeting_join` dispatch handler, and the offset/metadata constants. */
 export {
   APPROVAL_OFFSET_MINUTES,
   AUTO_JOIN_METADATA_FLAG,

@@ -1,3 +1,8 @@
+/**
+ * Google connector service mixin: declares the LifeOps Google connector service
+ * surface and the `withGoogle` mixin that composes the Google domain's
+ * connect/disconnect and status methods onto the LifeOpsService base.
+ */
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorMode,

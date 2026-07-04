@@ -1,3 +1,10 @@
+/**
+ * `/api/lifeops/sleep/*` routes (history, regularity, baseline) — adapts the
+ * LifeOps route context onto `@elizaos/plugin-health`'s generic sleep-route
+ * handler, backing it with `LifeOpsService` so owner sleep reads resolve
+ * through the same service spine as the rest of LifeOps.
+ */
+
 import {
   createHealthSleepRouteHandler,
   type HealthSleepRouteContext,

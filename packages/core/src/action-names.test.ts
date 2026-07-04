@@ -1,3 +1,8 @@
+/**
+ * Deterministic test pinning the reserved action-name constants and the
+ * canonical ordering of `NON_EXECUTABLE_RESPONSE_ACTION_NAMES`.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	IGNORE_ACTION_NAME,

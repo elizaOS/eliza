@@ -1,3 +1,12 @@
+/**
+ * InboxRepository — raw-SQL persistence for the inbox triage queue.
+ *
+ * Reads and writes the `app_inbox.life_inbox_triage_entries` /
+ * `life_inbox_triage_examples` tables through the runtime DB handle, mapping
+ * rows to strongly-typed `TriageEntry` / `TriageExample` objects. A thin raw-SQL
+ * wrapper (via `../db/sql.ts`) so this plugin carries no
+ * `@elizaos/plugin-personal-assistant` dependency.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {

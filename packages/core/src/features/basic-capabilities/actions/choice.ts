@@ -1,3 +1,13 @@
+/**
+ * Implements the CHOOSE_OPTION action of the basic-capabilities bundle: the
+ * agent's way to resolve a pending choice task (tasks tagged AWAITING_CHOICE
+ * whose metadata carries `options`). validate() gates on the declared
+ * `roleGate: { minRole: "ADMIN" }` plus the existence of such a task — it never
+ * re-derives the role itself. handler() matches the caller's taskId (short
+ * 8-char prefix or full UUID) and selectedOption, then runs the matching task
+ * worker (or deletes the task on the "ABORT" option); with no valid selection it
+ * replies with the formatted menu of tasks and their options.
+ */
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type {

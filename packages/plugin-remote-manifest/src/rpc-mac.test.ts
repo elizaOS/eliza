@@ -1,3 +1,7 @@
+/**
+ * RPC MAC tests verify canonical byte encoding, key-id derivation, and hex
+ * codec behavior used by host-to-worker message integrity checks.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   canonicalRpcBytes,

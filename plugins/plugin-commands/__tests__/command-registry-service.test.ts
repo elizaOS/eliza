@@ -1,3 +1,8 @@
+/**
+ * Unit tests for CommandRegistryService: the canonical `commands` service type,
+ * per-runtime command stores, skills-bridge coexistence, and replace-by-key
+ * semantics. Runs against a stub runtime, no live model.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { CommandRegistryService } from "../src/command-registry-service";

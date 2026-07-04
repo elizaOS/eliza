@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the ScheduledTask state-log writer and its in-memory store:
+ * one row per transition, history reads, and retention/rollup of expired
+ * entries into daily summaries. Deterministic, in-memory store.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   createInMemoryScheduledTaskLogStore,

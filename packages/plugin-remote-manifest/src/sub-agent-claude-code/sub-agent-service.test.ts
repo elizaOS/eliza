@@ -1,3 +1,7 @@
+/**
+ * Claude Code service tests exercise subprocess launch, request routing,
+ * audit emission, and shutdown behavior with mocked Bun process handles.
+ */
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";

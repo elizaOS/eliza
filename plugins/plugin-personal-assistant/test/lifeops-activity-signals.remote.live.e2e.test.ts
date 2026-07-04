@@ -1,3 +1,8 @@
+/**
+ * Live remote e2e: a remote client posts mobile-device and health activity signals to a
+ * running API and the agent reads them back. Gated on a reachable remote API base and
+ * token.
+ */
 import { expect, it } from "vitest";
 import { describeIf } from "../../../packages/test/helpers/conditional-tests.ts";
 

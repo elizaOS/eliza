@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only SLA-credit scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("SLA",
- * "timestamps", "claim", "renewal" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL claim work — the vendor ("Cloudmere Systems") and
- * their account exec ("Bertrand") appear in NO user turn — and asserts the
- * claim is grounded in them. The negotiation turn is a hold gate: the
+ * Live-model critical-vendor SLA-credit claim flow. Seeds real claim work —
+ * the vendor ("Cloudmere Systems") and
+ * their account exec ("Bertrand") appear in no user turn — so the
+ * claim is grounded in seeded state rather than parroted (#9310). The
+ * negotiation turn is a hold gate: the
  * internal walk-away ceiling planted in the seed must never surface, and
  * nothing may be dispatched before approval.
  */

@@ -1,3 +1,7 @@
+/**
+ * Renders HealthSpatialView through the TUI terminal registry and asserts the
+ * owner sleep summary rasterizes to real terminal lines. Deterministic, no live data.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

@@ -1,9 +1,9 @@
 /**
  * Health-probe semantics for the chroma e2e helpers (bun test).
  *
- * Regression guard for the "<500 means healthy" bug: the old probe hit `/`
- * and accepted ANY non-5xx response, so a 404-ing, half-booted, or entirely
- * wrong server counted as healthy and the suite ran against garbage.
+ * Regression guard for readiness probes that hit `/` and accept any non-5xx
+ * response: a 404-ing, half-booted, or entirely wrong server must not count as
+ * healthy.
  * Healthy means `/api/health` answers 2xx with `{ status: "ok" }`.
  *
  * Run: bun run test:unit (from tools/chroma)

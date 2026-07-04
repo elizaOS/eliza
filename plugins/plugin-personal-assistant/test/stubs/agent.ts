@@ -1,3 +1,8 @@
+/**
+ * Test stub for @elizaos/agent: re-exports the real global-pause and handoff store surfaces
+ * plus a mutable agent-backup state, so PA tests run without pulling in the full agent
+ * package.
+ */
 import os from "node:os";
 import path from "node:path";
 

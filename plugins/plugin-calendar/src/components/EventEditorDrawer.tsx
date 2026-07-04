@@ -1,3 +1,9 @@
+/**
+ * Owner-facing drawer for creating and editing a calendar event: title, time
+ * window, calendar/account selection, and attendees, submitting through the
+ * augmented `@elizaos/ui` client to the calendar routes. Mounted by the
+ * calendar views when the owner adds or edits an event.
+ */
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,

@@ -1,3 +1,11 @@
+/**
+ * The `registryPlugins` provider: injects the elizaOS plugin registry catalog
+ * plus local install status into the prompt so the agent can discover and
+ * install plugins. Reads the registry via pluginRegistryService.getAllPlugins()
+ * (degrading to a warning line when the fetch fails) and installed plugins via
+ * PluginManagerService. Owner-gated, agent-scoped cache, relevance-gated to the
+ * connectors/settings contexts.
+ */
 import { logger } from "../../../logger.ts";
 import type { Provider, ProviderResult } from "../../../types/components.ts";
 import type { Memory } from "../../../types/memory.ts";

@@ -1,3 +1,4 @@
+/** Narrows the agent runtime to just its cache methods for LifeOps helpers that only cache. */
 import type { IAgentRuntime } from "@elizaos/core";
 
 export type RuntimeCacheLike = Pick<

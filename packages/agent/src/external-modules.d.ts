@@ -1,10 +1,7 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
-  import type {
-    AgentRuntime,
-    MobileDeviceBridgeStatus,
-  } from "@elizaos/core";
+  import type { AgentRuntime, MobileDeviceBridgeStatus } from "@elizaos/core";
 
   export type { MobileDeviceBridgeStatus };
 

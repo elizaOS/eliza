@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit tests for the REPLY action's free-text branch. The runtime
+ * and useModel are vi.fn stubs (no live model), covering the fallback to
+ * planner-supplied text when the model returns empty structured text, and the
+ * fallback to raw non-JSON model text.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../../../index";
 import { ModelType } from "../../../index";

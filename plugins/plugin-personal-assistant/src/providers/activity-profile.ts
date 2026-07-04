@@ -1,3 +1,13 @@
+/**
+ * `activity-profile` provider — owner-and-agent-only ambient presence context.
+ *
+ * Reads the proactive-worker task metadata (last-seen platform, sleep/wake
+ * signals, screen-focus) and the activity-tracker foreground-app report, then
+ * renders a compact single-line context string plus structured `values` the
+ * planner uses to reason about whether the owner is active, sleeping, or busy.
+ * Gated to the owner role and to the screen_time / tasks / health contexts.
+ */
+
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,

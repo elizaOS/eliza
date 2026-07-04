@@ -1,3 +1,10 @@
+/**
+ * Self-contained raw-SQL helpers over the runtime DB handle for the finance
+ * back-end: lazy tagged-query building and defensive result coercion
+ * (`asObject` / `toText` / `toNumber`). Lets `FinancesRepository` target the
+ * `app_finances` tables without importing PA's SQL layer.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {

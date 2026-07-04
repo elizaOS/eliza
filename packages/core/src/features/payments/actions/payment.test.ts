@@ -1,3 +1,13 @@
+/**
+ * Exercises the PAYMENT umbrella action's handler and validate across all six
+ * structural subactions (create_request, deliver_link, verify_payload, settle,
+ * await_callback, cancel_request), including legacy discriminator aliases,
+ * delivery-target eligibility gating, and proof/raw-settlement sanitization.
+ * Deterministic: service clients (PaymentRequestsClient, PaymentBusClient,
+ * PaymentSettler) and the dispatch registry are vi.fn() mocks over a stub
+ * runtime — no live model, DB, or real payment provider.
+ */
+
 import { describe, expect, test, vi } from "vitest";
 import type { SensitiveRequestDispatchRegistry } from "../../../sensitive-requests/dispatch-registry";
 import {

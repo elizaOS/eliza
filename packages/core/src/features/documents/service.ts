@@ -1,3 +1,21 @@
+/**
+ * `DocumentService`: the documents capability's runtime service and the core of
+ * the RAG subsystem. It ingests documents from uploads, URLs, files, and
+ * character config; extracts text, splits it into fragments, embeds them (batched
+ * when a `TEXT_EMBEDDING_BATCH` model is registered, else serial per-fragment),
+ * and persists documents + fragments into their own memory partitions. It answers
+ * recall queries via `searchDocuments` in vector, keyword (BM25), or hybrid mode,
+ * degrading to keyword when no embedding model is available.
+ *
+ * Registered under service type `documents` and consumed by `documentsProvider`
+ * and the document actions; recall queries are embedded through `embedRecallQuery`
+ * (per-turn cached, fail-open). It enforces per-document visibility scopes
+ * (global / owner-private / user-private / agent-private) via `canAccessDocument`,
+ * plus an optional `AccessContext` gate that is strictly subtractive — a requester
+ * can never widen their view by routing through it. On start it also migrates the
+ * legacy `knowledge` partition into the document partitions and backfills missing
+ * scopes.
+ */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
@@ -52,7 +70,7 @@ import {
  * - "hybrid"  — (default) vector cosine + BM25, weighted 0.6/0.4.
  *               Falls back to "keyword" automatically when no TEXT_EMBEDDING
  *               model is registered (e.g. the cerebras runner).
- * - "vector"  — Pure vector / cosine-similarity search (original behaviour).
+ * - "vector"  — Pure vector / cosine-similarity search.
  * - "keyword" — Pure BM25 keyword search; does not require an embedding model.
  */
 export type SearchMode = "hybrid" | "vector" | "keyword";
@@ -957,7 +975,7 @@ export class DocumentService extends Service {
 		return this._hybridSearch(queryText, filterScope, message, accessContext);
 	}
 
-	/** Pure vector (cosine-similarity) search — original behaviour. */
+	/** Pure vector (cosine-similarity) search. */
 	private async _vectorSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },

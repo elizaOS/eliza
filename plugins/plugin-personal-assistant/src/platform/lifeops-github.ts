@@ -1,3 +1,8 @@
+/**
+ * Browser-side bridge for the LifeOps GitHub OAuth callback: receives the
+ * postMessage from the GitHub callback window and dispatches it as a LifeOps
+ * github-callback event so the connect flow can complete.
+ */
 import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   dispatchLifeOpsGithubCallback,

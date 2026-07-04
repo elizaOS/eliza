@@ -1,3 +1,9 @@
+/**
+ * Privacy-egress gating for LifeOps: classifies outbound connector data by
+ * sensitivity class (metadata / snippet / body / recipients) and enforces what
+ * the assistant is allowed to surface or send out, keyed to the owner's
+ * connector grants.
+ */
 import crypto from "node:crypto";
 import type {
   ActionResult,

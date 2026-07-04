@@ -1,3 +1,7 @@
+/**
+ * Fixtures for the morning-brief e2e: assembles a real runtime with inbox-triage and
+ * approval-queue state so the brief has populated domain data to summarize.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

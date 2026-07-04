@@ -1,3 +1,9 @@
+/**
+ * Check-in service: assembles the owner's morning/evening check-in — pulling
+ * calendar, inbox/Gmail triage, and occurrence context and running it through
+ * the model to produce the check-in message. Check-ins fire as structural
+ * scheduled tasks routed through the shared runner, not on prompt-text matching.
+ */
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";

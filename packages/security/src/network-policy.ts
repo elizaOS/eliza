@@ -46,6 +46,9 @@ function canonicalizeIpv6(ip: string): string | null {
   try {
     return new URL(`http://[${ip}]/`).hostname.replace(/^\[|\]$/g, "");
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — an address the URL parser
+    // rejects is not canonicalizable; `null` is the explicit "cannot canonicalize"
+    // signal and the caller falls back to the already IP-validated input.
     return null;
   }
 }

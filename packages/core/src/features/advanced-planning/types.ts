@@ -1,3 +1,10 @@
+/**
+ * Type contracts for the advanced-planning capability: the planning context,
+ * plan/step/execution-result shapes, retry policy, plan status, and the
+ * IPlanningService interface implemented by PlanningService and consumed by the
+ * PLAN action. Re-exports the shared JsonPrimitive/JsonValue helpers used across
+ * planning parameters.
+ */
 import type {
 	ActionParameters,
 	ActionResult,

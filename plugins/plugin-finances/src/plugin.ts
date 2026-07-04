@@ -1,13 +1,15 @@
 /**
  * elizaOS runtime plugin for the Finances overlay app.
  *
- * Hosts the OWNER_FINANCES action (stub during migration) and the
- * `/finances` view that renders the owner finance dashboard.
+ * Registers the `/finances` view (the owner finance dashboard), the
+ * `app_finances` drizzle schema, and the `FinancesMigrationService`. The
+ * OWNER_FINANCES umbrella action and the `/api/lifeops/money/*` routes are
+ * registered by `@elizaos/plugin-personal-assistant`, which delegates the
+ * payments back-end (FinancesService / FinancesRepository) here.
  *
- * The drizzle schema (`pgSchema("app_finances")`) is registered via the
- * Plugin `schema` field so the elizaOS runtime handles migrations. Loading
- * this plugin requires @elizaos/plugin-sql (declared as a peer dep and listed
- * in `dependencies`).
+ * The drizzle schema (`pgSchema("app_finances")`) is registered via the Plugin
+ * `schema` field so the elizaOS runtime handles migrations; loading this plugin
+ * requires @elizaos/plugin-sql (declared as a peer dep and in `dependencies`).
  */
 
 import type { Plugin } from "@elizaos/core";

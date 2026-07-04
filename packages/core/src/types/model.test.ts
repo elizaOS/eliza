@@ -1,3 +1,8 @@
+/**
+ * Covers the text-generation model-type predicate — `isTextGenerationModelType`
+ * over `TEXT_GENERATION_MODEL_TYPES` and `ModelType`, including case and
+ * whitespace normalization. Pure predicate assertions; no live model is invoked.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	isTextGenerationModelType,

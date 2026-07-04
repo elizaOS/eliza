@@ -71,7 +71,7 @@ describe("hasRedisConfig", () => {
     const { hasRedisConfig } = await import("../redis-factory");
     // no config -> false
     expect(hasRedisConfig({})).toBe(false);
-    // TCP REDIS_URL (Railway) -> true  [the B1 fix: was previously Upstash-only]
+    // TCP REDIS_URL (Railway) -> true
     expect(hasRedisConfig({ REDIS_URL: "redis://default:pw@host:6379" })).toBe(true);
     // legacy Upstash REST creds -> true
     expect(

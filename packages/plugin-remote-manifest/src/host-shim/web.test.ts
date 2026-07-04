@@ -1,3 +1,7 @@
+/**
+ * Web host shim tests exercise browser postMessage request routing, event
+ * fanout, listener cleanup, and failure handling with a fake window object.
+ */
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "./index.js";
 import { installWebShim, resetWebShimForTests } from "./web.js";

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the escalation-ladder registry: default ladders by priority,
+ * next-step advancement across channels, snooze resetting the ladder to step 0,
+ * and effective-ladder resolution. Pure functions, no runtime.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   createEscalationLadderRegistry,

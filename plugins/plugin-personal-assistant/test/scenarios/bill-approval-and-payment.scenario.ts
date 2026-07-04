@@ -5,11 +5,8 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only bill-approval scenario (#9310): the old
- * file only asserted OWNER_FINANCES routing and reply keywords that all
- * appeared in the user's own turn text ("bill", "approval", "risk").
- *
- * This version seeds a REAL pending payment-authorization approval on the
+ * Live-model bill-approval-and-payment flow. Seeds a real pending
+ * payment-authorization approval on the
  * live queue for the contractor invoice, resolves it through the live
  * RESOLVE_REQUEST action (pending -> approved/executing/done), and then
  * asserts the receipt-verification follow-up was captured as a scheduled item

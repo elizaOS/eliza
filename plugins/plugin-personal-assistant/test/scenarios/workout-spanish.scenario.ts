@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: casual Spanish phrasing persists a "Workout" habit
+ * definition.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

@@ -58,6 +58,7 @@ export async function validateCloudBaseUrl(
   const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
   return validateCloudBaseUrl(value);
 }
+export * from "@elizaos/auth";
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   CONNECTOR_PLUGINS,
@@ -178,7 +179,6 @@ export {
 export { getWalletAddresses, initStewardWalletCache } from "./api/wallet.ts";
 export * from "./api/wallet-capability.ts";
 export * from "./api/workbench-helpers.ts";
-export * from "@elizaos/auth";
 export * from "./awareness/index.ts";
 export { runBenchmark } from "./cli/benchmark.ts";
 export { CharacterSchema } from "./config/character-schema.ts";

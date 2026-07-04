@@ -1,3 +1,19 @@
+/**
+ * Formats the agent's registered actions into prompt text and parses the action
+ * calls the model returns back into validated parameters. On the render side it
+ * composes deterministic (seeded-RNG) action examples, compressed
+ * name/description/parameter listings, and canonical JSON call examples, so a
+ * given action set always yields the same prompt. On the parse side it turns the
+ * model's `{ actions, params }` payload into a per-action
+ * `Map<string, ActionParameters>`, coercing loose scalars/arrays and validating
+ * each value against the action's parameter schema (type, enum, pattern,
+ * min/max).
+ *
+ * Sits between the action catalog and the message loop's model call, and also
+ * acts as the barrel re-exporting the action sub-modules (extractor pipeline,
+ * JSON model output, subaction promotion/dispatch, recent-context,
+ * resolve-action-args).
+ */
 import { testSchemaPattern } from "./actions/validate-tool-args.ts";
 import { allActionDocs } from "./generated/action-docs.ts";
 import type {

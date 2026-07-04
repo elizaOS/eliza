@@ -1,3 +1,11 @@
+/**
+ * Provider in the personality capability that injects a user's structured
+ * personality slot (verbosity, tone, formality, reply-gate, custom directives),
+ * the global slot, and any legacy free-text preferences into the prompt, so the
+ * agent adapts its style per-user without editing the character definition.
+ * Reads slots from `PersonalityStore`; the export doc below covers the
+ * global-then-user prompt-precedence rule.
+ */
 import { logger } from "../../../../logger.ts";
 import type {
 	IAgentRuntime,

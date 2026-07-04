@@ -1,3 +1,10 @@
+/**
+ * Deterministic regression tests for `summaryEvaluator`: the bounded
+ * first-summary prompt window, the first-store `lastMessageOffset` advancing by
+ * the summarized slice (not the full backlog), and `shouldRun` dialogue counting
+ * matching canonical `MemoryType.MESSAGE`. Uses an in-memory `createMockRuntime`
+ * and a stub `MemoryService` — no live model or database.
+ */
 import { describe, expect, it } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime";
 import type { EvaluatorRunOptions, Memory, State } from "../../../types";

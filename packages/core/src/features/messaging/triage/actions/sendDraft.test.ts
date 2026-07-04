@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit coverage for `outboundDraftOptionsFromMessage`, the MESSAGE
+ * action's outbound-field extraction. Stubs `runtime.useModel` (no live model)
+ * to prove the model is consulted only when structured params are incomplete,
+ * its XML is parsed into the draft, and a model failure degrades to no guessed
+ * fields.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 import type {

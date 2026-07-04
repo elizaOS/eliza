@@ -1,3 +1,16 @@
+/**
+ * Block-rule reconciler — the repeating task worker that keeps the OS-level
+ * hosts-file website block converged onto the active `life_block_rules`.
+ *
+ * On each 60s tick it releases rules whose gate is fulfilled (`until_todo` once
+ * the gate todo completes, `fixed_duration` on expiry, `until_iso` past its
+ * deadline) and re-asserts or drops the single managed OS block to match the
+ * rules that remain. `harsh_no_bypass` rules resist manual release, so the
+ * reconciler is what makes an out-of-band unblock self-heal. Exposes the task
+ * name/tags/interval, the one-shot `reconcileBlockRulesOnce`, and the worker
+ * registration + `ensureBlockRuleReconcileTask` used to persist the Task row.
+ */
+
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, stringToUuid } from "@elizaos/core";
 import { executeRawSql, sqlQuote } from "../../lifeops/sql.js";

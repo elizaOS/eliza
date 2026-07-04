@@ -1,3 +1,9 @@
+/**
+ * Exercises view-kind resolution and gating — `resolveViewKind` (including the
+ * legacy `developerOnly` mapping), `isViewKindEnabled`, `isViewVisible`, and the
+ * `VIEW_KIND_META` table over the closed `VIEW_KINDS` set. Deterministic
+ * assertions with no model or database in the loop.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	type EnabledViewKinds,

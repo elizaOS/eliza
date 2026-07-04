@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the ambient-context singleton: `getAmbientSingleton` builds
+ * a value once and caches it on a shared `globalThis` slot keyed by symbol so
+ * duplicate module copies agree, `setAmbientSingleton` overrides it everywhere,
+ * and `peekAmbientSingleton` reads without creating. Pure deterministic test —
+ * no model or database.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

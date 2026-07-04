@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the per-runtime AnchorRegistry binding: registration,
+ * retrieval, the built-in `APP_LIFEOPS_ANCHORS`, and the test-reset hook.
+ * Deterministic, mock runtime.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { AnchorContext } from "../scheduled-task/types.js";

@@ -1,3 +1,8 @@
+/**
+ * Contact-routing policy for reminder escalation: ranks candidate reminder
+ * channels for a contact by urgency and channel policy, deciding which channel
+ * the assistant should try next when a reminder goes unacknowledged.
+ */
 import type {
   LifeOpsChannelPolicy,
   LifeOpsReminderAttempt,

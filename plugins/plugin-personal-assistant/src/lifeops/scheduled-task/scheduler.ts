@@ -1,3 +1,14 @@
+/**
+ * Core scheduled-task processor for the LifeOps family: given the persisted
+ * ScheduledTask records, decides which are due, fires them, evaluates completion
+ * checks and completion timeouts, advances recurrences, and emits pending
+ * prompts — the structural heart of the "one clock, two consumers" design.
+ *
+ * Firing is decided entirely on the tasks' structural fields (trigger,
+ * shouldFire, completionCheck, recurrence, due time), never on promptInstructions
+ * text. The always-loaded scheduling plugin owns the runner service; this module
+ * is the pure due/fire computation it drives.
+ */
 import { hasOwnerAccess } from "@elizaos/agent";
 import {
   type IAgentRuntime,

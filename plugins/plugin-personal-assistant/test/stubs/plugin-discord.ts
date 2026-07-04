@@ -1,3 +1,7 @@
+/**
+ * Test stub for the Discord plugin surface: empty DM-inbox and tab probes used when LifeOps
+ * tests exercise Discord connector projections without a live client.
+ */
 export const DISCORD_APP_URL = "https://discord.com/app";
 
 export function emptyDiscordDmInboxProbe() {

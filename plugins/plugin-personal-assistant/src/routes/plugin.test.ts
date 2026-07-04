@@ -1,3 +1,10 @@
+/**
+ * Tests the personal-assistant route plugin's auth/authorization gate: token
+ * enforcement, session resolution, and OWNER/ADMIN role gating on the raw
+ * `/api/lifeops/*` surface. Downstream route handlers are stubbed (deterministic
+ * vi.mock), so the assertions isolate the access-control boundary in plugin.ts.
+ */
+
 import type http from "node:http";
 import { _resetAuthRateLimiter } from "@elizaos/app-core/api/auth";
 import type { AgentRuntime, Route } from "@elizaos/core";

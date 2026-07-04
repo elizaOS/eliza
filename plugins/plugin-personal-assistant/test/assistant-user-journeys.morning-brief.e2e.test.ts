@@ -1,3 +1,9 @@
+/**
+ * Live-LLM end-to-end journey for the morning brief: boots a real AgentRuntime
+ * with the LifeOps plugin, seeds inbox and approval state, and asserts the
+ * agent produces a coherent brief. Gated on live-provider env; skipped when no
+ * provider is configured.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";

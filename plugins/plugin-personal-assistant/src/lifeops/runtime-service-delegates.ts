@@ -1,3 +1,9 @@
+/**
+ * Delegation seam from LifeOps domains to connector-plugin runtime services:
+ * resolves the runtime service for each connector (iMessage, WhatsApp, Signal,
+ * Telegram, X, Calendly) and forwards read/send calls, so LifeOps holds no
+ * connector transport of its own and never depends on connector internals.
+ */
 import type { Content, IAgentRuntime, Memory, TargetInfo } from "@elizaos/core";
 import type {
   CalendlyAvailabilityNormalized as CalendlyAvailability,

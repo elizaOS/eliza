@@ -36,9 +36,7 @@ export function setFirstRunActionHandler(
  * the seam that lets the user type freely during onboarding and get a
  * deterministic in-chat reply WITHOUT the text ever reaching the server.
  */
-export function setFirstRunTextHandler(
-  next: FirstRunTextHandler | null,
-): void {
+export function setFirstRunTextHandler(next: FirstRunTextHandler | null): void {
   textHandler = next;
 }
 

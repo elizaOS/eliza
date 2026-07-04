@@ -1,3 +1,8 @@
+/**
+ * Plugin-owned assistant command catalog for the health and screen-time
+ * surfaces — the `HEALTH_ASSISTANT_COMMANDS` shown in the assistant command UI,
+ * with their icon keys and metadata.
+ */
 export type HealthAssistantIconKey =
   | "activity"
   | "heart"

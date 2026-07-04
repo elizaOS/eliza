@@ -1,9 +1,9 @@
 import {
-	BaseMessageAdapter,
-	getDefaultTriageService,
-	type IAgentRuntime,
-	type MessageAdapterCapabilities,
-	type MessageSource,
+  BaseMessageAdapter,
+  getDefaultTriageService,
+  type IAgentRuntime,
+  type MessageAdapterCapabilities,
+  type MessageSource,
 } from "@elizaos/core";
 
 /**
@@ -14,27 +14,24 @@ import {
  * wires them up.
  */
 export class IMessageMessageAdapter extends BaseMessageAdapter {
-	readonly source: MessageSource = "imessage";
+  readonly source: MessageSource = "imessage";
 
-	isAvailable(runtime: IAgentRuntime): boolean {
-		return (
-			runtime.getService("imessage") != null ||
-			runtime.getService("bluebubbles") != null
-		);
-	}
+  isAvailable(runtime: IAgentRuntime): boolean {
+    return runtime.getService("imessage") != null || runtime.getService("bluebubbles") != null;
+  }
 
-	capabilities(): MessageAdapterCapabilities {
-		return {
-			list: false,
-			search: false,
-			manage: {},
-			send: {},
-			worlds: "single",
-			channels: "implicit",
-		};
-	}
+  capabilities(): MessageAdapterCapabilities {
+    return {
+      list: false,
+      search: false,
+      manage: {},
+      send: {},
+      worlds: "single",
+      channels: "implicit",
+    };
+  }
 }
 
 export function registerIMessageTriageAdapter(): void {
-	getDefaultTriageService().register(new IMessageMessageAdapter());
+  getDefaultTriageService().register(new IMessageMessageAdapter());
 }

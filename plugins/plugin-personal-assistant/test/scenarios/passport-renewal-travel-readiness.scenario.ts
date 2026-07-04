@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only travel-readiness scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("passport",
- * "visa", "Singapore", "renewal" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero trip state.
- *
- * This version seeds REAL trip state through the LifeOps definition API (the
- * Merlion Summit meeting block and the travel coordinator Isla Renwick) and
- * asserts the readiness audit is GROUNDED in it: both tokens never appear in
- * any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the coordinator note stays staged via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Travel readiness audit grounds in seeded trip state; coordinator note stays staged.
  */
 export default scenario({
   lane: "live-only",

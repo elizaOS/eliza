@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only travel-blackout scenario (#9310): the
- * old file only asserted planner keywords and reply echoes ("draft",
- * "approval", "reschedule", "next month" — all present in the user's own
- * turn text), against zero calendar state.
- *
- * This version seeds two REAL partnership commitments this week plus one
+ * Seeds two REAL partnership commitments this week plus one
  * board commitment through the LifeOps definition API (counterparty tokens
  * "Northwind" and "Zephyr" never appear in any user turn) and asserts:
  *   - the bulk plan is GROUNDED: the reply must enumerate both seeded

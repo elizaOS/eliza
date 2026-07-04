@@ -1,8 +1,14 @@
-// Direct import + re-export (instead of `export { … } from`) so Bun.build's
-// tree-shaker can't elide the value bindings. The pure re-export form here
-// produced an empty module init in the mobile agent bundle and the runtime
-// crashed with `ReferenceError: memoryItems is not defined` when
-// `createAdvancedMemoryPlugin` referenced the binding.
+/**
+ * Barrel for the advanced-memory evaluators — `summaryEvaluator`,
+ * `longTermMemoryEvaluator`, and the `memoryItems` bundle — consumed by
+ * `createAdvancedMemoryPlugin`.
+ *
+ * Uses direct import + re-export rather than `export { … } from` so Bun.build's
+ * tree-shaker cannot elide the value bindings: the pure re-export form produced
+ * an empty module init in the mobile agent bundle, crashing the runtime with
+ * `ReferenceError: memoryItems is not defined` when the plugin referenced the
+ * binding.
+ */
 import {
 	longTermMemoryEvaluator as _longTermMemoryEvaluator,
 	memoryItems as _memoryItems,

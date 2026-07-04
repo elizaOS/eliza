@@ -1,3 +1,10 @@
+/**
+ * Exercises listInboxAction against a fake runtime and the in-process default
+ * message-ref store: seeds cached refs of mixed sources, then asserts the
+ * handler filters unread messages down to the requested sources. Deterministic
+ * — no live model, no connector, no real DB.
+ */
+
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { listInboxAction } from "../actions/listInbox.ts";

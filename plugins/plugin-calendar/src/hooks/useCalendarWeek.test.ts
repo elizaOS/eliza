@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Tests for the useCalendarWeek hook: date-window derivation and feed fetching
+ * across day/week/month modes in jsdom against a stubbed calendar client.
+ */
+
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

@@ -1,3 +1,18 @@
+/**
+ * Runs the PlanningService for the advanced-planning capability: the long-lived
+ * service that turns goals into action plans and executes them. `createSimplePlan`
+ * wraps a model's chosen actions into a sequential plan; `createComprehensivePlan`
+ * prompts a TEXT_LARGE model to decompose a goal, then parses and enhances the
+ * result (unknown actions fall back to REPLY, missing retry policies are filled in).
+ * `executePlan` runs a plan's steps in sequential, parallel, or DAG order
+ * (topological, via a min-heap ready queue) with per-step retry/backoff, an
+ * in-memory PlanWorkingMemory, and abort-based cancellation tracked in
+ * `planExecutions`.
+ *
+ * `validatePlan` checks structure and, for DAG plans, circular dependencies;
+ * `adaptPlan` re-prompts the model to revise a plan mid-execution. Registered and
+ * disposed by createAdvancedPlanningPlugin.
+ */
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../../logger.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
@@ -189,13 +204,13 @@ export class PlanningService extends Service {
 		responseContent?: Content,
 	): Promise<ActionPlan | null> {
 		try {
-			// The model chooses which actions to run (the `<response>` actions
-			// field). When it chose none, the documented model-output contract
-			// treats the turn as a plain REPLY — so reply naturally instead of
-			// guessing intent by matching English keywords in the user's text
-			// (`text.includes("email"|"search"|"analyze"|…)`), which was brittle,
-			// English-only, and routed actions the model never decided to run
-			// (#10470, and the over-narration class in #10424).
+			// Action selection comes from the model's decision (the `<response>`
+			// actions field), never from keyword-matching the user's text. When
+			// the model chose no actions, the documented model-output contract
+			// treats the turn as a plain REPLY. Keyword routing (e.g.
+			// `text.includes("email"|"search"|"analyze")`) is avoided because it
+			// is brittle, English-only, and runs actions the model never decided
+			// to run (#10470, #10424).
 			const actions =
 				responseContent?.actions && responseContent.actions.length > 0
 					? responseContent.actions

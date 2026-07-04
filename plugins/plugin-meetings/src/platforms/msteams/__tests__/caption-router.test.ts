@@ -1,3 +1,8 @@
+/**
+ * TeamsCaptionRouter — caption-authorship diarization of the single mixed Teams
+ * audio stream into per-speaker sink calls. Deterministic: a recording sink
+ * stub, no browser.
+ */
 import { describe, expect, it } from "vitest";
 import type { MeetingAudioSink } from "../../../types.js";
 import { TeamsCaptionRouter } from "../caption-router.js";

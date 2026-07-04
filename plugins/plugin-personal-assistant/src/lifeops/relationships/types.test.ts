@@ -1,3 +1,4 @@
+/** Verifies the RelationshipTypeRegistry seeds built-ins and tracks symmetric vs asymmetric types. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_RELATIONSHIP_TYPES,

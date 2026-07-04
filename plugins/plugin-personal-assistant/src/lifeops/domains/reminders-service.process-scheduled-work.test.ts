@@ -1,3 +1,4 @@
+/** Verifies the reminder domain drives processDueScheduledTasks when processing scheduled work. Deterministic vitest with the scheduler module mocked. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {

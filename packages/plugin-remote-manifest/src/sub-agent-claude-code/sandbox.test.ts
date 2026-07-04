@@ -1,3 +1,7 @@
+/**
+ * Claude Code sandbox tests validate filesystem policy rendering and path
+ * handling for the reference remote sub-agent sandbox assets.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   chmodSync,

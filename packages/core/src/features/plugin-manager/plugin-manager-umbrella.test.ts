@@ -1,3 +1,9 @@
+/**
+ * Deterministic import-level tests for the plugin-manager barrel: asserts the
+ * plugin exposes only the MANAGE_PLUGINS umbrella action, that legacy standalone
+ * action names are folded into subactions and kept off the planner-facing action
+ * surface, and that the old per-operation actions are no longer re-exported.
+ */
 import { describe, expect, it } from "vitest";
 import { listSubactionsFromParameters } from "../../actions/promote-subactions.ts";
 import * as pluginManagerExports from "./index.ts";

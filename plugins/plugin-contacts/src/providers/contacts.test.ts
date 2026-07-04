@@ -1,3 +1,8 @@
+/**
+ * Tests the read-only `androidContacts` provider against a mocked
+ * `@elizaos/capacitor-contacts` bridge: it supersedes the LIST_CONTACTS action
+ * and emits bounded address-book context as JSON.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

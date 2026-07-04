@@ -1,3 +1,12 @@
+/**
+ * ROLES provider: injects the server's role hierarchy (owners, administrators,
+ * members) into the prompt context for group channels. Reads role assignments
+ * from the room's world metadata ownership block, resolves each entity's display
+ * identity (falling back across per-platform metadata sources), dedupes by
+ * username, and renders a grouped Markdown hierarchy. Gated to GROUP rooms and
+ * callers with at least ADMIN role; returns an explanatory notice in DMs or when
+ * no ownership/role data exists for the world.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type {
@@ -80,19 +89,8 @@ function getRoleUser(entity: Entity | null | undefined): RoleUser | null {
 }
 
 /**
- * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
- * * @type { Provider }
- * @property { string } name - The name of the role provider.
- * @property { string } description - A brief description of the role provider.
- * @property { Function } get - Asynchronous function that retrieves and processes roles in the server.
- * @param { IAgentRuntime } runtime - The agent runtime object.
- * @param { Memory } message - The message memory object.
- * @param { State } state - The state object.
- * @returns {Promise<ProviderResult>} The result containing roles data, values, and text.
- */
-/**
- * A provider for retrieving and formatting the role hierarchy in a server.
- * @type {Provider}
+ * Retrieves and formats the server role hierarchy from world ownership
+ * metadata; only meaningful in group scenarios (see the file header).
  */
 export const roleProvider: Provider = {
 	name: spec.name,

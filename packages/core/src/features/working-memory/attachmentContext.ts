@@ -1,3 +1,14 @@
+/**
+ * Attachment-reading helpers behind the ATTACHMENT action of the working-memory
+ * capability. Gathers the attachments visible in the current conversation window
+ * (the current message plus the recent-message history, deduped by id and ordered
+ * newest-first), decides which one an untargeted request refers to (explicit
+ * id/locator match, or the sole attachment), and materializes readable content
+ * for each — stored extracted text or description, falling back to an on-demand
+ * vision description that reuses the shared content-addressed image cache.
+ * Consumed by readAttachmentAction.ts; the `_data`/`_mimeType`/`_createdAt` fields
+ * are inline-transport and ordering extensions carried alongside `Media`.
+ */
 import { describeImageCached } from "../../media/index.ts";
 import {
 	ContentType,

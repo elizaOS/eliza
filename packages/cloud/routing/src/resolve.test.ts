@@ -1,3 +1,10 @@
+/**
+ * Deterministic unit and property tests for cloud-routing policy resolution.
+ *
+ * The harness uses in-memory runtime settings only; no network, cloud account,
+ * or live provider is required.
+ */
+
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {

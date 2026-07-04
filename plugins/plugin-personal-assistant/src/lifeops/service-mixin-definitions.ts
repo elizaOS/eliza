@@ -1,3 +1,8 @@
+/**
+ * Task-definition service mixin: declares the definition/occurrence service
+ * surface and the `withDefinitions` mixin that composes the definitions domain's
+ * CRUD, completion, and snooze methods onto the LifeOpsService base.
+ */
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,

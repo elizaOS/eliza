@@ -1,3 +1,4 @@
+/** Types for work threads: status lifecycle, source refs, events, and list filters. */
 export type WorkThreadStatus =
   | "active"
   | "waiting"

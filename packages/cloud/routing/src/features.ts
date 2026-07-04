@@ -1,3 +1,10 @@
+/**
+ * Feature registry for cloud-routing policy decisions.
+ *
+ * Each entry maps a routable capability to its per-agent setting key. Resolver
+ * helpers derive the public feature union and policy map from this table.
+ */
+
 export const FEATURE_POLICIES = ["local", "cloud", "auto"] as const;
 export type FeaturePolicy = (typeof FEATURE_POLICIES)[number];
 

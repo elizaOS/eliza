@@ -1,3 +1,8 @@
+/**
+ * Goals service mixin: declares the LifeOps goals service surface and the
+ * `withGoals` mixin that composes the goals domain's CRUD, review, and
+ * experience-loop methods onto the LifeOpsService base.
+ */
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsChannelPolicy,

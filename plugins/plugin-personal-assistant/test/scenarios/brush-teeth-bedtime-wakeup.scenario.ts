@@ -1,3 +1,6 @@
+/**
+ * Live-model scenario: casual wake-up / before-bed phrasing yields a daily brushing habit, verified by reading the created definition back through `/api/lifeops/definitions`.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

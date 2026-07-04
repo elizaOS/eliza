@@ -40,6 +40,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     OrchestratorError,
     PublishContext,
     TIER_TAGLINES,
+    _git_short_sha,
     run,
     validate_bundle_layout,
 )
@@ -63,6 +64,19 @@ def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
     return h.hexdigest()
+
+
+def _test_commit() -> str:
+    return _git_short_sha(_TRAINING_ROOT)
+
+
+def _fixture_text_sha(root: Path) -> str:
+    candidates = sorted(root.rglob("text/eliza-1-*-256k.gguf"))
+    if not candidates:
+        candidates = sorted(root.rglob("text/eliza-1-*-128k.gguf"))
+    if not candidates:
+        raise AssertionError(f"no fixture text GGUF under {root}")
+    return _sha256(candidates[0])
 
 
 def _passing_eval_blob(tier: str = "4b") -> dict[str, Any]:
@@ -212,6 +226,7 @@ def _build_fixture_bundle(
 
     # Evals — aggregate.json (gates input) + per-backend verify reports.
     blob = eval_blob if eval_blob is not None else _passing_eval_blob(tier)
+    commit = _test_commit()
     _write(
         bundle / "evals" / "aggregate.json",
         json.dumps(blob, indent=2),
@@ -330,7 +345,8 @@ def _build_fixture_bundle(
             {
                 "backend": "metal",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
                 "report": "metal_verify.txt",
             }
         ),
@@ -341,7 +357,8 @@ def _build_fixture_bundle(
             {
                 "backend": "cpu",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
                 "report": "cpu_reference.txt",
             }
         ),
@@ -352,7 +369,8 @@ def _build_fixture_bundle(
             {
                 "backend": "vulkan",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
                 "report": "vulkan_verify.txt",
             }
         ),
@@ -363,7 +381,8 @@ def _build_fixture_bundle(
             {
                 "backend": "cuda",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
                 "report": "cuda_verify.txt",
             }
         ),
@@ -374,7 +393,8 @@ def _build_fixture_bundle(
             {
                 "backend": "rocm",
                 "status": "pass",
-                "atCommit": "deadbee",
+                "atCommit": commit,
+                "modelSha256": text_sha,
                 "report": "rocm_verify.txt",
             }
         ),
@@ -593,14 +613,21 @@ def _rewrite_mtp_target_meta(bundle: Path, **updates: Any) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def _metal_report(tmp_path: Path, status: str = "pass") -> Path:
+def _metal_report(
+    tmp_path: Path,
+    status: str = "pass",
+    *,
+    at_commit: str | None = None,
+    model_sha256: str | None = None,
+) -> Path:
     p = tmp_path / "metal_verify.json"
     p.write_text(
         json.dumps(
             {
                 "backend": "metal",
                 "status": status,
-                "atCommit": "cafef00",
+                "atCommit": at_commit or _test_commit(),
+                "modelSha256": model_sha256 or _fixture_text_sha(tmp_path),
                 "report": "metal_verify.txt",
             }
         )
@@ -1520,6 +1547,50 @@ def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_KERNEL_VERIFY_FAIL
+
+
+def test_kernel_verification_rejects_stale_commit_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "vulkan_verify.json").write_text(
+        json.dumps(
+            {
+                "backend": "vulkan",
+                "status": "pass",
+                "atCommit": "0000000",
+                "modelSha256": _fixture_text_sha(bundle),
+                "report": "vulkan_verify.txt",
+            }
+        )
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_KERNEL_VERIFY_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
+
+
+def test_kernel_verification_rejects_swapped_model_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "vulkan_verify.json").write_text(
+        json.dumps(
+            {
+                "backend": "vulkan",
+                "status": "pass",
+                "atCommit": _test_commit(),
+                "modelSha256": "f" * 64,
+                "report": "vulkan_verify.txt",
+            }
+        )
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_KERNEL_VERIFY_FAIL
+    assert not (bundle / "eliza-1.manifest.json").is_file()
 
 
 def test_metal_required_but_missing_fails(tmp_path: Path) -> None:

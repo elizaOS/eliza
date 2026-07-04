@@ -1,3 +1,11 @@
+/**
+ * Exercises the SECRETS umbrella's `action=request` path: `secretsAction.validate`
+ * accepts public channels (so it can route the user elsewhere), while
+ * `requestSecretHandler` refuses to collect secret values in public chat and
+ * instead emits a DM/owner-app instruction. The runtime is a deterministic stub
+ * whose `SECRETS` service reports the key absent — no live model or database.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { secretsAction } from "./manage-secret";

@@ -1,3 +1,24 @@
+/**
+ * Runtime-side utilities for recording model trajectories: the glue between raw
+ * LLM/provider call sites and whichever trajectory-logger service is registered
+ * (`services/trajectories`). Owns the LLM-call detail/purpose taxonomy, the
+ * strict-mode guards that fail fast when a generative call happens outside a
+ * trajectory step, and the wrappers that open child steps around actions,
+ * providers, evaluators, and spawned sub-agents.
+ *
+ * `recordLlmCall` is the canonical entry point for raw SDK/fetch generation: it
+ * times `fn`, derives the response text, and emits an llm-call entry against the
+ * active step. `withStandaloneTrajectory` / `withActionStep` / `withProviderStep`
+ * / `withEvaluatorStep` establish the trajectory context those calls attach to;
+ * `resolveTrajectoryLogger` picks the best-scoring logger service by capability
+ * so this module never depends directly on `@elizaos/agent`.
+ *
+ * Also builds the context-object trajectory export (JSON-sanitized, cycle-safe)
+ * and holds the process-global registry of trajectory `source` tags excluded
+ * from training/optimization datasets. Strict enforcement is gated on
+ * `ELIZA_TRAJECTORY_STRICT`; embeddings, tokenizers, and speech/media models are
+ * exempt from the generative-call guards.
+ */
 import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 import {

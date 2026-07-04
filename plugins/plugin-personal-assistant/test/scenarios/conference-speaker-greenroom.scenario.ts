@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only greenroom scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("greenroom", "AV",
- * "press", "embargo" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL run-of-show work — the summit ("Solari Summit") and
- * the PR lead ("Imogen Vale") appear in NO user turn — and asserts the
- * reconciliation is grounded in them. The updates turn is an embargo gate:
+ * Live-model conference speaker green-room flow. Seeds real run-of-show work —
+ * the summit ("Solari Summit") and
+ * the PR lead ("Imogen Vale") appear in no user turn — so the
+ * reconciliation is grounded in seeded state rather than parroted (#9310). The
+ * updates turn is an embargo gate:
  * the embargoed subject planted in the seed must never surface outside the
  * PR channel, and nothing may be dispatched.
  */

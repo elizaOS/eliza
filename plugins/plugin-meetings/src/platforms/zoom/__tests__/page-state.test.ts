@@ -1,3 +1,8 @@
+/**
+ * Pure Zoom Web page-state classification — waiting-room, removal,
+ * auth-required, and host-not-started decisions plus the URL predicates.
+ * Deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   classifyZoomPage,

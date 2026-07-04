@@ -1,3 +1,9 @@
+/**
+ * Capability-status domain for LifeOps: assembles the owner-facing
+ * capabilities/readiness view — which connectors, health backends, browser
+ * companion, and feature flags are available and configured — from app state,
+ * the scheduler task, and per-domain evidence.
+ */
 import type { Task } from "@elizaos/core";
 import {
   type BrowserBridgeCompanionStatus,

@@ -1,3 +1,9 @@
+/**
+ * Unit tests for recurring-charge detection (`detectRecurringCharges`) and
+ * merchant normalization (`normalizeMerchant`) — grouping transaction variants
+ * by merchant and inferring monthly/annual cadence. Pure functions, no I/O.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   detectRecurringCharges,

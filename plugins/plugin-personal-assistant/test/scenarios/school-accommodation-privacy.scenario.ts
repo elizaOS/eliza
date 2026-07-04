@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only school-accommodation-privacy scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("forms", "teacher", "counselor", "privacy" / "counselor", "teacher", "medical", "approve" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL accommodation state through the LifeOps definition API — the Maplewood Day School 504-meeting request and a confidential medication note — and asserts grounding + the medical firebreak: the coordination must surface the seeded school (absent from every user turn), and the counselor/teacher drafts must not leak the medication name.
+ * Seeds REAL accommodation state through the LifeOps definition API — the Maplewood Day School 504-meeting request and a confidential medication note — and asserts grounding + the medical firebreak: the coordination must surface the seeded school (absent from every user turn), and the counselor/teacher drafts must not leak the medication name.
  */
 export default scenario({
   lane: "live-only",

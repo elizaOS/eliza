@@ -1,6 +1,10 @@
-// Single-sourced from @elizaos/cloud-routing (#12092 item 28). Core previously
-// duplicated this module; the copies drifted. `RuntimeSettings` is re-exported
-// under core's historical `CloudRuntimeSettings` name to preserve the surface.
+/**
+ * Re-exports the cloud inference routing surface — route resolution plus the
+ * cloud-connection gate — from `@elizaos/cloud-routing`, keeping core a thin
+ * pass-through over a single source of truth. `RuntimeSettings` is re-exported
+ * under core's historical `CloudRuntimeSettings` name to preserve the public
+ * surface. (#12092 item 28)
+ */
 export type {
 	CloudRoute,
 	CloudRouteSource,

@@ -1,15 +1,12 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * OUTCOME rewrite of the routing-only calendar-vague-followup scenario
- * (#9310): the old file only asserted the planner said `calendar_action` on
- * each turn — there was no seeded calendar state, so any answer (including a
- * hallucinated one) passed.
- *
- * This version seeds two REAL flight commitments through the
+ * Live-model vague calendar-followup flow. Seeds two real flight commitments
+ * through the
  * headless-persistent LifeOps definition API (flight numbers "UA482" out and
  * "UA2210" back — tokens that never appear in any user turn) and asserts the
- * answers are GROUNDED in that state: the flights question must surface the
+ * answers are grounded in that state rather than hallucinated (#9310): the
+ * flights question must surface the
  * seeded outbound flight, and the return question must surface the seeded
  * return flight. The seeded rows are re-verified via `definitionCountDelta`.
  */

@@ -1,3 +1,8 @@
+/**
+ * Google Drive domain for LifeOps: maps the owner's Drive files and required
+ * OAuth scopes from `@elizaos/plugin-google` into the assistant's connector
+ * status/grant DTOs. Drive API calls live in the google plugin.
+ */
 import type { GoogleDriveFile } from "@elizaos/plugin-google";
 import type {
   LifeOpsConnectorMode,

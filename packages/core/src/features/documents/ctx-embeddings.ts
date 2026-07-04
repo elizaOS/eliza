@@ -1,3 +1,12 @@
+/**
+ * Builds the contextual-chunk-enrichment prompts for document ingestion — the
+ * "contextual retrieval" step that situates each chunk within its document
+ * before embedding. Exposes content-type-aware system and user prompt builders
+ * (default / code / pdf / math / technical), MIME-type→template selection,
+ * token-target sizing, and the heuristics (`containsMathematicalContent`,
+ * `isTechnicalDocumentation`) that choose a template. Consumed by
+ * document-processor.ts when CTX_DOCUMENTS_ENABLED is set.
+ */
 export const DEFAULT_CHUNK_TOKEN_SIZE = 500;
 export const DEFAULT_CHUNK_OVERLAP_TOKENS = 100;
 export const DEFAULT_CHARS_PER_TOKEN = 3.5;

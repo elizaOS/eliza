@@ -1,3 +1,7 @@
+/**
+ * Clock example install tests prove the sample remote plugin can be installed
+ * into the content-addressed store and loaded back from disk.
+ */
 import { describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,3 +1,10 @@
+/**
+ * Covers the PERSONALITY action handler against the in-memory FakeRuntime and a
+ * real PersonalityStore (no live model): scope-clarification for ambiguous
+ * requests, trait/reply-gate/directive mutations, named-profile load/save, and
+ * the audit-memory trail. Admin-only paths run on an owner-seeded runtime so
+ * hasRoleAccess grants access.
+ */
 import { beforeEach, describe, expect, test } from "vitest";
 import type { ActionResult, HandlerOptions } from "../../../../types/index.ts";
 import { personalityAction } from "../actions/personality.ts";

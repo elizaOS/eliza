@@ -1,3 +1,7 @@
+/**
+ * Unit test for `createHealthSleepServiceMethods` — history, regularity, and
+ * baseline DTO assembly over stubbed episode records. Deterministic.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { LifeOpsSleepEpisodeRecord } from "./sleep-episode-types.js";
 import { createHealthSleepServiceMethods } from "./sleep-service.js";

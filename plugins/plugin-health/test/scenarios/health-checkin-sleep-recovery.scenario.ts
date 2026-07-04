@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a health check-in grounds its reply in the owner's sleep
+ * and recovery signals.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

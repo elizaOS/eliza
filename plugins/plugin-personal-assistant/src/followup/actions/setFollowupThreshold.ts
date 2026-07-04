@@ -1,3 +1,8 @@
+/**
+ * SET_FOLLOWUP_THRESHOLD action — sets the per-contact follow-up interval (in
+ * days) that governs when a relationship counts as overdue, persisting it via
+ * the RelationshipsService for the tracker to read on its next tick.
+ */
 import type {
   Action,
   ActionExample,

@@ -1,3 +1,8 @@
+/**
+ * Auth-gate + request-shaping unit tests for the inbox HTTP routes, with the
+ * InboxService and queue-operation dispatch mocked out (see the real-runtime
+ * suite for end-to-end route coverage). Deterministic — no live model or DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/actions/inbox.ts", () => ({

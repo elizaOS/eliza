@@ -1,3 +1,4 @@
+/** Barrel for the channel registry: channel contributions, the default pack, and priority-to-posture mapping. */
 export type {
   ChannelCapabilities,
   ChannelContribution,

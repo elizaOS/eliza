@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only lockup-window scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("blackout",
- * "10b5-1", "counsel", "approve" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero liquidity state.
- *
- * This version seeds REAL liquidity state through the LifeOps definition API
- * (the 10b5-1 plan review with Stallard Wealth Partners and the Elmsworth
- * Foundation pledge timing) and asserts the window map is GROUNDED in it:
- * both tokens never appear in any user turn, so an echo cannot pass. Seeds
- * are re-verified via definitionCountDelta and no trade, transfer, or pledge
- * leaves via a no-external-send predicate.
+ * Live-model scenario (live-only lane): Lockup window plan grounds in seeded liquidity state; no trade is authorized.
  */
 export default scenario({
   lane: "live-only",

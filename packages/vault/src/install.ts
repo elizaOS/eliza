@@ -171,6 +171,9 @@ async function isCommandRunnable(cmd: string): Promise<boolean> {
     });
     return true;
   } catch {
+    // error-policy:J4 availability probe — a non-zero `<cmd> --version` exit means
+    // the package manager is not runnable here; `false` is the answer to
+    // "is it available", used to pick the install method.
     return false;
   }
 }

@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only vip-escalation-firebreak scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("watch", "interrupt", "Clara", "legal" / "redline", "decision", "summary", "tonight" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL state through the LifeOps definition API — the Whitmore & Kent Bellwether-acquisition redline matter and a noise newsletter that must never interrupt — and asserts the firebreak both ways: the escalation summary must be grounded in the seeded legal matter (absent from every user turn) while the seeded noise item stays out of it.
+ * Seeds REAL state through the LifeOps definition API — the Whitmore & Kent Bellwether-acquisition redline matter and a noise newsletter that must never interrupt — and asserts the firebreak both ways: the escalation summary must be grounded in the seeded legal matter (absent from every user turn) while the seeded noise item stays out of it.
  */
 export default scenario({
   lane: "live-only",

@@ -1,3 +1,8 @@
+/**
+ * launchMeetingBrowser wiring — headless-mode resolution and executable
+ * selection passed through to playwright-core. Deterministic: node:fs and the
+ * browser are stubbed.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { chromium, type Browser } from "playwright-core";

@@ -1,3 +1,11 @@
+/**
+ * Canonical LifeOps enum vocabulary as runtime tuples plus their derived types:
+ * time-window names, definition kinds/statuses, occurrence states, goal and
+ * review statuses, workflow statuses/run-states/trigger-types, event kinds and
+ * their per-kind filter shapes, negotiation and proposal states. Also re-exports
+ * the connector-degradation types. Consumed across the screen-time, scheduling,
+ * and connector layers.
+ */
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 export type {

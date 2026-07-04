@@ -1,3 +1,11 @@
+/**
+ * Deterministic post-generation verbosity enforcement for the personality
+ * capability. Approximates a token count via whitespace/punctuation splitting
+ * and hard-caps `terse` responses at `MAX_TERSE_TOKENS`, truncating at the
+ * nearest sentence boundary (`normal` and `verbose` pass through unchanged).
+ * Runs after the model returns so the truncation is observable in the
+ * trajectory.
+ */
 import { MAX_TERSE_TOKENS, type VerbosityLevel } from "./types.ts";
 
 /**

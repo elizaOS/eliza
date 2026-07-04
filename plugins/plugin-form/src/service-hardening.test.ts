@@ -1,3 +1,8 @@
+/**
+ * Edge-case hardening for FormService: malformed schemas, extraction against
+ * adversarial input, and field-validation boundaries. Deterministic, no live
+ * model.
+ */
 import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

@@ -1,3 +1,8 @@
+/**
+ * Structural tests for oauthPlugin: asserts it registers exactly the five
+ * atomic OAuth actions and contributes no services, providers, or evaluators.
+ * Pure in-memory inspection of the exported Plugin object — no runtime.
+ */
 import { describe, expect, test } from "vitest";
 import { oauthPlugin } from "./plugin";
 

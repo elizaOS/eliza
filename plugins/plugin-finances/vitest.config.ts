@@ -1,3 +1,5 @@
+/** Vitest config for @elizaos/plugin-finances (module aliases + test globs). */
+
 import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";

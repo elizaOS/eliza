@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the v5 context-object trajectory export
+ * (`buildContextObjectTrajectoryExport` / `serializeContextObjectTrajectoryExport`):
+ * v5 context events serialize straight to JSON with no legacy conversion, and
+ * undefined metadata values are dropped. Deterministic — plain in-memory objects,
+ * no runtime or database.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	buildContextObjectTrajectoryExport,

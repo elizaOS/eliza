@@ -1,3 +1,10 @@
+/**
+ * Renders the presentational owner-finance dashboard through both output paths
+ * — DOM static markup and real terminal lines via `registerSpatialTerminalView`
+ * — asserting the one spatial tree behaves across GUI/XR and TUI. Deterministic
+ * fixtures, no live model or DB.
+ */
+
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

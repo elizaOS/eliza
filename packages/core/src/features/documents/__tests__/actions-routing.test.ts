@@ -1,3 +1,11 @@
+/**
+ * Tests the DOCUMENT action's `validate` and structured-routing `handler` — that
+ * the subaction comes from the planner's structured `action` param (via
+ * resolveActionArgs), not natural-language keywords, and that missing NL values
+ * are supplied by the extractor rather than stripped from message text. Fully
+ * deterministic: the runtime, DocumentService, and useModel are vi.fn stubs (the
+ * planner-trust path asserts useModel is never called); no live model or DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type {
 	HandlerOptions,

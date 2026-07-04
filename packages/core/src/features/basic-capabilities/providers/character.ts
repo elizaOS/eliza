@@ -1,3 +1,13 @@
+/**
+ * The CHARACTER provider: injects the agent's identity into the prompt — the
+ * canonical system prompt, a bio sample, a deterministically picked current
+ * topic plus an "also interested in" list, an adjective, message/post examples,
+ * and chat-vs-post style directions chosen by room type (FEED/THREAD render the
+ * post variant). Every random-looking selection is seeded per agent+room via
+ * buildDeterministicSeed so a turn renders stably, and name placeholders are
+ * expanded through the name-token helpers. Text content (name/description) comes
+ * from the centralized CHARACTER provider spec.
+ */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import {
 	replaceIndexedNameTokens,
@@ -111,9 +121,6 @@ export const characterProvider: Provider = {
 					)
 				: null;
 
-		// postCreationTemplate in core prompts.ts
-		// Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-		// Write a post that is {{Spartan is dirty}} about {{Spartan is currently}}
 		const topic = topicString || "";
 
 		// Format topics list. Sample the OTHER topics first — when the picked

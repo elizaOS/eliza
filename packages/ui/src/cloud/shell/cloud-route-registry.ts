@@ -2,11 +2,7 @@
  * Runtime registry of cloud dashboard routes: register lazy route components and
  * their public/authed access policy, consumed by the CloudRouterShell.
  */
-import type {
-  ComponentType,
-  LazyExoticComponent,
-  ReactNode,
-} from "react";
+import type { ComponentType, LazyExoticComponent, ReactNode } from "react";
 
 export const CLOUD_PUBLIC_ROUTE_ACCESS = "cloud-public-route-reviewed" as const;
 

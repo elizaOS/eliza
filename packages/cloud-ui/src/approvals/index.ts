@@ -16,11 +16,11 @@
  *    a custom path if needed.
  */
 
-import { lazy } from "react";
 import {
   type CloudRouteDef,
   registerCloudRoute,
 } from "@elizaos/ui/cloud/shell/cloud-route-registry";
+import { lazy } from "react";
 
 export { ApprovalsSurface, default as ApprovalsRoute } from "./ApprovalsRoute";
 export {

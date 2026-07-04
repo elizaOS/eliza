@@ -1,3 +1,4 @@
+/** Vitest config for the calendar plugin test suite. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";

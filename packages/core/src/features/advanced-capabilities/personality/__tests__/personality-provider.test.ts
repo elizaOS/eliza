@@ -1,3 +1,10 @@
+/**
+ * Covers userPersonalityProvider.get against the in-memory FakeRuntime and a
+ * real PersonalityStore: rendering of user and global slots, suppression for
+ * agent self-messages and default (`always`) reply gates, and backward-
+ * compatible display of legacy free-text preference memories. Deterministic —
+ * no live model.
+ */
 import { beforeEach, describe, expect, test } from "vitest";
 import type { State, UUID } from "../../../../types/index.ts";
 import { userPersonalityProvider } from "../providers/user-personality.ts";

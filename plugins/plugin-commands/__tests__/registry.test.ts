@@ -1,3 +1,7 @@
+/**
+ * Unit tests for the in-memory command registry: alias lookup, whole-token
+ * `startsWithCommand` matching, and register/unregister of custom commands.
+ */
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	findCommandByAlias,
@@ -110,8 +114,8 @@ describe("per-runtime registration + clobber fix (item #12091-15)", () => {
 			getCommandsForRuntime(agentId).some((c) => c.key === "frobnicate"),
 		).toBe(true);
 
-		// A second init (previously reset the store to DEFAULT_COMMANDS, clobbering
-		// commands other plugins registered earlier) must keep the custom command.
+		// A second init must not reset the store to DEFAULT_COMMANDS and clobber
+		// commands other plugins registered earlier; the custom command survives.
 		initForRuntime(agentId);
 		const keys = getCommandsForRuntime(agentId).map((c) => c.key);
 		expect(keys).toContain("frobnicate");

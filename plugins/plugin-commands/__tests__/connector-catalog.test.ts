@@ -1,3 +1,8 @@
+/**
+ * Asserts the connector-catalog navigation commands point at canonical in-app
+ * routes (`TAB_PATHS`) and carry the tab/viewId routing hints. Pure data
+ * assertions, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	commandVisibleForView,

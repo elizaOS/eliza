@@ -1,3 +1,12 @@
+/**
+ * Backend-agnostic table schema for the advanced-memory capability's short-term
+ * rollups: one row per room-scoped (optionally entity-scoped) conversation
+ * summary, holding the summary text, message count and last-processed offset,
+ * the covered time window, extracted topics, and an optional embedding.
+ * MemoryService writes these as conversations grow so the context-summary
+ * provider can inject recent history.
+ */
+
 import type { SchemaTable } from "../../../types/schema.ts";
 
 /**

@@ -1,3 +1,13 @@
+/**
+ * Exercises the {@link Memory} helpers in ./memory — `createMessageMemory`
+ * scoping, the per-`MemoryType` metadata/memory guards, and `getMemoryText` —
+ * against hand-built records with no live model or database (pure vitest). The
+ * guards drive how each record is stored, embedded, and retrieved, so they must
+ * discriminate strictly on the `MemoryType` tag (a document fragment must never
+ * be mistaken for a top-level document) and `isCustomMetadata` must stay the
+ * catch-all for any type outside the four known kinds.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
 	createMessageMemory,
@@ -16,13 +26,6 @@ import {
 	MemoryType,
 	type UUID,
 } from "./types";
-
-/**
- * Memory metadata type guards drive how each record is stored, embedded, and
- * retrieved. They must discriminate strictly on the MemoryType tag (a document
- * fragment must never be mistaken for a top-level document), and isCustomMetadata
- * must be the catch-all for any type outside the four known kinds.
- */
 
 const id = (s: string) => s as UUID;
 

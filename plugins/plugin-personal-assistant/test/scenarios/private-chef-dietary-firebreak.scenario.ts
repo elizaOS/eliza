@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only chef-firebreak scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("allergies", "guest",
- * "invoice", "backup" — all present in the user's own turn text) against zero
- * seeded state.
- *
- * This version seeds REAL dinner state through the LifeOps definition API —
- * the seeded chef ("Aurelio Banfi") and a confidential guest medical note
- * carrying the decoy tokens "anaphylaxis"/"epinephrine" the kitchen must never
- * see — and asserts grounding + the medical firebreak: the coordination must
- * surface the seeded chef (absent from every user turn), the chef brief must
- * carry dietary constraints WITHOUT the medical explanation, and nothing may
- * be delivered before the owner approves the invoice cap.
+ * Live-model scenario (live-only lane): Chef brief grounds in the seeded chef and strips the medical explanation.
  */
 export default scenario({
   lane: "live-only",

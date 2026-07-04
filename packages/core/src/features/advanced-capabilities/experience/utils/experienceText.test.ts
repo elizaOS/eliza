@@ -1,12 +1,13 @@
+/**
+ * Unit tests (deterministic, no runtime) for `sanitizeExperienceText`, which
+ * redacts PII/secrets out of experience text before it is persisted into agent
+ * memory (#8801 — it shipped untested). A regression here leaks emails, IPs,
+ * home-dir usernames, or API tokens into stored experiences, so each redaction
+ * class + the fail-safe truncation are pinned.
+ */
 import { describe, expect, it } from "vitest";
 import { sanitizeExperienceText } from "./experienceText";
 
-/**
- * `sanitizeExperienceText` redacts PII/secrets out of experience text before it
- * is persisted into agent memory (#8801 — it shipped untested). A regression
- * here leaks emails, IPs, home-dir usernames, or API tokens into stored
- * experiences, so each redaction class + the fail-safe truncation are pinned.
- */
 describe("sanitizeExperienceText", () => {
 	it("returns a placeholder for empty input", () => {
 		expect(sanitizeExperienceText("")).toBe("Unknown context");

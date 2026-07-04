@@ -310,7 +310,7 @@ class Connection {
         // context. Drop the connection so the next call reconnects instead of
         // reusing a poisoned socket for the isolate's lifetime. Guard on the
         // generation: if a queued caller already reconnected, this failure
-        // belongs to the OLD socket and must not tear down the new one.
+        // belongs to the previous socket and must not tear down the current one.
         if (opGeneration === -1 || opGeneration === this.generation) {
           await this.close().catch(() => {});
         }

@@ -5,12 +5,8 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only board-consent scenario (#9310): the old
- * file only asserted the planner mentioned documents/privacy and that the reply
- * echoed prompt keywords ("signature", "counsel", "draft", "approval" — all
- * present in the user's own turn text, so a parroted reply passed).
- *
- * This version seeds a REAL pending approval row on the live queue
+ * Live-model emergency board-consent signature flow. Seeds a real pending
+ * approval row on the live queue
  * (`PERSONAL_ASSISTANT action=sign_document` -> `PgApprovalQueue.enqueue`),
  * drives the owner's approval through the live `RESOLVE_REQUEST` action, and
  * asserts the queue outcome: the row moved pending -> approved/executing/done.

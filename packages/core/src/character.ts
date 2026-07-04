@@ -1,3 +1,16 @@
+/**
+ * Character-config normalization and validation. Turns a loose `CharacterInput`
+ * (the shapes accepted from JSON, the CLI, and callers) into a canonical
+ * `Character`: coerces `bio` to an array, folds legacy `knowledge` entries into
+ * `documents`, normalizes message examples to `MessageExampleGroup[]`, and maps
+ * document entries onto the `DocumentSourceItem` oneof shape. `parseCharacter`
+ * and `validateCharacterConfig` run the result through `validateCharacter`
+ * (schemas/character) and surface issue paths as readable errors.
+ *
+ * Deliberately owns no plugin auto-enable rules — it hardcodes no concrete
+ * plugin package names (enforced by character.test.ts); provider/plugin
+ * resolution lives elsewhere.
+ */
 import { validateCharacter } from "./schemas/character";
 import type {
 	Character,

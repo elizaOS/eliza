@@ -23,16 +23,14 @@
 
 // Side-effecting feature modules: importing them runs their top-level
 // `registerCloudRoute(...)` calls.
-import {
-  registerApprovalsCloudRoute,
-} from "./approvals";
+import { registerApprovalsCloudRoute } from "./approvals";
 
 export {
-  ApprovalsRoute,
-  ApprovalsSurface,
   APPROVALS_ROUTE_PATH,
   APPROVALS_SECTION_ID,
   type ApprovalRequest,
+  ApprovalsRoute,
+  ApprovalsSurface,
   approvalsCloudRoute,
   type Ballot,
   registerApprovalsCloudRoute,

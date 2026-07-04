@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only memorial-logistics scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("travel",
- * "venue", "florist", "group" — all present in the user's own turn text), so
- * a prompt-parroting reply passed against zero plan state.
- *
- * This version seeds REAL plan state through the LifeOps definition API (the
- * Rosemont Chapel venue hold, the Petal & Thorne florist order, and a private
- * family-conflict note) and asserts the plan is GROUNDED in it: the seeded
- * tokens never appear in any user turn, so an echo cannot pass, while the
- * private conflict stays out of the group note. Seeds are re-verified via
- * definitionCountDelta and the comms stay staged via a no-external-send
- * predicate.
+ * Live-model scenario (live-only lane): Memorial plan grounds in seeded logistics; family conflict stays out of the group note.
  */
 export default scenario({
   lane: "live-only",

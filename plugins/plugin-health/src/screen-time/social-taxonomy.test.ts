@@ -1,3 +1,7 @@
+/**
+ * Unit test for screen-time target classification (`classifyScreenTimeTarget`)
+ * and `isSocialCategory`. Pure, deterministic.
+ */
 import { describe, expect, it } from "vitest";
 import {
   classifyScreenTimeTarget,

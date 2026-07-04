@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the timezone-aware date primitives (zoned parts, offset lookup,
+ * local-date arithmetic), including DST-boundary behaviour. Pure functions, no
+ * runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
   addDaysToLocalDate,

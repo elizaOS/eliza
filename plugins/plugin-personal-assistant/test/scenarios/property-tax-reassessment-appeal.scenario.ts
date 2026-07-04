@@ -1,17 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * OUTCOME rewrite of the routing-only reassessment scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("assessment", "comps",
- * "deadline", "accountant" — all present in the user's own turn text) against
- * zero seeded state.
- *
- * This version seeds REAL appeal state through the LifeOps definition API —
- * the reassessment notice for parcel "118-224-036" and the "Alderwood Court"
- * comps packet — and asserts grounding + a scheduling outcome: the evidence
- * plan must surface the seeded parcel/comps (absent from every user turn), and
- * the pre-filing reminder must land as a captured scheduling action whose
- * arguments carry the appeal.
+ * Live-model scenario (live-only lane): Reassessment appeal grounds in the seeded parcel and schedules a real filing reminder.
  */
 export default scenario({
   lane: "live-only",

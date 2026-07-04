@@ -1,18 +1,7 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
- * OUTCOME rewrite of the routing-only priority-triage scenario (#9310): the
- * old file only asserted the planner said PRIORITIZE and the reply echoed
- * prompt keywords ("block", "priority", "decision", "noise" — all present in
- * the user's own turn text), against zero seeded state.
- *
- * This version seeds REAL mixed-priority state through the LifeOps definition
- * API — a P1 item that blocks other people ("Approve Ravenna accrual so
- * finance can close") and a P4 informational item ("Skim Meridian newsletter
- * digest") — and asserts the ranking outcome: the reply must put the seeded
- * blocker above the seeded noise (both tokens absent from every user turn),
- * and the "turn the top blocker into a follow-up" turn must produce a
- * captured scheduled action whose arguments carry the blocker.
+ * Live-model scenario (live-only lane): Priority triage ranks the seeded blocker above seeded noise and schedules it.
  */
 export default scenario({
   lane: "live-only",

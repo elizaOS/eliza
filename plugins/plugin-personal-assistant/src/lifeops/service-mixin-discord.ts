@@ -1,3 +1,8 @@
+/**
+ * Discord service mixin: declares the LifeOps Discord service surface and the
+ * `withDiscord` mixin that composes the Discord domain's DM-inbox, search, and
+ * connector-verification methods onto the LifeOpsService base.
+ */
 import type { DiscordMessageSearchResult } from "@elizaos/plugin-discord/user-account-scraper";
 import type {
   LifeOpsConnectorSide,

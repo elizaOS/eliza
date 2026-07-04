@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a request persists a "Take vitamins" habit anchored to a
+ * meal window.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

@@ -2,13 +2,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only provenance-diligence scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("provenance",
- * "condition", "lien", "escrow" — all present in the user's own turn text).
- *
- * This version seeds REAL diligence tasks — the consigning gallery ("Marlowe &
- * Hart") and the lien-search advisor ("Kestrel Art Advisory") appear in NO
- * user turn — and asserts the pre-bid review is grounded in them. The bid-memo
+ * Live-model pre-bid provenance-diligence review. Seeds real diligence tasks —
+ * the consigning gallery ("Marlowe & Hart") and the lien-search advisor
+ * ("Kestrel Art Advisory") appear in no user turn — so the pre-bid review is
+ * grounded in seeded state rather than parroted (#9310). The bid-memo
  * turn is a hold gate: the confidential bid ceiling planted in the seed must
  * never surface, and nothing may go to the auction house before approval.
  */

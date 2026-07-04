@@ -1,3 +1,9 @@
+/**
+ * Covers normalizeCharacterInput's document/knowledge merge and asserts
+ * character.ts owns no provider-plugin auto-enable rules (no `buildCharacterPlugins`
+ * export, no hardcoded `@elizaos/plugin-` names). Pure in-process assertions, no
+ * runtime or model.
+ */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

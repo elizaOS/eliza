@@ -1,3 +1,7 @@
+/**
+ * Worker bootstrap tests verify that plugin descriptors and lifecycle hooks
+ * wire into the remote runtime channel with deterministic in-memory fixtures.
+ */
 import { describe, expect, it } from "bun:test";
 import type { RemotePluginWorkerMessage } from "../index.js";
 import { bootstrap } from "./bootstrap.js";

@@ -1,3 +1,7 @@
+/**
+ * Manifest helper tests cover permission consent requests, manifest tag
+ * extraction, and permission diffs for remote plugin install review.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   buildRemotePluginPermissionConsentRequest,

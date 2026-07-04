@@ -85,6 +85,8 @@ export class AgentStore implements Store {
         context: { table: "agents", agentId: agent.id },
       });
     }
+    // TS cannot carry the !agent.name narrowing into the retry closure below.
+    const agentName = agent.name;
     return this.ctx.withRetry(async () => {
       try {
         if (agent.id) {
@@ -105,7 +107,7 @@ export class AgentStore implements Store {
 
         const values: typeof agentTable.$inferInsert = {
           ...agent,
-          name: agent.name,
+          name: agentName,
           knowledge: documentsToDb(agent.knowledge),
           messageExamples: messageExamplesToDb(agent.messageExamples),
           createdAt: new Date(toEpochMillis(agent.createdAt)),

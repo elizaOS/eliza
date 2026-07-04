@@ -1,3 +1,4 @@
+/** Verifies the EntityTypeRegistry seeds built-ins and registers new types idempotently. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ENTITY_TYPES, EntityTypeRegistry } from "./types.js";
 

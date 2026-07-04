@@ -1,3 +1,10 @@
+/**
+ * Barrel for the plugin-manager feature: defines `pluginManagerPlugin` — the
+ * MANAGE_PLUGINS umbrella action, the configuration-status/state/registry
+ * providers, and the PluginManagerService/CoreManagerService — and re-exports
+ * the feature's public surface (services, providers, relevance helpers, types,
+ * and path utilities) for other packages such as plugin-app-control.
+ */
 import type { IAgentRuntime } from "../../types/index.ts";
 import type { Plugin } from "../../types/plugin.ts";
 import { pluginAction } from "./actions/plugin.ts";

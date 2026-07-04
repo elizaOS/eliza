@@ -1,3 +1,17 @@
+/**
+ * The `experiencePatterns` evaluator for the experience capability: after a turn,
+ * extracts reusable operational lessons (successes, failures, corrections,
+ * discoveries, validations) from the recent conversation and records them through
+ * the EXPERIENCE service. Gating is signal-driven — an explicit "remember this" or
+ * a scored signal (correction / failure / validated-outcome / …) runs it subject to
+ * a per-room min-gap counter, otherwise it falls back to a fixed message interval
+ * and only runs if the recent window still carries a signal.
+ *
+ * Conversation text is secret-redacted and synthetic summaries filtered before it
+ * reaches the model; extracted learnings are deduped (lexically normalized) against
+ * existing similar experiences and against each other, and dropped below the
+ * auto-record confidence threshold.
+ */
 import { logger } from "../../../../logger.ts";
 import { EvaluatorPriority } from "../../../../services/evaluator-priorities.ts";
 import type {

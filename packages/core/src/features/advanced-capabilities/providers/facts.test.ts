@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `factsProvider` (advanced-capabilities): asserts BM25 keyword
+ * retrieval surfaces the relevant durable/current facts (including a direct-recall
+ * fallback and current-fact time weighting) and that the provider never requests
+ * embeddings. Uses a hand-built deterministic runtime mock — no live model, no
+ * DB — whose `useModel` throws to enforce the no-embeddings invariant.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
 import { factsProvider } from "./facts.ts";

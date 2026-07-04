@@ -1,3 +1,8 @@
+/**
+ * Resolves owner-relative time anchors (wake, sleep, day boundaries) from
+ * circadian state and the owner's personal baseline, so reminders and check-ins
+ * can be scheduled against "after you wake" rather than a fixed clock time.
+ */
 import type {
   LifeOpsAwakeProbability,
   LifeOpsCircadianState,

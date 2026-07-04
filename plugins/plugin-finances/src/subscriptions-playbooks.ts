@@ -1,3 +1,12 @@
+/**
+ * Declarative browser-automation playbooks for subscription cancellation.
+ *
+ * Each playbook is a typed `SubscriptionAutomationStep` sequence (open /
+ * navigate / wait / click, with destructive-click flags) that the browser-bridge
+ * seam replays to cancel a subscription in the owner's real browser. Matched
+ * against discovered subscriptions by SubscriptionsService.
+ */
+
 import type { LifeOpsSubscriptionExecutor } from "./subscriptions-types.js";
 
 export type SubscriptionAutomationStep =

@@ -1,3 +1,12 @@
+/**
+ * Backend-agnostic table schema for the advanced-memory capability's long-term
+ * store: durable per-entity facts categorized as episodic / semantic /
+ * procedural, each carrying a confidence score, optional source, optional
+ * embedding for vector recall, and access bookkeeping (count + last-accessed).
+ * MemoryService reads and writes these rows through a registered
+ * MemoryStorageProvider.
+ */
+
 import type { SchemaTable } from "../../../types/schema.ts";
 
 /**

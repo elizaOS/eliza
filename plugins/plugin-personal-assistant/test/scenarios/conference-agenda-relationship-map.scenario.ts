@@ -2,15 +2,12 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only relationship-map scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("relationship",
- * "travel", "accept", "decline" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL meeting requests — a high-value ask from "Vantorre
+ * Live-model conference agenda + relationship-map flow. Seeds real meeting
+ * requests — a high-value ask from "Vantorre
  * Capital" (owed a follow-up) and a low-priority booth ask from the "Quenby
- * Group" — that appear in NO user turn, and asserts the ranking and the
- * accept/decline/delegate buckets are grounded in them. Declines stay held
+ * Group" — that appear in no user turn, so the ranking and the
+ * accept/decline/delegate buckets are grounded in seeded state rather than
+ * parroted (#9310). Declines stay held
  * for approval and nothing may be dispatched.
  */
 export default scenario({

@@ -47,13 +47,13 @@ import {
   formFromTrigger,
   getTemplateInstructions,
   getTemplateName,
-  type TriggerTemplate,
   loadUserTemplates,
   localizedExecutionStatus,
   railMonogram,
   saveUserTemplates,
   scheduleLabel,
   type TriggerFormState,
+  type TriggerTemplate,
   toneForLastStatus,
   validateForm,
 } from "./trigger-form-utils";
@@ -439,9 +439,7 @@ function useTriggersViewController() {
 
 type TriggersViewController = ReturnType<typeof useTriggersViewController>;
 
-const TriggersViewContext = createContext<TriggersViewController | null>(
-  null,
-);
+const TriggersViewContext = createContext<TriggersViewController | null>(null);
 
 function useTriggersViewContext(): TriggersViewController {
   const context = useContext(TriggersViewContext);

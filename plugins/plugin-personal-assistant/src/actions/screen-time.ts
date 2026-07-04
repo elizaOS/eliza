@@ -1,3 +1,9 @@
+/**
+ * OWNER_SCREENTIME action wiring — binds the `@elizaos/plugin-health`
+ * screen-time factories to LifeOps. Screen-time planning lives in plugin-health
+ * (macOS only, platform-gated in `plugin.ts`); this module only constructs the
+ * owner-facing wrapper and re-exports the shared parameters and similes.
+ */
 import { resolveActionArgs } from "@elizaos/core";
 import {
   createOwnerScreenTimeAction,

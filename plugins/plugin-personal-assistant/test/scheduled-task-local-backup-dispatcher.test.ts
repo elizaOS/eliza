@@ -1,3 +1,7 @@
+/**
+ * Covers the production scheduled-task dispatcher's local-backup path against a stubbed
+ * agent backup surface. Deterministic.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createProductionScheduledTaskDispatcher } from "../src/lifeops/scheduled-task/runtime-wiring.js";

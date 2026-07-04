@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit test for resolveSecretsBrokerConfig (features/secrets/
+ * storage): the both-or-nothing gate that activates the broker only when url and
+ * token are both non-blank, whitespace trimming, strict-flag parsing, and the
+ * SecretsBrokerUnavailableError shape. Pure-function test — no runtime.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	resolveSecretsBrokerConfig,

@@ -1,3 +1,12 @@
+/**
+ * `inboxPlugin` definition — wires the cross-channel inbox surface into a
+ * runtime: the INBOX umbrella action (with its INBOX_* subactions promoted to
+ * top-level actions so they resolve wherever the plugin loads), the
+ * INBOX_TRIAGE and CROSS_CHANNEL_CONTEXT providers, the triage HTTP routes, the
+ * `app_inbox` drizzle schema, and the InboxMigrationService that copies rows
+ * across from PA's `app_lifeops` on first boot. Depends on `@elizaos/plugin-sql`
+ * for the runtime DB handle the schema registers against.
+ */
 import { type Plugin, promoteSubactionsToActions } from "@elizaos/core";
 
 import { inboxAction } from "./actions/inbox.ts";

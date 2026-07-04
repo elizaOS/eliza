@@ -1,3 +1,8 @@
+/**
+ * Asserts the canonical LifeOps action structure: retired source action names stay
+ * unregistered, the owner-operation parent umbrellas register, and each exposes `action` as
+ * its public discriminator. Pure plugin-shape asserts, no model.
+ */
 import { describe, expect, it } from "vitest";
 import { isDarwin } from "../src/platform/host.js";
 import { personalAssistantPlugin } from "../src/plugin.js";

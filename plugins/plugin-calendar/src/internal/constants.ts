@@ -1,3 +1,8 @@
+/**
+ * Calendar domain constants: the primary-calendar id, default lookahead and
+ * reminder steps, the Google scope string, timezone-abbreviation aliases, and
+ * the default-timezone resolver.
+ */
 import type { LifeOpsReminderStep } from "@elizaos/shared";
 
 export const GOOGLE_PRIMARY_CALENDAR_ID = "primary";

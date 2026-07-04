@@ -1,3 +1,4 @@
+/** Verifies the Twilio connector contribution's credential gating and SMS/voice dispatch. Deterministic vitest with the Twilio client mocked. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTwilioConnectorContribution } from "./twilio.js";

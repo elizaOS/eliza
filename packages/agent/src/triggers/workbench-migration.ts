@@ -18,7 +18,11 @@ import crypto from "node:crypto";
 import type { IAgentRuntime, Task, TriggerType, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { WORKBENCH_TASK_TAG } from "../api/workbench-helpers.ts";
-import { readTriggerConfig, TRIGGER_TASK_NAME, TRIGGER_TASK_TAGS } from "./runtime.ts";
+import {
+  readTriggerConfig,
+  TRIGGER_TASK_NAME,
+  TRIGGER_TASK_TAGS,
+} from "./runtime.ts";
 import { buildTriggerConfig, buildTriggerMetadata } from "./scheduling.ts";
 import type { NormalizedTriggerDraft } from "./types.ts";
 

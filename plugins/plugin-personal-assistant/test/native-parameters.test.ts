@@ -1,3 +1,8 @@
+/**
+ * Covers the native options.parameters migration: resolveActionArgs trusts complete planner
+ * parameters without extractor calls, RESOLVE_REQUEST and CALENDAR consume planner fields
+ * directly, and CALENDAR is a flat action-valued umbrella. Deterministic, mocked extractor.
+ */
 import {
   type HandlerOptions,
   type IAgentRuntime,

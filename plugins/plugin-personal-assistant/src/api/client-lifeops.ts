@@ -117,10 +117,6 @@ import type {
 
 type LifeOpsScheduleInspectionResponse = LifeOpsScheduleInspection;
 
-// Wave-2 W2-A removed `RoutineSeedTemplate`, `LifeOpsSeedTemplatesResponse`,
-// and `LifeOpsSeedRoutinesResponse`. The legacy seed-routines surface is
-// retired in favour of the FIRST_RUN customize path.
-
 type LifeOpsXPostRequest = {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;

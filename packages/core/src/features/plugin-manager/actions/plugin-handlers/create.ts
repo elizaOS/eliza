@@ -1,3 +1,17 @@
+/**
+ * Implements the `create` (and `edit`) subaction of the plugin-manager umbrella
+ * action (MANAGE_PLUGINS): scaffolds a new Eliza plugin from the `min-plugin`
+ * template or edits an existing ejected plugin, then dispatches a
+ * coding-delegation task (the START_CODING_TASK-style action) to actually
+ * implement it. The delegated agent signals completion with a single
+ * `PLUGIN_CREATE_DONE` line that downstream verification keys on.
+ *
+ * When a free-form intent matches existing local plugins, `runCreate` emits an
+ * interstitial `[CHOICE:plugin-create]` block and persists the pending intent as
+ * a task tagged `PLUGIN_CREATE_INTENT_TAG`, so a follow-up new/edit-N/cancel
+ * reply resolves against it. Name derivation, template copying, and free-directory
+ * resolution are local filesystem work rooted at the caller-supplied repoRoot.
+ */
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logger } from "../../../../logger.ts";

@@ -626,6 +626,9 @@ async function isOnePasswordDesktopActive(
     );
     return true;
   } catch {
+    // error-policy:J4 availability probe — this function's whole contract is
+    // "is 1Password desktop integration active"; a non-zero `op` exit means it
+    // is not, so `false` is the answer, not a swallowed failure.
     return false;
   }
 }
@@ -780,6 +783,8 @@ async function isCommandAvailable(cmd: string): Promise<boolean> {
     }
     return true;
   } catch {
+    // error-policy:J4 availability probe — `which`/`where` exiting non-zero means
+    // the command is not on PATH; `false` is the answer to "is it available".
     return false;
   }
 }

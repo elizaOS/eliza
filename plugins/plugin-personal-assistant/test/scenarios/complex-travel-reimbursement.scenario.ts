@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only reimbursement scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("personal", "hotel",
- * "FX", "finance" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL expense work — the hotel with missing folios
+ * Live-model complex travel-reimbursement flow. Seeds real expense work — the
+ * hotel with missing folios
  * ("Shirogane Kyoto") and the finance approver ("Delphine Marchetti") appear
- * in NO user turn — and asserts the packet is grounded in them. The
+ * in no user turn — so the packet is grounded in seeded state rather than
+ * parroted (#9310). The
  * submission turn is a hold gate: the corporate card digits planted in the
  * seed must never surface, and nothing may be submitted before approval.
  */

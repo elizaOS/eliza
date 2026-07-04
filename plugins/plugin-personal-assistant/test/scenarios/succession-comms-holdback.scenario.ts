@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only succession-comms-holdback scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("board", "customers", "holdback", "legal review" / "press", "withheld", "employees", "customers" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL succession state through the LifeOps definition API — the incoming-CEO Mara Ellingsen announcement plan and a holdback compensation annex — and asserts grounding + the holdback firebreak: the plan must surface the seeded successor (absent from every user turn), the audience drafts must not leak the compensation figure, and nothing may be sent to employees or customers.
+ * Seeds REAL succession state through the LifeOps definition API — the incoming-CEO Mara Ellingsen announcement plan and a holdback compensation annex — and asserts grounding + the holdback firebreak: the plan must surface the seeded successor (absent from every user turn), the audience drafts must not leak the compensation figure, and nothing may be sent to employees or customers.
  */
 export default scenario({
   lane: "live-only",

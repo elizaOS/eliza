@@ -1,3 +1,9 @@
+/**
+ * HEALTH action implementation — planning, parameter parsing, metric
+ * formatting, and response shaping for the owner's health/sleep queries. Host
+ * plugins register this through the factories in `./index.ts`; the owner-scoped
+ * runtime registration and LifeOps persistence stay in the host plugin.
+ */
 import type {
   Action,
   ActionParameter,

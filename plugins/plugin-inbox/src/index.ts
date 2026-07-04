@@ -1,3 +1,4 @@
+/** Public API barrel for @elizaos/plugin-inbox. */
 export {
   __resetInboxFetchersForTests,
   type InboxDegradedPlatform,

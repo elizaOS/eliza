@@ -1,3 +1,9 @@
+/**
+ * Screen-time domain for LifeOps: aggregates device usage signals (mobile,
+ * browser companion) into the owner-facing screen-time summary, breakdown, and
+ * weekly-average projections. Screen-time planning logic lives in
+ * `@elizaos/plugin-health`; this domain assembles the assistant projection.
+ */
 import crypto from "node:crypto";
 import {
   type BrowserBridgeCompanionStatus,

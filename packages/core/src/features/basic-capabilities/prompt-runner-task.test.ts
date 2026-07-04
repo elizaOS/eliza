@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the prompt-runner `TaskWorker` (`promptRunnerTaskWorker`):
+ * it wraps a scheduled task's `metadata.prompt` in the system prompt, calls
+ * `TEXT_LARGE` with `background` priority, and rejects a missing or empty
+ * prompt. Deterministic harness — a stub runtime whose `useModel` is a `vi.fn`,
+ * no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { ModelType } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";

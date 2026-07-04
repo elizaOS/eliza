@@ -1,3 +1,8 @@
+/**
+ * Input-normalization helpers for connector and browser-settings requests:
+ * validate and coerce connector mode/side, browser permission state, and
+ * settings inputs into the canonical shapes the domains trust.
+ */
 import { parseCronExpression } from "@elizaos/agent";
 import {
   BROWSER_BRIDGE_KINDS,

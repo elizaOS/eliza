@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only guest-logistics scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("VIP",
- * "dietary", "hotel", "approval" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero event state.
- *
- * This version seeds REAL event state through the LifeOps definition API (the
- * Aurelio Ballroom hotel block and the VIP arrival for Mireille Dubanne) and
- * asserts the logistics pass is GROUNDED in it: both tokens never appear in
- * any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the personal notes stay in approval via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Fundraiser logistics ground in seeded guest state; VIP notes stay in approval.
  */
 export default scenario({
   lane: "live-only",

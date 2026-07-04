@@ -1,3 +1,14 @@
+/**
+ * Resolves and validates the model configuration for the documents (RAG)
+ * pipeline. `validateModelConfig` reads embedding- and text-provider settings
+ * from `runtime.getSetting` (falling back to `process.env`), infers local-vs-
+ * OpenAI embedding defaults, folds in the vendor-neutral model gateway, and
+ * parses the result through `ModelConfigSchema`, raising a descriptive error
+ * when a required provider key is absent. `getProviderRateLimits` derives the
+ * concurrency / requests-per-minute / tokens-per-minute envelope the ingestion
+ * pipeline's rate limiter enforces. Consumed by document-processor.ts and
+ * llm.ts.
+ */
 import z from "zod";
 import { applyModelGateway, resolveModelGateway } from "../../model-gateway.ts";
 import type { IAgentRuntime } from "../../types";

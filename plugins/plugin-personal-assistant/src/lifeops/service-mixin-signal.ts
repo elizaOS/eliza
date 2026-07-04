@@ -1,3 +1,8 @@
+/**
+ * Signal service mixin: declares the LifeOps Signal service surface and the
+ * mixin that composes the signal domain's read/send/status methods onto the
+ * LifeOpsService base.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,

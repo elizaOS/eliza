@@ -1,3 +1,12 @@
+/**
+ * Bridges the ATTACHMENT action to the task clipboard service of the
+ * working-memory capability. Decides whether a message requested clipboard
+ * persistence via the addToClipboard/persistToClipboard/saveToClipboard flags,
+ * resolves a display title, and stores one item through createTaskClipboardService
+ * — returning a discriminated result describing whether persistence was requested
+ * and whether it succeeded. Empty content and service errors surface as
+ * stored:false with a reason rather than throwing.
+ */
 import type { IAgentRuntime, Memory } from "../../types/index.ts";
 import type {
 	AddTaskClipboardItemInput,

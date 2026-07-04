@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only nanny-payroll scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("payroll",
- * "receipts", "accountant", "compensation" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero payroll state.
- *
- * This version seeds REAL payroll state through the LifeOps definition API
- * (the nanny Ludmila's timesheet and the Farrow Tax Group accountant
- * questions) and asserts the packet is GROUNDED in it: both tokens never
- * appear in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and both notes stay staged via a no-external-send
- * predicate.
+ * Live-model scenario (live-only lane): Nanny payroll packet grounds in seeded timesheet state; notes stay staged.
  */
 export default scenario({
   lane: "live-only",

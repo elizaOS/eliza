@@ -1,3 +1,9 @@
+/**
+ * Real e2e for reminder review jobs: a persisted due review callback escalates without
+ * waiting for plan exhaustion, runs through the scheduler entrypoint before normal
+ * deliveries, and an unrelated owner reply does not suppress escalation. DB-backed real
+ * runtime.
+ */
 import crypto from "node:crypto";
 import {
   type AgentRuntime,

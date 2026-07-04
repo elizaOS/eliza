@@ -1,3 +1,13 @@
+/**
+ * Service in the personality capability that owns the structured personality
+ * slots (per-user and global) and the named profiles, plus an in-memory audit
+ * log of every mutation. Bundled profiles are registered on startup; slot
+ * mutations (`applyTrait`, `applyReplyGate`, add/clear directives,
+ * `loadProfileIntoGlobal`) return before/after pairs and record an audit entry.
+ * Slots are kept in-memory (mirrored as agent memories so state survives a
+ * reload). `getPersonalityStore` is the runtime accessor; the store backs the
+ * personality provider and the PERSONALITY action.
+ */
 import { logger } from "../../../../logger.ts";
 import type { IAgentRuntime } from "../../../../types/index.ts";
 import type { UUID } from "../../../../types/primitives.ts";

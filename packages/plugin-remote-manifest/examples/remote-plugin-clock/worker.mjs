@@ -1,3 +1,7 @@
+/**
+ * Clock example worker publishes a time provider through the remote plugin
+ * bootstrap and appends invocation evidence for install smoke tests.
+ */
 import { appendFileSync } from "node:fs";
 
 const bootstrap = globalThis.__remotePluginBootstrap;

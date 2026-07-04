@@ -4,8 +4,8 @@ import { postAction, resolveOp } from "./post.ts";
 /**
  * #10471 — POST op routing must come from the planner-emitted `action` enum
  * (or structured query/feed params), never from English keywords in the user
- * text. These cases previously routed via `/\b(search|find)\b/` etc., which
- * silently failed for every non-English request.
+ * text. Keyword routing (e.g. `/\b(search|find)\b/`) silently fails for every
+ * non-English request, so op selection stays structured-only.
  */
 describe("post resolveOp is i18n-safe (#10471)", () => {
 	it("routes by the planner action enum", () => {
@@ -29,8 +29,8 @@ describe("post resolveOp is i18n-safe (#10471)", () => {
 
 	it("does NOT infer the op from natural-language text", () => {
 		// No structured params: defaults to send regardless of what the text
-		// says, in any language. The old English regex would have returned
-		// "search"/"read" here; that English-only behavior is gone.
+		// says, in any language. The op never comes from natural-language
+		// keywords.
 		expect(resolveOp({ parameters: {} })).toBe("send");
 		expect(resolveOp(undefined)).toBe("send");
 	});

@@ -1,3 +1,10 @@
+/**
+ * Covers the TUNNEL_CREDENTIAL_TO_CHILD_SESSION action, which hands a single
+ * credential value to a child session through the SubAgentCredentialBridge. The
+ * harness is deterministic: the bridge is a `vi.fn` mock. Tests assert the
+ * params are forwarded verbatim, that the plaintext value never appears in the
+ * returned data, and that missing params or an absent bridge service fail.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,

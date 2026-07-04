@@ -1,3 +1,9 @@
+/**
+ * Travel-booking domain for LifeOps: searches flights and prepares/executes
+ * flight orders and payments via the Duffel client, then writes the resulting
+ * itinerary into the owner's calendar. Booking is a sensitive action gated by
+ * owner approval upstream in the action/route layer.
+ */
 import {
   createOrder,
   createPayment,

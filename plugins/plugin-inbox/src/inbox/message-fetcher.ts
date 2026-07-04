@@ -1,3 +1,11 @@
+/**
+ * Message-source fetchers and per-source health projection for the aggregation
+ * domain. Pulls inbound messages from chat rooms (memories), Gmail, and X DMs
+ * behind the `GmailInboxSource` / `XDmInboxSource` seams, and derives the
+ * `LifeOpsInboxSourceStatus` each read carries so a degraded connector surfaces
+ * as an unhealthy source rather than a healthy-empty inbox. `aggregate.ts` uses
+ * the fetchers on pull paths and the status probes on cache paths.
+ */
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Registration and interval policy for the single LifeOps scheduler Task: names,
+ * tags, base polling interval and per-agent jitter, plugin-migration bootstrap,
+ * and the helper that ensures exactly one scheduler task exists. This is the one
+ * clock the LifeOps scheduled-task runner polls.
+ */
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
 import { readTwilioCredentialsFromEnv } from "@elizaos/plugin-phone/twilio";

@@ -1,3 +1,8 @@
+/**
+ * Implements the NONE action of the basic-capabilities bundle: the no-op the
+ * planner selects when a turn needs a response but no further action. handler()
+ * performs no side effects and returns a success ActionResult.
+ */
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	Action,

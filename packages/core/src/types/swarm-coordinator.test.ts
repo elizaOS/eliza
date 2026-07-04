@@ -1,3 +1,9 @@
+/**
+ * Verifies the swarm-coordinator service slot — `SWARM_COORDINATOR_SERVICE_TYPE`,
+ * its `ServiceType` registration, and `getSwarmCoordinatorService` resolving
+ * through a runtime. Uses a hand-built stub runtime and coordinator; no real
+ * service is instantiated.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	getSwarmCoordinatorService,

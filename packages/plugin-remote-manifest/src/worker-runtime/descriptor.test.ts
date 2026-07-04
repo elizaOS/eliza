@@ -1,3 +1,7 @@
+/**
+ * Descriptor tests cover worker announce payload construction from plugin
+ * actions, providers, services, routes, events, models, evaluators, and tests.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   buildAnnounceDescriptor,

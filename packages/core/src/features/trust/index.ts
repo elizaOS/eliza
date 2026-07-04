@@ -1,3 +1,14 @@
+/**
+ * Barrel and plugin factory for the trust capability. Assembles the trust
+ * `Plugin` from the trust action, the security pre-gate hook, the
+ * trust/security/admin providers, the four service wrappers (TrustEngine,
+ * SecurityModule, CredentialProtector, ContextualPermissionSystem), and the
+ * `trust` Drizzle schema, and re-exports the capability's public types,
+ * services, actions, and providers. `createTrustPlugin` builds the plugin with
+ * evaluators opt-in via `enableEvaluators`; on init it bootstraps the
+ * configured owner (OWNER_ENTITY_ID) to ADMIN in the WORLD_ID world's metadata
+ * roles.
+ */
 import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
 import {
@@ -33,11 +44,9 @@ export type {
 	PermissionContext,
 	PermissionDecision,
 } from "./types/permissions.ts";
-// Export types
 export * from "./types/security.ts";
-// Export types (avoid duplicate exports)
+// `*` re-export (not re-listed above) to avoid duplicate-export collisions with security.ts.
 export * from "./types/trust.ts";
-// Export services
 export {
 	ContextualPermissionSystem,
 	CredentialProtector,
@@ -45,7 +54,6 @@ export {
 	TrustEngine,
 };
 
-// Re-export service type for convenience
 export type TrustEngineService = InstanceType<typeof TrustEngine>;
 export type SecurityModuleService = InstanceType<typeof SecurityModule>;
 export type ContextualPermissionSystemService = InstanceType<
@@ -55,7 +63,6 @@ export type CredentialProtectorService = InstanceType<
 	typeof CredentialProtector
 >;
 
-// Export actions and providers
 export * from "./actions/index.ts";
 export * from "./evaluators/index.ts";
 export * from "./providers/index.ts";

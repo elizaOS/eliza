@@ -1,3 +1,4 @@
+/** Public entry point for `@elizaos/plugin-calendar`: the plugin definition, `CalendarService`, the `CALENDAR` action surface, and the calendar contract types host packages depend on. */
 export {
   CALENDAR_PLAN_INSTRUCTIONS,
   type CalendarActionDeps,

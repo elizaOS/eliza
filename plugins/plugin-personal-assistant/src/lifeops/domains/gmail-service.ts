@@ -1,3 +1,9 @@
+/**
+ * Gmail domain for LifeOps: the assistant's inbox-triage surface over the
+ * owner's Gmail — search, unresponded/needs-response feeds, spam review, reply
+ * drafting and batch sends. Projects `@elizaos/plugin-google` results into
+ * assistant DTOs; the actual Gmail API access lives in the google plugin.
+ */
 import crypto from "node:crypto";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,

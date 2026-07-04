@@ -1,3 +1,12 @@
+/**
+ * Unit tests for AutonomyService internals: filling the GEPA-optimized autonomy
+ * prompt when an OptimizedPromptService artifact is loaded, compacting older
+ * autonomous thoughts into a cached summary section, and gating target-room
+ * context so it never enumerates participant rooms without an explicit
+ * AUTONOMY_TARGET_ROOM_ID opt-in. Deterministic: uses `createMockRuntime` with an
+ * in-memory cache Map and an injected optimized-prompt service, no live model;
+ * private methods are reached through `unknown` casts.
+ */
 import { describe, expect, test, vi } from "vitest";
 import {
 	OPTIMIZED_PROMPT_SERVICE,

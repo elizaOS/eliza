@@ -1,3 +1,22 @@
+/**
+ * Implements the CHARACTER action, the agent's self-editing entry point for its
+ * own character definition. Three operations dispatch from one handler: `modify`
+ * (LLM-driven edits to personality, tone, style, bio, topics, name, or system
+ * prompt, with a model-based safety filter and a per-user interaction-preference
+ * path), `persist` (flush the in-memory runtime.character to the persistence
+ * service), and `update_identity` (rename the agent or replace its system
+ * prompt).
+ *
+ * Access is layered: the declared `roleGate` is the coarse ADMIN floor, while
+ * CHARACTER_OP_ACCESS holds the finer per-op minimum the handler enforces
+ * (`update_identity` requires OWNER). `modify` first classifies intent with a
+ * rule heuristic, falling back to a TEXT_SMALL model call only when the
+ * heuristic is inconclusive; admins editing global scope go through
+ * CharacterFileManager, while non-admins (or an explicit user scope) store a
+ * per-user preference memory instead. `persist` flows through the shared
+ * persistCharacterPatch helper, and both global paths land in the
+ * character-persistence service.
+ */
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
 import type { Character } from "../../../../types/agent.ts";
@@ -32,8 +51,8 @@ type CharacterOp = (typeof CHARACTER_OPS)[number];
  * canActionRun before the handler runs; this map is the single, visible source
  * of truth for the finer per-op requirement the handler enforces (renaming the
  * agent / replacing its system prompt via `update_identity` requires OWNER, not
- * just ADMIN). Previously these were three scattered inline `hasRoleAccess`
- * checks, so the OWNER requirement was invisible in the action metadata.
+ * just ADMIN), instead of scattering inline `hasRoleAccess` checks that leave
+ * the OWNER requirement invisible in the action metadata.
  */
 export const CHARACTER_OP_ACCESS: Record<
 	CharacterOp,

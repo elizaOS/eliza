@@ -157,8 +157,8 @@ describe("plugin-health default packs through the real scheduled-task runner (#8
 
     const record = sleepRecapDefaultPack.records[0];
     if (!record) throw new Error("sleepRecapDefaultPack should ship a record");
-    // Guard the precondition that made this pack the #8795 canary: it
-    // references the gate that used to be unregistered.
+    // Guard the precondition that made this pack the #8795 canary: it depends
+    // on the `personal_baseline_sufficient` gate being registered.
     expect(record.shouldFire?.gates?.map((g) => g.kind)).toContain(
       "personal_baseline_sufficient",
     );

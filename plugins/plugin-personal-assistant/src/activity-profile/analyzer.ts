@@ -1,3 +1,10 @@
+/**
+ * Pure analysis that derives the owner's ActivityProfile from raw signals —
+ * message and calendar activity classified into time-of-day buckets, typical
+ * wake/sleep hours, per-platform activity, and current-state inference (active
+ * vs sustained inactivity). No runtime dependencies, so it is fully
+ * unit-testable and feeds both the proactive planner and window learning.
+ */
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import {
   type ActivityProfile,

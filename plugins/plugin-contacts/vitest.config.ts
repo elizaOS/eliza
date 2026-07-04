@@ -1,3 +1,4 @@
+/** Vitest config for @elizaos/plugin-contacts: pins react/ui aliases so component tests resolve the workspace copies. */
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

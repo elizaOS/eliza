@@ -1,3 +1,11 @@
+/**
+ * Tests the RUNTIME_MODEL_CONTEXT provider's slot resolution and gating: reading
+ * configured model slots, using the runtime resolver, provider-declared display
+ * settings, omitting unresolvable slots, and staying silent for non-model or
+ * sub-agent turns. Deterministic — a fake runtime (settings map + `models` map),
+ * toggling `process.env.CODEX_MODEL` to exercise the env fallback; no live model.
+ */
+
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../../../types/memory.ts";
 import { ModelType } from "../../../types/model.ts";

@@ -1,3 +1,9 @@
+/**
+ * Tests the BLOCK website-target subaction handlers against the real SelfControl
+ * engine backed by the harness temp hosts file, with the OWNER access gate
+ * bypassed so handlers run without seeding world/role tables.
+ */
+
 import type { ActionResult, HandlerOptions, Memory, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

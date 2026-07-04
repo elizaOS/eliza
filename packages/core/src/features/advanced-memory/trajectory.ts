@@ -1,3 +1,12 @@
+/**
+ * Bridges the advanced-memory providers to the trajectory recorder: forwards a
+ * provider-access telemetry record (name, purpose, data, query) to the
+ * "trajectories" service so a captured run shows what context each memory
+ * provider injected. Resolves the trajectory step id from the message metadata
+ * or the ambient trajectory context, no-ops when neither is present, and
+ * swallows every error so telemetry never interrupts the message path.
+ */
+
 import { getTrajectoryContext } from "../../trajectory-context.ts";
 import type { TrajectoryProviderAccessLogger } from "../../trajectory-utils.ts";
 import type { IAgentRuntime, Memory } from "../../types/index.ts";

@@ -1,3 +1,13 @@
+/**
+ * Email-curation decision engine and its type surface.
+ *
+ * Pure: given an email plus context it produces a save/archive/delete/review
+ * decision with a confidence band, supporting evidence, and citations back to
+ * the subject/snippet/body it reasoned over. Identity and policy lookups (VIP
+ * senders, retention rules) are injected as hooks so the engine carries no
+ * connector or runtime dependency. Consumed by the inbox triage flow and
+ * exposed at the `@elizaos/plugin-inbox/inbox/email-curation` subpath.
+ */
 export type EmailCurationAction = "save" | "archive" | "delete" | "review";
 
 export type EmailCurationMode = "body_semantic" | "metadata_degraded";

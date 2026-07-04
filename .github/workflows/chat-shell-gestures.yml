@@ -130,17 +130,13 @@ jobs:
       - name: Home-screen gesture e2e
         run: bun run --cwd packages/ui test:home-screen-e2e
 
-      # Seeded launcher long-loop (#12373 engine / #12179 web lane): a fast-check
-      # fc.commands stream over the §D gesture alphabet driven through real CDP
-      # touch, checking every invariant (data-page/AX-probe/transform-at-rest,
-      # focus never in [inert], telemetry launch-count, no-blue, CLS) after each
-      # command. CI runs a fixed-seed 200-action smoke (~4 min) as the regression
-      # guard; the full ≥500-action × 3-random-seed DoD run is manual/local
-      # (evidence in .github/issue-evidence/12179-web-loop/).
-      - name: Launcher gesture-loop e2e
+      # Seeded launcher long-loop (#12375): 500 real CDP-touch gestures over the
+      # composed home↔launcher surface, every §D invariant checked after each
+      # command, with a full walkthrough video. Pinned seed for a deterministic
+      # gate; fuzz locally by unsetting ELIZA_LOOP_SEED.
+      - name: Launcher gesture long-loop e2e
         env:
-          ELIZA_LOOP_SEED: "12179"
-          ELIZA_LOOP_ACTIONS: "200"
+          ELIZA_LOOP_SEED: "12375"
         run: bun run --cwd packages/ui test:launcher-loop-e2e
 
       # Bottom-bar state-machine gestures.

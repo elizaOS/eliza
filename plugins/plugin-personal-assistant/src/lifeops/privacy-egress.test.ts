@@ -1,3 +1,4 @@
+/** Verifies privacy-egress gating: which connector data classes may egress per grant, and action-result filtering. Deterministic vitest. */
 import { describe, expect, it } from "vitest";
 import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {

@@ -1,3 +1,16 @@
+/**
+ * Runtime `Service` wrappers that adapt the trust capability's plain engine
+ * classes — TrustEngine, SecurityModule, CredentialProtector, and
+ * ContextualPermissionSystem — into services the trust plugin registers. Each
+ * wrapper owns construction and startup ordering, awaiting its dependencies via
+ * `getServiceLoadPromise` (SecurityModule needs the trust engine;
+ * CredentialProtector needs the security module; ContextualPermissionSystem
+ * needs both), then exposes thin proxy methods onto the underlying instance.
+ *
+ * Kept in their own module to break the circular dependency between the engines
+ * and the evaluators/providers that consume them.
+ */
+
 import {
 	type IAgentRuntime,
 	Service,
@@ -122,7 +135,7 @@ export class SecurityModuleServiceWrapper extends Service {
 		return this.securityModule.logTrustImpact(entityId, event, impact, context);
 	}
 
-	// Add missing methods for tests
+	// Methods exposed for tests
 	storeMessage(message: SecurityMessage): Promise<void> {
 		return this.securityModule.storeMessage(message);
 	}

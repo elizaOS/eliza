@@ -43,7 +43,6 @@ import {
   loadAgentProfileRegistry,
   resolveAgentProfileByQuery,
 } from "./agent-profiles";
-import { switchRuntimeNonDestructive } from "./switch-runtime";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -53,6 +52,7 @@ import {
 } from "./internal";
 import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
+import { switchRuntimeNonDestructive } from "./switch-runtime";
 
 export interface HydratingDeps {
   setStartupError: (v: null) => void;

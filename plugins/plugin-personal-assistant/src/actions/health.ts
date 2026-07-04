@@ -1,3 +1,9 @@
+/**
+ * OWNER_HEALTH action wiring — binds the `@elizaos/plugin-health` action
+ * factories to LifeOps owner-access control. Health domain logic lives in
+ * plugin-health; this module only constructs the owner-facing wrapper and
+ * re-exports the shared parameters and similes for `owner-surfaces.ts`.
+ */
 import { recentConversationTexts } from "@elizaos/core";
 import {
   createHealthActionRunner,

@@ -1,3 +1,9 @@
+/**
+ * Travel-booking handler — flight and stay search plus purchase via Duffel.
+ * Search results are previewed to the owner; the actual booking only runs
+ * through the approval queue via `executeApprovedBookTravel`, never directly
+ * from the action handler.
+ */
 import type {
   ActionResult,
   HandlerCallback,

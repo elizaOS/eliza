@@ -1,3 +1,12 @@
+/**
+ * Builders for the owner-facing umbrella actions — OWNER_REMINDERS, OWNER_ALARMS,
+ * OWNER_GOALS, OWNER_TODOS, OWNER_ROUTINES, OWNER_FINANCES, PERSONAL_ASSISTANT,
+ * and the thin health/screen-time wrappers.
+ *
+ * Each surface pins its backing kind (definitions vs goals) rather than
+ * offering a union, and delegates request classification and item CRUD to the
+ * shared life engine (`life.ts`) and the per-domain handlers.
+ */
 import type {
   Action,
   ActionParameters,

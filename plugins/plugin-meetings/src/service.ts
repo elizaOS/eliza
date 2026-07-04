@@ -206,7 +206,7 @@ export class MeetingService extends Service {
 
     // Reserve the meeting SYNCHRONOUSLY before the first await. The dup-check
     // above and this insert run in one uninterrupted turn, so two concurrent
-    // same-URL joins can no longer both slip past the check and launch two bots
+    // same-URL joins cannot both slip past the check and launch two bots
     // (TOCTOU). Every construction here (pipeline, writer, room id) is
     // synchronous; the awaited world/room/writer setup follows with the session
     // already claimed. Any failure rolls the reservation back (see catch).

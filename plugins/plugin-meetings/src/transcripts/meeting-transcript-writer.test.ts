@@ -1,3 +1,8 @@
+/**
+ * MeetingTranscriptWriter — the persisted record shape (golden, parsed with the
+ * transcripts-reader logic), finalize edges, throttling, and content-addressed
+ * WAV retention. Deterministic: real fs in a temp dir.
+ */
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

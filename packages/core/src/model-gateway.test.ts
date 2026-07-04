@@ -1,3 +1,9 @@
+/**
+ * Covers the model-gateway resolution layer — `resolveModelGateway` /
+ * `applyModelGateway`, the canonical `ELIZA_MODEL_GATEWAY_*` env var names, the
+ * credential scrubber, and strict fail-closed mode — over a synthetic getSetting
+ * record, so no process.env or live provider is touched.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	applyModelGateway,

@@ -1,3 +1,20 @@
+/**
+ * Public barrel and plugin entry for the trajectories capability: exports the
+ * native `trajectoriesPlugin`, the `TrajectoriesService`, and the feature's
+ * type/format/pricing/export surface (ART conversion, reward services, action
+ * interceptor, per-provider price table).
+ *
+ * The plugin owns the trajectory lifecycle by listening to runtime events: it
+ * opens a trajectory + first step on `MESSAGE_RECEIVED` (enriching metadata from
+ * room state / web-conversation context) and closes it on `MESSAGE_SENT`,
+ * `RUN_ENDED`, or `RUN_TIMEOUT`. Because event ordering is not guaranteed, the
+ * module-level maps (`pendingTrajectoryStepBy*`) correlate a message/reply id to
+ * its open step so whichever terminal event fires first can end it exactly once;
+ * `cleanupPendingTrajectory` tears down every index entry to avoid leaks.
+ * Trajectory capture is best-effort — every failure is logged and swallowed so
+ * it never blocks the message loop, and the whole subsystem no-ops when
+ * `TrajectoriesService` is not resolvable (e.g. `@elizaos/plugin-sql` absent).
+ */
 import crypto from "node:crypto";
 import { createUniqueUuid } from "../../entities";
 import type { TrajectoryFinalStatus } from "../../trajectory-utils";
@@ -268,10 +285,9 @@ export const trajectoriesPlugin: Plugin = {
 							await logger.flushWriteQueue(normalizedTrajectoryId);
 						}
 					} else {
-						// Fallback if startTrajectory returns empty/null
-						// This path uses the stepId as the trajectoryId which matches legacy behavior
-						// provided the logger supports it, but here we are using the new service.
-						// If new service returns null, something is wrong, but we proceed best effort.
+						// startTrajectory returned empty/null: no trajectory id to record
+						// steps against, so proceed best-effort with the local stepId as the
+						// only correlation handle for the terminal events below.
 					}
 
 					if (message.id) {

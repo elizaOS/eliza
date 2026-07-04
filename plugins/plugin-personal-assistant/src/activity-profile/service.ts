@@ -1,3 +1,10 @@
+/**
+ * Runtime binding that assembles the owner ActivityProfile from LifeOpsService
+ * data plus the screen-context sampler, and decides when it needs a rebuild.
+ * The pure classification lives in `analyzer.ts`; this module reads live
+ * signals, invokes the analyzer, and exposes the fired-log accessor over the
+ * PROACTIVE_AGENT task metadata where the profile is persisted.
+ */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { LifeOpsActivitySignal } from "../contracts/index.js";

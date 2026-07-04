@@ -1,3 +1,8 @@
+/**
+ * Browser-related helpers shared by the LifeOpsService: normalization and
+ * projection utilities for browser-companion actions, tab/page context, and
+ * session records used by the browser domain and status projections.
+ */
 import crypto from "node:crypto";
 import type {
   BrowserBridgeAction,

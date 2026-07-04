@@ -1,3 +1,7 @@
+/**
+ * Pure screen-time builders: summary, breakdown, per-target metrics, and
+ * visible-bucket assembly over normalized aggregate rows. No runtime or IO.
+ */
 import type {
   LifeOpsScreenTimeBreakdown,
   LifeOpsScreenTimeBucket,

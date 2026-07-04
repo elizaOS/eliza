@@ -1,3 +1,9 @@
+/**
+ * Exercises the in-memory subscription-auth registry: register/lookup by id,
+ * listing, last-registration-wins override (plugin over built-in), and verbatim
+ * pass-through of discovered credentials. Deterministic — no model or DB, the
+ * registry Map is the whole system under test.
+ */
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	getSubscriptionAuthProvider,

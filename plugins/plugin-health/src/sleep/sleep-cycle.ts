@@ -1,3 +1,8 @@
+/**
+ * Sleep-cycle resolution and classification: `resolveLifeOpsSleepCycle`,
+ * `classifyLifeOpsSleepCycleType` (overnight / nap / unknown), and
+ * `resolveLifeOpsDayBoundary` over health and activity signals.
+ */
 import type {
   LifeOpsActivitySignal,
   LifeOpsDayBoundary,

@@ -1,3 +1,14 @@
+/**
+ * Shared helpers for the connector-backed messaging actions (MESSAGE and POST).
+ * Provides loose param coercion for planner-supplied input (textParam,
+ * boolParam, numberParam, limitParam — which clamps to 1..100 to bound query
+ * cost), connector selection and scoping by source + account
+ * (selectConnector / connectorSelectionFailure), target resolution from params,
+ * and the refresh* helpers that rewrite an action's description /
+ * descriptionCompressed to advertise the currently registered
+ * MessageConnector / PostConnector instances.
+ */
+
 import { logger } from "../../../logger.ts";
 import type {
 	Action,

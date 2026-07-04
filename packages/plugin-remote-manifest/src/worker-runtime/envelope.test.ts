@@ -1,3 +1,7 @@
+/**
+ * Worker envelope tests cover request-id allocation and subprocess channel
+ * message framing without launching the full remote plugin runtime.
+ */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   createRequestIdAllocator,

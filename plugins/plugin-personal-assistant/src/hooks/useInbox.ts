@@ -1,3 +1,9 @@
+/**
+ * React hook backing the inbox UI: fetches the cross-channel LifeOps inbox
+ * (optionally filtered by channel or chat type, grouped by thread) and exposes
+ * loading/refresh state for message triage. Read side only; triage actions run
+ * through the INBOX action surface.
+ */
 import type {
   LifeOpsInbox,
   LifeOpsInboxChannel,

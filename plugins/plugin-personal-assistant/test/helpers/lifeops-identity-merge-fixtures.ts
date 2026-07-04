@@ -1,3 +1,7 @@
+/**
+ * Fixtures for identity-merge tests: builds runtime and relationships-graph inputs that
+ * drive the entity merge engine across channels.
+ */
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,

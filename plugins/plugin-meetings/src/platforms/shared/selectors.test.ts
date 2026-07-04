@@ -1,3 +1,8 @@
+/**
+ * waitForAnySelector selector racing — first-match resolution across an ordered
+ * selector list, where a per-selector timeout never aborts the others.
+ * Deterministic: a fake page with scripted per-selector delays.
+ */
 import { describe, expect, it } from "vitest";
 import type { ElementHandle, Page } from "playwright-core";
 import { waitForAnySelector } from "./selectors.js";

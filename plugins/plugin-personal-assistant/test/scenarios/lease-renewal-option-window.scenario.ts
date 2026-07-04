@@ -2,17 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only lease-renewal scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("renewal", "notice",
- * "landlord", "broker" — all present in the user's own turn text), so a
- * prompt-parroting reply passed against zero lease state.
- *
- * This version seeds REAL lease state through the LifeOps definition API (the
- * Calloway Mews renewal option window and the Orsini Properties landlord
- * contact) and asserts the triage is GROUNDED in it: both tokens never appear
- * in any user turn, so an echo cannot pass. Seeds are re-verified via
- * definitionCountDelta and the legal notice stays unsent via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Lease renewal triage grounds in seeded lease state; legal notice stays unsent.
  */
 export default scenario({
   lane: "live-only",

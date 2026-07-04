@@ -1,3 +1,19 @@
+/**
+ * Implements the PERSONALITY action, the single dispatcher for structured
+ * personality-preference operations: setting or clearing the verbosity, tone,
+ * and formality traits, arming or lifting the reply gate, adding or clearing
+ * free-text directives, loading/saving named profiles, and showing current
+ * state. Each mutation runs through the PersonalityStore service and records an
+ * audit memory in the personality_audit_log table.
+ *
+ * Every trait/gate/directive op requires an explicit scope — "user" (the
+ * requesting entity's slot) or "global" (the agent-wide slot) — with no
+ * auto-inference: an ambiguous request returns a clarification rather than
+ * guessing. Global mutations and profile load/save are admin/owner-gated via
+ * hasRoleAccess. The slots written here are injected back into prompts by the
+ * user-personality provider and enforced by the reply-gate and verbosity
+ * helpers of the same capability.
+ */
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
 import type {
@@ -322,8 +338,8 @@ export const personalityAction: Action = {
 			? params.scope
 			: null;
 
-		// Ops that need scope: enforce explicit scope (NO auto-inference). This
-		// is the "non-ambiguity" the user explicitly asked for.
+		// Ops that need scope: enforce explicit scope (NO auto-inference) — an
+		// ambiguous request is clarified, never silently resolved to a default.
 		const needsScope: ReadonlySet<PersonalityOp> = new Set<PersonalityOp>([
 			"set_trait",
 			"clear_trait",

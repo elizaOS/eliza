@@ -1,3 +1,8 @@
+/**
+ * Base prompt-instruction strings for LifeOps model calls (scheduling
+ * negotiation, reminder dispatch, and related tasks). These are the defaults the
+ * OptimizedPromptService overrides with DSPy-optimized variants at runtime.
+ */
 export const SCHEDULE_PLAN_INSTRUCTIONS = [
   "Plan the scheduling negotiation action for this request.",
   "The user may speak in any language.",

@@ -1,3 +1,7 @@
+/**
+ * Exercises the LifeOps context-budget benchmark: per-provider token payloads, ablation
+ * deltas, and over-budget flagging. Deterministic fixture payloads.
+ */
 import { describe, expect, it } from "vitest";
 import {
   buildLifeOpsContextBudgetReport,

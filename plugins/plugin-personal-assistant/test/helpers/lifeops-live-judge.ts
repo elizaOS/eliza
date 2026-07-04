@@ -1,3 +1,7 @@
+/**
+ * Maps a CerebrasJudge verdict onto the LifeOps live-test result shape (passed, reasoning,
+ * score), validating that the model emitted a numeric score and reasoning.
+ */
 import { CerebrasJudge } from "../../../../packages/scenario-runner/src/cerebras-judge.ts";
 import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
 

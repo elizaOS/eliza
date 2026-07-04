@@ -1,3 +1,8 @@
+/**
+ * Public entry point for the personal-assistant (LifeOps) plugin: re-exports the
+ * plugin definition, services, providers, actions, and the LifeOps submodules
+ * that other packages consume.
+ */
 export { getAppBlockerStatus } from "@elizaos/plugin-blocker/services/app-blocker/index";
 export {
   buildSelfControlBlockPolicy,

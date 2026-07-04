@@ -1,3 +1,12 @@
+/**
+ * Parses uploaded bank/card CSV exports into `LifeOpsPaymentTransaction` rows.
+ *
+ * An RFC 4180 splitter (`parseCsv`) feeds header-hint column detection that maps
+ * varied bank column names onto date / merchant / amount, handling both
+ * single-amount and separate debit/credit layouts and normalizing sign into a
+ * payment direction. Backs the CSV payment-source import path in FinancesService.
+ */
+
 import { normalizeMerchant } from "./payment-recurrence.js";
 import type {
   LifeOpsPaymentDirection,

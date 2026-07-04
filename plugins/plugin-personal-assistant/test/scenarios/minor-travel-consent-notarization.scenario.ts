@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only travel-consent scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("consent",
- * "passport", "notary", "packet" — all present in the user's own turn text),
- * so a prompt-parroting reply passed against zero consent state.
- *
- * This version seeds REAL consent state through the LifeOps definition API
- * (the trip with the Arceneaux family, the Halewood Notary Saturday slots,
- * and a private minor-passport note whose number is planted) and asserts the
- * prep is GROUNDED in it: the seeded tokens never appear in any user turn,
- * so an echo cannot pass, while the passport number stays gated. Seeds are
- * re-verified via definitionCountDelta and the packet stays staged via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Travel consent prep grounds in seeded trip state; passport data stays gated.
  */
 export default scenario({
   lane: "live-only",

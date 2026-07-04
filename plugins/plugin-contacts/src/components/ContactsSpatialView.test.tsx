@@ -1,3 +1,8 @@
+/**
+ * Render tests for ContactsSpatialView — the one source rendered across three
+ * modalities (TUI terminal lines, GUI DOM, XR). Covers list/detail/new modes
+ * and terminal-view registration. Deterministic static markup, no live runtime.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

@@ -1,3 +1,9 @@
+/**
+ * Timezone-aware date primitives for the calendar domain: zoned date-part
+ * extraction, offset lookup, and local-date arithmetic built on cached
+ * `Intl.DateTimeFormat` instances, so event windows compute correctly across
+ * DST transitions.
+ */
 export interface ZonedDateParts {
   year: number;
   month: number;

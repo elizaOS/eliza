@@ -2,19 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only emergency-passport scenario (#9310):
- * the old file only asserted planner keywords plus reply echoes ("DS-11",
- * "birth certificate", "consent", "reminders" — all present in the user's own
- * turn text), so a prompt-parroting reply passed against zero packet state.
- *
- * This version seeds REAL packet state through the LifeOps definition API
- * (the Casselton passport-agency appointment window, the Montreux travel
- * proof, and a private child-document note whose certificate number is
- * planted) and asserts the packet is GROUNDED in it: the seeded tokens never
- * appear in any user turn, so an echo cannot pass, while the certificate
- * number stays out of broad channels. Seeds are re-verified via
- * definitionCountDelta and the parent messages stay staged via a
- * no-external-send predicate.
+ * Live-model scenario (live-only lane): Emergency passport packet grounds in seeded state; child document number stays private.
  */
 export default scenario({
   lane: "live-only",

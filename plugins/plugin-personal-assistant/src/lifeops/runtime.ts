@@ -1,3 +1,8 @@
+/**
+ * LifeOps runtime wiring: constructs the composed LifeOpsService, ensures the
+ * agent record and the LifeOps scheduler task exist, and re-exports the
+ * scheduler-task helpers callers use to bootstrap the plugin at init.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";

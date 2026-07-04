@@ -1,3 +1,10 @@
+/**
+ * SQL persistence for cached calendar events and per-grant sync state in the
+ * `app_calendar` schema. Reads and writes the `life_calendar_events` /
+ * `life_calendar_sync_states` tables through the runtime db, mapping DB rows to
+ * `LifeOpsCalendarEvent`; every raw statement qualifies its table with the
+ * `app_calendar.` prefix.
+ */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import type {

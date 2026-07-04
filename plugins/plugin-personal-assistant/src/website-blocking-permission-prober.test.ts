@@ -1,3 +1,4 @@
+/** Verifies the website-blocking permission prober registers against a present permissions registry. Deterministic vitest with a stubbed registry. */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { registerLifeOpsWebsiteBlockingPermissionProber } from "./plugin.js";

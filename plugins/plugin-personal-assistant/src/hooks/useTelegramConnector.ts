@@ -1,3 +1,9 @@
+/**
+ * React hook exposing the Telegram LifeOps connector status (owner or agent
+ * side) and its connect/disconnect controls. The Telegram transport client
+ * lives in `@elizaos/plugin-telegram`; this hook reads and toggles the
+ * normalized connector status for the UI.
+ */
 import type {
   LifeOpsConnectorSide,
   LifeOpsTelegramConnectorStatus,

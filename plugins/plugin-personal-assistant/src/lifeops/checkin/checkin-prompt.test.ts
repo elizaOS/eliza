@@ -1,3 +1,4 @@
+/** Verifies the check-in summary prompt is built from a CheckinReport. Deterministic vitest, no live model. */
 import { describe, expect, it } from "vitest";
 import { buildCheckinSummaryPrompt } from "./checkin-service.js";
 import type { CheckinReport } from "./types.js";

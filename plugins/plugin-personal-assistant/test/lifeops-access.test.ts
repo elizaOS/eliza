@@ -1,3 +1,7 @@
+/**
+ * Covers the hasLifeOpsAccess owner gate: denying on a missing runtime/agentId or message
+ * entityId, and otherwise delegating to hasOwnerAccess. Deterministic, mocked owner-access.
+ */
 import type { Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: casual texting-slang phrasing still persists a weekly
+ * "Shave" habit definition.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

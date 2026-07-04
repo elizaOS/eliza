@@ -1,3 +1,10 @@
+/**
+ * Unit tests for `embedRecallQuery`: it returns the embedding on success, fails
+ * open to `null` on an embed error (never throwing onto the reply path), and
+ * caches/dedupes identical normalized recall queries within a turn (including
+ * across providers). Runs against `createMockRuntime` with a synchronous fake
+ * embed model — deterministic, no live LLM.
+ */
 import { describe, expect, test } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { IAgentRuntime } from "../../types";

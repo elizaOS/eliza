@@ -1,3 +1,8 @@
+/**
+ * Verifies the connector-account privacy gating (audience vs privacy level).
+ * Deterministic vitest with `@elizaos/core` mocked to a minimal connector-account
+ * manager.
+ */
 import type {
   ConnectorAccount,
   IAgentRuntime,

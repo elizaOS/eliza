@@ -1,3 +1,8 @@
+/**
+ * Covers the tool-group registry — legacy `TOOL_GROUPS` expansion via
+ * `expandToolGroups` plus the `TOOL_GROUP_DEFINITIONS` risk-tag metadata read by
+ * policy/audit callers. Deterministic assertions over the static definitions.
+ */
 import { describe, expect, it } from "vitest";
 import {
 	expandToolGroups,

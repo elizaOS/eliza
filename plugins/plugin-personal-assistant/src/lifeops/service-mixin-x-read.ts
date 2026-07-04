@@ -1,3 +1,8 @@
+/**
+ * X (Twitter) read service mixin: declares the LifeOps X read service surface
+ * and the mixin that composes the x-read domain's feed/DM/search methods onto
+ * the LifeOpsService base.
+ */
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,

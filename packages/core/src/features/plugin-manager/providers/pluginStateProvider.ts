@@ -1,3 +1,9 @@
+/**
+ * The `pluginState` provider: injects the current lifecycle state of every
+ * plugin known to PluginManagerService into the prompt — loaded/ready/error/
+ * unloaded status, load errors, plus ejected, protected, and startup-original
+ * plugins. Owner-gated and relevance-gated to the connectors/settings contexts.
+ */
 import type { Provider, ProviderResult } from "../../../types/components.ts";
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";

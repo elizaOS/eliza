@@ -1,3 +1,11 @@
+/**
+ * Deterministic unit test for permission enforcement across the secret storage
+ * backends (features/secrets/storage): ComponentSecretStorage (user-scoped),
+ * WorldMetadataStorage (world-scoped), and CharacterSettingsStorage (global).
+ * Verifies each fails closed on a missing or unentitled requester and enforces
+ * the read/write roles for its level. Uses createMockRuntime backed by
+ * in-memory component/world maps and a real KeyManager.
+ */
 import { describe, expect, it } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime.ts";
 import {

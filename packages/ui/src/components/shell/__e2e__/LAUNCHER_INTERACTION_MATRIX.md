@@ -24,7 +24,8 @@ decision D5): `home-launcher-surface`, `data-page`, `home-launcher-page-probe`,
 | **loop-ios** | seeded model loop, simulator | `packages/app-core/platforms/ios/App/AppUITests/LauncherGestureLoopUITests.swift` | XCUIElement swipes/taps, AX-probe asserts |
 | **gesture-matrix** | scripted, real app | `packages/app/test/ui-smoke/gesture-matrix.spec.ts` | tap-vs-long-press, edge cases |
 | **desktop-smoke** | packaged Electrobun | `packages/app/test/electrobun-packaged/desktop-launcher-smoke.e2e.spec.ts` | bridge `eval` drives the store + screenshot (no CDP gestures) |
-| **loop-web** (pending) | seeded model loop, real browser | — | ≥500 CDP-touch actions against the fixture — blocked on the engine's real-browser driver (see Status) |
+| **loop-web** | seeded model loop, real browser | `__e2e__/run-launcher-loop-e2e.mjs` | ≥500 CDP-touch actions against the composed fixture, batched with video (`test:launcher-loop-e2e`) |
+| **loop-web-app** | seeded model loop, real app | `packages/app/test/ui-smoke/launcher-gesture-loop.spec.ts` | the same engine driving the booted app's surface (navigation-safe alphabet) on desktop + mobile-chromium |
 
 The seeded loop engine (`packages/ui/src/testing/launcher-loop/`, merged from
 #12373 via #12443/#12451) is shared by every `loop-*` lane: one pure model
@@ -138,12 +139,24 @@ Every `loop-*` lane checks these after each command (`checkInvariants` against a
 - Rows 21 (focus-out-of-inert) is enforced by the `HomeLauncherSurface` blur-on-
   flip fix shipped alongside this doc; the a11y focus trap it closes is exactly
   what the engine's `activeElementInInert` invariant asserts.
-- **`loop-web` is pending.** The #12373 engine's `CdpTouchDriver` had no
-  real-browser consumer before this work (its self-check runs in jsdom against a
-  `FakeDriver`), and a real-browser web runner surfaced driver/model gaps that
-  must be fixed in the engine before the web lane is green — committing rail
-  swipes coalesce at `stepDelayMs: 2` (Chromium drops the flick), the driver's
-  and `observe()`'s notification-open selectors don't match the real
-  `notification-sheet[data-open]`, and a rail swipe fired over an open
-  notification hits the overlay instead of the rail while the model expects it to
-  navigate. Tracked as a #12373 engine follow-up.
+- **`loop-web` is live (#12375).** Standing up the real-browser runner surfaced
+  and fixed the `CdpTouchDriver` gaps that its jsdom `FakeDriver` self-check could
+  never catch: committing rail swipes coalesced at `stepDelayMs: 2` (Chromium
+  dropped the flick — now the proven 16ms/step recipe + a bounded re-dispatch that
+  reads `data-page` to confirm the flick landed); the driver and `observe()`
+  notification-open selectors missed the real `notification-sheet[data-open]`;
+  `settle()` returned mid-commit (now waits for animations done + the rail parked);
+  and `tapTile` tapped off-window tiles after a scroll (now scrolls into view
+  first). Three consecutive 500-action seeds run green locally (12375, 424242,
+  387289096); the CI gate pins seed 12375 in `chat-shell-gestures.yml`.
+- **Two families are scoped out of the coarse-pointer web loop** because they
+  diverge from the shared model on that surface, not because they are untested:
+  `railEdgeButton` (chevrons self-hide on touch, yet the model always navigates —
+  covered by the desktop `launcher-interaction` spec) and `tileLongPress` (the
+  read-only launcher tile is a plain `onClick` button, so a stationary touch
+  long-press launches on release while the model treats it as inert — tap-vs-long-
+  press is covered on the real app by `gesture-matrix`).
+- **Failure replay.** A failing batch writes `failure-batch-<n>.json` with the
+  run seed, the batch's exact seed, and the fast-check shrunk command list; rerun
+  with the printed `ELIZA_LOOP_SEED` to reproduce, or `ELIZA_LOOP_ONLY_BATCH=<n>`
+  to replay just that batch.

@@ -1,3 +1,11 @@
+/**
+ * Shared relevance-gating helpers for the plugin-manager providers: base and
+ * common-connector keyword vocabularies, plus builders that fold in per-plugin
+ * name keywords and compile them into a word-boundary regex. `isProviderRelevant`
+ * combines keyword and regex matching over the current message and recent history
+ * to decide whether a plugin-manager provider should inject context, keeping
+ * these dynamic providers quiet on unrelated turns.
+ */
 import { getRecentMessagesData } from "../../../recent-messages-state.ts";
 import type { Memory } from "../../../types/memory.ts";
 import type { State } from "../../../types/state.ts";

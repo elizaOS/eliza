@@ -1,13 +1,10 @@
-// Permanent redirect from the legacy Eliza Cloud docs hostname
-// (docs.elizacloud.ai) to the unified docs site at docs.elizaos.ai/cloud.
-//
-// Path and query are preserved:
-//   docs.elizacloud.ai/quickstart        -> docs.elizaos.ai/cloud/quickstart
-//   docs.elizacloud.ai/api/agents?x=1    -> docs.elizaos.ai/cloud/api/agents?x=1
-//   docs.elizacloud.ai/                  -> docs.elizaos.ai/cloud
-//
-// The /docs prefix that old elizacloud.ai/docs/* URLs carried is stripped if
-// present, since the new hostname does not use that prefix.
+/**
+ * Permanent redirect Worker from the legacy Eliza Cloud docs hostname to the
+ * unified docs site at docs.elizaos.ai/cloud.
+ *
+ * Path and query are preserved. A legacy `/docs` prefix is stripped because the
+ * canonical cloud docs hostname does not use that path segment.
+ */
 
 const TARGET_ORIGIN = "https://docs.elizaos.ai";
 const TARGET_PREFIX = "/cloud";

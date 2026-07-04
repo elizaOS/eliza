@@ -1,3 +1,8 @@
+/**
+ * `createHealthSleepRouteHandler` — serves the read-only sleep history,
+ * regularity, and personal-baseline endpoints from host-supplied service
+ * methods, returning the LifeOps sleep response DTOs.
+ */
 import { logger } from "@elizaos/core";
 import type {
   LifeOpsPersonalBaselineResponse,

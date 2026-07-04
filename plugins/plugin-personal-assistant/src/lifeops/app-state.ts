@@ -1,3 +1,8 @@
+/**
+ * Persisted LifeOps app-state: the owner-tunable settings the assistant reads at
+ * runtime (priority-scoring toggle/model and related flags), loaded and cached
+ * under a single runtime cache key.
+ */
 import { logger } from "@elizaos/core";
 
 const LIFEOPS_APP_STATE_CACHE_KEY = "eliza:lifeops-app-state";

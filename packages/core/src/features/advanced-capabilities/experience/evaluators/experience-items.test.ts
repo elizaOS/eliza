@@ -1,3 +1,9 @@
+/**
+ * Deterministic unit tests for `experiencePatternEvaluator` (experience-items.ts):
+ * signal-gated shouldRun (idle chat vs explicit lesson vs fallback interval),
+ * secret redaction + synthetic-summary filtering in prepare, and cross-batch dedupe
+ * on record. Runtime and EXPERIENCE service are vi.fn stubs — no live model, no DB.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { EvaluatorProcessorContext } from "../../../../types/evaluator";
 import type { Memory } from "../../../../types/memory";

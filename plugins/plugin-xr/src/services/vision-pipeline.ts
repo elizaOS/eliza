@@ -46,7 +46,12 @@ export class VisionPipeline {
       });
       return typeof description === "string" ? description : null;
     } catch (err) {
-      console.error("[plugin-xr] vision error:", err);
+      // error-policy:J7 diagnostics-must-not-kill-the-loop — a single frame's
+      // IMAGE_DESCRIPTION failure must not tear down the XR vision loop, but a
+      // systemic model misconfiguration must not stay invisible (it was only
+      // console.error before). Report it so it reaches the error surface, then
+      // degrade this one frame to "no description".
+      runtime.reportError("VisionPipeline.describeFrame", err, { connectionId });
       return null;
     }
   }

@@ -1,21 +1,17 @@
 /**
- * `trigger.kind: "after_task"` — chain-after-terminal contract.
+ * `trigger.kind: "after_task"` chain-after-terminal contract.
  *
- * CONTRACT CHANGE (#10721/#10723 trigger-realness wave): the previous
- * revision of this file pinned that the runner does NOT auto-fire `after_task`
- * children, making the trigger kind contract larp — schema-accepted, never
- * fired by anything. The trigger is live in the SCHEDULED_TASKS action (users
- * create chains from chat without editing the parent) and is NOT redundant
- * with `pipeline.on*`: pipeline refs are declared on the PARENT and only
- * propagate completed/skipped/failed, while `after_task` is declared on the
- * CHILD and covers all five terminal outcomes. The runner now fires matching
- * children on the parent's terminal transition (`settleTerminal` /
- * `fireAfterTaskChildren` in runner.ts), race-safe via the store's atomic
- * fire claim.
+ * An `after_task` trigger is declared on the CHILD task and fires it when the
+ * referenced parent reaches a terminal outcome — covering all five terminal
+ * states, unlike `pipeline.on*` refs (declared on the PARENT, propagating only
+ * completed/skipped/failed). The runner fires matching children on the parent's
+ * terminal transition (`settleTerminal` / `fireAfterTaskChildren` in runner.ts),
+ * race-safe via the store's atomic fire claim.
  *
- * These tests lock the new contract: structural acceptance, auto-fire on the
- * matching outcome, no fire on mismatched outcome/parent, and the documented
- * global-pause exception (pause suppresses chaining).
+ * These tests lock the contract: structural acceptance, auto-fire on the
+ * matching outcome, no fire on mismatched outcome/parent, and the global-pause
+ * exception (pause suppresses chaining). Deterministic in-memory runner, no live
+ * model.
  */
 
 import { describe, expect, it } from "vitest";

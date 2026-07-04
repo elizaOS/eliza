@@ -2,8 +2,8 @@
 /**
  * Gate runner for the Feed browser e2e lanes (tools/e2e, tools/chroma).
  *
- * The old inline `sh -c ... exit 0` gate made a skipped lane
- * indistinguishable from a green run. This runner makes skipping VISIBLE:
+ * Inline `sh -c ... exit 0` gates can make a skipped lane indistinguishable
+ * from a green run. This runner makes skipping VISIBLE:
  *
  * - RUN_FEED_E2E=1  → run the wrapped Playwright command, propagate its exit.
  * - otherwise       → print a loud skip banner + a machine-readable

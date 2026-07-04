@@ -1,3 +1,10 @@
+/**
+ * Unit coverage for the DELIVER_PLUGIN_CONFIG_FORM action: it dispatches one
+ * sensitive-request per missing required key through the
+ * SensitiveRequestDispatchRegistry, and fails when no delivery adapter is
+ * registered for the target. Uses a deterministic stub runtime, client, and
+ * dispatch registry — no live model or database.
+ */
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { deliverPluginConfigFormAction } from "./deliver-plugin-config-form";

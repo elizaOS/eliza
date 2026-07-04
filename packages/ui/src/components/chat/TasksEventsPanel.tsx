@@ -155,6 +155,7 @@ export function TasksEventsPanel({
   );
 
   // Build the candidate list for the edit panel from the live registry.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: registryVersion re-runs resolveWidgetsForSlot when the module-level widget registry mutates outside React
   const editCandidates = useMemo<readonly WidgetVisibilityCandidate[]>(() => {
     const resolved = resolveWidgetsForSlot("chat-sidebar", plugins ?? []);
     const widgetCandidates: WidgetVisibilityCandidate[] = resolved.map(

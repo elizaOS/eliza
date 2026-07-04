@@ -1,3 +1,9 @@
+/**
+ * WORK_THREAD action — lifecycle control for long-running assistant work
+ * threads (start, append operations, status, complete). Threads are persisted
+ * through the WorkThreadStore and can carry a ScheduledTaskTrigger so the
+ * runner resumes them; a semaphore serializes concurrent field-op mutations.
+ */
 import crypto from "node:crypto";
 import type {
   Action,

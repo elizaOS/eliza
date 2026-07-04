@@ -1,3 +1,8 @@
+/**
+ * Microbenchmark for the WORK_THREAD path: times the work-thread action, the
+ * `threadOps` response-handler field evaluator, and the work-thread store
+ * against a mocked runtime, reporting per-operation latency percentiles.
+ */
 import type {
   ActionResult,
   HandlerOptions,

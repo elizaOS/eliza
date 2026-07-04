@@ -1,3 +1,10 @@
+/**
+ * Browser-companion domain for LifeOps: projects the browser-bridge companion
+ * (pairing, tab summaries, page context, session lifecycle) from
+ * `@elizaos/plugin-browser` into the assistant's connector DTOs. The transport
+ * and CDP implementation live in the browser plugin; this layer owns only the
+ * owner-facing projection and session state.
+ */
 import crypto from "node:crypto";
 import {
   authenticateBrowserBridgeCompanionCredential,

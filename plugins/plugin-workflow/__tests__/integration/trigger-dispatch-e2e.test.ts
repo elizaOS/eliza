@@ -14,16 +14,19 @@
  * same lightweight harness the existing workflow-task-worker.test.ts uses. The
  * subject under test (workflow engine, dispatch, trigger worker, TaskService)
  * is all real code with real persistence.
+ *
+ * Cases:
+ *   (a) scheduled workflow fires through the real tick → execution + run record
+ *   (b) headless WORKFLOW_DISPATCH service call runs a workflow by id
+ *   (c) one core clock services a workflow trigger + a LifeOps task on one tick
+ *   (d) disabled trigger skips; re-enabled runs; maxRuns=1 self-deletes
+ *   (e) overlap-blocking: an in-flight fire makes the next tick skip the same
+ *       trigger task, so exactly one execution lands (#12362 WI-6/WI-7)
+ *   (f) the same core clock drives the REAL ScheduledTask spine (not a
+ *       stand-in) to a `fired` state-log row — the LifeOps consumer's real
+ *       domain artifact (#12362 WI-6/WI-7)
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
-import { stringToUuid } from "@elizaos/core";
-import { TaskService } from "../../../../packages/core/src/services/task.ts";
-import { drizzle } from "drizzle-orm/pglite";
 import {
   afterEach,
   beforeEach,
@@ -32,7 +35,13 @@ import {
   setDefaultTimeout,
   test,
 } from "bun:test";
-
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { drizzle } from "drizzle-orm/pglite";
 import {
   executeTriggerTask,
   readTriggerRuns,
@@ -43,6 +52,40 @@ import {
   buildTriggerMetadata,
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import type { NormalizedTriggerDraft } from "../../../../packages/agent/src/triggers/types.ts";
+import { TaskService } from "../../../../packages/core/src/services/task.ts";
+// The "one clock, two consumers" architecture (root AGENTS.md): the core
+// TaskService that fires workflow triggers is the SAME clock that drives the
+// LifeOps ScheduledTask spine. Case (f) proves the second consumer produces a
+// REAL domain artifact by driving the actual scheduling runner + in-memory
+// store. The spine imports `@elizaos/core` for types only (erased at runtime),
+// so pulling it in here does not create a second runtime copy of core.
+import {
+  createCompletionCheckRegistry,
+  registerBuiltInCompletionChecks,
+} from "../../../plugin-scheduling/src/scheduled-task/completion-check-registry.ts";
+import {
+  createAnchorRegistry,
+  createConsolidationRegistry,
+} from "../../../plugin-scheduling/src/scheduled-task/consolidation-policy.ts";
+import {
+  createEscalationLadderRegistry,
+  registerDefaultEscalationLadders,
+} from "../../../plugin-scheduling/src/scheduled-task/escalation.ts";
+import {
+  createTaskGateRegistry,
+  registerBuiltInGates,
+} from "../../../plugin-scheduling/src/scheduled-task/gate-registry.ts";
+import {
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "../../../plugin-scheduling/src/scheduled-task/runner.ts";
+import {
+  createInMemoryScheduledTaskLogStore,
+  type ScheduledTaskLogStore,
+} from "../../../plugin-scheduling/src/scheduled-task/state-log.ts";
+import type { GlobalPauseView } from "../../../plugin-scheduling/src/scheduled-task/types.ts";
 import * as dbSchema from "../../src/db/schema";
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
@@ -61,6 +104,9 @@ const AGENT_ID = stringToUuid("wi6-trigger-dispatch-agent");
 interface Harness {
   runtime: IAgentRuntime;
   tasks: Map<UUID, Task>;
+  /** The runtime's real service registry, exposed so a test can swap in a
+   * gated WORKFLOW_DISPATCH wrapper for the overlap-blocking proof (case e). */
+  services: Map<string, unknown[]>;
   workflow: EmbeddedWorkflowService;
   taskService: TaskService;
   close: () => Promise<void>;
@@ -138,6 +184,7 @@ async function makeHarness(): Promise<Harness> {
   return {
     runtime,
     tasks,
+    services,
     workflow,
     taskService,
     async close() {
@@ -189,6 +236,70 @@ function makeTaskDueNow(task: Task): void {
   meta.updatedAt = 0;
   const trigger = meta.trigger as Record<string, unknown> | undefined;
   if (trigger) trigger.nextRunAtMs = 0;
+}
+
+/** Poll a predicate on the microtask queue until it holds or the deadline
+ * passes. Used to await an un-awaited in-flight tick reaching a known point
+ * (a gated dispatch) without racing on a fixed sleep. */
+async function waitUntil(
+  predicate: () => boolean,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error("waitUntil: timed out");
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+}
+
+interface RealScheduledTaskSpine {
+  runner: ScheduledTaskRunnerHandle;
+  logStore: ScheduledTaskLogStore;
+  agentId: string;
+}
+
+/**
+ * Build the REAL LifeOps ScheduledTask spine — the same runner, in-memory
+ * store, gate/completion/ladder/anchor registries and state-log the scheduling
+ * plugin wires in production (`createInMemoryScheduledTaskStore` is the real
+ * adapter `runner-service.ts` uses when no DB adapter is present). Nothing here
+ * is a stand-in: firing a task writes a real `fired` state-log row.
+ */
+function makeRealScheduledTaskSpine(agentId: string): RealScheduledTaskSpine {
+  const gates = createTaskGateRegistry();
+  registerBuiltInGates(gates);
+  const completionChecks = createCompletionCheckRegistry();
+  registerBuiltInCompletionChecks(completionChecks);
+  const ladders = createEscalationLadderRegistry();
+  registerDefaultEscalationLadders(ladders);
+  const logStore = createInMemoryScheduledTaskLogStore();
+  let taskSeq = 0;
+  const runner = createScheduledTaskRunner({
+    agentId,
+    store: createInMemoryScheduledTaskStore(),
+    logStore,
+    gates,
+    completionChecks,
+    ladders,
+    anchors: createAnchorRegistry(),
+    consolidation: createConsolidationRegistry(),
+    ownerFacts: () => ({
+      timezone: "UTC",
+      morningWindow: { start: "07:00", end: "10:00" },
+    }),
+    globalPause: {
+      current: async () => ({ active: false }),
+    } as GlobalPauseView,
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
+    newTaskId: () => {
+      taskSeq += 1;
+      return `spine-task-${taskSeq}`;
+    },
+    now: () => new Date(),
+  });
+  return { runner, logStore, agentId };
 }
 
 describe("WI-6: workflow schedulable via the task/cron layer (real tick)", () => {
@@ -340,5 +451,125 @@ describe("WI-6: workflow schedulable via the task/cron layer (real tick)", () =>
     // maxRuns=1 reached → the task is deleted so it never fires again.
     expect(ran.taskDeleted).toBe(true);
     expect(await h.runtime.getTask(taskId)).toBeNull();
+  });
+
+  test("(e) overlapping fire is blocked: while one workflow dispatch is in-flight, the next tick skips the same trigger task", async () => {
+    const workflowId = await createScheduledWorkflow(h.workflow, "WI6 overlap", 60_000);
+    await h.workflow.activateWorkflow(workflowId);
+    const triggerTask = [...h.tasks.values()].find(
+      (t) => t.name === TRIGGER_TASK_NAME,
+    );
+    expect(triggerTask).toBeDefined();
+    if (triggerTask) makeTaskDueNow(triggerTask);
+
+    // Gate the REAL dispatch so the first fire stays in-flight across two ticks.
+    // The wrapper still calls the real WORKFLOW_DISPATCH underneath — only the
+    // completion timing is controlled, so the workflow really executes once.
+    const realDispatch = h.runtime.getService(WORKFLOW_DISPATCH_SERVICE_TYPE) as {
+      execute: (
+        id: string,
+        payload?: Record<string, unknown>,
+        options?: { idempotencyKey?: string },
+      ) => Promise<{ ok: boolean; executionId?: string; error?: string }>;
+    };
+    let dispatchCalls = 0;
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseGate = resolve;
+    });
+    h.services.set(WORKFLOW_DISPATCH_SERVICE_TYPE, [
+      {
+        execute: async (
+          id: string,
+          payload?: Record<string, unknown>,
+          options?: { idempotencyKey?: string },
+        ) => {
+          dispatchCalls += 1;
+          await gate;
+          return realDispatch.execute(id, payload, options);
+        },
+      },
+    ]);
+
+    // Tick 1: do NOT await — it enters the gated dispatch and parks there with
+    // the trigger task marked as executing on the core TaskService.
+    const tick1 = h.taskService.runDueTasks();
+    await waitUntil(() => dispatchCalls === 1);
+
+    // Tick 2: the task is still due (its metadata is only updated after the
+    // fire completes) but is in the executing set, so the blocking guard
+    // (`task.metadata.blocking !== false`) skips it — no second dispatch.
+    await h.taskService.runDueTasks();
+    expect(dispatchCalls).toBe(1);
+
+    // Release the in-flight fire and let tick 1 finish.
+    releaseGate();
+    await tick1;
+
+    // Exactly one execution landed despite two ticks over the due task.
+    const { data: executions } = await h.workflow.listExecutions({ workflowId });
+    expect(executions.length).toBe(1);
+  });
+
+  test("(f) same core clock fires a workflow trigger AND drives the REAL ScheduledTask spine to a fired state-log row", async () => {
+    // Consumer 1: a real scheduled-workflow TRIGGER_DISPATCH task.
+    const workflowId = await createScheduledWorkflow(
+      h.workflow,
+      "WI6 spine coexist",
+      60_000,
+    );
+    await h.workflow.activateWorkflow(workflowId);
+    const triggerTask = [...h.tasks.values()].find(
+      (t) => t.name === TRIGGER_TASK_NAME,
+    );
+    expect(triggerTask).toBeDefined();
+    if (triggerTask) makeTaskDueNow(triggerTask);
+
+    // Consumer 2: the REAL LifeOps ScheduledTask spine, seeded with a reminder.
+    // A LIFEOPS_SCHEDULER worker (registered under the real name/tags) fires it
+    // through the real runner when the ONE core clock reaches it — producing a
+    // real `fired` state-log row, not a counter.
+    const spine = makeRealScheduledTaskSpine(String(AGENT_ID));
+    const scheduled = await spine.runner.schedule({
+      kind: "reminder",
+      promptInstructions: "take a break",
+      trigger: { kind: "manual" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: "wi6",
+      ownerVisible: true,
+    });
+    h.runtime.registerTaskWorker({
+      name: "LIFEOPS_SCHEDULER",
+      execute: async () => {
+        await spine.runner.fireWithResult(scheduled.taskId);
+        return undefined;
+      },
+    });
+    await h.runtime.createTask({
+      name: "LIFEOPS_SCHEDULER",
+      description: "LifeOps scheduler",
+      tags: ["queue", "repeat", "lifeops"],
+      metadata: { updatedAt: 0, updateInterval: 60_000 },
+    });
+
+    // A single tick of the ONE clock services both consumers.
+    await h.taskService.runDueTasks();
+
+    // Consumer 1 real artifact: a workflow execution row.
+    const { data: executions } = await h.workflow.listExecutions({ workflowId });
+    expect(executions.length).toBeGreaterThanOrEqual(1);
+
+    // Consumer 2 real artifact: the scheduled task transitioned to `fired`,
+    // with a real state-log row recording the transition.
+    const persisted = await spine.runner.list();
+    const firedTask = persisted.find((t) => t.taskId === scheduled.taskId);
+    expect(firedTask?.state.status).toBe("fired");
+    const log = await spine.logStore.list({
+      agentId: spine.agentId,
+      taskId: scheduled.taskId,
+    });
+    expect(log.map((entry) => entry.transition)).toContain("fired");
   });
 });

@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+/**
+ * Build script for @elizaos/plugin-commands: bundles the Node ESM entry via the
+ * shared `buildPlugin` helper, keeping `@elizaos/core` external.
+ */
 import { buildPlugin } from "../plugin-build";
 
 await buildPlugin({

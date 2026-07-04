@@ -1,3 +1,8 @@
+/**
+ * Google connector domain for LifeOps: start/disconnect the owner's Google
+ * connector and project its status, scopes, and grants from the core connector
+ * account manager into assistant DTOs. Shared root for the Gmail/Drive domains.
+ */
 import {
   type ConnectorAccount,
   getConnectorAccountManager,

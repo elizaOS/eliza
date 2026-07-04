@@ -1,3 +1,5 @@
+/** Vite build config for the `finances` view bundle (dist/views/bundle.js). */
+
 import path from "node:path";
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 

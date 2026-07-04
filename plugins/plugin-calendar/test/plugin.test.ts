@@ -1,3 +1,7 @@
+/**
+ * Smoke test asserting the calendar plugin registers its data service, the
+ * migration service, the schema, and the calendar view.
+ */
 import { describe, expect, it } from "vitest";
 import { CalendarService, calendarPlugin } from "../src/index.js";
 import { CalendarMigrationService } from "../src/service/migration.js";

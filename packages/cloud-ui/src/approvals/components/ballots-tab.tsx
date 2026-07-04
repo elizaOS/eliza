@@ -5,8 +5,6 @@
  * session, so the owner can only vote with a real scoped token they were issued.
  */
 
-import { CheckCircle2, Loader2, Vote } from "lucide-react";
-import { useCallback, useState } from "react";
 import {
   Alert,
   AlertDescription,
@@ -15,6 +13,8 @@ import {
   Input,
   Textarea,
 } from "@elizaos/ui/components/primitives";
+import { CheckCircle2, Loader2, Vote } from "lucide-react";
+import { useCallback, useState } from "react";
 import {
   type Ballot,
   formatApprovalTimestamp,

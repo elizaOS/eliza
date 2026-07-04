@@ -1,3 +1,9 @@
+/**
+ * First-pass LLM classifier for owner "life" requests: maps a natural-language
+ * message onto one of the enumerated life operations (create/update/complete/
+ * delete/query/…) and flags any missing fields the caller must ask about.
+ * The downstream extractors in this directory then produce the full plan.
+ */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   ModelType,

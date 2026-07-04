@@ -89,10 +89,10 @@ describe("findCodingDelegationActionName", () => {
 describe("hasActionTags", () => {
 	it("matches declared tags case-insensitively", () => {
 		expect(
-			hasActionTags(
-				{ tags: ["Domain:Coding", "Capability:Delegate"] },
-				["domain:coding", "capability:delegate"],
-			),
+			hasActionTags({ tags: ["Domain:Coding", "Capability:Delegate"] }, [
+				"domain:coding",
+				"capability:delegate",
+			]),
 		).toBe(true);
 	});
 });

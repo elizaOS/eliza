@@ -867,7 +867,7 @@ def _validate_mtp_disabled_metadata(
 
 
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
-    """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
+    """Enforce the §2 layout and return the files selected for publishing.
 
     A missing required subdir/file is publish-blocking. ``vision/`` and
     ``asr/`` are tier-conditional but, when present, must contain at
@@ -1676,7 +1676,21 @@ def _verify_dir(ctx: PublishContext) -> Path:
     return ctx.training_repo_root.parent / "inference" / "verify"
 
 
-def _read_recorded_report(path: Path, expected_backend: str) -> KernelVerification:
+def _is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value)
+    )
+
+
+def _read_recorded_report(
+    path: Path,
+    expected_backend: str,
+    *,
+    expected_at_commit: str,
+    model_sha256s: set[str],
+) -> KernelVerification:
     if not path.is_file():
         raise OrchestratorError(
             f"verification report not found: {path}",
@@ -1702,6 +1716,29 @@ def _read_recorded_report(path: Path, expected_backend: str) -> KernelVerificati
     if not at_commit:
         raise OrchestratorError(
             f"verification report at {path} missing atCommit",
+            EXIT_KERNEL_VERIFY_FAIL,
+        )
+    if at_commit != expected_at_commit:
+        raise OrchestratorError(
+            f"verification report at {path} was recorded at commit "
+            f"{at_commit!r}, expected {expected_at_commit!r}",
+            EXIT_KERNEL_VERIFY_FAIL,
+        )
+    model_sha = (
+        data.get("modelSha256")
+        or data.get("ggufSha256")
+        or data.get("artifactSha256")
+    )
+    if not _is_sha256(model_sha):
+        raise OrchestratorError(
+            f"verification report at {path} missing modelSha256/ggufSha256/"
+            "artifactSha256",
+            EXIT_KERNEL_VERIFY_FAIL,
+        )
+    if model_sha not in model_sha256s:
+        raise OrchestratorError(
+            f"verification report at {path} model sha256 {model_sha!r} does "
+            "not match a shipped text GGUF",
             EXIT_KERNEL_VERIFY_FAIL,
         )
     return KernelVerification(status="pass", at_commit=at_commit, report=report)
@@ -1750,6 +1787,7 @@ def _git_short_sha(repo_root: Path) -> str:
 
 def run_kernel_verification(
     ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
 ) -> dict[str, KernelVerification]:
     """Produce a backend → verification map per ``ELIZA_1_BACKENDS``.
 
@@ -1772,6 +1810,7 @@ def run_kernel_verification(
 
     supported = set(SUPPORTED_BACKENDS_BY_TIER[ctx.tier])
     sha = _git_short_sha(ctx.training_repo_root)
+    model_sha256s = _text_model_sha256s(ctx, layout)
 
     out: dict[str, KernelVerification] = {}
 
@@ -1786,7 +1825,12 @@ def run_kernel_verification(
     # Vulkan — recorded report from the bundle if tier includes it.
     if "vulkan" in supported:
         recorded = ctx.bundle_dir / "evals" / "vulkan_verify.json"
-        out["vulkan"] = _read_recorded_report(recorded, "vulkan")
+        out["vulkan"] = _read_recorded_report(
+            recorded,
+            "vulkan",
+            expected_at_commit=sha,
+            model_sha256s=model_sha256s,
+        )
 
     # Metal — hardware-only.
     if "metal" in supported:
@@ -1797,17 +1841,32 @@ def run_kernel_verification(
                 "on a verified host and pass --metal-verification PATH.",
                 EXIT_KERNEL_VERIFY_FAIL,
             )
-        out["metal"] = _read_recorded_report(ctx.metal_verification, "metal")
+        out["metal"] = _read_recorded_report(
+            ctx.metal_verification,
+            "metal",
+            expected_at_commit=sha,
+            model_sha256s=model_sha256s,
+        )
 
     # CUDA — recorded report.
     if "cuda" in supported:
         recorded = ctx.bundle_dir / "evals" / "cuda_verify.json"
-        out["cuda"] = _read_recorded_report(recorded, "cuda")
+        out["cuda"] = _read_recorded_report(
+            recorded,
+            "cuda",
+            expected_at_commit=sha,
+            model_sha256s=model_sha256s,
+        )
 
     # ROCm — recorded report.
     if "rocm" in supported:
         recorded = ctx.bundle_dir / "evals" / "rocm_verify.json"
-        out["rocm"] = _read_recorded_report(recorded, "rocm")
+        out["rocm"] = _read_recorded_report(
+            recorded,
+            "rocm",
+            expected_at_commit=sha,
+            model_sha256s=model_sha256s,
+        )
 
     # Backends not supported by this tier are recorded as skipped, with
     # a stable report name. The manifest validator only enforces "pass"
@@ -2755,7 +2814,7 @@ def run(ctx: PublishContext) -> int:
         release_evidence = validate_release_evidence(ctx, layout)
 
         log.info("[stage 3/7] kernel verification for tier %s", ctx.tier)
-        backends = run_kernel_verification(ctx)
+        backends = run_kernel_verification(ctx, layout)
         for b in SUPPORTED_BACKENDS_BY_TIER[ctx.tier]:
             log.info("  %s: %s (%s)", b, backends[b].status, backends[b].report)
 

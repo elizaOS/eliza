@@ -162,9 +162,9 @@ export class VoiceObserver {
 
     // Step 4: a self-affiliation claim ("I'm John from the accounting team",
     // "I work at Acme") binds the SPEAKING entity to an organization entity
-    // via `works_at` on the same turn (issue #10726 — the voice path
-    // previously dropped affiliations; `works_at` existed only in the text
-    // pipeline). The organization is match-or-created through the same merge
+    // via `works_at` on the same turn (issue #10726 — the voice path binds
+    // affiliations here for parity with the text pipeline, which also emits
+    // `works_at`). The organization is match-or-created through the same merge
     // engine with a deterministic voice-org handle so repeated mentions of
     // the same org fold into one entity.
     let affiliationOrgEntityId: string | null = null;

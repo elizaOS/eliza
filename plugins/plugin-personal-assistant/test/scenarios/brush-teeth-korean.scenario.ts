@@ -1,3 +1,6 @@
+/**
+ * Live-model smoke scenario: polite Korean phrasing yields a daily 8am/9pm brushing habit save.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

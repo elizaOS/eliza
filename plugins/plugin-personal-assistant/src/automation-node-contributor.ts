@@ -1,3 +1,8 @@
+/**
+ * Registers LifeOps' automation-node contributor: exposes the assistant's
+ * connectors and capabilities (Google, Discord, Signal, Telegram, permissions)
+ * as automation nodes the owner can wire into workflows in the automation UI.
+ */
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
@@ -31,6 +36,8 @@ async function resolveGoogleStatus(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // error-policy:J4 null renders the automation node as "not connected /
+    // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
@@ -46,6 +53,8 @@ async function resolveTelegramStatus(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // error-policy:J4 null renders the automation node as "not connected /
+    // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
@@ -61,6 +70,8 @@ async function resolveSignalStatus(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // error-policy:J4 null renders the automation node as "not connected /
+    // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
@@ -76,6 +87,8 @@ async function resolveDiscordStatus(
         error instanceof Error ? error.message : String(error)
       }`,
     );
+    // error-policy:J4 null renders the automation node as "not connected /
+    // requires setup" — a designed, distinguishable unavailable state.
     return null;
   }
 }
@@ -89,7 +102,7 @@ function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
   );
 }
 
-async function resolveNativeCalendarPermission(
+export async function resolveNativeCalendarPermission(
   runtime: AutomationNodeContributorContext["runtime"],
 ): Promise<PermissionState | null> {
   const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
@@ -100,13 +113,23 @@ async function resolveNativeCalendarPermission(
     return await service.check("calendar");
   } catch (error) {
     logger.warn(
-      `[lifeops] Failed to resolve native Calendar permission: ${
+      `[lifeops] Live native Calendar permission check failed; falling back to cached value: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
     try {
+      // error-policy:J4 cached permission state while the live check is
+      // unavailable — the cache is a legitimate degraded read, not a fabricated
+      // default.
       return service.get("calendar");
-    } catch {
+    } catch (getError) {
+      // Both live check and cached read failed: the permission state is truly
+      // unknown. Surface it (reportError → ERROR_REPORTED) rather than silently
+      // collapsing "unknown" into the same null a missing permission system
+      // returns; callers treat null as "unknown" and render it as such.
+      runtime.reportError("PersonalAssistant.calendarPermission", getError, {
+        via: "check+get",
+      });
       return null;
     }
   }

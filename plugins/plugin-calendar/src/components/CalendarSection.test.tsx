@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+/**
+ * Tests for the CalendarSection week/day/month grid: event time-positioning and
+ * category-colour rendering in jsdom against deterministic fixture events (no
+ * live feed).
+ */
+
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   cleanup,

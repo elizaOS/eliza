@@ -1,3 +1,9 @@
+/**
+ * Unit coverage for the shared action helpers — message-text extraction,
+ * meeting-URL discovery (including adversarial inputs), option-vs-text
+ * resolution, reply callbacks, and service lookup. Deterministic; the runtime
+ * and MeetingService are stubbed.
+ */
 import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import type { MeetingSession } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";

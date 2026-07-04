@@ -1,3 +1,11 @@
+/**
+ * Exercises `checkSecretHandler`, the SECRETS umbrella's `action=check` path,
+ * which reports per-key presence and a missing list without ever returning
+ * values, and fails when no keys are supplied. The runtime is a deterministic
+ * stub whose `SECRETS` service returns canned `exists()` answers — no live
+ * model or database.
+ */
+
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
 import { checkSecretHandler } from "./check-secret";

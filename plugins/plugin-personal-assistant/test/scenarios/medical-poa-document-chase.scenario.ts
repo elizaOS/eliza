@@ -6,15 +6,7 @@ import {
 } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only medical-POA scenario (#9310): the old
- * file only asserted the reply echoed prompt keywords ("POA", "portal",
- * "sibling", "notary" — all present in the user's own turn text).
- *
- * This version seeds a REAL pending approval on the live queue for
- * distributing the POA packet, then exercises the privacy HOLD: the owner
- * refuses to release it until diagnosis details are stripped. The asserted
- * outcome is the queue state — the row lands in "rejected" and no gated side
- * effect (executing/done) ever runs, and no external send is dispatched.
+ * Live-model scenario (live-only lane): Medical POA packet is held: rejected approval produces no distribution.
  */
 export default scenario({
   lane: "live-only",

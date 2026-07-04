@@ -1,3 +1,8 @@
+/**
+ * Covers the activity-profile provider's app-usage context: formatting the current
+ * foreground app and today's top-app dwell, injecting ambient usage for owner turns, and
+ * withholding it for non-owner turns. Deterministic, mocked activity repo.
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

@@ -1,3 +1,8 @@
+/**
+ * Schedule-observation state: merges per-device schedule observations (from this
+ * device and Cloud-synced peers) into the owner's canonical merged schedule
+ * state, the substrate the circadian/schedule-insight computations read.
+ */
 import crypto from "node:crypto";
 import type {
   LifeOpsScheduleDeviceKind,

@@ -1,3 +1,11 @@
+/**
+ * Unit tests for reply-body parsing in `_shared.ts`. `parseDraftReplyParams`
+ * accepts common body aliases and rejects placeholder text (returning a
+ * `body is required` error), while `parseRespondToMessageParams` tolerates the
+ * same placeholder by leaving `body` undefined for MESSAGE to synthesize later.
+ * Pure and deterministic — no runtime.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import {

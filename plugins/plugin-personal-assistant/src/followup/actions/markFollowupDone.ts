@@ -1,3 +1,8 @@
+/**
+ * MARK_FOLLOWUP_DONE action — records that the owner has followed up with a
+ * contact, updating that contact's `lastContactedAt` through the
+ * RelationshipsService so it drops out of the overdue digest.
+ */
 import type {
   Action,
   ActionExample,

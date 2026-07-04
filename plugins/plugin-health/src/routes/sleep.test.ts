@@ -1,3 +1,7 @@
+/**
+ * Unit test for `createHealthSleepRouteHandler` — drives the sleep history,
+ * regularity, and baseline routes against a stub context with recorded responses.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { createHealthSleepRouteHandler } from "./sleep.js";
 

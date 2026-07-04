@@ -1,3 +1,8 @@
+/**
+ * React hook that loads the LifeOps host-capabilities status (which connectors,
+ * native bridges, and platform features are available on this device) and
+ * exposes loading/error/refresh state for capability-gated UI.
+ */
 import type { LifeOpsCapabilitiesStatus } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";

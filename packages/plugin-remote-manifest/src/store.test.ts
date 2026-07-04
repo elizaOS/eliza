@@ -1,3 +1,7 @@
+/**
+ * Install-store tests exercise registry IO, path containment, bootstrap writes,
+ * and source-folder installation against real temporary directories.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   mkdirSync,

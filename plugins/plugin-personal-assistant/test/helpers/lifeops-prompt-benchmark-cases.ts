@@ -1,3 +1,7 @@
+/**
+ * Loads LifeOps prompt-benchmark scenario cases from disk and normalizes their turn and
+ * final-check shapes for the benchmark runner.
+ */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";

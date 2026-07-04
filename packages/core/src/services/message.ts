@@ -264,6 +264,7 @@ import {
 	extractGenerateTextContentText,
 	getV5ModelText,
 } from "./message/generate-text-result";
+import { resolveEffectiveMuteState } from "./message/mute-state";
 import type { OptimizedPromptTask } from "./optimized-prompt";
 import {
 	type OptimizedPromptRuntimeLike,
@@ -1456,6 +1457,17 @@ export {
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
+
+export {
+	type EffectiveMuteState,
+	muteExpiryDue,
+	resolveEffectiveMuteState,
+	resolveMutedTargetFlags,
+	roomMuteActive,
+	setRoomMuteUntil,
+	setWorldMuteState,
+	worldMuteActive,
+} from "./message/mute-state";
 
 export type V5MessageRuntimeStage1Result =
 	| {
@@ -8805,8 +8817,13 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
-		// Check if room is muted
-		const agentName = runtime.character.name ?? "agent";
+		// Effective mute check — room participant state, server-wide world mute,
+		// and the timed-mute due-check — independent of any addressing logic. A
+		// muted room drops even a direct @mention: on mention-gated deployments
+		// (strict mode) every turn reaching this point IS a mention, so a
+		// mention bypass here made mute a complete no-op. Unmuting a muted room
+		// is done from another room (or DM) via the ROOM action's cross-room
+		// targeting.
 		const mentionContext = message.content.mentionContext;
 		const explicitlyAddressesAgent =
 			mentionContext?.isMention === true ||
@@ -8815,14 +8832,18 @@ export class DefaultMessageService implements IMessageService {
 				runtime.character.name,
 				runtime.character.username,
 			]);
-		if (
-			agentUserState === "MUTED" &&
-			message.content.text &&
-			!explicitlyAddressesAgent &&
-			!message.content.text.toLowerCase().includes(agentName.toLowerCase())
-		) {
+		const muteState = await resolveEffectiveMuteState(runtime, {
+			roomIds: [message.roomId],
+			primaryParticipantState: agentUserState,
+			...(message.worldId ? { worldId: message.worldId } : {}),
+		});
+		if (muteState.muted) {
 			runtime.logger.debug(
-				{ src: "service:message", roomId: message.roomId },
+				{
+					src: "service:message",
+					roomId: message.roomId,
+					scope: muteState.scope,
+				},
 				"Ignoring muted room",
 			);
 			await this.emitRunEnded(runtime, runId, message, startTime, "muted");

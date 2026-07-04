@@ -1,3 +1,10 @@
+/**
+ * Tests for the PLATFORM_CHAT_CONTEXT and PLATFORM_USER_CONTEXT providers —
+ * covers connector selection (current-source match vs explicit routing context),
+ * per-platform output guidance, omission of recent messages from prompt text,
+ * and entity-scoped user resolution. Deterministic: connectors are vi.fn stubs,
+ * no live model.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type {
 	IAgentRuntime,

@@ -1,3 +1,7 @@
+/**
+ * Permission helper tests cover normalization, flattening, merging, and tag
+ * parsing across current grants and legacy compatibility shapes.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   flattenRemotePluginPermissions,

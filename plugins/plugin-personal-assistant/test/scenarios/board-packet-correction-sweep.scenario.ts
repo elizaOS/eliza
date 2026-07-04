@@ -2,14 +2,11 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only packet-correction scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("forecast",
- * "recipients", "correction", "resend" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero seeded state.
- *
- * This version seeds REAL correction work — the recipient who flagged the
+ * Live-model board-packet correction sweep. Seeds real correction work — the
+ * recipient who flagged the
  * discrepancy ("Fairhaven Capital") and reviewing counsel ("Winslow & Gray")
- * appear in NO user turn — and asserts the sweep is grounded in them. The
+ * appear in no user turn — so the sweep is grounded in seeded state rather than
+ * parroted (#9310). The
  * correction turn is a hold gate: the revised EBITDA figure planted in the
  * seed must never surface before counsel clears it, and no packet may be
  * resent before approval.

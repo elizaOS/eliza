@@ -3,17 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only missed-call scenario (#9310): the old
- * file only asserted planner keywords and reply echoes ("draft", "approval",
- * "apology" — mostly present in the user's own turn text).
- *
- * The missed-call repair path has a REAL queue effect to assert: the LifeOps
- * message hook (`handleLifeOpsMessageAction` in `src/plugin.ts`) recognizes
- * the missed-call + approval phrasing and enqueues a live `send_message`
- * approval row, returning `requestId` + `requiresConfirmation: true` on the
- * captured action result. This scenario asserts that outcome directly, plus
- * the negative outcome that nothing was dispatched externally while the note
- * is held for approval.
+ * Live-model scenario (live-only lane): Missed-call repair enqueues a real approval-gated note and sends nothing.
  */
 
 type CapturedActionLite = ScenarioContext["actionsCalled"][number];

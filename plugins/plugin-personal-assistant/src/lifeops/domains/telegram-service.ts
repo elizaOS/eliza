@@ -1,3 +1,8 @@
+/**
+ * Telegram domain for LifeOps: searches and sends the owner's Telegram messages
+ * through the runtime-service delegates and projects connector status into
+ * assistant DTOs. Transport is owned by the Telegram connector plugin.
+ */
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
   type LifeOpsConnectorDegradation,

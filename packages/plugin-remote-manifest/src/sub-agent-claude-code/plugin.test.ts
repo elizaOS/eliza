@@ -1,3 +1,7 @@
+/**
+ * Claude Code plugin tests lock the remote sub-agent descriptor, permissions,
+ * and service registration exposed to the plugin loader.
+ */
 import { describe, expect, it } from "bun:test";
 import { plugin } from "./plugin.js";
 import { ClaudeCodeSubAgentService } from "./sub-agent-service.js";

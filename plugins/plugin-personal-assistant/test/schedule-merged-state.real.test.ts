@@ -1,3 +1,8 @@
+/**
+ * Real-runtime coverage of merged schedule state: persisting a local merged state from
+ * telemetry and preferring a fresh cloud merged state in overview and reminder reads.
+ * DB-backed runtime.
+ */
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";

@@ -1,3 +1,8 @@
+/**
+ * Miscellaneous LifeOpsService helpers: reminder-plan normalization, snooze
+ * computation, metadata merging, reminder-channel/urgency checks, and other
+ * small pure utilities shared across the domains.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,

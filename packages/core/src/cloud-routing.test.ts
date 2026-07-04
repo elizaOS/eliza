@@ -1,3 +1,8 @@
+/**
+ * Covers `isCloudConnected` and `resolveCloudRoute` — the gate and resolver
+ * behind the three inference deployment modes documented below — over a
+ * synthetic `getSetting` map rather than a live runtime.
+ */
 import { describe, expect, it } from "vitest";
 
 import {

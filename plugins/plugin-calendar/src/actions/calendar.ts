@@ -8,20 +8,11 @@ import type {
 } from "@elizaos/core";
 
 /**
- * CALENDAR owner-facing umbrella action — STUB.
- *
- * MIGRATION STATUS: STUB.
- * TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts)
- *
- * The full implementation (read feed, create/update/delete events, find slots,
- * travel buffers, conflict-on-create) will be ported here in a follow-up pass.
- * For now this file exists so the plugin registers the action contract; every
- * sub-op returns a `scaffold_stub` failure that points at the lifeops source.
- *
- * The existing in-repo `createCalendarActionRunner` (in `./calendar-handler.ts`)
- * remains the lower-level runner used by `plugin-lifeops` while migration is
- * still in flight — this new top-level action is the registration shell that
- * the calendar plugin will own end-to-end.
+ * Scaffold stub for the owner-facing `CALENDAR` umbrella action. Registers the
+ * action contract and its sub-op vocabulary (read feed, create/update/delete
+ * events, find slots, travel buffers, conflict-on-create); every sub-op returns
+ * a `scaffold_stub` failure. The lower-level `createCalendarActionRunner`
+ * (`./calendar-handler.ts`) is the runner `plugin-lifeops` drives today.
  */
 
 const CALENDAR_OPS = [
@@ -123,8 +114,6 @@ export const calendarAction: Action = {
     _message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts):
-    // port the per-op validation (owner gate, calendar grant presence, etc.).
     return true;
   },
   handler: async (
@@ -145,49 +134,41 @@ export const calendarAction: Action = {
 
     switch (op as CalendarOp) {
       case "read_feed":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts read_feed branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.read_feed is not migrated yet.",
         );
       case "create_event":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts create_event branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.create_event is not migrated yet.",
         );
       case "update_event":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts update_event branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.update_event is not migrated yet.",
         );
       case "delete_event":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts delete_event branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.delete_event is not migrated yet.",
         );
       case "find_slots":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts find_slots branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.find_slots is not migrated yet.",
         );
       case "next_event":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts next_event branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.next_event is not migrated yet.",
         );
       case "describe_event":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts describe_event branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.describe_event is not migrated yet.",
         );
       case "travel_buffer":
-        // TODO(migrate: plugins/plugin-lifeops/src/actions/calendar.ts travel_buffer branch)
         return failure(
           "scaffold_stub",
           "CALENDAR.travel_buffer is not migrated yet.",

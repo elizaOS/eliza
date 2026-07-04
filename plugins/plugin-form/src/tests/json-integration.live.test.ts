@@ -1,3 +1,8 @@
+/**
+ * Live end-to-end check that form-field extraction prompts round-trip through a
+ * real LLM (Anthropic, OpenAI, or Groq per available API key) and yield valid
+ * JSON. Self-skips when no key is present.
+ */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";

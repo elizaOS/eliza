@@ -2,14 +2,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only shipping-claim scenario (#9310): the old
- * file only asserted planner keywords plus reply echoes ("photos",
- * "appraisal", "insurance", "approval" — all present in the user's own turn
- * text).
- *
- * This version seeds REAL claim tasks — the shipper ("Foxglove Transit") and
- * the insurer ("Pinehurst Fine Art Insurance") appear in NO user turn — and
- * asserts the claim packet is grounded in them. The drafting turn is a hold
+ * Live-model shipping-damage insurance-claim flow. Seeds real claim tasks —
+ * the shipper ("Foxglove Transit") and the insurer ("Pinehurst Fine Art
+ * Insurance") appear in no user turn — so the claim packet is grounded in
+ * seeded state rather than parroted (#9310). The drafting turn is a hold
  * gate: the appraised value planted in the seed must stay out of the
  * shipper-facing draft, and nothing may be dispatched before approval.
  */

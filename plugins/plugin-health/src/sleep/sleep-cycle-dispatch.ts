@@ -1,3 +1,7 @@
+/**
+ * Derives the morning and night check-in scheduling windows (and their recap
+ * payloads) from a resolved sleep-cycle state and the owner's baseline/profile.
+ */
 import type {
   LifeOpsCircadianState,
   LifeOpsPersonalBaseline,

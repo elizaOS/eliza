@@ -2,18 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only embargo-briefing scenario (#9310): the
- * old file only asserted planner keywords plus reply echoes ("embargo",
- * "approved facts", "reporter", "quote" — all present in the user's own turn
- * text), so a prompt-parroting reply passed against zero embargo state.
- *
- * This version seeds REAL embargo state through the LifeOps definition API
- * (the Nightingale launch embargo, the comms owner Renata Vasquez, and an
- * embargoed ARR figure that must not reach the reporter) and asserts the
- * briefing prep is GROUNDED in it: the seeded tokens never appear in any
- * user turn, so an echo cannot pass, while the embargoed figure stays out of
- * the reporter note. Seeds are re-verified via definitionCountDelta and the
- * note stays staged via a no-external-send predicate.
+ * Live-model scenario (live-only lane): Embargo briefing grounds in seeded embargo state; embargoed figure stays withheld.
  */
 export default scenario({
   lane: "live-only",

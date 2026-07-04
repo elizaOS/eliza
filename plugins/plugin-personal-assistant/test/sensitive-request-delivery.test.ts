@@ -1,3 +1,8 @@
+/**
+ * Covers private delivery of sensitive requests: sending a DM payload while returning
+ * status-only public text, a typed DM-failure with public fallback text, and the production
+ * scheduled-task dispatcher path. Deterministic.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import type { ScheduledTask } from "@elizaos/plugin-scheduling";
 import {

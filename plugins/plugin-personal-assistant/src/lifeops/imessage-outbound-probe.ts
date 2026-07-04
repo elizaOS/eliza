@@ -1,3 +1,8 @@
+/**
+ * Outbound iMessage probe: records an activity signal when the owner sends an
+ * iMessage so the assistant can observe recent outbound activity. Honors an env
+ * switch to disable the native probe when the iMessage backend is unavailable.
+ */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {

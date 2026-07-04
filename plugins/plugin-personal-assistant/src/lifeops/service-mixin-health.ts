@@ -1,3 +1,8 @@
+/**
+ * Health service mixin: declares the LifeOps health service surface and the
+ * `withHealth` mixin that composes the health domain's connect/disconnect and
+ * summary methods onto the LifeOpsService base.
+ */
 import type {
   HealthBackend,
   HealthDailySummary,

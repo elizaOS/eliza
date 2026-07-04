@@ -1,3 +1,14 @@
+/**
+ * The calendar domain service — the single owner of calendar reads and
+ * mutations across the Google and Apple providers.
+ *
+ * Aggregates each connected account's feed, caches events via
+ * `CalendarRepository`, and performs event CRUD, next-event lookup, recurrence
+ * handling, and window pruning. A host-injected `CalendarConnectorGate` (from
+ * `plugin-lifeops`) supplies Google account/scope selection and reminder/audit
+ * hooks; the service never imports the grant registry directly, keeping the
+ * dependency direction `plugin-lifeops -> plugin-calendar`.
+ */
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,

@@ -1,3 +1,13 @@
+/**
+ * LLM classification of inbound cross-channel messages for the triage queue.
+ *
+ * `classifyMessages` builds the triage prompt (baseline instructions, or the
+ * `inbox_triage` optimized-prompt artifact when one is registered via
+ * `resolveOptimizedPromptForRuntime`), runs the model, and parses the result
+ * into one of the ordered classifications (ignore / info / notify / needs_reply
+ * / urgent). Parse failures throw `InboxTriageClassificationError` rather than
+ * fabricating a default label.
+ */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   logger,

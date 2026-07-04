@@ -591,10 +591,10 @@ export const calendarAction: Action & {
     "CALENDAR",
     "SCHEDULE",
     "MEETING",
-    // Time-block phrasings — these used to live on the BLOCK action's simile
-    // list, where they shadowed calendar-block creation. They live here now
-    // because "block out 2 hours for deep work" / "carve out a focus block"
-    // is a CALENDAR.create_event request, not an app/website block.
+    // Time-block phrasings belong to CALENDAR, not the BLOCK action: "block
+    // out 2 hours for deep work" / "carve out a focus block" is a
+    // CALENDAR.create_event request, not an app/website block. Keeping them
+    // here prevents BLOCK's similes from shadowing calendar-block creation.
     "BLOCK_TIME",
     "CREATE_TIME_BLOCK",
     "TIME_BLOCK",

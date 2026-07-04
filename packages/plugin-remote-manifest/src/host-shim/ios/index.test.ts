@@ -1,3 +1,7 @@
+/**
+ * iOS host shim tests cover WebKit message-handler dispatch, native response
+ * delivery, event fanout, and bridge reset behavior.
+ */
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { getHostShim, resetHostShim } from "../index.js";
 import { installIosShim, resetIosShimForTests } from "./index.js";

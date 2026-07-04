@@ -1,11 +1,3 @@
-import { describe, expect, it } from "vitest";
-import {
-	decryptObjectValues,
-	decryptStringValue,
-	encryptObjectValues,
-	encryptStringValue,
-} from "./settings.ts";
-
 /**
  * Settings secret encryption (#8801 — the at-rest protection for secret settings
  * like API keys, shipped untested). It is AES-256-GCM keyed by SHA-256(salt) with
@@ -15,6 +7,14 @@ import {
  * critically — that a WRONG salt fails *safe* (returns the ciphertext, never a
  * garbled/partial plaintext).
  */
+import { describe, expect, it } from "vitest";
+import {
+	decryptObjectValues,
+	decryptStringValue,
+	encryptObjectValues,
+	encryptStringValue,
+} from "./settings.ts";
+
 const SALT = "salt-alpha";
 const SECRET = "sk-api-key-do-not-leak-1234567890";
 

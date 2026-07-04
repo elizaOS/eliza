@@ -1,3 +1,9 @@
+/**
+ * Unit tests for the due-evaluation surface (`isScheduledTaskDue`,
+ * `isCompletionTimeoutDue`, window-fire marking, pending-prompt room routing)
+ * across trigger kinds. Deterministic clock, no runtime or store.
+ */
+
 import { describe, expect, it } from "vitest";
 
 import {

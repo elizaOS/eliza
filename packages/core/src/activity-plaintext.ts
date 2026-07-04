@@ -1,3 +1,17 @@
+/**
+ * Renders agent/PTY activity events and trajectory records into short,
+ * human-readable plaintext summaries for surfaces that show an activity feed.
+ * Pure formatting over loosely-typed event payloads — every field access is
+ * guarded (`isRecord` / `readString` / `readFiniteNumber`), so malformed input
+ * yields `null` rather than throwing; there is no runtime or IO dependency.
+ *
+ * `activityEventToPlaintext` dispatches on the event's `stream` for agent
+ * events (assistant, lifecycle, action, tool, evaluator, provider, message,
+ * memory, error, notification) and falls back to PTY task events.
+ * `trajectoryToPlaintext` summarizes a trajectory summary/detail record with
+ * its LLM calls, provider accesses, and events.
+ */
+
 import type {
 	TrajectoryDetailRecord,
 	TrajectoryLlmCallRecord,

@@ -1,3 +1,9 @@
+/**
+ * Occurrence engine for LifeOps task definitions: computes the next occurrence
+ * of a recurring definition from its cadence, progression rules, and time-window
+ * policy, and advances occurrence state. The scheduling primitive definitions
+ * and reminders build on.
+ */
 import type {
   LifeOpsCadence,
   LifeOpsOccurrence,

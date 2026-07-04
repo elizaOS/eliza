@@ -65,6 +65,10 @@ export interface WorldMetadata {
 	chatType?: string;
 	/** Whether Telegram forum mode is enabled for this world */
 	isForumEnabled?: boolean;
+	/** Server-wide agent mute (ROOM action, scope=server): while set the agent drops every inbound message in this world's rooms */
+	agentMuteState?: "MUTED";
+	/** ISO expiry for a timed server mute; the inbound due-check clears the mute once passed */
+	agentMuteUntilIso?: string;
 	/** Allow platform-specific extensions */
 	[key: string]: unknown;
 }

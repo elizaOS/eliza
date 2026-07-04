@@ -1,3 +1,15 @@
+/**
+ * Factory for the `CALENDAR` assistant action and its LLM-backed handler.
+ *
+ * `createCalendarActionRunner` wires the host-injected dependencies (the model
+ * runner and calendar-service access) and returns the `CALENDAR` action.
+ * `extractCalendarPlanWithLlm` turns a natural-language request plus recent
+ * conversation into a structured `CalendarLlmPlan` (subaction, time window,
+ * search queries), and the handler executes that plan against `CalendarService`
+ * — read feed, next event, search, create/update/delete events, trip windows —
+ * grounding the reply in real event data. `plugin-lifeops` consumes this as the
+ * calendar assistant action.
+ */
 import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,

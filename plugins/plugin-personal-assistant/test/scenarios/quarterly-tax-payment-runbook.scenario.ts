@@ -2,12 +2,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 
 /**
- * OUTCOME rewrite of the routing-only quarterly-tax-payment-runbook scenario (#9310): the old
- * file asserted planner keywords plus reply echoes ("accountant", "voucher", "portal", "confirmation" / "approve", "amount", "destination", "runbook" — all present
- * in the user's own turn text) against zero seeded state, so a
- * prompt-parroting reply passed.
- *
- * This version seeds REAL tax state through the LifeOps definition API — the Ostrander & Boyle CPA voucher packet and a held EFTPS payment profile — and asserts grounding + the payment firebreak: the prep must surface the seeded CPA firm (absent from every user turn), the runbook must not leak the payment account digits, and nothing may be submitted before approval.
+ * Live-model scenario (live-only lane): Quarterly tax runbook grounds in the seeded CPA packet and withholds the payment account.
  */
 export default scenario({
   lane: "live-only",

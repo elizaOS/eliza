@@ -1,3 +1,7 @@
+/**
+ * Live-model scenario: a one-off request phrased with an explicit Mountain-time
+ * zone persists a single `once` reminder definition resolved to that timezone.
+ */
 import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({

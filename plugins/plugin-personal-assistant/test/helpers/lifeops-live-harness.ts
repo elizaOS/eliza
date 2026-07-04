@@ -1,3 +1,8 @@
+/**
+ * Boots a real LifeOps agent as a child process for live e2e tests: spawns the runtime,
+ * waits on the HTTP API, selects a live model provider, and posts conversation turns. Gated
+ * on ELIZA_LIVE_TEST.
+ */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";

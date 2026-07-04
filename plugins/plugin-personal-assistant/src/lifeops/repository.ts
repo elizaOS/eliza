@@ -1,3 +1,13 @@
+/**
+ * Persistence layer for LifeOps: constructs and reads the LifeOps domain records
+ * — task definitions, occurrences, connector grants, audit events, activity
+ * signals, schedule state, and browser-companion state — over the SQL store and
+ * the shared knowledge-graph (entity/relationship) services.
+ *
+ * The CQRS-style factory helpers here build domain records; readers return
+ * domain objects. Domains and the LifeOpsService compose on top of this
+ * repository rather than issuing SQL directly.
+ */
 import crypto from "node:crypto";
 import {
   type EntityStore,

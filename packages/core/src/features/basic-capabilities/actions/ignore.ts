@@ -1,3 +1,9 @@
+/**
+ * Implements the IGNORE action of the basic-capabilities bundle: the agent's way
+ * to intentionally stop responding — spam, hostility, or a thread it was asked
+ * to leave. handler() re-emits the pre-composed response content (if any) via the
+ * callback and returns a success result flagged `ignored`.
+ */
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import type {
 	Action,

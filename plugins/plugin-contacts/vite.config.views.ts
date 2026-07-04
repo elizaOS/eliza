@@ -1,3 +1,7 @@
+/**
+ * Vite config that bundles the contacts dashboard view to `dist/views`,
+ * aliasing the native `@elizaos/capacitor-contacts` bridge for the browser build.
+ */
 import { fileURLToPath } from "node:url";
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 

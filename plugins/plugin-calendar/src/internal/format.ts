@@ -1,3 +1,8 @@
+/**
+ * Presentational formatting for calendar events and feeds: renders event
+ * date/times, the aggregated feed summary, and next-event context into the
+ * human-readable strings the CALENDAR action returns to the owner.
+ */
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,

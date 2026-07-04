@@ -1,5 +1,12 @@
 /// <reference types="bun-types" />
 
+/**
+ * Native Apple Calendar bridge. Loads the platform native library (via the
+ * capacitor-calendar macOS bridge policy) and exposes event read/write against
+ * the local Calendar store as `FeatureResult`s, so `CalendarService` can treat
+ * Apple as a provider alongside Google. Access is gated by the permissions
+ * registry; on a host without the native library the operations fail closed.
+ */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {

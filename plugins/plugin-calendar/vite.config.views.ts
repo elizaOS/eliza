@@ -1,3 +1,4 @@
+/** Vite config that builds the calendar view bundle the dynamic view loader consumes. */
 import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({

@@ -1,3 +1,16 @@
+/**
+ * App boot configuration plus env-alias mirroring, shared across every bundled
+ * copy of `@elizaos/core`. The boot-config store is a write-once singleton kept
+ * on the shared global slot through core's ambient-context accessor so
+ * core/shared/ui bundles observe one instance; an established store always wins
+ * over the pre-boot `__ELIZAOS_APP_BOOT_CONFIG__` window mirror that the HTML
+ * bootstrap / Electrobun preload seeds before any bundle loads.
+ *
+ * syncBrandEnvToEliza / syncElizaEnvToBrand copy values between branded and
+ * ELIZA_ env-key aliases and remember which targets they wrote, so a source key
+ * that disappears clears only its own mirrored target and never a value set by
+ * hand. The sync* wrappers pull the alias list from the boot config.
+ */
 import {
 	peekAmbientSingleton,
 	setAmbientSingleton,

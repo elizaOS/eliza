@@ -1,3 +1,11 @@
+/**
+ * Unit tests for the role-keyed should-respond injection gate
+ * (`should-respond-risk-gate.ts`): risk-factor scoring, role-keyed bypass, the
+ * pipeline-hook stamping, and the fail-closed model adjudication. Fully
+ * deterministic — the runtime and its `useModel` are `vi.fn` stubs (no live
+ * model, no DB); the live-model path is covered separately in the `.real` suite.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 import type { Memory } from "../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";

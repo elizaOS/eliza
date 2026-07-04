@@ -1,3 +1,26 @@
+/**
+ * Runs the advanced-memory capability's `memory` service: short-term
+ * conversation summarization plus extraction and retrieval of long-term
+ * persistent facts. Registered by createAdvancedMemoryPlugin and consumed by
+ * the capability's providers (long-term-memory, context-summary) and evaluators
+ * (summary, long-term-memory).
+ *
+ * Persistence is delegated to a MemoryStorageProvider discovered at runtime via
+ * getService("memoryStorage") — supplied by a database plugin. When none is
+ * registered the service degrades gracefully: reads return empty, writes throw a
+ * descriptive error, and storage-backed features stay disabled. Thresholds and
+ * cadences come from runtime.getSetting (MEMORY_* keys) at initialize().
+ *
+ * Long-term reads are identity-cluster aware — they fan out across related
+ * entity IDs and dedupe by memory id so a cluster of N members yields distinct
+ * results rather than N copies. Vector search uses a native provider override
+ * when available and otherwise falls back to an in-process cosine scan (or to
+ * recent memories when vector search is disabled). The per-room session and
+ * per-(entity,room) extraction-checkpoint maps are capped FIFO to bound memory
+ * over long-lived processes. Also exports formatLongTermMemories, a pure helper
+ * that renders memories as a category-grouped markdown block.
+ */
+
 import {
 	getRelatedEntityIds,
 	resolvePrimaryEntityId,

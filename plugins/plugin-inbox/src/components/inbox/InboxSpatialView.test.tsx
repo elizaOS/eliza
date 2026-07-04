@@ -1,3 +1,8 @@
+/**
+ * Renders the presentational InboxSpatialView to real terminal lines through
+ * the spatial TUI registry and asserts the snapshot states lay out correctly.
+ * Deterministic — no live model or connector.
+ */
 import { visibleWidth } from "@elizaos/tui";
 import { SpatialSurface } from "@elizaos/ui/spatial";
 import {

@@ -6,6 +6,14 @@ import { VisionPipeline } from "../services/vision-pipeline.ts";
 function makeRuntime(result = "a desk with a laptop"): IAgentRuntime {
   return {
     useModel: vi.fn().mockResolvedValue(result),
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime;
+}
+
+function makeFailingRuntime(error: Error): IAgentRuntime {
+  return {
+    useModel: vi.fn().mockRejectedValue(error),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -56,6 +64,23 @@ describe("VisionPipeline", () => {
       }),
     );
     expect(result).toBe("a red chair");
+  });
+
+  it("describeFrame reports a model failure and degrades to null (does not throw)", async () => {
+    const error = new Error("IMAGE_DESCRIPTION model not configured");
+    const runtime = makeFailingRuntime(error);
+    pipeline.storeFrame("conn1", FRAME_HEADER, Buffer.from([0xff, 0xd8, 0xff]));
+
+    // The per-frame failure must not throw (it must not kill the XR loop)...
+    const result = await pipeline.describeFrame(runtime, "conn1");
+    expect(result).toBeNull();
+
+    // ...but it must be surfaced observably rather than swallowed silently.
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "VisionPipeline.describeFrame",
+      error,
+      { connectionId: "conn1" },
+    );
   });
 
   it("describeFrame returns null when no frame exists", async () => {

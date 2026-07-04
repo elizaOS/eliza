@@ -1,3 +1,9 @@
+/**
+ * Meeting-scheduling domain for LifeOps: drives multi-party scheduling
+ * negotiations — proposing times, tracking negotiation state, and dispatching
+ * proposals to counterparties over iMessage/WhatsApp/Gmail — using the owner's
+ * relationship graph and schedule inspection to pick candidate slots.
+ */
 import crypto from "node:crypto";
 import {
   LIFEOPS_NEGOTIATION_STATES,

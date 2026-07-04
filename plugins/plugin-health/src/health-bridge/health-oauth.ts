@@ -1,3 +1,9 @@
+/**
+ * Per-provider OAuth dance and pending-session state for the health connectors.
+ * Resolves client id/secret/base-url from `ELIZA_<PREFIX>_*` env, runs the
+ * authorize/callback/token-refresh flow, and persists tokens encrypted at rest
+ * under the resolved OAuth dir. Provider specifics come from the provider registry.
+ */
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

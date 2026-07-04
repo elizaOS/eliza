@@ -1,3 +1,10 @@
+/**
+ * Unit tests for the finances input-normalization helpers (`fail`,
+ * `requireAgentId`, `requireNonEmptyString`, the optional string/boolean
+ * coercions) and the `FinancesServiceError` HTTP-status carrier. Pure functions,
+ * no runtime or DB.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {

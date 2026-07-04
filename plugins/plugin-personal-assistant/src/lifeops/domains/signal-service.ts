@@ -1,3 +1,9 @@
+/**
+ * Signal domain for LifeOps: reads recent messages and sends on the owner's
+ * Signal account through the runtime-service delegates, projecting connector
+ * status/capabilities into assistant DTOs. Signal transport is owned by
+ * `@elizaos/plugin-signal`; LifeOps no longer holds local Signal credentials.
+ */
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
   type LifeOpsConnectorDegradation,

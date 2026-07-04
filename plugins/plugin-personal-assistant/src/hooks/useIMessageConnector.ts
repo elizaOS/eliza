@@ -1,3 +1,9 @@
+/**
+ * React hook exposing the iMessage LifeOps connector status and controls,
+ * including the macOS Full Disk Access probe the connector needs to read the
+ * Messages database. Mac-host-only; the iMessage backend lives in its own
+ * plugin and this hook reads and toggles the normalized connector status.
+ */
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";

@@ -1,3 +1,8 @@
+/**
+ * Owner-profile store: reads and writes the owner's core profile fields (name,
+ * check-in times, and related preferences) persisted in the Eliza config, and
+ * ensures the LifeOps scheduler task exists so the profile drives scheduling.
+ */
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import {

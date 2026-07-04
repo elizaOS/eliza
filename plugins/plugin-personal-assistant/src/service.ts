@@ -1,3 +1,9 @@
+/**
+ * BrowserBridgePluginService: the LifeOps facade service for browser-companion
+ * state (pairing, tabs, page context, settings). A back-compat surface whose
+ * implementation continues moving into `@elizaos/plugin-browser`; LifeOps keeps
+ * the owner-facing route service and projection here.
+ */
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,

@@ -41,14 +41,18 @@ describe("todos single-home: core no longer bakes todos into advanced-capabiliti
   });
 
   it("advancedServices contains no todos service", () => {
-    expect(advancedServices.some((s) => isTodoName(String(s.serviceType)))).toBe(
-      false,
-    );
+    expect(
+      advancedServices.some((s) => isTodoName(String(s.serviceType))),
+    ).toBe(false);
   });
 
   it("the advancedCapabilities flag path registers no todos provider or service", () => {
-    const plugin = createBasicCapabilitiesPlugin({ advancedCapabilities: true });
-    expect((plugin.providers ?? []).some((p) => isTodoName(p.name))).toBe(false);
+    const plugin = createBasicCapabilitiesPlugin({
+      advancedCapabilities: true,
+    });
+    expect((plugin.providers ?? []).some((p) => isTodoName(p.name))).toBe(
+      false,
+    );
     expect(
       (plugin.services ?? []).some((s) => isTodoName(String(s.serviceType))),
     ).toBe(false);

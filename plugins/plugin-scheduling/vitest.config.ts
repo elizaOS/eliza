@@ -1,3 +1,5 @@
+/** Vitest config for @elizaos/plugin-scheduling (node env + src/test globs). */
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

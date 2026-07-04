@@ -1,3 +1,15 @@
+/**
+ * Core ingestion pipeline for the documents capability: turns raw document text
+ * into stored, embedded FRAGMENT memories. `processFragmentsSynchronously`
+ * splits text into overlapping token-sized chunks, optionally contextualizes
+ * each chunk through an LLM (the contextual-retrieval step, gated by
+ * CTX_DOCUMENTS_ENABLED), generates embeddings (batched or one-at-a-time via the
+ * runtime's TEXT_EMBEDDING model), and persists each fragment with
+ * `runtime.createMemory`. A token/request rate limiter derived from
+ * {@link getProviderRateLimits} throttles the calls, and 429s are retried. Also
+ * exposes `extractTextFromDocument` (PDF and text extraction) and
+ * `createDocumentMemory` (the parent DOCUMENT memory record).
+ */
 import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
@@ -125,7 +137,6 @@ export async function processFragmentsSynchronously({
 		providerLimits.rateLimitEnabled,
 	);
 
-	// Process and save fragments
 	const { savedCount, failedCount } = await processAndSaveFragments({
 		runtime,
 		documentId,
