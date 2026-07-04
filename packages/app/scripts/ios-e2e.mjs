@@ -13,8 +13,10 @@
 // Flags: --device <name|udid>  --skip-build  --skip-local-chat  --skip-auth
 //        --cloud
 import { execFileSync, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const has = (f) => process.argv.includes(f);
@@ -23,6 +25,12 @@ const val = (f, fb) => {
   return i >= 0 ? process.argv[i + 1] : fb;
 };
 const log = (m) => console.log(`[ios-e2e] ${m}`);
+
+function readAppId() {
+  const configPath = path.join(appDir, "app.config.ts");
+  const src = fs.readFileSync(configPath, "utf8");
+  return src.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
+}
 
 function run(cmd, args, env = {}) {
   const res = spawnSync(cmd, args, {
@@ -77,47 +85,51 @@ function ensureSimulatorBooted(deviceName) {
 }
 
 async function main() {
+  const appId = readAppId();
   const udid = ensureSimulatorBooted(val("--device"));
   log(`simulator udid=${udid}`);
+  clearIosSmokeDefaults({ udid, bundleId: appId, log });
+  try {
+    if (has("--skip-build")) {
+      log("skipping build (--skip-build)");
+    } else {
+      log("building + installing the iOS Simulator app…");
+      run("bun", ["run", "build:ios:local:sim"]);
+    }
 
-  if (has("--skip-build")) {
-    log("skipping build (--skip-build)");
-  } else {
-    log("building + installing the iOS Simulator app…");
-    run("bun", ["run", "build:ios:local:sim"]);
+    if (!has("--skip-auth")) {
+      log("auth route: deep-link / callback registration + drive…");
+      run("node", [
+        "../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs",
+        "--platform",
+        "ios",
+        "--device",
+        udid,
+      ]);
+    }
+
+    if (!has("--skip-local-chat")) {
+      log("local route: on-device agent + smallest model + real chat…");
+      run("node", [
+        "scripts/mobile-local-chat-smoke.mjs",
+        "--platform",
+        "ios",
+        "--require-installed",
+        "--ios-select-local",
+        "--ios-full-bun-smoke",
+      ]);
+    }
+
+    if (has("--cloud")) {
+      log("cloud route: real provisioning probe…");
+      run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
+    }
+
+    log("ALL iOS E2E PASSED ✅");
+  } finally {
+    clearIosSmokeDefaults({ udid, bundleId: appId, log });
   }
-
-  if (!has("--skip-auth")) {
-    log("auth route: deep-link / callback registration + drive…");
-    run("node", [
-      "../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs",
-      "--platform",
-      "ios",
-      "--device",
-      udid,
-    ]);
-  }
-
-  if (!has("--skip-local-chat")) {
-    log("local route: on-device agent + smallest model + real chat…");
-    run("node", [
-      "scripts/mobile-local-chat-smoke.mjs",
-      "--platform",
-      "ios",
-      "--require-installed",
-      "--ios-select-local",
-      "--ios-full-bun-smoke",
-    ]);
-  }
-
-  if (has("--cloud")) {
-    log("cloud route: real provisioning probe…");
-    run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
-  }
-
-  log("ALL iOS E2E PASSED ✅");
 }
-
 main().catch((error) => {
   console.error(`[ios-e2e] FAILED: ${error?.message ?? error}`);
   process.exit(1);
