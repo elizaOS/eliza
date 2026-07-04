@@ -254,7 +254,11 @@ function resolveNoReplyPolicy(
   // Owner intensity shapes the DEFAULT ladder; an explicit per-task
   // `metadata.noReplyPolicy` override (merged below) still wins field-by-field.
   const base = defaultPolicy
-    ? applyReminderIntensityToNoReplyPolicy(defaultPolicy, intensity, task.priority)
+    ? applyReminderIntensityToNoReplyPolicy(
+        defaultPolicy,
+        intensity,
+        task.priority,
+      )
     : null;
   const raw = readRecord(
     task.metadata?.noReplyPolicy,

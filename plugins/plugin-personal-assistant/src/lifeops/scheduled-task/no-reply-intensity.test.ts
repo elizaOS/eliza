@@ -12,18 +12,18 @@ const base: NoReplyLadder = { maxRetries: 1, retryCadenceMinutes: [60] };
 
 describe("applyReminderIntensityToNoReplyPolicy", () => {
   it("normal / unset leaves the ladder unchanged", () => {
-    expect(applyReminderIntensityToNoReplyPolicy(base, undefined, "high")).toEqual(
-      base,
-    );
-    expect(applyReminderIntensityToNoReplyPolicy(base, "normal", "high")).toEqual(
-      base,
-    );
+    expect(
+      applyReminderIntensityToNoReplyPolicy(base, undefined, "high"),
+    ).toEqual(base);
+    expect(
+      applyReminderIntensityToNoReplyPolicy(base, "normal", "high"),
+    ).toEqual(base);
   });
 
   it("minimal drops every retry (fire once)", () => {
-    expect(applyReminderIntensityToNoReplyPolicy(base, "minimal", "high")).toEqual(
-      { maxRetries: 0, retryCadenceMinutes: [] },
-    );
+    expect(
+      applyReminderIntensityToNoReplyPolicy(base, "minimal", "high"),
+    ).toEqual({ maxRetries: 0, retryCadenceMinutes: [] });
   });
 
   it("persistent appends one nudge at the trailing cadence", () => {
@@ -52,7 +52,11 @@ describe("applyReminderIntensityToNoReplyPolicy", () => {
 
   it("high_priority_only suppresses non-high tasks but keeps high ones", () => {
     expect(
-      applyReminderIntensityToNoReplyPolicy(base, "high_priority_only", "medium"),
+      applyReminderIntensityToNoReplyPolicy(
+        base,
+        "high_priority_only",
+        "medium",
+      ),
     ).toEqual({ maxRetries: 0, retryCadenceMinutes: [] });
     expect(
       applyReminderIntensityToNoReplyPolicy(base, "high_priority_only", "low"),
