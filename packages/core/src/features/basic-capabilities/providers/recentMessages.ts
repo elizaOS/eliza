@@ -25,6 +25,7 @@
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
 import type {
 	CustomMetadata,
 	Entity,
@@ -43,10 +44,6 @@ const spec = requireProviderSpec("RECENT_MESSAGES");
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
 const MAX_RECENT_INTERACTIONS = 20;
 const MAX_COMPACT_LEDGER_CHARS = 4000;
-const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
-	"acpx:sub-agent-router",
-	"swarm_synthesis",
-]);
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
 	"[tool output:",
 	"[/tool output]",
@@ -146,20 +143,6 @@ function isSyntheticAssistantFailureMessage(
 	return (
 		/\bprovider issue\b/.test(normalized) ||
 		/^something went wrong on my end\b/.test(normalized)
-	);
-}
-
-function isInternalBridgeMessage(memory: Memory): boolean {
-	const source =
-		typeof memory.content.source === "string"
-			? memory.content.source.trim()
-			: "";
-	const metadata =
-		memory.content?.metadata && typeof memory.content.metadata === "object"
-			? (memory.content.metadata as Record<string, unknown>)
-			: {};
-	return (
-		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
 	);
 }
 

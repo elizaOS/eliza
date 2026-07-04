@@ -1,10 +1,14 @@
 /**
  * FACTS provider: injects the durable and current facts the agent knows about
- * the speaker into the prompt context. Pulls bounded recent candidate pools
- * from the `facts` memory table (one room-scoped, one per related entity in the
- * speaker's identity cluster), partitions them into durable (identity-level,
- * never decays) and current (time-decayed) kinds, then ranks each kind locally
- * with BM25 keyword scoring weighted by a per-kind confidence × recency prior.
+ * the speaker and the room into the prompt context. Pulls bounded recent
+ * candidate pools from the `facts` memory table (one room-scoped, one per
+ * related entity in the speaker's identity cluster), partitions them into
+ * durable (identity-level, never decays) and current (time-decayed) kinds,
+ * then ranks each kind locally with BM25 keyword scoring weighted by a
+ * per-kind confidence × recency prior. Rendering attributes facts by
+ * provenance — only sender-cluster facts appear under the "about the speaker"
+ * header, room-pool facts render under a neutral room header — and the room
+ * pool is skipped entirely for automated (webhook/bridge-bot) senders.
  * Retrieval deliberately avoids vector search so relevance is computed from the
  * fact's own words and extracted keywords; a keyword-miss on durable facts
  * falls back to the highest-prior candidates so direct recall still works. The
@@ -13,6 +17,7 @@
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
+import { isAutomatedSenderTurn } from "../../../messaging/automated-turns.ts";
 import type {
 	FactKind,
 	FactMetadata,
@@ -272,18 +277,29 @@ const factsProvider: Provider = {
 			// both over the `facts` table. We intentionally use `getMemories`
 			// instead of vector search: relevance is computed locally from extracted
 			// fact keywords and the fact's own words.
+			//
+			// The room pool holds facts about EVERY participant in the room, so it
+			// is skipped entirely when the sender is automation (a relay webhook,
+			// bridge bot, or sub-agent row): those turns arrive in bulk, the room
+			// facts describe other people, and rendering them here floods every
+			// relay turn's prompt with context that has nothing to do with the
+			// sender. Facts stored against the automated sender's own entity still
+			// load — they genuinely describe the speaker.
 			const relatedEntityIds = await getRelatedEntityIds(
 				runtime,
 				message.entityId,
 			);
+			const includeRoomPool = !isAutomatedSenderTurn(message);
 			const [roomFacts, ...entityFactPools] = await Promise.all([
-				runtime.getMemories({
-					tableName: "facts",
-					roomId: message.roomId,
-					worldId: message.worldId,
-					count: CANDIDATE_POOL_PER_SEARCH,
-					unique: false,
-				}),
+				includeRoomPool
+					? runtime.getMemories({
+							tableName: "facts",
+							roomId: message.roomId,
+							worldId: message.worldId,
+							count: CANDIDATE_POOL_PER_SEARCH,
+							unique: false,
+						})
+					: Promise.resolve([] as Memory[]),
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",
@@ -354,17 +370,42 @@ const factsProvider: Provider = {
 				(typeof message.content.name === "string" && message.content.name) ||
 				"the speaker";
 
+			// Attribute by provenance: only facts stored against the sender's
+			// identity cluster are "about the speaker". The room pool also carries
+			// facts about OTHER participants — rendering those under the speaker
+			// header told the model that facts about other people described
+			// whoever happened to send the current message (worst on relay/webhook
+			// turns, where every room fact got attributed to the bridge bot).
+			const senderEntityIds = new Set<string>(relatedEntityIds);
+			const isAboutSender = (memory: Memory): boolean =>
+				typeof memory.entityId === "string" &&
+				senderEntityIds.has(memory.entityId);
+			const senderDurable = durableFacts.filter(isAboutSender);
+			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
+			const senderCurrent = currentFacts.filter(isAboutSender);
+			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
+
 			const sections: string[] = [];
-			if (durableFacts.length > 0) {
+			if (senderDurable.length > 0) {
 				const durableHeader = `Things ${agentName} knows about ${senderName}:`;
 				sections.push(
-					`${durableHeader}\n${formatLines(durableFacts, "durable")}`,
+					`${durableHeader}\n${formatLines(senderDurable, "durable")}`,
 				);
 			}
-			if (currentFacts.length > 0) {
+			if (senderCurrent.length > 0) {
 				const currentHeader = `What's currently happening for ${senderName}:`;
 				sections.push(
-					`${currentHeader}\n${formatLines(currentFacts, "current")}`,
+					`${currentHeader}\n${formatLines(senderCurrent, "current")}`,
+				);
+			}
+			if (roomDurable.length > 0) {
+				sections.push(
+					`Known facts in this room (about other participants):\n${formatLines(roomDurable, "durable")}`,
+				);
+			}
+			if (roomCurrent.length > 0) {
+				sections.push(
+					`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
 				);
 			}
 

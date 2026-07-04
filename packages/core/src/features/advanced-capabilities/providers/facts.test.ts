@@ -1,9 +1,11 @@
 /**
  * Unit tests for `factsProvider` (advanced-capabilities): asserts BM25 keyword
  * retrieval surfaces the relevant durable/current facts (including a direct-recall
- * fallback and current-fact time weighting) and that the provider never requests
- * embeddings. Uses a hand-built deterministic runtime mock — no live model, no
- * DB — whose `useModel` throws to enforce the no-embeddings invariant.
+ * fallback and current-fact time weighting), that rendering attributes facts by
+ * provenance (speaker vs room, with the room pool skipped for bot/bridge
+ * senders), and that the provider never requests embeddings. Uses a hand-built
+ * deterministic runtime mock — no live model, no DB — whose `useModel` throws
+ * to enforce the no-embeddings invariant.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
@@ -12,16 +14,18 @@ import { factsProvider } from "./facts.ts";
 const agentId = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const entityId = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const roomId = "00000000-0000-0000-0000-0000000000cc" as UUID;
+const otherEntityId = "00000000-0000-0000-0000-0000000000dd" as UUID;
 
 function memory(
 	id: string,
 	text: string,
 	metadata: Record<string, unknown> = {},
 	createdAt = Date.now(),
+	factEntityId: UUID = entityId,
 ): Memory {
 	return {
 		id: id as UUID,
-		entityId,
+		entityId: factEntityId,
 		agentId,
 		roomId,
 		content: { text },
@@ -31,7 +35,9 @@ function memory(
 }
 
 function makeRuntime(args: {
-	facts: Memory[];
+	facts?: Memory[];
+	roomFacts?: Memory[];
+	entityFacts?: Memory[];
 	recentMessages?: Memory[];
 }): IAgentRuntime & {
 	getMemories: ReturnType<typeof vi.fn>;
@@ -41,15 +47,23 @@ function makeRuntime(args: {
 		agentId,
 		character: { name: "Eliza", bio: "", system: "" },
 		getService: vi.fn(() => null),
-		getMemories: vi.fn(async (params: { tableName: string }) => {
-			if (params.tableName === "messages") {
-				return args.recentMessages ?? [];
-			}
-			if (params.tableName === "facts") {
-				return args.facts;
-			}
-			return [];
-		}),
+		getMemories: vi.fn(
+			async (params: { tableName: string; roomId?: UUID; entityId?: UUID }) => {
+				if (params.tableName === "messages") {
+					return args.recentMessages ?? [];
+				}
+				if (params.tableName === "facts") {
+					if (params.roomId) {
+						return args.roomFacts ?? args.facts ?? [];
+					}
+					if (params.entityId) {
+						return args.entityFacts ?? args.facts ?? [];
+					}
+					return args.facts ?? [];
+				}
+				return [];
+			},
+		),
 		useModel: vi.fn(async () => {
 			throw new Error("FACTS provider must not request embeddings");
 		}),
@@ -197,5 +211,146 @@ describe("factsProvider keyword retrieval", () => {
 			"fact-new",
 			"fact-old",
 		]);
+	});
+});
+
+describe("factsProvider provenance attribution", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	const roomFactAboutSomeoneElse = memory(
+		"fact-room-1",
+		"nubs created the remilio project last spring",
+		{
+			kind: "durable",
+			category: "identity",
+			confidence: 0.9,
+			keywords: ["nubs", "remilio", "project"],
+		},
+		Date.now(),
+		otherEntityId,
+	);
+
+	it("renders room-pool facts about other entities under the neutral room header, not as speaker facts", async () => {
+		const runtime = makeRuntime({
+			roomFacts: [roomFactAboutSomeoneElse],
+			entityFacts: [],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "who created the remilio project?", {
+				source: "discord",
+			}),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("nubs created the remilio project");
+		expect(result.text).toContain("Known facts in this room");
+		// The room fact is about otherEntityId — it must NOT be attributed to
+		// the current speaker.
+		expect(result.text).not.toContain("knows about");
+	});
+
+	it("keeps the speaker header for facts stored against the sender's own entity", async () => {
+		const senderFact = memory("fact-sender-1", "the user lives in Berlin", {
+			kind: "durable",
+			category: "identity",
+			confidence: 0.9,
+			keywords: ["berlin", "lives"],
+		});
+		const runtime = makeRuntime({
+			roomFacts: [senderFact],
+			entityFacts: [senderFact],
+		});
+
+		const message = memory("msg-current", "anything about Berlin?");
+		message.content.senderName = "Alice";
+		const result = await factsProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(result.text).toContain("Things Eliza knows about Alice:");
+		expect(result.text).toContain("the user lives in Berlin");
+		expect(result.text).not.toContain("Known facts in this room");
+	});
+
+	it("skips the room pool entirely for connector-stamped bot/webhook senders", async () => {
+		const humanRuntime = makeRuntime({
+			roomFacts: [roomFactAboutSomeoneElse],
+			entityFacts: [],
+		});
+		const humanResult = await factsProvider.get(
+			humanRuntime,
+			memory("msg-human", "who created the remilio project?"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		const botRuntime = makeRuntime({
+			roomFacts: [roomFactAboutSomeoneElse],
+			entityFacts: [],
+		});
+		const botMessage = memory(
+			"msg-bot",
+			"who created the remilio project?",
+			{},
+			Date.now(),
+		);
+		botMessage.content.metadata = { fromBot: true };
+		botMessage.content.senderName = "2fingersBTW | ZenithProxy";
+		const botResult = await factsProvider.get(botRuntime, botMessage, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		// Room-scoped fetch never happens on the bot turn.
+		const botFactCalls = botRuntime.getMemories.mock.calls.filter(
+			([params]: [{ tableName: string; roomId?: UUID }]) =>
+				params.tableName === "facts" && params.roomId,
+		);
+		expect(botFactCalls.length).toBe(0);
+
+		// No misattributed facts, and the prompt footprint drops vs the same
+		// pools on a human turn.
+		expect(botResult.text).toBe("No facts available.");
+		expect(botResult.text).not.toContain("nubs created");
+		expect(humanResult.text).toContain("nubs created the remilio project");
+		expect(botResult.text.length).toBeLessThan(humanResult.text.length);
+	});
+
+	it("skips the room pool for internal bridge sources but keeps the sender's own facts", async () => {
+		const bridgeOwnFact = memory(
+			"fact-bridge-1",
+			"the relay mirrors the minecraft server chat",
+			{
+				kind: "durable",
+				category: "identity",
+				confidence: 0.9,
+				keywords: ["relay", "minecraft", "chat"],
+			},
+		);
+		const runtime = makeRuntime({
+			roomFacts: [roomFactAboutSomeoneElse],
+			entityFacts: [bridgeOwnFact],
+		});
+		const message = memory("msg-bridge", "what does the relay mirror?");
+		message.content.source = "acpx:sub-agent-router";
+		const result = await factsProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		const roomFactCalls = runtime.getMemories.mock.calls.filter(
+			([params]: [{ tableName: string; roomId?: UUID }]) =>
+				params.tableName === "facts" && params.roomId,
+		);
+		expect(roomFactCalls.length).toBe(0);
+		expect(result.text).toContain("mirrors the minecraft server chat");
+		expect(result.text).not.toContain("nubs created");
 	});
 });
