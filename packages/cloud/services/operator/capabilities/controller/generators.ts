@@ -1,3 +1,4 @@
+// Reconciles operator generators behavior for Kubernetes cloud services.
 import { GenericKind, RegisterKind } from "kubernetes-fluent-client";
 import { K8s, kind } from "pepr";
 import type { Server } from "../crd/generated/server-v1alpha1";

@@ -1,3 +1,4 @@
+// Exercises the gateway-webhook internal auth path with deterministic cloud service fixtures.
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { validateInternalSecret } from "../src/internal-auth";
 

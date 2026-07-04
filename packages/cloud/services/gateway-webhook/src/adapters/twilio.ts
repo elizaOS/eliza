@@ -1,3 +1,4 @@
+// Handles webhook gateway twilio behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
 import { z } from "zod";
 import {

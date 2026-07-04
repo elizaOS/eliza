@@ -1,3 +1,4 @@
+// Reconciles operator validator behavior for Kubernetes cloud services.
 import type { PeprValidateRequest } from "pepr";
 import type { Server } from "./generated/server-v1alpha1";
 

@@ -1,3 +1,4 @@
+// Reconciles operator redis behavior for Kubernetes cloud services.
 import { createRequire } from "node:module";
 import Redis from "ioredis";
 import { Log } from "pepr";

@@ -1,3 +1,4 @@
+// Exercises the gateway-webhook redis mock path with deterministic cloud service fixtures.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 const PREV_MOCK = process.env.MOCK_REDIS;

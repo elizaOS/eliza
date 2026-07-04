@@ -1,3 +1,4 @@
+// Shares index service primitives across cloud worker sidecars.
 export {
   __resetServiceAccountCacheForTests,
   readServiceAccountCaCert,

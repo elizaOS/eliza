@@ -1,3 +1,4 @@
+// Handles webhook gateway hash router behavior for authenticated connector fan-in.
 import {
   readServiceAccountCaCert,
   readServiceAccountToken,

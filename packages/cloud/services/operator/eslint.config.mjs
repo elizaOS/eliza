@@ -1,3 +1,4 @@
+// Reconciles operator eslint.config behavior for Kubernetes cloud services.
 import tsParser from "@typescript-eslint/parser";
 
 export default [

@@ -1,3 +1,4 @@
+// Handles webhook gateway blooio behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";

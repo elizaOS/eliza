@@ -1,3 +1,4 @@
+// Runs the hosted agent-server agent manager boundary for cloud runtime containers.
 import {
   AgentRuntime,
   ChannelType,

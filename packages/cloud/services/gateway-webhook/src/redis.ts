@@ -1,3 +1,4 @@
+// Handles webhook gateway redis behavior for authenticated connector fan-in.
 import { createRequire } from "node:module";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import IORedis from "ioredis";

@@ -1,3 +1,4 @@
+// Reconciles operator server.crd behavior for Kubernetes cloud services.
 export const ServerCRD = {
   apiVersion: "apiextensions.k8s.io/v1",
   kind: "CustomResourceDefinition",

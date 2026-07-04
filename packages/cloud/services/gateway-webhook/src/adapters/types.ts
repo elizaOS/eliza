@@ -1,3 +1,4 @@
+// Handles webhook gateway types behavior for authenticated connector fan-in.
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {

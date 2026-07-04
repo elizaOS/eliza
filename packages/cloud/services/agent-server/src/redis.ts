@@ -1,3 +1,4 @@
+// Runs the hosted agent-server redis boundary for cloud runtime containers.
 import { createRequire } from "node:module";
 import Redis from "ioredis";
 import { getRequiredEnv } from "./config";

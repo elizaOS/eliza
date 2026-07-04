@@ -1,3 +1,4 @@
+// Coordinates Discord gateway server router behavior for multi-tenant bot pods.
 import { readFileSync } from "node:fs";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";

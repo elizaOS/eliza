@@ -1,3 +1,4 @@
+// Exercises the coding-remote-runner server path with deterministic cloud service fixtures.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   mkdir,

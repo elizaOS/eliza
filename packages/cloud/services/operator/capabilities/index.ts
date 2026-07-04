@@ -1,3 +1,4 @@
+// Reconciles operator index behavior for Kubernetes cloud services.
 import { a, Capability, K8s, Log } from "pepr";
 import { applyResources } from "./controller/generators";
 import { Server, type ServerPhase } from "./crd/generated/server-v1alpha1";

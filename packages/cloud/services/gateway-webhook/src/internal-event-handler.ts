@@ -1,3 +1,4 @@
+// Handles webhook gateway internal event handler behavior for authenticated connector fan-in.
 import { z } from "zod";
 import { validateInternalSecret } from "./internal-auth";
 import { logger } from "./logger";

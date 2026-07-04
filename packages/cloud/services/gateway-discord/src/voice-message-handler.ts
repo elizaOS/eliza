@@ -489,7 +489,7 @@ export class VoiceMessageHandler {
 
     this.cleanupInterval = setInterval(runCleanup, CLEANUP_INTERVAL_MS);
 
-    // Defer initial cleanup to avoid blocking startup (run after 30 seconds)
+    // Defers the initial retention pass so startup is not blocked
     this.deferredCleanupTimeout = setTimeout(() => {
       this.deferredCleanupTimeout = null;
       runCleanup();

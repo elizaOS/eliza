@@ -1,3 +1,4 @@
+// Exercises the agent-server event handler path with deterministic cloud service fixtures.
 import { describe, expect, mock, test } from "bun:test";
 import type { IAgentRuntime } from "@elizaos/core";
 import { dispatchEvent } from "../../src/handlers/event";

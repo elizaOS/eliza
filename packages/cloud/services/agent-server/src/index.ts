@@ -1,3 +1,4 @@
+// Runs the hosted agent-server index boundary for cloud runtime containers.
 import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
 import { ensureServerName, getRequiredEnv } from "./config";

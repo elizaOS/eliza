@@ -1,3 +1,4 @@
+// Exercises the _common common path with deterministic cloud service fixtures.
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   __resetServiceAccountCacheForTests,

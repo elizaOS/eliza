@@ -1,3 +1,4 @@
+// Exposes coding remote runner index operations inside hosted workspaces.
 import type { ChildProcessByStdio } from "node:child_process";
 import { spawn as spawnNodeProcess } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";

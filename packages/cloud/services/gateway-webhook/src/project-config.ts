@@ -1,3 +1,4 @@
+// Handles webhook gateway project config behavior for authenticated connector fan-in.
 import { readFileSync } from "node:fs";
 import { logger } from "./logger";
 

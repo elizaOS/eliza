@@ -1,3 +1,4 @@
+// Handles webhook gateway telegram behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";

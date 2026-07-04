@@ -1,3 +1,4 @@
+// Handles webhook gateway internal auth behavior for authenticated connector fan-in.
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
 

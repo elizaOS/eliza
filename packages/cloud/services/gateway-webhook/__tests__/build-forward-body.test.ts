@@ -1,3 +1,4 @@
+// Exercises the gateway-webhook build forward body path with deterministic cloud service fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   buildForwardBody,

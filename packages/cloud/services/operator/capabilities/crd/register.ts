@@ -1,3 +1,4 @@
+// Reconciles operator register behavior for Kubernetes cloud services.
 import { K8s, kind, Log } from "pepr";
 import { ServerCRD } from "./source/server.crd";
 

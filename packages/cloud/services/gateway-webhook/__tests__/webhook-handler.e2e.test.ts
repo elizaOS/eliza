@@ -1,3 +1,4 @@
+// Exercises the gateway-webhook webhook handler.e2e path with deterministic cloud service fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type {
   ChatEvent,

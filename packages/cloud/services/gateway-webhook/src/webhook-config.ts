@@ -1,3 +1,4 @@
+// Handles webhook gateway webhook config behavior for authenticated connector fan-in.
 import type { Platform, WebhookConfig } from "./adapters/types";
 import { logger } from "./logger";
 import { getProjectEnv } from "./project-config";

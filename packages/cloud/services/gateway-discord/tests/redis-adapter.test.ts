@@ -1,3 +1,4 @@
+// Exercises the gateway-discord redis adapter path with deterministic cloud service fixtures.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   createMockRedis,

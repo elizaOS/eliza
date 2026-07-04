@@ -1,3 +1,4 @@
+// Exercises the agent-server metadata helpers path with deterministic cloud service fixtures.
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
   buildConnectionMetadata,

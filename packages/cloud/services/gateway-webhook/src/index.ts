@@ -1,3 +1,4 @@
+// Handles webhook gateway index behavior for authenticated connector fan-in.
 import { Hono } from "hono";
 import { blooioAdapter } from "./adapters/blooio";
 import { telegramAdapter } from "./adapters/telegram";

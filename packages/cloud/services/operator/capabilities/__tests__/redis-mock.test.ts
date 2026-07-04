@@ -1,3 +1,4 @@
+// Exercises the operator redis mock path with deterministic cloud service fixtures.
 import { afterAll, beforeAll, describe, test } from "bun:test";
 
 const PREV_MOCK = process.env.MOCK_REDIS;

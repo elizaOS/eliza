@@ -1,3 +1,4 @@
+// Coordinates Discord gateway hash router behavior for multi-tenant bot pods.
 import {
   readServiceAccountCaCert,
   readServiceAccountToken,

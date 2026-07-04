@@ -1,3 +1,4 @@
+// Reconciles operator reconciler behavior for Kubernetes cloud services.
 import { K8s, Log } from "pepr";
 import { applyResources } from "./controller/generators";
 import { Server } from "./crd/generated/server-v1alpha1";
@@ -19,7 +20,7 @@ export async function reconciler(instance: Server) {
     return;
   }
 
-  // Skip if CR is being deleted (finalizer handles cleanup)
+  // Skip deleted custom resources because the finalizer owns release work
   if (instance.metadata?.deletionTimestamp) {
     Log.debug(`Server ${name}: being deleted, skipping reconcile`);
     return;

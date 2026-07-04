@@ -1,3 +1,4 @@
+// Runs the hosted agent-server routes boundary for cloud runtime containers.
 import { Elysia } from "elysia";
 import type { AgentManager } from "./agent-manager";
 import { EventBodySchema } from "./handlers/event";

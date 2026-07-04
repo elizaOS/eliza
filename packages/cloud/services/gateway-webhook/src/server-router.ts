@@ -1,3 +1,4 @@
+// Handles webhook gateway server router behavior for authenticated connector fan-in.
 import { readFileSync } from "node:fs";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";

@@ -1,3 +1,4 @@
+// Coordinates Discord gateway gateway manager behavior for multi-tenant bot pods.
 import { Redis } from "@upstash/redis";
 import {
   type Attachment,
@@ -341,7 +342,7 @@ export class GatewayManager {
       this.redis = createNativeRedis(config.redisUrl);
       logger.info("[GatewayManager] using native TCP Redis client");
     } else if (config.redisUrl && config.redisToken) {
-      // Upstash REST (https URL + token) — legacy fallback.
+      // Upstash REST (HTTPS URL + token) remains the compatibility fallback.
       this.redis = new Redis({
         url: config.redisUrl,
         token: config.redisToken,
@@ -528,7 +529,7 @@ export class GatewayManager {
       });
     }
 
-    // Start voice message cleanup job
+    // Starts the voice message retention job
     const voiceMessageEnabled = process.env.VOICE_MESSAGE_ENABLED !== "false";
     if (voiceMessageEnabled) {
       this.voiceHandler.startCleanupJob();
@@ -773,7 +774,7 @@ export class GatewayManager {
         try {
           await this.connectBot(assignment);
         } catch (error) {
-          // Clean up the reservation if connectBot throws before setting the real connection.
+          // Releases the reservation if connectBot throws before setting the real connection.
           this.connections.delete(assignment.connectionId);
           logger.error("Failed to connect bot during assignment", {
             connectionId: assignment.connectionId,
@@ -1108,7 +1109,7 @@ export class GatewayManager {
         error: errorMessage,
       });
 
-      // Clean up the failed connection so it can be retried
+      // Releases the failed connection so it can be retried
       this.removeAllListeners(conn);
       client.destroy();
       this.connections.delete(assignment.connectionId);
@@ -1152,7 +1153,7 @@ export class GatewayManager {
     const staleConnections: string[] = [];
 
     for (const [connectionId, conn] of this.connections) {
-      // Only cleanup disconnected/error connections with a timestamp
+      // Only releases disconnected or error connections with a timestamp
       if (
         (conn.status === "disconnected" || conn.status === "error") &&
         conn.statusChangedAt
@@ -1549,7 +1550,7 @@ export class GatewayManager {
       }
     }
 
-    // Clean up stale connections when control plane is unhealthy
+    // Releases stale connections when the control plane is unhealthy
     // to prevent memory leaks from accumulating disconnected connections
     const CRITICAL_FAILURE_THRESHOLD = 5;
     if (this.consecutivePollFailures >= CRITICAL_FAILURE_THRESHOLD) {
@@ -1638,12 +1639,12 @@ export class GatewayManager {
           claimed: data.claimed,
         });
 
-        // Only clean up Redis state if failover was approved
-        // Don't clean up if rejected (pod might still be alive)
+        // Releases Redis state only when failover was approved
+        // Preserve Redis state when failover is rejected because the pod may still be alive
         await this.redis.srem("discord:active_pods", deadPodId);
         await this.redis.del(`discord:pod:${deadPodId}`);
       } else {
-        // Don't clean up Redis - pod might still be alive
+        // Preserve Redis state because the pod may still be alive
         // Other pods will retry failover check on next interval
         logger.warn("Failover claim rejected", {
           deadPodId,
@@ -1660,7 +1661,7 @@ export class GatewayManager {
       // Using DEL is safe here - if another pod somehow got the lock, it means
       // the TTL expired and our operation took too long anyway
       await this.redis.del(lockKey).catch(() => {
-        // Ignore errors releasing lock - TTL will handle cleanup
+        // Ignore lock-release errors because the TTL handles expiry
       });
     }
   }

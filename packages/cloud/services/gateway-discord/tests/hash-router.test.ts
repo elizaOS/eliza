@@ -1,3 +1,4 @@
+// Exercises the gateway-discord hash router path with deterministic cloud service fixtures.
 import { describe, expect, test } from "bun:test";
 import { getHashTargets, refreshHashRing } from "../src/hash-router";
 

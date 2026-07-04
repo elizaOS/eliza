@@ -1,3 +1,4 @@
+// Handles webhook gateway billing behavior for authenticated connector fan-in.
 const DEFAULT_MARKUP_RATE = 0.2;
 const DEFAULT_USD_ROUNDING_PRECISION = 2;
 const TWILIO_SMS_SEGMENT_CHAR_LIMIT = 160;

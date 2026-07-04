@@ -1,3 +1,4 @@
+// Owns container-control-plane index mutations that Cloudflare Workers cannot run.
 import { timingSafeEqual } from "node:crypto";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";

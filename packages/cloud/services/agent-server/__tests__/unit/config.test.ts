@@ -1,3 +1,4 @@
+// Exercises the agent-server config path with deterministic cloud service fixtures.
 import { describe, expect, test } from "bun:test";
 import {
   ensureServerName,

@@ -1,3 +1,4 @@
+// Runs the hosted agent-server config boundary for cloud runtime containers.
 type Env = Record<string, string | undefined>;
 
 export function normalizeServerName(

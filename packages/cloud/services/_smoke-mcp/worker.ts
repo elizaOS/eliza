@@ -7,7 +7,7 @@
 // SOLE entrypoint for the smoke harness so any build error is clearly
 // about the MCP stack, not the rest of cloud.
 //
-// This is a temporary smoke test. Delete this directory once the mcp-handler
+// This smoke harness isolates mcp-handler compatibility until the verification
 // verdict is recorded in cloud/api/MCP_WORKERS_VERIFICATION.md.
 
 import { Hono } from "hono";

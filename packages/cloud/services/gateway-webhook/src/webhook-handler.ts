@@ -1,3 +1,4 @@
+// Handles webhook gateway webhook handler behavior for authenticated connector fan-in.
 import type {
   ChatEvent,
   Platform,
