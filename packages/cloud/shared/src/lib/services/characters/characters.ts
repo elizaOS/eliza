@@ -206,7 +206,7 @@ export class CharactersService {
   async create(data: NewUserCharacter): Promise<UserCharacter> {
     // Generate username if not provided
     let username = data.username;
-    if (!username) {
+    if (username === undefined || username === null) {
       username = await this.generateUniqueUsername(data.name);
       logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
     } else if (typeof username !== "string") {

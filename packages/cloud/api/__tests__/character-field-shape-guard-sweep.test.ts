@@ -183,6 +183,21 @@ describe("POST /api/my-agents/characters — non-array documents/knowledge", () 
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("validation_error");
   });
+
+  test("create with falsy non-string usernames is rejected rather than generated", async () => {
+    expect(pgliteReady).toBe(true);
+
+    for (const username of [false, 0]) {
+      const res = await createCharacter({
+        name: `Bad Falsy Username ${String(username)}`,
+        bio: "valid",
+        username,
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("validation_error");
+    }
+  });
 });
 
 describe("PUT /api/my-agents/characters/:id — malformed body fields", () => {
