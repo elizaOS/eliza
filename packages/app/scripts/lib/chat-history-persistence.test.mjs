@@ -168,7 +168,10 @@ test("assertMarkerSurvivedRelaunch refuses a non-unique marker so a hardcoded st
 });
 
 test("assertMarkerSurvivedRelaunch surfaces a malformed after-relaunch read as an error, not a pass", () => {
-  const marker = buildRelaunchMarker({ platform: "android", runId: "malformed" });
+  const marker = buildRelaunchMarker({
+    platform: "android",
+    runId: "malformed",
+  });
   assert.throws(
     () =>
       assertMarkerSurvivedRelaunch({

@@ -58,6 +58,7 @@
     "test:sim:local-chat:android": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed",
     "test:sim:local-chat:android:live": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model",
     "test:sim:local-chat:android:background": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model --android-background",
+    "test:sim:local-chat:android:relaunch-persistence": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model --relaunch-persistence",
     "test:sim:local-chat:both": "node scripts/mobile-local-chat-smoke.mjs --platform both --require-installed",
     "test:sim:local-chat:ios": "node scripts/mobile-local-chat-smoke.mjs --platform ios --require-installed",
     "test:sim:local-chat:ios:live": "node scripts/mobile-local-chat-smoke.mjs --platform ios --require-installed",

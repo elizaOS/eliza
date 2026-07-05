@@ -32,7 +32,12 @@ export const RELAUNCH_MARKER_PREFIX = "RELAUNCH-PERSIST";
  * a message left over from a previous run can never satisfy the survival check,
  * and `platform`/`runId` make failures self-describing in logs.
  */
-export function buildRelaunchMarker({ platform = "app", runId, now = Date.now(), random } = {}) {
+export function buildRelaunchMarker({
+  platform = "app",
+  runId,
+  now = Date.now(),
+  random,
+} = {}) {
   const rand =
     typeof random === "string" && random
       ? random
@@ -43,7 +48,9 @@ export function buildRelaunchMarker({ platform = "app", runId, now = Date.now(),
 
 /** True only for a string that came from `buildRelaunchMarker`. */
 export function isRelaunchMarker(value) {
-  return typeof value === "string" && value.startsWith(`${RELAUNCH_MARKER_PREFIX}-`);
+  return (
+    typeof value === "string" && value.startsWith(`${RELAUNCH_MARKER_PREFIX}-`)
+  );
 }
 
 /**
@@ -101,7 +108,11 @@ export function messageThreadContainsMarker(body, marker) {
  * lost-DB regression this issue guards — throws loudly. Returns a summary for
  * the caller to log as evidence.
  */
-export function assertMarkerSurvivedRelaunch({ marker, beforeBody, afterBody }) {
+export function assertMarkerSurvivedRelaunch({
+  marker,
+  beforeBody,
+  afterBody,
+}) {
   if (!isRelaunchMarker(marker)) {
     throw new ChatHistoryPersistenceError(
       `Refusing to assert a non-unique marker: ${JSON.stringify(marker)}`,
@@ -123,7 +134,11 @@ export function assertMarkerSurvivedRelaunch({ marker, beforeBody, afterBody }) 
     throw new ChatHistoryPersistenceError(
       `Chat history did NOT survive relaunch: marker "${marker}" is absent from the server-truth thread after relaunch (${afterTexts.length} message(s) returned). A regression that empties the thread on relaunch — or a fresh/lost agent state dir — trips this.`,
       "MARKER_LOST_ON_RELAUNCH",
-      { marker, beforeCount: beforeTexts.length, afterCount: afterTexts.length },
+      {
+        marker,
+        beforeCount: beforeTexts.length,
+        afterCount: afterTexts.length,
+      },
     );
   }
 
