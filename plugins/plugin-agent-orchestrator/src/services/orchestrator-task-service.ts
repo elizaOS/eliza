@@ -1346,7 +1346,9 @@ export class OrchestratorTaskService extends Service {
       const correlation = isRecord(artifact.metadata?.correlation)
         ? artifact.metadata.correlation
         : undefined;
-      const stamped = correlation ? str(correlation.childTrajectoryId) : undefined;
+      const stamped = correlation
+        ? str(correlation.childTrajectoryId)
+        : undefined;
       if (stamped) {
         ids.add(stamped);
         continue;

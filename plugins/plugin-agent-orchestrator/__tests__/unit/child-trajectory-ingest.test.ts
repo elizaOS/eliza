@@ -213,4 +213,175 @@ describe("ingestChildTrajectories", () => {
     const doc = await store.getTask(taskId);
     expect(doc?.artifacts ?? []).toEqual([]);
   });
+
+  // #14110: the trajectory dir is per-task but ingest runs per session-
+  // completion, so a re-completion or a respawned session used to re-attach
+  // the same files. These regressions lock in idempotency.
+  it("is idempotent across a re-completion of the same session (no duplicate artifacts or ids)", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedTaskWithSession(store, {
+      traceId: "trace-parent",
+      parentTrajectoryStepId: "step-7",
+    });
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    writeFileSync(join(dir, "tj-aaa.json"), JSON.stringify({ t: 1 }));
+    writeFileSync(join(dir, "tj-bbb.json"), JSON.stringify({ t: 1 }));
+
+    const ingest = (
+      svc as unknown as {
+        ingestChildTrajectories: (t: string, s: string) => Promise<string[]>;
+      }
+    ).ingestChildTrajectories.bind(svc);
+
+    const first = await ingest(taskId, sessionId);
+    expect(first.sort()).toEqual(["tj-aaa", "tj-bbb"]);
+
+    // Same session re-completes (follow-up prompt) → same files re-scanned.
+    const second = await ingest(taskId, sessionId);
+    expect(second).toEqual([]);
+
+    const doc = await store.getTask(taskId);
+    const artifacts = doc?.artifacts ?? [];
+    // Still exactly two — no fresh-UUID duplicates.
+    expect(artifacts.length).toBe(2);
+    const ids = artifacts
+      .map(
+        (a) =>
+          (a.metadata.correlation as { childTrajectoryId?: string })
+            .childTrajectoryId,
+      )
+      .sort();
+    expect(ids).toEqual(["tj-aaa", "tj-bbb"]);
+
+    const session = (await store.findSession(sessionId))?.session;
+    // No duplicate ids on the session record either.
+    expect((session?.childTrajectoryIds ?? []).sort()).toEqual([
+      "tj-aaa",
+      "tj-bbb",
+    ]);
+  });
+
+  it("does not re-ingest session A's files under a respawned session B, preserving A's correlation", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId: sessionA } = await seedTaskWithSession(store, {
+      traceId: "trace-A",
+      parentTrajectoryStepId: "step-A",
+    });
+    // Respawned session B on the SAME task (different correlation).
+    const sessionB = "sess-B";
+    const now = new Date().toISOString();
+    await store.addSession({
+      id: "row-B",
+      taskId,
+      sessionId: sessionB,
+      framework: "elizaos",
+      label: "worker",
+      originalTask: "do the thing",
+      workdir: "/tmp/wd",
+      status: "completed",
+      decisionCount: 0,
+      autoResolvedCount: 0,
+      registeredAt: Date.now(),
+      lastActivityAt: Date.now(),
+      idleCheckCount: 0,
+      taskDelivered: true,
+      lastSeenDecisionIndex: 0,
+      spawnedAt: Date.now(),
+      retryCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheTokens: 0,
+      costUsd: 0,
+      usageState: "unavailable",
+      traceId: "trace-B",
+      parentTrajectoryStepId: "step-B",
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    // These files were recorded by session A.
+    writeFileSync(join(dir, "tj-aaa.json"), JSON.stringify({ t: 1 }));
+    writeFileSync(join(dir, "tj-bbb.json"), JSON.stringify({ t: 1 }));
+
+    const ingest = (
+      svc as unknown as {
+        ingestChildTrajectories: (t: string, s: string) => Promise<string[]>;
+      }
+    ).ingestChildTrajectories.bind(svc);
+
+    // Session A completes first and attaches its files.
+    await ingest(taskId, sessionA);
+    // Session B (respawn) completes; must NOT re-attach A's files nor stamp B.
+    const bIngested = await ingest(taskId, sessionB);
+    expect(bIngested).toEqual([]);
+
+    const doc = await store.getTask(taskId);
+    const artifacts = doc?.artifacts ?? [];
+    expect(artifacts.length).toBe(2);
+    // Every trajectory still carries session A's correlation, not B's.
+    for (const a of artifacts) {
+      const corr = a.metadata.correlation as {
+        sessionId?: string;
+        traceId?: string;
+        parentStepId?: string;
+      };
+      expect(corr.sessionId).toBe(sessionA);
+      expect(corr.traceId).toBe("trace-A");
+      expect(corr.parentStepId).toBe("step-A");
+    }
+    // B's session record never gained A's ids.
+    const sessionBRec = (await store.findSession(sessionB))?.session;
+    expect(sessionBRec?.childTrajectoryIds ?? []).toEqual([]);
+  });
+
+  it("only the new file is ingested when a second, distinct trajectory appears later", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedTaskWithSession(store, {
+      traceId: "trace-parent",
+    });
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+    const dir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+      "child-agent",
+    );
+    await mkdir(dir, { recursive: true });
+    writeFileSync(join(dir, "tj-aaa.json"), JSON.stringify({ t: 1 }));
+
+    const ingest = (
+      svc as unknown as {
+        ingestChildTrajectories: (t: string, s: string) => Promise<string[]>;
+      }
+    ).ingestChildTrajectories.bind(svc);
+
+    expect(await ingest(taskId, sessionId)).toEqual(["tj-aaa"]);
+
+    // A genuinely new trajectory shows up on a later completion.
+    writeFileSync(join(dir, "tj-ccc.json"), JSON.stringify({ t: 1 }));
+    expect(await ingest(taskId, sessionId)).toEqual(["tj-ccc"]);
+
+    const doc = await store.getTask(taskId);
+    expect((doc?.artifacts ?? []).length).toBe(2);
+  });
 });
