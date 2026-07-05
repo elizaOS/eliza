@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";

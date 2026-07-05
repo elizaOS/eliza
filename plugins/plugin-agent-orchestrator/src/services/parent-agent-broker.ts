@@ -61,7 +61,9 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
  * avoid a value/type import cycle (the router imports broker symbols).
  */
 export function isParentAgentBrokerWired(runtime: IAgentRuntime): boolean {
-  const router = runtime.getService("ACPX_SUB_AGENT_ROUTER") as
+  const getService = (runtime as { getService?: unknown }).getService;
+  if (typeof getService !== "function") return false;
+  const router = getService.call(runtime, "ACPX_SUB_AGENT_ROUTER") as
     | { isActive?: () => boolean }
     | null;
   return typeof router?.isActive === "function" && router.isActive();

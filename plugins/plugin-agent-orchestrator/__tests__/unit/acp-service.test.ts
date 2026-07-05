@@ -4,9 +4,16 @@
  */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { promises as fs } from "node:fs";
-import os from "node:os";
+import {
+  existsSync,
+  mkdtempSync,
+  promises as fs,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import os, { tmpdir } from "node:os";
 import path from "node:path";
+import { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -148,7 +155,10 @@ type MockProc = EventEmitter & {
 
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
-function runtime(settings: Record<string, string | undefined> = {}) {
+function runtime(
+  settings: Record<string, string | undefined> = {},
+  services: Record<string, unknown> = {},
+) {
   const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
   return {
     logger: {
@@ -158,6 +168,9 @@ function runtime(settings: Record<string, string | undefined> = {}) {
       error: vi.fn(),
     },
     getSetting: vi.fn((key: string) => values[key]),
+    // spawnSession consults getService for the broker-router (isParentAgentBroker
+    // Wired) and the skills service (SKILLS.md manifest); default to none.
+    getService: vi.fn((name: string) => services[name] ?? null),
     services: new Map<string, unknown[]>(),
   } as never;
 }
@@ -359,6 +372,91 @@ describe("AcpService", () => {
       | Record<string, string>
       | undefined;
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+  });
+
+  it("writes SKILLS.md into every spawn workspace (shared spawn path)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-"));
+    try {
+      const skillsService = {
+        getEligibleSkills: async () => [
+          {
+            slug: "github",
+            name: "GitHub",
+            description: "gh CLI usage.",
+            content: "# GitHub\n",
+          },
+        ],
+        isSkillEnabled: () => true,
+      };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { AGENT_SKILLS_SERVICE: skillsService }),
+      );
+      await service.start();
+      const promise = service.spawnSession({
+        name: "skills-spawn",
+        agentType: "codex",
+        workdir: dir,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"skills-spawn"}}\n',
+        ),
+      );
+      closeOk(reg);
+      await promise;
+
+      const manifestPath = join(dir, "SKILLS.md");
+      expect(existsSync(manifestPath)).toBe(true);
+      const manifest = readFileSync(manifestPath, "utf8");
+      expect(manifest).toContain("GitHub");
+      expect(manifest).toContain("`github`");
+      // Broker router not registered here → no broker entry advertised.
+      expect(manifest).not.toContain("Parent Eliza Agent");
+      // And the on-disk manual has no broker section either.
+      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).not.toContain(
+        "Asking the parent Eliza agent to act",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("advertises the broker in SKILLS.md + manual when the router is wired", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-broker-"));
+    try {
+      const router = { isActive: () => true };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { ACPX_SUB_AGENT_ROUTER: router }),
+      );
+      await service.start();
+      const promise = service.spawnSession({
+        name: "broker-spawn",
+        agentType: "codex",
+        workdir: dir,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"broker-spawn"}}\n',
+        ),
+      );
+      closeOk(reg);
+      await promise;
+
+      expect(readFileSync(join(dir, "SKILLS.md"), "utf8")).toContain(
+        "Parent Eliza Agent",
+      );
+      expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain(
+        "Asking the parent Eliza agent to act",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("honors explicit terminal capability opt-out", async () => {
