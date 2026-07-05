@@ -137,8 +137,17 @@ jobs:
               bun run --cwd packages/app test:e2e:android:launcher-loop || true
 
       - name: Cloud provisioning probe
-        if: ${{ env.ELIZA_CLOUD_AUTH_TOKEN != '' }}
-        run: bun run --cwd packages/app test:e2e:android:cloud
+        run: |
+          if [ -z "${ELIZA_CLOUD_AUTH_TOKEN:-}" ]; then
+            {
+              echo "### Cloud provisioning probe"
+              echo ""
+              echo "skipped: missing ELIZA_CLOUD_AUTH_TOKEN"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Cloud provisioning probe skipped: missing ELIZA_CLOUD_AUTH_TOKEN"
+            exit 0
+          fi
+          bun run --cwd packages/app test:e2e:android:cloud
 
       - uses: actions/upload-artifact@v7
         if: always()
