@@ -126,3 +126,35 @@ jobs:
             /tmp/views-soak-dev.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # A hard-fail nightly that only reds in the Actions tab is indistinguishable
+  # from no lane: without an alert nobody notices the view-isolation soak went
+  # red and regressions accumulate silently. This turns a red scheduled run into
+  # an actionable signal by commenting on the testing-loop umbrella (#13562, the
+  # issue this soak lane closes) with the result and a link to the run. Scheduled
+  # runs only — manual workflow_dispatch runs stay quiet to avoid noise. Mirrors
+  # app-live-e2e.yml's notify-on-failure idiom.
+  notify-on-failure:
+    name: notify on red nightly
+    needs: [views-soak]
+    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: Comment red-nightly diagnostic on umbrella issue #13562
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          R_SOAK: ${{ needs.views-soak.result }}
+        run: |
+          set -euo pipefail
+          {
+            printf '## 🌙 Nightly Views Soak failed (scheduled run)\n\n'
+            printf 'The hard-fail view-lifecycle soak (`packages/app audit:views`) went red — a render-storm, unbounded module cache, or unbounded heap growth in the real ViewRouter. Result:\n\n'
+            printf -- '- real-app view-lifecycle soak: `%s`\n' "$R_SOAK"
+            printf '\nRun log + failure artifacts: %s\n\n' "$RUN_URL"
+            printf '_Auto-posted by views-soak.yml so a red nightly notifies someone (#13562)._\n'
+          } > "$RUNNER_TEMP/nightly-red.md"
+          gh issue comment 13562 --repo "$REPO" --body-file "$RUNNER_TEMP/nightly-red.md"
