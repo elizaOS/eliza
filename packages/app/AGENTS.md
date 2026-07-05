@@ -167,6 +167,18 @@ primary file via the Agent plugin's `appendBootTrace` bridge, so there is no
 separate renderer stream) — keep in sync with `ElizaStartupTrace.swift`;
 `ELIZA_IOS_BOOT_TRACE_PATH` overrides the pull path (script-side only).
 
+## iOS runtime-mode CI coverage (#13578)
+
+The iOS app ships three runtime modes; their unattended (CI) coverage is:
+
+| Mode | On-device engine | Automated lane | Gating |
+|---|---|---|---|
+| **remote** (pair to a host agent) | none — proxies to a paired host | `build-ios` job in `.github/workflows/mobile-build-smoke.yml` (onboarding smoke + `serve-real-local-agent` host + local-chat smoke) | PR-blocking |
+| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds `build:ios:local:sim` (`ELIZA_IOS_FULL_BUN_ENGINE=1`), caches + stages a real small GGUF, boots a sim, installs, runs `test:sim:local-chat:ios:full-bun` and asserts the exact on-device reply | nightly-gating |
+| **cloud** (managed agent) | none — talks to Eliza Cloud | N/A — the XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) XCTSkips at the OAuth wall with no device Cloud session, and `cloud-provisioning-e2e.mjs` is only reachable behind the unwired `ios-e2e.mjs --cloud`. Needs a documented headless session/JWT seed against a staging Cloud org before it can run unattended (see #13578 done-when #2). | none (blocked) |
+
+Keep this table honest: an N/A row must name what is missing, not hide it.
+
 ## Config / env vars
 
 All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "ELIZA"`). Key vars read at runtime or build:
