@@ -40,8 +40,11 @@ export function usePolymarketState() {
       // Read the agent's own positions only when an account address is
       // resolvable; the route falls back to the configured wallet so we call
       // it without an explicit `user`. A position-read failure must not blank
-      // the whole view, so it's isolated from the markets fetch.
-      if (statusResponse.account.ready) {
+      // the whole view, so it's isolated from the markets fetch. The `account`
+      // block is typed as required but partial/upstream status responses omit it
+      // (#14448) — a missing account is simply "not resolvable", so guard the
+      // access rather than let it throw a raw property-read into the view.
+      if (statusResponse.account?.ready) {
         try {
           setPositions(await polymarketClient.polymarketPositions());
         } catch {

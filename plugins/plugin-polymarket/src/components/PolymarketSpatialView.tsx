@@ -91,8 +91,11 @@ function readyTone(ready: boolean): SpatialTone {
 }
 
 function ReadinessRow({ status }: { status: PolymarketStatusResponse | null }) {
-  const reads = status?.publicReads.ready ?? false;
-  const trading = status?.trading.ready ?? false;
+  // `publicReads`/`trading` are typed as required but a partial status response
+  // can omit them (#14448); fully optional-chain so a missing block reads as
+  // "off" rather than throwing a raw property-read into the view.
+  const reads = status?.publicReads?.ready ?? false;
+  const trading = status?.trading?.ready ?? false;
   return (
     <HStack gap={2} align="center" wrap>
       <Text style="caption" tone={readyTone(reads)}>
