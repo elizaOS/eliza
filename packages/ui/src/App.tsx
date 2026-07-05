@@ -96,6 +96,7 @@ import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
+import { cn } from "./lib/utils";
 import {
   APPS_ENABLED,
   getAppSlugFromPath,
@@ -2427,21 +2428,35 @@ export function App() {
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling
-              dark background-token floor mounted on EVERY route, behind the
-              shader (z-0) and every other layer. html/body/#root paint the
-              orange launch guard (--launch-bg #ef5a1f) as a FOUC color, and on
-              shared-background routes (home/chat) the AppBackground shader was
-              the ONLY thing hiding it. On iOS the composer overlay is anchored
-              by the visualViewport-derived `bottom`, so in the home-indicator
-              safe-area the shader coverage can fall short and the orange host
-              color bled through as a band under the composer. This floor makes
-              the bottom inset (and every unpainted zone) the dark BACKGROUND
-              token — never accent — regardless of route or shader state. The
-              shader/wallpaper renders on top of it unchanged on shared routes. */}
+              floor mounted on EVERY route, behind the shader (z-0) and every
+              other layer. html/body/#root paint the orange launch guard
+              (--launch-bg #ef5a1f) as a FOUC color; this floor guarantees the
+              bottom inset (and every unpainted zone) reads as the BACKGROUND
+              token, never the accent, regardless of route or shader state.
+
+              Standalone-PWA bottom-bar fix: on SHARED-background routes
+              (home/chat) this floor must be TRANSPARENT, not an opaque `bg-bg`
+              slab. The wallpaper (`AppBackground` -> `ImageBackground`, a
+              `fixed inset-0` full-bleed layer that reaches the true viewport
+              bottom incl. the home-indicator safe-area) is what should show
+              beneath the floating composer, edge-to-edge (lockscreen/iMessage
+              style). An opaque floor here painted a dark near-black band in the
+              home-indicator zone under the floating composer even though the
+              wallpaper sits above it. Going transparent on wallpaper routes
+              lets the full-bleed wallpaper own the whole screen down to the
+              bottom edge; the FOUC/orange guard is still covered because the
+              wallpaper layer is opaque cover-fit. On OPAQUE/overlay routes (no
+              wallpaper) the floor keeps `bg-bg` so the orange guard never
+              shows. */}
           <div
             aria-hidden="true"
             data-testid="app-safe-area-floor"
-            className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
+            className={cn(
+              "pointer-events-none fixed inset-0 z-[-1]",
+              // Transparent under the full-bleed wallpaper so it shows to the
+              // very bottom edge; opaque dark elsewhere as the FOUC guard.
+              renderSharedAppBackground ? "bg-transparent" : "bg-bg",
+            )}
           />
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the
