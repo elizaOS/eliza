@@ -3867,7 +3867,8 @@ export function ContinuousChatOverlay({
                 while maximized (full-bleed) — where the SheetGrabber isn't
                 rendered — so a downward pull starting in the top 20% animates
                 the edge-to-edge view back into the inset overlay. `z-10` sits
-                UNDER the header (`z-20`) so the launcher button keeps its taps;
+                UNDER the header (`z-20`) but above the transcript so the
+                launcher button keeps its taps while real pulls still hit the zone;
                 this strip catches pulls on the surrounding empty header space.
                 Keyboard-operable (Enter/Space/ArrowDown restore) so the
                 gesture-only affordance stays WCAG 2.1.1 operable. */}
@@ -3887,7 +3888,7 @@ export function ContinuousChatOverlay({
                     restoreFromMaximizedGuarded();
                   }
                 }}
-                className="pointer-events-auto absolute inset-x-0 top-0 z-10 touch-none bg-transparent"
+                className="pointer-events-auto absolute inset-x-0 top-0 z-[15] touch-none bg-transparent"
                 style={{ height: `${MAXIMIZE_RESTORE_ZONE_VH * 100}%` }}
               />
             ) : null}

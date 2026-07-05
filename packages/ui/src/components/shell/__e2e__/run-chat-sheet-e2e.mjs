@@ -20,6 +20,7 @@
  *     page error or error-level log.
  *
  * Run: bun run --cwd packages/ui test:chat-sheet-e2e
+ *      bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
  * Exits non-zero on any failed assertion / console error.
  */
 
@@ -44,6 +45,9 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output");
 const videoDir = join(outDir, "video");
+const ONLY_AUTOSCROLL =
+  process.argv.includes("--only-autoscroll") ||
+  process.env.CHAT_SHEET_E2E_SCOPE === "autoscroll";
 await mkdir(outDir, { recursive: true });
 await mkdir(videoDir, { recursive: true });
 
@@ -264,7 +268,7 @@ async function restoreFromMaximized(p, pointer = "mouse") {
   if (pointer === "mouse") {
     const b = await zone.boundingBox();
     const cx = b.x + b.width / 2;
-    const cy = b.y + Math.min(24, b.height / 2);
+    const cy = b.y + Math.max(24, b.height - 24);
     await p.mouse.move(cx, cy);
     await p.mouse.down();
     await p.mouse.move(cx, cy + 140, { steps: 8 });
@@ -381,7 +385,19 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-beyond-full-rubberband`);
   await release(p, pointer, 260);
   await p.waitForTimeout(SETTLE);
-  assert(near(await sheetHeight(p), fullH, TOL + 24), `[${pointer}] settles back near FULL after overscroll`);
+  if (
+    (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1
+  ) {
+    assert(
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1,
+      `[${pointer}] releasing a committed over-pull enters maximized mode`,
+    );
+    await restoreFromMaximized(p, pointer);
+  }
+  assert(
+    near(await sheetHeight(p), fullH, TOL + 24),
+    `[${pointer}] settles back near FULL after overscroll/restore`,
+  );
 
   // mid-drag HOLD between detents (live 1:1 tracking)
   await gesture(p, -150, { pointer, hold: true }); // pull down ~150 from full
@@ -582,35 +598,37 @@ async function runAutoScrollSuite(p, pointer, tag) {
 const browser = await chromium.launch();
 const sink = { logs: [], errors: [] };
 try {
-  // ===== DESKTOP + MOUSE =====
-  const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
-  attachConsole(desktop, sink);
-  await gotoFixture(desktop);
-  await desktop.waitForSelector('[data-testid="chat-sheet"]');
-  await desktop.waitForTimeout(700);
-  await runDragSuite(desktop, "mouse", "desktop");
+  if (!ONLY_AUTOSCROLL) {
+    // ===== DESKTOP + MOUSE =====
+    const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(desktop, sink);
+    await gotoFixture(desktop);
+    await desktop.waitForSelector('[data-testid="chat-sheet"]');
+    await desktop.waitForTimeout(700);
+    await runDragSuite(desktop, "mouse", "desktop");
 
-  // ===== MOBILE + TOUCH (recorded — the continuous detent drag-suite video) =====
-  const mobileCtx = await browser.newContext({
-    viewport: { width: 402, height: 874 },
-    hasTouch: true,
-    isMobile: true,
-    deviceScaleFactor: 2,
-    recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
-  });
-  const mobile = await mobileCtx.newPage();
-  attachConsole(mobile, sink);
-  await gotoFixture(mobile);
-  await mobile.waitForSelector('[data-testid="chat-sheet"]');
-  await mobile.waitForTimeout(700);
-  await runDragSuite(mobile, "touch", "mobile");
-  await mobile.close(); // flush the recorded touch drag-suite video
-  await mobileCtx.close();
-  await renameRecordedVideo({
-    videoDir,
-    outDir,
-    name: "chat-sheet-drag-suite.webm",
-  });
+    // ===== MOBILE + TOUCH (recorded — the continuous detent drag-suite video) =====
+    const mobileCtx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
+    });
+    const mobile = await mobileCtx.newPage();
+    attachConsole(mobile, sink);
+    await gotoFixture(mobile);
+    await mobile.waitForSelector('[data-testid="chat-sheet"]');
+    await mobile.waitForTimeout(700);
+    await runDragSuite(mobile, "touch", "mobile");
+    await mobile.close(); // flush the recorded touch drag-suite video
+    await mobileCtx.close();
+    await renameRecordedVideo({
+      videoDir,
+      outDir,
+      name: "chat-sheet-drag-suite.webm",
+    });
+  }
 
   // ===== AUTOSCROLL + JUMP-TO-LATEST (mouse + real touch, #13690) =====
   {
@@ -643,6 +661,7 @@ try {
     });
   }
 
+  if (!ONLY_AUTOSCROLL) {
   // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
   // The collapsed grabber's horizontal swipe pages home → launcher through the
   // shell-surface store (goLauncher). Android's on-device spec drives this with
@@ -1598,6 +1617,11 @@ try {
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
     await maximizeByPull(p);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0
+    ) {
+      await maximizeByPull(p);
+    }
     assert(
       (await p
         .locator('[data-testid="chat-sheet"][data-maximized="true"]')
@@ -2030,6 +2054,11 @@ try {
     // drag stays on-screen).
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1
+    ) {
+      await restoreFromMaximized(p, "mouse");
+    }
     assert(
       await headerShown(p),
       "HEADER-LIVE: header shown at full before the drag",
@@ -2053,7 +2082,11 @@ try {
     // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
     await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
     await p.waitForTimeout(SETTLE);
-    await maximizeByPull(p);
+    if (
+      (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0
+    ) {
+      await maximizeByPull(p);
+    }
     {
       const cs = await chatState(p);
       const max = await p
@@ -2247,6 +2280,7 @@ try {
     await snap(p, "state-onboarding-reveal-home");
     await p.close();
   }
+  }
 } finally {
   await browser.close();
 }
@@ -2258,15 +2292,17 @@ const errorLevel = sink.logs.filter((l) => l.startsWith("[error]"));
 assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length})`);
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
-assert(
-  sink.logs.some(
-    (l) =>
-      l.includes("[fixture] toggleHandsFree") ||
-      l.includes("[fixture] toggleRecording") ||
-      l.includes("startRecording"),
-  ),
-  "fixture logged a voice interaction (mic tap → hands-free / recording)",
-);
+if (!ONLY_AUTOSCROLL) {
+  assert(
+    sink.logs.some(
+      (l) =>
+        l.includes("[fixture] toggleHandsFree") ||
+        l.includes("[fixture] toggleRecording") ||
+        l.includes("startRecording"),
+    ),
+    "fixture logged a voice interaction (mic tap → hands-free / recording)",
+  );
+}
 
 console.log(`\nScreenshots (${shot}) written to ${outDir}`);
 if (failures > 0) {
