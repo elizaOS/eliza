@@ -86,6 +86,12 @@ mock.module("./services/api-keys", () => ({
     listByOrganization: async () => [],
     create: async () => ({ id: "key-1" }),
     ensureUserHasApiKey: async () => undefined,
+    // steward-sync's new-user path awaits apiKeysService.provisionDefaultApiKey
+    // (steward-sync.ts:717); without this stub the grant happy-path test throws
+    // `apiKeysService.provisionDefaultApiKey is not a function` and the cloud
+    // suite (packages/cloud/shared/src) stays deterministically red. Complements
+    // PR #14259 which fixed the same stale stub in steward-sync-default-provisioning.test.ts.
+    provisionDefaultApiKey: async () => undefined,
   },
 }));
 
