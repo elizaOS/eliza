@@ -8,32 +8,61 @@
 // header (the shared CharacterSectionNav supplies it). The panels are stubbed so
 // the test isolates the hub's own structure, not their internals.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  setActionNotice: vi.fn(),
+  updateCharacter: vi.fn(),
+}));
 
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (s: unknown) => unknown) =>
     selector({
-      setActionNotice: vi.fn(),
+      setActionNotice: mocks.setActionNotice,
       t: (_key: string, opts?: { defaultValue?: string }) =>
         opts?.defaultValue ?? _key,
     }),
 }));
-vi.mock("../../api/client", () => ({ client: { updateCharacter: vi.fn() } }));
+vi.mock("../../api/client", () => ({
+  client: { updateCharacter: mocks.updateCharacter },
+}));
 vi.mock("../../widgets/WidgetHost", () => ({ WidgetHost: () => null }));
 vi.mock("./CharacterEditorPanels", () => ({
-  CharacterIdentityPanel: () => <div data-testid="identity-panel" />,
+  CharacterIdentityPanel: ({
+    handleFieldEdit,
+  }: {
+    handleFieldEdit: (field: string, value: unknown) => void;
+  }) => (
+    <div data-testid="identity-panel">
+      <button type="button" onClick={() => handleFieldEdit("bio", "new bio")}>
+        Edit bio
+      </button>
+    </div>
+  ),
   CharacterStylePanel: () => <div data-testid="style-panel" />,
   CharacterExamplesPanel: () => <div data-testid="examples-panel" />,
 }));
 
 import { CharacterHubView } from "./CharacterHubView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.clearAllMocks();
+});
 
 const noop = vi.fn();
 
-function renderHub() {
+function renderHub(
+  overrides: Partial<Parameters<typeof CharacterHubView>[0]> = {},
+) {
   return render(
     <CharacterHubView
       d={{}}
@@ -41,12 +70,12 @@ function renderHub() {
       normalizedMessageExamples={[]}
       pendingStyleEntries={{}}
       styleEntryDrafts={{}}
-      handleFieldEdit={noop}
       applyFieldEdit={noop}
       handlePendingStyleEntryChange={noop}
       applyStyleEdit={noop}
       handleStyleEntryDraftChange={noop}
       characterSaveError={null}
+      {...overrides}
     />,
   );
 }
@@ -93,5 +122,22 @@ describe("CharacterHubView (Personality-only collapse)", () => {
   it("has no manual Save button (edits autosave)", () => {
     renderHub();
     expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
+  });
+
+  it("autosaves identity edits after the debounce", async () => {
+    vi.useFakeTimers();
+    const applyFieldEdit = vi.fn();
+
+    renderHub({ applyFieldEdit });
+    fireEvent.click(screen.getByRole("button", { name: "Edit bio" }));
+
+    expect(applyFieldEdit).toHaveBeenCalledWith("bio", "new bio");
+    expect(mocks.updateCharacter).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(700);
+    });
+
+    expect(mocks.updateCharacter).toHaveBeenCalledWith({ bio: "new bio" });
   });
 });

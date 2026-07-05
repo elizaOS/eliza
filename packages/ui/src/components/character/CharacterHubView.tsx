@@ -48,7 +48,6 @@ export function CharacterHubView({
   normalizedMessageExamples,
   pendingStyleEntries,
   styleEntryDrafts,
-  handleFieldEdit,
   applyFieldEdit,
   handlePendingStyleEntryChange,
   applyStyleEdit,
@@ -60,7 +59,6 @@ export function CharacterHubView({
   normalizedMessageExamples: MessageExampleGroup[];
   pendingStyleEntries: Record<string, string>;
   styleEntryDrafts: Record<string, string[]>;
-  handleFieldEdit: (field: string, value: unknown) => void;
   applyFieldEdit: (field: string, value: unknown) => void;
   handlePendingStyleEntryChange: (key: string, value: string) => void;
   applyStyleEdit: (key: CharacterStyleSection, value: string) => void;
@@ -131,6 +129,16 @@ export function CharacterHubView({
     (field: string, value: unknown) => {
       applyFieldEdit(field, value);
       if (field === "messageExamples" || field === "postExamples") {
+        scheduleAutoSave({ [field]: value } as CharacterData);
+      }
+    },
+    [applyFieldEdit, scheduleAutoSave],
+  );
+
+  const handleAutoSavedIdentityEdit = useCallback(
+    (field: string, value: unknown) => {
+      applyFieldEdit(field, value);
+      if (field === "bio") {
         scheduleAutoSave({ [field]: value } as CharacterData);
       }
     },
@@ -230,7 +238,7 @@ export function CharacterHubView({
           <section>
             <CharacterIdentityPanel
               bioText={bioText}
-              handleFieldEdit={handleFieldEdit}
+              handleFieldEdit={handleAutoSavedIdentityEdit}
               t={t}
             />
           </section>
