@@ -118,6 +118,27 @@ describe("CharactersService.create — username handling (#13637 class)", () => 
     expect(character.id).toBe("char-1");
   });
 
+  test("duplicate provided username throws ValidationError -> 400, not a plain Error/500", async () => {
+    const { charactersService } = await import("./characters");
+    const { ApiError } = await import("../../api/cloud-worker-errors");
+    usernameExistsResult = true;
+
+    let caught: unknown;
+    try {
+      await charactersService.create(baseData({ username: "taken-name" }));
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(usernameExistsCalls).toEqual(["taken-name"]);
+    expect(caught).toBeInstanceOf(ApiError);
+    const apiError = caught as InstanceType<typeof ApiError>;
+    expect(apiError.status).toBe(400);
+    expect(apiError.code).toBe("validation_error");
+    expect(apiError.message).toContain("Username is already taken");
+    expect(createCalls).toHaveLength(0);
+  });
+
   test("non-string username (shape mismatch) still throws ValidationError -> 400", async () => {
     const { charactersService } = await import("./characters");
     const { ApiError } = await import("../../api/cloud-worker-errors");

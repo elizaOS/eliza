@@ -241,7 +241,7 @@ export class CharactersService {
       // Check uniqueness
       const exists = await userCharactersRepository.usernameExists(username);
       if (exists) {
-        throw new Error("Username is already taken");
+        throw ValidationError("Username is already taken");
       }
     }
 

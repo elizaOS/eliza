@@ -1,6 +1,8 @@
 /**
  * Unit tests for the Hmr Coverage app shell contract and coverage guardrail.
  */
+
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,26 +20,9 @@ const ROOT_PACKAGE_JSON = path.join(REPO_ROOT, "package.json");
 const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
 const EXPECTED_NON_WORKSPACE_HMR_PROBES = new Set([
-  "birdclaw plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.tsx",
-  "cockpit plugins/plugin-task-coordinator/src/CockpitRoute.tsx",
-  "documents plugins/plugin-documents/src/components/documents/DocumentsView.tsx",
-  "feed plugins/plugin-feed/src/components/FeedView.tsx",
-  "focus plugins/plugin-blocker/src/components/focus/FocusView.tsx",
-  "goals plugins/plugin-goals/src/components/goals/GoalsView.tsx",
-  "hyperliquid plugins/plugin-hyperliquid/src/HyperliquidView.tsx",
-  "messages plugins/plugin-messages/src/components/MessagesView.tsx",
-  "model-tester plugins/app-model-tester/src/ModelTesterAppView.tsx",
-  "orchestrator plugins/plugin-task-coordinator/src/OrchestratorWorkbench.tsx",
-  "phone plugins/plugin-phone/src/components/PhoneView.tsx",
-  "polymarket plugins/plugin-polymarket/src/PolymarketView.tsx",
-  "screenshare plugins/plugin-screenshare/src/components/ScreenshareView.tsx",
   "shopify plugins/plugin-shopify/src/ShopifyView.tsx",
   "social-alpha plugins/plugin-social-alpha/src/frontend/SocialAlphaView.tsx",
-  "task-coordinator plugins/plugin-task-coordinator/src/CodingAgentTasksPanel.tsx",
-  "training plugins/plugin-training/src/ui/FineTuningView.tsx",
   "trajectory-logger plugins/plugin-trajectory-logger/src/components/TrajectoryLoggerView.tsx",
-  "vector-browser plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
-  "wallet plugins/plugin-wallet-ui/src/InventoryView.tsx",
 ]);
 
 type GuiViewCase = {
@@ -128,6 +113,21 @@ function readWorkflowJobBlock(workflow: string, jobName: string): string {
   return match?.[1] ?? "";
 }
 
+function probePathExists(repoRelativePath: string): boolean {
+  if (existsSync(path.join(REPO_ROOT, repoRelativePath))) {
+    return true;
+  }
+  const result = spawnSync(
+    "git",
+    ["cat-file", "-e", `HEAD:${repoRelativePath}`],
+    {
+      cwd: REPO_ROOT,
+      stdio: "ignore",
+    },
+  );
+  return result.status === 0;
+}
+
 describe("plugin view HMR coverage", () => {
   it("keeps the HMR source-probe matrix in lockstep with every GUI view", () => {
     const guiCases = readGuiVisualCases();
@@ -143,7 +143,7 @@ describe("plugin view HMR coverage", () => {
       .filter((level) => !guiById.has(level.id))
       .map((level) => `${level.id} ${level.file}`);
     const missingFiles = hmrLevels
-      .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
+      .filter((level) => !probePathExists(level.file))
       .map((level) => `${level.id} ${level.file}`);
     const unexpectedMissingFiles = missingFiles.filter(
       (entry) => !EXPECTED_NON_WORKSPACE_HMR_PROBES.has(entry),
@@ -156,7 +156,7 @@ describe("plugin view HMR coverage", () => {
     );
     const missingRootGraphFiles = hmrLevels
       .filter((level) => rootGraphPluginViews.has(level.name))
-      .filter((level) => !existsSync(path.join(REPO_ROOT, level.file)))
+      .filter((level) => !probePathExists(level.file))
       .map((level) => `${level.id} ${level.file}`);
 
     expect(missing, "Add HMR source probes for new GUI views.").toEqual([]);
