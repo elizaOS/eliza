@@ -1155,6 +1155,40 @@ export function settingsDebugCloudSummary(
   };
 }
 
+// Settings-debug is disabled in the Worker (isElizaSettingsDebugEnabled → false),
+// so this only satisfies @elizaos/shared's import; keep it non-leaking rather than
+// a faithful deep-sanitize (never reached on the workerd path).
+export function sanitizeForSettingsDebug(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "object") return "[object]";
+  if (typeof value === "string") return value.length > 8 ? "[redacted]" : value;
+  return value;
+}
+
+// Faithful mirrors of @elizaos/core name-token substitution: these ARE reached on
+// the Worker prompt path, so behavior must match core exactly. A replacer function
+// (not the raw name string) keeps `$`-sequences in a name literal.
+export function replaceNameTokens(text: string, name: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\{\{\s*name\s*\}\}/g, () => name)
+    .replace(/\{\{\s*agentName\s*\}\}/g, () => name);
+}
+
+export function replaceIndexedNameTokens(
+  text: string,
+  names: readonly string[],
+): string {
+  if (!text) return text;
+  return text.replace(
+    /\{\{\s*(?:name|user)(\d+)\s*\}\}/g,
+    (match, slot: string) => {
+      const name = names[Number(slot) - 1];
+      return name === undefined ? match : name;
+    },
+  );
+}
+
 export function sanitizeSpeechText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
