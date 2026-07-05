@@ -82,6 +82,7 @@ function getRouteNavigationScript(route: string): string {
     return [
       `const targetRoute = ${JSON.stringify(route)};`,
       `const settingsSection = ${JSON.stringify(settingsSection)};`,
+      `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
       `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
       `  detail: { section: settingsSection },`,
       `}));`,
@@ -90,7 +91,7 @@ function getRouteNavigationScript(route: string): string {
       `  window.history.replaceState(null, "", targetHash);`,
       `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
       `}`,
-      `const currentRoute = targetRoute;`,
+      `const currentRoute = readCurrentRoute();`,
     ].join("\n");
   }
 
@@ -244,10 +245,13 @@ async function openRouteAndWait(
     })()`,
     (current) =>
       current.ok &&
-      current.route === route &&
       current.selector === selector &&
       current.found &&
-      (route !== SETTINGS_MEDIA_ROUTE || current.voiceSectionActive),
+      (route === SETTINGS_MEDIA_ROUTE
+        ? current.hash === "#voice" &&
+          current.activeSettingsSection === "voice" &&
+          current.voiceSectionActive
+        : current.route === route),
     {
       timeout: 20_000,
       message: `Timed out waiting for ${selector} at ${route}.`,
@@ -307,7 +311,8 @@ async function waitForMediaSettingsRoute(
     (current) =>
       current.ok &&
       current.shellReady &&
-      current.route === SETTINGS_MEDIA_ROUTE &&
+      current.hash === "#voice" &&
+      current.activeSettingsSection === "voice" &&
       current.voiceSectionActive,
     {
       timeout: 20_000,
