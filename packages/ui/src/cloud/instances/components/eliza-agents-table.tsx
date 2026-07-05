@@ -104,6 +104,78 @@ interface ElizaAgentsTableProps {
   sandboxes: ElizaAgentRow[];
 }
 
+/**
+ * Fold one API list-agent onto its existing row (or a fresh row when there is
+ * none), preserving the local-only fields the list endpoint doesn't return
+ * (ports, node/container, bridge). The single row-shape used by every
+ * poll/refresh merge — see `mergeApiData`.
+ */
+function mergeSandboxRow(
+  existing: ElizaAgentRow | undefined,
+  agent: SandboxListAgent,
+): ElizaAgentRow {
+  return {
+    ...(existing ?? {}),
+    id: agent.id,
+    agent_name: agent.agentName ?? existing?.agent_name ?? null,
+    status: agent.status ?? existing?.status ?? "pending",
+    error_message: agent.errorMessage ?? existing?.error_message ?? null,
+    last_heartbeat_at:
+      agent.lastHeartbeatAt ?? existing?.last_heartbeat_at ?? null,
+    created_at:
+      agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
+    updated_at:
+      agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
+    node_id: existing?.node_id ?? null,
+    container_name: existing?.container_name ?? null,
+    bridge_port: existing?.bridge_port ?? null,
+    web_ui_port: existing?.web_ui_port ?? null,
+    headscale_ip: existing?.headscale_ip ?? null,
+    docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
+    execution_tier:
+      agent.executionTier === undefined
+        ? existing?.execution_tier
+        : agent.executionTier,
+    sandbox_id: existing?.sandbox_id ?? null,
+    bridge_url: existing?.bridge_url ?? null,
+    canonical_web_ui_url:
+      agent.webUiUrl === undefined
+        ? (existing?.canonical_web_ui_url ?? null)
+        : agent.webUiUrl,
+  } as ElizaAgentRow;
+}
+
+/**
+ * Merge a fresh API agent list onto the current rows for a background refresh.
+ *
+ * Updates each existing row from the API when present, keeps it otherwise, and
+ * appends rows the API introduced. It NEVER removes a row just because this
+ * fetch omitted it: a background status poll that came back short/empty (a
+ * transient, a paging blip) must not blank the table while the authoritative
+ * count still reads >0. Membership removal is owned elsewhere — the
+ * `useAgents()` refetch (which replaces the list wholesale via the
+ * `initialSandboxes` resync) and explicit-delete tombstones (`tombstoned`).
+ * Exported for direct unit coverage of that invariant.
+ */
+export function mergeAgentList(
+  prev: ElizaAgentRow[],
+  apiAgents: SandboxListAgent[],
+  tombstoned: ReadonlySet<string>,
+): ElizaAgentRow[] {
+  const apiById = new Map(apiAgents.map((a) => [a.id, a]));
+  const updated = prev
+    .filter((sb) => !tombstoned.has(sb.id))
+    .map((sb) => {
+      const agent = apiById.get(sb.id);
+      return agent ? mergeSandboxRow(sb, agent) : sb;
+    });
+  const known = new Set(prev.map((sb) => sb.id));
+  const added = apiAgents
+    .filter((a) => !known.has(a.id) && !tombstoned.has(a.id))
+    .map((a) => mergeSandboxRow(undefined, a));
+  return [...updated, ...added];
+}
+
 function isDockerBacked(sb: ElizaAgentRow): boolean {
   return !!sb.node_id || sb.execution_tier === "custom" || !!sb.docker_image;
 }
@@ -244,55 +316,15 @@ export function ElizaAgentsTable({
   }, [initialSandboxes, withoutDeleted]);
 
   const mergeApiData = useCallback((apiAgents: SandboxListAgent[]) => {
-    setLocalSandboxes((prev) => {
-      const apiIds = new Set(apiAgents.map((a) => a.id));
-      // An id the API no longer returns is fully deleted — retire its
-      // tombstone so a future agent reusing the id isn't silently hidden.
-      for (const id of deletedIdsRef.current) {
-        if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
-      }
-      const live = apiAgents.filter((a) => !deletedIdsRef.current.has(a.id));
-      const existingMap = new Map(prev.map((sb) => [sb.id, sb]));
-
-      const merged = live.map((agent) => {
-        const existing = existingMap.get(agent.id);
-        return {
-          ...(existing ?? {}),
-          id: agent.id,
-          agent_name: agent.agentName ?? existing?.agent_name ?? null,
-          status: agent.status ?? existing?.status ?? "pending",
-          error_message: agent.errorMessage ?? existing?.error_message ?? null,
-          last_heartbeat_at:
-            agent.lastHeartbeatAt ?? existing?.last_heartbeat_at ?? null,
-          created_at:
-            agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
-          updated_at:
-            agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
-          node_id: existing?.node_id ?? null,
-          container_name: existing?.container_name ?? null,
-          bridge_port: existing?.bridge_port ?? null,
-          web_ui_port: existing?.web_ui_port ?? null,
-          headscale_ip: existing?.headscale_ip ?? null,
-          docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
-          execution_tier:
-            agent.executionTier === undefined
-              ? existing?.execution_tier
-              : agent.executionTier,
-          sandbox_id: existing?.sandbox_id ?? null,
-          bridge_url: existing?.bridge_url ?? null,
-          canonical_web_ui_url:
-            agent.webUiUrl === undefined
-              ? (existing?.canonical_web_ui_url ?? null)
-              : agent.webUiUrl,
-        } as ElizaAgentRow;
-      });
-
-      // The API list is the source of truth for membership: a row it doesn't
-      // return is gone (deleted elsewhere, another tab, another member).
-      // Keeping unknown local rows here is what used to resurrect deleted
-      // agents after every refresh.
-      return merged;
-    });
+    // Retire tombstones the API has stopped returning, so a future agent
+    // reusing that id isn't silently hidden.
+    const apiIds = new Set(apiAgents.map((a) => a.id));
+    for (const id of deletedIdsRef.current) {
+      if (!apiIds.has(id)) deletedIdsRef.current.delete(id);
+    }
+    setLocalSandboxes((prev) =>
+      mergeAgentList(prev, apiAgents, deletedIdsRef.current),
+    );
   }, []);
 
   const refreshData = useCallback(async () => {
