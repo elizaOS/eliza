@@ -41,9 +41,11 @@ import {
   resolveSerial,
 } from "./lib/android-device.mjs";
 import {
+  captureFailureForensics,
   createDeviceE2eBundle,
   finalizeDeviceE2eBundle,
   finishBundleStep,
+  formatFailureForensicsBlock,
   parseOutputDirArg,
   recordBundleArtifact,
   runBundledCommand,
@@ -185,7 +187,55 @@ function stageVoiceModels(adb, serial) {
 }
 
 function run(bundle, name, cmd, args, env = {}) {
-  return runBundledCommand(bundle, name, cmd, args, { cwd: appDir, env });
+  return runBundledCommand(bundle, name, cmd, args, {
+    cwd: appDir,
+    env,
+    onFailure: (step, error) => captureAndroidFailure(bundle, step, error),
+  });
+}
+
+let activeAndroidContext = { adb: null, serial: null };
+
+function captureAndroidFailure(bundle, step, error) {
+  const { adb, serial } = activeAndroidContext;
+  return captureFailureForensics(
+    bundle,
+    step,
+    ({ failureDir }) => {
+      const files = [];
+      const causePath = path.join(failureDir, "failure-cause.txt");
+      fs.writeFileSync(causePath, `${error?.message ?? error}\n`);
+      files.push(causePath);
+      if (adb && serial) {
+        files.push(
+          captureAndroidScreenshot({
+            adb,
+            serial,
+            artifactDir: failureDir,
+            filename: "screen.png",
+            log,
+          }),
+        );
+        files.push(
+          captureAndroidLogcat({
+            adb,
+            serial,
+            artifactDir: failureDir,
+            filename: "logcat.txt",
+            lines: 2000,
+            log,
+          }),
+        );
+      }
+      return files;
+    },
+    error,
+  );
+}
+
+function failAndroidStep(bundle, step, error) {
+  captureAndroidFailure(bundle, step, error);
+  finishBundleStep(bundle, step, "failed", error);
 }
 
 function currentHeadCommit() {
@@ -298,7 +348,7 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
       installApk(adb, serial, apk);
       finishBundleStep(bundle, step, "passed");
     } catch (error) {
-      finishBundleStep(bundle, step, "failed", error);
+      failAndroidStep(bundle, step, error);
       throw error;
     }
     const readback = readInstalledRendererStamp(adb, serial, { log });
@@ -358,10 +408,21 @@ async function main() {
   let serial;
   let lease = null;
   let finalResult = "failed";
+  let finalError = null;
   let routeRecording = null;
 
   try {
-    adb = resolveAdb();
+    {
+      const step = startBundleStep(bundle, "resolve Android SDK");
+      try {
+        adb = resolveAdb();
+        activeAndroidContext = { adb, serial: null };
+        finishBundleStep(bundle, step, "passed");
+      } catch (error) {
+        failAndroidStep(bundle, step, error);
+        throw error;
+      }
+    }
     {
       const step = startBundleStep(bundle, "resolve Android device");
       try {
@@ -387,13 +448,15 @@ async function main() {
           }
         }
         serial = resolveSerial(adb, serial);
+        activeAndroidContext = { adb, serial };
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
-        finishBundleStep(bundle, step, "failed", error);
+        failAndroidStep(bundle, step, error);
         throw error;
       }
     }
     process.env.ANDROID_SERIAL = serial;
+    activeAndroidContext = { adb, serial };
     setBundleDevice(bundle, { serial, kind: "android" });
     log(`device serial=${serial}`);
     lease = await acquireDeviceLease(`android:${serial}`, {
@@ -407,7 +470,7 @@ async function main() {
         await ensureEmulatorPermissive(adb, serial, { log });
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
-        finishBundleStep(bundle, step, "failed", error);
+        failAndroidStep(bundle, step, error);
         throw error;
       }
     }
@@ -447,7 +510,7 @@ async function main() {
           stageVoiceModels(adb, serial);
           finishBundleStep(bundle, step, "passed");
         } catch (error) {
-          finishBundleStep(bundle, step, "failed", error);
+          failAndroidStep(bundle, step, error);
           throw error;
         }
       }
@@ -545,6 +608,9 @@ async function main() {
     }
     finalResult = "passed";
     log("ALL ANDROID E2E PASSED ✅");
+  } catch (error) {
+    finalError = error;
+    throw error;
   } finally {
     if (routeRecording) {
       const videoPath = await routeRecording.stop();
@@ -590,6 +656,10 @@ async function main() {
     }
     lease?.release();
     const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    if (finalError) {
+      const block = formatFailureForensicsBlock(bundle, finalError);
+      if (block) process.stderr.write(`\n${block}`);
+    }
     log(`bundle: ${bundleRoot}`);
   }
 }

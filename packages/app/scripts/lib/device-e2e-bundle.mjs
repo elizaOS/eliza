@@ -67,6 +67,14 @@ function uniquePath(dir, filename) {
   return candidate;
 }
 
+function slugifyStepName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
 function walkFiles(root) {
   if (!root || !fs.existsSync(root)) return [];
   const files = [];
@@ -199,6 +207,11 @@ export function finishBundleStep(bundle, step, status, error) {
   return step;
 }
 
+export function failureDirForStep(bundle, step) {
+  const slug = slugifyStepName(step.name) || "step";
+  return ensureDir(path.join(bundle.root, "failure", slug));
+}
+
 export function recordBundleArtifact(bundle, filePath, kind, step = null) {
   const absolute = path.resolve(filePath);
   if (!isFile(absolute)) return null;
@@ -214,6 +227,54 @@ export function recordBundleArtifact(bundle, filePath, kind, step = null) {
   return artifact;
 }
 
+export function captureFailureForensics(bundle, step, capture, error) {
+  const failureDir = failureDirForStep(bundle, step);
+  step.failureDir = path.relative(bundle.root, failureDir);
+  try {
+    const captured = capture({ failureDir, error }) ?? [];
+    const files = Array.isArray(captured) ? captured : [captured];
+    for (const file of files.filter(Boolean)) {
+      const ext = path.extname(file).toLowerCase();
+      const kind = VIDEO_EXTENSIONS.has(ext)
+        ? "video"
+        : IMAGE_EXTENSIONS.has(ext)
+          ? "screenshot"
+          : "log";
+      recordBundleArtifact(bundle, file, kind, step);
+    }
+  } catch (captureError) {
+    // error-policy:J6 failure forensics is teardown/diagnostic work; preserve
+    // the original runner failure and record the capture problem as a warning.
+    bundle.warnings.push(
+      `failure forensics failed for ${step.name}: ${captureError?.message ?? captureError}`,
+    );
+  }
+  return failureDir;
+}
+
+export function formatFailureForensicsBlock(bundle, error) {
+  const failedStep = [...bundle.steps]
+    .reverse()
+    .find((step) => step.status === "failed");
+  if (!failedStep) return "";
+  const artifactPaths = failedStep.artifacts.map((relativePath) =>
+    path.join(bundle.root, relativePath),
+  );
+  const lines = [
+    "DEVICE E2E FAILURE FORENSICS",
+    `step: ${failedStep.name}`,
+    `cause: ${error?.message ?? failedStep.error ?? error}`,
+  ];
+  if (failedStep.failureDir) {
+    lines.push(`failureDir: ${path.join(bundle.root, failedStep.failureDir)}`);
+  }
+  if (artifactPaths.length > 0) {
+    lines.push("artifacts:");
+    for (const artifactPath of artifactPaths) lines.push(`  - ${artifactPath}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export function appendRunnerLog(bundle, chunk) {
   fs.appendFileSync(path.join(bundle.logsDir, "runner.log"), chunk);
 }
@@ -223,7 +284,7 @@ export function runBundledCommand(
   name,
   cmd,
   args,
-  { cwd, env = {} } = {},
+  { cwd, env = {}, onFailure } = {},
 ) {
   const step = startBundleStep(bundle, name);
   const result = spawnSync(cmd, args, {
@@ -243,18 +304,15 @@ export function runBundledCommand(
     appendRunnerLog(bundle, stderr);
   }
   const ok = result.status === 0;
-  finishBundleStep(
-    bundle,
-    step,
-    ok ? "passed" : "failed",
-    ok
-      ? null
-      : `${cmd} ${args.join(" ")} ${
-          result.status === null
-            ? "terminated by signal"
-            : `exited with ${result.status}`
-        }`,
-  );
+  const failure = ok
+    ? null
+    : `${cmd} ${args.join(" ")} ${
+        result.status === null
+          ? "terminated by signal"
+          : `exited with ${result.status}`
+      }`;
+  if (!ok && onFailure) onFailure(step, failure);
+  finishBundleStep(bundle, step, ok ? "passed" : "failed", failure);
   if (!ok) {
     throw new Error(
       `${cmd} ${args.join(" ")} ${
@@ -370,6 +428,7 @@ function buildSummary(bundle, result) {
       endedAt: step.endedAt ?? null,
       durationMs: step.durationMs,
       artifacts: step.artifacts,
+      ...(step.failureDir ? { failureDir: step.failureDir } : {}),
       ...(step.error ? { error: step.error } : {}),
     })),
     artifacts: bundle.artifacts.map((artifact) => ({
