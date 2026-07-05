@@ -45,6 +45,7 @@ import { renderPermissionCardFromPayload } from "../composites/chat/permission-c
 import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -61,7 +62,6 @@ import {
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";
@@ -1124,10 +1124,7 @@ export function MessageContent({
   // `no_provider` specifically the user can't make progress without
   // wiring up a provider, so render a structured gate (banner + CTA)
   // instead of the fallback text — clicking jumps to Settings where
-  // ProviderSwitcher lives. Other failure kinds (insufficient_credits,
-  // provider_issue) still render as normal text bubbles; the user has
-  // separate, clearer in-product affordances for those (Cloud billing
-  // banner, retry).
+  // ProviderSwitcher lives.
   if (message.failureKind === "no_provider") {
     return (
       <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
@@ -1137,6 +1134,24 @@ export function MessageContent({
         </div>
         <Button type="button" size="sm" onClick={handleOpenSettings}>
           Open Settings
+        </Button>
+      </div>
+    );
+  }
+
+  // A drained org returns a 402; retrying just re-hits the same empty balance,
+  // so render a designed out-of-credits gate rather than the generic failure
+  // text (which invites the retry loop). The CTA jumps to Settings where the
+  // Cloud top-up/redeem flow lives — there is no separate billing tab.
+  if (message.failureKind === "insufficient_credits") {
+    return (
+      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
+        <div className="font-medium mb-1">Out of credits</div>
+        <div className="text-muted whitespace-pre-wrap mb-2">
+          {message.text}
+        </div>
+        <Button type="button" size="sm" onClick={handleOpenSettings}>
+          Add credits
         </Button>
       </div>
     );
