@@ -121,6 +121,8 @@ type DocumentUrlUploadOptions = {
   scopedToEntityId?: string;
 };
 
+type DocumentSearchMode = "hybrid" | "vector" | "keyword";
+
 type DocumentSearchOptions = {
   threshold?: number;
   limit?: number;
@@ -134,6 +136,7 @@ type DocumentSearchOptions = {
   mediaFormat?: string;
   roomId?: string;
   knowledgeFacet?: string;
+  searchMode?: DocumentSearchMode;
 };
 
 type InboxMessagesOptions = {
@@ -272,6 +275,7 @@ function buildDocumentSearchParams(
   setDefinedNumberParam(params, "threshold", options?.threshold);
   setDefinedNumberParam(params, "limit", options?.limit);
   setTruthyStringParam(params, "query", options?.query);
+  setTruthyStringParam(params, "searchMode", options?.searchMode);
   appendDocumentFilterParams(params, options);
   return params;
 }

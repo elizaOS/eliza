@@ -14,7 +14,10 @@ import {
   listFragmentIdsForDocument,
   seedBundledDocuments,
 } from "../default-documents.ts";
-import { HELP_DOCUMENTS } from "../default-help-documents.ts";
+import {
+  HELP_DOCUMENTS,
+  HELP_KNOWLEDGE_TAG,
+} from "../default-help-documents.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e1" as UUID;
 const DOCUMENT_ID = "00000000-0000-0000-0000-0000000d0c01" as UUID;
@@ -209,6 +212,25 @@ describe("seedBundledDocuments", () => {
       );
       expect(documentRow?.content.text).toBe(doc.text);
     }
+  });
+
+  it("copies searchable document metadata onto seeded fragments", async () => {
+    const harness = makeSeedHarness();
+    const [helpDocument] = HELP_DOCUMENTS;
+
+    await seedBundledDocuments(harness.runtime, [helpDocument]);
+
+    const fragmentRow = [...harness.memories.values()].find(
+      (m) =>
+        (m.metadata as Record<string, unknown>).bundledDocumentKey ===
+          helpDocument.key &&
+        (m.metadata as Record<string, unknown>).type === "fragment",
+    );
+    expect(fragmentRow?.metadata).toMatchObject({
+      type: "fragment",
+      tags: [HELP_KNOWLEDGE_TAG],
+      helpCategory: helpDocument.metadata?.helpCategory,
+    });
   });
 
   it("re-runs idempotently: no creates, updates, or deletes the second time", async () => {

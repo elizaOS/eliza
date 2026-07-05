@@ -270,6 +270,7 @@ const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
 const { spawnSync } = require("node:child_process");
+const { randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const git = process.env.ACP_REAL_GIT || "git";
@@ -328,24 +329,62 @@ function processAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function lockIsStale(lockPath) {
-  let raw;
+function readLock(lockPath) {
   try {
-    raw = fs.readFileSync(lockPath, "utf8");
+    const raw = fs.readFileSync(lockPath, "utf8");
+    let owner = {};
+    try {
+      owner = JSON.parse(raw);
+    } catch {
+      const pid = Number.parseInt(raw, 10);
+      if (Number.isInteger(pid) && pid > 0) owner = { pid };
+    }
+    return { raw, owner };
   } catch (err) {
-    if (err.code === "ENOENT") return false;
+    if (err.code === "ENOENT") return undefined;
     throw err;
   }
-  const pid = Number.parseInt(raw, 10);
-  if (Number.isInteger(pid) && pid > 0) return !processAlive(pid);
+}
+function lockIsStale(lockPath) {
+  const lock = readLock(lockPath);
+  if (!lock) return undefined;
+  const pid = Number(lock.owner.pid);
+  if (Number.isInteger(pid) && pid > 0) return processAlive(pid) ? undefined : lock;
   let st;
   try {
     st = fs.statSync(lockPath);
   } catch (err) {
-    if (err.code === "ENOENT") return false;
+    if (err.code === "ENOENT") return undefined;
     throw err;
   }
-  return Date.now() - st.mtimeMs > LOCK_STALE_MS;
+  return Date.now() - st.mtimeMs > LOCK_STALE_MS ? lock : undefined;
+}
+function stealStaleLock(lockPath, staleRaw) {
+  const claimPath = lockPath + ".stale-" + process.pid + "-" + randomUUID();
+  try {
+    fs.linkSync(lockPath, claimPath);
+  } catch (err) {
+    if (err.code === "ENOENT") return true;
+    throw err;
+  }
+  try {
+    const claimedRaw = fs.readFileSync(claimPath, "utf8");
+    if (claimedRaw !== staleRaw) return false;
+    let lockStat;
+    let claimStat;
+    try {
+      lockStat = fs.statSync(lockPath);
+      claimStat = fs.statSync(claimPath);
+    } catch (err) {
+      if (err.code === "ENOENT") return true;
+      throw err;
+    }
+    if (lockStat.dev !== claimStat.dev || lockStat.ino !== claimStat.ino) return false;
+    fs.unlinkSync(lockPath);
+    return true;
+  } finally {
+    fs.rmSync(claimPath, { force: true });
+  }
 }
 function resolveGitDir(prefix) {
   const res = spawnSync(git, [...prefix, "rev-parse", "--absolute-git-dir"], { encoding: "utf8" });
@@ -355,6 +394,8 @@ function resolveGitDir(prefix) {
 }
 function acquireCommitLock(gitDir) {
   const lockPath = path.join(gitDir, "eliza-acp-commit.lock");
+  const token = process.pid + ":" + randomUUID();
+  const owner = JSON.stringify({ pid: process.pid, token, createdAt: Date.now() });
   const deadline = Date.now() + LOCK_WAIT_MS;
   for (;;) {
     let fd;
@@ -362,24 +403,32 @@ function acquireCommitLock(gitDir) {
       fd = fs.openSync(lockPath, "wx");
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
-      if (lockIsStale(lockPath)) {
-        fs.rmSync(lockPath, { force: true });
+      const staleLock = lockIsStale(lockPath);
+      if (staleLock && stealStaleLock(lockPath, staleLock.raw)) {
         continue;
       }
       if (Date.now() >= deadline) throw new Error("eliza-acp: timed out acquiring commit lock at " + lockPath);
       sleepSync(LOCK_POLL_MS);
       continue;
     }
-    fs.writeSync(fd, String(process.pid));
+    fs.writeSync(fd, owner);
     let released = false;
+    const owns = () => {
+      const lock = readLock(lockPath);
+      return lock?.owner?.token === token && Number(lock.owner.pid) === process.pid;
+    };
+    const verify = () => {
+      if (!owns()) throw new Error("eliza-acp: commit lock ownership was lost at " + lockPath);
+      fs.futimesSync(fd, new Date(), new Date());
+    };
     const release = () => {
       if (released) return;
       released = true;
       fs.closeSync(fd);
-      fs.rmSync(lockPath, { force: true });
+      if (owns()) fs.rmSync(lockPath, { force: true });
     };
     process.on("exit", release);
-    return release;
+    return { release, verify };
   }
 }
 const info = commandInfo(args);
@@ -393,21 +442,32 @@ if (indexFile && baseline && info.cmd === "commit") {
   });
   if (diff.status !== 0) process.exit(diff.status || 1);
   const gitDir = resolveGitDir(info.prefix);
-  const release = gitDir ? acquireCommitLock(gitDir) : () => {};
+  const lock = gitDir ? acquireCommitLock(gitDir) : { release: () => {}, verify: () => {} };
+  let exitStatus = 0;
+  let exitSignal;
   if (diff.stdout.length > 0) {
+    lock.verify();
     const reset = run([...info.prefix, "read-tree", "HEAD"]);
-    if (reset.status !== 0) process.exit(reset.status || 1);
-    const apply = spawnSync(git, [...info.prefix, "apply", "--cached", "--whitespace=nowarn", "-"], {
-      input: diff.stdout,
-      stdio: ["pipe", "inherit", "inherit"],
-      env: process.env,
-    });
-    if (apply.status !== 0) process.exit(apply.status || 1);
+    if (reset.status !== 0) exitStatus = reset.status || 1;
+    if (exitStatus === 0) lock.verify();
+    if (exitStatus === 0) {
+      const apply = spawnSync(git, [...info.prefix, "apply", "--cached", "--whitespace=nowarn", "-"], {
+        input: diff.stdout,
+        stdio: ["pipe", "inherit", "inherit"],
+        env: process.env,
+      });
+      if (apply.status !== 0) exitStatus = apply.status || 1;
+    }
   }
-  const result = run(args);
-  release();
-  if (result.signal) process.kill(process.pid, result.signal);
-  process.exit(result.status ?? 1);
+  if (exitStatus === 0) {
+    lock.verify();
+    const result = run(args);
+    exitSignal = result.signal;
+    exitStatus = result.status ?? 1;
+  }
+  lock.release();
+  if (exitSignal) process.kill(process.pid, exitSignal);
+  process.exit(exitStatus);
 }
 const result = run(args);
 if (result.signal) process.kill(process.pid, result.signal);

@@ -302,7 +302,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 <Button
                   onClick={() => setShowWithdrawDialog(true)}
                   size="sm"
-                  className="w-full bg-green-600 hover:bg-green-500 text-white"
+                  className="w-full bg-green-600 hover:bg-green-500 text-txt"
                 >
                   <Wallet className="h-4 w-4 mr-2" />
                   Withdraw Now

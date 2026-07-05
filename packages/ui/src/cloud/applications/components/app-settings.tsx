@@ -384,7 +384,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         <Button
           onClick={handleSave}
           disabled={isLoading}
-          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt"
         >
           {isLoading ? (
             <>
@@ -427,7 +427,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
                   disabled={isRegenerating}
                 >
                   {isRegenerating ? (
@@ -462,7 +462,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-red-600 hover:bg-red-700 text-white"
+                    className="bg-red-600 hover:bg-red-700 text-txt"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {
                       defaultValue: "Regenerate API Key",
@@ -490,7 +490,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
                   disabled={isDeleting}
                 >
                   {isDeleting ? (
@@ -530,7 +530,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-red-600 hover:bg-red-700 text-white"
+                    className="bg-red-600 hover:bg-red-700 text-txt"
                   >
                     {t("cloud.appSettings.deleteApp", {
                       defaultValue: "Delete App",

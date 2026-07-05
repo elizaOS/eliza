@@ -24,11 +24,12 @@
 
 import type { IAgentRuntime, Media, Memory, UUID } from "@elizaos/core";
 import {
-  ChannelType,
+  type ChannelType,
   ContentType,
   ElizaError,
   resolveEntityRole,
 } from "@elizaos/core";
+import { roomIsPrivateSurface as roomIsPrivateSurfaceShared } from "./document-access.ts";
 import { isStoredMediaUrl, mediaFileNameFromUrl } from "./media-store.ts";
 
 /**
@@ -114,19 +115,16 @@ export function attachmentKnowledgeTags(format: MediaFormat): string[] {
  * API room is a "private" surface (owner's own chat); everything else (GROUP,
  * FORUM, FEED, THREAD, WORLD, …) is a "public"/community surface that must not
  * receive owner-private or global writes.
+ *
+ * Delegates to the canonical classifier in `document-access.ts` so the ingest
+ * spill guard, the send wall, and the active-room surfacing wall can never drift
+ * (a channel type omitted from one list but not another silently opened a hole).
+ * Re-exported here to keep the existing ingest import surface stable.
  */
 export function roomIsPrivateSurface(
   channelType: ChannelType | string | undefined,
 ): boolean {
-  switch (channelType) {
-    case ChannelType.DM:
-    case ChannelType.SELF:
-    case ChannelType.VOICE_DM:
-    case ChannelType.API:
-      return true;
-    default:
-      return false;
-  }
+  return roomIsPrivateSurfaceShared(channelType);
 }
 
 export interface IngestScopeDecision {

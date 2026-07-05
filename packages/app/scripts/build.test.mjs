@@ -105,15 +105,4 @@ describe("shouldSkipBuildStamp", () => {
     expect(bundle).toEqual({ "assets/app.js": { type: "chunk" } });
   });
 
-  it("removes emitted build-info assets from Vite production bundles", () => {
-    const bundle = {
-      "assets/app.js": { type: "chunk" },
-      "build-info.json": { type: "asset" },
-      "/build-info.json": { type: "asset" },
-    };
-
-    removeEmittedBuildStamp(bundle);
-
-    expect(bundle).toEqual({ "assets/app.js": { type: "chunk" } });
-  });
 });
