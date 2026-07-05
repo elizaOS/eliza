@@ -44,7 +44,7 @@ import {
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
-import { readConfigMcpServers } from "./config-env.js";
+import { readConfigEnvKey, readConfigMcpServers } from "./config-env.js";
 import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
@@ -3127,6 +3127,25 @@ export class AcpService extends Service {
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
     const env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
+    // #14118: the raw owner cloud key is broker-gated by default. When an
+    // operator opts INTO forwarding it and a key actually landed in the child
+    // env, surface it — an autonomous child now holds the owner's Cloud bearer,
+    // which the broker-first path exists to avoid.
+    if (
+      isCloudKeyForwardingEnabled() &&
+      Object.keys(env).some((key) => key.startsWith("ELIZAOS_CLOUD"))
+    ) {
+      this.log(
+        "warn",
+        "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS is set: forwarding the owner's raw ELIZAOS_CLOUD* creds into the sub-agent env (broker-first is bypassed). The child now holds the owner Cloud key — prefer the parent-agent broker (apps.create / containers.create) and the credential bridge instead.",
+        {
+          forwardedCloudKeys: Object.keys(env).filter((key) =>
+            key.startsWith("ELIZAOS_CLOUD"),
+          ),
+          childSessionId,
+        },
+      );
+    }
     for (const [key, value] of Object.entries(customCredentials ?? {})) {
       if (typeof value !== "string") continue;
       // customCredentials arrive with the spawn request, not from the parent's
@@ -3653,16 +3672,51 @@ export function canonicalForwardedEnvKey(key: string): string {
   return FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ? key.toUpperCase() : key;
 }
 
-export function shouldForwardEnv(key: string): boolean {
+/**
+ * Config key that opts a spawn INTO forwarding the owner's raw `ELIZAOS_CLOUD*`
+ * creds (the live Cloud API key + URL) into every child env. Default OFF: a
+ * sub-agent reaches Cloud through the parent-agent broker instead (`apps.create`
+ * / `containers.create` — spend-capped, confirmation-gated), so the owner key
+ * never lands in an autonomous child's env where it can leak into files, logs,
+ * or artifacts (#14093 had to redact stdout for exactly this class of leak).
+ * The one value a self-serving monetized container genuinely needs at RUNTIME
+ * (its own upstream cloud bearer) is fetched through the owner-approved,
+ * single-use credential bridge, not force-forwarded. Set to `1` only for a flow
+ * the broker cannot serve yet.
+ */
+const FORWARD_CLOUD_KEY_CONFIG = "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS";
+
+/**
+ * Whether the operator opted into forwarding raw `ELIZAOS_CLOUD*` creds into
+ * child envs (see {@link FORWARD_CLOUD_KEY_CONFIG}). Reads config-env so a UI or
+ * service.env toggle takes effect without a restart; default OFF.
+ */
+export function isCloudKeyForwardingEnabled(): boolean {
+  const raw = readConfigEnvKey(FORWARD_CLOUD_KEY_CONFIG)?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+/**
+ * The per-var forwarding predicate. `forwardCloudKey` (default false) opts a
+ * spawn into forwarding the owner's raw `ELIZAOS_CLOUD*` creds — pure so the
+ * gate is unit-testable without touching config; `forwardableSubAgentEnv`
+ * resolves the flag from config-env once per build.
+ */
+export function shouldForwardEnv(
+  key: string,
+  forwardCloudKey = false,
+): boolean {
   return (
     FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
     // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
-    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match. A
-    // spawned monetized-app build needs them to register the app (POST
-    // /api/v1/apps) without hunting the filesystem for the key.
-    key.startsWith("ELIZAOS_CLOUD") ||
+    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match.
+    // Broker-first (#14118): a child does NOT get the raw owner key by default —
+    // it registers/deploys via the parent broker (spend-gated) and fetches any
+    // container-runtime secret via the owner-approved credential bridge. Only the
+    // explicit ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
+    (forwardCloudKey && key.startsWith("ELIZAOS_CLOUD")) ||
     // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
     // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
     // is unreachable from an ACP-spawned sub-agent.
@@ -3699,9 +3753,12 @@ export function shouldForwardEnv(key: string): boolean {
  * DENY_ENV_PATTERNS) match shouldForwardEnv — e.g. via the broad ELIZA_ prefix —
  * yet must never reach a coding sub-agent, so the deny check runs first.
  */
-export function isEnvForwardableToSubAgent(key: string): boolean {
+export function isEnvForwardableToSubAgent(
+  key: string,
+  forwardCloudKey = false,
+): boolean {
   if (isDeniedSubAgentEnvKey(key)) return false;
-  return shouldForwardEnv(key);
+  return shouldForwardEnv(key, forwardCloudKey);
 }
 
 /**
@@ -3713,11 +3770,12 @@ export function isEnvForwardableToSubAgent(key: string): boolean {
  */
 export function forwardableSubAgentEnv(
   source: Record<string, string | undefined>,
+  forwardCloudKey = isCloudKeyForwardingEnabled(),
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
     if (typeof value !== "string") continue;
-    if (!isEnvForwardableToSubAgent(key)) continue;
+    if (!isEnvForwardableToSubAgent(key, forwardCloudKey)) continue;
     out[canonicalForwardedEnvKey(key)] = value;
   }
   return out;

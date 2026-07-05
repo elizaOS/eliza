@@ -120,6 +120,21 @@ branded domain and bills the app's monetized credit pool from the first message.
 
 Self-hosting closes the loop: container daily-billing debits the owner's redeemable app earnings **before** org credits (the org's `payAsYouGoFromEarnings` toggle, on by default), so the app keeps itself alive as long as it earns enough.
 
+> **Spawned Eliza sub-agents deploy broker-first (#14118).** A coding sub-agent
+> the orchestrator spawns does **not** receive the owner's raw
+> `ELIZAOS_CLOUD_API_KEY` in its env by default. Instead of the raw `curl` below,
+> it runs the same two calls through the parent-agent broker, which holds the
+> owner key server-side and enforces the spend cap + confirmation gates:
+> `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{ … }}`
+> then `… "command":"containers.create","params":{ … }`. These map 1:1 onto
+> `POST /api/v1/apps` and `POST /api/v1/containers`; `containers.create` is a
+> fixed-cost self-spend that may auto-authorize within the agent's cap. The one
+> value the broker can't inject — the container's own `environmentVars.ELIZA_CLOUD_API_KEY`
+> runtime bearer — the sub-agent fetches via the owner-approved credential bridge
+> (or the operator sets `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to restore raw
+> forwarding). A human operator running the deploy by hand uses the raw `curl`
+> as-is.
+
 <!-- The plain ./Dockerfile cannot be built standalone: server.ts imports the
      `@elizaos/cloud-sdk` workspace dep, which only resolves inside the monorepo.
      Bundle the SDK in first (what CI does), then ship the tiny bundle context

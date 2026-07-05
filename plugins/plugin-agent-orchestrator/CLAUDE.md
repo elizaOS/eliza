@@ -282,8 +282,8 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
 | `ELIZA_SCRATCH_RETENTION` | unset | How long to retain scratch workspace dirs |
 | `ELIZA_SCRATCH_DECISION_TTL_MS` | unset | TTL for scratch workspace GC decisions |
-| `ELIZA_CLOUD_API_KEY` / `ELIZAOS_CLOUD_API_KEY` | unset | Cloud API key forwarded to spawned sub-agents |
-| `ELIZA_CLOUD_URL` / `ELIZAOS_CLOUD_URL` | unset | Cloud base URL forwarded to spawned sub-agents |
+| `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_URL` | unset | Owner Cloud creds. **Broker-first (#14118): NOT forwarded to sub-agents by default** — a child reaches Cloud via the parent broker (`apps.create` / `containers.create`, spend-gated). Set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to restore raw forwarding. |
+| `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS` | unset (OFF) | Opt IN to forwarding the owner's raw `ELIZAOS_CLOUD*` creds into every child env. Default OFF; broker-first is preferred. A structured warning logs when active. |
 | `ACPX_DEFAULT_TIMEOUT_MS` | `300000` | Per-prompt timeout in ms |
 | `ACPX_APPROVE_ALL` | `false` | When `true`, defaults sessions to approve-all preset |
 | `ACPX_NO_TERMINAL` | `true` | Pass `--no-terminal` so agents use ACP events, not terminal UI |
