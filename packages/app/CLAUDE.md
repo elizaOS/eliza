@@ -124,6 +124,15 @@ device-boot recipe in `.github/issue-evidence/11030-ios-boot-fix/device-boot-REA
 Device id comes from `--device <devicectl-id|udid|name>` or `ELIZA_IOS_DEVICE_ID`.
 
 ```bash
+# Mint/refresh DEVELOPMENT provisioning profiles for the app + every appex via
+# the App Store Connect API (no Xcode UI, no interactive account session), so the
+# deploy profile scan below finds one profile per bundle id. Needs the ASC key
+# triplet apple-store-release.yml already uses (APP_STORE_API_KEY_ID /
+# APP_STORE_API_ISSUER_ID / APP_STORE_API_KEY_P8, or ..._KEY_PATH for the .p8
+# file). Idempotent; --check-only validates config + key offline (no Apple call);
+# --product <App.app> discovers appexes from the built product's PlugIns/.
+bun run --cwd packages/app ios:device:provision -- --device <udid>   # flags: --check-only --product <App.app> --device-name <name>
+
 # Build (unsigned, run-mobile-build ios-local lane) → auto-discover a matching
 # provisioning profile (~/Library/MobileDevice/'Provisioning Profiles' + prior
 # signed builds in DerivedData; must cover the bundle id + device UDID and be
@@ -160,7 +169,11 @@ target/scheme in the template Xcode project) and is
 materialized into the gitignored `packages/app/ios` by cap sync. Pure decision
 logic (profile matching/selection, entitlement derivation, plist/xctestrun
 handling) is in `scripts/ios-device-lib.mjs`, unit-tested by
-`scripts/ios-device-lib.test.mjs` in the package vitest suite. Boot-trace pull
+`scripts/ios-device-lib.test.mjs` in the package vitest suite; the App Store
+Connect profile-minting logic (JWT claims/signing, request/response shapes,
+bundle-id/appex enumeration, credential + arg parsing) is in
+`scripts/ios-asc-lib.mjs`, unit-tested by `scripts/ios-asc-lib.test.mjs`.
+Boot-trace pull
 path defaults to `Documents/eliza-boot-trace.jsonl` (+ best-effort rotated
 `eliza-boot-trace.prev.jsonl` sibling; the renderer appends into the same
 primary file via the Agent plugin's `appendBootTrace` bridge, so there is no
