@@ -120,6 +120,31 @@ export interface AttemptReflection {
 /** Cap on retained reflections — keep the most recent few to bound prompt size. */
 export const MAX_ATTEMPT_REFLECTIONS = 5;
 
+/** Crash-retry budget: how many times an unrecoverable session error may
+ * re-dispatch a task's sub-agent lineage before the task goes terminal
+ * `failed`. Bounds the general-crash respawn the same way
+ * `MAX_AUTO_VERIFY_ATTEMPTS` bounds verification re-prompts. */
+export const MAX_SESSION_RETRY_ATTEMPTS = 3;
+
+/** The metadata key both the durable session `retryCount` and the router's
+ * respawn-lineage counter fold into, so the two subsystems name ONE counter.
+ * The router carries this forward across respawns via `sanitizeSuccessorMetadata`;
+ * the task service mirrors it onto the typed `OrchestratorTaskSession.retryCount`.
+ * Keep the historical key so lineages spawned before this reconciliation still
+ * resolve their prior count. */
+export const SESSION_RETRY_METADATA_KEY = "buildVerifyRetryCount";
+
+/** Read the canonical retry count off a free-form session-metadata bag (the ACP
+ * `SessionInfo.metadata`, which is untyped by construction). One typed accessor
+ * replaces scattered untyped reads so the counter has a single definition across
+ * the router and the task service. Non-numeric / missing reads to 0. */
+export function readSessionRetryCount(
+  metadata: Record<string, unknown> | undefined,
+): number {
+  const raw = metadata?.[SESSION_RETRY_METADATA_KEY];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+}
+
 export interface TaskProviderPolicy {
   /** Preferred sub-agent framework: claude | codex | opencode | elizaos | pi-agent. */
   preferredFramework?: string;
@@ -420,77 +445,156 @@ export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["done", "failed", "archived"]);
 
 /**
- * Legal task-status transitions keyed by the current status. A task moves
- * between working states as its sub-agent sessions report progress, parks on
- * `waiting_on_user`/`blocked` when it needs input, and reaches exactly one
- * terminal status (`done`, `failed`, `archived`) that it can never leave.
+ * The named lifecycle triggers that drive a task's status. Every durable
+ * task-status write goes through exactly one of these via the legal-transition
+ * table below, so "which events can produce `failed`" (and every other status)
+ * is answered in one place instead of being scattered across the event bridge,
+ * the verifier, and the recovery/interrupt paths. Adding a status write means
+ * adding a trigger here and an edge to {@link TASK_STATUS_TRANSITIONS}; there is
+ * no other legal way to move a task's status.
  *
- * Two invariants make this the single source of truth: `failed` is reachable
- * from every non-terminal working state (a session can crash at any point), and
- * `done` is reachable only from `validating` (completion is gated on
- * verification). `advanceTaskStatus` enforces the map so an unmodeled write —
- * e.g. the historically missing `failed` producer (#13771), or a stray attempt
- * to jump straight to `done` without verifying — is rejected and logged rather
- * than silently corrupting the durable task record.
+ * - `session_active` — a sub-agent reported liveness (ready/tool_running); the
+ *   weakest signal, it only promotes an untouched `open` task. It deliberately
+ *   does NOT reactivate `blocked`/`waiting_on_user`/`validating` — those are
+ *   stronger states a mere activity ping must not clear; reactivation from them
+ *   is an explicit operator move (restart/resume/retry), never a session event.
+ * - `session_blocked` — the sub-agent hit a hard block it can't self-resolve.
+ * - `awaiting_user` — the task needs human input to proceed (login required,
+ *   auto-verify budget exhausted, corrective send failed).
+ * - `completion_reported` — a sub-agent claimed done; gates on validation.
+ * - `validation_passed` / `validation_failed` — the verifier's verdict.
+ * - `retrying` — a recoverable crash is being re-dispatched under budget.
+ * - `unrecoverable` — a crash with no budget left; the sole producer of `failed`.
+ * - `interrupted` — an operator stop / lost-ACP interrupt.
+ * - `archived` / `reopened` — operator archive lifecycle.
+ * - `restarted` — an operator restart re-engages a fresh sub-agent.
  */
-export const LEGAL_TASK_STATUS_TRANSITIONS: Record<
-  OrchestratorTaskStatus,
-  ReadonlySet<OrchestratorTaskStatus>
+export type TaskLifecycleTrigger =
+  | "session_active"
+  | "session_blocked"
+  | "awaiting_user"
+  | "completion_reported"
+  | "validation_passed"
+  | "validation_failed"
+  | "retrying"
+  | "unrecoverable"
+  | "interrupted"
+  | "archived"
+  | "reopened"
+  | "restarted";
+
+/**
+ * The single legal-transition table: `from × trigger → to`. A trigger absent
+ * from a `from` state's row is illegal from that state and {@link nextTaskStatus}
+ * rejects it — this is what makes "`failed` has no producer" structurally
+ * impossible to reintroduce (the `unrecoverable` edges are the producer) and
+ * stops a stale `active` from stomping `blocked`/`validating`/terminal.
+ *
+ * Terminal states (`done`/`failed`/`archived`) only leave via the operator
+ * triggers (`reopened`/`restarted`/`archived`); no session event mutates them.
+ * A same-status self-edge is always legal and is a no-op the caller can skip.
+ */
+export const TASK_STATUS_TRANSITIONS: Readonly<
+  Record<
+    OrchestratorTaskStatus,
+    Partial<Record<TaskLifecycleTrigger, OrchestratorTaskStatus>>
+  >
 > = {
-  open: new Set([
-    "active",
-    "waiting_on_user",
-    "blocked",
-    "validating",
-    "failed",
-    "interrupted",
-  ]),
-  active: new Set([
-    "waiting_on_user",
-    "blocked",
-    "validating",
-    "failed",
-    "interrupted",
-  ]),
-  waiting_on_user: new Set([
-    "active",
-    "blocked",
-    "validating",
-    "failed",
-    "interrupted",
-  ]),
-  blocked: new Set([
-    "active",
-    "waiting_on_user",
-    "validating",
-    "failed",
-    "interrupted",
-  ]),
-  validating: new Set([
-    "active",
-    "waiting_on_user",
-    "blocked",
-    "done",
-    "failed",
-    "interrupted",
-  ]),
-  interrupted: new Set([
-    "active",
-    "waiting_on_user",
-    "blocked",
-    "validating",
-    "failed",
-  ]),
-  done: new Set(),
-  failed: new Set(),
-  archived: new Set(),
+  open: {
+    session_active: "active",
+    session_blocked: "blocked",
+    awaiting_user: "waiting_on_user",
+    completion_reported: "validating",
+    unrecoverable: "failed",
+    interrupted: "interrupted",
+    archived: "archived",
+  },
+  active: {
+    session_blocked: "blocked",
+    awaiting_user: "waiting_on_user",
+    completion_reported: "validating",
+    retrying: "active",
+    unrecoverable: "failed",
+    interrupted: "interrupted",
+    archived: "archived",
+  },
+  waiting_on_user: {
+    session_blocked: "blocked",
+    completion_reported: "validating",
+    retrying: "active",
+    unrecoverable: "failed",
+    interrupted: "interrupted",
+    archived: "archived",
+  },
+  blocked: {
+    awaiting_user: "waiting_on_user",
+    completion_reported: "validating",
+    retrying: "active",
+    unrecoverable: "failed",
+    interrupted: "interrupted",
+    archived: "archived",
+  },
+  validating: {
+    validation_passed: "done",
+    validation_failed: "active",
+    awaiting_user: "waiting_on_user",
+    retrying: "active",
+    unrecoverable: "failed",
+    interrupted: "interrupted",
+    archived: "archived",
+  },
+  interrupted: {
+    completion_reported: "validating",
+    retrying: "active",
+    restarted: "active",
+    unrecoverable: "failed",
+    archived: "archived",
+  },
+  done: {
+    reopened: "open",
+    restarted: "active",
+    archived: "archived",
+  },
+  failed: {
+    reopened: "open",
+    restarted: "active",
+    archived: "archived",
+  },
+  archived: {
+    reopened: "open",
+    restarted: "active",
+  },
 };
 
-/** Whether the task lifecycle permits moving directly from `from` to `to`.
- * Terminal statuses have no outbound transitions. */
-export function isLegalTaskStatusTransition(
+/**
+ * Resolve the target status for a `(from, trigger)` pair against
+ * {@link TASK_STATUS_TRANSITIONS}. Throws on an illegal transition — callers
+ * never fall back to a silent default, so an illegal move surfaces as a bug at
+ * its origin rather than as a mis-set status downstream. Use this at call sites
+ * where the trigger MUST be legal (operator lifecycle actions); use
+ * {@link resolveTaskTransition} on the event-bridge path where a stale/out-of-
+ * order session event legitimately doesn't apply and should be a no-op.
+ */
+export function nextTaskStatus(
   from: OrchestratorTaskStatus,
-  to: OrchestratorTaskStatus,
-): boolean {
-  return LEGAL_TASK_STATUS_TRANSITIONS[from]?.has(to) ?? false;
+  trigger: TaskLifecycleTrigger,
+): OrchestratorTaskStatus {
+  const to = resolveTaskTransition(from, trigger);
+  if (to !== null) return to;
+  throw new Error(
+    `Illegal task transition: no edge for trigger "${trigger}" from status "${from}"`,
+  );
+}
+
+/**
+ * Table lookup that returns `null` (not a throw) for an illegal transition, so
+ * the event bridge can drop a session event that doesn't apply to the current
+ * status (a late `session_active` after the task already reached `validating`)
+ * without crashing the write path.
+ */
+export function resolveTaskTransition(
+  from: OrchestratorTaskStatus,
+  trigger: TaskLifecycleTrigger,
+): OrchestratorTaskStatus | null {
+  return TASK_STATUS_TRANSITIONS[from][trigger] ?? null;
 }

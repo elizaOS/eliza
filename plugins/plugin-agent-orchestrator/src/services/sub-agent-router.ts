@@ -33,6 +33,10 @@ import {
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
 import {
+  readSessionRetryCount,
+  SESSION_RETRY_METADATA_KEY,
+} from "./orchestrator-task-types.js";
+import {
   dispatchParentAgentDirective,
   extractParentAgentDirective,
   parentAgentMarkerIndex,
@@ -1789,10 +1793,10 @@ export class SubAgentRouter extends Service {
     if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
 
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
-    const priorRetries =
-      typeof meta.buildVerifyRetryCount === "number"
-        ? meta.buildVerifyRetryCount
-        : 0;
+    // One typed read of the canonical retry counter (the router's respawn
+    // lineage and the durable OrchestratorTaskSession.retryCount share this
+    // field), rather than a bare untyped `meta.buildVerifyRetryCount`.
+    const priorRetries = readSessionRetryCount(meta);
     if (priorRetries >= maxRetries) {
       this.log(
         "info",
@@ -1861,7 +1865,7 @@ Do not report done until every referenced URL in the final page resolves without
         // retry counter so the lineage stays bounded.
         metadata: {
           ...sanitizeSuccessorMetadata(meta),
-          buildVerifyRetryCount: nextRetry,
+          [SESSION_RETRY_METADATA_KEY]: nextRetry,
           keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
           ...(cachedStaleMissUrls.size > 0
@@ -2856,9 +2860,7 @@ function composeNarration(
   // pending work to the planner. Surface only the public URL(s) it claimed
   // (loopback dropped, verified downstream); a genuine failure is covered by
   // the separate build-incomplete report.
-  const retryCount = (session.metadata as Record<string, unknown> | undefined)
-    ?.buildVerifyRetryCount;
-  if (typeof retryCount === "number" && retryCount > 0) {
+  if (readSessionRetryCount(session.metadata) > 0) {
     const urls = collectVerifiableUrlCandidates(response).filter(
       (url) => !isLoopbackUrl(url),
     );

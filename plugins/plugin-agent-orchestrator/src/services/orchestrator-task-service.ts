@@ -96,8 +96,8 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
-  isLegalTaskStatusTransition,
   MAX_ATTEMPT_REFLECTIONS,
+  MAX_SESSION_RETRY_ATTEMPTS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
   type OrchestratorRoomParticipant,
@@ -109,6 +109,8 @@ import {
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
+  resolveTaskTransition,
+  type TaskLifecycleTrigger,
   type TaskListFilter,
   type TaskMessageDirection,
   type TaskMessageSenderKind,
@@ -351,6 +353,16 @@ const EMPTY_USAGE: TaskUsageSummary = {
   state: "unavailable",
   byProvider: [],
 };
+
+/** Sub-agent session statuses that mean the session died from an unrecoverable
+ * fault (an `error` event), as opposed to a clean `stopped`/`completed` or an
+ * operator-driven `send_failed`/`stop_failed`. Only these count against the
+ * task's crash-retry budget in
+ * {@link OrchestratorTaskService.advanceTaskOnSessionError}. */
+const SESSION_ERROR_STATUSES: ReadonlySet<string> = new Set([
+  "error",
+  "errored",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -871,7 +883,7 @@ export class OrchestratorTaskService extends Service {
       case "ready":
       case "reconnected":
         await this.store.updateSession(sessionId, { status: "ready" });
-        await this.advanceTaskStatus(taskId, "active");
+        await this.advanceTaskStatus(taskId, "session_active");
         break;
       case "tool_running": {
         const toolCall = isRecord(record.toolCall) ? record.toolCall : {};
@@ -879,7 +891,7 @@ export class OrchestratorTaskService extends Service {
           status: "tool_running",
           activeTool: str(toolCall.title) ?? str(toolCall.kind),
         });
-        await this.advanceTaskStatus(taskId, "active");
+        await this.advanceTaskStatus(taskId, "session_active");
         break;
       }
       case "message": {
@@ -914,11 +926,11 @@ export class OrchestratorTaskService extends Service {
       }
       case "blocked":
         await this.store.updateSession(sessionId, { status: "blocked" });
-        await this.advanceTaskStatus(taskId, "blocked");
+        await this.advanceTaskStatus(taskId, "session_blocked");
         break;
       case "login_required":
         await this.store.updateSession(sessionId, { status: "blocked" });
-        await this.advanceTaskStatus(taskId, "waiting_on_user");
+        await this.advanceTaskStatus(taskId, "awaiting_user");
         await this.markSessionAccountUnhealthy(
           sessionId,
           "auth",
@@ -934,7 +946,7 @@ export class OrchestratorTaskService extends Service {
           stoppedAt: Date.now(),
         });
         await this.mirrorChangeSetToStore(sessionId);
-        await this.advanceTaskStatus(taskId, "validating");
+        await this.advanceTaskStatus(taskId, "completion_reported");
         // Issue #8124: the orchestrator should always behave like `/goal` —
         // confirm the sub-agent met every acceptance criterion before marking
         // the task done. Feed the verifier REAL completion evidence (git
@@ -982,18 +994,10 @@ export class OrchestratorTaskService extends Service {
             message,
           );
         }
-        // A `session_state_lost` failure is resumable: the sub-agent router
-        // (respawnStateLost) deterministically re-spawns the child under a
-        // bounded cap, so the durable task must stay non-terminal for that
-        // recovery to land. Every other session error — non-zero exit, crash,
-        // unrecoverable auth/quota — has no respawn producer, so drive the task
-        // to the terminal `failed` status here. Without this the task is
-        // stranded in active/validating forever, waiting on the 3-minute stall
-        // watchdog or a human (#13771). `advanceTaskStatus` gates this through
-        // the legal-transition table, so a paused/terminal task is left alone.
-        if (failureKind !== "session_state_lost") {
-          await this.advanceTaskStatus(taskId, "failed");
-        }
+        await this.advanceTaskOnSessionError(taskId, sessionId, {
+          failureKind,
+          message,
+        });
         break;
       }
       case "stopped":
@@ -1444,38 +1448,100 @@ export class OrchestratorTaskService extends Service {
   }
 
   /**
-   * Advance a non-terminal task to `next`, but never override a status the
-   * operator or validation owns. `validating`/`waiting_on_user`/`blocked` are
-   * not stomped by a later `active`, and terminal tasks are immutable here.
+   * The single durable task-status write. Every status change on the event
+   * bridge, the verifier, and the crash producer routes a named
+   * {@link TaskLifecycleTrigger} through {@link resolveTaskTransition}, so the
+   * legal-transition table — not scattered inline guards — decides the target.
+   * An illegal `(from, trigger)` (a stale/out-of-order session event that no
+   * longer applies, e.g. a late `session_active` after `validating`) is dropped
+   * as a no-op rather than stomping the current status. Terminal immutability
+   * and the "weak `active` only promotes `open`" rule are encoded as absent
+   * edges in the table, not as branches here. Paused tasks never advance from a
+   * session event; operator lifecycle writes (pause/resume/archive/restart) set
+   * their own status directly and clear `paused` where appropriate.
    */
   private async advanceTaskStatus(
     taskId: string,
-    next: OrchestratorTaskStatus,
+    trigger: TaskLifecycleTrigger,
   ): Promise<void> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return;
-    const current = doc.task.status;
-    if (TERMINAL_TASK_STATUSES.has(current)) return;
     if (doc.task.paused) return;
-    if (next === current) return;
-    // `active` is the weakest signal: only promote into it from `open`. A live
-    // event (ready/tool_running) arriving while the task already parked on a
-    // stronger state (blocked/validating/waiting_on_user) must not stomp it
-    // back to active — short out silently here rather than routing an ordinary
-    // event through the illegal-transition log below.
-    if (next === "active" && current !== "open") return;
-    if (!isLegalTaskStatusTransition(current, next)) {
-      // A write the lifecycle table forbids means a caller wired a transition
-      // the state machine does not model. Surface it instead of silently
-      // corrupting the durable task status.
-      this.log("warn", "rejected illegal task status transition", {
-        taskId,
-        from: current,
-        to: next,
-      });
-      return;
-    }
+    const next = resolveTaskTransition(doc.task.status, trigger);
+    if (next === null || next === doc.task.status) return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  /**
+   * The `failed` producer. An unrecoverable session error is the trigger that
+   * moves a task to terminal `failed` — but only once the crash-retry budget is
+   * spent. Until this existed, an `error` event marked the SESSION errored and
+   * (for auth/429) failed the account over, but never touched the task status,
+   * so a crashed sub-agent left the task stuck `active`/`validating` forever,
+   * waiting on the 3-minute stall watchdog or a human.
+   *
+   * Budget = {@link MAX_SESSION_RETRY_ATTEMPTS} errored sessions across THIS
+   * task's lineage (each general-crash respawn is a fresh session row, so the
+   * count of terminally-errored sessions IS the retry count — no separate
+   * counter to drift). The canonical typed `retryCount` on the erroring session
+   * is stamped with that lineage count so the durable record carries the budget
+   * position, reconciling the field the router's respawn lineage also tracks.
+   *
+   * - Under budget → `retrying`: the task returns to `active` so the router's
+   *   bounded general-crash respawn (reusing the `session_state_lost` machinery +
+   *   account failover) re-engages a fresh worker. If no respawn happens (pool
+   *   exhausted, no initialTask), the next error re-enters here and the budget
+   *   still drives the task to `failed` — never a silent hang.
+   * - Budget spent → `unrecoverable`: terminal `failed`, with one honest event.
+   *
+   * `login_required` is handled separately (→ `waiting_on_user`) because there a
+   * human genuinely can unblock; a plain crash cannot, so it must not park.
+   */
+  private async advanceTaskOnSessionError(
+    taskId: string,
+    sessionId: string,
+    failure: { failureKind?: string; message: string },
+  ): Promise<void> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    if (doc.task.paused) return;
+    if (TERMINAL_TASK_STATUSES.has(doc.task.status)) return;
+
+    const erroredSessionIds = new Set(
+      doc.sessions
+        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
+        .map((s) => s.sessionId),
+    );
+    erroredSessionIds.add(sessionId);
+    const erroredSessions = erroredSessionIds.size;
+    // The just-errored session's status was written to `errored` before this
+    // runs, so it is already counted. Stamp that lineage position onto the
+    // canonical typed counter.
+    await this.store.updateSession(sessionId, { retryCount: erroredSessions });
+
+    const budgetSpent = erroredSessions >= MAX_SESSION_RETRY_ATTEMPTS;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType: budgetSpent ? "task_failed" : "session_error_retrying",
+      summary: budgetSpent
+        ? `Sub-agent failed unrecoverably after ${erroredSessions} attempt(s); task marked failed.`
+        : `Sub-agent errored (attempt ${erroredSessions}/${MAX_SESSION_RETRY_ATTEMPTS}); retrying.`,
+      data: {
+        failureKind: failure.failureKind ?? null,
+        message: failure.message,
+        attempt: erroredSessions,
+        budget: MAX_SESSION_RETRY_ATTEMPTS,
+      },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    await this.advanceTaskStatus(
+      taskId,
+      budgetSpent ? "unrecoverable" : "retrying",
+    );
+    this.emitChange(taskId);
   }
 
   private async markSessionAccountUnhealthy(
@@ -1771,26 +1837,57 @@ export class OrchestratorTaskService extends Service {
     return this.getTask(taskId);
   }
 
+  /**
+   * Pause is a HARD stop: it kills the ACP subprocesses (they can't be
+   * re-attached later — a subprocess is gone once stopped), then sets `paused`.
+   * When it actually stopped in-flight work it records `pausedWithActiveWork` so
+   * {@link resumeTask} knows to re-engage a fresh worker rather than flip a flag
+   * on a task with no running agent — the two must be symmetric or resume is a
+   * silent no-op (the #13771 bug).
+   */
   async pauseTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     // A paused task must not dispatch — drop it from the in-memory order but
     // KEEP its admission record so resume can replay the original spawn.
     await this.dequeueAdmission(taskId, false);
+    const hadActiveWork = doc.sessions.some(
+      (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
+    );
     await this.stopActiveSessions(doc);
-    await this.store.updateTask(taskId, { paused: true });
+    await this.store.updateTask(taskId, {
+      paused: true,
+      metadata: { ...doc.task.metadata, pausedWithActiveWork: hadActiveWork },
+    });
     return this.getTask(taskId);
   }
 
+  /**
+   * Resume clears `paused` and, symmetrically with {@link pauseTask}, re-engages
+   * the work pause stopped: because pause kills the subprocesses, resume must
+   * spawn a FRESH sub-agent to continue from the task's durable context (goal,
+   * criteria, timeline all survive on the store). A task paused before any
+   * sub-agent ran (`pausedWithActiveWork` unset/false) just unpauses — there is
+   * nothing to re-engage. A terminal task never re-engages.
+   */
   async resumeTask(taskId: string): Promise<TaskThreadDetailDto | null> {
-    const updated = await this.store.updateTask(taskId, { paused: false });
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const shouldReEngage =
+      doc.task.metadata?.pausedWithActiveWork === true &&
+      !TERMINAL_TASK_STATUSES.has(doc.task.status);
+    const nextMetadata = { ...doc.task.metadata };
+    delete nextMetadata.pausedWithActiveWork;
+    const updated = await this.store.updateTask(taskId, {
+      paused: false,
+      metadata: nextMetadata,
+    });
     if (!updated) return null;
     // If the task was parked when paused, re-seed the in-memory order from its
     // retained admission record so it competes for a slot again. A resumed task
     // that already ran (had a session) carries no admission record and is a
     // no-op here.
-    const doc = await this.store.getTask(taskId);
-    const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
+    const admission = OrchestratorTaskService.admissionOf(doc.task);
     if (
       admission &&
       this.admissionQueueEnabled() &&
@@ -1798,6 +1895,24 @@ export class OrchestratorTaskService extends Service {
     ) {
       this.admissionQueue.push(taskId);
       void this.drainAdmissionQueue();
+    }
+    // A task interrupted mid-work (pausedWithActiveWork) had its subprocesses
+    // killed by pause, so resume must spawn a FRESH sub-agent to continue from
+    // durable context rather than flip a flag on a task with no running agent.
+    if (shouldReEngage && this.acp()) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "resume_reengaged",
+        summary:
+          "Task resumed; re-engaging a sub-agent to continue the interrupted work.",
+        data: {},
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.spawnAgentForTask(taskId, {
+        task: "Resume this task from its current durable context. Reinspect the task timeline and any partial work, then continue until the goal is met or you are blocked.",
+      });
     }
     return this.getTask(taskId);
   }
@@ -2191,7 +2306,7 @@ export class OrchestratorTaskService extends Service {
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
-      await this.advanceTaskStatus(taskId, "waiting_on_user");
+      await this.advanceTaskStatus(taskId, "awaiting_user");
       this.emitChange(taskId);
       return;
     }
@@ -2263,7 +2378,7 @@ export class OrchestratorTaskService extends Service {
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
-      await this.advanceTaskStatus(taskId, "waiting_on_user");
+      await this.advanceTaskStatus(taskId, "awaiting_user");
     }
     this.emitChange(taskId);
   }
@@ -3013,7 +3128,7 @@ export class OrchestratorTaskService extends Service {
       // from the workdir the session actually landed in, so subsequent
       // follow-up spawns of this task reuse it deterministically (#13776).
       await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo);
-      await this.advanceTaskStatus(taskId, "active");
+      await this.advanceTaskStatus(taskId, "session_active");
       return this.getTask(taskId);
     } catch (err) {
       // error-policy:J4 the ACP spawn already succeeded (session is live); a
@@ -3158,7 +3273,7 @@ export class OrchestratorTaskService extends Service {
     // indexed for history + future token attribution without falsely promoting
     // task status.
     if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
-      await this.advanceTaskStatus(taskId, "active");
+      await this.advanceTaskStatus(taskId, "session_active");
     }
     return true;
   }
