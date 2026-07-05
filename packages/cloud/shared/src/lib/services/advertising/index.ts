@@ -1199,6 +1199,11 @@ class AdvertisingService {
         },
         budgetCredits,
       );
+      if (allocation.status === "cap_error") {
+        // Corrupt spend cap / allocated total: fail closed (deny) and let the
+        // surrounding catch compensate the provider create + credit debit.
+        throw new Error(`Ad account spend cap could not be verified: ${allocation.reason}`);
+      }
       if (allocation.status === "cap_exceeded") {
         throw ValidationError(
           `Ad account spend cap would be exceeded: ${allocation.allocated.toFixed(
@@ -1486,7 +1491,10 @@ class AdvertisingService {
         newCreditsAllocated,
         updateData,
       );
-      if (allocation.status === "cap_exceeded") {
+      if (allocation.status === "cap_error" || allocation.status === "cap_exceeded") {
+        // Both a corrupt spend cap (cap_error, fail-closed) and an exceeded cap
+        // must revert the already-applied provider budget increase + refund the
+        // credit debit before failing.
         await provider
           .updateCampaign(credentials, campaign.external_campaign_id, {
             budgetAmount: Number(campaign.budget_amount),
@@ -1503,6 +1511,9 @@ class AdvertisingService {
           description: `Ad budget increase refund (account cap exceeded): ${campaign.name}`,
           metadata: { type: "ad_budget_increase_refund", campaignId },
         });
+        if (allocation.status === "cap_error") {
+          throw new Error(`Ad account spend cap could not be verified: ${allocation.reason}`);
+        }
         throw ValidationError(
           `Ad account spend cap would be exceeded: ${allocation.allocated.toFixed(
             2,

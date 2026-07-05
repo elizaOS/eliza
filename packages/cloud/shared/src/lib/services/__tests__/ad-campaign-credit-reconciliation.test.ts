@@ -325,6 +325,58 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     expect(providerUpdate.mock.calls[1]?.[2]).toEqual({ budgetAmount: 100 });
   });
 
+  test("#13415 budget INCREASE fails CLOSED, refunds + reverts provider on a corrupt account spend cap", async () => {
+    // A corrupt 'NaN'::numeric spend cap makes the DB-repo enforcement return
+    // cap_error (deny). Because the credit debit + provider budget increase have
+    // ALREADY been applied at this point, updateCampaign must run the same
+    // compensation as cap_exceeded (refund the delta + revert the provider) and
+    // then fail, never bypass the cap and never leak credits or leave the
+    // third-party campaign at the larger budget.
+    track(
+      spyOn(adCampaignsRepository, "findById").mockResolvedValue(
+        makeCampaign({ external_campaign_id: "ext-1" }) as never,
+      ),
+    );
+    track(spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockResolvedValue(0));
+    const deduct = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({
+        success: true,
+      } as never),
+    );
+    const refund = track(
+      spyOn(creditsService, "refundCredits").mockResolvedValue({
+        success: true,
+      } as never),
+    );
+    const provider = stubProvider();
+    const providerUpdate = track(spyOn(provider, "updateCampaign"));
+    track(spyOn(advertisingService, "getProvider").mockReturnValue(provider));
+    track(
+      spyOn(
+        adCampaignsRepository,
+        "claimAllocationChangeWithAccountSpendCapCheck",
+      ).mockResolvedValue({
+        status: "cap_error",
+        reason: "Unable to read ad-account spend_cap_credits: value is not a valid NUMERIC",
+      }),
+    );
+
+    await expect(
+      advertisingService.updateCampaign(CAMPAIGN_ID, ORG_ID, {
+        budgetAmount: 200,
+      }),
+    ).rejects.toThrow("Ad account spend cap could not be verified");
+
+    // Compensated: the increase was charged, then refunded, and the provider
+    // budget was reverted to the original 100, net zero, no leak, cap not
+    // bypassed.
+    expect(deduct).toHaveBeenCalledTimes(1);
+    expect(refund).toHaveBeenCalledTimes(1);
+    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    expect(providerUpdate).toHaveBeenCalledTimes(2);
+    expect(providerUpdate.mock.calls[1]?.[2]).toEqual({ budgetAmount: 100 });
+  });
+
   test("a name-only update charges and refunds nothing", async () => {
     track(
       spyOn(adCampaignsRepository, "findById").mockResolvedValue(
