@@ -394,3 +394,79 @@ export const TERMINAL_TASK_SESSION_STATUSES: ReadonlySet<string> = new Set([
 
 export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["done", "failed", "archived"]);
+
+/**
+ * Legal task-status transitions keyed by the current status. A task moves
+ * between working states as its sub-agent sessions report progress, parks on
+ * `waiting_on_user`/`blocked` when it needs input, and reaches exactly one
+ * terminal status (`done`, `failed`, `archived`) that it can never leave.
+ *
+ * Two invariants make this the single source of truth: `failed` is reachable
+ * from every non-terminal working state (a session can crash at any point), and
+ * `done` is reachable only from `validating` (completion is gated on
+ * verification). `advanceTaskStatus` enforces the map so an unmodeled write —
+ * e.g. the historically missing `failed` producer (#13771), or a stray attempt
+ * to jump straight to `done` without verifying — is rejected and logged rather
+ * than silently corrupting the durable task record.
+ */
+export const LEGAL_TASK_STATUS_TRANSITIONS: Record<
+  OrchestratorTaskStatus,
+  ReadonlySet<OrchestratorTaskStatus>
+> = {
+  open: new Set([
+    "active",
+    "waiting_on_user",
+    "blocked",
+    "validating",
+    "failed",
+    "interrupted",
+  ]),
+  active: new Set([
+    "waiting_on_user",
+    "blocked",
+    "validating",
+    "failed",
+    "interrupted",
+  ]),
+  waiting_on_user: new Set([
+    "active",
+    "blocked",
+    "validating",
+    "failed",
+    "interrupted",
+  ]),
+  blocked: new Set([
+    "active",
+    "waiting_on_user",
+    "validating",
+    "failed",
+    "interrupted",
+  ]),
+  validating: new Set([
+    "active",
+    "waiting_on_user",
+    "blocked",
+    "done",
+    "failed",
+    "interrupted",
+  ]),
+  interrupted: new Set([
+    "active",
+    "waiting_on_user",
+    "blocked",
+    "validating",
+    "failed",
+  ]),
+  done: new Set(),
+  failed: new Set(),
+  archived: new Set(),
+};
+
+/** Whether the task lifecycle permits moving directly from `from` to `to`.
+ * Terminal statuses have no outbound transitions. */
+export function isLegalTaskStatusTransition(
+  from: OrchestratorTaskStatus,
+  to: OrchestratorTaskStatus,
+): boolean {
+  return LEGAL_TASK_STATUS_TRANSITIONS[from]?.has(to) ?? false;
+}

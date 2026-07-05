@@ -90,6 +90,7 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
+  isLegalTaskStatusTransition,
   MAX_ATTEMPT_REFLECTIONS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
@@ -912,6 +913,18 @@ export class OrchestratorTaskService extends Service {
             message,
           );
         }
+        // A `session_state_lost` failure is resumable: the sub-agent router
+        // (respawnStateLost) deterministically re-spawns the child under a
+        // bounded cap, so the durable task must stay non-terminal for that
+        // recovery to land. Every other session error — non-zero exit, crash,
+        // unrecoverable auth/quota — has no respawn producer, so drive the task
+        // to the terminal `failed` status here. Without this the task is
+        // stranded in active/validating forever, waiting on the 3-minute stall
+        // watchdog or a human (#13771). `advanceTaskStatus` gates this through
+        // the legal-transition table, so a paused/terminal task is left alone.
+        if (failureKind !== "session_state_lost") {
+          await this.advanceTaskStatus(taskId, "failed");
+        }
         break;
       }
       case "stopped":
@@ -1369,8 +1382,23 @@ export class OrchestratorTaskService extends Service {
     if (TERMINAL_TASK_STATUSES.has(current)) return;
     if (doc.task.paused) return;
     if (next === current) return;
-    // `active` is the weakest signal: only promote into it from `open`.
+    // `active` is the weakest signal: only promote into it from `open`. A live
+    // event (ready/tool_running) arriving while the task already parked on a
+    // stronger state (blocked/validating/waiting_on_user) must not stomp it
+    // back to active — short out silently here rather than routing an ordinary
+    // event through the illegal-transition log below.
     if (next === "active" && current !== "open") return;
+    if (!isLegalTaskStatusTransition(current, next)) {
+      // A write the lifecycle table forbids means a caller wired a transition
+      // the state machine does not model. Surface it instead of silently
+      // corrupting the durable task status.
+      this.log("warn", "rejected illegal task status transition", {
+        taskId,
+        from: current,
+        to: next,
+      });
+      return;
+    }
     await this.store.updateTask(taskId, { status: next });
   }
 
