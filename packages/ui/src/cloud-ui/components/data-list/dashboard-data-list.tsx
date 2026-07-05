@@ -51,8 +51,18 @@ export function DashboardDataListDesktop({
   return (
     <div
       data-slot="dashboard-data-list-desktop"
+      // Show at md+, hide below — via `max-md:hidden` (a max-width query) plus
+      // the div's default block display, NOT `hidden md:block`. The console
+      // bundle concatenates two independent Tailwind builds (the app's
+      // `@elizaos/ui/styles` and cloud-ui's own `@import "tailwindcss"`), so a
+      // second base `.hidden{display:none}` is emitted AFTER the responsive
+      // `.md:block` — same specificity, later wins — which pinned every
+      // `hidden md:block` desktop table to display:none at all widths (the real
+      // cause of the "banner shows N but the table is empty" bug). Avoiding the
+      // `hidden` base class sidesteps that clobber; root dedupe tracked
+      // separately.
       className={cn(
-        "hidden overflow-hidden border border-white/10 md:block",
+        "overflow-hidden border border-white/10 max-md:hidden",
         className,
       )}
     >
