@@ -1,3 +1,8 @@
+/**
+ * Runtime chooser override tests cover the packaged-desktop-only guard and URL
+ * cleanup for both browser and hash-router entrypoints.
+ */
+
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   applyRuntimeChooserOverrideFromUrl,
