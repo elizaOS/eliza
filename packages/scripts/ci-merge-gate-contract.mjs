@@ -6,11 +6,12 @@
  *
  * Three invariants, each guarding one failure mode the issue documents:
  *
- *   1. Path classifiers stay GitHub-hosted. Every `Classify changed paths` job
- *      is a git-diff + node script; when it was pinned to the hetzner-robot
- *      fleet a drained fleet left it queued forever and every downstream job
- *      (and the required `ci-ok`) wedged with it (#8501 gridlock). It must run
- *      on `ubuntu-24.04`.
+ *   1. Path classifiers keep a hosted fallback. Every `Classify changed paths`
+ *      job is a git-diff + node script; when it was pinned to the hetzner-robot
+ *      fleet with no fallback, a drained fleet left it queued forever and every
+ *      downstream job (and the required `ci-ok`) wedged with it (#8501
+ *      gridlock). It must either run directly on `ubuntu-*` or use the
+ *      `HETZNER_FLEET_ONLINE` fallback expression.
  *
  *   2. Heavy self-hosted jobs carry the fleet-drain fallback. `ci-ok` needs the
  *      test lanes, which run on the hetzner-robot fleet. There is no way to
@@ -24,8 +25,8 @@
  *      format / typecheck / stale-base / secret regression (all required on
  *      `main`) could merge to develop. `ci-ok` must need `merge-quality-gate`,
  *      and that job must run lint + format:check + typecheck + stale-base +
- *      a gitleaks secret scan on a hosted runner so it gates regardless of
- *      fleet health.
+ *      a gitleaks secret scan on a runner with the same hosted fallback, so it
+ *      gates even when operators drain the self-hosted fleet.
  *
  * Text-scans the workflow YAML (no yaml dependency, matching the sibling
  * ci-*-contract.mjs scripts). `--self-test` proves the checker against synthetic
@@ -62,7 +63,7 @@ function classifierRunsOn(text) {
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i += 1) {
     if (/^\s+name:\s*Classify changed paths\s*$/.test(lines[i])) {
-      for (let j = i + 1; j < Math.min(i + 6, lines.length); j += 1) {
+      for (let j = i + 1; j < Math.min(i + 16, lines.length); j += 1) {
         const m = lines[j].match(/^\s+runs-on:\s*(.+?)\s*$/);
         if (m) return m[1];
       }
@@ -107,6 +108,19 @@ function jobNeeds(text, jobId) {
   return needs;
 }
 
+function hasFleetFallback(value) {
+  return (
+    value.includes(`vars.${FLEET_FALLBACK_VAR}`) &&
+    value.includes("ubuntu-") &&
+    value.includes("self-hosted") &&
+    value.includes("hetzner-robot")
+  );
+}
+
+function hasHostedRunnerOrFleetFallback(value) {
+  return value.startsWith("ubuntu-") || hasFleetFallback(value);
+}
+
 /** The raw body of a named job (its lines up to the next top-level job). */
 function jobBody(text, jobId) {
   const lines = text.split(/\r?\n/);
@@ -128,9 +142,9 @@ function checkWorkflowText(fileName, text, problems) {
     // test.yml must own the classifier; other files might legitimately drop it.
     problems.push(`${fileName}: no 'Classify changed paths' job found`);
   }
-  if (runsOn !== null && !runsOn.startsWith("ubuntu-")) {
+  if (runsOn !== null && !hasHostedRunnerOrFleetFallback(runsOn)) {
     problems.push(
-      `${fileName}: 'Classify changed paths' runs-on is '${runsOn}', expected a GitHub-hosted ubuntu-* runner (a drained self-hosted fleet must not wedge the classifier)`,
+      `${fileName}: 'Classify changed paths' runs-on is '${runsOn}', expected ubuntu-* or the ${FLEET_FALLBACK_VAR} hosted fallback expression (a drained self-hosted fleet must not wedge the classifier)`,
     );
   }
 
@@ -159,9 +173,10 @@ function checkWorkflowText(fileName, text, problems) {
     if (gate === null) {
       problems.push("test.yml: no 'merge-quality-gate' job found");
     } else {
-      if (!/runs-on:\s*ubuntu-/.test(gate)) {
+      const gateRunsOn = gate.match(/^\s+runs-on:\s*(.+?)\s*$/m)?.[1] ?? "";
+      if (!hasHostedRunnerOrFleetFallback(gateRunsOn)) {
         problems.push(
-          "test.yml: 'merge-quality-gate' must run on a GitHub-hosted ubuntu runner so it gates independent of fleet health",
+          `test.yml: 'merge-quality-gate' runs-on is '${gateRunsOn || "missing"}', expected ubuntu-* or the ${FLEET_FALLBACK_VAR} hosted fallback expression`,
         );
       }
       const required = [
@@ -209,7 +224,7 @@ function selfTest() {
   const good = `jobs:
   changes:
     name: Classify changed paths
-    runs-on: ubuntu-24.04
+    runs-on: \${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
   server-tests:
     name: Server Tests
@@ -218,7 +233,7 @@ function selfTest() {
   merge-quality-gate:
     name: Merge Queue Quality Gate
     needs: changes
-    runs-on: ubuntu-24.04
+    runs-on: \${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - run: bun run lint
       - run: bun run format:check
@@ -244,7 +259,7 @@ function selfTest() {
     {
       name: "self-hosted classifier",
       text: good.replace(
-        "runs-on: ubuntu-24.04\n    timeout-minutes",
+        /runs-on: \$\{\{ fromJSON[^\n]+\}\}\n    timeout-minutes/,
         "runs-on: [self-hosted, hetzner-robot]\n    timeout-minutes",
       ),
     },
@@ -301,7 +316,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    "ci-merge-gate-contract: classifiers hosted, fleet-drain fallback present, ci-ok enforces the hosted quality gate.",
+    "ci-merge-gate-contract: classifiers have hosted fallback, fleet-drain fallback present, ci-ok enforces the quality gate.",
   );
 }
 
