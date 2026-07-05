@@ -76,7 +76,14 @@ describe("project-memory-scope: projectWorldId derivation", () => {
 
 	it("rejects empty projectId / agentId", () => {
 		expect(() => projectWorldId(AGENT_A, "")).toThrow();
+		expect(() => projectWorldId(AGENT_A, "   ")).toThrow();
 		expect(() => projectWorldId("" as UUID, PROJECT_A)).toThrow();
+	});
+
+	it("trims projectId before deriving the project world", () => {
+		expect(projectWorldId(AGENT_A, `  ${PROJECT_A}  `)).toBe(
+			projectWorldId(AGENT_A, PROJECT_A),
+		);
 	});
 });
 
@@ -240,6 +247,37 @@ describe("project-memory-scope: (d) filter normalization consistent with #13948"
 		expect(scopeMemoryToProject(m, { agentId: AGENT_A, projectId: "" })).toBe(
 			m,
 		);
+	});
+
+	it("whitespace-only projectId behaves as absent (global), like the task filter", () => {
+		const filter = {};
+		expect(
+			scopeMemoryFilterToProject(filter, {
+				agentId: AGENT_A,
+				projectId: "   ",
+			}),
+		).toBe(filter);
+		const memory = { id: "m", text: "t" };
+		expect(
+			scopeMemoryToProject(memory, {
+				agentId: AGENT_A,
+				projectId: "   ",
+			}),
+		).toBe(memory);
+		expect(
+			assertMemoriesInProject([memory], {
+				agentId: AGENT_A,
+				projectId: "   ",
+			}),
+		).toBeDefined();
+	});
+
+	it("trims set projectId values before scoping", () => {
+		const scoped = scopeMemoryFilterToProject(
+			{},
+			{ agentId: AGENT_A, projectId: ` ${PROJECT_A} ` },
+		);
+		expect(scoped.worldId).toBe(projectWorldId(AGENT_A, PROJECT_A));
 	});
 
 	it("a set projectId injects exactly one worldId predicate (idempotent, no duplicate)", () => {

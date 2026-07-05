@@ -824,6 +824,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const tableName = params.tableName;
 		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
 
+		if (params.worldId) {
+			all = all.filter((memory) => memory.worldId === params.worldId);
+		}
+
 		// Filter by timestamp range (start/end are timestamps in milliseconds)
 		// This supports history compaction - only return messages after the compaction point
 		if (params.start !== undefined || params.end !== undefined) {

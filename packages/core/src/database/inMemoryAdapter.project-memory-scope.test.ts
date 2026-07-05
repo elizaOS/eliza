@@ -23,6 +23,7 @@ import { ChannelType } from "../types";
 import {
 	assertMemoriesInProject,
 	projectWorldId,
+	scopeMemoryFilterToProject,
 	scopeMemoryToProject,
 } from "../utils/project-memory-scope.ts";
 import { stringToUuid } from "../utils.ts";
@@ -135,6 +136,43 @@ describe("per-project memory scoping — real InMemoryDatabaseAdapter roundtrip"
 			{ agentId: AGENT, projectId: PROJECT_B },
 		);
 		expect(rowsB.map((m) => m.content.text)).toEqual(["B secret"]);
+	});
+
+	it("(b2): getMemories honors a scoped worldId filter for same-room rows", async () => {
+		const { adapter, roomA } = await setup();
+		const projectAMemory = scopeMemoryToProject(
+			{
+				entityId: stringToUuid("e-a-same-room") as UUID,
+				roomId: roomA,
+				content: { text: "A same-room note" },
+			} as Memory,
+			{ agentId: AGENT, projectId: PROJECT_A },
+		);
+		const projectBMemory = scopeMemoryToProject(
+			{
+				entityId: stringToUuid("e-b-same-room") as UUID,
+				roomId: roomA,
+				content: { text: "B same-room note" },
+			} as Memory,
+			{ agentId: AGENT, projectId: PROJECT_B },
+		);
+		await adapter.createMemories([
+			{ memory: projectAMemory, tableName: TABLE },
+			{ memory: projectBMemory, tableName: TABLE },
+		]);
+
+		const rows = assertMemoriesInProject(
+			await adapter.getMemories(
+				scopeMemoryFilterToProject(
+					{ tableName: TABLE, roomId: roomA },
+					{ agentId: AGENT, projectId: PROJECT_A },
+				),
+			),
+			{ agentId: AGENT, projectId: PROJECT_A },
+		);
+
+		expect(rows.map((m) => m.content.text)).toEqual(["A same-room note"]);
+		expect(rows.some((m) => m.content.text === "B same-room note")).toBe(false);
 	});
 
 	it("(c): legacy unscoped memory stays retrievable and is not in any project world", async () => {

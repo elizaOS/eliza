@@ -43,6 +43,11 @@ import { stringToUuid } from "../utils.ts";
  */
 export const PROJECT_WORLD_PREFIX = "project:";
 
+function normalizeProjectId(projectId: string | undefined): string | undefined {
+	const trimmed = projectId?.trim();
+	return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
  * Deterministic, per-agent worldId for a project.
  *
@@ -57,13 +62,14 @@ export const PROJECT_WORLD_PREFIX = "project:";
  * @returns stable worldId UUID for (agent, project)
  */
 export function projectWorldId(agentId: UUID, projectId: string): UUID {
-	if (!projectId || projectId.length === 0) {
+	const normalizedProjectId = normalizeProjectId(projectId);
+	if (!normalizedProjectId) {
 		throw new Error("projectWorldId: projectId must be a non-empty string");
 	}
 	if (!agentId || (agentId as string).length === 0) {
 		throw new Error("projectWorldId: agentId must be a non-empty UUID");
 	}
-	const base = `${PROJECT_WORLD_PREFIX}${projectId}`;
+	const base = `${PROJECT_WORLD_PREFIX}${normalizedProjectId}`;
 	// Mirror createUniqueUuid: `${baseUserId}:${runtime.agentId}`.
 	return stringToUuid(`${base}:${agentId}`);
 }
@@ -104,8 +110,9 @@ export function scopeMemoryFilterToProject<T extends WorldScopedFilter>(
 	filter: T,
 	opts: ProjectScopeOptions,
 ): T {
-	if (!opts.projectId) return filter;
-	const worldId = projectWorldId(opts.agentId, opts.projectId);
+	const projectId = normalizeProjectId(opts.projectId);
+	if (!projectId) return filter;
+	const worldId = projectWorldId(opts.agentId, projectId);
 	if (filter.worldId !== undefined && filter.worldId !== worldId) {
 		throw new Error(
 			`scopeMemoryFilterToProject: filter.worldId (${filter.worldId}) conflicts with active project world (${worldId}); refusing cross-project read`,
@@ -137,8 +144,9 @@ export function scopeMemoryToProject<T extends WorldScopedMemory>(
 	memory: T,
 	opts: ProjectScopeOptions,
 ): T {
-	if (!opts.projectId) return memory;
-	const worldId = projectWorldId(opts.agentId, opts.projectId);
+	const projectId = normalizeProjectId(opts.projectId);
+	if (!projectId) return memory;
+	const worldId = projectWorldId(opts.agentId, projectId);
 	if (memory.worldId !== undefined && memory.worldId !== worldId) {
 		throw new Error(
 			`scopeMemoryToProject: memory.worldId (${memory.worldId}) conflicts with active project world (${worldId}); refusing to write cross-project memory`,
@@ -167,8 +175,9 @@ export function assertMemoriesInProject<T extends WorldScopedMemory>(
 	memories: readonly T[],
 	opts: ProjectScopeOptions,
 ): readonly T[] {
-	if (!opts.projectId) return memories;
-	const worldId = projectWorldId(opts.agentId, opts.projectId);
+	const projectId = normalizeProjectId(opts.projectId);
+	if (!projectId) return memories;
+	const worldId = projectWorldId(opts.agentId, projectId);
 	for (const memory of memories) {
 		if (memory.worldId === undefined) continue; // legacy global memory
 		if (memory.worldId !== worldId) {
