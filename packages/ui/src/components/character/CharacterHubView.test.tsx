@@ -54,7 +54,9 @@ afterEach(() => {
 
 const noop = vi.fn();
 
-function renderHub(applyFieldEdit: (field: string, value: unknown) => void = noop) {
+function renderHub(
+  applyFieldEdit: (field: string, value: unknown) => void = noop,
+) {
   return render(
     <CharacterHubView
       d={{}}
