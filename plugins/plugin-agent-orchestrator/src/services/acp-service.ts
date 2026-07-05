@@ -75,9 +75,9 @@ import {
 } from "./subagent-stdout-log.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
+  type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
-  type AcpCapacity,
   type AcpToolCall,
   type AgentType,
   type ApprovalPreset,
@@ -346,8 +346,13 @@ export class AcpService extends Service {
   // Sessions whose raw stdout has been teed to disk at least once. Drives the
   // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
   // file get the path attached, so the task document never points at a
-  // never-created log. Populated by appendOutput; gated by trajectory recording.
+  // never-created log. Populated by persistRawStdout; gated by trajectory
+  // recording.
   private readonly persistedStdoutSessions = new Set<string>();
+  // Raw stdout arrives on the subprocess stream, while task completion is parsed
+  // from that same stream. Queue writes per session so the terminal event can
+  // wait for the tee before persisting a task document that references it.
+  private readonly pendingStdoutWrites = new Map<string, Promise<void>>();
   // Per-session model-gateway lease (#11536 E2 residual). Minted at spawn when
   // gateway mode + a lease broker are configured; the leased token (not the
   // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
@@ -820,6 +825,7 @@ export class AcpService extends Service {
       this.changedPathsBySession.delete(id);
       this.nativeClients.delete(id);
       this.persistedStdoutSessions.delete(id);
+      this.pendingStdoutWrites.delete(id);
     }
     if (swept.length > 0) {
       this.log("debug", "health-check reclaimed terminal sessions", {
@@ -1321,6 +1327,7 @@ export class AcpService extends Service {
     this.outputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
+    this.pendingStdoutWrites.delete(sessionId);
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -2083,6 +2090,7 @@ export class AcpService extends Service {
                 startedAt,
                 opts.activeForSession === true,
                 capturedToolOutputs,
+                opts.activeForSession === true,
               );
               finalText = handled.finalText;
               stopReason = handled.stopReason ?? stopReason;
@@ -2109,7 +2117,7 @@ export class AcpService extends Service {
         }
       });
 
-      proc.on("close", (code, signal) => {
+      proc.on("close", async (code, signal) => {
         record.exited = true;
         if (record.stdoutBuffer.trim()) {
           const parsed = this.parseNdjson(
@@ -2124,6 +2132,7 @@ export class AcpService extends Service {
               startedAt,
               opts.activeForSession === true,
               capturedToolOutputs,
+              opts.activeForSession === true,
             );
             finalText = handled.finalText;
             stopReason = handled.stopReason ?? stopReason;
@@ -2183,6 +2192,7 @@ export class AcpService extends Service {
             }
           });
         }
+        if (opts.sessionId) await this.flushRawStdout(opts.sessionId);
         if (opts.sessionId && opts.activeForSession) {
           // claude-agent-sdk often exits cleanly (code 0) without sending
           // an explicit `{result: {stopReason: "end_turn"}}` ACP message
@@ -2204,6 +2214,11 @@ export class AcpService extends Service {
               response: finalText,
               exitCode: code,
               signal,
+            });
+          } else if (stopReason === "error" && !finalText?.trim()) {
+            this.emitSessionEvent(opts.sessionId, "error", {
+              message: "acpx prompt ended with stopReason error",
+              stopReason,
             });
           } else if (cleanCompletion) {
             // Emit exactly one terminal event per session-exit. Listeners
@@ -2269,6 +2284,7 @@ export class AcpService extends Service {
     startedAt: number,
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
+    deferPromptTerminalEvent = false,
   ): { finalText: string; stopReason?: string } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
@@ -2563,6 +2579,9 @@ export class AcpService extends Service {
         // to a failure if the claimed URLs are dead. Only a stopReason error with
         // NO captured output is a true, user-facing failure — otherwise the user
         // gets a false "hit a snag" for a build that actually succeeded.
+        if (deferPromptTerminalEvent) {
+          return { finalText, stopReason };
+        }
         if (stopReason === "error" && !finalText?.trim()) {
           this.emitSessionEvent(sessionId, "error", {
             message: "acpx prompt ended with stopReason error",
@@ -3077,16 +3096,32 @@ export class AcpService extends Service {
       : {};
   }
 
+  private async flushRawStdout(sessionId: string): Promise<void> {
+    await this.pendingStdoutWrites.get(sessionId);
+  }
+
   private persistRawStdout(sessionId: string, text: string): void {
     if (!isSubagentStdoutLoggingEnabled()) return;
-    this.persistedStdoutSessions.add(sessionId);
-    void appendSubagentStdout(sessionId, text).catch((err: unknown) => {
-      // error-policy:J7 stdout persistence is diagnostics and must not kill the
-      // transport loop; surface it observably instead of swallowing.
-      this.runtime.reportError("AcpService.persistRawStdout", err, {
-        sessionId,
-        phase: "persist-stdout",
+    const previous =
+      this.pendingStdoutWrites.get(sessionId) ?? Promise.resolve();
+    const write = previous
+      .then(async () => {
+        const path = await appendSubagentStdout(sessionId, text);
+        if (path) this.persistedStdoutSessions.add(sessionId);
+      })
+      .catch((err: unknown) => {
+        // error-policy:J7 stdout persistence is diagnostics and must not kill the
+        // transport loop; surface it observably instead of swallowing.
+        this.runtime.reportError("AcpService.persistRawStdout", err, {
+          sessionId,
+          phase: "persist-stdout",
+        });
       });
+    this.pendingStdoutWrites.set(sessionId, write);
+    void write.finally(() => {
+      if (this.pendingStdoutWrites.get(sessionId) === write) {
+        this.pendingStdoutWrites.delete(sessionId);
+      }
     });
   }
 

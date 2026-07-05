@@ -4,6 +4,8 @@
  */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -987,6 +989,65 @@ describe("AcpService", () => {
     expect(events.indexOf("message")).toBeLessThan(
       events.indexOf("task_complete"),
     );
+  });
+
+  it("flushes raw stdout before advertising stdoutLogPath on task_complete", async () => {
+    const priorTrajDir = process.env.ELIZA_TRAJECTORY_DIR;
+    const priorRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-stdout-"));
+    process.env.ELIZA_TRAJECTORY_DIR = tmpDir;
+    delete process.env.ELIZA_TRAJECTORY_RECORDING;
+    try {
+      const create = nextProc();
+      const service = new AcpService(runtime());
+      const taskCompletePayloads: Array<{
+        response?: string;
+        stdoutLogPath?: string;
+      }> = [];
+      service.onSessionEvent((_sid, event, payload) => {
+        if (event === "task_complete") {
+          taskCompletePayloads.push(
+            payload as { response?: string; stdoutLogPath?: string },
+          );
+        }
+      });
+      await service.start();
+      const spawned = service.spawnSession({
+        name: "stdout-path",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(create);
+      closeOk(create);
+      const { sessionId } = await spawned;
+
+      const prompt = nextProc();
+      const sent = service.sendPrompt(sessionId, "persist stdout");
+      await waitForSpawn(prompt);
+      const terminalLine = `{"jsonrpc":"2.0","id":"req-1","result":{"stopReason":"end_turn","content":[{"type":"text","text":"stdout persisted"}]},"sessionId":"${sessionId}"}\n`;
+      prompt.proc.stdout.emit("data", Buffer.from(terminalLine));
+      closeOk(prompt);
+
+      await sent;
+      const payload = taskCompletePayloads[0];
+      expect(payload?.response).toBe("stdout persisted");
+      expect(payload?.stdoutLogPath).toBe(
+        path.join(tmpDir, "subagent-stdout", `${sessionId}.ndjson`),
+      );
+      const raw = await fs.readFile(payload?.stdoutLogPath ?? "", "utf8");
+      const records = raw
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { text: string });
+      expect(records.map((record) => record.text)).toContain(terminalLine);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+      if (priorTrajDir === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
+      else process.env.ELIZA_TRAJECTORY_DIR = priorTrajDir;
+      if (priorRecording === undefined)
+        delete process.env.ELIZA_TRAJECTORY_RECORDING;
+      else process.env.ELIZA_TRAJECTORY_RECORDING = priorRecording;
+    }
   });
 
   it("native sendPrompt preserves final text returned on the terminal prompt result", async () => {
