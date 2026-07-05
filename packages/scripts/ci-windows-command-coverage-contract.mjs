@@ -158,7 +158,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         `(${commandCount} lane command(s); ${inventoryCount} inventoried command(s) all present)`,
     );
   } catch (error) {
-    console.error(`[ci-windows-command-coverage-contract] FAIL ${error.message}`);
+    console.error(
+      `[ci-windows-command-coverage-contract] FAIL ${error.message}`,
+    );
     process.exit(1);
   }
 }

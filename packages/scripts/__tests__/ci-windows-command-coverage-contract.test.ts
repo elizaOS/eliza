@@ -23,7 +23,9 @@ const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 // Two lanes with two commands each is enough to exercise both the multi-lane
 // flatten and the per-lane list boundary. Indentation matches windows-ci.yml
 // (include items at 10 spaces, command items at 14).
-function windowsWorkflow(lanes: { lane: string; commands: string[] }[]): string {
+function windowsWorkflow(
+  lanes: { lane: string; commands: string[] }[],
+): string {
   const include = lanes
     .map(
       ({ lane, commands }) =>
@@ -84,7 +86,10 @@ function withRepo(
 
 const CORE_LANE = {
   lane: "core-runtime",
-  commands: ["bun run --cwd packages/core test", "bun run --cwd packages/shared test"],
+  commands: [
+    "bun run --cwd packages/core test",
+    "bun run --cwd packages/shared test",
+  ],
 };
 const PLUGIN_LANE = {
   lane: "plugins",
@@ -105,17 +110,14 @@ describe("ci-windows-command-coverage-contract", () => {
   });
 
   test("RED: throws when an inventoried command is dropped from the matrix", () => {
-    withRepo(
-      { lanes: [CORE_LANE], inventory: FULL_INVENTORY },
-      (root) => {
-        expect(() => runContract(root)).toThrow(
-          /Windows CI command coverage shrank/,
-        );
-        expect(findDroppedCommands(FULL_INVENTORY, parseWindowsCommands(root))).toEqual(
-          ["bun run --cwd plugins/plugin-openai test"],
-        );
-      },
-    );
+    withRepo({ lanes: [CORE_LANE], inventory: FULL_INVENTORY }, (root) => {
+      expect(() => runContract(root)).toThrow(
+        /Windows CI command coverage shrank/,
+      );
+      expect(
+        findDroppedCommands(FULL_INVENTORY, parseWindowsCommands(root)),
+      ).toEqual(["bun run --cwd plugins/plugin-openai test"]);
+    });
   });
 
   test("flattens commands across every include[] lane", () => {
