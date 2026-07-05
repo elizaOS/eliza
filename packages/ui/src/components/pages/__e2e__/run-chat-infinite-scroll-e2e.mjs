@@ -1,15 +1,22 @@
 /**
- * REAL-browser e2e for the infinite upward scroll (#13532).
+ * REAL-browser e2e for the infinite upward scroll (#13532/#14329).
  *
  * Mounts chat-infinite-scroll-fixture.tsx — the PRODUCTION `useLoadOlderOnScroll`
- * hook + `loadOlderConversationMessages` orchestration — in real Chromium and
- * drives the actual behaviour jsdom cannot:
+ * hook + `loadOlderConversationMessages` orchestration + `planScrollTopLoadOlder`
+ * render-window policy — in real Chromium and drives the actual behaviour jsdom
+ * cannot:
  *   1. Scroll to the top → a `GET .../messages?before=<cursor>` request FIRES
  *      (observed on the wire), older rows PREPEND, and the previously-top row's
  *      boundingBox stays put (scroll-anchor preservation, ±tolerance).
  *   2. Empty history → NO fetch loop (an empty thread has no cursor to page).
  *   3. Fetch failure → the error surfaces (guard re-arms), with NO retry storm
  *      (bounded resolves), and no fabricated/empty prepend.
+ *   4. #14329 render window: a thread far larger than the initial render cap
+ *      mounts showing only the newest window (NOT every loaded turn), and
+ *      scrolling up GROWS the window to reveal the already-loaded older turns —
+ *      network-free (no `?before=` fetch) until the window has drained. This
+ *      guards the actual bug: a fixed `slice(-80)` cap that sliced prepended
+ *      older turns straight back off, dead-ending scroll-up.
  *
  * A tiny in-process HTTP server serves the fixture HTML AND the mock
  * `?before=` messages endpoint, so the `fetch()` the client issues is genuine
@@ -360,6 +367,89 @@ try {
     );
     await screenshot(page, "05-fetch-failure");
     await closePageWithVideo(run, "03-fetch-failure");
+  }
+
+  // ── 4) #14329 render window grows past the initial cap on scroll-up ─────────
+  // A 200-turn thread mounts. It must render only the newest window (the initial
+  // cap), NOT all 200 — then scrolling up reveals the already-loaded older turns
+  // WITHOUT a network fetch. Under the old fixed `slice(-80)` cap the prepended /
+  // hidden older turns were sliced straight back off and scroll-up dead-ended.
+  {
+    const { page, requests } = await newPage("?big");
+    await page.waitForSelector(ROW);
+    await page.waitForTimeout(300);
+
+    const TOTAL_LOADED = 200;
+    const rowsAtMount = await page.locator(ROW).count();
+    const windowAtMount = await page.evaluate(() => window.__renderWindow ?? 0);
+    assert(
+      rowsAtMount > 0 && rowsAtMount < TOTAL_LOADED,
+      `big thread mounts capped to the render window, not all ${TOTAL_LOADED} turns (rendered ${rowsAtMount})`,
+    );
+    assert(
+      rowsAtMount === windowAtMount,
+      `rendered rows equal the render window at mount (${rowsAtMount} === ${windowAtMount})`,
+    );
+    // The oldest loaded turn is initially windowed OUT (this is the "before"
+    // state the bug report shows: scroll-up dead-ends before reaching it).
+    const oldestHiddenAtMount = await page.evaluate(
+      () => !document.querySelector('[data-message-id="tail-0"]'),
+    );
+    assert(
+      oldestHiddenAtMount,
+      "the oldest loaded turn (tail-0) is windowed out at mount",
+    );
+
+    // ONE scroll-to-top must GROW the window and reveal older loaded turns with
+    // NO `?before=` fetch — reveal-before-fetch, the network-free path.
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el) el.scrollTop = 0;
+    }, SCROLLER);
+    await page
+      .waitForFunction(
+        ({ prev }) => (window.__renderWindow ?? 0) > prev,
+        { prev: windowAtMount },
+        { timeout: 8_000 },
+      )
+      .catch(() => {});
+    const windowAfterOne = await page.evaluate(() => window.__renderWindow ?? 0);
+    const rowsAfterOne = await page.locator(ROW).count();
+    assert(
+      windowAfterOne > windowAtMount && rowsAfterOne > rowsAtMount,
+      `scroll-up grew the render window (${windowAtMount}→${windowAfterOne}) and revealed rows (${rowsAtMount}→${rowsAfterOne})`,
+    );
+    assert(
+      requests.filter((u) => /\/messages\?before=/.test(u)).length === 0,
+      "revealing already-loaded turns issued NO ?before= fetch (reveal-before-fetch)",
+    );
+
+    // Keep scrolling to the top: the window keeps growing until every loaded
+    // turn — including the oldest (tail-0) — is rendered.
+    for (let i = 0; i < 8; i += 1) {
+      await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        if (el) el.scrollTop = 0;
+      }, SCROLLER);
+      await page.waitForTimeout(150);
+      const done = await page.evaluate(
+        () => !!document.querySelector('[data-message-id="tail-0"]'),
+      );
+      if (done) break;
+    }
+    const oldestRevealed = await page.evaluate(
+      () => !!document.querySelector('[data-message-id="tail-0"]'),
+    );
+    assert(
+      oldestRevealed,
+      "scrolling up reveals the oldest loaded turn (tail-0) — scroll-up no longer dead-ends",
+    );
+    const rowsFinal = await page.locator(ROW).count();
+    assert(
+      rowsFinal >= TOTAL_LOADED,
+      `all ${TOTAL_LOADED} loaded turns are reachable by scrolling up (rendered ${rowsFinal})`,
+    );
+    await page.close();
   }
 } finally {
   await browser.close();
