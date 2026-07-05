@@ -1,0 +1,25 @@
+# Surface-grant gate — real-path test evidence
+# Branch: fix/view-surface-server-gate  Base: origin/develop (c7ba64e035)
+# Date: 2026-07-05T18:22:19Z
+
+## interact-coverage: denied (403) without agent-surface, allowed with grant
+ Info       [VIEWSROUTES] [ViewsRoutes] Interact with view "surface-denied-server" capability="click-element" (viewId=surface-denied-server, capability=click-element, requestId=5878e1c4-1762-48f2-bc73-ae195263f261)
+ Info       [VIEWSROUTES] [ViewsRoutes] Interact with view "surface-granted-server" capability="click-element" (viewId=surface-granted-server, capability=click-element, requestId=7795442d-b35e-4a46-a43c-948d36f69567)
+ 10 pass
+ 0 fail
+Ran 10 tests across 1 file. [836.00ms]
+
+## view-scoped-actions: builtin character view drives real agent-fill/click through the gate
+ Info       [VIEWSCOPEDACTIONS] [ViewScopedActions] "VIEW_CHARACTER_FILL_BIO" drove 1 step(s) on view "character" (actionName=VIEW_CHARACTER_FILL_BIO, viewId=character, driven=["agent-fill:identity-bio"])
+ Info       [VIEWSCOPEDACTIONS] [ViewScopedActions] "VIEW_CHARACTER_ADD_STYLE_RULE" drove 2 step(s) on view "character" (actionName=VIEW_CHARACTER_ADD_STYLE_RULE, viewId=character, driven=["agent-fill:style-add-input-all","agent-click:style-add-all"])
+ Info       [VIEWSCOPEDACTIONS] [ViewScopedActions] "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE" drove 1 step(s) on view "character" (actionName=VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE, viewId=character, driven=["agent-click:example-add-conversation"])
+ 15 pass
+ 0 fail
+Ran 15 tests across 1 file. [442.00ms]
+
+## activate route: activate on granted view dispatches click-element
+ Info       [VIEWSROUTES] [ViewsRoutes] Activate element "send-it" on view "approve" (viewId=approve, elementId=send-it, capability=click-element)
+ Info       [VIEWSROUTES] [ViewsRoutes] Activate element "send-it" on view "approve" (viewId=approve, elementId=send-it, capability=click-element)
+ 4 pass
+ 0 fail
+Ran 4 tests across 1 file. [315.00ms]
