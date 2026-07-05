@@ -4310,7 +4310,8 @@ export function ContinuousChatOverlay({
                   // long code line, the full-bleed chips rail) surfaces a
                   // horizontal scrollbar strip across the sheet on iOS — the
                   // "weird side scroll thingy." This transcript only ever scrolls
-                  // vertically; pin the horizontal axis closed.
+                  // vertically; pin the horizontal axis closed. deltaX-locked by
+                  // run-chat-scroll-axis-lock-e2e (chromium + webkit, #14328).
                   className="relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
                   style={{ opacity: threadContentOpacity }}
                 >

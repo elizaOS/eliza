@@ -828,7 +828,7 @@ function CodeTile({
         value={text}
         copyable
         data-language={language}
-        className="max-h-[24rem] overflow-auto rounded-none border-0 bg-transparent"
+        className="max-h-[24rem] overflow-auto overscroll-x-contain rounded-none border-0 bg-transparent"
       />
     </figure>
   );
