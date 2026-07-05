@@ -16,7 +16,7 @@
  * Returns `false` when the operator already set the knob (respect their value).
  */
 export function shouldOptInScenarioTrajectoryLogging(
-	env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-	return !env.ELIZA_TRAJECTORY_LOGGING;
+  return !env.ELIZA_TRAJECTORY_LOGGING;
 }

@@ -130,6 +130,7 @@ bun run --cwd packages/scenario-runner clean
 | `ELIZA_SCENARIO_PGLITE_DIR` / `SCENARIO_PGLITE_DIR` | Override the temp PGLite directory |
 | `ELIZA_SAVE_TRAJECTORIES` / `SCENARIO_SAVE_TRAJECTORIES` | `1` = preserve PGLite DB after run |
 | `ELIZA_TRAJECTORY_DIR` | Set by CLI when `--run-dir` is active; picked up by the trajectory recorder |
+| `ELIZA_TRAJECTORY_LOGGING` | Set to `1` by `eliza-scenarios run` when the operator has not already set it, so bare scenario runs record trajectories even when `NODE_ENV=test|production`; explicit `0` and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` are respected |
 | `ELIZA_LIFEOPS_RUN_ID` | Injected by CLI; tags trajectories with the run ID |
 | `ELIZA_LIFEOPS_SCENARIO_ID` | Injected per scenario so trajectory files are tagged correctly |
 | `ELIZA_DISABLE_ACTIVITY_TRACKER` | Set to `1` by the runtime factory; suppresses activity-tracker background work |
