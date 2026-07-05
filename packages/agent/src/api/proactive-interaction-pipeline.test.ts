@@ -44,10 +44,21 @@ type Frame = Record<string, unknown>;
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const AGENT_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
-function buildHarness(judgeOutput: string) {
+interface HarnessOptions {
+  /** Value returned by getSetting for the chattiness control. Default "subtle". */
+  chattiness?: string;
+  /** Documents-store rows returned by getMemories (drives knowledge/transcript live state). */
+  documents?: unknown[];
+}
+
+function buildHarness(judgeOutput: string, options: HarnessOptions = {}) {
   const events: Record<string, Handler[]> = {};
   const frames: Frame[] = [];
   const createdMemories: unknown[] = [];
+  // Prompts handed to the small-model judge — asserted to prove the per-view
+  // anticipatory intent and live state actually reach the model (#13587).
+  const judgePrompts: string[] = [];
+  const documents = options.documents ?? [];
 
   const runtime = {
     agentId: AGENT_ID,
@@ -70,9 +81,16 @@ function buildHarness(judgeOutput: string) {
       } as EventPayload;
       await Promise.all(handlers.map((h) => h(payload)));
     },
-    useModel: vi.fn(async () => judgeOutput),
+    useModel: vi.fn(async (_type: unknown, params: { prompt: string }) => {
+      judgePrompts.push(params.prompt);
+      return judgeOutput;
+    }),
+    getMemories: vi.fn(async () => documents),
+    reportError: vi.fn(),
     getSetting: (key: string) =>
-      key === PROACTIVE_CHATTINESS_SETTING_KEY ? "subtle" : undefined,
+      key === PROACTIVE_CHATTINESS_SETTING_KEY
+        ? (options.chattiness ?? "subtle")
+        : undefined,
     createMemory: vi.fn(async (memory: unknown) => {
       createdMemories.push(memory);
       return memory;
@@ -109,6 +127,7 @@ function buildHarness(judgeOutput: string) {
     state,
     frames,
     createdMemories,
+    judgePrompts,
     gate,
   };
 }
@@ -249,5 +268,126 @@ describe("proactive interaction pipeline — navigate → comment (#8792)", () =
     expect((proactive[0].message as Frame).source).toBe(
       PROACTIVE_INTERACTION_SOURCE,
     );
+  });
+});
+
+// Per-view anticipatory greeting (#13587). Each case drives the same real
+// navigate → VIEW_SWITCHED → decider → gate → proactive-message chain, changing
+// only the target view / initiator / chattiness — the reusable pattern a
+// per-view child copies to assert its own emission or suppression.
+describe("per-view anticipatory greeting (#13587)", () => {
+  let savedKill: string | undefined;
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedKill = process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    savedEnv = process.env.ELIZA_PROACTIVE_INTERACTIONS;
+    delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    delete process.env.ELIZA_PROACTIVE_INTERACTIONS;
+    registerBuiltinViews();
+    clearCurrentViewState();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    clearCurrentViewState();
+    if (savedKill === undefined)
+      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = savedKill;
+    if (savedEnv === undefined) delete process.env.ELIZA_PROACTIVE_INTERACTIONS;
+    else process.env.ELIZA_PROACTIVE_INTERACTIONS = savedEnv;
+    vi.restoreAllMocks();
+  });
+
+  it("(a) settings entry emits a greeting whose prompt carries the declared intent", async () => {
+    const { runtime, frames, judgePrompts } = buildHarness(
+      '{"comment":"Want to finish setting up your model provider?","confidence":0.9}',
+    );
+
+    await handleViewsRoutes(
+      navigateCtx(runtime, "settings", { source: "user" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(proactiveFrames(frames)).toHaveLength(1);
+    expect(judgePrompts[0]).toContain(
+      "Declared intent: Offer to set up the model/provider",
+    );
+  });
+
+  it("(b) documents entry greeting references live knowledge state in the judge prompt", async () => {
+    const now = Date.parse("2026-01-01T00:00:00.000Z");
+    const { runtime, frames, judgePrompts } = buildHarness(
+      '{"comment":"You have new attachments — want me to triage them?","confidence":0.9}',
+      {
+        documents: [
+          {
+            agentId: AGENT_ID,
+            createdAt: now,
+            metadata: {
+              tags: ["attachment", "media-format:pdf"],
+              addedAt: now,
+            },
+          },
+        ],
+      },
+    );
+
+    await handleViewsRoutes(
+      navigateCtx(runtime, "documents", { source: "user" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(proactiveFrames(frames)).toHaveLength(1);
+    expect(judgePrompts[0]).toContain("Live knowledge state");
+    expect(judgePrompts[0]).toContain("1 ingested chat attachment");
+    expect(judgePrompts[0]).toContain("pdf=1");
+  });
+
+  it("(c) a re-navigate within the global cooldown is suppressed by the gate", async () => {
+    const { runtime, frames } = buildHarness(
+      '{"comment":"An offer.","confidence":0.9}',
+    );
+
+    await handleViewsRoutes(
+      navigateCtx(runtime, "settings", { source: "user" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    await handleViewsRoutes(
+      navigateCtx(runtime, "automations", { source: "user" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(proactiveFrames(frames)).toHaveLength(1);
+  });
+
+  it("(d) chattiness=off suppresses the greeting (judge is never even asked)", async () => {
+    const { runtime, frames, judgePrompts } = buildHarness(
+      '{"comment":"An offer.","confidence":0.9}',
+      { chattiness: "off" },
+    );
+
+    await handleViewsRoutes(
+      navigateCtx(runtime, "settings", { source: "user" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(proactiveFrames(frames)).toHaveLength(0);
+    expect(judgePrompts).toHaveLength(0);
+  });
+
+  it("(e) an agent-initiated switch produces no greeting (no double-talk with the ack)", async () => {
+    const { runtime, frames } = buildHarness(
+      '{"comment":"An offer.","confidence":0.9}',
+    );
+
+    await handleViewsRoutes(
+      navigateCtx(runtime, "settings", { source: "agent" }),
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(proactiveFrames(frames)).toHaveLength(0);
   });
 });
