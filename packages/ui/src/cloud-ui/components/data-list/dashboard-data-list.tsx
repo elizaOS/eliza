@@ -52,7 +52,7 @@ export function DashboardDataListDesktop({
     <div
       data-slot="dashboard-data-list-desktop"
       className={cn(
-        "hidden overflow-hidden border border-white/10 md:block",
+        "overflow-hidden border border-white/10 max-md:hidden",
         className,
       )}
     >
