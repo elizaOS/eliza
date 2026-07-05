@@ -8,18 +8,21 @@ weekly host-backed Android emulator cadence landed.
 ## Change
 
 - `.github/workflows/android-device-e2e.yml` now grants `issues: write` only to
-  the full `android-e2e` job.
-- Scheduled failures run an `actions/github-script` step after artifact upload.
+  a hosted Ubuntu notifier job.
+- Scheduled failures run an `actions/github-script` step in
+  `notify-scheduled-failure`, which depends on `android-e2e` and uses
+  `always()` so timeout/cancelled/runner-loss results still trigger the signal.
 - The step creates or updates one open issue titled
   `Scheduled Android device e2e is failing (#13580)` with the failed run URL,
-  workflow name, backend, timestamp, and the remaining #13580 residuals.
+  artifact link, workflow name, Android job result, backend, timestamp, and the
+  remaining #13580 residuals.
 - Repeated scheduled failures update that issue body and add a fresh comment, so
   regressions are visible outside Actions history and artifact discovery.
 
 ## Verification
 
-- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/android-device-e2e.yml"); puts "yaml ok"'`
-  - Result: `yaml ok`
+- `actionlint .github/workflows/android-device-e2e.yml`
+  - Result: pass
 - `git diff --check`
   - Result: pass
 - `GOBIN=/tmp/codex-go-bin go install github.com/rhysd/actionlint/cmd/actionlint@latest && /tmp/codex-go-bin/actionlint .github/workflows/android-device-e2e.yml`

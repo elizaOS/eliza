@@ -53,7 +53,6 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
-      issues: write
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
@@ -181,19 +180,33 @@ jobs:
             packages/app/playwright-report/**
           if-no-files-found: ignore
 
+  notify-scheduled-failure:
+    needs: android-e2e
+    if: ${{ always() && github.event_name == 'schedule' && needs.android-e2e.result != 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      ANDROID_E2E_RESULT: ${{ needs.android-e2e.result }}
+      ELIZA_ANDROID_BACKEND: host
+    steps:
       - name: Open / update scheduled failure issue
-        if: ${{ failure() && github.event_name == 'schedule' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         with:
           script: |
             const title = "Scheduled Android device e2e is failing (#13580)";
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const artifactsUrl = `${runUrl}#artifacts`;
             const runDate = new Date().toISOString();
+            const result = process.env.ANDROID_E2E_RESULT || "unknown";
             const body = [
               "The weekly host-backed Android device e2e cadence failed.",
               "",
               `Run: ${runUrl}`,
+              `Artifacts: ${artifactsUrl}`,
               `Workflow: \`${context.workflow}\``,
+              `Android job result: \`${result}\``,
               `Backend: \`${process.env.ELIZA_ANDROID_BACKEND || "host"}\``,
               `Observed: ${runDate}`,
               "",
@@ -222,7 +235,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.number,
-                body: `Scheduled Android device e2e failed again: ${runUrl}`,
+                body: `Scheduled Android device e2e failed again (${result}): ${runUrl}`,
               });
               core.info(`Updated scheduled failure issue #${existing.number}`);
             } else {
