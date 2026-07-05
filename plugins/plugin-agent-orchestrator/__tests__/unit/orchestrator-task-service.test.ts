@@ -1953,9 +1953,7 @@ describe("OrchestratorTaskService — retry-budget/router-cap reconciliation (#1
       lineageKey: "override-lineage",
     });
     expect(terminalTransition.decision.kind).toBe("terminal_failure");
-    expect(must(await service.getTask(task.id), "final").status).toBe(
-      "failed",
-    );
+    expect(must(await service.getTask(task.id), "final").status).toBe("failed");
   });
 
   it("restartTask resets the crash-retry budget so a restarted task survives its first recoverable blip", async () => {
