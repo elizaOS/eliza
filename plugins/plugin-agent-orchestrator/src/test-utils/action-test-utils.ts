@@ -71,11 +71,20 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
 
 export function runtimeWith(service?: unknown): IAgentRuntime {
   return {
+    agentId: "agent1",
     getService: vi.fn(() => service ?? null),
     // tasks.ts validate() requires hasService — mirror getService's truthiness
     // so tests built with `runtimeWith(serviceMock())` see ACP as available.
     hasService: vi.fn(() => Boolean(service)),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    // The task-agent ACL (`requireTaskAgentAccess` → `resolveConnectorSource`)
+    // reads the room's connector source; a source-less room is genuine
+    // client-chat, which the default GUEST policy permits. Without `getRoom` the
+    // lookup throws and fails closed (SOURCE_RESOLUTION_FAILED → denied), so
+    // every create/interact action test would wrongly deny. `reportError` backs
+    // that fail-closed path. Denial cases override the source/policy explicitly.
+    getRoom: vi.fn(async () => ({ id: "room1" })),
+    reportError: vi.fn(),
   } as never;
 }
 
