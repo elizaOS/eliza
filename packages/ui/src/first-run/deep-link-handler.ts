@@ -3,8 +3,9 @@
  *
  * iOS and Android wire `eliza://first-run/runtime/<id>` URLs through Capacitor's
  * `App.addListener("appUrlOpen", ...)`. The native shell hands the URL string
- * to the renderer; this module translates first-run paths into the query
- * contract consumed by the setup screen.
+ * to the renderer; this module routes first-run paths through the same reload
+ * helper used by the in-app runtime switcher, clearing the active server and
+ * forcing startup to re-enter first-run setup.
  *
  * Recognized runtime targets:
  *
@@ -12,7 +13,8 @@
  *   - `cloud`    -> selects cloud.
  *   - `remote`   -> selects remote.
  *
- * Unknown targets fall back to local first-run setup instead of a dead screen.
+ * Unknown targets force first-run setup without pinning a runtime target
+ * instead of landing on a dead screen.
  *
  * Defensive behavior:
  *

@@ -8,10 +8,10 @@
  *
  * Two surfaces are exercised:
  *
- *   1. `routeFirstRunDeepLink` — the pure URL parser that mutates
- *      `window.location` via `history.replaceState`. Tested directly so the
- *      assertions speak in terms of the produced query string, not React
- *      state.
+ *   1. `routeFirstRunDeepLink` — the URL parser that delegates matched
+ *      first-run links to the real reload helper. Tested directly so assertions
+ *      prove the app is forced back through first-run rather than only seeing
+ *      a query-string mutation.
  *   2. `installFirstRunDeepLinkListener` — the Capacitor wrapper that wires
  *      `App.addListener("appUrlOpen", ...)` and `App.getLaunchUrl()`. Tested
  *      with a mocked optional-peer `@capacitor/app`. The "Capacitor
