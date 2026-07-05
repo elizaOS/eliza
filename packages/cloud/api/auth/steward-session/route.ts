@@ -147,14 +147,14 @@ function errorBody(
 const app = new Hono<AppEnv>();
 
 // Pre-auth session-mint endpoint: previously guarded only by the Origin
-// allowlist + JWT verify, with no per-IP throttle. Add a strict, per-IP,
-// fail-closed rate limit so a credential-stuffing / token-spray flood on a
-// money/auth surface is bounded even if Redis blips at request time (M11).
+// allowlist + JWT verify, with no per-IP throttle. Keep the strict per-IP
+// bucket, but let a Redis outage fall open: login availability must not depend
+// on the rate-limit backing store, while money routes still opt into
+// fail-closed behavior.
 app.use(
   rateLimit({
     ...RateLimitPresets.STRICT,
     keyGenerator: getIpKey,
-    failClosed: true,
   }),
 );
 

@@ -2,10 +2,10 @@
  * Rate limiter fail-closed behavior on a runtime Redis error (#12227 M11).
  *
  * The limiter falls OPEN on a Redis error at request time — correct for
- * ordinary routes (a store outage shouldn't 500 the app). But money/auth
- * routes (steward-session mint, crypto top-up) must fail CLOSED: losing the
- * limiter there is worse than a brief 503. `RateLimitConfig.failClosed` opts a
- * route into rejecting (503) instead of serving unlimited when Redis throws.
+ * ordinary routes (a store outage shouldn't 500 the app). Money routes such as
+ * crypto top-up must fail CLOSED: losing the limiter there is worse than a
+ * brief 503. `RateLimitConfig.failClosed` opts a route into rejecting (503)
+ * instead of serving unlimited when Redis throws.
  *
  * The Redis DEPENDENCY is mocked to simulate the outage (that outage is the
  * condition under test); the real `rateLimit` middleware logic runs.
