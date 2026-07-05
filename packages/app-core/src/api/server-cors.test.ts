@@ -178,13 +178,17 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
   it("resolves CORS ports and origins from a non-ELIZA brand prefix", () => {
     process.env[`${BRAND}_API_PORT`] = "43555";
     process.env[`${BRAND}_UI_PORT`] = "44777";
+    // The single-process UI port migrated off a raw `process.env.ELIZA_PORT`
+    // read to `readAliasedEnv("ELIZA_PORT")` (#13422), so a bare `<PREFIX>_PORT`
+    // must now resolve into the CORS port set.
+    process.env[`${BRAND}_PORT`] = "42138";
     process.env[`${BRAND}_GATEWAY_PORT`] = "48789";
     process.env[`${BRAND}_HOME_PORT`] = "42142";
     process.env[`${BRAND}_ALLOWED_ORIGINS`] = "https://dashboard.example.com";
     invalidateCorsAllowedPorts();
 
     const ports = buildCorsAllowedPorts();
-    for (const port of ["43555", "44777", "48789", "42142"]) {
+    for (const port of ["43555", "44777", "42138", "48789", "42142"]) {
       expect(ports.has(port)).toBe(true);
     }
 
@@ -192,6 +196,7 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
       new Set(["https://dashboard.example.com"]),
     );
     expect(isAllowedOrigin("http://localhost:43555")).toBe(true);
+    expect(isAllowedOrigin("http://127.0.0.1:42138")).toBe(true);
     expect(isAllowedOrigin("http://127.0.0.1:48789")).toBe(true);
     expect(isAllowedOrigin("https://dashboard.example.com/settings")).toBe(
       true,
@@ -201,6 +206,7 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
   it("does not materialize the ELIZA_* mirror keys while resolving", () => {
     process.env[`${BRAND}_API_PORT`] = "43555";
     process.env[`${BRAND}_UI_PORT`] = "44777";
+    process.env[`${BRAND}_PORT`] = "42138";
     process.env[`${BRAND}_GATEWAY_PORT`] = "48789";
     process.env[`${BRAND}_HOME_PORT`] = "42142";
     process.env[`${BRAND}_ALLOWED_ORIGINS`] = "https://dashboard.example.com";
@@ -213,6 +219,7 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
     // process.env mutation #13422 removes.
     expect(process.env.ELIZA_API_PORT).toBeUndefined();
     expect(process.env.ELIZA_UI_PORT).toBeUndefined();
+    expect(process.env.ELIZA_PORT).toBeUndefined();
     expect(process.env.ELIZA_GATEWAY_PORT).toBeUndefined();
     expect(process.env.ELIZA_HOME_PORT).toBeUndefined();
     expect(process.env.ELIZA_ALLOWED_ORIGINS).toBeUndefined();
@@ -221,6 +228,8 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
   it("keeps the canonical ELIZA_* value ahead of the branded alias", () => {
     process.env.ELIZA_API_PORT = "30000";
     process.env[`${BRAND}_API_PORT`] = "43555";
+    process.env.ELIZA_PORT = "20000";
+    process.env[`${BRAND}_PORT`] = "42138";
     process.env.ELIZA_GATEWAY_PORT = "18000";
     process.env[`${BRAND}_GATEWAY_PORT`] = "48789";
     process.env.ELIZA_ALLOWED_ORIGINS = "https://canonical.example.com";
@@ -230,6 +239,8 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
     const ports = buildCorsAllowedPorts();
     expect(ports.has("30000")).toBe(true);
     expect(ports.has("43555")).toBe(false);
+    expect(ports.has("20000")).toBe(true);
+    expect(ports.has("42138")).toBe(false);
     expect(ports.has("18000")).toBe(true);
     expect(ports.has("48789")).toBe(false);
 
@@ -242,11 +253,18 @@ describe("server CORS allowlist — branded alias resolution (#13422)", () => {
   it("a blank canonical value falls through to the branded alias (empty-is-unset)", () => {
     process.env.ELIZA_GATEWAY_PORT = "   ";
     process.env[`${BRAND}_GATEWAY_PORT`] = "49000";
+    // Same empty-is-unset contract for the migrated single-process port read.
+    process.env.ELIZA_PORT = "   ";
+    process.env[`${BRAND}_PORT`] = "49100";
     invalidateCorsAllowedPorts();
 
-    expect(buildCorsAllowedPorts().has("49000")).toBe(true);
+    const ports = buildCorsAllowedPorts();
+    expect(ports.has("49000")).toBe(true);
+    expect(ports.has("49100")).toBe(true);
     // The blank canonical value must not shadow the present branded alias, and
     // the read must still not materialize the mirror.
     expect(isAllowedOrigin("http://localhost:49000")).toBe(true);
+    expect(isAllowedOrigin("http://localhost:49100")).toBe(true);
+    expect(process.env.ELIZA_PORT).toBe("   ");
   });
 });

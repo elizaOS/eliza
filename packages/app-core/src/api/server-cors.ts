@@ -17,15 +17,16 @@ import { readAliasedEnv } from "@elizaos/shared/utils/env";
  * Reads from env vars at call time so tests can override.
  *
  * Ports resolve through the alias-aware readers so a branded deployment's
- * `<PREFIX>_API_PORT` / `<PREFIX>_UI_PORT` / `<PREFIX>_GATEWAY_PORT` /
- * `<PREFIX>_HOME_PORT` are honoured without the `syncBrandEnvToEliza` mirror
- * mutation, with the canonical `ELIZA_*` key still winning when present (#13422).
+ * `<PREFIX>_API_PORT` / `<PREFIX>_UI_PORT` / `<PREFIX>_PORT` /
+ * `<PREFIX>_GATEWAY_PORT` / `<PREFIX>_HOME_PORT` are honoured without the
+ * `syncBrandEnvToEliza` mirror mutation, with the canonical `ELIZA_*` key still
+ * winning when present (#13422).
  */
 export function buildCorsAllowedPorts(): Set<string> {
   const ports = new Set([
     String(resolveDesktopApiPort(process.env)),
     String(resolveUiPort(process.env)),
-    String(process.env.ELIZA_PORT ?? "2138"),
+    String(readAliasedEnv("ELIZA_PORT") ?? "2138"),
     String(readAliasedEnv("ELIZA_GATEWAY_PORT") ?? "18789"),
     String(readAliasedEnv("ELIZA_HOME_PORT") ?? "2142"),
   ]);
