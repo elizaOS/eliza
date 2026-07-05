@@ -52,6 +52,12 @@ describe("parseMcpCreditBalance", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(CorruptMcpCreditBalanceError);
       expect((err as CorruptMcpCreditBalanceError).rawValue).toBe("NaN");
+      expect((err as CorruptMcpCreditBalanceError).code).toBe("CORRUPT_MCP_CREDIT_BALANCE");
+      expect((err as CorruptMcpCreditBalanceError).context).toEqual({
+        rawValue: "NaN",
+        reason: "value is not a valid NUMERIC",
+      });
+      expect((err as CorruptMcpCreditBalanceError).severity).toBe("fatal");
     }
   });
 

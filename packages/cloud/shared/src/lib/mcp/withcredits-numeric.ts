@@ -30,12 +30,18 @@
  * error-policy:J1 — corrupt stored money value on a spend gate: deny, surface
  * for repair, never fabricate an authorized-spend default.
  */
-export class CorruptMcpCreditBalanceError extends Error {
+import { ElizaError } from "@elizaos/core";
+
+export class CorruptMcpCreditBalanceError extends ElizaError {
+  override readonly name = "CorruptMcpCreditBalanceError";
   readonly rawValue: unknown;
 
   constructor(rawValue: unknown, reason: string) {
-    super(`Unable to read organization credit_balance for MCP spend gate: ${reason}`);
-    this.name = "CorruptMcpCreditBalanceError";
+    super(`Unable to read organization credit_balance for MCP spend gate: ${reason}`, {
+      code: "CORRUPT_MCP_CREDIT_BALANCE",
+      context: { rawValue, reason },
+      severity: "fatal",
+    });
     this.rawValue = rawValue;
   }
 }
