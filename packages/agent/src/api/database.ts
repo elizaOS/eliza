@@ -1104,11 +1104,11 @@ async function handleQuery(
     // function hides as `U&"s\0065tval"`). Legit read-only queries never need
     // them. Mirrors checkReadOnly() in actions/database.ts.
     if (/[uU]&"/.test(noLiterals)) {
-      return {
-        ok: false,
-        reason:
-          'Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
-      };
+      sendJsonError(
+        res,
+        'Query rejected: Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
+      );
+      return;
     }
 
     const mutationKeywords = [
