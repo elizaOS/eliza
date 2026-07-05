@@ -17,6 +17,8 @@ interface HelpEntry {
   answer: string;
 }
 
+export const HELP_KNOWLEDGE_TAG = "help";
+
 function helpDocument(
   key: string,
   title: string,
@@ -33,6 +35,7 @@ function helpDocument(
     contentType: "text/plain",
     text: [`${title}`, "", ...fragments.map((f) => f.text)].join("\n\n"),
     fragments,
+    metadata: { tags: [HELP_KNOWLEDGE_TAG], helpCategory: title },
   };
 }
 
