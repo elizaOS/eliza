@@ -2929,8 +2929,11 @@ async function handleListConnections(
 		platform: string;
 		label: string;
 		accountId: string | undefined;
-		roomCount: number;
-		mutedRoomCount: number;
+		// null = the count could not be resolved (see `error`) — a broken
+		// connector must never read as a healthy zero-room connection.
+		roomCount: number | null;
+		mutedRoomCount: number | null;
+		error?: string;
 	}> = [];
 
 	for (const connector of connectors) {
@@ -2947,8 +2950,9 @@ async function handleListConnections(
 			undefined,
 			connector,
 		);
-		let roomCount = 0;
-		let mutedRoomCount = 0;
+		let roomCount: number | null = null;
+		let mutedRoomCount: number | null = null;
+		let listError: string | undefined;
 		try {
 			const targets = (await connector.listRooms?.(context)) ?? [];
 			roomCount = targets.length;
@@ -2956,10 +2960,11 @@ async function handleListConnections(
 				Boolean,
 			).length;
 		} catch (error) {
+			// error-policy:J4 one broken connector must not hide the healthy ones;
+			// its entry carries an explicit error instead of a fabricated count.
+			listError = error instanceof Error ? error.message : String(error);
 			logger.debug(
-				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
+				`[MESSAGE/list_connections] listRooms failed for ${connector.source}: ${listError}`,
 			);
 		}
 		connections.push({
@@ -2968,10 +2973,13 @@ async function handleListConnections(
 			accountId: connector.accountId,
 			roomCount,
 			mutedRoomCount,
+			...(listError === undefined ? {} : { error: listError }),
 		});
 	}
 
-	const labels = connections.map((c) => c.label);
+	const labels = connections.map((c) =>
+		c.error === undefined ? c.label : `${c.label} (unavailable)`,
+	);
 	return opSuccess(
 		"list_connections",
 		`Connected via ${connections.length} connection(s): ${labels.join(", ")}.`,

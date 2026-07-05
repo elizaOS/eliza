@@ -122,7 +122,10 @@ describe("MESSAGE op=list_connections", () => {
 		expect(data.connectionCount).toBe(2);
 	});
 
-	it("a failing connector still appears with roomCount 0", async () => {
+	it("a failing connector appears as unavailable, distinguishable from a genuinely-empty one", async () => {
+		// "Not loaded must never read as zero": a connector whose listRooms throws
+		// must carry an explicit error state (roomCount null + error), while a
+		// connector that really has zero rooms reports roomCount 0 with no error.
 		const broken = {
 			source: "x",
 			label: "X",
@@ -136,14 +139,33 @@ describe("MESSAGE op=list_connections", () => {
 		const runtime = mockRuntime([
 			broken,
 			mockConnector("discord", "Discord", ["#general"]),
+			mockConnector("matrix", "Matrix", []),
 		]);
 		const result = await listConnections(runtime);
 		const data = result.data as {
-			connections: { platform: string; roomCount: number }[];
+			connections: {
+				platform: string;
+				roomCount: number | null;
+				mutedRoomCount: number | null;
+				error?: string;
+			}[];
 		};
 		const x = data.connections.find((c) => c.platform === "x");
 		expect(x).toBeDefined();
-		expect(x?.roomCount).toBe(0);
+		expect(x?.roomCount).toBeNull();
+		expect(x?.mutedRoomCount).toBeNull();
+		expect(x?.error).toContain("connector offline");
+		// the summary flags the broken connector, not just the data payload
+		expect(result.text).toContain("X (unavailable)");
+		// healthy connectors in the same roster keep their real counts
+		const discord = data.connections.find((c) => c.platform === "discord");
+		expect(discord?.roomCount).toBe(1);
+		expect(discord?.error).toBeUndefined();
+		// genuinely empty is a real zero, NOT an error state
+		const matrix = data.connections.find((c) => c.platform === "matrix");
+		expect(matrix?.roomCount).toBe(0);
+		expect(matrix?.error).toBeUndefined();
+		expect(result.text).not.toContain("Matrix (unavailable)");
 	});
 
 	it("bounds the roster at 8 connectors", async () => {
