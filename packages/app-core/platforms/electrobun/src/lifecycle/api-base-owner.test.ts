@@ -19,6 +19,7 @@ const ENV_KEYS = [
   "ELIZA_DESKTOP_RUNTIME_MODE",
   "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
   "ELIZA_DESKTOP_TEST_API_BASE",
+  "ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER",
   "ELIZA_STARTUP_SESSION_ID",
   "ELIZA_STARTUP_STATE_FILE",
   "ELIZA_STARTUP_EVENTS_FILE",
@@ -93,6 +94,17 @@ describe("api-base-owner", () => {
     expect(injected).not.toContain("__ELIZA_API_TOKEN__");
     expect(injected).toContain("apiToken");
     expect(injected).toContain("elizaos.app.boot-config");
+  });
+
+  it("injects the packaged runtime chooser test marker without an API base", () => {
+    process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER = "1";
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    expect(injected).toContain(
+      "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;",
+    );
+    expect(injected).not.toContain("apiBase:");
   });
 
   it("marks a non-loopback current API base as an external desktop API base", () => {

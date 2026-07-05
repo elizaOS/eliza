@@ -66,6 +66,10 @@ function safeJsonForHtml(value: unknown): string {
   );
 }
 
+function shouldInjectRuntimeChooserTestMode(): boolean {
+  return process.env.ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER === "1";
+}
+
 function resolveStartupTraceId(): string | null {
   return getStartupTraceConfig().sessionId;
 }
@@ -132,7 +136,11 @@ export function injectIntoHtml(html: string): string {
   const startupTraceInject = startupTraceId
     ? `window.__ELIZA_STARTUP_TRACE_ID__=${safeJsonForHtml(startupTraceId)};`
     : "";
-  if (!current.base && !startupTraceInject) return html;
+  const runtimeChooserTestInject = shouldInjectRuntimeChooserTestMode()
+    ? "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;"
+    : "";
+  if (!current.base && !startupTraceInject && !runtimeChooserTestInject)
+    return html;
 
   let apiBaseInject = "";
   if (current.base) {
@@ -155,7 +163,7 @@ export function injectIntoHtml(html: string): string {
     apiBaseInject = `${runtimeModeInject}${externalApiBaseInject}${bootConfigInject}`;
   }
 
-  const script = `<script>${startupTraceInject}${apiBaseInject}</script>`;
+  const script = `<script>${startupTraceInject}${runtimeChooserTestInject}${apiBaseInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }

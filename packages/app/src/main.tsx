@@ -189,6 +189,10 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
+import {
+  applyRuntimeChooserOverrideFromUrl,
+  removeUrlParameter,
+} from "./runtime-chooser-override";
 import { registerViewServiceWorker } from "./sw-registration";
 
 declare const __ELIZA_BUILD_VARIANT__: string | undefined;
@@ -418,21 +422,6 @@ function getWindowUrlSearchParams(): URLSearchParams {
   const search = window.location?.search ?? "";
   const hashSearch = window.location?.hash?.split("?")[1] ?? "";
   return new URLSearchParams(search || hashSearch);
-}
-
-function applyRuntimeChooserOverrideFromUrl(): void {
-  const params = getWindowUrlSearchParams();
-  if (params.get("enableRuntimeChooser") !== "1") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
-    removeUrlParameter("enableRuntimeChooser");
-  } catch (error) {
-    // error-policy:J3 storage/history can be unavailable in constrained webviews; keep booting.
-    logger.warn("[App] Failed to persist runtime chooser override", { error });
-  }
 }
 
 function applyCloudPairSessionToken(): void {
@@ -2893,24 +2882,6 @@ function injectWaifuChatAccessToken(): void {
       removeUrlParameter(window.location.href, "waifu_access_token"),
     );
   }
-}
-
-function removeUrlParameter(href: string, parameter: string): URL {
-  const nextUrl = new URL(href);
-  nextUrl.searchParams.delete(parameter);
-  const hashQueryIndex = nextUrl.hash.indexOf("?");
-  if (hashQueryIndex >= 0) {
-    const hashPath = nextUrl.hash.slice(0, hashQueryIndex);
-    const hashParams = new URLSearchParams(
-      nextUrl.hash.slice(hashQueryIndex + 1),
-    );
-    hashParams.delete(parameter);
-    const serializedHashParams = hashParams.toString();
-    nextUrl.hash = serializedHashParams
-      ? `${hashPath}?${serializedHashParams}`
-      : hashPath;
-  }
-  return nextUrl;
 }
 
 function injectDetachedShellApiBase(): void {
