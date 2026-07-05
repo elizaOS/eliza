@@ -42,6 +42,7 @@ export function buildDeviceStatusRow({
   stamp,
   developHead,
   source,
+  lease = null,
 }) {
   const status = rendererStampVerdict({ stamp, developHead });
   return {
@@ -55,6 +56,7 @@ export function buildDeviceStatusRow({
     verdict: status.verdict,
     reason: status.reason,
     source,
+    lease,
   };
 }
 
@@ -71,6 +73,7 @@ export function formatDeviceStatusTable(rows) {
     "COMMIT",
     "DEVELOP",
     "VERDICT",
+    "LEASE",
     "REASON",
   ];
   const body = rows.map((row) => [
@@ -81,6 +84,7 @@ export function formatDeviceStatusTable(rows) {
     shortSha(row.commit),
     shortSha(row.developHead),
     row.verdict,
+    row.lease ? `pid ${row.lease.pid}` : "-",
     row.reason,
   ]);
   const widths = headers.map((header, index) =>

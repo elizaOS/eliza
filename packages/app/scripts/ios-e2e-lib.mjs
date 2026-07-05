@@ -43,6 +43,7 @@ export function parseIosE2eArgs(argv) {
     skipAuth: has("--skip-auth"),
     skipLocalChat: has("--skip-local-chat"),
     cloud: has("--cloud"),
+    noWait: has("--no-wait"),
   };
 }
 

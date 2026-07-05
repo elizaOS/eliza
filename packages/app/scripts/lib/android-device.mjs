@@ -17,6 +17,7 @@ import {
   readRendererBuildManifest,
 } from "../../../app-core/scripts/lib/renderer-build-manifest.mjs";
 import { readAndroidApkRendererManifest } from "./android-renderer-stamp.mjs";
+import { isDeviceLeased } from "./device-lease.mjs";
 
 const IS_WINDOWS = process.platform === "win32";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -275,7 +276,10 @@ export async function ensureEmulatorBooted({
 } = {}) {
   const existing = listDevices(adbBin);
   if (existing.length > 0) {
-    const serial = process.env.ANDROID_SERIAL ?? existing[0];
+    const serial =
+      process.env.ANDROID_SERIAL ??
+      existing.find((candidate) => !isDeviceLeased(`android:${candidate}`)) ??
+      existing[0];
     log(`reusing attached device ${serial}`);
     suppressErrorDialogs(adbBin, serial, log);
     return serial;

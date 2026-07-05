@@ -37,6 +37,7 @@ describe("parseIosE2eArgs", () => {
       skipAuth: false,
       skipLocalChat: false,
       cloud: false,
+      noWait: false,
     });
   });
 
@@ -46,11 +47,13 @@ describe("parseIosE2eArgs", () => {
       "--skip-auth",
       "--skip-local-chat",
       "--cloud",
+      "--no-wait",
     ]);
     expect(f.skipBuild).toBe(true);
     expect(f.skipAuth).toBe(true);
     expect(f.skipLocalChat).toBe(true);
     expect(f.cloud).toBe(true);
+    expect(f.noWait).toBe(true);
   });
 
   it("captures --device and --app-path values", () => {
@@ -76,6 +79,7 @@ describe("planIosE2eSteps", () => {
     skipAuth: false,
     skipLocalChat: false,
     cloud: false,
+    noWait: false,
   };
 
   it("runs build → auth → local-chat by default (no cloud)", () => {

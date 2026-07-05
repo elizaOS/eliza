@@ -74,8 +74,10 @@ describe("devices-status policy", () => {
       stamp: { buildId: "buildabcdef", commit: "abcdef1234567890" },
       developHead: "abcdef1234567890",
       source: "adb",
+      lease: { pid: 42, sessionId: "runner" },
     });
     expect(formatDeviceStatusTable([row])).toContain("emulator-5554");
     expect(formatDeviceStatusTable([row])).toContain("FRESH");
+    expect(formatDeviceStatusTable([row])).toContain("pid 42");
   });
 });

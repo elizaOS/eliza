@@ -18,6 +18,7 @@ import {
   readInstalledRendererStamp,
   resolveAdb,
 } from "./lib/android-device.mjs";
+import { isDeviceLeased } from "./lib/device-lease.mjs";
 import {
   buildDeviceStatusRow,
   formatDeviceStatusTable,
@@ -142,6 +143,7 @@ function androidRows(developHead) {
       stamp,
       developHead,
       source: `adb:${APP_ID}`,
+      lease: isDeviceLeased(`android:${serial}`),
     });
   });
 }
@@ -196,6 +198,7 @@ function iosSimulatorRows(developHead) {
       stamp,
       developHead,
       source: "simctl",
+      lease: isDeviceLeased(`ios:${device.udid}`),
     });
   });
 }
@@ -245,6 +248,7 @@ function iosPhysicalRows(developHead) {
       stamp,
       developHead,
       source: entry ? "deploy-ledger" : "no ledger entry",
+      lease: isDeviceLeased(`ios:${device.udid ?? device.identifier}`),
     });
   });
 }

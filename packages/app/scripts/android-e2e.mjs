@@ -15,7 +15,7 @@
 // Flags: --serial <s>  --skip-local-chat  --skip-route-coverage  --cloud
 //        --launcher-loop (≥200-action seeded launcher gesture loop; opt-in)
 //        --force-build/--build (build the APK first)  --skip-build
-//        --no-emulator-boot
+//        --no-emulator-boot  --no-wait
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +27,7 @@ import {
   ensureEmulatorBooted,
   ensureEmulatorPermissive,
   installApk,
+  listDevices,
   readFreshAndroidRendererStamp,
   readInstalledRendererStamp,
   readRendererStampFromApk,
@@ -34,6 +35,7 @@ import {
   resolveApk,
   resolveSerial,
 } from "./lib/android-device.mjs";
+import { acquireDeviceLease, isDeviceLeased } from "./lib/device-lease.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const elizaRoot = path.resolve(appDir, "..", "..");
@@ -326,79 +328,95 @@ async function main() {
   const adb = resolveAdb();
 
   let serial = val("--serial", process.env.ANDROID_SERIAL);
+  if (!serial && has("--no-emulator-boot")) {
+    const unleased = listDevices(adb).find(
+      (candidate) => !isDeviceLeased(`android:${candidate}`),
+    );
+    if (unleased) serial = unleased;
+  }
   if (!has("--no-emulator-boot")) {
     serial = await ensureEmulatorBooted({ adb, avd: val("--avd"), log });
   }
   serial = resolveSerial(adb, serial);
   process.env.ANDROID_SERIAL = serial;
   log(`device serial=${serial}`);
+  const lease = await acquireDeviceLease(`android:${serial}`, {
+    waitMs: has("--no-wait") ? 0 : undefined,
+    log,
+  });
 
-  await ensureEmulatorPermissive(adb, serial, { log });
+  try {
+    await ensureEmulatorPermissive(adb, serial, { log });
 
-  ensureFreshApkInstalled(adb, serial);
+    ensureFreshApkInstalled(adb, serial);
 
-  if (!has("--skip-local-chat")) {
-    const modelPath = ensureSmokeModelCached();
-    log("local route: on-device agent + smallest model + real chat…");
-    run(
-      "node",
-      [
-        "scripts/mobile-local-chat-smoke.mjs",
-        "--platform",
-        "android",
-        "--require-installed",
-        "--live",
-        "--android-select-local",
-        "--android-stage-smoke-model",
-        "--serial",
-        serial,
-      ],
-      { ANDROID_SMOKE_MODEL_PATH: modelPath, ANDROID_SERIAL: serial },
-    );
-  }
+    if (!has("--skip-local-chat")) {
+      const modelPath = ensureSmokeModelCached();
+      log("local route: on-device agent + smallest model + real chat…");
+      run(
+        "node",
+        [
+          "scripts/mobile-local-chat-smoke.mjs",
+          "--platform",
+          "android",
+          "--require-installed",
+          "--live",
+          "--android-select-local",
+          "--android-stage-smoke-model",
+          "--serial",
+          serial,
+        ],
+        { ANDROID_SMOKE_MODEL_PATH: modelPath, ANDROID_SERIAL: serial },
+      );
+    }
 
-  if (!has("--skip-route-coverage")) {
-    // The Playwright config runs route-coverage AND the on-device voice
-    // round-trip; the latter needs the ASR/TTS GGUFs staged (the chat smoke only
-    // stages the text model, and an `adb install -r` cycle can drop the
-    // separately-pushed voice models).
-    stageVoiceModels(adb, serial);
-    log("route coverage: driving every route on the real WebView…");
-    run("node", [
-      "scripts/run-ui-playwright.mjs",
-      "--config",
-      "playwright.android.config.ts",
-    ]);
-  }
-
-  if (has("--launcher-loop")) {
-    // Long seeded launcher gesture loop (≥200 real device actions). Opt-in: it
-    // adds several minutes, so it does not run in the default sweep. The seed is
-    // printed by the spec and honored via ELIZA_LOOP_SEED for reproduction.
-    log("launcher loop: ≥200 real device gestures with per-action invariants…");
-    run(
-      "bunx",
-      [
-        "playwright",
-        "test",
+    if (!has("--skip-route-coverage")) {
+      // The Playwright config runs route-coverage AND the on-device voice
+      // round-trip; the latter needs the ASR/TTS GGUFs staged (the chat smoke only
+      // stages the text model, and an `adb install -r` cycle can drop the
+      // separately-pushed voice models).
+      stageVoiceModels(adb, serial);
+      log("route coverage: driving every route on the real WebView…");
+      run("node", [
+        "scripts/run-ui-playwright.mjs",
         "--config",
         "playwright.android.config.ts",
-        "test/android/launcher-gesture-loop.android.spec.ts",
-      ],
-      {
-        ELIZA_ANDROID_BACKEND: process.env.ELIZA_ANDROID_BACKEND ?? "host",
-        ELIZA_ANDROID_REQUIRE_AGENT:
-          process.env.ELIZA_ANDROID_REQUIRE_AGENT ?? "1",
-        ANDROID_SERIAL: serial,
-      },
-    );
-  }
+      ]);
+    }
 
-  if (has("--cloud")) {
-    log(
-      "cloud route: real Hetzner provisioning probe (loud-fails if it can't)…",
-    );
-    run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
+    if (has("--launcher-loop")) {
+      // Long seeded launcher gesture loop (≥200 real device actions). Opt-in: it
+      // adds several minutes, so it does not run in the default sweep. The seed is
+      // printed by the spec and honored via ELIZA_LOOP_SEED for reproduction.
+      log(
+        "launcher loop: ≥200 real device gestures with per-action invariants…",
+      );
+      run(
+        "bunx",
+        [
+          "playwright",
+          "test",
+          "--config",
+          "playwright.android.config.ts",
+          "test/android/launcher-gesture-loop.android.spec.ts",
+        ],
+        {
+          ELIZA_ANDROID_BACKEND: process.env.ELIZA_ANDROID_BACKEND ?? "host",
+          ELIZA_ANDROID_REQUIRE_AGENT:
+            process.env.ELIZA_ANDROID_REQUIRE_AGENT ?? "1",
+          ANDROID_SERIAL: serial,
+        },
+      );
+    }
+
+    if (has("--cloud")) {
+      log(
+        "cloud route: real Hetzner provisioning probe (loud-fails if it can't)…",
+      );
+      run("node", ["scripts/cloud-provisioning-e2e.mjs"]);
+    }
+  } finally {
+    lease.release();
   }
 
   log("ALL ANDROID E2E PASSED ✅");

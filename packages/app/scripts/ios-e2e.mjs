@@ -11,7 +11,7 @@
 //   5. (optional) Cloud route: real provisioning probe.
 //
 // Flags: --device <name|udid>  --app-path <App.app>  --skip-build
-//        --skip-local-chat  --skip-auth  --cloud
+//        --skip-local-chat  --skip-auth  --cloud  --no-wait
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +30,7 @@ import {
   resolveTargetDevice,
   selectBootedUdid,
 } from "./ios-e2e-lib.mjs";
+import { acquireDeviceLease } from "./lib/device-lease.mjs";
 import {
   assertCandidateIosAppRendererFresh,
   assertInstalledIosAppRendererFresh,
@@ -172,14 +173,19 @@ async function main() {
   const appId = readAppId();
   const udid = ensureSimulatorBooted(flags.device);
   log(`simulator udid=${udid}`);
-  clearIosSmokeDefaults({ udid, bundleId: appId, log });
+  const lease = await acquireDeviceLease(`ios:${udid}`, {
+    waitMs: flags.noWait ? 0 : undefined,
+    log,
+  });
   try {
+    clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
       runStep(step, { udid, appId });
     }
     log("ALL iOS E2E PASSED ✅");
   } finally {
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
+    lease.release();
   }
 }
 main().catch((error) => {
