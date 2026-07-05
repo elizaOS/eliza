@@ -2266,10 +2266,25 @@ export function useChatSend(deps: UseChatSendDeps) {
         await client.deleteConversationMessage(convId, messageId);
         return true;
       } catch (err) {
-        // Roll back to the pre-delete list so the message stays visible; never
-        // a silent local-only removal on failure.
-        conversationMessagesRef.current = preserved;
-        setConversationMessages(preserved);
+        // Roll back so the message stays visible — never a silent local-only
+        // removal on failure. Only touch state if we're still viewing the
+        // conversation we deleted from: a switch mid-delete swapped the ref +
+        // setter to another conversation, and restoring this one's snapshot
+        // there would leak state across conversations (same guard every send
+        // path uses). Reconcile against the CURRENT list — re-add the pre-delete
+        // messages while keeping anything that streamed in during the request —
+        // rather than overwriting with the stale snapshot, so a reply that
+        // arrived mid-delete is not clobbered.
+        if (activeConversationIdRef.current === convId) {
+          const live = conversationMessagesRef.current;
+          const preservedIds = new Set(preserved.map((m) => m.id));
+          const restored = [
+            ...preserved,
+            ...live.filter((m) => !preservedIds.has(m.id)),
+          ];
+          conversationMessagesRef.current = restored;
+          setConversationMessages(restored);
+        }
         setActionNotice(
           `Failed to delete message: ${err instanceof Error ? err.message : "network error"}`,
           "error",

@@ -1768,4 +1768,63 @@ describe("useChatSend — handleChatDelete persistent single-message delete (#13
     expect(ok).toBe(false);
     expect(mocks.client.deleteConversationMessage).not.toHaveBeenCalled();
   });
+
+  it("does NOT clobber another conversation's state when the DELETE fails after a mid-delete conversation switch (#13981)", async () => {
+    const deps = makeDeps({ activeConversationId: "conv-A" });
+    seedMessages(deps, [userMsg("a-1"), userMsg("a-2")]);
+    const convBMessages = [userMsg("b-1", "hi B"), userMsg("b-2", "reply B")];
+    const del = deferred<{ ok: boolean; deletedCount: number }>();
+    mocks.client.deleteConversationMessage.mockReturnValueOnce(del.promise);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.handleChatDelete("a-2");
+    });
+    // The optimistic removal has run; the user now switches to conversation B,
+    // which swaps the ref + setter to B's messages. THEN the DELETE fails.
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = convBMessages;
+
+    await act(async () => {
+      del.reject(new Error("network"));
+      await pending;
+    });
+
+    // B's displayed state is untouched — A's pre-delete snapshot never leaks in.
+    expect(deps.conversationMessagesRef.current).toEqual(convBMessages);
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete message"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("restores the target without clobbering a reply that streamed in during the failed DELETE (#13981)", async () => {
+    const deps = makeDeps({ activeConversationId: "conv-A" });
+    seedMessages(deps, [userMsg("a-user"), userMsg("a-target")]);
+    const del = deferred<{ ok: boolean; deletedCount: number }>();
+    mocks.client.deleteConversationMessage.mockReturnValueOnce(del.promise);
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.handleChatDelete("a-target");
+    });
+    // A reply streams into the SAME conversation while the DELETE is in flight
+    // (appended to the live list). The rollback must not discard it.
+    deps.conversationMessagesRef.current = [
+      ...deps.conversationMessagesRef.current,
+      userMsg("a-streamed", "new reply"),
+    ];
+
+    await act(async () => {
+      del.reject(new Error("network"));
+      await pending;
+    });
+
+    const ids = deps.conversationMessagesRef.current.map((m) => m.id);
+    expect(ids).toContain("a-target"); // deleted message restored on failure
+    expect(ids).toContain("a-streamed"); // the reply that streamed in is NOT lost
+  });
 });
