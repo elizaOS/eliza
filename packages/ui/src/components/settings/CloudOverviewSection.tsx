@@ -33,7 +33,7 @@ const CLOUD_FEATURES = [
     icon: Bot,
     label: "Cloud agents",
     description:
-      "Keep agents online when this Mac is asleep and switch between hosted agents from every device.",
+      "Keep agents online when this device is asleep and switch between hosted agents from every device.",
   },
   {
     icon: KeyRound,
