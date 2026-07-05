@@ -313,6 +313,7 @@
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
+    "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
@@ -366,6 +367,14 @@
     "ws": "^8.19.0",
     "zod": "^4.4.3",
     "@elizaos/auth": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-inbox": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@elizaos/plugin-inbox": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",

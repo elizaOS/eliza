@@ -49,6 +49,18 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   // /api/vision/ocr-requests into a 404 forever (verified on emulator-5554).
   "@elizaos/plugin-vision",
   "@elizaos/plugin-background-runner",
+  // The remaining MOBILE_CORE_PLUGINS + MOBILE_VIEW_PLUGINS entries. The mobile
+  // resolver can only load @elizaos plugins that are pre-registered in
+  // STATIC_ELIZA_PLUGINS (no node_modules tree ships in the APK), so every
+  // plugin the mobile allow-list keeps MUST have a literal importer here —
+  // without one it is silently dropped at boot: no ScheduledTask runner, no
+  // FILE target=device, no VIEWS chat navigation, a dead inbox tile, and
+  // health still reporting failed:0. The bundle-loadability drift guard in
+  // core-plugins-profile-metadata.test.ts pins this invariant.
+  "@elizaos/plugin-native-filesystem",
+  "@elizaos/plugin-scheduling",
+  "@elizaos/plugin-inbox",
+  "@elizaos/plugin-app-control",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ];
@@ -108,6 +120,14 @@ export interface OptionalStaticPluginOverride {
    * absent from the mobile bundle).
    */
   readonly skipOnMobile?: boolean;
+  /**
+   * Package-exports subpath holding the runtime `Plugin` half when the root
+   * barrel is not it (runtime-app plugins whose root export pulls React view
+   * components — see RUNTIME_APP_PLUGIN_SUBPATHS in plugin-resolver.ts). The
+   * generated literal import and every dynamic fallback use this subpath; the
+   * registry key stays the bare package name.
+   */
+  readonly importSubpath?: "./plugin";
 }
 
 export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
@@ -118,7 +138,26 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // deferred-plugin timeout before being skipped. Skip it up front on
   // android/ios (it is a desktop dev tool, already gated in plugin-collector).
   "@elizaos/plugin-gitpathologist": { skipOnMobile: true },
+  // Root barrel exports the InboxView React components; the runtime plugin
+  // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
+  // would drag react/.tsx into the bun-target mobile agent bundle. (In
+  // packages/agent's package.json this is an optional PEER dependency, not a
+  // regular one: plugin-inbox depends on app-core which depends on agent, so
+  // a regular dep closes a turbo build cycle; peers stay out of the task
+  // graph while bun still links the workspace package for resolution.)
+  "@elizaos/plugin-inbox": { importSubpath: "./plugin" },
 };
+
+/**
+ * Import specifier for a package's runtime plugin module — the bare package
+ * name unless an `importSubpath` override points at a dedicated runtime entry.
+ * Single definition shared by the codegen renderer, the runtime dynamic-import
+ * fallback, and the drift test so all three resolve the same module.
+ */
+export function optionalPluginImportSpecifier(packageName: string): string {
+  const subpath = OPTIONAL_STATIC_PLUGIN_OVERRIDES[packageName]?.importSubpath;
+  return subpath ? `${packageName}${subpath.slice(1)}` : packageName;
+}
 
 const RELATIVE_GENERATED_PATH = "./optional-plugin-imports.generated.ts";
 
@@ -130,7 +169,10 @@ export function renderOptionalPluginImportsModule(
   packages: readonly string[],
 ): string {
   const entries = packages
-    .map((pkg) => `  "${pkg}": () => import("${pkg}"),`)
+    .map(
+      (pkg) =>
+        `  "${pkg}": () => import("${optionalPluginImportSpecifier(pkg)}"),`,
+    )
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT BY HAND.
 // Source of truth: ./optional-plugins.ts (OPTIONAL_STATIC_PLUGIN_PACKAGES).

@@ -47,6 +47,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Pure data module (no imports) — safe to load in the build script. The
+// manifest's plugin lists are derived from it so they cannot drift from what
+// the runtime actually allow-lists on mobile (the hand-written copy silently
+// under-reported MOBILE_CORE_PLUGINS).
+import {
+  ELIZAOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+  MOBILE_CORE_PLUGINS,
+  MOBILE_MODEL_PROVIDER_PLUGINS,
+  MOBILE_VIEW_PLUGINS,
+} from "../src/runtime/core-plugins.ts";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
 // agentRoot = repoRoot/packages/agent → two parents up is the repo root.
@@ -399,6 +411,13 @@ const nativeStubs = {
   // `ELIZA_VAULT_PASSPHRASE` / in-memory keys; ElizaAgentService can mint
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
+  // `puppeteer-core` is the local-Chromium driver behind
+  // plugin-app-control's AppVerificationService pixel-verification path
+  // (lazy `import("puppeteer-core")`). The plugin now bundles on mobile for
+  // its VIEWS navigation surface, but a phone never launches a local
+  // Chromium — stub the driver so its multi-MB dependency closure stays out
+  // of the on-device bundle (same rationale as plugin-meetings above).
+  "puppeteer-core": path.join(stubsDir, "null-plugin.cjs"),
   // React + react-dom stubs: workspace plugins (`@elizaos/plugin-personal-assistant`,
   // etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
@@ -537,9 +556,13 @@ const optionalPluginStubs = {
   // package so a local-source mobile bundle does not depend on those desktop
   // catalogs or pull the full workflow graph into the phone agent.
   "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.cjs"),
-  // plugin-native-filesystem uses native fs APIs and is not available
-  // in the mobile bundle — stub it so the runtime skips it gracefully.
-  "@elizaos/plugin-native-filesystem": path.join(stubsDir, "null-plugin.cjs"),
+  // NOTE: @elizaos/plugin-native-filesystem is intentionally NOT stubbed. It
+  // is a declared MOBILE_CORE_PLUGINS member — the mobile-safe FILE
+  // target=device bridge (duck-typed window.Capacitor on iOS/Android,
+  // node:fs/promises under resolveStateDir() elsewhere) — with no native or
+  // Capacitor package imports, so it bundles cleanly. Stubbing it here made
+  // the host-declared table a lie: the collector kept it, the resolver
+  // silently dropped it, and FILE target=device was dead on-device.
   // `plugin-meetings` drives headless-Chromium meeting bots via
   // `playwright-core`, whose dependency closure carries chokidar → fsevents —
   // a macOS-only native `.node` addon that trips the native-addon leak gate on
@@ -1994,26 +2017,13 @@ const manifest = {
     },
   },
   plugins: {
-    core: [
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-background-runner",
-      "@elizaos/plugin-vision",
-      "@elizaos/plugin-scheduling",
-    ],
+    core: [...MOBILE_CORE_PLUGINS],
+    views: [...MOBILE_VIEW_PLUGINS],
     aospOnly: [
-      "@elizaos/plugin-wifi",
-      "@elizaos/plugin-contacts",
-      "@elizaos/plugin-phone",
-      "@elizaos/plugin-shell",
-      "@elizaos/plugin-coding-tools",
-      "agent-orchestrator",
+      ...ELIZAOS_ANDROID_CORE_PLUGINS,
+      ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
     ],
-    optional: [
-      "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-openai",
-      "@elizaos/plugin-ollama",
-      "@elizaos/plugin-elizacloud",
-    ],
+    optional: [...MOBILE_MODEL_PROVIDER_PLUGINS],
   },
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [
