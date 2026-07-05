@@ -1364,7 +1364,7 @@ export function DocumentsView({
   ) : null;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the "Add Knowledge" file input rendered below.
+    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the Upload file input rendered below.
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="documents-view"
