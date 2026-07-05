@@ -80,29 +80,60 @@ runs:
           echo "protoc already installed: $(protoc --version)"
           exit 0
         fi
-        # GitHub-hosted Ubuntu images include Microsoft feeds that are unrelated
-        # to our protoc install. If those feeds return 403, apt-get update fails
-        # before it can use the Ubuntu repositories we actually need.
-        while IFS= read -r source_file; do
-          if [[ "${source_file}" == *.disabled ]]; then
-            echo "Microsoft apt source already disabled: ${source_file}"
-            continue
-          fi
-          echo "Disabling unrelated Microsoft apt source: ${source_file}"
-          sudo mv "${source_file}" "${source_file}.disabled"
-        done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
-        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
-        for attempt in 1 2 3; do
-          if sudo apt-get "${APT_ARGS[@]}" update && \
-             sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
-            break
-          fi
-          if [ "$attempt" -eq 3 ]; then
-            echo "apt install of protobuf-compiler failed after ${attempt} attempts"
-            exit 1
-          fi
-          sleep $((attempt * 10))
-        done
+        apt_ok=""
+        # Only attempt apt when passwordless sudo actually works. GitHub-hosted
+        # runners have it; the self-hosted hetzner-robot runners currently do
+        # NOT, so every `sudo` call fails with "sudo: a password is required",
+        # which reds the entire develop test matrix at this setup step (the exact
+        # wedge that is forcing admin-bypass merges). When apt isn't usable we
+        # fall back to a fully sudo-free protoc install below.
+        if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+          # GitHub-hosted Ubuntu images include Microsoft feeds that are unrelated
+          # to our protoc install. If those feeds return 403, apt-get update fails
+          # before it can use the Ubuntu repositories we actually need.
+          while IFS= read -r source_file; do
+            if [[ "${source_file}" == *.disabled ]]; then
+              echo "Microsoft apt source already disabled: ${source_file}"
+              continue
+            fi
+            echo "Disabling unrelated Microsoft apt source: ${source_file}"
+            sudo mv "${source_file}" "${source_file}.disabled"
+          done < <(grep -RIl "packages.microsoft.com" /etc/apt/sources.list.d 2>/dev/null || true)
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${APT_ARGS[@]}" update && \
+               sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
+              apt_ok=1
+              break
+            fi
+            sleep $((attempt * 10))
+          done
+        fi
+        if [ -z "$apt_ok" ]; then
+          # Sudo-free fallback: fetch the pinned protoc release into a user-writable
+          # dir and put it on PATH. Works on self-hosted runners without passwordless
+          # sudo. The repo has no .proto sources and pins no protoc version
+          # (prost-build accepts any recent protoc), so a stable release suffices.
+          echo "apt unavailable/failed; installing protoc from GitHub release (sudo-free)"
+          protoc_version=27.3
+          dest="${RUNNER_TEMP:-/tmp}/protoc"
+          mkdir -p "$dest"
+          for attempt in 1 2 3; do
+            if curl -fsSL --retry 5 --retry-all-errors -o "$dest/protoc.zip" \
+                "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "protoc GitHub release download failed after ${attempt} attempts"
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          unzip -o "$dest/protoc.zip" -d "$dest" 'bin/protoc' 'include/*'
+          chmod +x "$dest/bin/protoc"
+          echo "$dest/bin" >> "$GITHUB_PATH"
+          export PATH="$dest/bin:$PATH"
+        fi
         protoc --version
 
     - name: Install native dependencies
