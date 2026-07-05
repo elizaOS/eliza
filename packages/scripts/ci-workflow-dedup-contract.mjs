@@ -5,11 +5,25 @@
  * regime. Run in test.yml's `changes` job; a violation fails the branch's CI.
  *
  * Branch coverage stays split by responsibility, so a check never runs twice
- * across the split:
- *   - ci.yaml owns the main-branch gate (main only).
- *   - test.yml owns the develop test orchestrator and the merge-queue `ci-ok`
- *     aggregate (develop push/PR/merge_group).
- *   - scenario-pr.yml keeps zero-key deterministic PR E2E on both main+develop.
+ * across the split (post-#14194 develop-PR-weight-reduction):
+ *   - ci.yaml owns the main-branch gate (push+PR, main only).
+ *   - test.yml owns the develop POST-MERGE test orchestrator and the `ci-ok`
+ *     aggregate: develop `push` only (plus nightly `schedule` and
+ *     `workflow_dispatch`). #14194 removed the `pull_request:[develop]` and
+ *     `merge_group` triggers from test.yml. The merge queue is gone repo-wide
+ *     and develop PRs run the lightweight gate instead, so the full suite
+ *     never double-runs pre- and post-merge.
+ *   - develop-pr.yml owns the lightweight develop-PR gate (lint/typecheck/
+ *     build only, NO tests): the pre-merge half of the split.
+ *   - scenario-pr.yml keeps zero-key deterministic E2E: `pull_request:[main]`
+ *     pre-merge and `push:[develop]` post-merge (#14051/#14194 moved the heavy
+ *     scenario family off per-PR develop runs, matching the test.yml split).
+ *
+ * The de-dup invariant therefore requires BOTH sides: test.yml must carry
+ * develop `push` + `ci-ok` and must NOT carry a `pull_request`/`merge_group`
+ * trigger (else the heavy suite would run twice), and develop-pr.yml must own
+ * the `pull_request:[develop]` gate. Re-adding a PR/merge_group trigger to
+ * test.yml, or dropping the develop-pr.yml gate, fails this contract.
  *
  * Cache regime (#12341): the whole repo is on the GitHub-native Turbo cache
  * (setup-bun-workspace → the pinned `turbo-cache-github` shim). NO workflow may
@@ -74,6 +88,32 @@ function parseInlineBranches(text, eventName, workflowRel) {
   );
 }
 
+// True iff the workflow declares a top-level `on.<eventName>:` trigger. Only
+// scans the `on:` mapping block (2-space-indented keys) so an `if:` guard or a
+// comment that merely names the event does not count as a trigger.
+function hasInlineEvent(text, eventName) {
+  const lines = text.split(/\r?\n/);
+  const onIndex = lines.findIndex((line) => /^on:\s*$/.test(line));
+  if (onIndex < 0) return false;
+  for (let index = onIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() === "" || /^\s*#/.test(line)) continue;
+    // Left the `on:` mapping once we hit a non-indented (top-level) key.
+    if (/^\S/.test(line)) break;
+    const match = line.match(/^ {2}([a-z_]+):/);
+    if (match && match[1] === eventName) return true;
+  }
+  return false;
+}
+
+function assertNoInlineEvent(text, eventName, workflowRel, message) {
+  if (hasInlineEvent(text, eventName)) {
+    throw new Error(
+      `${message}: ${workflowRel} must NOT declare on.${eventName} (would double-run the heavy suite across the develop pre/post-merge split)`,
+    );
+  }
+}
+
 function assertDeepEqual(actual, expected, message) {
   const actualJson = JSON.stringify(actual);
   const expectedJson = JSON.stringify(expected);
@@ -120,29 +160,47 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     "ci.yaml PR branches",
   );
 
+  // test.yml is the develop POST-MERGE orchestrator (#14194): develop `push`
+  // only, and it must NOT carry a `pull_request` or `merge_group` trigger, or
+  // the heavy suite would run both pre- and post-merge (the double-run this
+  // contract exists to forbid).
   const tests = read(".github/workflows/test.yml");
   assertDeepEqual(
     parseInlineBranches(tests, "push", ".github/workflows/test.yml"),
     ["develop"],
     "test.yml push branches",
   );
-  assertDeepEqual(
-    parseInlineBranches(tests, "pull_request", ".github/workflows/test.yml"),
-    ["develop"],
-    "test.yml PR branches",
+  assertNoInlineEvent(
+    tests,
+    "pull_request",
+    ".github/workflows/test.yml",
+    "test.yml develop-PR gate moved to develop-pr.yml (#14194)",
   );
-  assertDeepEqual(
-    parseInlineBranches(tests, "merge_group", ".github/workflows/test.yml"),
-    ["develop"],
-    "test.yml merge queue branches",
+  assertNoInlineEvent(
+    tests,
+    "merge_group",
+    ".github/workflows/test.yml",
+    "merge queue removed repo-wide (#14194)",
   );
   assertIncludes(tests, "name: ci-ok", "test.yml required aggregate status");
-  assertIncludes(
-    tests,
-    'if [ "${GITHUB_EVENT_NAME}" = "merge_group" ]; then',
-    "test.yml merge queue path-gate bypass",
+
+  // develop-pr.yml owns the lightweight pre-merge develop-PR gate. It must
+  // carry the `pull_request:[develop]` trigger that test.yml gave up, so the
+  // split has an owner on the pre-merge side.
+  const developPr = read(".github/workflows/develop-pr.yml");
+  assertDeepEqual(
+    parseInlineBranches(
+      developPr,
+      "pull_request",
+      ".github/workflows/develop-pr.yml",
+    ),
+    ["develop"],
+    "develop-pr.yml PR branches",
   );
 
+  // scenario-pr.yml follows the same pre/post-merge split as test.yml: the
+  // heavy scenario family is off per-PR develop runs (#14051/#14194), so it
+  // gates PRs on `main` and runs post-merge on develop `push`.
   const scenarioPr = read(".github/workflows/scenario-pr.yml");
   assertDeepEqual(
     parseInlineBranches(
@@ -150,8 +208,17 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
       "pull_request",
       ".github/workflows/scenario-pr.yml",
     ),
-    ["main", "develop"],
+    ["main"],
     "scenario-pr.yml PR branches",
+  );
+  assertDeepEqual(
+    parseInlineBranches(
+      scenarioPr,
+      "push",
+      ".github/workflows/scenario-pr.yml",
+    ),
+    ["develop"],
+    "scenario-pr.yml develop push branches",
   );
 
   // --- Cache-regime invariant (#12341): one GitHub-native cache, no SaaS. ---

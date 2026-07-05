@@ -32,29 +32,43 @@ jobs:
       - uses: ./.github/actions/setup-bun-workspace
 `;
 
+// Post-#14194: test.yml is the develop POST-MERGE orchestrator. Develop `push`
+// only — no pull_request, no merge_group (merge queue removed repo-wide).
 const TEST_YML = `name: Tests
 on:
   push:
     branches: [develop]
-  pull_request:
-    branches: [develop]
-  merge_group:
-    branches: [develop]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 9 * * *"
 jobs:
   ci-ok:
     name: ci-ok
     runs-on: ubuntu-24.04
     steps:
-      - run: |
-          if [ "\${GITHUB_EVENT_NAME}" = "merge_group" ]; then
-            echo bypass
-          fi
+      - run: echo aggregate
 `;
 
-const SCENARIO_PR_YML = `name: Scenario PR
+// The lightweight develop-PR gate that owns the pre-merge half of the split.
+const DEVELOP_PR_YML = `name: Develop PR
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [develop]
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: ./.github/actions/setup-bun-workspace
+`;
+
+// Heavy scenario family: PRs gate on main, develop coverage is post-merge push.
+const SCENARIO_PR_YML = `name: Scenario PR
+on:
+  workflow_call:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [develop]
 jobs:
   x:
     runs-on: ubuntu-24.04
@@ -87,6 +101,7 @@ function baseWorkflows() {
   return {
     "ci.yaml": CI_YAML,
     "test.yml": TEST_YML,
+    "develop-pr.yml": DEVELOP_PR_YML,
     "scenario-pr.yml": SCENARIO_PR_YML,
     "nightly.yml": NIGHTLY_YML,
     "release.yaml": RELEASE_YAML,
@@ -115,6 +130,58 @@ describe("ci-workflow-dedup-contract", () => {
   test("a clean branch-split repo with no SaaS env passes", () => {
     withRepo(baseWorkflows(), (root) => {
       expect(runContract(root)).toEqual({ ok: true });
+    });
+  });
+
+  test("re-adding a pull_request trigger to test.yml fails the double-run guard", () => {
+    const workflows = baseWorkflows();
+    workflows["test.yml"] = TEST_YML.replace(
+      "  workflow_dispatch:",
+      "  pull_request:\n    branches: [develop]\n  workflow_dispatch:",
+    );
+    withRepo(workflows, (root) => {
+      expect(() => runContract(root)).toThrow(
+        /test\.yml must NOT declare on\.pull_request/,
+      );
+    });
+  });
+
+  test("re-adding a merge_group trigger to test.yml fails the double-run guard", () => {
+    const workflows = baseWorkflows();
+    workflows["test.yml"] = TEST_YML.replace(
+      "  workflow_dispatch:",
+      "  merge_group:\n    branches: [develop]\n  workflow_dispatch:",
+    );
+    withRepo(workflows, (root) => {
+      expect(() => runContract(root)).toThrow(
+        /test\.yml must NOT declare on\.merge_group/,
+      );
+    });
+  });
+
+  test("an `if:`-guard mention of merge_group in test.yml is not a trigger", () => {
+    const workflows = baseWorkflows();
+    // A leftover merge_group reference inside a step condition must NOT trip
+    // the trigger guard — only a top-level on.merge_group counts.
+    workflows["test.yml"] = TEST_YML.replace(
+      "      - run: echo aggregate",
+      "      - if: github.event_name == 'merge_group'\n        run: echo aggregate",
+    );
+    withRepo(workflows, (root) => {
+      expect(runContract(root)).toEqual({ ok: true });
+    });
+  });
+
+  test("dropping the develop-pr.yml gate fails the contract", () => {
+    const workflows = baseWorkflows();
+    workflows["develop-pr.yml"] = DEVELOP_PR_YML.replace(
+      "  pull_request:\n    branches: [develop]",
+      "  workflow_dispatch:",
+    );
+    withRepo(workflows, (root) => {
+      expect(() => runContract(root)).toThrow(
+        /develop-pr\.yml: missing on\.pull_request/,
+      );
     });
   });
 
