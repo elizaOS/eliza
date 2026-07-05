@@ -317,7 +317,14 @@ function run(argv, opts = {}) {
 // contend, while shared ones can't interleave.
 const LOCK_POLL_MS = 25;
 const LOCK_WAIT_MS = 120000;
-const LOCK_STALE_MS = 300000;
+// A lock becomes reclaimable once its mtime is older than this. It sits below
+// LOCK_WAIT_MS so a crashed holder whose PID was recycled to an unrelated live
+// process is reclaimed by a waiter before that waiter's acquire deadline (#14202)
+// — otherwise the dead lock would wedge the worktree until the 120s timeout — and
+// well above the interval at which a live holder refreshes mtime via lock.verify()
+// (each read-tree/apply/commit boundary), so a legitimately long commit is never
+// falsely reclaimed.
+const LOCK_STALE_MS = 30000;
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -348,8 +355,6 @@ function readLock(lockPath) {
 function lockIsStale(lockPath) {
   const lock = readLock(lockPath);
   if (!lock) return undefined;
-  const pid = Number(lock.owner.pid);
-  if (Number.isInteger(pid) && pid > 0) return processAlive(pid) ? undefined : lock;
   let st;
   try {
     st = fs.statSync(lockPath);
@@ -357,7 +362,18 @@ function lockIsStale(lockPath) {
     if (err.code === "ENOENT") return undefined;
     throw err;
   }
-  return Date.now() - st.mtimeMs > LOCK_STALE_MS ? lock : undefined;
+  const mtimeStale = Date.now() - st.mtimeMs > LOCK_STALE_MS;
+  const pid = Number(lock.owner.pid);
+  if (Number.isInteger(pid) && pid > 0) {
+    // A live PID proves only that *some* process owns that number — not that it
+    // is our holder, which may have crashed with its PID since recycled to an
+    // unrelated live process. So the mtime backstop is consulted for a live PID
+    // too: a real holder refreshes mtime via lock.verify() well within
+    // LOCK_STALE_MS and never trips it, while a recycled PID cannot keep a dead
+    // holder's lock wedged until the acquire deadline (#14202 companion defect).
+    return !processAlive(pid) || mtimeStale ? lock : undefined;
+  }
+  return mtimeStale ? lock : undefined;
 }
 function stealStaleLock(lockPath, staleRaw) {
   const claimPath = lockPath + ".stale-" + process.pid + "-" + randomUUID();

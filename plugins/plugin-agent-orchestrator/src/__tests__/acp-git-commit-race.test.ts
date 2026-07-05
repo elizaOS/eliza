@@ -6,13 +6,20 @@
  * park session A between its read-tree and its commit while session B commits.
  */
 
-import { execFile, execFileSync } from "node:child_process";
+import {
+  type ChildProcess,
+  execFile,
+  execFileSync,
+  spawn,
+} from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import * as os from "node:os";
@@ -62,6 +69,14 @@ async function waitForFile(target: string, timeoutMs: number): Promise<void> {
     await new Promise((r) => setTimeout(r, 20));
   }
   throw new Error(`timed out waiting for ${target}`);
+}
+
+// A real, long-lived process whose PID stands in for the number a crashed
+// holder's PID was recycled to — process.kill(pid, 0) reports it alive.
+function spawnLiveChild(): ChildProcess {
+  return spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9)"], {
+    stdio: "ignore",
+  });
 }
 
 type GitIndexPreparer = {
@@ -205,4 +220,115 @@ exit 0
       ),
     ).toEqual([]);
   });
+
+  // A crashed holder's PID can be recycled by the OS to an unrelated live
+  // process. processAlive() then reports it alive, so before #14202 lockIsStale
+  // returned "not stale" for it and never consulted the mtime backstop — the dead
+  // lock wedged the worktree until the 120s acquire deadline, then threw. With the
+  // backstop reachable for a live PID, the aged lock is reclaimed at once. The
+  // tight 20s timeout is itself the guard: a regression to never-reclaim wedges
+  // for LOCK_WAIT_MS (120s) and fails here.
+  it("reclaims a stale lock whose crashed holder's PID was recycled to a live process (#14202)", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    const session = await prepare(repo, "sess-recycled", baselineSha);
+    expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
+
+    writeFileSync(path.join(repo, "recycled.txt"), "after recycled-pid lock\n");
+    git(repo, ["add", "recycled.txt"], session?.env);
+
+    const live = spawnLiveChild();
+    try {
+      expect(() => process.kill(live.pid as number, 0)).not.toThrow();
+      const lockPath = path.join(repo, ".git", "eliza-acp-commit.lock");
+      writeFileSync(
+        lockPath,
+        JSON.stringify({
+          pid: live.pid,
+          token: "recycled-owner",
+          createdAt: Date.now() - 600_000,
+        }),
+      );
+      // Age the mtime well past LOCK_STALE_MS (30s) so the backstop fires.
+      const old = new Date(Date.now() - 600_000);
+      utimesSync(lockPath, old, old);
+
+      const result = await gitAsync(
+        repo,
+        ["commit", "-m", "reclaim recycled-pid lock"],
+        { ...process.env, ...session?.env },
+      );
+      expect(result.code, `commit failed: ${result.stderr}`).toBe(0);
+      expect(
+        git(repo, ["ls-tree", "--name-only", "-r", "HEAD"]).split("\n"),
+      ).toContain("recycled.txt");
+      expect(existsSync(lockPath)).toBe(false);
+    } finally {
+      try {
+        live.kill("SIGKILL");
+      } catch {
+        // error-policy:J6 test teardown; child may already be gone.
+      }
+    }
+  }, 20_000);
+
+  // The mtime backstop must not over-reach: a fresh lock held by a genuinely live
+  // process is NOT stale, so the wrapper must wait for it rather than steal it.
+  it("does not falsely reclaim a fresh, live-held commit lock (#14202)", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    const session = await prepare(repo, "sess-wait", baselineSha);
+    expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
+
+    writeFileSync(
+      path.join(repo, "waited.txt"),
+      "after waiting for a live holder\n",
+    );
+    git(repo, ["add", "waited.txt"], session?.env);
+
+    // Held by this (alive) process with a fresh mtime → not stale.
+    const lockPath = path.join(repo, ".git", "eliza-acp-commit.lock");
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: process.pid,
+        token: "live-holder",
+        createdAt: Date.now(),
+      }),
+    );
+
+    let done = false;
+    const commit = gitAsync(repo, ["commit", "-m", "waits for live holder"], {
+      ...process.env,
+      ...session?.env,
+    }).then((r) => {
+      done = true;
+      return r;
+    });
+
+    await new Promise((r) => setTimeout(r, 800));
+    // Still blocked: a fresh, live-held lock was not stolen.
+    expect(done, "wrapper reclaimed a fresh, live-held lock").toBe(false);
+    expect(readFileSync(lockPath, "utf8")).toContain("live-holder");
+
+    // Release the held lock; the waiting wrapper now acquires and commits.
+    rmSync(lockPath, { force: true });
+    const result = await commit;
+    expect(result.code, `commit failed: ${result.stderr}`).toBe(0);
+    expect(
+      git(repo, ["ls-tree", "--name-only", "-r", "HEAD"]).split("\n"),
+    ).toContain("waited.txt");
+  }, 20_000);
 });
