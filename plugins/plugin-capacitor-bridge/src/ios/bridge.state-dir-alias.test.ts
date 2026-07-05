@@ -1,16 +1,16 @@
 /**
  * Alias-aware ELIZA_STATE_DIR resolution for the iOS bridge (#13422). Drives the
- * real `resolveMobileStateDir` against a live MILADY-prefixed boot-config alias
- * table and the real `process.env` — no mocks — proving brand→eliza resolution,
- * canonical precedence, empty-is-unset, and no ELIZA_* mirror write.
+ * real `resolveMobileStateDir` against an iOS bridge boot state without a
+ * preloaded alias table and the real `process.env` — no mocks — proving
+ * brand→eliza resolution, canonical precedence, empty-is-unset, and no
+ * ELIZA_* mirror write.
  */
 
 import {
-	buildBrandEnvAliases,
 	getBootConfig,
-	readAliasedEnv,
 	setBootConfig,
-} from "@elizaos/shared";
+} from "@elizaos/shared/config/boot-config-store";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMobileStateDir } from "./bridge.ts";
 
@@ -34,7 +34,7 @@ describe("iOS bridge ELIZA_STATE_DIR alias resolution", () => {
 		savedBootConfig = getBootConfig();
 		setBootConfig({
 			...savedBootConfig,
-			envAliases: buildBrandEnvAliases("MILADY"),
+			envAliases: undefined,
 		});
 	});
 
@@ -48,8 +48,12 @@ describe("iOS bridge ELIZA_STATE_DIR alias resolution", () => {
 
 	it("resolves the MILADY brand prefix through the alias-aware reader", () => {
 		process.env.MILADY_STATE_DIR = "/data/milady/state";
-		expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/milady/state");
 		expect(resolveMobileStateDir()).toBe("/data/milady/state");
+		expect(readAliasedEnv("ELIZA_STATE_DIR")).toBe("/data/milady/state");
+		expect(getBootConfig().envAliases).toContainEqual([
+			"MILADY_STATE_DIR",
+			"ELIZA_STATE_DIR",
+		]);
 	});
 
 	it("prefers the canonical ELIZA_STATE_DIR over the brand alias", () => {

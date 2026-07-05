@@ -25,6 +25,11 @@ import {
 	type UUID,
 } from "@elizaos/core";
 import {
+	getBootConfig,
+	setBootConfig,
+} from "@elizaos/shared/config/boot-config-store";
+import { buildBrandEnvAliases } from "@elizaos/shared/config/brand-env-aliases";
+import {
 	summarizeTranscript,
 	type Transcript,
 	type TranscriptScope,
@@ -168,6 +173,8 @@ type AgentModule = {
 	bootElizaRuntime: () => Promise<IAgentRuntime>;
 	dispatchRoute: DispatchRoute;
 };
+
+const IOS_BRIDGE_DEFAULT_ENV_PREFIX = "MILADY";
 
 async function loadAgentModule(): Promise<AgentModule> {
 	const [{ bootElizaRuntime }, { dispatchRoute }] = await Promise.all([
@@ -534,6 +541,7 @@ async function bootRuntimeWithRetry(
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
 	installIosBackendCrashGuards();
 	const argvEnv = hydrateIosEnvFromArgv();
+	installIosBridgeEnvAliases();
 	// ── Mobile filesystem sandbox ────────────────────────────────────────────
 	// Install the fs shim as the very first action — before any runtime code
 	// runs — so that PGlite, trajectory logs, skill files, and all other agent
@@ -1945,12 +1953,22 @@ function callIosHost(
 }
 
 export function resolveMobileStateDir(): string {
+	installIosBridgeEnvAliases();
 	const explicit = readAliasedEnv("ELIZA_STATE_DIR") || process.env.ELIZA_HOME;
 	if (explicit?.trim()) return explicit.trim();
 	if (process.env.HOME?.trim()) {
 		return path.join(process.env.HOME.trim(), ".eliza");
 	}
 	return "/tmp/eliza";
+}
+
+function installIosBridgeEnvAliases(): void {
+	const config = getBootConfig();
+	if (config.envAliases?.length) return;
+	setBootConfig({
+		...config,
+		envAliases: buildBrandEnvAliases(IOS_BRIDGE_DEFAULT_ENV_PREFIX),
+	});
 }
 
 function localInferenceRootPath(): string {
