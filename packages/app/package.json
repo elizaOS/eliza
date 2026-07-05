@@ -57,6 +57,7 @@
     "test:e2e:android:lifecycle:reboot": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-local} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} ELIZA_ANDROID_LIFECYCLE_REBOOT=1 bunx playwright test --config playwright.android.config.ts test/android/lifecycle-reboot.android.spec.ts",
     "test:e2e:android:cloud": "node scripts/android-e2e.mjs --skip-local-chat --skip-route-coverage --cloud",
     "test:e2e:android:webview": "ANDROID_SERIAL=${ANDROID_SERIAL:-} bunx playwright test --config playwright.android.config.ts",
+    "devices:status": "node scripts/devices-status.mjs",
     "test:e2e:ios:onboarding": "node scripts/ios-onboarding-smoke.mjs",
     "test:e2e:ios:voice": "node scripts/ios-voice-selftest-smoke.mjs",
     "test:sim:local-chat": "node scripts/mobile-local-chat-smoke.mjs --platform ios --require-installed",
