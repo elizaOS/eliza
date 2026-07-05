@@ -81,6 +81,48 @@ describe("task-activity-store reducer", () => {
     expect(agent.steps[0].tool.output).toBe("ok");
   });
 
+  it("ignores stale same-id tool updates after a newer result", () => {
+    applyEvent(
+      ev({
+        type: "tool_running",
+        sessionId: "a",
+        taskId: "T",
+        seq: 10,
+        timestamp: 100,
+        data: {
+          toolCall: {
+            id: "t1",
+            title: "Bash",
+            status: "completed",
+            output: "ok",
+          },
+        },
+      }),
+    );
+    applyEvent(
+      ev({
+        type: "tool_running",
+        sessionId: "a",
+        taskId: "T",
+        seq: 9,
+        timestamp: 90,
+        data: {
+          toolCall: {
+            id: "t1",
+            title: "Bash",
+            status: "running",
+          },
+        },
+      }),
+    );
+
+    const agent = getSnapshot("T").subagents[0];
+    expect(agent.steps).toHaveLength(1);
+    expect(agent.steps[0].seq).toBe(10);
+    expect(agent.steps[0].tool.status).toBe("success");
+    expect(agent.steps[0].tool.output).toBe("ok");
+  });
+
   it("tracks the live plan checklist as it mutates", () => {
     applyEvent(
       ev({
@@ -183,6 +225,36 @@ describe("task-activity-store reducer", () => {
     expect(agent.currentReasoning).toBe("new reasoning");
     expect(agent.status).toBe("success");
     expect(agent.steps.map((step) => step.id)).toEqual(["late-tool"]);
+  });
+
+  it("keeps task snapshots monotonic when stale events arrive", () => {
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "a",
+        taskId: "T",
+        seq: 10,
+        timestamp: 1000,
+        data: { text: "new text" },
+      }),
+    );
+    expect(getSnapshot("T").updatedAt).toBe(1000);
+
+    applyEvent(
+      ev({
+        type: "message",
+        sessionId: "a",
+        taskId: "T",
+        seq: 9,
+        timestamp: 900,
+        data: { text: "stale text" },
+      }),
+    );
+
+    const snap = getSnapshot("T");
+    expect(snap.updatedAt).toBe(1000);
+    expect(snap.subagents[0].updatedAt).toBe(1000);
+    expect(snap.subagents[0].currentText).toBe("new text");
   });
 
   it("moves a sub-agent to a terminal status on lifecycle events", () => {

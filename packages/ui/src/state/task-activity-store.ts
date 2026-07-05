@@ -183,12 +183,13 @@ function refreezeSnapshot(entry: TaskEntry, at: number): void {
   const subagents = [...entry.subagents.values()].sort(
     (a, b) => a.firstSeq - b.firstSeq,
   );
+  const updatedAt = Math.max(entry.snapshot.updatedAt, at);
   entry.snapshot = {
     taskId: entry.snapshot.taskId,
     subagents,
     plan: entry.plan,
     lastSeq: entry.lastSeq,
-    updatedAt: at,
+    updatedAt,
   };
   for (const listener of entry.listeners) listener();
 }
@@ -256,8 +257,11 @@ function applyEvent(raw: SwarmEvent): void {
         timestamp: activity.timestamp,
       };
       const idx = agent.steps.findIndex((s) => s.id === stepId);
-      if (idx >= 0) agent.steps[idx] = step;
-      else agent.steps.push(step);
+      const existingStep = idx >= 0 ? agent.steps[idx] : undefined;
+      if (!existingStep || activity.seq > existingStep.seq) {
+        if (idx >= 0) agent.steps[idx] = step;
+        else agent.steps.push(step);
+      }
       agent.steps.sort((a, b) => a.seq - b.seq);
       if (agent.steps.length > MAX_STEPS_PER_AGENT) {
         agent.steps.splice(0, agent.steps.length - MAX_STEPS_PER_AGENT);
