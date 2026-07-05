@@ -1,7 +1,7 @@
 /**
- * Account page banner tests for generated and manually named organizations.
- * Lower panels are mocked so the assertions stay focused on welcome-card copy
- * and shell-header publication.
+ * Account page tests for the account-first presentation. The fixture still
+ * carries tenancy data so the page proves it does not promote organization
+ * language from the user record.
  */
 
 // @vitest-environment jsdom
@@ -27,10 +27,6 @@ vi.mock("../../../cloud-ui", () => ({
 
 vi.mock("./account-details", () => ({
   AccountDetails: () => <div>account details</div>,
-}));
-
-vi.mock("./organization-info", () => ({
-  OrganizationInfo: () => <div>organization info</div>,
 }));
 
 vi.mock("./profile-form", () => ({
@@ -93,25 +89,28 @@ describe("AccountPageClient", () => {
     setPageHeaderMock.mockReset();
   });
 
-  it("does not append a second organization noun to generated org names", () => {
+  it("keeps organization data out of the welcome card", () => {
     const { container } = render(
       <AccountPageClient user={makeUser("0x1234's Organization")} />,
     );
     const text = container.textContent ?? "";
 
-    expect(text).toContain("You're part of 0x1234's Organization");
-    expect(text).not.toMatch(/Organization organization/i);
+    expect(text).toContain("Welcome back, user@example.com!");
+    expect(text).not.toContain("You're part of");
+    expect(text).not.toContain("0x1234's Organization");
     expect(setPageHeaderMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Account" }),
     );
   });
 
-  it("does not append an organization noun to custom org names", () => {
+  it("does not render the Organization card on the Account page", () => {
     const { container } = render(
       <AccountPageClient user={makeUser("Team Sol")} />,
     );
 
-    expect(container.textContent).toContain("You're part of Team Sol");
-    expect(container.textContent).not.toMatch(/Team Sol organization/i);
+    expect(container.textContent).toContain("profile form");
+    expect(container.textContent).toContain("account details");
+    expect(container.textContent).not.toContain("organization info");
+    expect(container.textContent).not.toContain("Team Sol");
   });
 });
