@@ -2,9 +2,9 @@
  * In-process http proxy server. Wraps the request/response pipeline ported
  * from proxy.js v2.2.3 in a controllable Service-friendly object.
  */
-import { createServer, } from "node:http";
+import { createServer } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { loadCredentials, } from "../utils/credentials-loader.js";
+import { loadCredentials } from "../utils/credentials-loader.js";
 import { CC_VERSION, DEFAULT_PORT, DEFAULT_PROP_RENAMES, DEFAULT_REPLACEMENTS, DEFAULT_REVERSE_MAP, DEFAULT_TOOL_RENAMES, REQUIRED_BETAS, UPSTREAM_HOST, VERSION, } from "./constants.js";
 import { processBody } from "./process-body.js";
 import { reverseMap } from "./reverse-map.js";
@@ -115,9 +115,7 @@ export class ProxyServer {
     }
     getUrl() {
         const address = this.server?.address();
-        const port = address && typeof address === "object" && "port" in address
-            ? address.port
-            : this.port;
+        const port = address && typeof address === "object" && "port" in address ? address.port : this.port;
         return `http://${this.bindHost}:${port}`;
     }
     isListening() {
@@ -188,9 +186,7 @@ export class ProxyServer {
                 headers[k] = v;
             }
             const existingBeta = headers["anthropic-beta"] ?? "";
-            const betas = existingBeta
-                ? existingBeta.split(",").map((b) => b.trim())
-                : [];
+            const betas = existingBeta ? existingBeta.split(",").map((b) => b.trim()) : [];
             for (const b of REQUIRED_BETAS) {
                 if (!betas.includes(b))
                     betas.push(b);
@@ -291,14 +287,15 @@ export class ProxyServer {
                 version: stats.version,
                 requestsServed: stats.requestsServed,
                 uptime: `${stats.uptimeSec}s`,
-                tokenExpiresInHours: stats.tokenExpiresInHours === null
-                    ? "n/a"
-                    : stats.tokenExpiresInHours.toFixed(1),
+                tokenExpiresInHours: stats.tokenExpiresInHours === null ? "n/a" : stats.tokenExpiresInHours.toFixed(1),
                 subscriptionType: stats.subscriptionType ?? "unknown",
                 layers: stats.layers,
             }));
         }
         catch (e) {
+            // error-policy:J1 boundary translation — outermost handler for the
+            // /health HTTP route; the failure becomes a structured 500 body instead
+            // of tearing down the proxy's request loop.
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({
                 status: "error",

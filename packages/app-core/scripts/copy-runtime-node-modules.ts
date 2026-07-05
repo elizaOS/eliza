@@ -1565,6 +1565,7 @@ export function shouldSkipPackagedDependency(
 function isRecursivePackageSymlinkTarget(
   entry: string,
   resolvedTarget: string,
+  packageRoot?: string,
 ): boolean {
   let targetStats: fs.Stats;
   try {
@@ -1575,6 +1576,18 @@ function isRecursivePackageSymlinkTarget(
 
   if (!targetStats.isDirectory()) {
     return false;
+  }
+
+  if (packageRoot) {
+    try {
+      const realPackageRoot = fs.realpathSync.native(packageRoot);
+      const realTarget = fs.realpathSync.native(resolvedTarget);
+      if (isPathInsideOrEqual(realTarget, realPackageRoot)) {
+        return true;
+      }
+    } catch {
+      return true;
+    }
   }
 
   const relative = path.relative(resolvedTarget, entry);
@@ -1629,7 +1642,11 @@ export function shouldCopyPackageEntry(
     if (!fs.existsSync(resolvedTarget)) {
       return false;
     }
-    return !isRecursivePackageSymlinkTarget(entry, resolvedTarget);
+    return !isRecursivePackageSymlinkTarget(
+      entry,
+      resolvedTarget,
+      packageRoot,
+    );
   } catch {
     return false;
   }

@@ -1,3 +1,11 @@
+/**
+ * Shared string constants and response/DTO types for the Hyperliquid plugin:
+ * guidance/error copy for credential and execution states, and the typed
+ * shapes of every `/api/hyperliquid/*` route response (status, markets,
+ * funding, positions, orders). Consumed by `routes.ts`, `client.ts`, the
+ * `PERPETUAL_MARKET` action, and the React/TUI views — this is the single
+ * source of truth for those shapes so route, client, and UI stay in sync.
+ */
 export const HYPERLIQUID_API_BASE = "https://api.hyperliquid.xyz";
 export const HYPERLIQUID_EXECUTION_BLOCKED_REASON = "Signed Hyperliquid exchange mutations are disabled until the native app has a real managed or local execution path.";
 export const HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON = "A signer is available, but signed Hyperliquid exchange execution remains disabled in this native app.";

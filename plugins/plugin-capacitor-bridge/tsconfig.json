@@ -42,6 +42,8 @@
 			"@elizaos/app-core/services/vault-mirror": [
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],
+			"@elizaos/auth": ["../../packages/auth/src/index.ts"],
+			"@elizaos/auth/*": ["../../packages/auth/src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
 			"@elizaos/logger": ["../../packages/logger/src/index.ts"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
@@ -75,9 +77,16 @@
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
 			"@elizaos/plugin-capacitor-bridge": ["./src/index.ts"],
 			"@elizaos/plugin-capacitor-bridge/*": ["./src/*"],
+			"@elizaos/plugin-coding-tools": [
+				"../../plugins/plugin-coding-tools/src/index.ts"
+			],
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
 			],
+			"@elizaos/plugin-elizacloud": [
+				"../../plugins/plugin-elizacloud/src/index.node.ts"
+			],
+			"@elizaos/plugin-elizacloud/*": ["../../plugins/plugin-elizacloud/src/*"],
 			"@elizaos/plugin-local-inference": [
 				"../../plugins/plugin-local-inference/src/index.ts"
 			],
@@ -94,6 +103,10 @@
 				"../../plugins/plugin-registry/src/index.ts"
 			],
 			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
+			"@elizaos/plugin-streaming": [
+				"../../plugins/plugin-streaming/src/index.ts"
+			],
+			"@elizaos/plugin-streaming/*": ["../../plugins/plugin-streaming/src/*"],
 			"@elizaos/plugin-task-coordinator": [
 				"../../plugins/plugin-task-coordinator/src/index.ts"
 			],

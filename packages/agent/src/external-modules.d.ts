@@ -1,4 +1,24 @@
 declare module "@elizaos/plugin-agent-orchestrator";
+declare module "@elizaos/plugin-aosp-local-inference" {
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export function ensureAospLocalInferenceHandlers(
+    runtime: AgentRuntime,
+  ): Promise<boolean | void>;
+  export function buildAospLoadModelArgs(
+    role: "chat" | "embedding",
+    modelPath: string,
+  ): unknown;
+  export function activateAospLocalInferenceModel(args: {
+    modelId: string;
+    modelPath: string;
+    loadArgs: unknown;
+  }): Promise<unknown>;
+  export function clearAospLocalInferenceModel(): Promise<unknown>;
+  export function registerAospLlamaLoader(
+    runtime: AgentRuntime,
+  ): Promise<boolean>;
+}
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
   import type { AgentRuntime, MobileDeviceBridgeStatus } from "@elizaos/core";

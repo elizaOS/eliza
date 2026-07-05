@@ -12,7 +12,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -315,6 +315,20 @@ describe("assertRequiredBundledPackagesLanded", () => {
       true,
     );
     expect(shouldCopyPackageEntry(uiReadme, "@elizaos/ui", uiRoot)).toBe(false);
+  });
+
+  it("skips package symlinks that resolve back into the copied package", () => {
+    const packageRoot = path.join(tmpDir, "lucide-react-store");
+    const rootAlias = path.join(tmpDir, "node_modules", "lucide-react");
+    const selfLink = path.join(packageRoot, "lucide-react");
+    mkdirSync(packageRoot, { recursive: true });
+    mkdirSync(path.dirname(rootAlias), { recursive: true });
+    symlinkSync(packageRoot, rootAlias, "dir");
+    symlinkSync(rootAlias, selfLink, "dir");
+
+    expect(shouldCopyPackageEntry(selfLink, "lucide-react", packageRoot)).toBe(
+      false,
+    );
   });
 
   it("uses the top-level Octokit peer for git-workspace-service", () => {

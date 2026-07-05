@@ -77,7 +77,9 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-let route: { default: { fetch: (req: Request) => Promise<Response> } };
+let route: {
+  default: { fetch: (req: Request) => Response | Promise<Response> };
+};
 
 beforeAll(async () => {
   route = await import("../my-agents/claim-affiliate-characters/route");
@@ -111,13 +113,15 @@ beforeEach(() => {
   });
 });
 
-function postClaim(body: unknown = {}) {
-  return route.default.fetch(
-    new Request("http://test.local/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+function postClaim(body: unknown = {}): Promise<Response> {
+  return Promise.resolve(
+    route.default.fetch(
+      new Request("http://test.local/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    ),
   );
 }
 

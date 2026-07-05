@@ -63,6 +63,12 @@ export type ProactiveJudge = (
   payload: InteractionPayload,
 ) => Promise<ProactiveJudgeResult>;
 
+function isViewSwitchedPayload(
+  payload: InteractionPayload,
+): payload is ViewSwitchedPayload {
+  return !("command" in payload) && !("shortcutId" in payload);
+}
+
 export interface DecideProactiveInput {
   payload: InteractionPayload;
   gate: ProactiveInteractionGate;
@@ -254,9 +260,11 @@ export function buildProactiveJudgePrompt(
 }
 
 /** True when a view switch carries a declared anticipatory intent (#13587). */
-function hasDeclaredIntent(payload: InteractionPayload): boolean {
+function hasDeclaredIntent(
+  payload: InteractionPayload,
+): payload is ViewSwitchedPayload & { anticipatoryIntent: string } {
   return (
-    "viewId" in payload &&
+    isViewSwitchedPayload(payload) &&
     typeof payload.anticipatoryIntent === "string" &&
     payload.anticipatoryIntent.trim().length > 0
   );
