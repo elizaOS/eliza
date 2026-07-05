@@ -1272,24 +1272,10 @@ export class ElizaClient {
           string,
           unknown
         >;
-        const type = data.type as string;
-        const handlers = this.wsHandlers.get(type);
-        if (handlers?.size) {
-          for (const handler of handlers) {
-            handler(data);
-          }
-        } else {
-          this.rememberReplayableWsEvent(type, data);
-        }
-        // Also fire "all" handlers
-        const allHandlers = this.wsHandlers.get("*");
-        if (allHandlers) {
-          for (const handler of allHandlers) {
-            handler(data);
-          }
-        }
+        this.dispatchWsData(data);
       } catch {
-        // ignore parse errors
+        // error-policy:J3 untrusted socket frame — a malformed frame is dropped;
+        // the parsed-and-fanned path is dispatchWsData, exercised by tests.
       }
     };
 
@@ -1484,6 +1470,39 @@ export class ElizaClient {
     return () => {
       this.wsHandlers.get(type)?.delete(handler);
     };
+  }
+
+  // Single fan-out for a parsed incoming WS frame: deliver to the type's
+  // handlers (or backlog for later replay), then to the wildcard handlers. The
+  // live socket's onmessage and the test-only deliver hook share this so the
+  // dispatch path has one implementation.
+  private dispatchWsData(data: Record<string, unknown>): void {
+    const type = data.type as string;
+    const handlers = this.wsHandlers.get(type);
+    if (handlers?.size) {
+      for (const handler of handlers) {
+        handler(data);
+      }
+    } else {
+      this.rememberReplayableWsEvent(type, data);
+    }
+    const allHandlers = this.wsHandlers.get("*");
+    if (allHandlers) {
+      for (const handler of allHandlers) {
+        handler(data);
+      }
+    }
+  }
+
+  /**
+   * Deliver a synthetic incoming WS frame through the real handler fan-out —
+   * the same path the live socket's `onmessage` runs. Lets integration tests
+   * and headless render fixtures drive stream-consuming stores (the inline
+   * task-activity pipeline, #13536) with genuine server payload shapes and no
+   * socket, so the on-wire reconstruction seam is exercised, not bypassed.
+   */
+  deliverWsMessageForTest(data: Record<string, unknown>): void {
+    this.dispatchWsData(data);
   }
 
   disconnectWs(): void {

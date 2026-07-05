@@ -54,7 +54,8 @@ export function parseChecklistBody(body: string): ChecklistSpec | null {
     // signal so the block falls back to rendering as plain text.
     return null;
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return null;
   const record = parsed as Record<string, unknown>;
   if (!Array.isArray(record.items)) return null;
 

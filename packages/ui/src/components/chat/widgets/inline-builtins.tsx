@@ -83,7 +83,10 @@ registerInlineWidget<ChecklistMatch>({
   parse: (text) => findChecklistRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `checklist:${m.checklist.items.length}`,
   render: (m, _ctx, key) => (
-    <div key={key} className="my-2 rounded-sm border border-border bg-card px-3 py-2">
+    <div
+      key={key}
+      className="my-2 rounded-sm border border-border bg-card px-3 py-2"
+    >
       <PlanChecklist
         entries={m.checklist.items}
         title={m.checklist.title ?? "Checklist"}

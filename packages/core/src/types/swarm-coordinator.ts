@@ -125,7 +125,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readStr(record: Record<string, unknown>, key: string): string | undefined {
+function readStr(
+	record: Record<string, unknown>,
+	key: string,
+): string | undefined {
 	const value = record[key];
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -158,7 +161,9 @@ const TOOL_STATUS: Record<string, SwarmActivityStatus> = {
  * no entries, a `message` with empty text). Pure and dependency-free so it runs
  * identically on the server (tests) and in the browser widget layer.
  */
-export function toSwarmActivity(event: SwarmEvent): SwarmActivityEnvelope | null {
+export function toSwarmActivity(
+	event: SwarmEvent,
+): SwarmActivityEnvelope | null {
 	const data = isRecord(event.data) ? event.data : {};
 	const base: SwarmActivityBase = {
 		sessionId: event.sessionId,
@@ -224,7 +229,7 @@ export function toSwarmActivity(event: SwarmEvent): SwarmActivityEnvelope | null
 				event: event.type,
 				status,
 				...(readStr(data, "label") ? { label: readStr(data, "label") } : {}),
-				...(readStr(data, "text") ?? readStr(data, "message")
+				...((readStr(data, "text") ?? readStr(data, "message"))
 					? { text: readStr(data, "text") ?? readStr(data, "message") }
 					: {}),
 			};

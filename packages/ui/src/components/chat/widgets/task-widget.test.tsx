@@ -156,9 +156,7 @@ describe("TaskWidget", () => {
     });
 
     // Header click expands the inline pipeline (does NOT navigate away).
-    fireEvent.click(
-      screen.getByRole("button", { expanded: false }),
-    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(
       screen.getByTestId("task-widget").getAttribute("data-expanded"),
     ).toBe("true");

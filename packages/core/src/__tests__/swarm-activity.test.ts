@@ -4,10 +4,7 @@
  * envelope the chat pipeline consumes. Pure function over synthetic events.
  */
 import { describe, expect, it } from "vitest";
-import {
-	type SwarmEvent,
-	toSwarmActivity,
-} from "../types/swarm-coordinator";
+import { type SwarmEvent, toSwarmActivity } from "../types/swarm-coordinator";
 
 function ev(partial: Partial<SwarmEvent> & { type: string }): SwarmEvent {
 	return {
@@ -42,7 +39,9 @@ describe("toSwarmActivity", () => {
 	});
 
 	it("falls back to timestamp when no seq is present", () => {
-		const out = toSwarmActivity(ev({ type: "reasoning", data: { text: "hm" } }));
+		const out = toSwarmActivity(
+			ev({ type: "reasoning", data: { text: "hm" } }),
+		);
 		expect(out).toMatchObject({ kind: "reasoning", seq: 1000, text: "hm" });
 	});
 
@@ -112,22 +111,34 @@ describe("toSwarmActivity", () => {
 	it("maps lifecycle events to a coarse status", () => {
 		expect(
 			toSwarmActivity(ev({ type: "task_complete", data: {} })),
-		).toMatchObject({ kind: "lifecycle", event: "task_complete", status: "success" });
+		).toMatchObject({
+			kind: "lifecycle",
+			event: "task_complete",
+			status: "success",
+		});
 		expect(
 			toSwarmActivity(ev({ type: "error", data: { message: "boom" } })),
 		).toMatchObject({ kind: "lifecycle", status: "failure", text: "boom" });
-		expect(
-			toSwarmActivity(ev({ type: "blocked", data: {} })),
-		).toMatchObject({ kind: "lifecycle", status: "waiting" });
-		expect(
-			toSwarmActivity(ev({ type: "ready", data: {} })),
-		).toMatchObject({ kind: "lifecycle", status: "idle" });
+		expect(toSwarmActivity(ev({ type: "blocked", data: {} }))).toMatchObject({
+			kind: "lifecycle",
+			status: "waiting",
+		});
+		expect(toSwarmActivity(ev({ type: "ready", data: {} }))).toMatchObject({
+			kind: "lifecycle",
+			status: "idle",
+		});
 	});
 
 	it("returns null for non-renderable / empty events", () => {
-		expect(toSwarmActivity(ev({ type: "message", data: { text: "" } }))).toBeNull();
-		expect(toSwarmActivity(ev({ type: "plan", data: { entries: [] } }))).toBeNull();
+		expect(
+			toSwarmActivity(ev({ type: "message", data: { text: "" } })),
+		).toBeNull();
+		expect(
+			toSwarmActivity(ev({ type: "plan", data: { entries: [] } })),
+		).toBeNull();
 		expect(toSwarmActivity(ev({ type: "agent_event", data: {} }))).toBeNull();
-		expect(toSwarmActivity(ev({ type: "totally_unknown", data: {} }))).toBeNull();
+		expect(
+			toSwarmActivity(ev({ type: "totally_unknown", data: {} })),
+		).toBeNull();
 	});
 });

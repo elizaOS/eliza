@@ -728,8 +728,7 @@ function summarizePtyEvent(
 			const entries = Array.isArray(data?.entries) ? data.entries : [];
 			if (entries.length === 0) return null;
 			const done = entries.filter(
-				(entry) =>
-					isRecord(entry) && readString(entry.status) === "completed",
+				(entry) => isRecord(entry) && readString(entry.status) === "completed",
 			).length;
 			plaintext = `Plan updated (${done}/${entries.length} done)`;
 			break;

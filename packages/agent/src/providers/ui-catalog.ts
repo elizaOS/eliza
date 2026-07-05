@@ -1,7 +1,8 @@
 /**
  * Provider that injects the rich-UI authoring guide into the agent prompt: the
- * four output methods (inline RFC 6902 JSONL patches, [CONFIG:pluginId] config
- * forms, [FOLLOWUPS] suggestion chips, [FORM] inline forms) and a summary of the
+ * output methods (inline RFC 6902 JSONL patches, [CONFIG:pluginId] config
+ * forms, [FOLLOWUPS] suggestion chips, [FORM] inline forms, [CHECKLIST] todo
+ * lists, [WORKFLOW] ordered step pipelines) and a summary of the
  * shared component catalog (detailed for a core set, brief for the rest). Emits
  * only on DM/API/unset channels and sits behind an ADMIN role gate; cached
  * per-agent since the catalog is static.
@@ -136,11 +137,36 @@ must start with a letter. The user's submitted values come back to you as a norm
 message. Do NOT use [FORM] for secrets or API keys (those use the secure secret
 flow), and do NOT use it for a single free-text answer — just ask.
 
+### Method 5 — [CHECKLIST] inline todo list (track multi-step work in place)
+When you are working through several steps for the user, render a live checklist
+instead of narrating progress in prose. Emit INLINE (no code fences); body is a
+JSON object on its own line between the markers:
+[CHECKLIST]
+{"title":"Migration","items":[{"content":"Back up the database","status":"completed"},{"content":"Run the migration","status":"in_progress"},{"content":"Verify downstream consumers","status":"pending"}]}
+[/CHECKLIST]
+Item status: pending | in_progress | completed. To advance the list, re-emit the
+WHOLE block with updated statuses in your next message — the same checklist
+mutates in place (a completed item strikes through). Use for your own task
+tracking; a coding/orchestrator task surfaces its plan automatically, so do not
+duplicate that with a [CHECKLIST].
+
+### Method 6 — [WORKFLOW] inline step progress (ordered k/N pipeline)
+For an ordered multi-step process where each step runs then resolves, render a
+numbered progress list. Emit INLINE (no code fences); body is a JSON object on
+its own line between the markers:
+[WORKFLOW]
+{"title":"Deploy","steps":[{"label":"Build image","status":"done"},{"label":"Push to registry","status":"running"},{"label":"Roll out","status":"pending"}]}
+[/WORKFLOW]
+Step status: pending | running | done | failed. Re-emit the whole block with
+advanced statuses to move the pipeline forward in place. Use [WORKFLOW] for an
+ordered pipeline (step k/N); use [CHECKLIST] for an unordered todo set.
+
 ### When to use rich UI
 - Any plugin mentioned by name → Method 2 ([CONFIG:pluginId]) — always
 - Forms, data entry, settings panels → Method 1 (JSONL patches) or Method 4 ([FORM] for a quick fixed-field form)
 - Tables, metrics, dashboards → Method 1 (Table/Metric/ProgressBar)
 - Helpful next steps after a reply → Method 3 ([FOLLOWUPS]), sparingly
+- Tracking your own multi-step work → Method 5 ([CHECKLIST]) or Method 6 ([WORKFLOW] for an ordered pipeline)
 - Simple factual answers with no plugin/form involved → plain text only
 
 ### Available components (${Object.keys(COMPONENT_CATALOG).length} total)
