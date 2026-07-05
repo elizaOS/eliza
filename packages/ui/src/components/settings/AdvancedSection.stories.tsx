@@ -1,5 +1,5 @@
 /**
- * Storybook stories for the Settings → Backup & Reset section, covering the
+ * Storybook stories for the Settings → Backups section, covering the
  * export/import dialogs across resting, primed, busy, error, and success states
  * with a mock App context (no backend).
  */

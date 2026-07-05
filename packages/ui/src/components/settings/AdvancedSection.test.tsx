@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Covers AdvancedSection's reset-confirmation modal (no reset until confirmed;
- * runs exactly once) and the encrypted local-backup flow (list/create/restore).
- * jsdom render with the app store and API client mocked.
+ * Covers AdvancedSection's backup flow (list/create/restore), developer tools,
+ * and the absence of the retired Settings reset controls. jsdom render with the
+ * app store and API client mocked.
  */
 
 import {
@@ -88,53 +88,6 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-function openResetModal() {
-  fireEvent.click(
-    screen.getByRole("button", { name: "settings.resetEverything" }),
-  );
-}
-
-describe("AdvancedSection reset confirmation", () => {
-  it("does not reset until the user confirms in the modal", () => {
-    render(<AdvancedSection />);
-
-    // Modal warning is not mounted before the danger-zone button is pressed.
-    expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
-    expect(handleReset).not.toHaveBeenCalled();
-  });
-
-  it("opens a warning modal when Reset Everything is pressed", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    expect(screen.getByText("settings.resetConfirmTitle")).toBeTruthy();
-    expect(screen.getByText("settings.resetConfirmBody")).toBeTruthy();
-    // Opening the warning must never trigger the destructive action by itself.
-    expect(handleReset).not.toHaveBeenCalled();
-  }, 15_000);
-
-  it("cancels without resetting", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
-
-    expect(handleReset).not.toHaveBeenCalled();
-    expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
-  });
-
-  it("runs the reset exactly once when confirmed", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "settings.resetConfirmAction" }),
-    );
-
-    expect(handleReset).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe("AdvancedSection agent backups", () => {
   const backup = {
     fileName: "agent-2026-06-29.agent-backup.json",
@@ -143,6 +96,18 @@ describe("AdvancedSection agent backups", () => {
     sizeBytes: 2048,
     stateSha256: "1234567890abcdef1234567890abcdef",
   };
+
+  it("does not expose reset controls in the normal Settings surface", () => {
+    render(<AdvancedSection />);
+
+    expect(
+      screen.queryByRole("button", { name: "settings.resetEverything" }),
+    ).toBeNull();
+    expect(screen.queryByText("settings.dangerZone")).toBeNull();
+    expect(screen.queryByText("settings.resetAgent")).toBeNull();
+    expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
+    expect(handleReset).not.toHaveBeenCalled();
+  });
 
   it("lists local encrypted backups when the backup modal opens", async () => {
     clientMock.listLocalAgentBackups.mockResolvedValue([backup]);
