@@ -2,6 +2,9 @@
  * Rate-limit middleware for Hono on Cloudflare Workers.
  *
  * Falls open if Redis is not configured. Adds `X-RateLimit-*` headers on success.
+ * Routes that must stay available during a Redis outage can install an
+ * explicit per-isolate fallback bucket; every other sensitive route either
+ * fails closed or falls open according to its config.
  */
 
 import type { Context, MiddlewareHandler } from "hono";
@@ -14,11 +17,24 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyGenerator?: (c: AppContext) => string;
   /**
+   * Use an in-isolate fallback bucket when Redis throws at request time.
+   * This is weaker than the shared Redis limiter because every Worker isolate
+   * has its own map, but it keeps low-risk login/session paths throttled during
+   * a Redis outage instead of choosing between total outage and unlimited
+   * fail-open traffic. Keep money/payment routes on `failClosed` without this.
+   */
+  redisUnavailableFallback?: {
+    namespace: string;
+    windowMs?: number;
+    maxRequests?: number;
+  };
+  /**
    * Fail CLOSED on a runtime Redis error. Default (undefined/false) falls open
    * — a Redis outage should not turn ordinary routes into 503s. Set on
-   * money/auth routes (session mint, top-up) where losing the limiter is worse
-   * than a brief availability hit: if the backing store throws at request time
-   * the request is rejected (503) instead of sailing through unlimited.
+   * sensitive routes where losing every limiter is worse than a brief
+   * availability hit: if the backing store throws at request time the request
+   * is rejected (503) instead of sailing through unlimited. Auth/session routes
+   * that install `redisUnavailableFallback` stay available but locally bounded.
    */
   failClosed?: boolean;
 }
@@ -132,6 +148,57 @@ function fallOpenResult(config: RateLimitConfig): CheckResult {
   };
 }
 
+interface LocalFallbackBucket {
+  count: number;
+  resetAt: number;
+}
+
+const redisUnavailableFallbackBuckets = new Map<string, LocalFallbackBucket>();
+
+function resolvedFallbackConfig(
+  config: RateLimitConfig,
+): { namespace: string; windowMs: number; maxRequests: number } | null {
+  const fallback = config.redisUnavailableFallback;
+  if (!fallback) return null;
+  return {
+    namespace: fallback.namespace,
+    windowMs: fallback.windowMs ?? config.windowMs,
+    maxRequests: fallback.maxRequests ?? config.maxRequests,
+  };
+}
+
+function fallbackHeadersConfig(config: RateLimitConfig): RateLimitConfig {
+  const fallback = resolvedFallbackConfig(config);
+  if (!fallback) return config;
+  return {
+    ...config,
+    windowMs: fallback.windowMs,
+    maxRequests: fallback.maxRequests,
+  };
+}
+
+function checkRedisUnavailableFallback(
+  key: string,
+  config: RateLimitConfig,
+  now = Date.now(),
+): CheckResult {
+  const fallback = resolvedFallbackConfig(config);
+  if (!fallback) return fallOpenResult(config);
+  const bucketKey = `${fallback.namespace}:${key}`;
+  const current = redisUnavailableFallbackBuckets.get(bucketKey);
+  const bucket =
+    current && current.resetAt > now ? current : { count: 0, resetAt: now + fallback.windowMs };
+  bucket.count += 1;
+  redisUnavailableFallbackBuckets.set(bucketKey, bucket);
+  const allowed = bucket.count <= fallback.maxRequests;
+  return {
+    allowed,
+    remaining: Math.max(0, fallback.maxRequests - bucket.count),
+    resetAt: bucket.resetAt,
+    retryAfter: allowed ? undefined : Math.ceil((bucket.resetAt - now) / 1000),
+  };
+}
+
 function applyRateLimitHeaders(c: Context, headers: Record<string, string>): void {
   for (const [k, v] of Object.entries(headers)) {
     c.res.headers.set(k, v);
@@ -215,6 +282,7 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     const key = (config.keyGenerator ?? getDefaultKey)(c);
     let result: CheckResult;
     let policy = "redis";
+    let headersConfig = effectiveConfig;
 
     try {
       result = await checkUpstash(
@@ -225,7 +293,14 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (config.failClosed) {
+      if (effectiveConfig.redisUnavailableFallback) {
+        logger.warn("[RateLimit] Redis unavailable; using local fallback limiter", {
+          error: message,
+        });
+        result = checkRedisUnavailableFallback(key, effectiveConfig);
+        headersConfig = fallbackHeadersConfig(effectiveConfig);
+        policy = "redis-unavailable-local";
+      } else if (config.failClosed) {
         // Money/auth route: losing the limiter is worse than a brief 503, so
         // reject rather than serve unlimited requests while Redis is down.
         logger.error("[RateLimit] Redis unavailable on fail-closed route; rejecting", {
@@ -241,18 +316,19 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
           503,
           { "Retry-After": "30" },
         );
+      } else {
+        // Rate limiting is protective middleware. If its backing store is down
+        // or unreachable in local Worker dev, requests should fall open instead
+        // of turning application routes into 500s.
+        logger.warn("[RateLimit] Redis unavailable; falling open", {
+          error: message,
+        });
+        result = fallOpenResult(effectiveConfig);
+        policy = "redis-unavailable";
       }
-      // Rate limiting is protective middleware. If its backing store is down
-      // or unreachable in local Worker dev, requests should fall open instead
-      // of turning application routes into 500s.
-      logger.warn("[RateLimit] Redis unavailable; falling open", {
-        error: message,
-      });
-      result = fallOpenResult(effectiveConfig);
-      policy = "redis-unavailable";
     }
 
-    const headers = rateLimitHeaders(effectiveConfig, result, policy);
+    const headers = rateLimitHeaders(headersConfig, result, policy);
 
     if (!result.allowed) {
       return c.json(
@@ -260,8 +336,8 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
           success: false,
           error: "Too many requests",
           code: "rate_limit_exceeded" as const,
-          message: `Rate limit exceeded. Maximum ${effectiveConfig.maxRequests} requests per ${Math.ceil(
-            effectiveConfig.windowMs / 1000,
+          message: `Rate limit exceeded. Maximum ${headersConfig.maxRequests} requests per ${Math.ceil(
+            headersConfig.windowMs / 1000,
           )} seconds.`,
           retryAfter: result.retryAfter,
         },
@@ -295,3 +371,4 @@ export const RateLimitPresets = {
 
 export { getDefaultKey, getIpKey, getRequestIp };
 export const _multiplier = multiplier;
+export const _resetRedisUnavailableFallbackBuckets = () => redisUnavailableFallbackBuckets.clear();
