@@ -244,7 +244,11 @@ function capacityData(
   if (!capacity) return null;
   return {
     maxSessions: capacity.maxSessions,
+    systemHeadroom: capacity.systemHeadroom,
     activeWorkers: capacity.activeWorkers,
+    activeSystem: capacity.activeSystem,
+    freeWorkerSlots: capacity.freeWorkerSlots,
+    freeSystemSlots: capacity.freeSystemSlots,
     queueDepth: admission?.queueDepth ?? 0,
     queuedTaskIds: admission?.queuedTaskIds ?? [],
   };
@@ -255,9 +259,9 @@ interface AdmissionSnapshot {
   queuedTaskIds: string[];
 }
 
-async function readCapacity(
-  service: { getCapacity?: () => Promise<AcpCapacity> },
-): Promise<AcpCapacity | null> {
+async function readCapacity(service: {
+  getCapacity?: () => Promise<AcpCapacity>;
+}): Promise<AcpCapacity | null> {
   if (typeof service.getCapacity !== "function") return null;
   try {
     return await service.getCapacity();

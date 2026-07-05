@@ -964,11 +964,11 @@ export class AcpService extends Service {
     }
 
     const now = new Date();
-    // Persist the admission pool on the session so `enforceSessionLimit` and
-    // `getCapacity` can tell worker from system slots by reading the store
-    // (survives restart); a session missing it predates slot classes and counts
-    // as a worker.
-    const slotClass = opts.slotClass ?? "worker";
+    // Stamp the capacity class onto the session so getCapacity() (and the
+    // admission queue that reads it) can count worker vs system slots off the
+    // durable record. Always persisted — a worker session carries slotClass so
+    // the accounting never has to infer "worker" from an absent field.
+    const slotClass: SessionSlotClass = opts.slotClass ?? "worker";
     const mergedMetadata: Record<string, unknown> = {
       ...(opts.metadata ?? {}),
       ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
@@ -989,9 +989,10 @@ export class AcpService extends Service {
       lastActivityAt: now,
       metadata: mergedMetadata,
     };
-    // Atomic check-and-reserve: enforces the session limit and inserts under a
-    // single mutex so concurrent spawns can't overshoot the cap (the old
-    // separate enforceSessionLimit()/store.create() left a read-then-act race).
+    // Atomic check-and-reserve: enforces the session limit for this slot class
+    // and inserts under a single mutex so concurrent spawns can't overshoot the
+    // cap (the old separate enforceSessionLimit()/store.create() left a
+    // read-then-act race). Throws SessionCapError when the class is full.
     await this.reserveSessionSlot(session, slotClass);
 
     // Mint the per-spawn model lease BEFORE the transport branch, so the leased

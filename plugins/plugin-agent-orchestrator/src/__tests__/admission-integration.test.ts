@@ -77,9 +77,11 @@ class FakeAcp {
     const { workers, system } = this.countByClass();
     return {
       maxSessions: this.maxSessions,
+      systemHeadroom: this.systemHeadroom,
       activeWorkers: workers,
       activeSystem: system,
       freeWorkerSlots: Math.max(0, this.maxSessions - workers),
+      freeSystemSlots: Math.max(0, this.systemHeadroom - system),
     };
   }
 

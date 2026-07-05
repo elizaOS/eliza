@@ -93,7 +93,6 @@ import {
   toTaskTimelineMessageDto,
 } from "./orchestrator-task-mapper.js";
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
-import { resolveTaskProjectId } from "./project-binding.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
@@ -124,6 +123,7 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
+import { resolveTaskProjectId } from "./project-binding.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
@@ -3786,9 +3786,11 @@ export class OrchestratorTaskService extends Service {
    */
   async getCapacityOverview(): Promise<{
     maxSessions: number;
+    systemHeadroom: number;
     activeWorkers: number;
     activeSystem: number;
-    freeSlots: number;
+    freeWorkerSlots: number;
+    freeSystemSlots: number;
     queueDepth: number;
     queue: Array<{
       taskId: string;
@@ -3802,9 +3804,11 @@ export class OrchestratorTaskService extends Service {
       ? await acp.getCapacity()
       : {
           maxSessions: 0,
+          systemHeadroom: 0,
           activeWorkers: 0,
           activeSystem: 0,
           freeWorkerSlots: 0,
+          freeSystemSlots: 0,
         };
     const entries = orderQueue(
       await this.currentQueueEntries(),
@@ -3813,9 +3817,11 @@ export class OrchestratorTaskService extends Service {
     );
     return {
       maxSessions: capacity.maxSessions,
+      systemHeadroom: capacity.systemHeadroom,
       activeWorkers: capacity.activeWorkers,
       activeSystem: capacity.activeSystem,
-      freeSlots: capacity.freeWorkerSlots,
+      freeWorkerSlots: capacity.freeWorkerSlots,
+      freeSystemSlots: capacity.freeSystemSlots,
       queueDepth: entries.length,
       queue: entries.map((entry, index) => ({
         taskId: entry.taskId,

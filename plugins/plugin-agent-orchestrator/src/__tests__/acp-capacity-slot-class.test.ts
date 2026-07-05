@@ -56,7 +56,9 @@ describe("AcpService slot-class capacity (#13772)", () => {
     const svc = await serviceWith([]);
     const cap = await svc.getCapacity();
     expect(cap.maxSessions).toBe(8);
+    expect(cap.systemHeadroom).toBe(2);
     expect(cap.freeWorkerSlots).toBe(8);
+    expect(cap.freeSystemSlots).toBe(2);
     expect(cap.activeWorkers).toBe(0);
     expect(cap.activeSystem).toBe(0);
   });
@@ -81,8 +83,8 @@ describe("AcpService slot-class capacity (#13772)", () => {
   });
 
   it("freeWorkerSlots reflects WORKER headroom only, never system saturation", async () => {
-    // Fill system headroom (2) but leave 1 worker slot free — freeWorkerSlots must
-    // still be 1, so the admission queue sees room for a worker.
+    // Fill system headroom (2) but leave 1 worker slot free — freeWorkerSlots
+    // must still be 1, so the admission queue sees room for a worker.
     const svc = await serviceWith(
       [
         session("w1", "worker"),
@@ -95,6 +97,7 @@ describe("AcpService slot-class capacity (#13772)", () => {
     expect(cap.activeWorkers).toBe(1);
     expect(cap.activeSystem).toBe(2);
     expect(cap.freeWorkerSlots).toBe(1);
+    expect(cap.freeSystemSlots).toBe(0);
   });
 
   it("throws a typed SessionCapError code string for callers to match", () => {
