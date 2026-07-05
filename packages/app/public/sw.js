@@ -85,6 +85,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Auth navigations are NEVER intercepted: the sign-in page and the OAuth
+  // callback must always load the freshest shell from the network. A stale
+  // cached shell can carry an outdated build — e.g. one baked with the wrong
+  // Steward tenant — which makes the code exchange fail with 401, and caching a
+  // one-time `?code=` callback URL risks replaying a consumed code. Bypassing
+  // (no respondWith) lets the browser fetch directly, uncached.
+  if (
+    pathname === "/login" ||
+    url.searchParams.has("code") ||
+    url.searchParams.has("token")
+  ) {
+    return;
+  }
+
   // App shell: only intercept navigation requests for index.html (not API calls
   // or static assets that the browser handles fine without SW involvement).
   if (request.mode === "navigate") {
