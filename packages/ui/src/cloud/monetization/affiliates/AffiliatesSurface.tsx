@@ -7,14 +7,14 @@
 
 import { DashboardLoadingState } from "../../../cloud-ui/components/dashboard/route-placeholders";
 import { useDocumentTitle } from "../../lib/use-document-title";
-import { useRequireAuth } from "../../lib/use-session-auth";
+import { useSessionAuth } from "../../lib/use-session-auth";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { AffiliatesPageClient } from "./AffiliatesPageClient";
 
 /** Bare affiliates surface — auth-gated, no page chrome. */
 export function AffiliatesSurface() {
   const t = useCloudT();
-  const { ready, authenticated } = useRequireAuth();
+  const { ready, authenticated } = useSessionAuth();
 
   useDocumentTitle(
     t("cloud.affiliates.metaTitle", { defaultValue: "Affiliates" }),

@@ -24,8 +24,9 @@ import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useSetPageHeader } from "../../cloud-ui/components/layout";
 import { useCreditsBalance } from "../instances/lib/data/credits";
+import { formatUsd } from "../lib/format-usd";
 import { useDocumentTitle } from "../lib/use-document-title";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
 interface ConsoleSurface {
@@ -147,7 +148,7 @@ function BalanceCard() {
             aria-busy={balance === null}
             className="text-2xl font-semibold text-txt-strong"
           >
-            {balance === null ? "—" : `$${balance.toFixed(2)}`}
+            {balance === null ? "—" : formatUsd(balance)}
           </span>
         )}
       </div>
@@ -163,7 +164,7 @@ function BalanceCard() {
 
 export function DashboardHomePage() {
   const t = useCloudT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   useDocumentTitle(t("cloud.home.metaTitle", { defaultValue: "Dashboard" }));
   // Title renders in the console chrome's top bar (ConsoleShell captures it).
   useSetPageHeader({

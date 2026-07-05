@@ -11,7 +11,7 @@ import {
   ElizaAgentsPageWrapper,
 } from "@elizaos/ui/cloud-ui";
 import { useDocumentTitle } from "../lib/use-document-title";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentPricingBanner } from "./components/eliza-agent-pricing-banner";
 import {
   type ElizaAgentRow,
@@ -45,7 +45,7 @@ function toAgentRow(a: AgentListItem): ElizaAgentRow {
 
 export default function AgentsPage() {
   const t = useT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const enabled = session.ready && session.authenticated;
   const agentsQuery = useAgents();
   const credits = useCreditsBalance();

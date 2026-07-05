@@ -213,8 +213,3 @@ export function useSessionAuth(): SessionAuthState {
 
   return { ready, authenticated, user };
 }
-
-/** The session state for protected pages (gate rendering on `authenticated`). */
-export function useRequireAuth(): SessionAuthState {
-  return useSessionAuth();
-}

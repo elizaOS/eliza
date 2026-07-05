@@ -100,10 +100,6 @@ export interface ElizaAgentRow {
   updated_at: Date | string;
 }
 
-interface ElizaAgentsTableProps {
-  sandboxes: ElizaAgentRow[];
-}
-
 /**
  * Fold one API list-agent onto its existing row (or a fresh row when there is
  * none), preserving the local-only fields the list endpoint doesn't return
@@ -286,7 +282,9 @@ function StatusCell({
 
 export function ElizaAgentsTable({
   sandboxes: initialSandboxes,
-}: ElizaAgentsTableProps) {
+}: {
+  sandboxes: ElizaAgentRow[];
+}) {
   const t = useT();
   const queryClient = useQueryClient();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
@@ -389,6 +387,19 @@ export function ElizaAgentsTable({
       void refreshData();
     },
   });
+
+  const handleProvisionQueued = useCallback(
+    (agentId: string, jobId: string) => {
+      jobActionById.current.set(
+        jobId,
+        t("cloud.elizaAgentsTable.agentProvisioning", {
+          defaultValue: "Agent provisioning",
+        }),
+      );
+      poller.track(agentId, jobId);
+    },
+    [poller, t],
+  );
 
   useSandboxListPoll(
     localSandboxes.map((sb) => ({
@@ -710,15 +721,7 @@ export function ElizaAgentsTable({
         icon={Boxes}
         action={
           <CreateElizaAgentDialog
-            onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(
-                jobId,
-                t("cloud.elizaAgentsTable.agentProvisioning", {
-                  defaultValue: "Agent provisioning",
-                }),
-              );
-              poller.track(agentId, jobId);
-            }}
+            onProvisionQueued={handleProvisionQueued}
             onCreated={refreshData}
           />
         }
@@ -842,15 +845,7 @@ export function ElizaAgentsTable({
             </SelectContent>
           </Select>
           <CreateElizaAgentDialog
-            onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(
-                jobId,
-                t("cloud.elizaAgentsTable.agentProvisioning", {
-                  defaultValue: "Agent provisioning",
-                }),
-              );
-              poller.track(agentId, jobId);
-            }}
+            onProvisionQueued={handleProvisionQueued}
             onCreated={refreshData}
           />
         </div>

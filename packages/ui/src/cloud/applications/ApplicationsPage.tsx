@@ -1,7 +1,7 @@
 /**
  * /dashboard/apps — the Applications list (cloud OAuth apps). Under the app
  * shell the document head is owned by the host, not per-cloud-route. Auth
- * gating uses `useRequireAuth()` (Steward session).
+ * gating uses `useSessionAuth()` (Steward session).
  */
 
 import { Activity, Grid3x3, TrendingUp, Users } from "lucide-react";
@@ -16,7 +16,7 @@ import {
   DashboardPageContainer,
   DashboardStatGrid,
 } from "../../cloud-ui/components/layout";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import { AppsTable } from "./components/apps-table";
 import { useApps } from "./lib/apps";
@@ -24,7 +24,7 @@ import { useApps } from "./lib/apps";
 /** /dashboard/apps */
 export default function ApplicationsPage() {
   const t = useCloudT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const { data, isLoading, isError, error } = useApps();
 
   const apps = data ?? [];

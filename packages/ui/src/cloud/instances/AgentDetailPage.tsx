@@ -23,7 +23,7 @@ import {
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api-client";
 import { useDocumentTitle } from "../lib/use-document-title";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 import { ElizaAgentActions } from "./components/agent-actions";
 import { DockerLogsViewer } from "./components/docker-logs-viewer";
 import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
@@ -77,7 +77,7 @@ function formatRelativeShort(
 
 export default function AgentDetailPage() {
   const t = useT();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const { id } = useParams<{ id: string }>();
   const enabled = session.ready && session.authenticated;
   const query = useAgent(enabled ? id : undefined);

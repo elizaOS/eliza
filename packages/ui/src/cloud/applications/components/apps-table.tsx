@@ -27,18 +27,15 @@ import {
   AlertDialogTitle,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
+import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, type App, deleteApp } from "../lib/apps";
-
-interface AppsTableProps {
-  apps: App[];
-}
 
 /** How long to wait before re-syncing the list from the server after a
  * delete — long enough for the API's eventual consistency to settle. */
 const POST_DELETE_RESYNC_MS = 8_000;
 
-export function AppsTable({ apps }: AppsTableProps) {
+export function AppsTable({ apps }: { apps: App[] }) {
   const t = useCloudT();
   const queryClient = useQueryClient();
   const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(
@@ -51,7 +48,7 @@ export function AppsTable({ apps }: AppsTableProps) {
 
   const handleCopyUrl = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(url);
+      await copyTextToClipboard(url);
       toast.success(
         t("cloud.apps.toast.urlCopied", {
           defaultValue: "URL copied to clipboard",

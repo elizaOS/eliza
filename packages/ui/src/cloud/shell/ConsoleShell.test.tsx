@@ -19,7 +19,6 @@ const sessionState = {
   } | null,
 };
 vi.mock("../lib/use-session-auth", () => ({
-  useRequireAuth: () => sessionState,
   useSessionAuth: () => sessionState,
 }));
 

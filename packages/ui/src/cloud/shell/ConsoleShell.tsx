@@ -28,13 +28,12 @@ import {
   DashboardHeader,
   DashboardShellLayout,
   DashboardSidebar,
-  type DashboardSidebarItem,
   type DashboardSidebarLinkRenderProps,
   type DashboardSidebarSection,
   PageHeaderProvider,
   usePageHeader,
 } from "../../cloud-ui/components/layout";
-import { useRequireAuth } from "../lib/use-session-auth";
+import { useSessionAuth } from "../lib/use-session-auth";
 
 /**
  * The console nav: one flat list, launch-core surfaces only (nubs's cut,
@@ -91,13 +90,6 @@ function renderRouterLink({
   );
 }
 
-/** Prefix match so agent/app detail routes keep their parent item lit; the
- * Overview item stays exact so it doesn't light for every console page. */
-function isItemActive(item: DashboardSidebarItem, activePath: string): boolean {
-  if (item.href === "/dashboard") return activePath === "/dashboard";
-  return activePath === item.href || activePath.startsWith(`${item.href}/`);
-}
-
 function ConsoleLogo(): ReactNode {
   return (
     <Link to="/dashboard" aria-label="Eliza Cloud overview">
@@ -141,7 +133,7 @@ export function ConsoleShell({
   children: ReactNode;
 }): React.JSX.Element {
   const location = useLocation();
-  const session = useRequireAuth();
+  const session = useSessionAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
 
@@ -168,7 +160,6 @@ export function ConsoleShell({
             isOpen={sidebarOpen}
             onToggle={toggleSidebar}
             renderLink={renderRouterLink}
-            isItemActive={isItemActive}
             logo={<ConsoleLogo />}
             // The kit's own `md:static` loses the cascade in this bundle: Vite
             // emits per-chunk CSS and a later chunk re-declares `.fixed`, which
