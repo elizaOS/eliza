@@ -46,13 +46,16 @@ pre-completion" property is preserved. The contract, enforced in
   the reveal.
 - **Composer is UNLOCKED (#12178).** The textarea and send are live with the
   placeholder "Ask me anything — or pick an option"; attach and mic/push-to-talk
-  stay disabled (no agent to serve media yet). Typed text is answered by the
-  conductor's local echo persona, never forwarded to the server: `submitText`
-  routes it through the shared `sendActionMessage` funnel, where
-  `classifyActionMessage` returns `"conductor"` and the value is delivered via
-  `tryHandleFirstRunText` (the `"conductor"` branch never calls the real send).
-  `submit` skips slash/shortcut resolution while `firstRunOpen`, so no command
-  runs and nothing reaches the server before a runtime exists. The `__first_run__:`
+  stay disabled (no agent to serve media yet). Before a runtime exists, typed
+  text is answered by the conductor's local echo persona, never forwarded to the
+  server: `submitText` routes it through the shared `sendActionMessage` funnel,
+  where `classifyActionMessage` returns `"conductor"` and the value is delivered
+  via `tryHandleFirstRunText` (the `"conductor"` branch never calls the real
+  send). Once a Cloud agent is provisioning behind a ready bootstrap bridge
+  (`cloudProvisionedContainer`), the funnel passes `allowFirstRunTextSend` and
+  `classifyActionMessage` returns `"send"` instead, so the first real message
+  reaches the bootstrap-bridge agent (#14103). `submit` skips slash/shortcut
+  resolution while `firstRunOpen`, so no command runs. The `__first_run__:`
   prefix is still reserved unconditionally.
 - **Undismissable.** Every collapse path is a no-op while `firstRunOpen`:
   `collapse()` (the single funnel for Escape on document/thread/composer,

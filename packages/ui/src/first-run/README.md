@@ -20,12 +20,16 @@ auto-collapse — with the backdrop fading to the normal scrim — on completion
 
 The composer is **unlocked** (#12178, a deliberate reversal of the #9952
 onboarding lock): the user can type freely with the placeholder "Ask me anything
-— or pick an option". Typed text is answered by the conductor's local echo
-persona (a friendly not-ready line that varies by flow position) and **never
-reaches the server pre-completion** — the AppContext send funnel enforces that
-via `classifyActionMessage` → `"conductor"` → `tryHandleFirstRunText`. Attach and
-mic stay disabled (no agent to serve media yet); the seeded CHOICE/OAuth widgets
-remain the primary input. The full contract (and which seam enforces each
+— or pick an option". Before a runtime is chosen, typed text is answered by the
+conductor's local echo persona (a friendly not-ready line that varies by flow
+position) and never reaches the server — the AppContext send funnel enforces
+that via `classifyActionMessage` → `"conductor"` → `tryHandleFirstRunText`. The
+one exception (#14103): once the user has picked Cloud and the dedicated agent
+is provisioning behind a ready bootstrap bridge (`cloudProvisionedContainer`),
+the funnel classifies free text as `"send"` so the first real message reaches
+the bootstrap-bridge agent instead of the canned setup copy. Attach and mic stay
+disabled (no agent to serve media yet); the seeded CHOICE/OAuth widgets remain
+the primary input. The full contract (and which seam enforces each
 guarantee) is documented in
 [`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
 `../components/shell/ContinuousChatOverlay.firstrun.test.tsx`.
