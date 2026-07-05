@@ -5,21 +5,7 @@
  * document service (resolved from `@elizaos/agent/api/documents-service-loader`);
  * this module handles HTTP shaping and access-control scoping only.
  */
-import type {
-  AgentRuntime,
-  IFileStorageService,
-  Memory,
-  RouteHelpers,
-  RouteRequestContext,
-  UUID,
-} from "@elizaos/core";
-import {
-  __setDocumentUrlFetchImplForTests,
-  fetchDocumentFromUrl,
-  isYouTubeUrl,
-  ServiceType,
-} from "@elizaos/core";
-import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
+
 import {
   actorCanManageAgentDocuments,
   actorCanManageOwnerDocuments,
@@ -37,6 +23,21 @@ import {
   routeActorAddedByRole,
   trimString,
 } from "@elizaos/agent/api/document-access";
+import type {
+  AgentRuntime,
+  IFileStorageService,
+  Memory,
+  RouteHelpers,
+  RouteRequestContext,
+  UUID,
+} from "@elizaos/core";
+import {
+  __setDocumentUrlFetchImplForTests,
+  fetchDocumentFromUrl,
+  isYouTubeUrl,
+  ServiceType,
+} from "@elizaos/core";
+import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
 import {
   getDocumentContentType,
   getDocumentDeleteability,

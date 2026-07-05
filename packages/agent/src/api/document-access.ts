@@ -130,7 +130,9 @@ export function documentTags(
   metadata: Record<string, unknown> | undefined,
 ): string[] {
   return Array.isArray(metadata?.tags)
-    ? metadata.tags.filter((value): value is string => typeof value === "string")
+    ? metadata.tags.filter(
+        (value): value is string => typeof value === "string",
+      )
     : [];
 }
 

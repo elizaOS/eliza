@@ -22,8 +22,8 @@
 import {
   type Action,
   type ActionResult,
-  type Content,
   ChannelType,
+  type Content,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -151,15 +151,12 @@ function filtersFromParams(params: Record<string, unknown>): DocumentFilter {
 async function resolveItem(
   runtime: IAgentRuntime,
   itemRef: string,
-): Promise<
-  | {
-      memory: Memory;
-      mediaUrl?: string;
-      mimeType?: string;
-      title: string;
-    }
-  | null
-> {
+): Promise<{
+  memory: Memory;
+  mediaUrl?: string;
+  mimeType?: string;
+  title: string;
+} | null> {
   const { service } = await getDocumentsService(
     runtime as unknown as Parameters<typeof getDocumentsService>[0],
   );
@@ -213,7 +210,7 @@ function mediaFileNameFromRef(ref: string): string | null {
   if (!trimmed) return null;
   const withoutPrefix = trimmed.startsWith(MEDIA_URL_PREFIX)
     ? trimmed.slice(MEDIA_URL_PREFIX.length)
-    : trimmed.split("/").pop() ?? trimmed;
+    : (trimmed.split("/").pop() ?? trimmed);
   // sha256 (64 hex) + extension, e.g. "ab12….pdf"
   return /^[0-9a-f]{64}\.[a-z0-9]+$/i.test(withoutPrefix)
     ? withoutPrefix
@@ -272,8 +269,7 @@ export const searchKnowledgeAction: Action = {
   ): Promise<ActionResult> => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as Record<string, unknown>;
-    const query =
-      typeof params.query === "string" ? params.query.trim() : "";
+    const query = typeof params.query === "string" ? params.query.trim() : "";
     if (!query) return fail("A search query is required.", "KNOWLEDGE_INVALID");
 
     const { service, reason } = await getDocumentsService(
@@ -398,7 +394,12 @@ export const searchKnowledgeAction: Action = {
 export const attachToChatAction: Action = {
   name: "ATTACH_TO_CHAT",
   contexts: ["knowledge", "documents", "files", "media", "agent_internal"],
-  similes: ["ATTACH_KNOWLEDGE", "ADD_TO_CHAT", "INSERT_ATTACHMENT", "SHOW_FILE"],
+  similes: [
+    "ATTACH_KNOWLEDGE",
+    "ADD_TO_CHAT",
+    "INSERT_ATTACHMENT",
+    "SHOW_FILE",
+  ],
   description:
     "Attach a stored knowledge item's media into the ACTIVE conversation so the user sees it inline. Takes the item id or its sha256 media reference. Scope-walled: refuses an item the caller may not read.",
   descriptionCompressed:
@@ -424,11 +425,15 @@ export const attachToChatAction: Action = {
             ? params.id
             : "";
     if (!itemRef.trim()) {
-      return fail("An itemId or sha256 reference is required.", "ATTACH_INVALID");
+      return fail(
+        "An itemId or sha256 reference is required.",
+        "ATTACH_INVALID",
+      );
     }
 
     const item = await resolveItem(runtime, itemRef.trim());
-    if (!item) return fail(`No knowledge item for "${itemRef}".`, "ATTACH_NOT_FOUND");
+    if (!item)
+      return fail(`No knowledge item for "${itemRef}".`, "ATTACH_NOT_FOUND");
 
     const actor = actorFromMessage(runtime, message);
     if (!canReadDocumentMemory(item.memory, actor)) {
@@ -499,7 +504,9 @@ export const sendMediaToAction: Action = {
         : typeof params.sha256 === "string"
           ? params.sha256
           : "";
-    const targetRoomId = asUuid(params.roomId ?? params.target ?? params.contact);
+    const targetRoomId = asUuid(
+      params.roomId ?? params.target ?? params.contact,
+    );
     if (!itemRef.trim()) {
       return fail("An itemId or sha256 reference is required.", "SEND_INVALID");
     }
@@ -508,7 +515,8 @@ export const sendMediaToAction: Action = {
     }
 
     const item = await resolveItem(runtime, itemRef.trim());
-    if (!item) return fail(`No knowledge item for "${itemRef}".`, "SEND_NOT_FOUND");
+    if (!item)
+      return fail(`No knowledge item for "${itemRef}".`, "SEND_NOT_FOUND");
 
     const actor = actorFromMessage(runtime, message);
     if (!canReadDocumentMemory(item.memory, actor)) {
@@ -548,12 +556,17 @@ export const sendMediaToAction: Action = {
       text: `Shared: ${item.title}`,
       attachments: [media],
     };
-    const dispatch = await dispatchToRoom(runtime, targetRoom?.source ?? "", {
-      source: targetRoom?.source ?? "",
-      roomId: targetRoomId,
-      ...(targetRoom?.channelId ? { channelId: targetRoom.channelId } : {}),
-      ...(targetRoom?.serverId ? { serverId: targetRoom.serverId } : {}),
-    }, content);
+    const dispatch = await dispatchToRoom(
+      runtime,
+      targetRoom?.source ?? "",
+      {
+        source: targetRoom?.source ?? "",
+        roomId: targetRoomId,
+        ...(targetRoom?.channelId ? { channelId: targetRoom.channelId } : {}),
+        ...(targetRoom?.serverId ? { serverId: targetRoom.serverId } : {}),
+      },
+      content,
+    );
 
     if (!dispatch.ok) {
       logger.warn(
