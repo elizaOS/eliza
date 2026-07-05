@@ -123,7 +123,6 @@ vi.mock("./state", () => {
     characterData: null,
     copyToClipboard: vi.fn(),
     databaseSubTab: "overview",
-    dismissActionBanner: vi.fn(),
     dismissSystemWarning: vi.fn(),
     elizaCloudConnected: false,
     elizaCloudVoiceProxyAvailable: false,
@@ -200,9 +199,6 @@ vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
 
-vi.mock("./components/shell/ConnectionFailedBanner", () => ({
-  ConnectionFailedBanner: () => null,
-}));
 
 vi.mock("./components/shell/SystemWarningBanner", () => ({
   SystemWarningBanner: () => null,

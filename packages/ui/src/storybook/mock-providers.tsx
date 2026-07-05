@@ -36,15 +36,10 @@ const baseMockApp: Partial<AppContextValue> = {
     uptime: undefined,
     startedAt: undefined,
   },
-  backendDisconnectedBannerDismissed: false,
   commandActiveIndex: 0,
   commandPaletteOpen: false,
   commandQuery: "",
-  dismissBackendDisconnectedBanner: noop,
   dismissSystemWarning: noop,
-  actionBanner: null,
-  showActionBanner: noop,
-  dismissActionBanner: noop,
   navigation: {
     scheduleAfterTabCommit: (fn: () => void) => {
       queueMicrotask(fn);

@@ -135,7 +135,6 @@ function resetTutorialState(): void {
 interface AppStoreSpies {
   completeFirstRun: ReturnType<typeof vi.fn>;
   handleCloudLogin: ReturnType<typeof vi.fn>;
-  showActionBanner: ReturnType<typeof vi.fn>;
   setTab: ReturnType<typeof vi.fn>;
   setState: ReturnType<typeof vi.fn>;
 }
@@ -145,7 +144,6 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
   const spies: AppStoreSpies = {
     completeFirstRun: vi.fn(),
     handleCloudLogin: vi.fn(async () => undefined),
-    showActionBanner: vi.fn(),
     setTab: vi.fn(),
     setState: vi.fn(),
   };
@@ -362,9 +360,9 @@ describe("useFirstRunConductor", () => {
     expect(
       mocks.autoDownloadRecommendedLocalModelInBackground,
     ).not.toHaveBeenCalled();
-    // The Settings handoff is a non-blocking action banner, NOT a gate flip:
-    // the real completion stays deferred to the tutorial pick.
-    expect(spies.showActionBanner).toHaveBeenCalledTimes(1);
+    // No floating banner fires — the transcript's no-provider gate is the
+    // Settings handoff surface — and the real completion stays deferred to the
+    // tutorial pick.
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
 
     // After provisioning, re-taps on the leftover provider widget are consumed
@@ -1360,7 +1358,6 @@ function makeFinishPorts(): FirstRunFinishPorts {
     elizaCloudConnected: true,
     handleCloudLogin: async () => undefined,
     setRuntimeState: () => {},
-    showActionBanner: () => {},
     setTab: () => {},
     completeFirstRun: () => {},
   };

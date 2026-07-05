@@ -19,6 +19,17 @@ const mocks = vi.hoisted(() => ({
     firstRunComplete: true as boolean | null,
     handleCloudLogin: vi.fn(async () => {}),
     triggerRestart: vi.fn(async () => {}),
+    backendConnection: {
+      state: "connected" as
+        | "connected"
+        | "disconnected"
+        | "reconnecting"
+        | "failed",
+      reconnectAttempt: 0,
+      maxReconnectAttempts: 15,
+      showDisconnectedUI: false,
+    },
+    retryBackendConnection: vi.fn(),
   },
   hasUsableStoredStewardToken: vi.fn(() => true),
   dispatchCloudHandoffRetry: vi.fn(),
@@ -28,7 +39,7 @@ vi.mock("../state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../state")>();
   return {
     ...actual,
-    useAppSelectorShallow: <T,>(selector: (s: unknown) => T): T =>
+    useAppSelectorShallow: <T>(selector: (s: unknown) => T): T =>
       selector(mocks.store),
   };
 });
@@ -108,6 +119,12 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
   mocks.store.firstRunComplete = true;
+  mocks.store.backendConnection = {
+    state: "connected",
+    reconnectAttempt: 0,
+    maxReconnectAttempts: 15,
+    showDisconnectedUI: false,
+  };
   mocks.hasUsableStoredStewardToken.mockReturnValue(true);
 });
 
@@ -248,6 +265,48 @@ describe("useBootRecoveryConductor", () => {
     expect(card()?.text).toContain("Couldn't reconnect");
     expect(card()?.text).toContain("api down");
     expect(card()?.text).toContain("__boot_recovery__:retry=");
+    unmount();
+  });
+
+  it("a failed backend connection outranks every other trouble and offers Reconnect", () => {
+    mocks.store.backendConnection = {
+      state: "failed",
+      reconnectAttempt: 15,
+      maxReconnectAttempts: 15,
+      showDisconnectedUI: false,
+    };
+    const { card, unmount } = renderConductor({
+      booting: true,
+      noProviderConfigured: false,
+      handoff: { phase: "failed", agentId: "agent-1" },
+    });
+    stall();
+    const text = card()?.text ?? "";
+    expect(text).toContain("lost my connection");
+    expect(text).toContain("__boot_recovery__:reconnect=");
+    expect(text).not.toContain("retry-handoff");
+    act(() => {
+      expect(tryHandleBootRecoveryAction("__boot_recovery__:reconnect")).toBe(
+        true,
+      );
+    });
+    expect(mocks.store.retryBackendConnection).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("defers the connection card when another surface owns the disconnected state", () => {
+    mocks.store.backendConnection = {
+      state: "failed",
+      reconnectAttempt: 15,
+      maxReconnectAttempts: 15,
+      showDisconnectedUI: true,
+    };
+    const { card, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: null,
+    });
+    expect(card()).toBeUndefined();
     unmount();
   });
 

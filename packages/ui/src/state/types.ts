@@ -100,10 +100,9 @@ export interface NavigationEventsApi {
   scheduleAfterTabCommit: (fn: () => void) => void;
 }
 
-import type { ActionBanner } from "./action-banner";
 import type { ActionNotice, ActionTone } from "./action-notice";
 
-export type { ActionBanner, ActionNotice, ActionTone };
+export type { ActionNotice, ActionTone };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
 
@@ -321,13 +320,8 @@ export interface AppState {
     maxReconnectAttempts: number;
     showDisconnectedUI: boolean;
   };
-  backendDisconnectedBannerDismissed: boolean;
-
   // System warnings
   systemWarnings: string[];
-
-  // Top-of-shell action banner (a single CTA-carrying banner at a time)
-  actionBanner: ActionBanner | null;
 
   // Pairing
   pairingEnabled: boolean;
@@ -706,12 +700,9 @@ export interface AppActions {
   showRestartBanner: () => void;
   relaunchDesktop: () => Promise<void>;
   triggerRestart: () => Promise<void>;
-  dismissBackendDisconnectedBanner: () => void;
   retryBackendConnection: () => void;
   restartBackend: () => Promise<void>;
   dismissSystemWarning: (message: string) => void;
-  showActionBanner: (banner: ActionBanner) => void;
-  dismissActionBanner: () => void;
 
   // Chat
   handleChatSend: (

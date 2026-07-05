@@ -18,6 +18,7 @@ import { useConfirm, usePrompt } from "../components/ui/confirm-dialog.hooks";
 import { AppBootContext } from "../config/boot-config-react.hooks";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
+import { tryHandleBootRecoveryAction } from "../first-run/boot-recovery-channel";
 import {
   classifyActionMessage,
   getFirstRunCloudLoginFallbackPath,
@@ -28,7 +29,6 @@ import {
   isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
 } from "../first-run/mobile-runtime-mode";
-import { tryHandleBootRecoveryAction } from "../first-run/boot-recovery-channel";
 import { tryHandleModelAction } from "../first-run/model-action-channel";
 import {
   activeServerKindToFirstRunRuntimeTarget,
@@ -200,9 +200,7 @@ function AppProviderInner({
       pendingRestartReasons,
       restartBannerDismissed,
       backendConnection,
-      backendDisconnectedBannerDismissed,
       systemWarnings,
-      actionBanner,
     },
     setConnected,
     setAgentStatus,
@@ -220,11 +218,8 @@ function AppProviderInner({
     dismissRestartBanner,
     showRestartBanner,
     setBackendConnection,
-    dismissBackendBanner: dismissBackendDisconnectedBanner,
     resetBackendConnection,
     dismissSystemWarning,
-    showActionBanner,
-    dismissActionBanner,
     startupStatus,
     lifecycleBusyRef,
     lifecycleActionRef,
@@ -254,13 +249,6 @@ function AppProviderInner({
   const setFirstRunUiRevealNonce = useCallback(
     (_fn: (n: number) => number) => setFirstRunUiRevealNonce_increment(),
     [setFirstRunUiRevealNonce_increment],
-  );
-  const setBackendDisconnectedBannerDismissed = useCallback(
-    (v: boolean) => {
-      if (v) dismissBackendDisconnectedBanner();
-      // Note: only dismissal is supported via the reducer
-    },
-    [dismissBackendDisconnectedBanner],
   );
   const setSystemWarnings = useCallback(
     (v: string[] | ((prev: string[]) => string[])) => {
@@ -1097,7 +1085,6 @@ function AppProviderInner({
     pendingRestartReasons,
     setPendingRestart,
     setPendingRestartReasons,
-    setBackendDisconnectedBannerDismissed,
     resetBackendConnection,
     loadConversations,
     loadConversationMessages,
@@ -1800,7 +1787,6 @@ function AppProviderInner({
       pendingRestartReasons,
       restartBannerDismissed,
       backendConnection,
-      backendDisconnectedBannerDismissed,
       pairingEnabled,
       pairingExpiresAt,
       pairingCodeInput,
@@ -2045,14 +2031,10 @@ function AppProviderInner({
       showRestartBanner,
       triggerRestart,
       relaunchDesktop,
-      dismissBackendDisconnectedBanner,
       retryBackendConnection,
       restartBackend,
       systemWarnings,
       dismissSystemWarning,
-      actionBanner,
-      showActionBanner,
-      dismissActionBanner,
       handleChatSend,
       handleChatStop,
       handleChatRetry,
@@ -2178,7 +2160,6 @@ function AppProviderInner({
       pendingRestartReasons,
       restartBannerDismissed,
       backendConnection,
-      backendDisconnectedBannerDismissed,
       pairingEnabled,
       pairingExpiresAt,
       pairingCodeInput,
@@ -2406,7 +2387,6 @@ function AppProviderInner({
       configText,
       activeGamePostMessagePayload,
       systemWarnings,
-      actionBanner,
       setTab,
       setUiShellMode,
       switchUiShellMode,
@@ -2430,12 +2410,9 @@ function AppProviderInner({
       showRestartBanner,
       triggerRestart,
       relaunchDesktop,
-      dismissBackendDisconnectedBanner,
       retryBackendConnection,
       restartBackend,
       dismissSystemWarning,
-      showActionBanner,
-      dismissActionBanner,
       handleChatSend,
       handleChatStop,
       handleChatRetry,

@@ -48,6 +48,7 @@ export const BOOT_STALL_AFTER_MS = 90_000;
 const RELOGIN_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}relogin=Re-log in`;
 const RETRY_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry=Try again`;
 const RETRY_HANDOFF_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry-handoff=Retry setup`;
+const RECONNECT_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}reconnect=Reconnect`;
 
 interface RecoveryCard {
   text: string;
@@ -73,6 +74,7 @@ function cardToTurn(card: RecoveryCard): ConversationMessage {
 
 /** The trouble the conductor is currently voicing, in precedence order. */
 type Trouble =
+  | { kind: "connection" }
   | { kind: "handoff"; agentId: string }
   | { kind: "signed-out" }
   | { kind: "unresponsive" }
@@ -80,6 +82,11 @@ type Trouble =
 
 function liveCard(trouble: NonNullable<Trouble>): RecoveryCard {
   switch (trouble.kind) {
+    case "connection":
+      return {
+        text: "I've lost my connection to the backend — I can't hear you until it's back.",
+        choices: [RECONNECT_CHOICE],
+      };
     case "handoff":
       return {
         text: "I couldn't finish setting up your dedicated agent — you're still on the shared one for now.",
@@ -108,12 +115,19 @@ export function useBootRecoveryConductor(
   noProviderConfigured: boolean,
   handoff: CloudHandoffPhaseDetail | null,
 ): void {
-  const { firstRunComplete, handleCloudLogin, triggerRestart } =
-    useAppSelectorShallow((s) => ({
-      firstRunComplete: s.firstRunComplete,
-      handleCloudLogin: s.handleCloudLogin,
-      triggerRestart: s.triggerRestart,
-    }));
+  const {
+    firstRunComplete,
+    handleCloudLogin,
+    triggerRestart,
+    backendConnection,
+    retryBackendConnection,
+  } = useAppSelectorShallow((s) => ({
+    firstRunComplete: s.firstRunComplete,
+    handleCloudLogin: s.handleCloudLogin,
+    triggerRestart: s.triggerRestart,
+    backendConnection: s.backendConnection,
+    retryBackendConnection: s.retryBackendConnection,
+  }));
   const { setConversationMessages } = useConversationMessages();
 
   const upsertTurn = React.useCallback(
@@ -151,16 +165,23 @@ export function useBootRecoveryConductor(
   const handoffFailed =
     handoff != null &&
     (handoff.phase === "timed-out" || handoff.phase === "failed");
+  // A dead backend connection outranks everything (nothing else can work),
+  // and skips the card when another surface owns the disconnected state.
+  const connectionFailed =
+    backendConnection?.state === "failed" &&
+    !backendConnection.showDisconnectedUI;
 
   const trouble: Trouble = !active
     ? null
-    : handoffFailed
-      ? { kind: "handoff", agentId: handoff.agentId }
-      : stalled
-        ? hasUsableStoredStewardToken()
-          ? { kind: "unresponsive" }
-          : { kind: "signed-out" }
-        : null;
+    : connectionFailed
+      ? { kind: "connection" }
+      : handoffFailed
+        ? { kind: "handoff", agentId: handoff.agentId }
+        : stalled
+          ? hasUsableStoredStewardToken()
+            ? { kind: "unresponsive" }
+            : { kind: "signed-out" }
+          : null;
 
   // An action pins its in-flight copy over the live card; when the action
   // settles without healing the boot, `cardVersion` bumps so the live card
@@ -186,6 +207,7 @@ export function useBootRecoveryConductor(
   }, []);
 
   const troubleKind = trouble === null ? null : trouble.kind;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `cardVersion` is a re-render nonce — releaseOverride bumps it so the live card reseeds after an action settles on an unchanged trouble kind.
   React.useEffect(() => {
     if (troubleKind === null) {
       overrideRef.current = null;
@@ -251,6 +273,14 @@ export function useBootRecoveryConductor(
         return true;
       }
 
+      if (id === "reconnect") {
+        // Synchronous kick: the connection state flips to "reconnecting",
+        // which clears the trouble (card removed); if every attempt fails the
+        // state returns to "failed" and a fresh card (with controls) reseeds.
+        retryBackendConnection();
+        return true;
+      }
+
       if (id === "retry-handoff") {
         const current = troubleRef.current;
         if (current?.kind === "handoff") {
@@ -266,7 +296,13 @@ export function useBootRecoveryConductor(
       // Unknown control under the reserved prefix: consume, do nothing.
       return true;
     },
-    [handleCloudLogin, pinOverride, triggerRestart],
+    [
+      handleCloudLogin,
+      pinOverride,
+      releaseOverride,
+      retryBackendConnection,
+      triggerRestart,
+    ],
   );
   const handleActionRef = React.useRef(handleAction);
   handleActionRef.current = handleAction;

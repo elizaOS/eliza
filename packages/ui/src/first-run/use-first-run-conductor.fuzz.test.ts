@@ -129,7 +129,6 @@ function seedAppStore(): AppStoreSpies {
     uiLanguage: "en",
     completeFirstRun: spies.completeFirstRun,
     handleCloudLogin: vi.fn(async () => undefined),
-    showActionBanner: vi.fn(),
     setTab: vi.fn(),
     setState: vi.fn(),
   };

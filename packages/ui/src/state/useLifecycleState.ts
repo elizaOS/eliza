@@ -13,7 +13,6 @@ import {
   savePersistedFirstRunComplete,
 } from "./persistence";
 import type {
-  ActionBanner,
   ActionNotice,
   AppState,
   LifecycleAction,
@@ -40,9 +39,7 @@ export interface LifecycleState {
   pendingRestartReasons: string[];
   restartBannerDismissed: boolean;
   backendConnection: AppState["backendConnection"];
-  backendDisconnectedBannerDismissed: boolean;
   systemWarnings: string[];
-  actionBanner: ActionBanner | null;
 }
 
 const INITIAL_LIFECYCLE_STATE: LifecycleState = {
@@ -67,9 +64,7 @@ const INITIAL_LIFECYCLE_STATE: LifecycleState = {
     maxReconnectAttempts: 15,
     showDisconnectedUI: false,
   },
-  backendDisconnectedBannerDismissed: false,
   systemWarnings: [],
-  actionBanner: null,
 };
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -94,13 +89,10 @@ type LifecycleAction_ =
       type: "SET_BACKEND_CONNECTION";
       value: Partial<AppState["backendConnection"]>;
     }
-  | { type: "DISMISS_BACKEND_BANNER" }
   | { type: "RESET_BACKEND_CONNECTION" }
   | { type: "ADD_SYSTEM_WARNING"; warning: string }
   | { type: "DISMISS_SYSTEM_WARNING"; message: string }
-  | { type: "SET_SYSTEM_WARNINGS"; value: string[] }
-  | { type: "SET_ACTION_BANNER"; value: ActionBanner }
-  | { type: "CLEAR_ACTION_BANNER" };
+  | { type: "SET_SYSTEM_WARNINGS"; value: string[] };
 
 function lifecycleReducer(
   state: LifecycleState,
@@ -160,13 +152,7 @@ function lifecycleReducer(
       return {
         ...state,
         backendConnection: { ...state.backendConnection, ...action.value },
-        backendDisconnectedBannerDismissed:
-          action.value.state === "failed"
-            ? state.backendDisconnectedBannerDismissed
-            : false,
       };
-    case "DISMISS_BACKEND_BANNER":
-      return { ...state, backendDisconnectedBannerDismissed: true };
     case "RESET_BACKEND_CONNECTION":
       return {
         ...state,
@@ -176,7 +162,6 @@ function lifecycleReducer(
           reconnectAttempt: 0,
           showDisconnectedUI: false,
         },
-        backendDisconnectedBannerDismissed: false,
       };
     case "ADD_SYSTEM_WARNING": {
       if (state.systemWarnings.includes(action.warning)) return state;
@@ -194,10 +179,6 @@ function lifecycleReducer(
       };
     case "SET_SYSTEM_WARNINGS":
       return { ...state, systemWarnings: action.value };
-    case "SET_ACTION_BANNER":
-      return { ...state, actionBanner: action.value };
-    case "CLEAR_ACTION_BANNER":
-      return { ...state, actionBanner: null };
     default:
       return state;
   }
@@ -236,13 +217,10 @@ export interface LifecycleStateHook {
   dismissRestartBanner: () => void;
   showRestartBanner: () => void;
   setBackendConnection: (v: Partial<AppState["backendConnection"]>) => void;
-  dismissBackendBanner: () => void;
   resetBackendConnection: () => void;
   addSystemWarning: (warning: string) => void;
   dismissSystemWarning: (message: string) => void;
   setSystemWarnings: (v: string[]) => void;
-  showActionBanner: (banner: ActionBanner) => void;
-  dismissActionBanner: () => void;
 
   /** Derived startup status. */
   startupStatus: AppState["startupStatus"];
@@ -403,10 +381,6 @@ export function useLifecycleState(): LifecycleStateHook {
     [],
   );
 
-  const dismissBackendBanner = useCallback(
-    () => dispatch({ type: "DISMISS_BACKEND_BANNER" }),
-    [],
-  );
   const resetBackendConnection = useCallback(
     () => dispatch({ type: "RESET_BACKEND_CONNECTION" }),
     [],
@@ -422,14 +396,6 @@ export function useLifecycleState(): LifecycleStateHook {
 
   const setSystemWarnings = useCallback((v: string[]) => {
     dispatch({ type: "SET_SYSTEM_WARNINGS", value: v });
-  }, []);
-
-  const showActionBanner = useCallback((banner: ActionBanner) => {
-    dispatch({ type: "SET_ACTION_BANNER", value: banner });
-  }, []);
-
-  const dismissActionBanner = useCallback(() => {
-    dispatch({ type: "CLEAR_ACTION_BANNER" });
   }, []);
 
   // ── Derived state ──
@@ -469,13 +435,10 @@ export function useLifecycleState(): LifecycleStateHook {
     dismissRestartBanner,
     showRestartBanner,
     setBackendConnection,
-    dismissBackendBanner,
     resetBackendConnection,
     addSystemWarning,
     dismissSystemWarning,
     setSystemWarnings,
-    showActionBanner,
-    dismissActionBanner,
     startupStatus,
     lifecycleBusyRef,
     lifecycleActionRef,

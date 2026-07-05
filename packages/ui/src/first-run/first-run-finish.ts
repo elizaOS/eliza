@@ -34,7 +34,6 @@ import {
   removeAgentProfile,
   savePersistedActiveServer,
 } from "../state";
-import type { ActionBanner } from "../state/action-banner";
 import { isCloudStatusAuthenticated } from "../utils";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import {
@@ -71,7 +70,6 @@ export interface FirstRunFinishPorts {
     key: FirstRunRuntimeStateKey,
     value: string | boolean,
   ) => void;
-  showActionBanner: (banner: ActionBanner) => void;
   setTab: (tab: string) => void;
   /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
   completeFirstRun: (landingTab?: string) => void;
@@ -135,13 +133,9 @@ async function persistFirstRun(
         await client.submitFirstRun(plan.payload);
       }
       firstRunPersisted = true;
-      if (plan.runtimeConfig.needsProviderSetup) {
-        ports.showActionBanner({
-          text: "Choose a model provider in Settings before sending the first message.",
-          actionLabel: "Open Settings",
-          onAction: () => ports.setTab("settings"),
-        });
-      }
+      // needsProviderSetup no longer raises a floating banner: the transcript's
+      // no-provider gate and the composer's Settings placeholder hint are the
+      // honest in-chat surfaces for an unconfigured provider.
     })().finally(() => {
       firstRunPersistInFlight = null;
     });

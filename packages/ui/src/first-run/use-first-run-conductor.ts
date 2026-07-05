@@ -346,7 +346,6 @@ export function useFirstRunConductor(): void {
     completeFirstRun,
     elizaCloudConnected,
     handleCloudLogin,
-    showActionBanner,
     setTab,
     setState,
     setUiAccent,
@@ -357,7 +356,6 @@ export function useFirstRunConductor(): void {
     completeFirstRun: s.completeFirstRun,
     elizaCloudConnected: s.elizaCloudConnected,
     handleCloudLogin: s.handleCloudLogin,
-    showActionBanner: s.showActionBanner,
     setTab: s.setTab,
     setState: s.setState,
     setUiAccent: s.setUiAccent,
@@ -515,7 +513,6 @@ export function useFirstRunConductor(): void {
       setRuntimeState: (key, value) => {
         setState(key, value as never);
       },
-      showActionBanner,
       setTab,
       completeFirstRun: () => {
         if (isRuntimeChooserEnabled()) {
@@ -535,7 +532,6 @@ export function useFirstRunConductor(): void {
       elizaCloudConnected,
       handleCloudLogin,
       setState,
-      showActionBanner,
       setTab,
       seedTutorial,
       completeCloudOnly,

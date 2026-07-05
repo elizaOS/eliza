@@ -153,7 +153,6 @@ export interface UseChatLifecycleDeps {
   ) => void;
 
   // Backend connection
-  setBackendDisconnectedBannerDismissed: (v: boolean) => void;
   resetBackendConnection: () => void;
 
   // Loaders
@@ -242,7 +241,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     pendingRestartReasons,
     setPendingRestart,
     setPendingRestartReasons,
-    setBackendDisconnectedBannerDismissed,
     resetBackendConnection,
     loadPlugins,
     hydrateInitialConversationState,
@@ -431,9 +429,8 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   }, [handleRestart]);
 
   const retryBackendConnection = useCallback(() => {
-    setBackendDisconnectedBannerDismissed(false);
     client.resetConnection();
-  }, [setBackendDisconnectedBannerDismissed]);
+  }, []);
 
   const restartBackend = useCallback(async () => {
     const restarted = await invokeDesktopBridgeRequest({

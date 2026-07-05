@@ -262,7 +262,6 @@ function makeHarness(seedConversations: Conversation[]): Harness {
     pendingRestartReasons: [],
     setPendingRestart: vi.fn(),
     setPendingRestartReasons: vi.fn(),
-    setBackendDisconnectedBannerDismissed: vi.fn(),
     resetBackendConnection: vi.fn(),
     loadPlugins: vi.fn(async () => null),
     elizaCloudEnabled: false,
