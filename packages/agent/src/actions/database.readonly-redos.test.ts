@@ -33,4 +33,34 @@ describe("DATABASE read-only SQL guard", () => {
     }
     expect(elapsed).toBeLessThan(1000);
   });
+
+  it("blocks dangerous functions hidden behind unicode-escaped identifiers", () => {
+    // `U&"s\0065tval"` decodes to setval() at PG parse time — a sequence write
+    // that a literal-name scan of the raw text misses. Confirmed executable in
+    // PGlite before this guard. Every dangerous function is reachable this way.
+    for (const sql of [
+      `SELECT U&"s\\0065tval"('s', 999)`,
+      `SELECT U&"pg_sl\\0065ep"(0.15)`,
+      `SELECT U&"pg_wr\\0069te_file"('/tmp/x', 'data')`,
+      `SELECT u&"lo_exp\\006Frt"(1, '/tmp/x')`, // lower-case u& is valid too
+    ]) {
+      const result = checkReadOnly(sql);
+      expect(result, sql).toMatchObject({ ok: false });
+      if (!result.ok) {
+        expect(result.reason).toContain("Unicode-escaped identifiers");
+      }
+    }
+  });
+
+  it("still allows ordinary read-only queries (no false positives)", () => {
+    // A stray `U&` that is not the unicode-escape identifier syntax (space
+    // before the quote, or inside a string literal) must not trip the guard.
+    for (const sql of [
+      "SELECT id, name FROM users WHERE active = true LIMIT 10",
+      `SELECT "user" AS u FROM accounts`, // plain quoted identifier
+      `SELECT 'contains U&\\" text' AS note`, // U&" inside a string literal
+    ]) {
+      expect(checkReadOnly(sql), sql).toEqual({ ok: true });
+    }
+  });
 });

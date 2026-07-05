@@ -221,6 +221,22 @@ export function checkReadOnly(
   );
   const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
 
+  // PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`) decode to
+  // their real name only at parse time, so the literal-name dangerous-function
+  // scan below sees `s\0065tval`, not `setval`, and waves the write through
+  // (confirmed: `SELECT U&"s\0065tval"('s',999)` mutated a sequence). Read-only
+  // queries never legitimately need unicode-escaped identifiers, so reject the
+  // token outright rather than attempt to decode it. Checked on `noLiterals`
+  // (string/comment content already removed) so a `U&"` here is unambiguously
+  // an identifier, not string data.
+  if (/[uU]&"/.test(noLiterals)) {
+    return {
+      ok: false,
+      reason:
+        'Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
+    };
+  }
+
   const mutation = new RegExp(
     `\\b(${MUTATION_KEYWORDS.join("|")})\\b`,
     "i",

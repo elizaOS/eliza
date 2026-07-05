@@ -1098,6 +1098,19 @@ async function handleQuery(
     // matching words inside quoted table/column names.
     const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
 
+    // Reject PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`)
+    // in read-only mode: they decode to the real name only at parse time, so
+    // the literal-name dangerous-function scan below is bypassable (a mutating
+    // function hides as `U&"s\0065tval"`). Legit read-only queries never need
+    // them. Mirrors checkReadOnly() in actions/database.ts.
+    if (/[uU]&"/.test(noLiterals)) {
+      return {
+        ok: false,
+        reason:
+          'Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
+      };
+    }
+
     const mutationKeywords = [
       // ── DML ────────────────────────────────────────────────────────────
       "INSERT",
