@@ -933,7 +933,7 @@ export function CodingAgentTasksPanel({
                   <TaskCountChip value={doneCount} label="done" tone="accent" />
                 ) : null}
               </>
-            ) : null}
+            ) : null
           }
           action={
             <ProjectSwitcher

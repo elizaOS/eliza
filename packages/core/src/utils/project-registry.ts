@@ -152,10 +152,6 @@ function synthesizeFromLegacyWorkspaceFolder(
 	return { version: 1, activeProjectId: project.id, projects: [project] };
 }
 
-function legacyProjectId(localPath: string): string {
-	return `legacy-${createHash("sha256").update(localPath).digest("hex").slice(0, 16)}`;
-}
-
 function basename(p: string): string {
 	const parts = p.replace(/[\\/]+$/, "").split(/[\\/]/);
 	return parts[parts.length - 1] || p;
