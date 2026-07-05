@@ -432,6 +432,11 @@ declare module "@elizaos/plugin-imessage" {
   const imessagePlugin: unknown;
   export default imessagePlugin;
 }
+declare module "@elizaos/plugin-inbox/plugin" {
+  import type { Plugin } from "@elizaos/core";
+  export const inboxPlugin: Plugin;
+  export default inboxPlugin;
+}
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";

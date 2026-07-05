@@ -1,6 +1,7 @@
 // GENERATED FILE — DO NOT EDIT BY HAND.
 // Source of truth: ./optional-plugins.ts (OPTIONAL_STATIC_PLUGIN_PACKAGES).
 // Regenerate: bun run --cwd packages/agent gen:optional-plugin-imports
+/// <reference path="../external-modules.d.ts" />
 //
 // Literal `import()` specifiers so Bun.build inlines each optional plugin into
 // the mobile bundle. The runtime looks each up by name in loadOptionalPlugin().

@@ -51,6 +51,8 @@
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-inbox": ["../plugin-inbox/src/index.ts"],
+      "@elizaos/plugin-inbox/*": ["../plugin-inbox/src/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

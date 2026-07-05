@@ -16,7 +16,7 @@ import {
 	ModelType,
 	Service,
 } from "@elizaos/core";
-import { type WebSocket, WebSocketServer } from "ws";
+import { WebSocketServer } from "ws";
 import type {
 	G1Event,
 	SmartglassesAudioEncoding,
@@ -38,9 +38,24 @@ export const XR_SERVICE_TYPE = "xr-session";
 export const XR_WS_PORT_DEFAULT = 31338;
 export const XR_WS_PORT_ENV = "XR_WS_PORT";
 
+type XRWebSocketRawData = Buffer | ArrayBuffer | Buffer[];
+
+interface XRWebSocketConnection {
+	readonly OPEN: number;
+	readonly readyState: number;
+	send(data: string | Buffer, options?: { binary?: boolean }): void;
+	close(): void;
+	on(
+		event: "message",
+		listener: (data: XRWebSocketRawData, isBinary: boolean) => void,
+	): void;
+	on(event: "close", listener: () => void): void;
+	on(event: "error", listener: (err: Error) => void): void;
+}
+
 export interface XRConnection {
 	id: string;
-	ws: WebSocket;
+	ws: XRWebSocketConnection;
 	deviceType: XRDeviceType;
 	entityId: UUID;
 	roomId: UUID;
@@ -77,8 +92,10 @@ export class XRSessionService extends Service {
 		);
 		this.wss = new WebSocketServer({ port });
 
-		this.wss.on("connection", (ws) => this.onConnect(runtime, ws));
-		this.wss.on("error", (err) =>
+		this.wss.on("connection", (ws: XRWebSocketConnection) =>
+			this.onConnect(runtime, ws),
+		);
+		this.wss.on("error", (err: Error) =>
 			runtime.reportError("XRSessionService.wss", err),
 		);
 
@@ -192,15 +209,20 @@ export class XRSessionService extends Service {
 
 	// ── WebSocket connection lifecycle ──────────────────────────────────────
 
-	private onConnect(runtime: IAgentRuntime, ws: WebSocket): void {
+	private onConnect(runtime: IAgentRuntime, ws: XRWebSocketConnection): void {
 		const connId = crypto.randomUUID();
 
-		ws.on("message", (data, isBinary) => {
+		ws.on("message", (data: XRWebSocketRawData, isBinary: boolean) => {
 			try {
+				const buffer = Buffer.isBuffer(data)
+					? data
+					: Array.isArray(data)
+						? Buffer.concat(data)
+						: Buffer.from(data);
 				if (isBinary) {
-					this.handleBinaryMessage(connId, data as Buffer);
+					this.handleBinaryMessage(connId, buffer);
 				} else {
-					this.handleTextMessage(runtime, connId, ws, data.toString("utf8"));
+					this.handleTextMessage(runtime, connId, ws, buffer.toString("utf8"));
 				}
 			} catch (err) {
 				// error-policy:J1 per-message transport boundary — a single
@@ -218,7 +240,7 @@ export class XRSessionService extends Service {
 			logger.info(`[XRSessionService] device disconnected: ${connId}`);
 		});
 
-		ws.on("error", (err) =>
+		ws.on("error", (err: Error) =>
 			logger.warn({ err, connId }, "[XRSessionService] ws connection error"),
 		);
 	}
@@ -226,7 +248,7 @@ export class XRSessionService extends Service {
 	private handleTextMessage(
 		runtime: IAgentRuntime,
 		connId: string,
-		ws: WebSocket,
+		ws: XRWebSocketConnection,
 		raw: string,
 	): void {
 		const msg = JSON.parse(raw) as XRClientControl;

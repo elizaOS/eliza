@@ -27,6 +27,7 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
+import facewearPlugin from "@elizaos/plugin-facewear";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
@@ -36,7 +37,6 @@ import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import workflowPlugin from "@elizaos/plugin-workflow";
-import xrPlugin from "@elizaos/plugin-xr";
 import type { ScenarioTurn } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
 import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
@@ -61,7 +61,7 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
   "@elizaos/plugin-todos": todosPlugin,
   "@elizaos/plugin-streaming": streamingPlugin,
-  "@elizaos/plugin-xr": xrPlugin,
+  "@elizaos/plugin-facewear": facewearPlugin,
   "@elizaos/plugin-mcp": mcpPlugin,
   "@elizaos/plugin-workflow": workflowPlugin,
   "@elizaos/plugin-github": githubPlugin,
@@ -69,7 +69,13 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
 
 /** Expected action names for each imported core plugin (verified against live imports). */
 const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
-  "@elizaos/plugin-app-control": ["APP", "BACKGROUND", "VIEWS"],
+  "@elizaos/plugin-app-control": [
+    "AGENT_SWITCH",
+    "APP",
+    "BACKGROUND",
+    "MODEL_SWITCH",
+    "VIEWS",
+  ],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
     "COMMANDS_COMMAND",
@@ -109,7 +115,14 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
   "@elizaos/plugin-streaming": ["STREAM"],
-  "@elizaos/plugin-xr": [
+  "@elizaos/plugin-facewear": [
+    "FACEWEAR_CONNECT",
+    "FACEWEAR_DEBUG",
+    "SETUP_XR_RUNTIME",
+    "SMARTGLASSES_CONTROL",
+    "SMARTGLASSES_DISPLAY_TEXT",
+    "SMARTGLASSES_MICROPHONE",
+    "SMARTGLASSES_STATUS",
     "XR_CLOSE_VIEW",
     "XR_LIST_VIEWS",
     "XR_OPEN_VIEW",
@@ -193,6 +206,9 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // current runtime action surface without registering them as top-level actions.
   "CLOSE_ALL_VIEWS",
   "CLOSE_VIEW",
+  // Agent/model switch have unit coverage, but no deterministic scenario yet.
+  "AGENT_SWITCH",
+  "MODEL_SWITCH",
   // New speaker-diarization action; no deterministic keyless scenario yet.
   "IDENTIFY_SPEAKER",
   // New on-device transcription actions; no deterministic keyless scenario yet.
@@ -200,6 +216,15 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
+  // Facewear owns XR plus connected-device management; keyless scenarios cover
+  // the XR view path, while hardware and runtime setup need device/runtime state.
+  "FACEWEAR_CONNECT",
+  "FACEWEAR_DEBUG",
+  "SETUP_XR_RUNTIME",
+  "SMARTGLASSES_CONTROL",
+  "SMARTGLASSES_DISPLAY_TEXT",
+  "SMARTGLASSES_MICROPHONE",
+  "SMARTGLASSES_STATUS",
   // plugin-commands slash-command actions (/help, /status, /models, /reset,
   // /compact, /think, /model, /tts, …) are dispatched through the command
   // palette, not the keyless scenario pipeline, so they have no deterministic
@@ -655,6 +680,10 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["VIEWS"],
     minMessageTurns: 2,
   },
+  "live-active-view-agent-surface": {
+    actionNames: ["VIEWS"],
+    minMessageTurns: 1,
+  },
   "deterministic-agent-skills-actions": {
     actionNames: [
       "SKILL",
@@ -764,6 +793,8 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM counterpart of deterministic-background-actions (#10694); a real model routes set/undo/redo/reset to BACKGROUND from natural phrasing, NOT a deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract and is classified here (the no-deterministic-fixture bucket). Its keyless gating proof is deterministic-background-actions in the pr-deterministic lane.",
   "live-background-actions":
     "live-only real-LLM counterpart of deterministic-background-actions (#10694); the live model routes BACKGROUND (color set, GLSL preset, undo) with no deterministic ACTION_PLANNER fixture, so it cannot satisfy STRICT_LLM_ROUTING's fixture contract. The deterministic twin pins the exact payload ledger on the keyless lane.",
+  "live-workflow-action-executions":
+    "live-only real-LLM trajectory for WORKFLOW execution listing; it intentionally uses the live model instead of deterministic ACTION_PLANNER fixtures, while deterministic-workflow-actions-routes pins the keyless route.",
 };
 
 /**

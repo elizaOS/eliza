@@ -74,6 +74,8 @@
       ],
       "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
+      "@elizaos/plugin-facewear": ["../../plugins/plugin-facewear/src/index.ts"],
+      "@elizaos/plugin-facewear/*": ["../../plugins/plugin-facewear/src/*"],
       "@elizaos/plugin-native-filesystem": [
         "../../plugins/plugin-native-filesystem/src/index.ts"
       ],

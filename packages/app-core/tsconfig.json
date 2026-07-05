@@ -58,6 +58,8 @@
       "@elizaos/plugin-edge-tts": [
         "../../plugins/plugin-edge-tts/src/index.node.ts"
       ],
+      "@elizaos/plugin-inbox": ["../../plugins/plugin-inbox/src/index.ts"],
+      "@elizaos/plugin-inbox/*": ["../../plugins/plugin-inbox/src/*"],
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
