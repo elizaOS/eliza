@@ -32,16 +32,26 @@ import {
 
 // The canonical inline built-in set (WIDGET_MATRIX.md). `task` is intentionally
 // NOT here — it is registered by plugin-task-coordinator's registerTaskWidget().
-const BUILTIN_INLINE_KINDS = ["choice", "followups", "form"] as const;
+const BUILTIN_INLINE_KINDS = [
+  "choice",
+  "followups",
+  "form",
+  "workflow",
+  "checklist",
+] as const;
 
 // A representative marker per built-in, in the exact wire format its parser
-// recognizes (see message-{choice,followups,form}-parser.ts).
+// recognizes (see message-{choice,followups,form,workflow,checklist}-parser.ts).
 const SAMPLE: Record<(typeof BUILTIN_INLINE_KINDS)[number], string> = {
   choice: "[CHOICE:pick id=c1]\nyes=Yes\nno=No\n[/CHOICE]",
   followups:
     "[FOLLOWUPS]\nreply:run it=Run it\nnavigate:/apps=Open apps\n[/FOLLOWUPS]",
   // FORM body must be JSON on its own lines: `[FORM]\n{...}\n[/FORM]`.
   form: '[FORM]\n{"id":"f1","title":"Sign up","fields":[{"name":"email","label":"Email","type":"text"}]}\n[/FORM]',
+  workflow:
+    '[WORKFLOW]\n{"id":"w1","title":"Deploy","steps":[{"label":"build","status":"done"},{"label":"push","status":"running"}]}\n[/WORKFLOW]',
+  checklist:
+    '[CHECKLIST]\n{"title":"Todos","items":[{"content":"read","status":"completed"},{"content":"edit","status":"in_progress"}]}\n[/CHECKLIST]',
 };
 
 const ctx: InlineWidgetContext = {
