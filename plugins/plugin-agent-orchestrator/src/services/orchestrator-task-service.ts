@@ -3290,13 +3290,17 @@ export class OrchestratorTaskService extends Service {
     // reject a configured root once routing env drifts); only a fresh explicit
     // caller workdir goes through `resolveAllowedWorkdir`.
     const projectWorkdir = resolveBoundProjectWorkdir(doc.task.projectId);
+    const explicitWorkdir = opts.workdir?.trim() || undefined;
     const resolvedWorkdir = resolveSpawnWorkdirPrecedence({
       projectWorkdir,
-      explicitWorkdir: opts.workdir,
+      explicitWorkdir,
       boundWorkdir: doc.task.boundWorkdir,
     });
     const workdir =
-      resolvedWorkdir && resolvedWorkdir === opts.workdir && !projectWorkdir
+      resolvedWorkdir &&
+      explicitWorkdir &&
+      resolvedWorkdir === explicitWorkdir &&
+      !projectWorkdir
         ? await resolveAllowedWorkdir(resolvedWorkdir)
         : resolvedWorkdir;
 

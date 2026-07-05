@@ -502,3 +502,28 @@ describe("spawnAgentForTask project-binding precedence (#14108)", () => {
     }
   });
 });
+
+describe("spawnAgentForTask explicit workdir validation", () => {
+  it("validates a trimmed explicit workdir before spawning an unbound task", async () => {
+    const outsideDir = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "task-workdir-outside-")),
+    );
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedTask(store);
+
+      await expect(
+        service.spawnAgentForTask(taskId, { workdir: ` ${outsideDir} ` }),
+      ).rejects.toThrow(/workdir must be within workspace base directory or cwd/);
+      expect(acp.spawns.length).toBe(0);
+    } finally {
+      await service.stop().catch(() => undefined);
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+});
