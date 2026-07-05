@@ -93,12 +93,16 @@ const PROGRESS_EXPECTED_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set(
   ["active", "validating"],
 );
 
-/** Compose the digest body for one room's set of live tasks. Deterministic. */
-export function composeRoomDigest(views: SupervisorTaskView[]): string {
-  const header =
-    views.length === 1
-      ? "📡 Task update"
-      : `📡 Task update — ${views.length} active`;
+/** Compose the digest body for one room's set of live tasks. Deterministic.
+ *  `queuedCount` (tasks parked at the session cap for this room) is folded into
+ *  the header so a growing backlog changes the digest and re-posts. */
+export function composeRoomDigest(
+  views: SupervisorTaskView[],
+  queuedCount = 0,
+): string {
+  const activeSummary = views.length === 1 ? "" : ` — ${views.length} active`;
+  const queuedSummary = queuedCount > 0 ? ` · ${queuedCount} queued` : "";
+  const header = `📡 Task update${activeSummary}${queuedSummary}`;
   const lines = views
     .slice()
     .sort((a, b) => a.label.localeCompare(b.label))
@@ -132,6 +136,7 @@ export async function runSupervisorTick(
     content: Content,
   ) => Promise<unknown>,
   seen: Map<string, string>,
+  queuedByRoom: Record<string, number> = {},
 ): Promise<SupervisorTickResult> {
   const byRoom = new Map<
     string,
@@ -156,7 +161,7 @@ export async function runSupervisorTick(
   const posted: string[] = [];
   const skipped: string[] = [];
   for (const [roomId, { source, views: roomViews }] of byRoom) {
-    const digest = composeRoomDigest(roomViews);
+    const digest = composeRoomDigest(roomViews, queuedByRoom[roomId] ?? 0);
     if (seen.get(roomId) === digest) {
       skipped.push(roomId);
       continue;
@@ -215,6 +220,9 @@ interface TaskServiceLike {
   getTaskOriginTarget(
     taskId: string,
   ): Promise<{ roomId: string; source: string } | null>;
+  /** Tasks parked in the admission queue, counted per originating room. Optional
+   *  so older/stubbed task services still satisfy this contract. */
+  queuedCountsByRoom?(): Record<string, number>;
 }
 
 export class TaskSupervisorService extends Service {
@@ -342,10 +350,15 @@ export class TaskSupervisorService extends Service {
           origin: await taskSvc.getTaskOriginTarget(t.id),
         })),
       );
+      const queuedByRoom =
+        typeof taskSvc.queuedCountsByRoom === "function"
+          ? taskSvc.queuedCountsByRoom()
+          : {};
       const result = await runSupervisorTick(
         views,
         (target, content) => this.sendDigest(target, content, send),
         this.seen,
+        queuedByRoom,
       );
       if (result.posted.length > 0) {
         logger.info(

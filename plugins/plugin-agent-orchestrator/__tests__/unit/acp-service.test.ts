@@ -14,9 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // form so the same source compares correctly on both POSIX and Windows.
 const RESOLVED_ACP_WORKDIR = path.resolve("/tmp/acp-test");
 
-import type {
-  AcpJsonRpcMessage,
-  ApprovalPreset,
+import {
+  type AcpJsonRpcMessage,
+  type ApprovalPreset,
+  SessionCapError,
 } from "../../src/services/types.js";
 
 type NativeEventHandler = (
@@ -1931,14 +1932,17 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");
     const rejected = results.filter((r) => r.status === "rejected");
-    // The cap must hold exactly: 2 succeed, the rest reject with the limit error.
+    // The cap must hold exactly: 2 succeed, the rest reject with a typed
+    // SessionCapError carrying the stable code + the pool that was full.
     expect(fulfilled).toHaveLength(2);
     expect(rejected.length).toBe(4);
     for (const r of rejected) {
-      expect((r as PromiseRejectedResult).reason).toBeInstanceOf(Error);
-      expect(((r as PromiseRejectedResult).reason as Error).message).toContain(
-        "max session limit reached",
-      );
+      const reason = (r as PromiseRejectedResult).reason as SessionCapError;
+      expect(reason).toBeInstanceOf(SessionCapError);
+      expect(reason.code).toBe("SESSION_CAP_REACHED");
+      expect(reason.slotClass).toBe("worker");
+      expect(reason.maxSessions).toBe(2);
+      expect(reason.activeCount).toBe(2);
     }
 
     // And the store agrees: only 2 active sessions exist.
@@ -1948,6 +1952,95 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     expect(active).toHaveLength(2);
+  });
+
+  it("system slot sessions draw from a separate headroom, not the worker cap", async () => {
+    // The verifier deadlock guard (#13772): a `system` spawn must succeed even
+    // when every worker slot is taken, so completion validation can run.
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "1",
+        ELIZA_ACP_SYSTEM_SESSION_HEADROOM: "2",
+      }),
+    );
+    await service.start();
+
+    // Fill the single worker slot.
+    await service.spawnSession({ name: "worker-1", workdir: "/tmp/acp-test" });
+    // A second WORKER is rejected: the worker pool is full.
+    await expect(
+      service.spawnSession({ name: "worker-2", workdir: "/tmp/acp-test" }),
+    ).rejects.toMatchObject({
+      code: "SESSION_CAP_REACHED",
+      slotClass: "worker",
+    });
+
+    // But a `system` session spawns from its own headroom, worker cap or not.
+    await service.spawnSession({
+      name: "system-1",
+      workdir: "/tmp/acp-test",
+      slotClass: "system",
+    });
+    await service.spawnSession({
+      name: "system-2",
+      workdir: "/tmp/acp-test",
+      slotClass: "system",
+    });
+    // The system headroom (2) is now full — a third system spawn is rejected
+    // against the headroom, not the worker cap.
+    await expect(
+      service.spawnSession({
+        name: "system-3",
+        workdir: "/tmp/acp-test",
+        slotClass: "system",
+      }),
+    ).rejects.toMatchObject({
+      code: "SESSION_CAP_REACHED",
+      slotClass: "system",
+      maxSessions: 2,
+    });
+
+    const capacity = await service.getCapacity();
+    expect(capacity).toMatchObject({
+      maxSessions: 1,
+      activeWorkers: 1,
+      activeSystem: 2,
+      systemHeadroom: 2,
+      freeSlots: 0,
+    });
+  });
+
+  it("getCapacity reports the worker/system split and remaining worker headroom", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_MAX_SESSIONS: "3",
+      }),
+    );
+    await service.start();
+
+    expect(await service.getCapacity()).toMatchObject({
+      maxSessions: 3,
+      activeWorkers: 0,
+      activeSystem: 0,
+      freeSlots: 3,
+    });
+
+    await service.spawnSession({ name: "w1", workdir: "/tmp/acp-test" });
+    await service.spawnSession({
+      name: "s1",
+      workdir: "/tmp/acp-test",
+      slotClass: "system",
+    });
+
+    // The system session does NOT consume worker headroom: 1 worker used, 2 free.
+    expect(await service.getCapacity()).toMatchObject({
+      maxSessions: 3,
+      activeWorkers: 1,
+      activeSystem: 1,
+      freeSlots: 2,
+    });
   });
 
   it("rejects a concurrent prompt for the same native session (TOCTOU #11028)", async () => {

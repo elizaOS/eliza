@@ -29,7 +29,7 @@ import {
   type OrchestratorTaskType,
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
-import { AcpService } from "./acp-service.js";
+import { type AcpCapacity, AcpService } from "./acp-service.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
   accountMetaFromSessionMetadata,
@@ -97,6 +97,7 @@ import {
   type OrchestratorRoomRoster,
   type OrchestratorRoomRosterOverview,
   type OrchestratorTaskDocument,
+  type OrchestratorTaskPriority,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
@@ -115,7 +116,14 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
-import type { ApprovalPreset } from "./types.js";
+import {
+  AdmissionQueueFullError,
+  type ApprovalPreset,
+  SessionCapError,
+  type SessionInfo,
+  type SpawnResult,
+  TERMINAL_SESSION_STATUSES,
+} from "./types.js";
 import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
@@ -137,6 +145,194 @@ export class RecoveryConflictError extends Error {
     super(message);
     this.name = "RecoveryConflictError";
   }
+}
+
+// ---- admission queue ------------------------------------------------------
+// When the ACP worker pool is at `ELIZA_ACP_MAX_SESSIONS`, a spawn no longer
+// fails: the task is PARKED (its `open` status plus a durable
+// `metadata.admission` entry) and a dispatcher drains the queue as worker slots
+// free. The queue is in-memory but rebuilt from `open` tasks at boot, so no new
+// table and no new task status are needed — `open` already means "created, no
+// live session".
+
+/** Default flag values; each overridable via the matching env var / setting. */
+const DEFAULT_ADMISSION_QUEUE_DEPTH = 32;
+const DEFAULT_QUEUE_AGING_MS = 600_000; // 10 min → one band promotion.
+const ADMISSION_RECONCILE_INTERVAL_MS = 30_000;
+
+/** Priority bands as comparable integers (higher dispatches first). */
+const PRIORITY_BAND: Record<OrchestratorTaskPriority, number> = {
+  low: 0,
+  normal: 1,
+  high: 2,
+  urgent: 3,
+};
+const MAX_PRIORITY_BAND = PRIORITY_BAND.urgent;
+
+/** Session events that free (or may free) a worker slot, so the dispatcher runs. */
+const ADMISSION_TERMINAL_EVENTS: ReadonlySet<string> = new Set([
+  "task_complete",
+  "error",
+  "stopped",
+]);
+
+/**
+ * The serializable subset of {@link SpawnAgentForTaskOptions} persisted with a
+ * queued task so its eventual dispatch reproduces the caller's intent. Excludes
+ * `nestingDepth` (a live recursion counter, meaningless once parked).
+ */
+export interface SavedSpawnOpts {
+  framework?: string;
+  providerSource?: string;
+  model?: string;
+  workdir?: string;
+  repo?: string;
+  label?: string;
+  task?: string;
+  approvalPreset?: ApprovalPreset;
+}
+
+/** Durable admission record stamped on `task.metadata.admission`. */
+export interface AdmissionMetadata {
+  state: "queued";
+  enqueuedAt: number;
+  priorityAtEnqueue: OrchestratorTaskPriority;
+  spawnOpts: SavedSpawnOpts;
+}
+
+/** In-memory queue entry — the durable admission fields plus the cheap task
+ *  descriptors (title/roomId) the capacity snapshot and supervisor digest read
+ *  without a per-call store lookup. */
+interface AdmissionQueueEntry {
+  taskId: string;
+  title: string;
+  roomId?: string;
+  enqueuedAt: number;
+  priorityAtEnqueue: OrchestratorTaskPriority;
+  spawnOpts: SavedSpawnOpts;
+}
+
+/** One queued task as the `/capacity` route + provider present it. */
+export interface CapacityQueueItem {
+  taskId: string;
+  title: string;
+  position: number;
+  priority: OrchestratorTaskPriority;
+  enqueuedAt: string;
+}
+
+/** Full capacity picture: ACP pool counts plus the ordered admission queue. */
+export interface CapacitySnapshot {
+  maxSessions: number;
+  activeWorkers: number;
+  activeSystem: number;
+  freeSlots: number;
+  queueDepth: number;
+  queue: CapacityQueueItem[];
+}
+
+/** Effective band after aging: every `agingMs` of wait promotes one band, so a
+ *  `low` task cannot starve behind a steady stream of higher-priority work. */
+function effectiveBand(
+  entry: Pick<AdmissionQueueEntry, "enqueuedAt" | "priorityAtEnqueue">,
+  nowMs: number,
+  agingMs: number,
+): number {
+  const base = PRIORITY_BAND[entry.priorityAtEnqueue];
+  if (agingMs <= 0) return base;
+  const promotions = Math.floor(
+    Math.max(0, nowMs - entry.enqueuedAt) / agingMs,
+  );
+  return Math.min(MAX_PRIORITY_BAND, base + promotions);
+}
+
+/**
+ * Deterministic total order over queued entries: (effectiveBand desc,
+ * enqueuedAt asc, taskId asc). Pure so the ordering — including aging promotion
+ * and the taskId tie-break — is unit-testable without a clock or services.
+ */
+export function orderAdmissionQueue<
+  T extends {
+    taskId: string;
+    enqueuedAt: number;
+    priorityAtEnqueue: OrchestratorTaskPriority;
+  },
+>(entries: readonly T[], nowMs: number, agingMs: number): T[] {
+  return [...entries].sort((a, b) => {
+    const bandDelta =
+      effectiveBand(b, nowMs, agingMs) - effectiveBand(a, nowMs, agingMs);
+    if (bandDelta !== 0) return bandDelta;
+    if (a.enqueuedAt !== b.enqueuedAt) return a.enqueuedAt - b.enqueuedAt;
+    return a.taskId.localeCompare(b.taskId);
+  });
+}
+
+/** Validate a persisted `metadata.admission` value back into typed
+ *  {@link AdmissionMetadata}; returns undefined when absent or malformed so a
+ *  corrupt entry is ignored rather than dispatched with junk options. */
+function readAdmissionMetadata(
+  metadata: Record<string, unknown> | undefined,
+): AdmissionMetadata | undefined {
+  const raw = metadata?.admission;
+  if (!isRecord(raw)) return undefined;
+  if (raw.state !== "queued") return undefined;
+  if (typeof raw.enqueuedAt !== "number") return undefined;
+  const priority = raw.priorityAtEnqueue;
+  if (
+    priority !== "low" &&
+    priority !== "normal" &&
+    priority !== "high" &&
+    priority !== "urgent"
+  ) {
+    return undefined;
+  }
+  return {
+    state: "queued",
+    enqueuedAt: raw.enqueuedAt,
+    priorityAtEnqueue: priority,
+    spawnOpts: isRecord(raw.spawnOpts) ? pickSavedSpawnOpts(raw.spawnOpts) : {},
+  };
+}
+
+/** Extract only the serializable spawn options, dropping undefined + unknown
+ *  keys so the durable admission record stays lean and typed. */
+function pickSavedSpawnOpts(source: Record<string, unknown>): SavedSpawnOpts {
+  const out: SavedSpawnOpts = {};
+  if (typeof source.framework === "string") out.framework = source.framework;
+  if (typeof source.providerSource === "string")
+    out.providerSource = source.providerSource;
+  if (typeof source.model === "string") out.model = source.model;
+  if (typeof source.workdir === "string") out.workdir = source.workdir;
+  if (typeof source.repo === "string") out.repo = source.repo;
+  if (typeof source.label === "string") out.label = source.label;
+  if (typeof source.task === "string") out.task = source.task;
+  if (typeof source.approvalPreset === "string")
+    out.approvalPreset = source.approvalPreset as ApprovalPreset;
+  return out;
+}
+
+/** Read a positive-integer setting/env value, else the default. */
+function positiveIntSetting(
+  runtime: { getSetting?: (key: string) => string | undefined | null },
+  key: string,
+  fallback: number,
+): number {
+  const raw = runtime.getSetting?.(key) ?? process.env[key];
+  const parsed =
+    typeof raw === "string" ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+/** The admission queue is ON unless explicitly disabled (`0`/`false`/`off`/`no`)
+ *  — a kill switch that restores the legacy reject-at-cap behavior. */
+function admissionQueueEnabled(runtime: {
+  getSetting?: (key: string) => string | undefined | null;
+}): boolean {
+  const raw =
+    runtime.getSetting?.("ELIZA_ACP_ADMISSION_QUEUE") ??
+    process.env.ELIZA_ACP_ADMISSION_QUEUE;
+  if (typeof raw !== "string") return true;
+  return !["0", "false", "off", "no"].includes(raw.trim().toLowerCase());
 }
 
 type RuntimeLike = IAgentRuntime & {
@@ -625,12 +821,37 @@ export class OrchestratorTaskService extends Service {
   private unsubscribe: (() => void) | undefined;
   private started = false;
 
+  // ---- admission queue state --------------------------------------------
+  private readonly admissionEnabled: boolean;
+  private readonly queueDepthCap: number;
+  private readonly queueAgingMs: number;
+  // In-memory ordered by priority+age at drain time (see orderAdmissionQueue);
+  // the durable source of truth is each task's `metadata.admission`, from which
+  // this list is rebuilt on start().
+  private readonly admissionQueue: AdmissionQueueEntry[] = [];
+  // Serializes drains so the terminal-event trigger and the reconcile tick can't
+  // dispatch the same slot twice; a request arriving mid-drain re-runs after.
+  private draining = false;
+  private drainRequested = false;
+  private reconcileTimer: ReturnType<typeof setInterval> | undefined;
+
   constructor(
     runtime: IAgentRuntime,
     opts: { store?: OrchestratorTaskStore } = {},
   ) {
     super(runtime);
     this.runtime = runtime as RuntimeLike;
+    this.admissionEnabled = admissionQueueEnabled(this.runtime);
+    this.queueDepthCap = positiveIntSetting(
+      this.runtime,
+      "ELIZA_ACP_ADMISSION_QUEUE_DEPTH",
+      DEFAULT_ADMISSION_QUEUE_DEPTH,
+    );
+    this.queueAgingMs = positiveIntSetting(
+      this.runtime,
+      "ELIZA_ACP_QUEUE_AGING_MS",
+      DEFAULT_QUEUE_AGING_MS,
+    );
     this.store =
       opts.store ??
       new OrchestratorTaskStore({
@@ -661,9 +882,22 @@ export class OrchestratorTaskService extends Service {
     // Persist self-spend durably so a configured ELIZA_AGENT_SPEND_CAP_USD
     // survives a restart instead of resetting to zero (#8924).
     configureSpendLedger(createTaskStoreSpendLedger(this.store));
+    // Rebuild the in-memory admission queue from durable state so a restart
+    // mid-queue resumes dispatching parked tasks instead of stranding them.
+    if (this.admissionEnabled) {
+      await this.rebuildAdmissionQueue();
+      // A 30s reconcile tick is the safety net for the event-driven drain: if a
+      // terminal event is missed (crash, dropped subscription) a freed slot is
+      // still picked up within one interval.
+      this.reconcileTimer = setInterval(() => {
+        void this.drainAdmissionQueue();
+      }, ADMISSION_RECONCILE_INTERVAL_MS);
+      this.reconcileTimer.unref?.();
+    }
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
+      if (this.admissionEnabled) void this.drainAdmissionQueue();
       return;
     }
     // ACP may not be registered yet — service start order during boot isn't
@@ -711,6 +945,10 @@ export class OrchestratorTaskService extends Service {
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = undefined;
+    }
     this.started = false;
   }
 
@@ -943,6 +1181,12 @@ export class OrchestratorTaskService extends Service {
       }
       default:
         break;
+    }
+    // A terminal session event may have freed a worker slot — drain the
+    // admission queue so a parked task dispatches without waiting for the
+    // reconcile tick.
+    if (this.admissionEnabled && ADMISSION_TERMINAL_EVENTS.has(event)) {
+      void this.drainAdmissionQueue();
     }
   }
 
@@ -1601,7 +1845,12 @@ export class OrchestratorTaskService extends Service {
 
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
-    return doc ? toTaskThreadDetail(doc) : null;
+    if (!doc) return null;
+    const detail = toTaskThreadDetail(doc);
+    const admission = this.admissionForTask(taskId);
+    // Position is a cross-task, live value (it depends on the whole ordered
+    // queue), so it is overlaid here rather than derived by the pure mapper.
+    return admission ? { ...detail, admission } : detail;
   }
 
   /**
@@ -1655,12 +1904,33 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, { paused: true });
+    // Take a queued task out of the dispatch running; its durable admission
+    // record persists so resume can restore its position.
+    this.removeFromAdmissionQueue(taskId);
     return this.getTask(taskId);
   }
 
   async resumeTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const updated = await this.store.updateTask(taskId, { paused: false });
     if (!updated) return null;
+    // Re-arm a paused queued task and kick a drain so it competes for a slot.
+    const admission = readAdmissionMetadata(updated.metadata);
+    if (
+      this.admissionEnabled &&
+      updated.status === "open" &&
+      admission &&
+      !this.admissionQueue.some((e) => e.taskId === taskId)
+    ) {
+      this.admissionQueue.push({
+        taskId,
+        title: updated.title,
+        roomId: updated.roomId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+        spawnOpts: admission.spawnOpts,
+      });
+      void this.drainAdmissionQueue();
+    }
     return this.getTask(taskId);
   }
 
@@ -1668,6 +1938,7 @@ export class OrchestratorTaskService extends Service {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     await this.stopActiveSessions(doc);
+    await this.clearAdmissionMetadata(taskId);
     await this.store.updateTask(taskId, {
       archived: true,
       status: "archived",
@@ -1696,6 +1967,7 @@ export class OrchestratorTaskService extends Service {
     const doc = await this.store.getTask(taskId);
     if (!doc) return false;
     await this.stopActiveSessions(doc);
+    this.removeFromAdmissionQueue(taskId);
     for (const session of doc.sessions) {
       this.sessionTaskIndex.delete(session.sessionId);
       this.recordFailureWarned.delete(session.sessionId);
@@ -2202,6 +2474,10 @@ export class OrchestratorTaskService extends Service {
       workdir,
       initialTask: prompt,
       approvalPreset: "verifier",
+      // A `system` slot draws from the reserved verifier headroom, never the
+      // worker pool — so completion validation cannot deadlock behind a full
+      // worker cap (the task that must validate can never free its own slot).
+      slotClass: "system",
       metadata: {
         taskId,
         source: "independent-verifier",
@@ -2661,6 +2937,10 @@ export class OrchestratorTaskService extends Service {
   async spawnAgentForTask(
     taskId: string,
     opts: SpawnAgentForTaskOptions = {},
+    // Public callers get `enqueue-on-cap` (park the task at the session cap);
+    // the admission-queue dispatcher passes `throw-on-cap` so it keeps the
+    // task's queue position when it loses the slot race to a direct spawn.
+    admissionMode: "enqueue-on-cap" | "throw-on-cap" = "enqueue-on-cap",
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
@@ -2736,43 +3016,62 @@ export class OrchestratorTaskService extends Service {
       }
     }
 
-    const result = await acp.spawnSession({
-      // Coding-agent selection: explicit request → routing policy → the
-      // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
-      // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
-      // sub-agent) → opencode as the safe fallback. Honoring the configured
-      // default here keeps this spawn path consistent with acp-service's
-      // `defaultAgent`; previously this hardcoded "opencode" because elizaos had
-      // no ACP command, but elizaos is now a supported ACP agent via
-      // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
-      // image) gets eliza-code, while unconfigured hosts still get opencode.
-      agentType:
-        opts.framework ??
-        policy.preferredFramework ??
-        configuredDefaultAgentType(this.runtime) ??
-        "opencode",
-      workdir,
-      initialTask: goalPrompt,
-      model: opts.model ?? policy.model,
-      approvalPreset: opts.approvalPreset,
-      metadata: {
-        taskId,
-        roomId: doc.task.taskRoomId ?? doc.task.roomId,
-        label: agentName,
-        source: "orchestrator",
-        // Persist the bare goal (the same key the direct-API spawn stamps) so
-        // completion-time consumers that read the task text off session
-        // metadata — the built-apps registry's app-build gate, interruption
-        // relevance — see what this session is building.
-        goal: doc.task.goal,
-        // Orchestrator sessions outlive their first prompt so follow-ups and
-        // validation re-dispatch can reuse them.
-        keepAliveAfterComplete: true,
-        // Carried so a child this sub-agent spawns can compute its own depth
-        // (parent depth + 1) and the nesting guard above can enforce the cap.
-        nestingDepth,
-      },
-    });
+    let result: SpawnResult;
+    try {
+      result = await acp.spawnSession({
+        // Coding-agent selection: explicit request → routing policy → the
+        // deployment's configured default (ELIZA_ACP_DEFAULT_AGENT /
+        // ELIZA_DEFAULT_AGENT_TYPE — e.g. "elizaos" for the eliza-code coding
+        // sub-agent) → opencode as the safe fallback. Honoring the configured
+        // default here keeps this spawn path consistent with acp-service's
+        // `defaultAgent`; previously this hardcoded "opencode" because elizaos
+        // had no ACP command, but elizaos is now a supported ACP agent via
+        // ELIZA_ELIZAOS_ACP_COMMAND, so a host that selects it (local or cloud
+        // image) gets eliza-code, while unconfigured hosts still get opencode.
+        agentType:
+          opts.framework ??
+          policy.preferredFramework ??
+          configuredDefaultAgentType(this.runtime) ??
+          "opencode",
+        workdir,
+        initialTask: goalPrompt,
+        model: opts.model ?? policy.model,
+        approvalPreset: opts.approvalPreset,
+        metadata: {
+          taskId,
+          roomId: doc.task.taskRoomId ?? doc.task.roomId,
+          label: agentName,
+          source: "orchestrator",
+          // Persist the bare goal (the same key the direct-API spawn stamps) so
+          // completion-time consumers that read the task text off session
+          // metadata — the built-apps registry's app-build gate, interruption
+          // relevance — see what this session is building.
+          goal: doc.task.goal,
+          // Orchestrator sessions outlive their first prompt so follow-ups and
+          // validation re-dispatch can reuse them.
+          keepAliveAfterComplete: true,
+          // Carried so a child this sub-agent spawns can compute its own depth
+          // (parent depth + 1) and the nesting guard above can enforce the cap.
+          nestingDepth,
+        },
+      });
+    } catch (err) {
+      // error-policy:J1 translate the ACP cap boundary — at the worker cap the
+      // atomic reserve throws SessionCapError. With the admission queue on, PARK
+      // the task instead of failing: it stays `open` with a durable admission
+      // entry, and the dispatcher spawns it when a worker slot frees.
+      // `throw-on-cap` (the dispatcher itself) rethrows so it keeps the task's
+      // queue position after losing a slot race; every other error rethrows.
+      if (
+        err instanceof SessionCapError &&
+        this.admissionEnabled &&
+        admissionMode === "enqueue-on-cap"
+      ) {
+        await this.enqueueAdmission(taskId, pickSavedSpawnOpts({ ...opts }));
+        return this.getTask(taskId);
+      }
+      throw err;
+    }
 
     const account = accountMetaFromSessionMetadata(
       result.metadata as Record<string, unknown> | undefined,
@@ -3265,6 +3564,278 @@ export class OrchestratorTaskService extends Service {
         }`,
       );
     }
+  }
+
+  // ---- admission queue ---------------------------------------------------
+
+  /** Rebuild the in-memory queue from durable state at boot: every `open` task
+   *  carrying a valid `metadata.admission` entry, ordered by enqueue time. */
+  private async rebuildAdmissionQueue(): Promise<void> {
+    this.admissionQueue.length = 0;
+    const records = await this.store.listTasks({ includeArchived: false });
+    const restored: AdmissionQueueEntry[] = [];
+    for (const record of records) {
+      if (record.status !== "open" || record.paused) continue;
+      const admission = readAdmissionMetadata(record.metadata);
+      if (!admission) continue;
+      restored.push({
+        taskId: record.id,
+        title: record.title,
+        roomId: record.roomId,
+        enqueuedAt: admission.enqueuedAt,
+        priorityAtEnqueue: admission.priorityAtEnqueue,
+        spawnOpts: admission.spawnOpts,
+      });
+    }
+    restored.sort((a, b) => a.enqueuedAt - b.enqueuedAt);
+    this.admissionQueue.push(...restored);
+  }
+
+  /** Park a task at the session cap: write the durable admission record and add
+   *  it to the in-memory queue. Idempotent for an already-queued task; throws
+   *  {@link AdmissionQueueFullError} at the depth cap. */
+  private async enqueueAdmission(
+    taskId: string,
+    spawnOpts: SavedSpawnOpts,
+  ): Promise<AdmissionMetadata | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    const existing = readAdmissionMetadata(doc.task.metadata);
+    if (existing) {
+      if (!this.admissionQueue.some((e) => e.taskId === taskId)) {
+        this.admissionQueue.push({
+          taskId,
+          title: doc.task.title,
+          roomId: doc.task.roomId,
+          enqueuedAt: existing.enqueuedAt,
+          priorityAtEnqueue: existing.priorityAtEnqueue,
+          spawnOpts: existing.spawnOpts,
+        });
+      }
+      return existing;
+    }
+    if (this.admissionQueue.length >= this.queueDepthCap) {
+      throw new AdmissionQueueFullError(this.queueDepthCap);
+    }
+    const admission: AdmissionMetadata = {
+      state: "queued",
+      enqueuedAt: Date.now(),
+      priorityAtEnqueue: doc.task.priority,
+      spawnOpts,
+    };
+    await this.store.updateTask(taskId, {
+      metadata: { ...doc.task.metadata, admission },
+    });
+    this.admissionQueue.push({
+      taskId,
+      title: doc.task.title,
+      roomId: doc.task.roomId,
+      enqueuedAt: admission.enqueuedAt,
+      priorityAtEnqueue: admission.priorityAtEnqueue,
+      spawnOpts,
+    });
+    this.log("info", "task parked in admission queue at session cap", {
+      taskId,
+      priority: admission.priorityAtEnqueue,
+      queueDepth: this.admissionQueue.length,
+    });
+    return admission;
+  }
+
+  private removeFromAdmissionQueue(taskId: string): void {
+    const idx = this.admissionQueue.findIndex((e) => e.taskId === taskId);
+    if (idx >= 0) this.admissionQueue.splice(idx, 1);
+  }
+
+  /** Clear the admission record entirely — from the in-memory queue and from
+   *  durable task metadata. Used on successful dispatch and on cancel/archive. */
+  private async clearAdmissionMetadata(taskId: string): Promise<void> {
+    this.removeFromAdmissionQueue(taskId);
+    const doc = await this.store.getTask(taskId);
+    if (!doc || !readAdmissionMetadata(doc.task.metadata)) return;
+    const { admission: _cleared, ...rest } = doc.task.metadata;
+    await this.store.updateTask(taskId, { metadata: rest });
+  }
+
+  /**
+   * Drain the admission queue while worker slots are free. Serialized: a request
+   * that arrives while a drain is running sets a re-run flag rather than
+   * dispatching concurrently, so no slot is ever double-spawned.
+   */
+  private async drainAdmissionQueue(): Promise<void> {
+    if (!this.admissionEnabled) return;
+    if (this.draining) {
+      this.drainRequested = true;
+      return;
+    }
+    this.draining = true;
+    try {
+      do {
+        this.drainRequested = false;
+        await this.drainOnce();
+      } while (this.drainRequested);
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  private async drainOnce(): Promise<void> {
+    const acp = this.acp();
+    if (!acp) return;
+    while (this.admissionQueue.length > 0) {
+      const capacity = await acp.getCapacity();
+      if (capacity.freeSlots <= 0) {
+        // No worker slot: try to reclaim one from a keepAlive session whose task
+        // is already terminal. If none can be reclaimed, stop — the next
+        // terminal event or reconcile tick will retry.
+        const reclaimed = await this.reclaimIdleWorkerSlot(acp);
+        if (!reclaimed) return;
+        continue;
+      }
+      const entry = orderAdmissionQueue(
+        this.admissionQueue,
+        Date.now(),
+        this.queueAgingMs,
+      )[0];
+      if (!entry) return;
+      // Re-read the task: it may have been cancelled/paused/completed since
+      // enqueue, in which case it is no longer a dispatch candidate (#13771 —
+      // dispatch of a queued task must be illegal once terminal or paused).
+      const doc = await this.store.getTask(entry.taskId);
+      const dispatchable =
+        doc?.task.status === "open" &&
+        !doc.task.paused &&
+        readAdmissionMetadata(doc.task.metadata) !== undefined;
+      if (!dispatchable) {
+        await this.clearAdmissionMetadata(entry.taskId);
+        continue;
+      }
+      // Dequeue optimistically so a re-entrant drain can't pick the same entry;
+      // restored below if we lose the slot race.
+      this.removeFromAdmissionQueue(entry.taskId);
+      try {
+        await this.spawnAgentForTask(
+          entry.taskId,
+          entry.spawnOpts,
+          "throw-on-cap",
+        );
+        await this.clearAdmissionMetadata(entry.taskId);
+      } catch (err) {
+        // error-policy:J7 dispatcher must not die on one task's spawn failure.
+        if (err instanceof SessionCapError) {
+          // A direct spawn won the slot between our capacity read and the
+          // reserve. Keep the task's position and stop draining this pass.
+          this.admissionQueue.push(entry);
+          return;
+        }
+        // A genuine spawn failure (not the cap): clear the parked record and
+        // surface it via reportError. The task stays `open` and can be
+        // re-submitted; leaving it enqueued would hot-loop on the same failure.
+        await this.clearAdmissionMetadata(entry.taskId);
+        this.runtime.reportError("OrchestratorTask.drainAdmissionQueue", err, {
+          taskId: entry.taskId,
+        });
+        this.log("warn", "queued task failed to dispatch", {
+          taskId: entry.taskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * Free a worker slot by stopping the oldest keepAlive session whose TASK is
+   * already terminal (done/failed/archived). Never touches a session whose task
+   * is still validating/active. Returns true when a slot was reclaimed.
+   */
+  private async reclaimIdleWorkerSlot(acp: AcpService): Promise<boolean> {
+    const sessions = await acp.listSessions();
+    const candidates: SessionInfo[] = [];
+    for (const session of sessions) {
+      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      const meta = session.metadata as Record<string, unknown> | undefined;
+      if (meta?.slotClass === "system") continue;
+      if (meta?.keepAliveAfterComplete !== true) continue;
+      const taskId = typeof meta?.taskId === "string" ? meta.taskId : undefined;
+      if (!taskId) continue;
+      const doc = await this.store.getTask(taskId);
+      if (!doc || !TERMINAL_TASK_STATUSES.has(doc.task.status)) continue;
+      candidates.push(session);
+    }
+    if (candidates.length === 0) return false;
+    candidates.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const oldest = candidates[0];
+    if (!oldest) return false;
+    await acp.stopSession(oldest.id);
+    this.log("info", "reclaimed idle keepAlive worker slot for queued task", {
+      sessionId: oldest.id,
+    });
+    return true;
+  }
+
+  /** Capacity picture for the `/capacity` route: ACP pool counts + the ordered
+   *  admission queue with 1-based positions. */
+  async getCapacitySnapshot(): Promise<CapacitySnapshot> {
+    const acp = this.acp();
+    const capacity: AcpCapacity = acp
+      ? await acp.getCapacity()
+      : {
+          maxSessions: 0,
+          activeWorkers: 0,
+          activeSystem: 0,
+          systemHeadroom: 0,
+          freeSlots: 0,
+        };
+    const ordered = orderAdmissionQueue(
+      this.admissionQueue,
+      Date.now(),
+      this.queueAgingMs,
+    );
+    return {
+      maxSessions: capacity.maxSessions,
+      activeWorkers: capacity.activeWorkers,
+      activeSystem: capacity.activeSystem,
+      freeSlots: capacity.freeSlots,
+      queueDepth: ordered.length,
+      queue: ordered.map((entry, index) => ({
+        taskId: entry.taskId,
+        title: entry.title,
+        position: index + 1,
+        priority: entry.priorityAtEnqueue,
+        enqueuedAt: new Date(entry.enqueuedAt).toISOString(),
+      })),
+    };
+  }
+
+  /** Count of queued tasks per originating room, for the supervisor digest. */
+  queuedCountsByRoom(): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const entry of this.admissionQueue) {
+      if (!entry.roomId) continue;
+      counts[entry.roomId] = (counts[entry.roomId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  /** The admission overlay for one task's DTO (state + 1-based position +
+   *  enqueue time), or undefined when the task is not queued. */
+  private admissionForTask(
+    taskId: string,
+  ): { state: "queued"; position: number; enqueuedAt: string } | undefined {
+    const ordered = orderAdmissionQueue(
+      this.admissionQueue,
+      Date.now(),
+      this.queueAgingMs,
+    );
+    const index = ordered.findIndex((entry) => entry.taskId === taskId);
+    if (index < 0) return undefined;
+    const entry = ordered[index];
+    if (!entry) return undefined;
+    return {
+      state: "queued",
+      position: index + 1,
+      enqueuedAt: new Date(entry.enqueuedAt).toISOString(),
+    };
   }
 
   private acp(): AcpService | undefined {

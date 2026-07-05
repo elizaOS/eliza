@@ -32,6 +32,7 @@ import type {
   OrchestratorTaskPriority,
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
+import { AdmissionQueueFullError } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
   asBoolean,
@@ -233,6 +234,13 @@ async function dispatchOrchestratorRoutes(
   // GET /api/orchestrator/status
   if (method === "GET" && pathname === `${PREFIX}/status`) {
     sendJson(res, await service.getStatus());
+    return true;
+  }
+
+  // GET /api/orchestrator/capacity — worker/system pool counts + the ordered
+  // admission queue (tasks parked at the session cap awaiting a free slot).
+  if (method === "GET" && pathname === `${PREFIX}/capacity`) {
+    sendJson(res, await service.getCapacitySnapshot());
     return true;
   }
 
@@ -953,11 +961,12 @@ async function dispatchOrchestratorRoutes(
             task: asString(body.task),
           });
         } catch (error) {
-          // error-policy:J1 route boundary — spawn failure becomes a 500 response.
+          // error-policy:J1 route boundary — a full admission queue is a
+          // retry-later 429; any other spawn failure is a 500.
           sendError(
             res,
             error instanceof Error ? error.message : "Failed to spawn agent",
-            500,
+            error instanceof AdmissionQueueFullError ? 429 : 500,
           );
           return true;
         }
@@ -965,7 +974,9 @@ async function dispatchOrchestratorRoutes(
           sendError(res, "Task not found", 404);
           return true;
         }
-        sendJson(res, task, 201);
+        // A parked task returns 202 (Accepted, not yet spawned) with its queue
+        // position in the DTO; an immediate spawn stays 201 (Created).
+        sendJson(res, task, task.admission?.state === "queued" ? 202 : 201);
         return true;
       }
       // POST /tasks/:taskId/agents/:sessionId/stop

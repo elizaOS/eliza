@@ -1,8 +1,63 @@
 /**
  * Shared type vocabulary for the ACP session layer: agent/backend kinds,
  * approval presets, session status and lifecycle events, spawn options, and the
- * `SessionStore` contract the persistence tiers implement.
+ * `SessionStore` contract the persistence tiers implement. Also home to the
+ * admission-control errors (`SessionCapError`, `AdmissionQueueFullError`) that
+ * the ACP cap and the orchestrator admission queue throw, so the route layer
+ * can map them to status codes without regex-matching messages.
  */
+
+/**
+ * Which capacity pool a session draws from. `worker` sessions do the actual
+ * task work and count against `ELIZA_ACP_MAX_SESSIONS`; short-lived `system`
+ * sessions (e.g. the read-only completion verifier) draw from a small separate
+ * headroom so validation can never deadlock behind a full worker pool.
+ */
+export type SessionSlotClass = "worker" | "system";
+
+/**
+ * Thrown by {@link AcpService} when a spawn would exceed the capacity of its
+ * slot class. `code` is the stable contract consumers branch on; `maxSessions`
+ * and `activeCount` describe the pool that was full. The message is actionable
+ * for the direct (non-queued) spawn paths that surface it to the user verbatim.
+ */
+export class SessionCapError extends Error {
+  readonly code = "SESSION_CAP_REACHED" as const;
+  readonly maxSessions: number;
+  readonly activeCount: number;
+  readonly slotClass: SessionSlotClass;
+  constructor(params: {
+    maxSessions: number;
+    activeCount: number;
+    slotClass: SessionSlotClass;
+  }) {
+    super(
+      `Session capacity reached (${params.activeCount}/${params.maxSessions} ${params.slotClass} sessions active). Create a task to queue this work, or wait for a running session to finish.`,
+    );
+    this.name = "SessionCapError";
+    this.maxSessions = params.maxSessions;
+    this.activeCount = params.activeCount;
+    this.slotClass = params.slotClass;
+  }
+}
+
+/**
+ * Thrown by the orchestrator admission queue when a task cannot be parked
+ * because the queue is already at `ELIZA_ACP_ADMISSION_QUEUE_DEPTH`. The route
+ * boundary maps this to HTTP 429 (retry later) rather than 500.
+ */
+export class AdmissionQueueFullError extends Error {
+  readonly code = "ADMISSION_QUEUE_FULL" as const;
+  readonly depth: number;
+  constructor(depth: number) {
+    super(
+      `Admission queue is full (${depth} tasks queued). Wait for a queued task to be dispatched before submitting more.`,
+    );
+    this.name = "AdmissionQueueFullError";
+    this.depth = depth;
+  }
+}
+
 export type AgentType =
   | "elizaos"
   | "pi-agent"
@@ -103,6 +158,12 @@ export interface SpawnOptions {
   skipAdapterAutoResponse?: boolean;
   timeoutMs?: number;
   model?: string;
+  /**
+   * Which capacity pool this spawn draws from (default `worker`). `system`
+   * sessions (short-lived, e.g. the read-only verifier) draw from a separate
+   * headroom so they can never be starved by a full worker pool.
+   */
+  slotClass?: SessionSlotClass;
 }
 
 export interface SpawnResult {

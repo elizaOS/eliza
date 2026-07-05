@@ -48,6 +48,17 @@ export interface TaskThreadDto {
   updatedAt: string;
   closedAt: string | null;
   archivedAt: string | null;
+  /**
+   * Present only when the task is parked in the admission queue (at the session
+   * cap, awaiting a free worker slot). `position` is the 1-based live rank in
+   * the queue; it is overlaid by {@link OrchestratorTaskService} rather than the
+   * pure mapper because it depends on the whole ordered queue, not one doc.
+   */
+  admission?: {
+    state: "queued";
+    position: number;
+    enqueuedAt: string;
+  };
 }
 
 export interface TaskSessionDto {

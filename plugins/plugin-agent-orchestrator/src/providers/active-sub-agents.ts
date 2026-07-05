@@ -13,6 +13,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
+import type { CapacitySnapshot } from "../services/orchestrator-task-service.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
   type SessionInfo,
@@ -20,6 +21,54 @@ import {
 } from "../services/types.js";
 
 type ApproachingCapKind = "round-trip" | "spend";
+
+/** The structural slice of the admission-queue capacity the planner needs:
+ *  pool counts and ordered queued task ids/labels — no timestamps, so the
+ *  provider segment stays prefix-cache stable turn over turn. */
+interface CapacityView {
+  maxSessions: number;
+  activeWorkers: number;
+  queueDepth: number;
+  queuedTaskIds: string[];
+  nextTitle?: string;
+}
+
+/** Read the admission-queue capacity from the orchestrator task service.
+ *  Returns undefined when the service is absent or the read fails — the
+ *  capacity line is a supplementary planner hint, never the session list. */
+async function readCapacity(
+  runtime: IAgentRuntime,
+): Promise<CapacityView | undefined> {
+  const service = runtime.getService<
+    Service & { getCapacitySnapshot?: () => Promise<CapacitySnapshot> }
+  >("ORCHESTRATOR_TASK_SERVICE");
+  if (!service || typeof service.getCapacitySnapshot !== "function") {
+    return undefined;
+  }
+  try {
+    const snapshot = await service.getCapacitySnapshot();
+    return {
+      maxSessions: snapshot.maxSessions,
+      activeWorkers: snapshot.activeWorkers,
+      queueDepth: snapshot.queueDepth,
+      queuedTaskIds: snapshot.queue.map((item) => item.taskId),
+      nextTitle: snapshot.queue[0]?.title,
+    };
+  } catch {
+    // error-policy:J4 capacity is a supplementary planner hint; an unavailable
+    // snapshot degrades to no capacity line, not a masked session-list failure.
+    return undefined;
+  }
+}
+
+/** Structural, timestamp-free capacity line for the provider text. */
+function capacityLine(capacity: CapacityView): string {
+  const queued =
+    capacity.queueDepth > 0
+      ? `queued: ${capacity.queueDepth} (next: ${capacity.nextTitle ?? "task"})`
+      : "queued: 0";
+  return `capacity: ${capacity.activeWorkers}/${capacity.maxSessions} worker sessions; ${queued}`;
+}
 
 /** Read the watchdog's current stalled-session set (empty when unavailable). */
 function stalledSessionIds(runtime: IAgentRuntime): Set<string> {
@@ -139,7 +188,29 @@ export const activeSubAgentsProvider: Provider = {
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
-    if (routed.length === 0) return emptyResult();
+    const capacity = await readCapacity(runtime);
+    const capData = capacity
+      ? {
+          maxSessions: capacity.maxSessions,
+          activeWorkers: capacity.activeWorkers,
+          queueDepth: capacity.queueDepth,
+          queuedTaskIds: capacity.queuedTaskIds,
+        }
+      : undefined;
+    // Nothing to show only when there are no live routed sessions AND nothing
+    // parked in the admission queue; a queued task with no live routed session
+    // still surfaces the capacity line so the planner sees the backlog.
+    if (routed.length === 0 && (!capacity || capacity.queueDepth === 0)) {
+      return emptyResult();
+    }
+    if (routed.length === 0 && capacity && capacity.queueDepth > 0) {
+      const text = `## Active sub-agent sessions\n${capacityLine(capacity)}`;
+      return {
+        text,
+        values: { activeSubAgents: text },
+        data: { sessions: [], capacity: capData },
+      };
+    }
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -176,6 +247,7 @@ export const activeSubAgentsProvider: Provider = {
       "Each line is a live sub-agent. Reply to one with SEND_TO_AGENT { sessionId, text }; terminate with STOP_AGENT { sessionId }. Replying to the user uses the standard REPLY action; you may do both in one turn.",
       "The sub-agent's task_complete event is the ground truth for outcomes. For history about past sub-agents, call TASKS_HISTORY explicitly.",
     ];
+    if (capacity) lines.push(capacityLine(capacity));
     for (const session of routed) {
       lines.push(
         formatLine(
@@ -205,6 +277,7 @@ export const activeSubAgentsProvider: Provider = {
           originUserId: (s.metadata as Record<string, unknown> | undefined)
             ?.userId,
         })),
+        capacity: capData,
       },
     };
   },

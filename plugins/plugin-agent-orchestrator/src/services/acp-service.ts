@@ -78,9 +78,11 @@ import {
   type AvailableAgentInfo,
   type PromptResult,
   type SendOptions,
+  SessionCapError,
   type SessionEventCallback,
   type SessionEventName,
   type SessionInfo,
+  type SessionSlotClass,
   type SessionStore,
   type SpawnOptions,
   type SpawnResult,
@@ -135,6 +137,25 @@ type RunResult = {
   cancelled?: boolean;
   durationMs: number;
 };
+
+/** Live capacity split by slot class. `freeSlots` is the remaining worker
+ *  headroom (`max(0, maxSessions - activeWorkers)`); the orchestrator admission
+ *  queue drains while it is positive. */
+export interface AcpCapacity {
+  maxSessions: number;
+  activeWorkers: number;
+  activeSystem: number;
+  systemHeadroom: number;
+  freeSlots: number;
+}
+
+/** Read a session's slot class off its metadata; anything but the explicit
+ *  `system` marker (including a pre-slot-class session) counts as `worker`. */
+function slotClassOf(session: SessionInfo): SessionSlotClass {
+  const raw = (session.metadata as Record<string, unknown> | undefined)
+    ?.slotClass;
+  return raw === "system" ? "system" : "worker";
+}
 
 const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
@@ -290,6 +311,12 @@ export class AcpService extends Service {
   private readonly transportMode: "native" | "cli";
   private readonly defaultAgent: AgentType;
   private readonly maxSessions: number;
+  // Reserved slots for short-lived `system` sessions (the read-only completion
+  // verifier), counted separately from `maxSessions` so validation can spawn
+  // even when every worker slot is taken — otherwise a full worker pool would
+  // deadlock: the task that must validate can never free a slot for its own
+  // verifier. Overridable via ELIZA_ACP_SYSTEM_SESSION_HEADROOM.
+  private readonly systemSessionHeadroom: number;
   // Serializes the session-limit check-and-reserve so concurrent spawns can't
   // each pass the limit check before any has inserted (which would overshoot
   // ELIZA_ACP_MAX_SESSIONS). A promise-chain mutex: each reservation awaits the
@@ -345,6 +372,8 @@ export class AcpService extends Service {
       "fixed";
     this.maxSessions =
       parsePositiveInt(this.setting("ELIZA_ACP_MAX_SESSIONS")) ?? 8;
+    this.systemSessionHeadroom =
+      parsePositiveInt(this.setting("ELIZA_ACP_SYSTEM_SESSION_HEADROOM")) ?? 2;
     this.sessionTimeoutMs = parsePositiveInt(
       this.setting("ACPX_DEFAULT_TIMEOUT_MS") ??
         this.setting("ELIZA_ACP_PROMPT_TIMEOUT_MS"),
@@ -779,6 +808,11 @@ export class AcpService extends Service {
     }
 
     const now = new Date();
+    // Stamp the slot class onto the session so the capacity accounting can read
+    // it back (getCapacity / enforceSessionLimit) and so reattach/reconcile keep
+    // a respawned session in the same pool. Default worker.
+    const slotClass: SessionSlotClass =
+      opts.slotClass === "system" ? "system" : "worker";
     const mergedMetadata: Record<string, unknown> = {
       ...(opts.metadata ?? {}),
       ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
@@ -786,11 +820,8 @@ export class AcpService extends Service {
         ? { codingBaselineDirty: baselineDirty }
         : {}),
       ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
+      slotClass,
     };
-    const hasMergedMetadata =
-      Boolean(baselineSha) ||
-      Boolean(resolvedAccount) ||
-      Boolean(opts.metadata);
     const session: SessionInfo = {
       id,
       name,
@@ -800,12 +831,12 @@ export class AcpService extends Service {
       approvalPreset,
       createdAt: now,
       lastActivityAt: now,
-      metadata: hasMergedMetadata ? mergedMetadata : opts.metadata,
+      metadata: mergedMetadata,
     };
     // Atomic check-and-reserve: enforces the session limit and inserts under a
-    // single mutex so concurrent spawns can't overshoot maxSessions (the old
+    // single mutex so concurrent spawns can't overshoot the cap (the old
     // separate enforceSessionLimit()/store.create() left a read-then-act race).
-    await this.reserveSessionSlot(session);
+    await this.reserveSessionSlot(session, slotClass);
 
     // Mint the per-spawn model lease BEFORE the transport branch, so the leased
     // token (not the static gateway token) is what buildEnv injects into the
@@ -2448,14 +2479,56 @@ export class AcpService extends Service {
     return session;
   }
 
-  private async enforceSessionLimit(): Promise<void> {
-    const sessions = await this.store.list();
-    const active = sessions.filter(
-      (s) =>
-        !["stopped", "errored", "completed", "cancelled"].includes(s.status),
-    );
-    if (active.length >= this.maxSessions)
-      throw new Error(`acpx max session limit reached (${this.maxSessions})`);
+  /**
+   * Current capacity split by slot class. `activeWorkers`/`activeSystem` count
+   * live (non-terminal) sessions in each pool; `freeSlots` is the remaining
+   * worker headroom. Read by `getCapacity` (the API + provider) and reused by
+   * `enforceSessionLimit` so the counting rule has one definition.
+   */
+  private computeCapacity(sessions: SessionInfo[]): AcpCapacity {
+    let activeWorkers = 0;
+    let activeSystem = 0;
+    for (const session of sessions) {
+      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      if (slotClassOf(session) === "system") activeSystem += 1;
+      else activeWorkers += 1;
+    }
+    return {
+      maxSessions: this.maxSessions,
+      activeWorkers,
+      activeSystem,
+      systemHeadroom: this.systemSessionHeadroom,
+      freeSlots: Math.max(0, this.maxSessions - activeWorkers),
+    };
+  }
+
+  /** Live capacity snapshot for the admission queue, the `/capacity` route, and
+   *  the `ACTIVE_SUB_AGENTS` provider. */
+  async getCapacity(): Promise<AcpCapacity> {
+    return this.computeCapacity(await this.store.list());
+  }
+
+  private async enforceSessionLimit(
+    slotClass: SessionSlotClass,
+  ): Promise<void> {
+    const capacity = this.computeCapacity(await this.store.list());
+    if (slotClass === "system") {
+      if (capacity.activeSystem >= this.systemSessionHeadroom) {
+        throw new SessionCapError({
+          maxSessions: this.systemSessionHeadroom,
+          activeCount: capacity.activeSystem,
+          slotClass: "system",
+        });
+      }
+      return;
+    }
+    if (capacity.activeWorkers >= this.maxSessions) {
+      throw new SessionCapError({
+        maxSessions: this.maxSessions,
+        activeCount: capacity.activeWorkers,
+        slotClass: "worker",
+      });
+    }
   }
 
   /**
@@ -2463,7 +2536,7 @@ export class AcpService extends Service {
    * session. Wrapping the check (`enforceSessionLimit`) and the insert
    * (`store.create`) in a single mutex-guarded critical section makes them one
    * indivisible operation, so N concurrent spawns can't all pass the limit
-   * check before any has inserted and overshoot `maxSessions`.
+   * check before any has inserted and overshoot the pool cap.
    *
    * The mutex is a promise chain: each call awaits the previous reservation's
    * settlement (success OR failure) before running its own check+insert, so
@@ -2472,7 +2545,10 @@ export class AcpService extends Service {
    * never rejects (we swallow on the tail) so one failed reservation doesn't
    * wedge the lock for later spawns.
    */
-  private async reserveSessionSlot(session: SessionInfo): Promise<void> {
+  private async reserveSessionSlot(
+    session: SessionInfo,
+    slotClass: SessionSlotClass,
+  ): Promise<void> {
     const previous = this.spawnReservationLock;
     let release!: () => void;
     this.spawnReservationLock = new Promise<void>((resolve) => {
@@ -2483,7 +2559,7 @@ export class AcpService extends Service {
     // awaiter; here we only serialize on its settle before counting slots.
     await previous.catch(() => {});
     try {
-      await this.enforceSessionLimit();
+      await this.enforceSessionLimit(slotClass);
       await this.store.create(session);
     } finally {
       release();
