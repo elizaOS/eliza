@@ -130,12 +130,28 @@ function reject(
 
 function assertNonNegativeFinite(
   value: number | undefined,
-  field: keyof ImportUsageEstimate,
+  field:
+    | keyof ImportUsageEstimate
+    | keyof TenantImportQuota
+    | keyof ImportLimits,
 ): void {
   if (value === undefined) return;
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(
       `preflightImport: ${field} must be a non-negative finite number, got ${value}`,
+    );
+  }
+}
+
+function assertValidLimits(limits: ImportLimits): void {
+  assertNonNegativeFinite(limits.maxDirectUploadBytes, "maxDirectUploadBytes");
+  assertNonNegativeFinite(
+    limits.maxResumableUploadBytes,
+    "maxResumableUploadBytes",
+  );
+  if (limits.maxDirectUploadBytes > limits.maxResumableUploadBytes) {
+    throw new Error(
+      "preflightImport: maxDirectUploadBytes must be less than or equal to maxResumableUploadBytes",
     );
   }
 }
@@ -157,10 +173,23 @@ export function preflightImport(
   const limits = options.limits ?? DEFAULT_IMPORT_LIMITS;
   const quota = options.quota;
 
+  assertValidLimits(limits);
   assertNonNegativeFinite(estimate.uploadBytes, "uploadBytes");
   assertNonNegativeFinite(estimate.storageBytes, "storageBytes");
   assertNonNegativeFinite(estimate.embeddingUnits, "embeddingUnits");
   assertNonNegativeFinite(estimate.conversationCount, "conversationCount");
+  assertNonNegativeFinite(
+    quota?.remainingStorageBytes,
+    "remainingStorageBytes",
+  );
+  assertNonNegativeFinite(
+    quota?.remainingEmbeddingUnits,
+    "remainingEmbeddingUnits",
+  );
+  assertNonNegativeFinite(
+    quota?.remainingConversations,
+    "remainingConversations",
+  );
 
   if (estimate.uploadBytes > limits.maxResumableUploadBytes) {
     return reject(
@@ -236,8 +265,17 @@ export function estimateBundleUsage(
       storageBytes += byteLength(part.text);
     }
     for (const message of conversation.messages) {
+      let renderedText = false;
       const text = message.text ?? "";
       if (text.trim().length > 0) {
+        renderedText = true;
+      }
+      for (const attachment of message.attachments ?? []) {
+        if (attachment.text?.trim()) {
+          renderedText = true;
+        }
+      }
+      if (renderedText) {
         embeddingUnits += 1;
       }
     }

@@ -185,6 +185,77 @@ describe("preflightImport — malformed input fails fast", () => {
     ).toThrow(/conversationCount/);
   });
 
+  it("throws on malformed quota dimensions rather than admitting unknown capacity", () => {
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1, storageBytes: 1 },
+        { quota: { remainingStorageBytes: Number.NaN } },
+      ),
+    ).toThrow(/remainingStorageBytes/);
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1, embeddingUnits: 1 },
+        { quota: { remainingEmbeddingUnits: -1 } },
+      ),
+    ).toThrow(/remainingEmbeddingUnits/);
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1, conversationCount: 1 },
+        { quota: { remainingConversations: Number.POSITIVE_INFINITY } },
+      ),
+    ).toThrow(/remainingConversations/);
+  });
+
+  it("throws on malformed caller-supplied limits rather than failing open", () => {
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1 },
+        {
+          limits: {
+            maxDirectUploadBytes: Number.NaN,
+            maxResumableUploadBytes: 100,
+          },
+        },
+      ),
+    ).toThrow(/maxDirectUploadBytes/);
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1 },
+        {
+          limits: {
+            maxDirectUploadBytes: 10,
+            maxResumableUploadBytes: -1,
+          },
+        },
+      ),
+    ).toThrow(/maxResumableUploadBytes/);
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 1 },
+        {
+          limits: {
+            maxDirectUploadBytes: 10,
+            maxResumableUploadBytes: Number.POSITIVE_INFINITY,
+          },
+        },
+      ),
+    ).toThrow(/maxResumableUploadBytes/);
+  });
+
+  it("throws when the direct upload ceiling is larger than the resumable ceiling", () => {
+    expect(() =>
+      preflightImport(
+        { uploadBytes: 50 },
+        {
+          limits: {
+            maxDirectUploadBytes: 100,
+            maxResumableUploadBytes: 10,
+          },
+        },
+      ),
+    ).toThrow(/maxDirectUploadBytes/);
+  });
+
   it("never mutates the caller's estimate", () => {
     const estimate = { uploadBytes: 1 * MiB, conversationCount: 2 };
     const snapshot = { ...estimate };
@@ -220,6 +291,30 @@ describe("estimateBundleUsage", () => {
         messages: [
           { role: "user", text: "   " },
           { role: "assistant", text: "real answer" },
+        ],
+      }),
+    ]);
+    const estimate = estimateBundleUsage(b, 100);
+    expect(estimate.embeddingUnits).toBe(1);
+  });
+
+  it("charges an embedding unit for attachment-only rendered content", () => {
+    const b = bundle([
+      conv({
+        sourceConversationId: "c1",
+        messages: [
+          {
+            role: "user",
+            text: "   ",
+            attachments: [
+              { name: "notes.txt", kind: "extracted-text", text: "embed me" },
+            ],
+          },
+          {
+            role: "assistant",
+            text: "",
+            attachments: [{ name: "empty.txt", kind: "file", text: "   " }],
+          },
         ],
       }),
     ]);
