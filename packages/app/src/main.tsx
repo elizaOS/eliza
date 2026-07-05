@@ -2086,10 +2086,25 @@ async function recordIosAuthCallbackSmoke(
     const activeServer = window.localStorage.getItem("elizaos:active-server");
     sessionEstablished =
       typeof activeServer === "string" && activeServer.length > 0;
-  } catch {
-    // error-policy:J7 diagnostics readback — an unreadable key reports the
-    // safe/expected end state (no session established by the callback).
-    sessionEstablished = false;
+  } catch (error) {
+    // error-policy:J7 diagnostics readback — the smoke must fail closed when it
+    // cannot observe the auth outcome it is supposed to prove.
+    await writeIosAuthCallbackSmokeResult({
+      ok: false,
+      phase: "failed",
+      classification: "synthetic_callback_rejected",
+      error:
+        error instanceof Error
+          ? error.message
+          : `active-server readback failed: ${String(error)}`,
+      path,
+      url,
+      state: parsed.searchParams.get("state") ?? "",
+      code: parsed.searchParams.get("code") ?? "",
+      query: Object.fromEntries(parsed.searchParams.entries()),
+      request,
+    });
+    return;
   }
 
   await writeIosAuthCallbackSmokeResult({
