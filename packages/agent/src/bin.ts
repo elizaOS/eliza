@@ -89,7 +89,7 @@ const _binDebugLog = isAndroidMobile()
     })()
   : () => {};
 _binDebugLog(
-  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
+  `[bin.ts] started ELIZA_PLATFORM=${readAliasedEnv("ELIZA_PLATFORM") ?? "(unset)"} ELIZA_STATE_DIR=${readAliasedEnv("ELIZA_STATE_DIR") ?? "(unset)"}`,
 );
 
 // Mobile devices ship no /etc/resolv.conf, so the musl bun agent can't resolve
