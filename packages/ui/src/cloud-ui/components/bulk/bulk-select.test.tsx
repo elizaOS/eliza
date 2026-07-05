@@ -10,6 +10,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { BulkSelectionBar, runBulkDelete } from "./bulk-select";
 
+vi.mock("lucide-react", () => ({
+  Trash2: () => <span aria-hidden="true" data-testid="trash-icon" />,
+}));
+
 const labels = {
   selected: "2 selected",
   clear: "Clear",
