@@ -88,6 +88,29 @@ describe("parseDockerStats — internal failure propagates (fail closed)", () =>
     expect(() => parseDockerStats("")).toThrow(HetznerClientError);
   });
 
+  it("rejects partial/multi-dot/NaN numeric tokens instead of truncating them (parseFloat leniency)", () => {
+    // `parseFloat("12.3.4")` silently yields 12.3 and `parseFloat(".")` yields
+    // NaN; strict whole-token parsing must reject any value that is not a single
+    // well-formed decimal so corrupt docker output cannot pass as a real metric.
+    const malformed = [
+      line("12.3.4%", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // CPU partial token
+      line("50.0%", "1.2.3MB / 512MiB", "0B / 0B", "0B / 0B"), // size partial token
+      line("50.0%", ". / 512MiB", "0B / 0B", "0B / 0B"), // bare dot -> NaN
+      line("50.0%", "12abc / 512MiB", "0B / 0B", "0B / 0B"), // trailing garbage
+      line("1e3%", "128MiB / 512MiB", "0B / 0B", "0B / 0B"), // exponent form (not docker output)
+    ];
+    for (const bad of malformed) {
+      let err: unknown;
+      try {
+        parseDockerStats(bad);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(HetznerClientError);
+      expect((err as HetznerClientError).code).toBe("invalid_input");
+    }
+  });
+
   it("throws invalid_input on a garbage size token", () => {
     let err: unknown;
     try {

@@ -19,7 +19,7 @@ export function parseDockerStats(raw: string): ContainerMetricsSnapshot {
     );
   }
 
-  const cpuPercent = parseFloat(cpuPerc.replace("%", ""));
+  const cpuPercent = parseCpuPercent(cpuPerc);
   const [memUsedRaw, memLimitRaw] = memUsage.split("/").map((s) => s.trim());
   const memoryBytes = parseSize(memUsedRaw);
   const memoryLimitBytes = parseSize(memLimitRaw);
@@ -50,8 +50,28 @@ const SIZE_UNITS: Record<string, number> = {
   tib: 1_024 ** 4,
 };
 
+/**
+ * Strict CPU-percent parse. `parseFloat` accepts malformed partial tokens
+ * (`"12.3.4%"` -> `12.3`), which would let corrupt docker output masquerade as
+ * healthy metrics; a whole-token regex + `Number()` fails closed on any value
+ * that is not a single well-formed decimal (throws `invalid_input`).
+ */
+function parseCpuPercent(raw: string): number {
+  const token = raw.replace("%", "").trim();
+  if (!/^\d+(?:\.\d+)?$/.test(token)) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats CPU percent: ${JSON.stringify(raw)}`,
+    );
+  }
+  return Number(token);
+}
+
 function parseSize(raw: string): number {
-  const match = raw.match(/^([\d.]+)\s*([a-zA-Z]+)?$/);
+  // The numeric group is a single well-formed decimal — `[\d.]+` would accept
+  // `"1.2.3"`/`"."` and `parseFloat` would silently truncate them; require
+  // `\d+(\.\d+)?` so any malformed size token fails closed below.
+  const match = raw.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?$/);
   if (!match) {
     throw new HetznerClientError(
       "invalid_input",
@@ -59,7 +79,7 @@ function parseSize(raw: string): number {
     );
   }
   const [, n, unit] = match;
-  if (!unit) return Math.round(parseFloat(n));
+  if (!unit) return Math.round(Number(n));
   const multiplier = SIZE_UNITS[unit.toLowerCase()];
   if (multiplier === undefined) {
     throw new HetznerClientError(
@@ -67,5 +87,5 @@ function parseSize(raw: string): number {
       `Unknown size unit in docker stats output: ${JSON.stringify(unit)}`,
     );
   }
-  return Math.round(parseFloat(n) * multiplier);
+  return Math.round(Number(n) * multiplier);
 }
