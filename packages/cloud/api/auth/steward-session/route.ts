@@ -17,7 +17,10 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
+import {
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
   RateLimitPresets,
@@ -334,8 +337,15 @@ app.delete("/", (c) => {
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };
-  deleteCookie(c, stewardCookieNames(c.env.ENVIRONMENT).token, opts);
-  deleteCookie(c, stewardCookieNames(c.env.ENVIRONMENT).refreshToken, opts);
+  // Sign-out must clear BOTH naming eras, exactly like /logout: this DELETE is
+  // the clear path clearStaleStewardSession uses, and a pre-rename session
+  // whose legacy pair survives here gets resurrected by the legacy read
+  // fallback + 30-day legacy refresh cookie (ghost session). (#13728)
+  const names = stewardCookieNames(c.env.ENVIRONMENT);
+  deleteCookie(c, names.token, opts);
+  deleteCookie(c, names.refreshToken, opts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
   deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
