@@ -30,6 +30,7 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, "evidence");
 const MAX_TEXT_BYTES = 256 * 1024;
 const DEFAULT_SCAN_DIRS = [
+  "evidence",
   "e2e-recordings",
   "packages/app/aesthetic-audit-output",
   "packages/app/device-e2e-output",
@@ -95,6 +96,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(options.maxArtifacts) || options.maxArtifacts < 100) {
     throw new Error("--max-artifacts must be at least 100");
+  }
+  if (!["auto", "on", "off"].includes(options.ocr)) {
+    throw new Error("--ocr must be auto, on, or off");
   }
   if (
     !Number.isFinite(options.maxFilesPerDir) ||
@@ -398,6 +402,10 @@ function buildHtml(manifest) {
   const types = [
     ...new Set(manifest.artifacts.map((artifact) => artifact.type)),
   ].sort();
+  const ocrLabel =
+    manifest.ocr.mode === "off"
+      ? `off${manifest.ocr.available ? " (available)" : ""}`
+      : `${manifest.ocr.mode}${manifest.ocr.available ? " available" : " unavailable"}`;
 
   return `<!doctype html>
 <html lang="en">
@@ -455,7 +463,7 @@ function buildHtml(manifest) {
 <body>
 <header>
   <h1>Evidence Review</h1>
-  <p class="subtitle">Generated ${htmlEscape(manifest.generatedAt)} from ${htmlEscape(manifest.scanDirs.join(", "))}. OCR: ${manifest.ocr.available ? "available" : "unavailable"}.</p>
+  <p class="subtitle">Generated ${htmlEscape(manifest.generatedAt)} from ${htmlEscape(manifest.scanDirs.join(", "))}. OCR: ${htmlEscape(ocrLabel)}.</p>
   <div class="stats">
     <span class="stat">${counts.total} artifacts</span>
     <span class="stat">${counts.image ?? 0} screenshots</span>

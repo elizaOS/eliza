@@ -4,7 +4,7 @@
  * run-all.mjs
  *
  * Orchestrates running all E2E suites with recording enabled, then generates
- * contact sheets and the viewer index.
+ * contact sheets, the viewer index, and an optional local evidence dashboard.
  *
  * Usage:
  *   node scripts/e2e-recordings/run-all.mjs
@@ -14,6 +14,9 @@
  *   --skip-tests              Skip running tests; only regenerate sheets + viewer
  *   --skip-sheets             Skip generating contact sheets
  *   --skip-viewer             Skip generating the viewer index
+ *   --review                  Generate evidence/index.html for manual review
+ *   --open-review             Open the generated evidence review dashboard
+ *   --review-ocr=auto|on|off  OCR mode for --review. Default: off
  */
 
 import { spawnSync } from "node:child_process";
@@ -50,6 +53,16 @@ const skipSheets =
   flagMap.get("skip-sheets") === true || flagMap.get("skip-sheets") === "true";
 const skipViewer =
   flagMap.get("skip-viewer") === true || flagMap.get("skip-viewer") === "true";
+const review =
+  flagMap.get("review") === true ||
+  flagMap.get("review") === "true" ||
+  flagMap.get("open-review") === true ||
+  flagMap.get("open-review") === "true";
+const openReview =
+  flagMap.get("open-review") === true || flagMap.get("open-review") === "true";
+const reviewOcr = flagMap.has("review-ocr")
+  ? String(flagMap.get("review-ocr"))
+  : "off";
 
 // When evidence is required (explicit --require-evidence, or auto-on under CI),
 // a suite that soft-skips (SKIP_EXIT_CODE=77, missing dir/script/package.json,
@@ -69,10 +82,10 @@ function banner(text) {
   console.log(`${line}`);
 }
 
-function runScript(scriptFile) {
+function runScript(scriptFile, scriptArgs = []) {
   const result = spawnSync(
     process.execPath, // node
-    [scriptFile],
+    [scriptFile, ...scriptArgs],
     {
       cwd: REPO_ROOT,
       stdio: "inherit",
@@ -333,6 +346,30 @@ async function main() {
     console.log("Skipping viewer generation (--skip-viewer).");
   }
 
+  // ─── Step 4: Generate evidence review dashboard ───────────
+  if (review) {
+    banner("Generating evidence review dashboard");
+    const reviewScript = path.join(
+      REPO_ROOT,
+      "scripts",
+      "evidence-review",
+      "generate.mjs",
+    );
+    if (fs.existsSync(reviewScript)) {
+      const reviewArgs = [
+        "--source=e2e-recordings",
+        `--ocr=${reviewOcr}`,
+        openReview ? "--open" : "--no-open",
+      ];
+      const code = runScript(reviewScript, reviewArgs);
+      if (code !== 0) {
+        console.warn(`[warn] evidence review exited with code ${code}`);
+      }
+    } else {
+      console.warn("[warn] evidence-review/generate.mjs not found — skipping");
+    }
+  }
+
   // ─── Summary ───────────────────────────────────────────────
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   banner("Summary");
@@ -369,6 +406,11 @@ async function main() {
   if (fs.existsSync(indexPath)) {
     console.log(`\nViewer: ${indexPath}`);
     console.log(`        file://${indexPath}`);
+  }
+  const reviewPath = path.join(REPO_ROOT, "evidence", "index.html");
+  if (review && fs.existsSync(reviewPath)) {
+    console.log(`\nEvidence review: ${reviewPath}`);
+    console.log(`                 file://${reviewPath}`);
   }
 
   console.log(`\nTotal time: ${elapsed}s`);

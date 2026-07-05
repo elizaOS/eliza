@@ -115,9 +115,22 @@ packages/scenario-runner/bin/eliza-scenarios run <scenario.ts> --report <out.jso
 #   deterministic proxy, when the trajectory IS the evidence.
 
 # End-to-end UI recordings (video + contact sheets + a browsable viewer):
+bun run test:matrix:review               # full matrix + manifest + reviewer popup
+bun run test:matrix                      # full matrix + manifest, no browser open
 bun run test:e2e:record                  # scripts/e2e-recordings/run-all.mjs
+bun run test:e2e:record:review           # recordings + local evidence dashboard
 bun run test:e2e:record:sheets           # regenerate contact sheets + viewer
 bun run test:e2e:audit-ui                # coverage of which routes are recorded
+
+# Local manual evidence reviewer: scans screenshots, videos, logs, reports, and
+# trajectories, computes screenshot color heuristics/OCR when available, and
+# opens evidence/index.html for the required hand review pass.
+bun run evidence:review
+bun run evidence:review:no-open
+
+# Human-speed headed app playback with video enabled, useful when reviewing
+# hover/focus/keyboard states while preserving the recorded artifact trail.
+bun run test:watch-human
 
 # App per-route screenshots (desktop + mobile, rest + hover), with a
 # manual-review verdict stub per page — REQUIRED for app UI changes:

@@ -465,8 +465,10 @@ The non-negotiables in practice:
   - **Backend logs** (structured `[ClassName] …`) and **frontend logs**
     (console + network) showing the actual code path firing.
   - **Before/after full-page screenshots** (desktop + mobile) + a **video
-    walkthrough** of the whole flow — `bun run test:e2e:record`; for app UI,
-    `bun run --cwd packages/app audit:app`.
+    walkthrough** of the whole flow — default to `bun run test:matrix:review`
+    so the full matrix writes `evidence/matrix-run.json` and opens the unified
+    reviewer. For scoped UI evidence, use `bun run test:e2e:record:review`;
+    for app UI, use `bun run --cwd packages/app audit:app`.
   - **Per-platform capture** (screenshot + recording + logs) for native/mobile/
     desktop changes — `bun run --cwd packages/app capture:ios-sim` /
     `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`,

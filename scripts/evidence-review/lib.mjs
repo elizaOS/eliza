@@ -53,6 +53,7 @@ export function classifyArtifactPath(filePath) {
 
 export function inferSource(root, filePath) {
   const rel = toPosixPath(path.relative(root, filePath));
+  if (rel.startsWith("evidence/")) return "evidence";
   if (rel.startsWith("e2e-recordings/")) return "e2e-recordings";
   if (rel.startsWith("packages/app/aesthetic-audit-output/")) {
     return "app-audit";

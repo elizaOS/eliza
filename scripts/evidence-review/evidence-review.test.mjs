@@ -35,6 +35,7 @@ test("infers the standard evidence source directories", () => {
     inferSource(root, "/repo/reports/live-test-runs/run/trajectory.jsonl"),
     "live-test-runs",
   );
+  assert.equal(inferSource(root, "/repo/evidence/matrix-run.json"), "evidence");
 });
 
 test("flags one-color screenshots and summarizes dominant colors", async () => {
