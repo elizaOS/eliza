@@ -13,7 +13,10 @@
  * module does not launch a browser — `main()` is guarded behind import.meta.
  */
 import { describe, expect, it } from "vitest";
-import { classifyStoryGateFailures } from "./run-story-gate.mjs";
+import {
+  applyFrontendLogFailures,
+  classifyStoryGateFailures,
+} from "./run-story-gate.mjs";
 
 /** Minimal per-story result shape the classifier consumes. */
 function story(overrides = {}) {
@@ -166,5 +169,48 @@ describe("classifyStoryGateFailures console/a11y allowlist ratchet", () => {
       brokenBaseline: {},
     });
     expect(newConsoleBaseline["acme--widget"]).toEqual(["boom"]);
+  });
+});
+
+describe("applyFrontendLogFailures", () => {
+  it("REGRESSION: failed network responses turn a rendered story broken", () => {
+    const result = story();
+    applyFrontendLogFailures(result, {
+      failedResponses: [
+        { url: "http://127.0.0.1:6006/api/missing", status: 404 },
+      ],
+      requestFailures: [],
+    });
+    expect(result.verdict).toBe("broken");
+    expect(result.issues.join("\n")).toContain("failed-response: HTTP 404");
+  });
+
+  it("REGRESSION: request failures turn a rendered story broken", () => {
+    const result = story();
+    applyFrontendLogFailures(result, {
+      failedResponses: [],
+      requestFailures: [
+        {
+          url: "http://127.0.0.1:31337/api/chat",
+          failure: "net::ERR_CONNECTION_REFUSED",
+        },
+      ],
+    });
+    expect(result.verdict).toBe("broken");
+    expect(result.issues.join("\n")).toContain(
+      "request-failed: net::ERR_CONNECTION_REFUSED",
+    );
+  });
+
+  it("does not hard-fail static stories already classified as needs-runtime", () => {
+    const result = story({ verdict: "needs-runtime" });
+    applyFrontendLogFailures(result, {
+      failedResponses: [
+        { url: "http://127.0.0.1:31337/api/chat", status: 503 },
+      ],
+      requestFailures: [],
+    });
+    expect(result.verdict).toBe("needs-runtime");
+    expect(result.issues).toEqual([]);
   });
 });

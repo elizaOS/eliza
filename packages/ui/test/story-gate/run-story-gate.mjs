@@ -354,6 +354,28 @@ export function classifyStoryGateFailures({
   return { failures, newConsoleBaseline, newA11yBaseline, newBrokenBaseline };
 }
 
+export function applyFrontendLogFailures(result, frontendLogSnapshot) {
+  if (result.verdict === "needs-runtime") return result;
+
+  const failedResponses = frontendLogSnapshot?.failedResponses ?? [];
+  const requestFailures = frontendLogSnapshot?.requestFailures ?? [];
+  const issues = [
+    ...failedResponses.map(
+      (r) => `failed-response: HTTP ${r.status} ${String(r.url).slice(0, 240)}`,
+    ),
+    ...requestFailures.map(
+      (r) =>
+        `request-failed: ${String(r.failure).slice(0, 120)} ${String(r.url).slice(0, 240)}`,
+    ),
+  ];
+
+  if (issues.length) {
+    result.verdict = "broken";
+    result.issues.push(...issues);
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // per-story render + assert
 // ---------------------------------------------------------------------------
@@ -558,6 +580,7 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
       result.verdict === "needs-runtime"
         ? []
         : consoleErrors.map((t) => t.slice(0, 300));
+    applyFrontendLogFailures(result, logCapture.snapshot());
   } catch (err) {
     result.verdict = "broken";
     result.issues.push(
