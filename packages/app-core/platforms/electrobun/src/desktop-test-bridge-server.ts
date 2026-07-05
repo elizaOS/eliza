@@ -212,7 +212,10 @@ export async function startDesktopTestBridgeServer(): Promise<
       if (pathname === "/main-window/screenshot" && method === "GET") {
         const shot = await getScreenCaptureManager().takeScreenshot();
         if (!shot.available || !shot.data) {
-          json(res, 503, { error: "screenshot unavailable" });
+          json(res, 503, {
+            error: "screenshot unavailable",
+            reason: shot.reason ?? "screen capture backend returned no image",
+          });
           return;
         }
         json(res, 200, { data: shot.data });
