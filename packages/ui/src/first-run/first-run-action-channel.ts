@@ -72,9 +72,10 @@ export function getFirstRunCloudLoginFallbackPath(
 /**
  * Offer free text to the active onboarding conductor. Returns true when the
  * conductor consumed it (rendered a local turn + reply); false when no
- * conductor is active. The caller must NEVER forward the text to the server
- * while onboarding is open — the hard "no server send pre-completion" property
- * lives at the AppContext funnel, this is just the delivery seam.
+ * conductor is active. The caller decides whether onboarding still owns free
+ * text: before a runtime is chosen it must stay local, but the first-run
+ * bootstrap window for a provisioned Cloud agent must be allowed through to the
+ * real chat bridge.
  */
 export function tryHandleFirstRunText(text: string): boolean {
   if (!textHandler) return false;
@@ -87,17 +88,18 @@ export function tryHandleFirstRunText(text: string): boolean {
  *   it unconditionally. Even after onboarding completes (conductor
  *   unregistered), a tap on a leftover onboarding widget must never reach the
  *   server as a literal `__first_run__:` chat message.
- * - `"conductor"` — onboarding is still active: free text is answered locally
- *   by the in-chat conductor (`tryHandleFirstRunText`) and never reaches the
- *   server mid-setup. The composer is unlocked (#12178, a deliberate reversal
- *   of the #9952 onboarding lock), so this is the real delivery path, not a
- *   backstop.
+ * - `"conductor"` — onboarding is still active and no provisioned chat bridge
+ *   is available: free text is answered locally by the in-chat conductor
+ *   (`tryHandleFirstRunText`) and never reaches the server mid-choice. The
+ *   composer is unlocked (#12178, a deliberate reversal of the #9952 onboarding
+ *   lock), so this is the real delivery path, not a backstop.
  * - `"send"` — a normal post-onboarding value: forward to the real send.
  */
 export function classifyActionMessage(
   value: string,
   firstRunComplete: boolean,
+  opts: { allowFirstRunTextSend?: boolean } = {},
 ): "first-run" | "conductor" | "send" {
   if (value.startsWith(FIRST_RUN_ACTION_PREFIX)) return "first-run";
-  return firstRunComplete ? "send" : "conductor";
+  return firstRunComplete || opts.allowFirstRunTextSend ? "send" : "conductor";
 }

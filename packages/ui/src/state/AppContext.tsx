@@ -1176,10 +1176,10 @@ function AppProviderInner({
   // onboarding widget in the transcript is dropped here instead of sending the
   // literal sentinel to the agent as a chat message. While onboarding is
   // ACTIVE (firstRunComplete false) free text is routed to the conductor's
-  // in-chat reply persona (`tryHandleFirstRunText`) and never reaches the
-  // server — the #12178 composer unlock keeps chat interactive without
-  // breaking the "no server send pre-completion" property, which is enforced
-  // HERE (the `"conductor"` case never calls `rawSendActionMessage`). Once
+  // in-chat reply persona (`tryHandleFirstRunText`) until a Cloud-provisioned
+  // bootstrap bridge exists. That preserves the pre-choice "no server send"
+  // invariant while letting the user's first real post-provisioning message
+  // reach the dedicated agent instead of being swallowed by setup copy. Once
   // onboarding completes, every non-first-run value falls through to the real
   // send funnel unchanged. Widgets stay 100% display-only — both
   // InlineWidgetText and MessageContent route picks through this single
@@ -1190,7 +1190,13 @@ function AppProviderInner({
       // to cloud / retry / download) are consumed by the model-status conductor
       // and NEVER reach the server — regardless of onboarding state.
       if (tryHandleModelAction(text)) return Promise.resolve();
-      switch (classifyActionMessage(text, firstRunComplete === true)) {
+      const firstRunIsComplete = firstRunComplete === true;
+      switch (
+        classifyActionMessage(text, firstRunIsComplete, {
+          allowFirstRunTextSend:
+            !firstRunIsComplete && firstRunCloudProvisionedContainer,
+        })
+      ) {
         case "first-run": {
           const handled = tryHandleFirstRunAction(text);
           const fallbackPath = handled
@@ -1211,7 +1217,7 @@ function AppProviderInner({
           return rawSendActionMessage(text);
       }
     },
-    [firstRunComplete, rawSendActionMessage],
+    [firstRunCloudProvisionedContainer, firstRunComplete, rawSendActionMessage],
   );
 
   useEffect(() => {

@@ -21,10 +21,10 @@ import {
  * the headless onboarding conductor. Its load-bearing invariants: a first-run
  * choice value is ONLY dispatched to a conductor while one is active, a
  * non-prefixed value is never intercepted by the ACTION handler, free text is
- * offered to the TEXT handler while onboarding is open (and never forwarded to
- * the server), and — via `classifyActionMessage` — a reserved-prefix value is
- * NEVER forwarded to the server as a chat message, even after onboarding
- * finished and the handler is gone (leftover transcript widgets stay inert).
+ * offered to the TEXT handler while onboarding is still making a choice, and —
+ * via `classifyActionMessage` — a reserved-prefix value is NEVER forwarded to
+ * the server as a chat message, even after onboarding finished and the handler
+ * is gone (leftover transcript widgets stay inert).
  */
 
 afterEach(() => {
@@ -93,6 +93,19 @@ describe("classifyActionMessage (the send funnel's routing contract)", () => {
   it("routes free text to the conductor while onboarding is active and sends it afterwards", () => {
     expect(classifyActionMessage("hello", false)).toBe("conductor");
     expect(classifyActionMessage("hello", true)).toBe("send");
+  });
+
+  it("allows first-run free text through once a bootstrap chat bridge is available", () => {
+    expect(
+      classifyActionMessage("hello", false, {
+        allowFirstRunTextSend: true,
+      }),
+    ).toBe("send");
+    expect(
+      classifyActionMessage(`${FIRST_RUN_ACTION_PREFIX}runtime:cloud`, false, {
+        allowFirstRunTextSend: true,
+      }),
+    ).toBe("first-run");
   });
 });
 
