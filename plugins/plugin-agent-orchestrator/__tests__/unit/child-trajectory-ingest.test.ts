@@ -6,7 +6,7 @@
  * trajectory-context; no mock stands in for the code under test.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -212,5 +212,53 @@ describe("ingestChildTrajectories", () => {
     expect(ingested).toEqual([]);
     const doc = await store.getTask(taskId);
     expect(doc?.artifacts ?? []).toEqual([]);
+  });
+});
+
+describe("deleteTask reclaims child trajectories (#14109)", () => {
+  it("removes the per-task child-trajectory dir when the task is deleted", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId, sessionId } = await seedTaskWithSession(store, {
+      traceId: "trace-parent",
+    });
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+
+    const taskDir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+    );
+    const agentDir = join(taskDir, "child-agent");
+    await mkdir(agentDir, { recursive: true });
+    writeFileSync(join(agentDir, "tj-aaa.json"), JSON.stringify({ x: 1 }));
+
+    await (
+      svc as unknown as {
+        ingestChildTrajectories: (t: string, s: string) => Promise<string[]>;
+      }
+    ).ingestChildTrajectories(taskId, sessionId);
+    expect(existsSync(taskDir)).toBe(true);
+
+    const deleted = await svc.deleteTask(taskId);
+    expect(deleted).toBe(true);
+    // The dir and its JSON are gone — no state-dir leak survives task deletion.
+    expect(existsSync(taskDir)).toBe(false);
+  });
+
+  it("does not throw when a deleted task never recorded any trajectories", async () => {
+    const store = new InMemoryTaskStore();
+    const { taskId } = await seedTaskWithSession(store, {});
+    const svc = new OrchestratorTaskService(makeRuntime(), { store });
+    const taskDir = join(
+      stateDir,
+      "orchestrator",
+      "child-trajectories",
+      taskId,
+    );
+    // No dir was ever written (gate off / non-eliza backend). Force-recursive
+    // rm treats the missing dir as a no-op — deletion still succeeds.
+    expect(existsSync(taskDir)).toBe(false);
+    await expect(svc.deleteTask(taskId)).resolves.toBe(true);
   });
 });

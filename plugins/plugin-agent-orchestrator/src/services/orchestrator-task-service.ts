@@ -23,6 +23,7 @@ import {
   mkdir,
   readdir,
   readFile,
+  rm,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -1173,7 +1174,12 @@ export class OrchestratorTaskService extends Service {
   /**
    * Per-task directory a spawned sub-agent's file recorder writes its own
    * trajectories into (#13775), scanned on task_complete. Under the shared state
-   * dir so #13773's workspace-GC registry can reclaim it with the task.
+   * dir, NOT a workspace root — so #13773's workspace-GC registry (which only
+   * scans git-workspace roots) never sees it. Its lifetime is bound to the task
+   * instead: {@link reclaimChildTrajectories} removes it on {@link deleteTask},
+   * the only point at which the task doc and the artifacts referencing these
+   * files are permanently gone (archive keeps them reopenable). Ingest is
+   * attach-by-reference, so the files must survive until the task itself does.
    */
   private childTrajectoryDir(taskId: string): string {
     return join(
@@ -1182,6 +1188,22 @@ export class OrchestratorTaskService extends Service {
       "child-trajectories",
       taskId,
     );
+  }
+
+  /**
+   * Delete a task's child-trajectory dir. Called from {@link deleteTask} — the
+   * only lifecycle point where the task doc and the `trajectory` artifacts that
+   * reference these files (by path, attach-by-reference) are permanently gone.
+   * Without this the dir leaks under the state dir forever (#14109): the
+   * workspace-GC registry (#13773) only scans git-workspace roots, never the
+   * state dir. A missing dir is the normal case (gate off, non-eliza backend,
+   * or already reclaimed), so `rm` is recursive + force.
+   */
+  private async reclaimChildTrajectories(taskId: string): Promise<void> {
+    await rm(this.childTrajectoryDir(taskId), {
+      recursive: true,
+      force: true,
+    });
   }
 
   /**
@@ -2202,6 +2224,10 @@ export class OrchestratorTaskService extends Service {
       this.sessionTaskIndex.delete(session.sessionId);
       this.recordFailureWarned.delete(session.sessionId);
     }
+    // Reclaim the per-task child-trajectory JSON now the task and its
+    // artifacts are permanently gone; nothing references these files anymore
+    // and no other GC ever scans the state dir (#14109).
+    await this.reclaimChildTrajectories(taskId);
     return this.store.deleteTask(taskId);
   }
 
