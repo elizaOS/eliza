@@ -128,7 +128,6 @@ parts:
         const keep = new Set([
           "plugin-agent-skills",
           "plugin-anthropic",
-          "plugin-aosp-local-inference",
           "plugin-browser",
           "plugin-capacitor-bridge",
           "plugin-commands",
@@ -492,7 +491,6 @@ parts:
         --filter=@elizaos/app-core \
         --filter=@elizaos/agent \
         --filter=@elizaos/plugin-agent-skills \
-        --filter=@elizaos/plugin-aosp-local-inference \
         --filter=@elizaos/plugin-browser \
         --filter=@elizaos/plugin-commands \
         --filter=@elizaos/plugin-imessage \
