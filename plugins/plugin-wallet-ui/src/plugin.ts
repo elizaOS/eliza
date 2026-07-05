@@ -45,6 +45,8 @@ export const walletAppPlugin: Plugin = {
       bundlePath: "dist/views/bundle.js",
       componentExport: "InventoryView",
       tags: ["finance", "crypto", "wallet"],
+      anticipatoryIntent:
+        "Offer a portfolio summary and a fund/swap next step, grounded in balances, readiness, and recent wallet activity.",
       relatedActions: [
         "WALLET",
         "EVM_SWAP",
