@@ -64,7 +64,7 @@ export function hasArtifactReference(text) {
   ) {
     return true;
   }
-  return /\.github\/issue-evidence\/\S+/i.test(text);
+  return false;
 }
 
 export function isChecked(rowText) {
@@ -198,9 +198,9 @@ function buildFixtureBody(overrides = {}) {
     "after-screenshots":
       "- [ ] After screenshots `N/A - backend-only change, no UI surface`.",
     "walkthrough-video":
-      "- [x] A video walkthrough: .github/issue-evidence/13676-video.mp4",
+      "- [x] A video walkthrough: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000000",
     "backend-logs":
-      "- [ ] Backend logs: see .github/issue-evidence/13676-backend.txt",
+      "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001)",
     "frontend-logs": "- [ ] Frontend logs `N/A - no frontend change`.",
     "llm-trajectory":
       "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
@@ -284,6 +284,20 @@ function runSelfTest() {
   }
 
   {
+    const { ok, findings } = evaluatePrEvidence(
+      buildFixtureBody({
+        "backend-logs":
+          "- [ ] Backend logs: .github/issue-evidence/13676-backend.txt",
+      }),
+    );
+    const backend = findings.find((finding) => finding.id === "backend-logs");
+    if (ok) failures.push("issue-evidence-only row should fail");
+    if (backend?.status !== "blank") {
+      failures.push("issue-evidence-only row should be reported blank");
+    }
+  }
+
+  {
     const body = REQUIRED_EVIDENCE_ROWS.slice(1)
       .map(
         ({ id }) =>
@@ -305,7 +319,7 @@ function runSelfTest() {
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (7 cases).");
+  console.log("check-pr-evidence self-test passed (8 cases).");
 }
 
 function main() {
@@ -342,7 +356,8 @@ function main() {
     console.error(
       `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing. ` +
         "Attach an artifact link/path or write `N/A - <reason>` on each row. " +
-        "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete artifact links/paths.",
+        "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete artifact links/paths. " +
+        "Retired `.github/issue-evidence/...` repo paths do not count as evidence.",
     );
     process.exit(1);
   }

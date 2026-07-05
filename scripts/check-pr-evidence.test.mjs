@@ -34,9 +34,9 @@ function buildBody(overrides = {}) {
     "after-screenshots":
       "- [ ] After screenshots `N/A - backend-only change, no UI surface`.",
     "walkthrough-video":
-      "- [x] A video walkthrough: .github/issue-evidence/13676-video.mp4",
+      "- [x] A video walkthrough: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000000",
     "backend-logs":
-      "- [ ] Backend logs: see .github/issue-evidence/13676-backend.txt",
+      "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001)",
     "frontend-logs": "- [ ] Frontend logs `N/A - no frontend change`.",
     "llm-trajectory":
       "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
@@ -128,11 +128,11 @@ describe("check-pr-evidence parser", () => {
     const { ok, findings } = evaluatePrEvidence(
       buildBody({
         "before-screenshots":
-          "- [ ] Before screenshots: .github/issue-evidence/13622-before.png",
+          "- [ ] Before screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002",
         "after-screenshots":
-          "- [ ] After screenshots: .github/issue-evidence/13622-after.png",
+          "- [ ] After screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
         "walkthrough-video":
-          "- [ ] Walkthrough video: .github/issue-evidence/13622-demo.webm",
+          "- [ ] Walkthrough video: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000004",
       }),
       REQUIRED_EVIDENCE_ROWS,
       { labels: "frontend" },
@@ -189,7 +189,7 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(hasNaWithReason("N/A - <reason>."), false);
   });
 
-  it("detects links, URLs, and issue-evidence paths", () => {
+  it("detects links and URLs", () => {
     assert.equal(hasArtifactReference("[report](https://x/y.json)"), true);
     assert.equal(
       hasArtifactReference("see https://github.com/o/r/assets/1"),
@@ -197,11 +197,31 @@ describe("check-pr-evidence row primitives", () => {
     );
     assert.equal(
       hasArtifactReference(
-        "committed under .github/issue-evidence/13676-a.png",
+        "see https://user-images.githubusercontent.com/1/a.jpg",
       ),
       true,
     );
     assert.equal(hasArtifactReference("just words, no artifact"), false);
+  });
+
+  it("rejects retired repo-local issue-evidence paths", () => {
+    assert.equal(
+      hasArtifactReference(
+        "committed under .github/issue-evidence/13676-a.png",
+      ),
+      false,
+    );
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody({
+        "backend-logs":
+          "- [ ] Backend logs: .github/issue-evidence/13676-backend.txt",
+      }),
+    );
+    assert.equal(ok, false);
+    assert.equal(
+      findings.find((finding) => finding.id === "backend-logs").status,
+      "blank",
+    );
   });
 
   it("detects checked checkboxes without treating them as evidence", () => {
@@ -236,9 +256,12 @@ describe("check-pr-evidence row primitives", () => {
       false,
     );
     assert.equal(
-      isRowSatisfiedForContext("- [ ] .github/issue-evidence/13622-ui.png", {
-        artifactRequired: true,
-      }),
+      isRowSatisfiedForContext(
+        "- [ ] https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000005",
+        {
+          artifactRequired: true,
+        },
+      ),
       true,
     );
   });
@@ -252,11 +275,11 @@ describe("check-pr-evidence marker extraction", () => {
       "      or are marked `N/A - no backend path in this change`.",
       "",
       "<!-- evidence-row:frontend-logs -->",
-      "- [ ] Frontend logs: .github/issue-evidence/13676-frontend.txt",
+      "- [ ] Frontend logs: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000006",
     ].join("\n");
     const rows = extractEvidenceRows(body);
     assert.ok(rows.get("backend-logs").includes("N/A - no backend path"));
-    assert.ok(rows.get("frontend-logs").includes("13676-frontend.txt"));
+    assert.ok(rows.get("frontend-logs").includes("user-attachments/assets"));
   });
 
   it("bounds the last row so trailing links do not bleed in", () => {
