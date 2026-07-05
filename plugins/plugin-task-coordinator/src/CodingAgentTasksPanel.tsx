@@ -12,6 +12,7 @@ import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {
   type ReactNode,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -611,8 +612,11 @@ export function CodingAgentTasksPanel({
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState("");
   // Active project drives the task list's projectId filter (#13776 item 5).
-  // null = show tasks across all projects (today's behavior).
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  // undefined = switcher has not loaded the registry yet; null = show tasks
+  // across all projects (today's behavior).
+  const [activeProjectId, setActiveProjectId] = useState<
+    string | null | undefined
+  >(undefined);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   // The coding-agent endpoint is owned by the Node-only orchestrator plugin and
@@ -650,8 +654,12 @@ export function CodingAgentTasksPanel({
       description: "Toggle showing archived tasks",
       onActivate: () => setShowArchived((value) => !value),
     });
+  const handleActiveProjectChange = useCallback((projectId: string | null) => {
+    setActiveProjectId(projectId);
+  }, []);
 
   useEffect(() => {
+    if (activeProjectId === undefined) return;
     let cancelled = false;
 
     const refreshThreads = async (silent = false) => {
@@ -904,9 +912,7 @@ export function CodingAgentTasksPanel({
           ) : (
             <span aria-hidden="true" />
           )}
-          <ProjectSwitcher
-            onActiveProjectChange={(projectId) => setActiveProjectId(projectId)}
-          />
+          <ProjectSwitcher onActiveProjectChange={handleActiveProjectChange} />
         </div>
       ) : (
         <TaskListHeader
@@ -931,9 +937,7 @@ export function CodingAgentTasksPanel({
           }
           action={
             <ProjectSwitcher
-              onActiveProjectChange={(projectId) =>
-                setActiveProjectId(projectId)
-              }
+              onActiveProjectChange={handleActiveProjectChange}
             />
           }
         />
