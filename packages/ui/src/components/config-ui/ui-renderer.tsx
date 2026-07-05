@@ -224,6 +224,22 @@ const JUSTIFY: Record<string, string> = {
 // COMPONENT REGISTRY
 // ══════════════════════════════════════════════════════════════════════
 
+/**
+ * Coarse-pointer tap-target floor for the agent-emitted UiRenderer controls
+ * (#14399 device review: "buttons too small on the demo buttons view").
+ *
+ * These controls render inside chat/widget/dynamic-view surfaces, NOT at a
+ * standalone `/route`, so the route-walking `tap-target-geometry-all-views`
+ * Playwright gate never measured them — the whole button family here ships at
+ * ~28-30px tall (`px-3 py-1.5 text-xs`), well under the 44px HIG floor on a
+ * touch device. Compose the shared `min-h-touch`/`min-w-touch`
+ * (`var(--min-touch-target)` = 2.75rem) floor ONLY on coarse pointers so touch
+ * hits the floor while fine-pointer (desktop mouse) keeps the compact resting
+ * look — same convention as `chat-composer.tsx` and the spatial button rule in
+ * `base.css`. Applied to every tappable control below.
+ */
+const TAP_FLOOR = "pointer-coarse:min-h-touch pointer-coarse:min-w-touch";
+
 type ComponentFn = (
   props: Record<string, unknown>,
   children: React.ReactNode,
@@ -518,7 +534,9 @@ const SwitchComponent: ComponentFn = (props, _children, ctx) => {
       <Button
         type="button"
         variant="ghost"
-        className={`relative w-9 h-[18px] p-0 transition-colors rounded-none ${checked ? "bg-accent" : "bg-muted"}`}
+        role="switch"
+        aria-checked={checked}
+        className={`relative w-9 h-[18px] p-0 transition-colors rounded-none ${TAP_FLOOR} ${checked ? "bg-accent" : "bg-muted"}`}
         onClick={() => setValue(!checked)}
       >
         <div
@@ -567,7 +585,7 @@ const ToggleComponent: ComponentFn = (props, _children, ctx, el) => {
     <Button
       type="button"
       variant={pressed ? "default" : "outline"}
-      className={`px-3 py-1.5 text-xs transition-colors ${
+      className={`px-3 py-1.5 text-xs transition-colors ${TAP_FLOOR} ${
         pressed
           ? "bg-accent text-accent-fg border-accent"
           : "bg-card text-txt hover:bg-[var(--bg-hover)]"
@@ -613,7 +631,7 @@ const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
             key={item.value}
             type="button"
             variant={active ? "default" : "outline"}
-            className={`px-2.5 py-1 text-xs transition-colors ${
+            className={`px-2.5 py-1 text-xs transition-colors ${TAP_FLOOR} ${
               active
                 ? "bg-accent text-accent-fg border-accent"
                 : "bg-card text-txt hover:bg-[var(--bg-hover)]"
@@ -644,7 +662,7 @@ const ButtonGroupComponent: ComponentFn = (props, _children, ctx) => {
             key={btn.value}
             type="button"
             variant={active ? "default" : "outline"}
-            className={`px-3 py-1.5 text-xs transition-colors ${
+            className={`px-3 py-1.5 text-xs transition-colors ${TAP_FLOOR} ${
               active
                 ? "bg-accent text-accent-fg border-accent"
                 : "bg-card text-txt hover:bg-[var(--bg-hover)]"
@@ -722,7 +740,8 @@ const CarouselComponent: ComponentFn = (props) => {
           type="button"
           variant="outline"
           size="sm"
-          className="text-xs px-2 py-0.5"
+          aria-label="Previous item"
+          className={`text-xs px-2 py-0.5 ${TAP_FLOOR}`}
           onClick={() => setCurrent((p) => Math.max(0, p - 1))}
           disabled={current === 0}
         >
@@ -735,7 +754,8 @@ const CarouselComponent: ComponentFn = (props) => {
           type="button"
           variant="outline"
           size="sm"
-          className="text-xs px-2 py-0.5"
+          aria-label="Next item"
+          className={`text-xs px-2 py-0.5 ${TAP_FLOOR}`}
           onClick={() => setCurrent((p) => Math.min(items.length - 1, p + 1))}
           disabled={current === items.length - 1}
         >
@@ -941,7 +961,7 @@ const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
               ? "outline"
               : "default"
       }
-      className={`px-3 py-1.5 text-xs font-medium transition-colors ${cls[variant] ?? cls.primary}`}
+      className={`px-3 py-1.5 text-xs font-medium transition-colors ${TAP_FLOOR} ${cls[variant] ?? cls.primary}`}
       disabled={!!props.disabled}
       onClick={() => fireEvent(el.on?.press, ctx)}
     >
@@ -980,7 +1000,7 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
         type="button"
         variant="outline"
         size="sm"
-        className="px-3 py-1.5 text-xs"
+        className={`px-3 py-1.5 text-xs ${TAP_FLOOR}`}
         onClick={() => setOpen(!open)}
       >
         {String(props.label ?? "Menu")} ▾
@@ -992,7 +1012,7 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
               key={item.value}
               type="button"
               variant="ghost"
-              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto"
+              className="block w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto pointer-coarse:min-h-touch"
               onClick={() => {
                 setOpen(false);
                 if (ctx.onAction)
@@ -1029,7 +1049,9 @@ const TabsComponent: ComponentFn = (props, _children, ctx) => {
             key={tab.value}
             type="button"
             variant="ghost"
-            className={`px-3 py-1.5 text-xs rounded-none transition-colors h-auto ${
+            role="tab"
+            aria-selected={tab.value === active}
+            className={`px-3 py-1.5 text-xs rounded-none transition-colors h-auto ${TAP_FLOOR} ${
               tab.value === active
                 ? "border-b-2 border-accent text-accent font-semibold"
                 : "text-muted hover:text-txt"
@@ -1058,7 +1080,8 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
         type="button"
         variant="outline"
         size="sm"
-        className="px-2 py-1 text-xs disabled:opacity-40"
+        aria-label="Previous page"
+        className={`px-2 py-1 text-xs disabled:opacity-40 ${TAP_FLOOR}`}
         disabled={current <= 1}
         onClick={() => setValue(current - 1)}
       >
@@ -1070,7 +1093,9 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
           type="button"
           variant={page === current ? "default" : "outline"}
           size="sm"
-          className={`px-2 py-1 text-xs ${
+          aria-label={`Page ${page}`}
+          aria-current={page === current ? "page" : undefined}
+          className={`px-2 py-1 text-xs ${TAP_FLOOR} ${
             page === current
               ? "bg-accent text-accent-fg border-accent"
               : "hover:bg-[var(--bg-hover)]"
@@ -1084,7 +1109,8 @@ const PaginationComponent: ComponentFn = (props, _children, ctx) => {
         type="button"
         variant="outline"
         size="sm"
-        className="px-2 py-1 text-xs disabled:opacity-40"
+        aria-label="Next page"
+        className={`px-2 py-1 text-xs disabled:opacity-40 ${TAP_FLOOR}`}
         disabled={current >= total}
         onClick={() => setValue(current + 1)}
       >
@@ -1278,7 +1304,8 @@ const CollapsibleComponent: ComponentFn = (props, children) => {
       <Button
         type="button"
         variant="ghost"
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors rounded-none justify-start h-auto"
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] transition-colors rounded-none justify-start h-auto pointer-coarse:min-h-touch"
         onClick={() => setOpen(!open)}
       >
         <span
@@ -1316,7 +1343,8 @@ const AccordionComponent: ComponentFn = (props) => {
           <Button
             type="button"
             variant="ghost"
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto"
+            aria-expanded={openSet.has(i)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold hover:bg-[var(--bg-hover)] rounded-none justify-start h-auto pointer-coarse:min-h-touch"
             onClick={() => toggle(i)}
           >
             <span
@@ -1374,7 +1402,8 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
             type="button"
             variant="ghost"
             size="icon"
-            className="text-muted hover:text-txt text-lg leading-none px-1 h-auto w-auto"
+            aria-label="Close dialog"
+            className={`text-muted hover:text-txt text-lg leading-none px-1 h-auto w-auto ${TAP_FLOOR}`}
             onClick={close}
           >
             ×

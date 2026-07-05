@@ -381,6 +381,46 @@ describe("InventoryView GUI — populated holdings", () => {
     expect(within(sidebar).getByText("So1an...1111")).toBeTruthy();
   });
 
+  it("renders a partially-funded portfolio: EVM holdings present, Solana connected but zero balance (#14384)", async () => {
+    // The exact state the wallet lands in when funds arrive on ONE chain first:
+    // EVM has real token balances, Solana is connected + balance-ready but holds
+    // nothing. This must render the funded EVM rows AND a portfolio total that
+    // reflects only the funded side (750 BNB + 100 USDC + 80 CAKE = 930), not
+    // the empty-wallet hero. Locks the mixed render in before real funds land so
+    // the UI is already proven for the first-funded-chain case.
+    const partialBalances: WalletBalancesResponse = {
+      evm: balances.evm,
+      solana: {
+        address: SOL_ADDRESS,
+        solBalance: "0",
+        solValueUsd: "0",
+        tokens: [],
+      },
+    };
+    appHooks.useApp.mockReturnValue(
+      makeAppState({
+        walletBalances: partialBalances,
+        walletNfts: { evm: nfts.evm, solana: null },
+      }),
+    );
+    render(React.createElement(InventoryAppView));
+    const sidebar = await screen.findByTestId("wallets-sidebar");
+
+    // Funded EVM side still renders its rows + values.
+    expect(within(sidebar).getByText(hasFlatText("100.0000 USDC"))).toBeTruthy();
+    expect(within(sidebar).getByText("$750.00")).toBeTruthy();
+    expect(within(sidebar).getByText("$80.00")).toBeTruthy();
+
+    // Portfolio total reflects only the funded EVM side (no Solana value).
+    expect(within(sidebar).getByText("$930.00")).toBeTruthy();
+
+    // Both chains connected/ready — this is a funded portfolio, not the empty
+    // hero, so the "Your wallet is empty." line must not appear.
+    expect(within(sidebar).getByTitle("EVM ready")).toBeTruthy();
+    expect(within(sidebar).getByTitle("SOL ready")).toBeTruthy();
+    expect(screen.queryByText("Your wallet is empty.")).toBeNull();
+  });
+
   it("shows needs-RPC chip when a chain balance is not ready", async () => {
     appHooks.useApp.mockReturnValue(
       makeAppState({
