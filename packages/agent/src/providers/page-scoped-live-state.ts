@@ -190,7 +190,7 @@ async function renderBrowserLiveState(
     // (browser service throwing) must not blank the whole context, so it
     // degrades to an omitted section; the failure is reported so it reaches the
     // RECENT_ERRORS provider instead of vanishing.
-    runtime.reportError("PageScopedLiveState.browserLiveState", err);
+    runtime.reportError("PageScopedContext.browserLiveState", err);
     return null;
   }
 }
@@ -435,7 +435,7 @@ async function renderAutomationsLiveState(
     // error-policy:J4 explicit user-facing degrade — a failing task read must
     // not blank the whole context; the automations section is omitted and the
     // failure is reported so it surfaces via the RECENT_ERRORS provider.
-    runtime.reportError("PageScopedLiveState.automationsLiveState", err);
+    runtime.reportError("PageScopedContext.automationsLiveState", err);
     return null;
   }
 }
@@ -523,7 +523,7 @@ async function renderKnowledgeLiveState(
       }
     }
   } catch (err) {
-    runtime.reportError("PageScopedLiveState.knowledgeLiveState", err);
+    runtime.reportError("PageScopedContext.knowledgeLiveState", err);
     return "Live knowledge state: unavailable (documents store unreachable).";
   }
 
@@ -581,7 +581,7 @@ async function renderTranscriptsLiveState(
       }
     }
   } catch (err) {
-    runtime.reportError("PageScopedLiveState.transcriptsLiveState", err);
+    runtime.reportError("PageScopedContext.transcriptsLiveState", err);
     return "Live transcript state: unavailable (transcript store unreachable).";
   }
 
