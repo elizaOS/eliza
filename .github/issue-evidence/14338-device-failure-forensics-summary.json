@@ -1,0 +1,99 @@
+{
+  "lane": "android",
+  "startedAt": "2026-07-05T23:51:24.712Z",
+  "finishedAt": "2026-07-05T23:53:33.557Z",
+  "device": {
+    "serial": "27051JEGR10034",
+    "kind": "android"
+  },
+  "build": {},
+  "steps": [
+    {
+      "name": "resolve Android SDK",
+      "status": "passed",
+      "startedAt": "2026-07-05T23:51:24.713Z",
+      "endedAt": "2026-07-05T23:51:24.713Z",
+      "durationMs": 0,
+      "artifacts": []
+    },
+    {
+      "name": "resolve Android device",
+      "status": "passed",
+      "startedAt": "2026-07-05T23:51:24.713Z",
+      "endedAt": "2026-07-05T23:51:24.721Z",
+      "durationMs": 8,
+      "artifacts": []
+    },
+    {
+      "name": "prepare Android device",
+      "status": "passed",
+      "startedAt": "2026-07-05T23:51:24.724Z",
+      "endedAt": "2026-07-05T23:51:24.724Z",
+      "durationMs": 0,
+      "artifacts": []
+    },
+    {
+      "name": "build Android APK",
+      "status": "failed",
+      "startedAt": "2026-07-05T23:51:24.734Z",
+      "endedAt": "2026-07-05T23:53:32.752Z",
+      "durationMs": 128018,
+      "artifacts": [
+        "failure/build-android-apk/failure-cause.txt",
+        "failure/build-android-apk/screen.png",
+        "failure/build-android-apk/logcat.txt"
+      ],
+      "failureDir": "failure/build-android-apk",
+      "error": "bun run build:android exited with 1"
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "log",
+      "path": "failure/build-android-apk/failure-cause.txt",
+      "sizeBytes": 36
+    },
+    {
+      "kind": "screenshot",
+      "path": "failure/build-android-apk/screen.png",
+      "sizeBytes": 248177
+    },
+    {
+      "kind": "log",
+      "path": "failure/build-android-apk/logcat.txt",
+      "sizeBytes": 450649
+    },
+    {
+      "kind": "screenshot",
+      "path": "raw/android-final.png",
+      "sizeBytes": 248667
+    },
+    {
+      "kind": "log",
+      "path": "logs/android-logcat.txt",
+      "sizeBytes": 131712
+    },
+    {
+      "kind": "log",
+      "path": "logs/runner.log",
+      "sizeBytes": 110117
+    },
+    {
+      "kind": "screenshot",
+      "path": "inline/screen.jpg",
+      "sizeBytes": 223848
+    },
+    {
+      "kind": "screenshot",
+      "path": "inline/android-final.jpg",
+      "sizeBytes": 224316
+    },
+    {
+      "kind": "junit",
+      "path": "junit.xml",
+      "sizeBytes": 578
+    }
+  ],
+  "warnings": [],
+  "result": "failed"
+}
