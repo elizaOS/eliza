@@ -128,7 +128,13 @@ runs:
           echo "::warning::No usable python3 found; skipping setuptools install (node-gyp fallback unavailable)"
           exit 0
         fi
-        "$python_bin" -m pip install setuptools
+        if "$python_bin" -c 'import setuptools' >/dev/null 2>&1; then
+          echo "setuptools already present: $("$python_bin" -c 'import setuptools; print(setuptools.__version__)')"
+          exit 0
+        fi
+        "$python_bin" -m pip install setuptools \
+          || "$python_bin" -m pip install --user setuptools \
+          || "$python_bin" -m pip install --break-system-packages setuptools
 
     - name: Install protoc
       # protoc is required even when install-native-deps=false because Rust
