@@ -10,7 +10,7 @@
 //   --device <udid>          target a specific booted sim (default: first booted)
 //   --duration <seconds>     recording length (default 6)
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolveApiPort } from "../../../scripts/e2e-recordings/native-capture-common.mjs";
 import {
   captureBackendLog,
@@ -21,6 +21,7 @@ import {
   parseFlags,
   skip,
 } from "./lib/issue-evidence.mjs";
+import { analyzeScreenshot } from "./lib/visual-qa.mjs";
 
 const PLATFORM = "ios-sim";
 const log = logFor(PLATFORM);
@@ -103,6 +104,32 @@ async function main() {
   const pngPath = evidencePath(base, "png");
   simctl(["io", udid, "screenshot", "--type=png", pngPath]);
   log(`screenshot → ${pngPath} (${statSync(pngPath).size} bytes)`);
+
+  // Visual-QA analysis (#14336/#14338): emit a verdict report next to the
+  // screenshot so a reviewer reads OCR text + palette + brand-colour checks
+  // beside the pixels a run posts inline. `--expect <spec.json>` adds
+  // required/forbidden-text and blue-ceiling gating; without it we still record
+  // the descriptive signal. `--baseline <prev.png>` adds a change-metric.
+  try {
+    const expect = flags.expect
+      ? JSON.parse(readFileSync(flags.expect, "utf8"))
+      : {};
+    const report = await analyzeScreenshot(pngPath, {
+      baseline: flags.baseline ?? null,
+      expect,
+    });
+    const qaPath = `${pngPath.replace(/\.png$/, "")}.qa.json`;
+    writeFileSync(qaPath, JSON.stringify(report, null, 2));
+    mirrorToRecordings(PLATFORM, qaPath);
+    log(
+      `visual-qa → ${qaPath} (verdict ${report.verdict}; blue ${report.color_fractions.blue_fraction}; ` +
+        `${report.checks.filter((c) => !c.ok).length} failing check(s))`,
+    );
+  } catch (error) {
+    // error-policy:J7 QA enrichment is diagnostic — a sharp/OCR hiccup must not
+    // sink a successful screenshot capture; warn with the reason and continue.
+    log(`visual-qa skipped: ${String(error?.message ?? error).slice(0, 160)}`);
+  }
 
   const movPath = evidencePath(base, "mov");
   log(`recording ${durationSec}s → ${movPath}`);
