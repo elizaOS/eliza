@@ -3695,6 +3695,75 @@
         "secret"
       ]
     },
+    "provider.uiGenerative.relevance": {
+      "base": [
+        "dashboard",
+        "table",
+        "chart",
+        "charts",
+        "graph",
+        "plot",
+        "visualization",
+        "visualisation",
+        "visualize",
+        "visualise",
+        "diagram",
+        "analytics",
+        "stats",
+        "metrics",
+        "kpi",
+        "custom ui",
+        "data view",
+        "bar chart",
+        "pie chart"
+      ],
+      "zh-CN": [
+        "仪表盘",
+        "表格",
+        "图表",
+        "指标",
+        "可视化",
+        "数据视图"
+      ],
+      "ko": [
+        "대시보드",
+        "테이블",
+        "차트",
+        "지표",
+        "시각화",
+        "그래프"
+      ],
+      "es": [
+        "panel",
+        "tabla",
+        "gráfico",
+        "métricas",
+        "visualización",
+        "diagrama"
+      ],
+      "pt": [
+        "painel",
+        "tabela",
+        "gráfico",
+        "métricas",
+        "visualização",
+        "diagrama"
+      ],
+      "vi": [
+        "bảng điều khiển",
+        "bảng",
+        "biểu đồ",
+        "chỉ số",
+        "trực quan hóa"
+      ],
+      "tl": [
+        "dashboard",
+        "talahanayan",
+        "tsart",
+        "sukatan",
+        "graph"
+      ]
+    },
     "action.restart.request": {
       "base": ["restart", "reboot", "reload", "refresh", "respawn"],
       "zh-CN": ["重启", "重开", "重新加载", "刷新"],

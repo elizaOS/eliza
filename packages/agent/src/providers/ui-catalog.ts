@@ -1,15 +1,39 @@
 /**
- * Provider that injects the rich-UI authoring guide into the agent prompt: the
- * output methods (inline RFC 6902 JSONL patches, [CONFIG:pluginId] config
- * forms, [FOLLOWUPS] suggestion chips, [FORM] inline forms, [CHECKLIST] todo
- * lists, [WORKFLOW] ordered step pipelines) and a summary of the
- * shared component catalog (detailed for a core set, brief for the rest). Emits
- * only on DM/API/unset channels and sits behind an ADMIN role gate; cached
- * per-agent since the catalog is static.
+ * Dynamic prompt guides for rich UI output, split by cost and intent (#14324):
+ * `uiWidgets` teaches the closed in-chat marker vocabulary ([CONFIG:pluginId],
+ * [FOLLOWUPS], [FORM], [CHECKLIST], [WORKFLOW]) in a hard-budgeted ~60 lines,
+ * while `uiGenerative` carries the expensive generative-UI method (inline RFC
+ * 6902 JSONL patches + the ~156-component catalog) behind narrower
+ * dashboard/table/visualization relevance keywords. Both are `dynamic: true`
+ * (excluded from default state composition), ADMIN-gated, and DM/API-channel
+ * gated. The split keeps everyday widget guidance cheap
+ * and stops the JSONL method from steering the model when the user only wants
+ * a plugin set up; `ui-widgets.budget.test.ts` enforces the size ceiling.
+ *
+ * Discovery: on the live v5 chat path, dynamic providers reach the planner
+ * prompt when their contextGate matches the turn's Stage-1 contexts
+ * (selectV5PlannerStateProviderNames → composeState onlyInclude) — the
+ * request-by-name loop (PROVIDERS advertisement → Content.providers) is
+ * currently unreachable there, so `description` is model-invisible on that
+ * path (kept for the legacy composeState path and any future re-wiring).
+ * `relevanceKeywords` is advisory metadata no selection engine consumes; the
+ * *enforced* intent gate for the expensive catalog is the in-get check on
+ * `uiGenerative` (the plugin-manager precedent): word-boundary keyword
+ * matching over the message + recent history (bare substring matching fired
+ * on "paragraph"/"comfortable"), OR-ed with a continuation signal — recent
+ * JSONL patch output keeps the guide alive while the user iterates on a
+ * rendered UI after the intent keywords scroll out of the history window.
+ * `uiWidgets` deliberately keeps the old provider's ungated-on-general
+ * behavior — gating it on the legacy keyword list would silence [FORM]
+ * guidance on scheduling turns ("remind me tomorrow at 9" matches none of
+ * those keywords). uiWidgets' constant text is cacheable per-agent;
+ * uiGenerative's output varies per turn, so it must not declare cacheStable.
  */
 import {
   ChannelType,
+  getRecentMessagesData,
   type IAgentRuntime,
+  logger,
   type Memory,
   type Provider,
   type State,
@@ -36,8 +60,89 @@ const DETAIL_COMPONENTS = new Set([
   "Tabs",
 ]);
 
-export const uiCatalogProvider: Provider = {
-  name: "uiCatalog",
+/** Marker guides render inline in chat surfaces only — never on group/feed channels. */
+function isAllowedChannel(message: Memory): boolean {
+  const channelType = message.content.channelType;
+  return (
+    channelType === ChannelType.DM ||
+    channelType === ChannelType.API ||
+    !channelType
+  );
+}
+
+/**
+ * The canonical marker vocabulary. Grammar examples are load-bearing: the
+ * followups/form blocks must keep matching the UI parsers exactly
+ * (`ui-catalog.followups.test.ts` pins them against the parser regexes), and
+ * the budget test caps this text so it cannot silently regrow.
+ */
+export const UI_WIDGETS_GUIDE = `## In-chat widgets — canonical markers you can emit in replies
+
+### [CONFIG:pluginId] — plugin configuration card
+Emit EXACTLY this marker whenever a plugin comes up in a setup, configuration,
+or status context (e.g. [CONFIG:discord], [CONFIG:openai], [CONFIG:polymarket]).
+The UI renders a full configuration form from the plugin's parameter schema.
+Use it whenever the user names a plugin, asks to show / set up / configure /
+enable / check one, or you would otherwise describe configuration steps in
+prose — emit the marker instead of the steps.
+
+### [FOLLOWUPS] — 2–4 tappable next steps (optional)
+Use ONLY when a follow-up genuinely helps — never to pad a reply. Emit the
+block INLINE (no code fences), one \`<kind>:<payload>=<label>\` per line:
+[FOLLOWUPS]
+reply:Summarize my unread messages=Summarize unread
+navigate:/apps/tasks=View tasks
+prompt:Draft a reply about =Draft a reply
+[/FOLLOWUPS]
+Kinds: reply sends <payload> as the user's next message; navigate opens a view
+(<payload> is a "/" route like /apps/tasks, /settings/voice, or a view id) —
+after creating tasks, offer navigate:/apps/tasks=View tasks; prompt prefills
+the composer for editing. Labels 1–4 words. Omit the block when no useful
+follow-up exists.
+
+### [FORM] — collect several specific values at once
+Render a form instead of asking in prose. Emit INLINE (no code fences); body
+is one JSON object on its own line between the markers:
+[FORM]
+{"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
+[/FORM]
+Field types: text | number | select (needs options) | checkbox | date | time |
+datetime. Prefer date/time/datetime over free text for anything scheduled —
+they render native pickers and submit as YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm.
+Each field "name" must start with a letter. Submitted values come back to you
+as a normal message. NEVER use [FORM] for secrets or API keys (the secure
+secret flow handles those); for a single free-text answer, just ask.
+
+### [CHECKLIST] — live todo list while you work through steps
+[CHECKLIST]
+{"title":"Migration","items":[{"content":"Back up the database","status":"completed"},{"content":"Run the migration","status":"in_progress"},{"content":"Verify downstream consumers","status":"pending"}]}
+[/CHECKLIST]
+Item status: pending | in_progress | completed. Re-emit the WHOLE block with
+updated statuses to advance it in place. A coding/orchestrator task surfaces
+its own plan — do not duplicate it with a [CHECKLIST].
+
+### [WORKFLOW] — ordered k/N step pipeline
+[WORKFLOW]
+{"title":"Deploy","steps":[{"label":"Build image","status":"done"},{"label":"Push to registry","status":"running"},{"label":"Roll out","status":"pending"}]}
+[/WORKFLOW]
+Step status: pending | running | done | failed. Re-emit to advance.
+[WORKFLOW] is an ordered pipeline; [CHECKLIST] is an unordered todo set.
+
+### When to use
+- Plugin named, or any setup/status context → [CONFIG:pluginId], always
+- Several specific values needed → [FORM]; helpful next steps → [FOLLOWUPS], sparingly
+- Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
+- Custom dashboards/tables/charts → a separate generative-UI guide fires on
+  those intents; simple factual answers → plain text only`;
+
+/**
+ * Everyday marker guidance — cheap, always the first thing the model learns
+ * about rich output. Same gates as the old combined provider.
+ */
+export const uiWidgetsProvider: Provider = {
+  name: "uiWidgets",
+  description:
+    "How to render in-chat widgets: plugin config cards, forms with native date/time pickers, follow-up chips, checklists, and step pipelines",
   dynamic: true,
   relevanceKeywords: getValidationKeywordTerms("provider.uiCatalog.relevance", {
     includeAllLocales: true,
@@ -50,12 +155,89 @@ export const uiCatalogProvider: Provider = {
   roleGate: { minRole: "ADMIN" },
 
   get: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-    const channelType = message.content.channelType;
-    const isAllowedChannel =
-      channelType === ChannelType.DM ||
-      channelType === ChannelType.API ||
-      !channelType;
-    if (!isAllowedChannel) {
+    if (!isAllowedChannel(message)) {
+      return { text: "" };
+    }
+    logger.debug(
+      { src: "agent:uiWidgets", chars: UI_WIDGETS_GUIDE.length },
+      "[uiWidgets] injected marker vocabulary guide",
+    );
+    return { text: UI_WIDGETS_GUIDE };
+  },
+};
+
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Word-boundary keyword test. `\b` anchors only work for ASCII word chars,
+ * so CJK/word-boundary-less terms fall back to substring matching — for the
+ * ASCII terms this is what stops "paragraph" firing "graph" and
+ * "comfortable" firing "table" (see plugin-manager's buildKeywordRegex).
+ */
+function matchesKeywords(
+  texts: string[],
+  keywords: readonly string[],
+): boolean {
+  if (keywords.length === 0) return false;
+  const ascii = keywords.filter((k) => /^[\w\s-]+$/.test(k));
+  const other = keywords.filter((k) => !/^[\w\s-]+$/.test(k));
+  const regex =
+    ascii.length > 0
+      ? new RegExp(`\\b(?:${ascii.map(escapeRegex).join("|")})\\b`, "i")
+      : null;
+  return texts.some((text) => {
+    if (!text) return false;
+    if (regex?.test(text)) return true;
+    const lower = text.toLowerCase();
+    return other.some((k) => lower.includes(k.toLowerCase()));
+  });
+}
+
+// A rendered generative UI is iterated over many turns; once the intent
+// keywords scroll out of the history window, the agent's own emitted JSONL
+// patches are the signal that the guide is still needed.
+const JSONL_PATCH_RE = /"op"\s*:\s*"(?:add|replace|remove)"/;
+
+/**
+ * The generative-UI escape hatch: inline JSONL patches + the component
+ * catalog. Fires only on dashboard/table/visualization intent so its ~150
+ * lines never tax a plugin-setup or scheduling turn.
+ */
+export const uiGenerativeProvider: Provider = {
+  name: "uiGenerative",
+  description:
+    "How to render custom dashboards, tables, charts, and metrics views as generative UI (JSONL patches + component catalog)",
+  dynamic: true,
+  relevanceKeywords: getValidationKeywordTerms(
+    "provider.uiGenerative.relevance",
+    { includeAllLocales: true },
+  ),
+  contexts: ["general"],
+  contextGate: { anyOf: ["general"] },
+  // Renders after uiWidgets (markers-first); composeState orders by
+  // (position || 0) then name, and "uiGenerative" sorts before "uiWidgets".
+  position: 1,
+  // ADMIN-gated: the declared roleGate is enforced by applyPluginRoleGating.
+  roleGate: { minRole: "ADMIN" },
+
+  get: async (_runtime: IAgentRuntime, message: Memory, state: State) => {
+    if (!isAllowedChannel(message)) {
+      return { text: "" };
+    }
+    // Enforced intent gate: the ~150-line catalog emits only when the turn
+    // (or recent history) shows dashboard/table/visualization intent, or a
+    // generative UI is already mid-iteration (recent JSONL patches). This is
+    // the sole guard on the hot path — the v5 planner composes context-gated
+    // dynamic providers on every general ADMIN turn.
+    const keywords = uiGenerativeProvider.relevanceKeywords ?? [];
+    const texts = [
+      message.content.text ?? "",
+      ...getRecentMessagesData(state).map((m) => m.content.text ?? ""),
+    ];
+    const intent = matchesKeywords(texts, keywords);
+    const iterating = texts.some((t) => JSONL_PATCH_RE.test(t));
+    if (!intent && !iterating) {
       return { text: "" };
     }
 
@@ -74,14 +256,16 @@ export const uiCatalogProvider: Provider = {
       }
     }
 
-    return {
-      text: `## Rich UI Output — you can render interactive components in your replies
+    const text = `## Generative UI — inline JSONL patches (custom dashboards, tables, visualisations)
+Use this ONLY for a custom table, metrics view, dashboard, or visualisation.
+For plugin setup use [CONFIG:pluginId]; for a quick fixed-field form use
+[FORM]; both are described in the in-chat widgets guide — never hand-build
+those here.
 
-### Method 1 — Inline JSONL patches (for custom dashboards, forms, visualisations)
 Emit RFC 6902 JSON patch lines INLINE in your response (no code fences, no markdown):
 {"op":"add","path":"/root","value":"card-1"}
-{"op":"add","path":"/elements/card-1","value":{"type":"Card","props":{"title":"Plugin Setup"},"children":["body-1"]}}
-{"op":"add","path":"/elements/body-1","value":{"type":"Text","props":{"text":"Fill in the details below."},"children":[]}}
+{"op":"add","path":"/elements/card-1","value":{"type":"Card","props":{"title":"Weekly report"},"children":["body-1"]}}
+{"op":"add","path":"/elements/body-1","value":{"type":"Text","props":{"text":"Numbers below."},"children":[]}}
 
 Rules:
 - Always emit /root first, then /elements/<id>, then /state/<key>
@@ -89,90 +273,14 @@ Rules:
 - Element IDs: unique kebab-case strings
 - state binding: set statePath prop on Input/Select/Textarea to a dot-path key
 - data binding in props: "$data.key.path" resolves from state at render time
-- Use this method when the user needs a form, table, metrics view, or custom UI
-
-### Method 2 — [CONFIG:pluginId] marker (for plugin configuration forms)
-Include EXACTLY this marker whenever a plugin is mentioned in any configuration, setup, or status context:
-[CONFIG:pluginId]
-Replace pluginId with the plugin's short ID (e.g. [CONFIG:polymarket], [CONFIG:discord], [CONFIG:anthropic], [CONFIG:openai], [CONFIG:twitch]).
-The UI will auto-generate a full configuration form from the plugin's parameter schema.
-
-**ALWAYS use [CONFIG:pluginId] when:**
-- User mentions a plugin by name ("discord", "polymarket", "openai", etc.)
-- User asks to show, view, check, set up, configure, enable, install, or activate a plugin
-- You mention that a plugin needs credentials, secrets, or setup steps
-- User asks "what plugins", "show me plugins", "check plugin status"
-- You would otherwise say "you need to configure X" or "set up X first"
-
-Do NOT describe configuration steps in text — just emit [CONFIG:pluginId] and let the UI handle it.
-
-### Method 3 — [FOLLOWUPS] suggestion chips (optional next-step shortcuts)
-OPTIONALLY end your reply with 2–4 suggested next steps the user can tap. Use
-ONLY when a follow-up is genuinely likely to help — never on every turn, never
-to pad a reply. Emit the block INLINE (no code fences), format EXACTLY (literal
-newlines, one suggestion per line as \`<kind>:<payload>=<label>\`):
-[FOLLOWUPS]
-reply:Summarize my unread messages=Summarize unread
-navigate:/apps/tasks=View tasks
-prompt:Draft a reply about =Draft a reply
-[/FOLLOWUPS]
-Kinds:
-- reply    — sends <payload> as the user's next message (use for a likely follow-up question)
-- navigate — switches the app to a view; <payload> is a route path starting with "/"
-  (e.g. /apps/tasks, /apps, /automations, /apps/memories, /settings/voice) or a view id.
-  Point the user at a relevant surface — e.g. after you create tasks, offer
-  \`navigate:/apps/tasks=View tasks\`.
-- prompt   — prefills the composer with <payload> so the user can edit before sending
-Keep labels short (1–4 words). Omit the block entirely when no useful follow-up exists.
-
-### Method 4 — [FORM] inline form (collect structured input)
-When you need several specific values from the user at once, render a form
-instead of asking in prose. Emit INLINE (no code fences); body is a JSON object
-on its own line between the markers:
-[FORM]
-{"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
-[/FORM]
-Field types: text | number | select (needs options) | checkbox | date | time |
-datetime. Prefer date/time/datetime over free-text for anything scheduled — they
-render native pickers and submit as YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm. Each
-field "name" must start with a letter. The user's submitted values come back to you as a normal
-message. Do NOT use [FORM] for secrets or API keys (those use the secure secret
-flow), and do NOT use it for a single free-text answer — just ask.
-
-### Method 5 — [CHECKLIST] inline todo list (track multi-step work in place)
-When you are working through several steps for the user, render a live checklist
-instead of narrating progress in prose. Emit INLINE (no code fences); body is a
-JSON object on its own line between the markers:
-[CHECKLIST]
-{"title":"Migration","items":[{"content":"Back up the database","status":"completed"},{"content":"Run the migration","status":"in_progress"},{"content":"Verify downstream consumers","status":"pending"}]}
-[/CHECKLIST]
-Item status: pending | in_progress | completed. To advance the list, re-emit the
-WHOLE block with updated statuses in your next message — the same checklist
-mutates in place (a completed item strikes through). Use for your own task
-tracking; a coding/orchestrator task surfaces its plan automatically, so do not
-duplicate that with a [CHECKLIST].
-
-### Method 6 — [WORKFLOW] inline step progress (ordered k/N pipeline)
-For an ordered multi-step process where each step runs then resolves, render a
-numbered progress list. Emit INLINE (no code fences); body is a JSON object on
-its own line between the markers:
-[WORKFLOW]
-{"title":"Deploy","steps":[{"label":"Build image","status":"done"},{"label":"Push to registry","status":"running"},{"label":"Roll out","status":"pending"}]}
-[/WORKFLOW]
-Step status: pending | running | done | failed. Re-emit the whole block with
-advanced statuses to move the pipeline forward in place. Use [WORKFLOW] for an
-ordered pipeline (step k/N); use [CHECKLIST] for an unordered todo set.
-
-### When to use rich UI
-- Any plugin mentioned by name → Method 2 ([CONFIG:pluginId]) — always
-- Forms, data entry, settings panels → Method 1 (JSONL patches) or Method 4 ([FORM] for a quick fixed-field form)
-- Tables, metrics, dashboards → Method 1 (Table/Metric/ProgressBar)
-- Helpful next steps after a reply → Method 3 ([FOLLOWUPS]), sparingly
-- Tracking your own multi-step work → Method 5 ([CHECKLIST]) or Method 6 ([WORKFLOW] for an ordered pipeline)
-- Simple factual answers with no plugin/form involved → plain text only
 
 ### Available components (${Object.keys(COMPONENT_CATALOG).length} total)
-${componentLines.join("\n")}`,
-    };
+${componentLines.join("\n")}`;
+
+    logger.debug(
+      { src: "agent:uiGenerative", chars: text.length },
+      "[uiGenerative] injected generative-UI catalog guide",
+    );
+    return { text };
   },
 };

@@ -62,7 +62,10 @@ import {
 } from "../providers/session-utils.ts";
 import { createDynamicSkillProvider } from "../providers/skill-provider.ts";
 import { createOngoingTasksProvider } from "../providers/tasks.ts";
-import { uiCatalogProvider } from "../providers/ui-catalog.ts";
+import {
+  uiGenerativeProvider,
+  uiWidgetsProvider,
+} from "../providers/ui-catalog.ts";
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
 import { ApprovalService } from "../services/approval/index.ts";
@@ -237,7 +240,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       relevantConversationsProvider,
       rolodexProvider,
 
-      uiCatalogProvider,
+      uiWidgetsProvider,
+      uiGenerativeProvider,
       roleBackfillProvider,
       escalationTriggerProvider,
     ],

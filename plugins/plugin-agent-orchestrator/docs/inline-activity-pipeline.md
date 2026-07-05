@@ -82,8 +82,8 @@ as useful text in the rail instead of raw event names.
 
 ## Making the agent-authored widgets reachable
 
-`[CHECKLIST]` and `[WORKFLOW]` are taught to the model in the `uiCatalog`
-provider (`packages/agent/src/providers/ui-catalog.ts`, Methods 5 & 6) alongside
+`[CHECKLIST]` and `[WORKFLOW]` are taught to the model in the `uiWidgets`
+provider (`packages/agent/src/providers/ui-catalog.ts`) alongside
 `[FOLLOWUPS]`/`[FORM]`, so they are reachable end to end (model → marker →
 parser → widget), not speculative dead widgets. A re-emitted block mutates the
 list in place — the agent's own turn-to-turn plan/pipeline tracking, distinct

@@ -1,5 +1,5 @@
 /**
- * Coverage for uiCatalogProvider's followups/form marker instructions: the
+ * Coverage for uiWidgetsProvider's followups/form marker instructions: the
  * [FOLLOWUPS]/[FORM] grammar and its three followup kinds (reply / navigate /
  * prompt) are taught on the dashboard (API) channel, the example block matches
  * the exact regex the UI parser accepts (so the docs can't drift from the
@@ -21,7 +21,7 @@ vi.mock("../security/access.ts", () => ({
   hasAdminAccess: vi.fn(async () => true),
 }));
 
-import { uiCatalogProvider } from "./ui-catalog.ts";
+import { uiWidgetsProvider } from "./ui-catalog.ts";
 
 function makeRuntime(): IAgentRuntime {
   return {} as unknown as IAgentRuntime;
@@ -31,9 +31,9 @@ function makeMessage(channelType?: ChannelType): Memory {
   return { content: { channelType } } as unknown as Memory;
 }
 
-describe("uiCatalogProvider — followups/form marker instructions", () => {
+describe("uiWidgetsProvider — followups/form marker instructions", () => {
   it("teaches [FOLLOWUPS] and [FORM] on the dashboard (API) channel", async () => {
-    const result = await uiCatalogProvider.get(
+    const result = await uiWidgetsProvider.get(
       makeRuntime(),
       makeMessage(ChannelType.API),
       {} as State,
@@ -53,7 +53,7 @@ describe("uiCatalogProvider — followups/form marker instructions", () => {
     // The UI parser regex requires `[FOLLOWUPS]\n<lines>\n[/FOLLOWUPS]` with
     // `<kind>:<payload>=<label>` lines. Assert the instruction's example block
     // satisfies it so the docs can't drift from the parser.
-    const result = await uiCatalogProvider.get(
+    const result = await uiWidgetsProvider.get(
       makeRuntime(),
       makeMessage(ChannelType.API),
       {} as State,
@@ -75,7 +75,7 @@ describe("uiCatalogProvider — followups/form marker instructions", () => {
     // `[MARKER]\n{json}\n[/MARKER]` grammar the UI parsers require and that the
     // JSON parses into a valid spec, so the taught syntax can't drift from the
     // renderer.
-    const result = await uiCatalogProvider.get(
+    const result = await uiWidgetsProvider.get(
       makeRuntime(),
       makeMessage(ChannelType.API),
       {} as State,
@@ -108,7 +108,7 @@ describe("uiCatalogProvider — followups/form marker instructions", () => {
   });
 
   it("emits nothing on connector-style group channels (no marker leak)", async () => {
-    const result = await uiCatalogProvider.get(
+    const result = await uiWidgetsProvider.get(
       makeRuntime(),
       makeMessage(ChannelType.GROUP),
       {} as State,
