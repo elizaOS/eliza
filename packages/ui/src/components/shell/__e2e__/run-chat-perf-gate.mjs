@@ -125,6 +125,44 @@ const isMaximized = (p) =>
     .getByTestId("chat-sheet")
     .evaluate((el) => el.getAttribute("data-maximized") === "true");
 
+// Over-pull the grabber UP past the 80%-viewport maximize threshold, then WAIT
+// for data-maximized=true so the follow-on restore can find the top strip.
+async function pullToMaximize(p) {
+  await drag(p, '[data-testid="chat-sheet-grabber"]', 0, -640, { steps: 18, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") === "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Surfaced by the caller's assertion, not swallowed.
+  }
+  return isMaximized(p);
+}
+
+// Pull DOWN from the top-20% restore strip (present only while full-bleed) to
+// un-maximize, then WAIT for data-maximized to clear.
+async function pullToRestore(p) {
+  const zone = p.locator('[data-testid="chat-maximize-restore-zone"]');
+  if ((await zone.count()) === 0) return false;
+  await drag(p, '[data-testid="chat-maximize-restore-zone"]', 0, 320, { steps: 16, stepMs: 16 });
+  try {
+    await p.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="chat-sheet"]')
+          ?.getAttribute("data-maximized") !== "true",
+      { timeout: 2500 },
+    );
+  } catch {
+    // Surfaced by the caller's assertion, not swallowed.
+  }
+  return !(await isMaximized(p));
+}
+
 await runBrowserFixtureE2E(
   {
     page: {
@@ -172,26 +210,22 @@ await runBrowserFixtureE2E(
 
     // Drive a sustained interaction: alternate thread-scroll + maximize/restore
     // several times — the two surviving high-cost overlay gestures.
+    let maximizeCommits = 0;
+    let restoreCommits = 0;
     for (let i = 0; i < 4; i += 1) {
       await drag(page, "#continuous-thread", 6, -160, { steps: 12, stepMs: 16 });
       await page.waitForTimeout(120);
       await drag(page, "#continuous-thread", 6, 160, { steps: 12, stepMs: 16 });
       await page.waitForTimeout(120);
       // Over-pull up to maximize, then pull down from the top-20% strip to restore.
-      await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -520, { steps: 16, stepMs: 16 });
-      await page.waitForTimeout(180);
-      await drag(page, '[data-testid="chat-maximize-restore-zone"]', 0, 280, { steps: 14, stepMs: 16 });
-      await page.waitForTimeout(180);
+      if (await pullToMaximize(page)) maximizeCommits += 1;
+      if (await pullToRestore(page)) restoreCommits += 1;
     }
 
     // Prove the gate actually entered + left the state it measures (never
-    // vacuously green): a final over-pull commits full-bleed, a restore clears it.
-    await drag(page, '[data-testid="chat-sheet-grabber"]', 0, -520, { steps: 16, stepMs: 16 });
-    await page.waitForTimeout(400);
-    check(await isMaximized(page), "over-pull commits full-bleed (data-maximized=true)");
-    await drag(page, '[data-testid="chat-maximize-restore-zone"]', 0, 300, { steps: 16, stepMs: 16 });
-    await page.waitForTimeout(400);
-    check(!(await isMaximized(page)), "top-20% pull-down restores the inset overlay");
+    // vacuously green): the loop must have committed full-bleed and restored it.
+    check(maximizeCommits >= 1, `over-pull commits full-bleed (${maximizeCommits}/4 committed)`);
+    check(restoreCommits >= 1, `top-20% pull-down restores the inset overlay (${restoreCommits}/4 restored)`);
 
     // Harvest the REAL entries and feed the shared detectors.
     const { frames, shifts } = await page.evaluate(() => ({
