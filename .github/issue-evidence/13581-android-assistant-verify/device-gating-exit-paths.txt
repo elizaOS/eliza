@@ -1,0 +1,13 @@
+# android-assistant-verify — device gating exit paths (host has NO device)
+
+$ node scripts/android-assistant-verify.mjs   # default: honest N/A
+[android-assistant-verify] N/A (skipped honestly): no Android device/emulator attached — assistant/IME/assist-key checks need a device.
+exit=0
+
+$ node scripts/android-assistant-verify.mjs --require-device   # required-but-missing -> FAIL
+[android-assistant-verify] REQUIRED device missing: no Android device/emulator attached — assistant/IME/assist-key checks need a device.
+exit=1
+
+$ ELIZA_ANDROID_REQUIRE_AGENT=1 node scripts/android-assistant-verify.mjs   # env flag -> FAIL
+[android-assistant-verify] REQUIRED device missing: no Android device/emulator attached — assistant/IME/assist-key checks need a device.
+exit=1

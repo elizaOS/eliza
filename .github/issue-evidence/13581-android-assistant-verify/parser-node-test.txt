@@ -1,0 +1,22 @@
+✔ normalizeComponent canonicalizes short and full forms equally (5.1945ms)
+✔ parseServiceRegistration finds the VIS in a real dumpsys package slice (short form) (2.379667ms)
+✔ parseServiceRegistration reports absence when the component is missing (0.245292ms)
+✔ parseAssistantSurfaces detects every declared surface, and reports the missing one (1.426167ms)
+✔ parseAssistantSurfaces treats a renamed VIS as ABSENT (regression canary) (0.325208ms)
+✔ parseRoleHolders recognizes the held ROLE_ASSISTANT and rejects noise lines (0.309125ms)
+✔ parseVoiceInteractionService reads dumpsys ComponentInfo and flattened settings forms (0.327917ms)
+✔ parseDefaultInputMethod distinguishes selected Eliza IME from another keyboard and null (2.44525ms)
+✔ parseEnabledImes finds the Eliza IME in an `ime list -s` set (0.626834ms)
+✔ detectSurfaceInvocation catches the IME class tag, bracket marker, and deep-link source (2.298791ms)
+✔ assertDeepLinkLanded requires BOTH resumed MainActivity and the expected source tag (0.448084ms)
+✔ classifyImeAsrOutcome distinguishes committed / engineOff / modelNotReady / error (0.292292ms)
+✔ summarizeLaneVerdict passes only when every required surface checks out (0.291291ms)
+✔ exported component ids match the native manifest components (0.066458ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 219.667208

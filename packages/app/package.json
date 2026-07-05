@@ -39,6 +39,7 @@
     "test:e2e:ios:cloud": "node scripts/ios-e2e.mjs --cloud",
     "test:e2e:android:local": "node scripts/android-e2e.mjs --skip-route-coverage",
     "test:e2e:android:routes": "node scripts/android-e2e.mjs --skip-local-chat",
+    "test:e2e:android:assistant": "node scripts/android-assistant-verify.mjs --require-device --json",
     "test:e2e:android:onboarding": "ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 bunx playwright test --config playwright.android.config.ts test/android/onboarding-to-home.android.spec.ts",
     "test:e2e:android:native-plugin-view": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} bunx playwright test --config playwright.android.config.ts test/android/native-plugin-view-smoke.android.spec.ts",
     "test:e2e:android:view-runtime-soak": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} bunx playwright test --config playwright.android.config.ts test/android/view-runtime-soak.android.spec.ts",

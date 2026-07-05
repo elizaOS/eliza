@@ -65,7 +65,10 @@ const COMPONENT_ID_RE = /^[A-Za-z0-9_.]+\/\.?[A-Za-z0-9_$.]+$/;
  * can never silently "match nothing" and read as absence.
  */
 export function normalizeComponent(componentId) {
-  if (typeof componentId !== "string" || !COMPONENT_ID_RE.test(componentId.trim())) {
+  if (
+    typeof componentId !== "string" ||
+    !COMPONENT_ID_RE.test(componentId.trim())
+  ) {
     throw new Error(`Not a component id: ${JSON.stringify(componentId)}`);
   }
   const [pkg, cls] = componentId.trim().split("/");
@@ -73,12 +76,26 @@ export function normalizeComponent(componentId) {
   return `${pkg}/${fqcn}`;
 }
 
+/**
+ * Whether `haystack` contains the given component in either its full
+ * (`pkg/pkg.Class`) or short (`pkg/.Class`) form. The match requires a right
+ * BOUNDARY — the component id must not be a prefix of a longer class token — so
+ * a renamed surface (e.g. `…ElizaVoiceInteractionServiceRENAMED`) reads as
+ * ABSENT rather than falsely matching `…ElizaVoiceInteractionService`. That is
+ * exactly the regression the lane exists to catch, so the matcher must not
+ * paper over it. Java class chars are `[A-Za-z0-9_$.]`; the boundary is any
+ * character outside that set (or end of string).
+ */
 function componentMatches(haystack, componentId) {
   const full = normalizeComponent(componentId);
   const [pkg, fqcn] = full.split("/");
   const shortCls = fqcn.startsWith(pkg) ? fqcn.slice(pkg.length) : `.${fqcn}`;
   const short = `${pkg}/${shortCls}`;
-  return haystack.includes(full) || haystack.includes(short);
+  const boundary = "(?![A-Za-z0-9_$.])";
+  return (
+    new RegExp(escapeRe(full) + boundary).test(haystack) ||
+    new RegExp(escapeRe(short) + boundary).test(haystack)
+  );
 }
 
 /**
@@ -92,7 +109,11 @@ function componentMatches(haystack, componentId) {
  *
  * @returns {{ registered: boolean, actionSeen: boolean }}
  */
-export function parseServiceRegistration(dumpsysOutput, componentId, intentAction) {
+export function parseServiceRegistration(
+  dumpsysOutput,
+  componentId,
+  intentAction,
+) {
   const text = String(dumpsysOutput ?? "");
   const registered = componentMatches(text, componentId);
   const actionSeen = intentAction ? text.includes(intentAction) : true;
@@ -137,7 +158,9 @@ export function parseRoleHolders(cmdRoleOutput, expectedPackage = APP_PACKAGE) {
   const holders = String(cmdRoleOutput ?? "")
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !/^Exception|^Error|^usage:/i.test(line));
+    .filter(
+      (line) => line.length > 0 && !/^Exception|^Error|^usage:/i.test(line),
+    );
   return {
     holders,
     heldByExpected: holders.includes(expectedPackage),
@@ -163,7 +186,9 @@ export function parseVoiceInteractionService(output) {
   const selected = (componentInfo?.[1] ?? flattened?.[1] ?? "").trim();
   return {
     selected: selected || null,
-    isEliza: selected ? componentMatches(selected, ASSISTANT_VIS_COMPONENT) : false,
+    isEliza: selected
+      ? componentMatches(selected, ASSISTANT_VIS_COMPONENT)
+      : false,
   };
 }
 
@@ -174,10 +199,15 @@ export function parseVoiceInteractionService(output) {
  * re-assert this after every reinstall because `adb install -r` clears it.
  */
 export function parseDefaultInputMethod(settingsOutput) {
-  const selected = String(settingsOutput ?? "").trim().split(/\s+/)[0] ?? "";
+  const selected =
+    String(settingsOutput ?? "")
+      .trim()
+      .split(/\s+/)[0] ?? "";
   return {
     selected: selected && selected !== "null" ? selected : null,
-    isEliza: selected ? componentMatches(selected, ASSISTANT_IME_COMPONENT) : false,
+    isEliza: selected
+      ? componentMatches(selected, ASSISTANT_IME_COMPONENT)
+      : false,
   };
 }
 
@@ -193,7 +223,9 @@ export function parseEnabledImes(imeListOutput) {
     .filter((line) => COMPONENT_ID_RE.test(line));
   return {
     enabled,
-    elizaEnabled: enabled.some((id) => componentMatches(id, ASSISTANT_IME_COMPONENT)),
+    elizaEnabled: enabled.some((id) =>
+      componentMatches(id, ASSISTANT_IME_COMPONENT),
+    ),
   };
 }
 
@@ -209,7 +241,9 @@ export function parseEnabledImes(imeListOutput) {
  */
 export function detectSurfaceInvocation(logcatOutput, probe) {
   const text = String(logcatOutput ?? "");
-  const tagHit = probe?.tag ? new RegExp(`\\b${escapeRe(probe.tag)}\\b`).test(text) : false;
+  const tagHit = probe?.tag
+    ? new RegExp(`\\b${escapeRe(probe.tag)}\\b`).test(text)
+    : false;
   const bracketHit = probe?.bracket
     ? text.includes(`[${probe.bracket}]`)
     : false;
@@ -235,14 +269,26 @@ export function detectSurfaceInvocation(logcatOutput, probe) {
  * @param {string} logcatOutput same-run logcat buffer
  * @param {string} expectedSource one of DEEP_LINK_SOURCES
  */
-export function assertDeepLinkLanded(activityDump, logcatOutput, expectedSource) {
+export function assertDeepLinkLanded(
+  activityDump,
+  logcatOutput,
+  expectedSource,
+) {
   const dump = String(activityDump ?? "");
   const mainActivityResumed =
-    /ResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(dump) ||
-    /mResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(dump) ||
-    /topResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(dump) ||
+    /ResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(
+      dump,
+    ) ||
+    /mResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(
+      dump,
+    ) ||
+    /topResumedActivity[:\s].*ai\.elizaos\.app\/[.A-Za-z0-9_]*MainActivity/.test(
+      dump,
+    ) ||
     componentMatches(dump, MAIN_ACTIVITY_COMPONENT);
-  const sourceInLog = String(logcatOutput ?? "").includes(`source=${expectedSource}`);
+  const sourceInLog = String(logcatOutput ?? "").includes(
+    `source=${expectedSource}`,
+  );
   const sourceInDump = dump.includes(`source=${expectedSource}`);
   return {
     mainActivityResumed,
@@ -267,7 +313,10 @@ export function classifyImeAsrOutcome(logcatOutput) {
   const text = String(logcatOutput ?? "");
   if (/transcript committed \(\d+ chars\)/.test(text)) return "committed";
   if (/ASR loopback unreachable/.test(text)) return "engineOff";
-  if (/ASR responded 503/.test(text) || /model_not_ready|MODEL_NOT_READY/.test(text)) {
+  if (
+    /ASR responded 503/.test(text) ||
+    /model_not_ready|MODEL_NOT_READY/.test(text)
+  ) {
     return "modelNotReady";
   }
   if (/transcription error|error_transcribe/.test(text)) return "error";
@@ -291,15 +340,21 @@ export function classifyImeAsrOutcome(logcatOutput) {
  */
 export function summarizeLaneVerdict(results, requireAgent) {
   const failures = [];
-  if (!results.surfacesRegistered) failures.push("assistant/IME surfaces not registered");
+  if (!results.surfacesRegistered)
+    failures.push("assistant/IME surfaces not registered");
   if (!results.roleHeld) failures.push("assistant role not held by Eliza");
   if (!results.imeSelected) failures.push("Eliza IME not selected");
-  if (!results.assistLanded) failures.push("assist invocation did not reach MainActivity");
-  if (!results.imeLanded) failures.push("IME invocation did not reach MainActivity");
+  if (!results.assistLanded)
+    failures.push("assist invocation did not reach MainActivity");
+  if (!results.imeLanded)
+    failures.push("IME invocation did not reach MainActivity");
   if (requireAgent && results.asrOutcome === "engineOff") {
-    failures.push("full engine required but ASR loopback was unreachable (ENGINE_OFF)");
+    failures.push(
+      "full engine required but ASR loopback was unreachable (ENGINE_OFF)",
+    );
   }
-  if (results.asrOutcome === "error") failures.push("IME ASR round-trip errored");
+  if (results.asrOutcome === "error")
+    failures.push("IME ASR round-trip errored");
   return { pass: failures.length === 0, failures };
 }
 
