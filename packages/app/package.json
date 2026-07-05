@@ -86,6 +86,7 @@
     "install:ios:sideload": "node scripts/ios-sideload-helper.mjs",
     "install:ios:cloud:sideload": "node scripts/ios-sideload-helper.mjs --cloud --build-device",
     "ios:device:deploy": "node scripts/ios-device-deploy.mjs",
+    "ios:device:provision": "node scripts/ios-device-provision.mjs",
     "ios:device:logs": "node scripts/ios-device-logs.mjs",
     "ios:device:capture": "node scripts/ios-device-capture.mjs --platform device",
     "capture:ios-sim:boot": "node scripts/ios-device-capture.mjs --platform sim",
