@@ -23,8 +23,8 @@ import {
   CONSOLE_SIGTRAP_SIGNATURE,
   classifyCodesignPreflight,
   classifyConsoleExit,
-  classifyXcresultSummaryForGate,
   classifyIsolatedReruns,
+  classifyXcresultSummaryForGate,
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
   evaluateRunnerStaleness,
@@ -32,8 +32,8 @@ import {
   extractXctestrunAppPaths,
   findDeviceRecord,
   findUncoveredIosXcuitestEntries,
-  isBenignIosAppAbsence,
   formatDeviceUnlockWaitMessage,
+  isBenignIosAppAbsence,
   normalizeDeviceLockState,
   normalizeProvisioningProfile,
   PlistData,
@@ -759,7 +759,7 @@ describe("classifyXcresultSummaryForGate", () => {
 describe("ios-device-capture strict summary gate", () => {
   it("keeps test-summary classification behind --strict-gate", () => {
     const source = fs.readFileSync(
-      path.join(process.cwd(), "scripts", "ios-device-capture.mjs"),
+      path.join(process.cwd(), "packages/app/scripts/ios-device-capture.mjs"),
       "utf8",
     );
     const summaryWriteIndex = source.indexOf("test-summary.json");
@@ -1327,9 +1327,9 @@ describe("buildIosXcuitestShardPlan (#13686)", () => {
         'The request to terminate "ai.elizaos.app" failed. found nothing to terminate',
       ),
     ).toBe(true);
-    expect(isBenignIosAppAbsence("No matching processes belonging to you")).toBe(
-      true,
-    );
+    expect(
+      isBenignIosAppAbsence("No matching processes belonging to you"),
+    ).toBe(true);
   });
 });
 
@@ -1386,7 +1386,6 @@ describe("evaluateRunnerStaleness (#13566)", () => {
     expect(decision.newestSource).toBe(null);
   });
 });
-
 
 describe("ios-device-capture agent availability preflight (#13569)", () => {
   it("prefers the configured iOS API base over the cloud health fallback", () => {
@@ -1469,7 +1468,8 @@ describe("ios-device-capture agent availability preflight (#13569)", () => {
         "MessageGestureUITests/testSendsMessage()",
         "OnboardingChatUITests/testFirstReply()",
       ],
-      message: "2 chat legs skipped: agent never ready (not-ready(ready=false))",
+      message:
+        "2 chat legs skipped: agent never ready (not-ready(ready=false))",
     });
   });
 
