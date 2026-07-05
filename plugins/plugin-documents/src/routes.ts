@@ -16,11 +16,11 @@ import {
   documentMediaFormat,
   documentScopedEntityId,
   documentTags,
-  type DocumentFilter as SharedDocumentFilter,
   matchesDocumentFilter as matchesSharedDocumentFilter,
   parseDocumentScope,
   type RouteActor,
   routeActorAddedByRole,
+  type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/agent/api/document-access";
 import type {
@@ -328,7 +328,10 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
   );
 }
 
-function matchesDocumentFilter(memory: Memory, filters: DocumentFilter): boolean {
+function matchesDocumentFilter(
+  memory: Memory,
+  filters: DocumentFilter,
+): boolean {
   if (!matchesSharedDocumentFilter(memory, filters)) return false;
 
   const metadata = asRecord(memory.metadata);

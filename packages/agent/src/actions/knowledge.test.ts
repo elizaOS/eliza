@@ -119,20 +119,25 @@ function msg(entityId: UUID, roomId: UUID): Memory {
   } as Memory;
 }
 
-const call = (
-  action: typeof searchKnowledgeAction,
+const call = async (
+  action: { handler: typeof searchKnowledgeAction.handler },
   runtime: never,
   message: Memory,
   parameters: Record<string, unknown>,
   callback?: (c: unknown, k: string) => Promise<void>,
-) =>
-  action.handler(
+) => {
+  const result = await action.handler(
     runtime,
     message,
     undefined as never,
     { parameters } as never,
     callback as never,
   );
+  if (!result) {
+    throw new Error("Knowledge action did not return an action result.");
+  }
+  return result;
+};
 
 describe("SEARCH_KNOWLEDGE", () => {
   it("free-text search surfaces readable items", async () => {
