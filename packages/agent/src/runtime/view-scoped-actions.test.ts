@@ -426,6 +426,7 @@ const CHARACTER_MOUNTED_IDS = new Set([
   "example-add-conversation",
   "post-example-add",
 ]);
+const CHARACTER_TEST_VIEW_ID = "character_fixture";
 
 function characterView() {
   const source = BUILTIN_VIEWS.find((v) => v.id === "character");
@@ -437,9 +438,9 @@ function characterView() {
     clicked,
     scopedActions: (source.scopedActions ?? []) as ViewScopedAction[],
     view: {
-      id: "character",
+      id: CHARACTER_TEST_VIEW_ID,
       label: "Character view",
-      path: "/character",
+      path: `/${CHARACTER_TEST_VIEW_ID}`,
       relatedActions: [] as string[],
       scopedActions: source.scopedActions,
       // Preserve the real view's agent-surface grant so the mutating
@@ -529,12 +530,12 @@ describe("character view scoped actions (#14155)", () => {
     const fillBio = actions.get("VIEW_CHARACTER_FILL_BIO");
     expect(fillBio).toBeDefined();
 
-    // Gated closed everywhere but the character view.
+    // Gated closed everywhere but the declaring view.
     await navigateTo("chat");
     expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
       false,
     );
-    await navigateTo("character");
+    await navigateTo(CHARACTER_TEST_VIEW_ID);
     expect(await fillBio?.validate?.({} as IAgentRuntime, fakeMessage)).toBe(
       true,
     );
@@ -550,10 +551,10 @@ describe("character view scoped actions (#14155)", () => {
       },
       process.cwd(),
     );
-    await navigateTo("character");
+    await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "character",
+      CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_FILL_BIO"),
     );
     const result = await action.handler(
@@ -579,10 +580,10 @@ describe("character view scoped actions (#14155)", () => {
       },
       process.cwd(),
     );
-    await navigateTo("character");
+    await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "character",
+      CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_STYLE_RULE"),
     );
     const result = await action.handler(
@@ -612,10 +613,10 @@ describe("character view scoped actions (#14155)", () => {
       },
       process.cwd(),
     );
-    await navigateTo("character");
+    await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "character",
+      CHARACTER_TEST_VIEW_ID,
       findAction(char.scopedActions, "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE"),
     );
     const result = await action.handler(
@@ -637,9 +638,9 @@ describe("character view scoped actions (#14155)", () => {
     // missing-element error — never a silent no-op.
     const source = BUILTIN_VIEWS.find((v) => v.id === "character");
     const bareView = {
-      id: "character",
+      id: CHARACTER_TEST_VIEW_ID,
       label: "Character view",
-      path: "/character",
+      path: `/${CHARACTER_TEST_VIEW_ID}`,
       relatedActions: [] as string[],
       scopedActions: source?.scopedActions,
       // Grant agent-surface (as the real view does) so the step clears the
@@ -662,10 +663,10 @@ describe("character view scoped actions (#14155)", () => {
       },
       process.cwd(),
     );
-    await navigateTo("character");
+    await navigateTo(CHARACTER_TEST_VIEW_ID);
 
     const action = buildViewScopedAction(
-      "character",
+      CHARACTER_TEST_VIEW_ID,
       findAction(
         (source?.scopedActions ?? []) as ViewScopedAction[],
         "VIEW_CHARACTER_ADD_STYLE_RULE",
