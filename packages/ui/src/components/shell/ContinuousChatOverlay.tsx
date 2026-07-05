@@ -3542,45 +3542,38 @@ export function ContinuousChatOverlay({
         // input still sits above the home-gesture bar. Non-full-bleed anchors
         // the composer LOW, lock-screen style. The OS reports a ~34px bottom
         // safe-area on a home-indicator phone, but the indicator itself is a
-        // thin (~5px) bar seated ~8px off the true bottom — clearing the WHOLE
-        // safe-area floats the pill ~34px up over a dead band. So clear only
-        // what the indicator needs: 60% of the reported inset (clears the bar +
-        // its own margin; the 44px min tap target and the OS bar stay
-        // untouched) with a 0.5rem floor so a device with NO inset still keeps
-        // a hair of breathing room. This seats the pill just above the home
-        // indicator instead of hovering. The floor layer below paints the
-        // reclaimed strip with the home surface so it reads continuous, not as
-        // a black bar.
+        // thin (~5px) bar whose TOP edge sits only ~13px off the true bottom
+        // (5px bar + ~8px own margin) — clearing the WHOLE safe-area floats
+        // the pill ~34px up over a dead band, and 60% (device round: still
+        // reads too high) leaves it hovering ~20px up. So clear exactly what
+        // the indicator occupies: 40% of the reported inset (34px * 0.4 ≈
+        // 13.6px — the pill seats right on the indicator's top edge without
+        // ever overlapping the bar or the OS gesture zone), with a 0.5rem
+        // floor so a device with NO inset still keeps a hair of breathing
+        // room. The same factor holds for Android gesture pills (their inset
+        // reports similarly padded). Everything below the composer is the
+        // full-bleed wallpaper / app floor — no cosmetic strip repaints it.
         paddingBottom: fullBleed
           ? 0
           : keyboardLiftActive
             ? "0.75rem"
-            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) * 0.6, 0.5rem))",
+            : "calc(var(--eliza-mobile-nav-offset, 0px) + max(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) * 0.4, 0.5rem))",
       }}
       data-testid="continuous-chat-overlay"
       data-open={sheetOpen ? "true" : undefined}
     >
-      {/* RECLAIMED BOTTOM FLOOR: the composer is lifted off the home-gesture
-          inset, so the strip between the composer and the true screen bottom
-          used to be an unpainted, transparent zone that read as a DEAD BLACK
-          BAR under the composer. This layer fills the reclaimed zone (and a
-          hair above, so it seats behind the composer with no seam) with the
-          same warm home-surface tone (--launch-bg). Purely cosmetic
-          (pointer-events-none, aria-hidden), back of the overlay stack, only
-          needed at rest. Soft top fade blends it into the field. */}
-      {!fullBleed && !keyboardLiftActive ? (
-        <div
-          aria-hidden="true"
-          data-testid="continuous-chat-bottom-floor"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-0"
-          style={{
-            height:
-              "calc(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 1.5rem)",
-            backgroundImage:
-              "linear-gradient(to bottom, transparent 0%, var(--launch-bg) 55%)",
-          }}
-        />
-      ) : null}
+      {/* NO reclaimed-bottom-floor element here (removed): it used to paint a
+          transparent→var(--launch-bg) gradient over the strip below the
+          composer, from when that strip was an UNPAINTED void that read as a
+          dead black bar. The app shell now guarantees that zone is always
+          painted underneath this overlay — the full-bleed wallpaper on
+          shared-background routes (the transparent app-safe-area-floor lets it
+          own the screen to the true bottom edge) and the dark `bg-bg` floor on
+          opaque routes. Repainting it here with --launch-bg (a HOST-seeded
+          launch color, orange on web) drew a visible tinted band over the
+          wallpaper under the floating composer — the residual "gap" on the
+          standalone home view. Everything below the composer must simply show
+          whatever the shell paints: wallpaper, lockscreen-style. */}
       {/* Visual dimming scrim behind the open chat. It fades in WITH the reveal
           but never captures pointer events; outside taps are handled by the
           document-level detector above, and outside drags pass through to the

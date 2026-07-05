@@ -388,6 +388,30 @@ describe("ContinuousChatOverlay", () => {
     expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
+  it("seats the resting composer low: 40% of the gesture inset with a 0.5rem floor", () => {
+    // Lock-screen anchoring: at rest the overlay clears only what the home
+    // indicator occupies — 40% of the reported safe-area/gesture inset (≈13.6px
+    // of a 34px iOS inset) — not the whole inset (r3.3 hover) nor 60% (still
+    // ~20px up on device). The 0.5rem floor keeps breathing room on devices
+    // reporting no inset, and the nav offset still stacks on top.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const overlay = screen.getByTestId("continuous-chat-overlay");
+    expect(overlay.style.paddingBottom).toBe(
+      "calc(var(--eliza-mobile-nav-offset, 0px) + max(max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) * 0.4, 0.5rem))",
+    );
+  });
+
+  it("renders NO cosmetic bottom-floor strip under the composer (wallpaper owns the zone)", () => {
+    // The old continuous-chat-bottom-floor painted a --launch-bg gradient over
+    // the strip below the composer; with the app shell painting that zone
+    // (wallpaper on shared-background routes), the repaint band WAS the
+    // residual visible gap on the standalone home view. It must stay gone.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    expect(
+      screen.queryByTestId("continuous-chat-bottom-floor"),
+    ).toBeNull();
+  });
+
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
     const { rerender } = render(
       <ContinuousChatOverlay
