@@ -16,8 +16,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import {
   type EmitWaifuWebhookParams,
-  type WaifuWebhookTarget,
   emitWaifuWebhook,
+  type WaifuWebhookTarget,
 } from "./waifu-webhook";
 
 // Public IPv4 literal (documentation range is forbidden; this one is routable
