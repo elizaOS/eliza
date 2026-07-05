@@ -30,7 +30,7 @@
     "audit:app:minimalism:update": "bun scripts/update-minimalism-baseline.mjs",
     "mvp:visual-verify": "node scripts/mvp-visual-verify.mjs",
     "mvp:visual-verify:overflow-demo": "node scripts/mvp-visual-verify/overflow-invariant-demo.mjs",
-    "audit:app:verify": "bun run audit:app && bun run mvp:visual-verify",
+    "audit:app:verify": "bun run audit:app && bun run mvp:visual-verify -- --strict",
     "audit:views": "node scripts/audit-views-soak.mjs",
     "audit:ocr": "bun scripts/ocr-triage.ts --audit-dir aesthetic-audit-output --baseline test/ui-smoke/ocr-triage-baseline.json",
     "test:desktop:packaged": "node scripts/run-ui-playwright.mjs --config playwright.electrobun.packaged.config.ts",
