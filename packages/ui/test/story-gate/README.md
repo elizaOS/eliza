@@ -51,11 +51,17 @@ bun run --cwd packages/ui audit:stories                 # full catalog
 node test/story-gate/run-story-gate.mjs --section Primitives   # one section
 node test/story-gate/run-story-gate.mjs --shard 1/4            # CI shard
 node test/story-gate/run-story-gate.mjs --grep button --no-a11y
+node test/story-gate/run-story-gate.mjs --backend-api-base http://127.0.0.1:31337
 ```
 
 Useful flags: `--concurrency N`, `--limit N`, `--no-screenshots`, `--no-a11y`,
-`--update-baseline` (regenerate the console + a11y baselines after an
-intentional change).
+`--backend-api-base URL`, `--no-backend-logs`, `--update-baseline` (regenerate
+the console + a11y baselines after an intentional change).
+
+Backend log capture is best-effort because most story-gate runs only serve the
+static Storybook catalog. Configure `--backend-api-base` or
+`STORY_GATE_BACKEND_API_BASE` when a live dev stack is running; otherwise the
+gate still writes `backend-log-status.json` with a `no apiBase` reason.
 
 ## Outputs (`test/story-gate/output/`)
 
@@ -63,6 +69,12 @@ intentional change).
   `totals.playPrepared/playExpected`.
 - `contact-sheet.html` — gallery; broken=red, warn=orange border.
 - `screenshots/<storyId>.png` — deterministic per-story captures.
+- `frontend-logs.json` — aggregate index of per-story frontend log captures.
+- `logs/frontend/<storyId>.json` — structured console, page error, failed
+  response, and request-failure capture from `log-capture.mjs`.
+- `backend-log-status.json` — backend log capture status for the run.
+- `backend-logs.txt` — live backend log tail when `--backend-api-base` or
+  `STORY_GATE_BACKEND_API_BASE` is configured and reachable.
 
 ## Reusable pieces
 
@@ -70,3 +82,5 @@ intentional change).
   Playwright/esbuild harness (the `__e2e__` runners can adopt it).
 - `log-capture.mjs` — structured frontend console/network/error capture that
   writes a durable JSON artifact matching the `PR_EVIDENCE.md` convention.
+- `backend-log-capture.mjs` — best-effort live dev-stack log capture for
+  harnesses that can reach `/api/dev/console-log`.
