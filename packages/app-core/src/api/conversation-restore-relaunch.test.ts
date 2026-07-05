@@ -19,7 +19,7 @@
  * deleted-this-session id is never resurrected.
  */
 
-import { restoreConversationsFromDb } from "@elizaos/agent";
+import { restoreConversationsFromDb } from "@elizaos/agent/api";
 import {
   type AgentRuntime,
   ChannelType,
