@@ -332,6 +332,53 @@ describe("auth pairing pair-code route", () => {
     }
   });
 
+  it("fails closed with a retryable 503 (never the static token) when the runtime DB is not ready, and keeps the code valid for retry (#13985)", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+
+    // Prime the in-memory pair code (it lives in module state, not the DB).
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE,
+    );
+
+    // A remote device submits the correct code during the boot window, before
+    // the runtime DB is up (STATE.current === null → getCompatDrizzleDb null).
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE);
+
+    // Fail closed: retryable 503, no session minted, and — critically — the
+    // forever-valid static ELIZA_API_TOKEN is NEVER returned.
+    expect(res.status()).toBe(503);
+    expect(sessionMocks.createMachineSession).not.toHaveBeenCalled();
+    expect(JSON.stringify(res.body())).not.toContain("pairing-test-token");
+
+    // The 503 did NOT consume the code, so a retry once the DB is up completes
+    // normally and mints a revocable session (not the static token).
+    const retry = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (retry as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+    const res2 = fakeRes();
+    await handleAuthPairingCompatRoutes(retry, res2.res, STATE_WITH_DB);
+    expect(res2.status()).toBe(200);
+    expect(res2.body()).toEqual({ token: "test-machine-session-id" });
+  });
+
   it("mints a machine session on successful pair (returns session id, not the static API token)", async () => {
     vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
     sessionMocks.createMachineSession.mockClear();
