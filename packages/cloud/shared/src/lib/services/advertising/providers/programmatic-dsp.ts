@@ -131,7 +131,20 @@ async function dspRequest<T>(
     },
   });
 
-  const json = (await response.json().catch(() => ({}))) as DspEnvelope<T>;
+  // An empty body is a legitimate no-content response (e.g. 204 on a PATCH);
+  // a non-empty body that will not parse is a transport/protocol failure and
+  // must surface, never read as an empty-but-successful envelope (which on the
+  // reporting path would fabricate zero spend from a broken fetch).
+  const rawBody = await response.text();
+  let json: DspEnvelope<T> = {};
+  if (rawBody.trim() !== "") {
+    try {
+      json = JSON.parse(rawBody) as DspEnvelope<T>;
+    } catch {
+      // error-policy:J3 untrusted DSP response body; a non-JSON payload is invalid input, surfaced (never a fake-empty envelope)
+      throw new Error(`DSP API returned a non-JSON body (status ${response.status})`);
+    }
+  }
   if (!response.ok) {
     throw new Error(json.error?.message || json.message || `DSP API error: ${response.status}`);
   }
@@ -283,6 +296,7 @@ function buildCreativeAd(input: CreateCreativeInput, seatId: string | undefined)
     try {
       adomain = [new URL(input.destinationUrl).hostname];
     } catch {
+      // error-policy:J3 destinationUrl is untrusted input; a malformed URL yields no adomain (an optional OpenRTB field), never a fabricated one
       adomain = undefined;
     }
   }
@@ -315,12 +329,16 @@ export const programmaticDspProvider: AdProvider = {
   async validateCredentials(
     credentials: AdAccountCredentials,
   ): Promise<AdProviderValidationResult> {
-    const accounts = await this.listAdAccounts(credentials).catch((err: unknown) => {
-      logger.error("[ProgrammaticDsp] Validation failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return [] as Array<{ id: string; name: string }>;
-    });
+    let accounts: Array<{ id: string; name: string }>;
+    try {
+      accounts = await this.listAdAccounts(credentials);
+    } catch (err) {
+      // error-policy:J4 credential validation reports an explicit invalid state; the real
+      // fetch/auth failure is surfaced verbatim, kept distinct from a genuinely empty account list.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("[ProgrammaticDsp] Validation failed", { error: message });
+      return { valid: false, error: message };
+    }
     if (accounts.length === 0) {
       return { valid: false, error: "No DSP advertiser accounts found or invalid credentials" };
     }
@@ -391,6 +409,7 @@ export const programmaticDspProvider: AdProvider = {
         externalCampaignId: `${accountId}/${campaignId}/${lineItemId}`,
       };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the failed create into a structured failure result
       logger.error("[ProgrammaticDsp] Campaign creation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -435,6 +454,7 @@ export const programmaticDspProvider: AdProvider = {
       }
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the failed update into a structured failure result
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -471,6 +491,7 @@ export const programmaticDspProvider: AdProvider = {
       });
       return { success: true };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the failed delete into a structured failure result
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -508,6 +529,7 @@ export const programmaticDspProvider: AdProvider = {
       const associationId = requireId(associationResponse, "creative association");
       return { success: true, externalCreativeId: `${creativeId}/${associationId}` };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the failed creative create into a structured failure result
       logger.error("[ProgrammaticDsp] Creative creation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -533,6 +555,7 @@ export const programmaticDspProvider: AdProvider = {
         metadata: { storage: "external_url", type: input.type },
       };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the SSRF/validation failure into a structured failure result
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -580,6 +603,7 @@ export const programmaticDspProvider: AdProvider = {
       );
       return { success: true, metrics: summarizeReport(response.data) };
     } catch (error) {
+      // error-policy:J1 AdProvider boundary translates the failed report fetch into a structured failure result (distinct from a legitimately empty report, which returns success with zeroed metrics)
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -604,6 +628,7 @@ async function setCampaignStatus(
     }
     return { success: true, externalCampaignId };
   } catch (error) {
+    // error-policy:J1 AdProvider boundary translates the failed status patch into a structured failure result
     return { success: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

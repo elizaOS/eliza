@@ -143,6 +143,8 @@ function extractYouTubeVideoId(rawUrl: string): string | undefined {
     if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
       return normalizeYouTubeVideoId(url.searchParams.get("v") ?? "");
     }
+    // error-policy:J3 rawUrl is caller-supplied; a malformed URL is invalid input,
+    // reported as "no extractable video id" — not a swallowed provider/transport failure.
   } catch {
     return undefined;
   }
@@ -307,15 +309,9 @@ export const googleAdsProvider: AdProvider = {
         body: JSON.stringify({
           query: `SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1`,
         }),
-      }).catch((err) => {
-        logger.warn("[GoogleAds] Failed to fetch customer details", {
-          customerId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
       });
 
-      const row = customerResponse ? firstGoogleAdsSearchResult(customerResponse) : undefined;
+      const row = firstGoogleAdsSearchResult(customerResponse);
       if (row) {
         const customer = row.customer;
         accounts.push({
@@ -742,6 +738,8 @@ export const googleAdsProvider: AdProvider = {
           },
           body: videoBody,
         });
+        // error-policy:J3 finalize body may be empty/non-JSON; the !ok check below still
+        // surfaces HTTP failures, and a 2xx with no resourceName reports an explicit failure.
         const data = (await finalizeResponse.json().catch(() => ({}))) as {
           resourceName?: string;
         };
@@ -820,6 +818,8 @@ export const googleAdsProvider: AdProvider = {
           sizeBytes: downloaded.bytes.byteLength,
         },
       };
+      // error-policy:J1 AdProvider boundary translates a failed upload/download/parse into a
+      // structured failure result (success:false) — never a fabricated success.
     } catch (error) {
       logger.error("[GoogleAds] Media upload failed", {
         accountId,
@@ -906,6 +906,8 @@ export const googleAdsProvider: AdProvider = {
               : undefined,
         },
       };
+      // error-policy:J1 AdProvider boundary translates a failed status fetch/parse into a
+      // structured failure result (success:false) — distinct from a resolved not-ready status.
     } catch (error) {
       logger.error("[GoogleAds] Media status failed", {
         accountId,

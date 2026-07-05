@@ -258,10 +258,20 @@ export const redditAdsProvider: AdProvider = {
   async validateCredentials(
     credentials: AdAccountCredentials,
   ): Promise<AdProviderValidationResult> {
-    const accounts = await this.listAdAccounts(credentials).catch((err) => {
-      logger.error("[RedditAds] Validation failed", { error: err.message });
-      return [];
-    });
+    let accounts: Array<{ id: string; name: string }>;
+    try {
+      accounts = await this.listAdAccounts(credentials);
+    } catch (error) {
+      // error-policy:J1 boundary — surface the account-discovery transport/auth failure
+      // verbatim so a failed fetch stays distinct from a valid account with zero ad accounts.
+      logger.error("[RedditAds] Validation failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : "Reddit credential validation failed",
+      };
+    }
     if (accounts.length === 0) {
       return { valid: false, error: "No Reddit Ads accounts found or invalid credentials" };
     }

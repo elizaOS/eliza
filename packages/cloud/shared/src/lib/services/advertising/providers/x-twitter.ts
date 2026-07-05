@@ -164,6 +164,9 @@ async function xAdsRequest<T>(
       ...options.headers,
     },
   });
+  // error-policy:J3 provider-response parse — empty-body success responses (DELETE/PUT/204) carry no
+  // JSON; a non-ok status still throws below, and data-required callers throw on the missing id, so a
+  // parse miss never masks a real failure.
   const json = (await response.json().catch(() => ({}))) as XAdsResponse<T>;
   if (!response.ok || json.errors?.length) {
     throw new Error(
@@ -269,12 +272,16 @@ export const xTwitterAdsProvider: AdProvider = {
   async validateCredentials(
     credentials: AdAccountCredentials,
   ): Promise<AdProviderValidationResult> {
-    const accounts = await this.listAdAccounts(credentials).catch((error) => {
-      logger.error("[XTwitterAds] Validation failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    });
+    let accounts: Array<{ id: string; name: string }>;
+    try {
+      accounts = await this.listAdAccounts(credentials);
+    } catch (error) {
+      // error-policy:J1 credential-check boundary — surface the transport/auth failure as its own
+      // distinct invalid state instead of collapsing it into the "no accounts found" empty case.
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("[XTwitterAds] Validation failed", { error: message });
+      return { valid: false, error: message };
+    }
     if (accounts.length === 0) {
       return { valid: false, error: "No X Ads accounts found or invalid credentials" };
     }
@@ -344,6 +351,8 @@ export const xTwitterAdsProvider: AdProvider = {
       if (!lineItemId) throw new Error("X Ads line item create returned no id");
       return { success: true, externalCampaignId: `${accountId}/${campaignId}/${lineItemId}` };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown campaign-create failure into a
+      // structured { success:false } result for the caller.
       logger.error("[XTwitterAds] Campaign creation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -388,6 +397,8 @@ export const xTwitterAdsProvider: AdProvider = {
       }
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown campaign-update failure into a
+      // structured { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -413,6 +424,8 @@ export const xTwitterAdsProvider: AdProvider = {
       );
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown pause failure into a structured
+      // { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -438,6 +451,8 @@ export const xTwitterAdsProvider: AdProvider = {
       }
       return { success: true, externalCampaignId };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown activation failure into a structured
+      // { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -463,6 +478,8 @@ export const xTwitterAdsProvider: AdProvider = {
       );
       return { success: true };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown delete failure into a structured
+      // { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -513,6 +530,8 @@ export const xTwitterAdsProvider: AdProvider = {
       if (!promotedTweetId) throw new Error("X Ads promoted tweet create returned no id");
       return { success: true, externalCreativeId: `${tweetId}/${promotedTweetId}` };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown creative-create failure into a
+      // structured { success:false } result for the caller.
       logger.error("[XTwitterAds] Creative creation failed", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -560,6 +579,8 @@ export const xTwitterAdsProvider: AdProvider = {
         metadata: { mediaStatus: libraryResponse.data?.media_status },
       };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown media-upload failure into a
+      // structured { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -585,6 +606,8 @@ export const xTwitterAdsProvider: AdProvider = {
         ready: status === "TRANSCODE_COMPLETED" || status === "READY",
       };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown media-status failure into a
+      // structured { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },
@@ -619,6 +642,8 @@ export const xTwitterAdsProvider: AdProvider = {
       const metrics = response.data?.[0]?.id_data?.[0]?.metrics;
       return { success: true, metrics: sumMetrics(metrics) };
     } catch (error) {
+      // error-policy:J1 provider boundary — translate a thrown metrics-fetch failure into a
+      // structured { success:false } result for the caller.
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   },

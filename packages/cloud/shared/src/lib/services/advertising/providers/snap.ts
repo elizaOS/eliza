@@ -239,12 +239,7 @@ export const snapAdsProvider: AdProvider = {
   async validateCredentials(
     credentials: AdAccountCredentials,
   ): Promise<AdProviderValidationResult> {
-    const accounts = await this.listAdAccounts(credentials).catch((error) => {
-      logger.error("[SnapAds] Validation failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return [];
-    });
+    const accounts = await this.listAdAccounts(credentials);
 
     const account = accounts[0];
     if (!account) {

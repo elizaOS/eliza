@@ -153,12 +153,9 @@ export const tiktokAdsProvider: AdProvider = {
         method: "GET",
         params: { advertiser_ids: "[]" },
       },
-    ).catch((err) => {
-      logger.error("[TikTokAds] Validation failed", { error: err.message });
-      return null;
-    });
+    );
 
-    if (!data?.list?.length) {
+    if (!data.list?.length) {
       return {
         valid: false,
         error: "No TikTok Ads accounts found or invalid credentials",
