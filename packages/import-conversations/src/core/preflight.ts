@@ -17,6 +17,7 @@
  * over-quota condition returns an explicit typed rejection rather than throwing.
  */
 
+import { renderConversation } from "./render.ts";
 import type { ConversationBundle } from "./types.ts";
 
 /** Bytes in one mebibyte — ceilings below read in MiB for legibility. */
@@ -219,9 +220,10 @@ export function preflightImport(
 /**
  * Derive a usage estimate from an already-parsed bundle for the post-parse cost
  * gate (the dry-run plan re-checks quota once real counts are known). Storage
- * is the byte length of all message + title text; one embedding unit is charged
- * per non-empty message as a conservative chunk proxy. `uploadBytes` still
- * comes from the transport and is passed through unchanged.
+ * is the byte length of the rendered transcript parts that the importer writes;
+ * one embedding unit is charged per non-empty message as a conservative chunk
+ * proxy. `uploadBytes` still comes from the transport and is passed through
+ * unchanged.
  */
 export function estimateBundleUsage(
   bundle: ConversationBundle,
@@ -230,19 +232,13 @@ export function estimateBundleUsage(
   let storageBytes = 0;
   let embeddingUnits = 0;
   for (const conversation of bundle.conversations) {
-    if (conversation.title) {
-      storageBytes += byteLength(conversation.title);
+    for (const part of renderConversation(conversation, bundle.source)) {
+      storageBytes += byteLength(part.text);
     }
     for (const message of conversation.messages) {
       const text = message.text ?? "";
       if (text.trim().length > 0) {
-        storageBytes += byteLength(text);
         embeddingUnits += 1;
-      }
-      for (const attachment of message.attachments ?? []) {
-        if (attachment.text) {
-          storageBytes += byteLength(attachment.text);
-        }
       }
     }
   }

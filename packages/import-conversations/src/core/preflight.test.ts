@@ -9,6 +9,7 @@ import {
   preflightImport,
   type TenantImportQuota,
 } from "./preflight.ts";
+import { renderConversation } from "./render.ts";
 import type { ConversationBundle } from "./types.ts";
 
 const MiB = 1024 * 1024;
@@ -226,7 +227,7 @@ describe("estimateBundleUsage", () => {
     expect(estimate.embeddingUnits).toBe(1);
   });
 
-  it("counts UTF-8 bytes (not code units) and includes attachment text", () => {
+  it("counts the rendered transcript bytes that storage writes", () => {
     const b = bundle([
       conv({
         sourceConversationId: "c1",
@@ -241,8 +242,13 @@ describe("estimateBundleUsage", () => {
       }),
     ]);
     const estimate = estimateBundleUsage(b, 0);
-    // 2 bytes for "é" + 2 bytes for the attachment "ab".
-    expect(estimate.storageBytes).toBe(4);
+    const renderedBytes = new TextEncoder().encode(
+      renderConversation(b.conversations[0], b.source)
+        .map((part) => part.text)
+        .join(""),
+    ).byteLength;
+    expect(estimate.storageBytes).toBe(renderedBytes);
+    expect(estimate.storageBytes).toBeGreaterThan(4);
   });
 
   it("matches platform UTF-8 encoding for malformed surrogate text", () => {
@@ -255,8 +261,33 @@ describe("estimateBundleUsage", () => {
       }),
     ]);
     expect(estimateBundleUsage(b, 0).storageBytes).toBe(
-      new TextEncoder().encode(text).byteLength,
+      new TextEncoder().encode(
+        renderConversation(b.conversations[0], b.source)[0].text,
+      ).byteLength,
     );
+  });
+
+  it("refuses a tight quota that fits raw text but not the rendered transcript", () => {
+    const b = bundle([
+      conv({
+        sourceConversationId: "c1",
+        title: "Tiny",
+        messages: [{ role: "user", text: "ok" }],
+      }),
+    ]);
+    const rawTextBytes = new TextEncoder().encode("Tinyok").byteLength;
+    const estimate = estimateBundleUsage(b, 100);
+
+    expect(estimate.storageBytes).toBeGreaterThan(rawTextBytes);
+    const result = preflightImport(estimate, {
+      quota: { remainingStorageBytes: rawTextBytes },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("quota_storage_exceeded");
+      expect(result.observed).toBe(estimate.storageBytes);
+    }
   });
 
   it("feeds directly into preflightImport for a post-parse quota gate", () => {
