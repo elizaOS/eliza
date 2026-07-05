@@ -11,6 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  resolveHostAgentRequestedPort,
+  startHostAgent,
+} from "./lib/host-agent.mjs";
+import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
@@ -29,7 +33,6 @@ const ONBOARDING_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const ONBOARDING_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
-const DEFAULT_API_BASE = "http://127.0.0.1:31338";
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -394,84 +397,102 @@ async function pollResult(udid, appId) {
 
 async function main() {
   const { appId, urlScheme } = readAppIdentity();
-  const apiBase = val("--api-base", DEFAULT_API_BASE);
+  const explicitApiBase = val("--api-base");
+  let apiBase = explicitApiBase;
+  let hostAgent = null;
   const filename = val("--filename", "eliza-ios-attachment-smoke.png");
   const udid = ensureSimulatorBooted();
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
-
-  deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
-  flushPreferences(udid);
-  installLatestApp(udid, appId);
-  tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-  clearState(udid, appId);
-  defaultsWriteString(
-    udid,
-    appId,
-    ONBOARDING_REQUEST_KEY,
-    JSON.stringify({ apiBase }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ONBOARDING_RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ATTACHMENT_REQUEST_KEY,
-    JSON.stringify({
-      apiBase,
-      filename,
-      dataUrl: `data:image/png;base64,${PNG_BASE64}`,
-    }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ATTACHMENT_RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  flushPreferences(udid);
-
-  const recording = startVideo(udid);
   try {
-    log(`launching ${appId} on ${udid}`);
-    simctl(["launch", udid, appId]);
-    await sleep(1500);
-    const deepLink = `${urlScheme}://first-run/runtime/remote?api=${encodeURIComponent(apiBase)}`;
-    if (has("--os-deep-link")) {
-      log(`opening first-run remote deep link: ${deepLink}`);
-      simctl(["openurl", udid, deepLink]);
-    } else {
-      log(`armed in-app first-run remote connect for ${apiBase}`);
+    if (!apiBase) {
+      hostAgent = await startHostAgent({
+        repoRoot,
+        port: resolveHostAgentRequestedPort(),
+        logPath: val(
+          "--host-agent-log",
+          path.join(resultDir, "host-agent.log"),
+        ),
+        log,
+      });
+      apiBase = hostAgent.apiBase;
     }
-    takeScreenshot(udid, "fresh-launch");
-    const result = await pollResult(udid, appId);
-    const screenshot = takeScreenshot(udid, "attachment-result");
-    const video = await stopVideo(recording);
-    fs.writeFileSync(
-      path.join(resultDir, "result.json"),
-      `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
+
+    deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
+    flushPreferences(udid);
+    installLatestApp(udid, appId);
+    tryRun("xcrun", ["simctl", "terminate", udid, appId]);
+    clearState(udid, appId);
+    defaultsWriteString(
+      udid,
+      appId,
+      ONBOARDING_REQUEST_KEY,
+      JSON.stringify({ apiBase }),
     );
-    log(`PASS ${JSON.stringify({ screenshot, video })}`);
-  } catch (error) {
-    const screenshot = takeScreenshot(udid, "failure");
-    await stopVideo(recording);
-    throw new Error(
-      `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
+    defaultsWriteString(
+      udid,
+      appId,
+      ONBOARDING_RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
     );
+    defaultsWriteString(
+      udid,
+      appId,
+      ATTACHMENT_REQUEST_KEY,
+      JSON.stringify({
+        apiBase,
+        filename,
+        dataUrl: `data:image/png;base64,${PNG_BASE64}`,
+      }),
+    );
+    defaultsWriteString(
+      udid,
+      appId,
+      ATTACHMENT_RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    flushPreferences(udid);
+
+    const recording = startVideo(udid);
+    try {
+      log(`launching ${appId} on ${udid}`);
+      simctl(["launch", udid, appId]);
+      await sleep(1500);
+      const deepLink = `${urlScheme}://first-run/runtime/remote?api=${encodeURIComponent(apiBase)}`;
+      if (has("--os-deep-link")) {
+        log(`opening first-run remote deep link: ${deepLink}`);
+        simctl(["openurl", udid, deepLink]);
+      } else {
+        log(`armed in-app first-run remote connect for ${apiBase}`);
+      }
+      takeScreenshot(udid, "fresh-launch");
+      const result = await pollResult(udid, appId);
+      const screenshot = takeScreenshot(udid, "attachment-result");
+      const video = await stopVideo(recording);
+      fs.writeFileSync(
+        path.join(resultDir, "result.json"),
+        `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
+      );
+      log(`PASS ${JSON.stringify({ screenshot, video })}`);
+    } catch (error) {
+      const screenshot = takeScreenshot(udid, "failure");
+      await stopVideo(recording);
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
+      );
+    }
+  } finally {
+    await hostAgent?.stop("ios-attachment-smoke");
   }
 }
 

@@ -15,6 +15,10 @@ import {
   ANDROID_FULL_TURN_FAILURE_RE,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
 } from "./lib/chat-failure-strings.mjs";
+import {
+  resolveHostAgentRequestedPort,
+  startHostAgent,
+} from "./lib/host-agent.mjs";
 import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
@@ -34,7 +38,10 @@ const platform = argValue("--platform") ?? "ios";
 const apiBase = argValue("--api-base");
 const authTokenArg = argValue("--auth-token");
 const requireInstalled = process.argv.includes("--require-installed");
-const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
+const useHostAgent = process.argv.includes("--host-agent");
+const hostAgentLogPath = argValue("--host-agent-log");
+const exerciseAppCoreApi =
+  process.argv.includes("--live") || Boolean(apiBase) || useHostAgent;
 const iosSelectLocal = process.argv.includes("--ios-select-local");
 const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
@@ -180,6 +187,9 @@ Options:
   --require-installed              Fail when the selected app/simulator is unavailable
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
+  --host-agent                     Start the deterministic host app-core API, then exercise it
+  --host-agent-port PORT           Port for --host-agent (default: 31338 if free)
+  --host-agent-log PATH            Log path for --host-agent
   --auth-token TOKEN               Bearer token for protected app-core API routes
   --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
@@ -2427,7 +2437,11 @@ async function runLocalInferenceApiSmoke(
 async function main() {
   let androidContext = null;
   let iosContext = null;
+  let hostAgent = null;
   try {
+    if (apiBase && useHostAgent) {
+      throw new Error("--api-base and --host-agent are mutually exclusive.");
+    }
     if (platform === "ios" || platform === "both") {
       iosContext = launchIosSimulatorApp();
       if (iosContext?.installed) {
@@ -2443,6 +2457,26 @@ async function main() {
 
     if (apiBase) {
       await runLocalInferenceApiSmoke(apiBase, authTokenArg);
+      return;
+    }
+
+    if (useHostAgent) {
+      hostAgent = await startHostAgent({
+        repoRoot,
+        port: resolveHostAgentRequestedPort(),
+        logPath:
+          hostAgentLogPath ??
+          path.join(
+            repoRoot,
+            "packages",
+            "app",
+            "test-results",
+            "mobile-local-chat",
+            "host-agent.log",
+          ),
+        log: (message) => console.log(`[local-chat-smoke] ${message}`),
+      });
+      await runLocalInferenceApiSmoke(hostAgent.apiBase, authTokenArg);
       return;
     }
 
@@ -2502,6 +2536,7 @@ async function main() {
       );
     }
   } finally {
+    await hostAgent?.stop("mobile-local-chat-smoke");
     if (iosContext?.udid) {
       clearIosSmokeDefaults({
         udid: iosContext.udid,
