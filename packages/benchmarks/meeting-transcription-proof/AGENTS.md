@@ -159,5 +159,4 @@ cloud captures.
 
 Mocked reports prove plumbing only. Real reports must reference reviewed audio,
 video, logs, screenshots, trajectories, transcript artifacts, speaker profile
-artifacts, consent records, and retention/deletion artifacts under
-`.github/issue-evidence/<issue#>-<slug>/`.
+artifacts, consent records, and retention/deletion artifacts, attached inline in the PR.

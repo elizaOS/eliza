@@ -120,7 +120,7 @@ bun run --cwd packages/app install:android:adb
 ### iOS device automation (one command each — no Xcode UI, no manual signing)
 
 Agent-drivable pipeline for physical-device work (codifies the proven #11030
-device-boot recipe in `.github/issue-evidence/11030-ios-boot-fix/device-boot-README.md`).
+device-boot recipe).
 Device id comes from `--device <devicectl-id|udid|name>` or `ELIZA_IOS_DEVICE_ID`.
 Lane phones must stay on power with Settings > Display & Brightness > Auto-Lock
 set to Never. The device scripts probe `devicectl device info lockState` before
@@ -308,7 +308,7 @@ bun run --cwd packages/app test:e2e
   "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
   highest-effort, production-ready version. Keep going until every possibility is exhausted.
 
-Artifacts → `.github/issue-evidence/<issue#>-<slug>.<ext>`; attach each evidence type **or**
+Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
 explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
 behavior, **re-capture** evidence; stale proof is worse than none.
 

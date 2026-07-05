@@ -156,4 +156,4 @@ domain artifacts the change produced (app rows, deploy status, credit/earnings
 ledger rows, domain records), and — for anything user-exercisable — before/after
 UI proof. "Tests pass" and "CI green" are not proof. No TODOs, stubs, or
 "follow-ups"; clear blockers by the hard path. Artifacts →
-`.github/issue-evidence/<issue#>-<slug>.<ext>`, or mark a row `N/A - <reason>`.
+attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`), or mark a row `N/A - <reason>`.
