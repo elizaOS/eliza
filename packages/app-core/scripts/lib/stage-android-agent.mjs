@@ -84,6 +84,26 @@ const SECCOMP_SHIM_CACHE_DIR = path.join(
   "seccomp-shim",
 );
 
+const ZIG_VERSION = "0.13.0";
+const ZIG_TOOLCHAINS = {
+  "linux/x64": {
+    dirName: "zig-linux-x86_64-0.13.0",
+    sha256: "d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea",
+  },
+  "linux/arm64": {
+    dirName: "zig-linux-aarch64-0.13.0",
+    sha256: "041ac42323837eb5624068acd8b00cd5777dac4cf91179e8dad7a7e90dd0c556",
+  },
+  "darwin/x64": {
+    dirName: "zig-macos-x86_64-0.13.0",
+    sha256: "8b06ed1091b2269b700b3b07f8e3be3b833000841bae5aa6a09b1a8b4773effd",
+  },
+  "darwin/arm64": {
+    dirName: "zig-macos-aarch64-0.13.0",
+    sha256: "46fae219656545dfaf4dce12fb4e8685cec5b51d721beee9389ab4194d43394c",
+  },
+};
+
 const ABI_TARGETS = [
   {
     androidAbi: "x86_64",
@@ -286,7 +306,7 @@ append_diag() {
   child_pid=$2
   exit_code=$3
   ts="$(date +%s 2>/dev/null || echo 0)000"
-  printf "{\"ts\":%s,\"event\":\"%s\",\"status\":\"launcher-child\",\"detachedAgentMode\":true,\"restartAttempts\":-1,\"details\":{\"childPid\":\"%s\",\"exitCode\":\"%s\",\"startupTraceId\":\"%s\"}}\\n" "$ts" "$event" "$child_pid" "$exit_code" "$startup_trace_id" >> "$diagnostics_file" 2>/dev/null || true
+  printf '{"ts":%s,"event":"%s","status":"launcher-child","detachedAgentMode":true,"restartAttempts":-1,"details":{"childPid":"%s","exitCode":"%s","startupTraceId":"%s"}}\\n' "$ts" "$event" "$child_pid" "$exit_code" "$startup_trace_id" >> "$diagnostics_file" 2>/dev/null || true
 }
 exec </dev/null >"$log_file" 2>&1
 cd "$agent_root" || exit 1
@@ -403,6 +423,10 @@ function riscv64BunArtifactSource() {
   const url = riscv64BunUrl();
   if (url) return { kind: "url", url };
   return null;
+}
+
+function resolveZigToolchain() {
+  return ZIG_TOOLCHAINS[`${process.platform}/${process.arch}`] ?? null;
 }
 
 function sha256File(filePath) {
@@ -892,43 +916,40 @@ export function autoProvisionSeccompShim({
   if (fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"))) {
     return true;
   }
-  const ZIG_VERSION = "0.13.0";
-  const zigPlatform =
-    process.platform === "darwin"
-      ? "macos"
-      : process.platform === "linux"
-        ? "linux"
-        : null;
-  const zigArch =
-    process.arch === "arm64"
-      ? "aarch64"
-      : process.arch === "x64"
-        ? "x86_64"
-        : null;
-  if (!zigPlatform || !zigArch) {
+  const zigToolchain = resolveZigToolchain();
+  if (!zigToolchain) {
     log?.(
       `Cannot auto-provision the SIGSYS shim on ${process.platform}/${process.arch}; ` +
         `no pinned zig ${ZIG_VERSION} build for this host.`,
     );
     return false;
   }
-  const zigDirName = `zig-${zigPlatform}-${zigArch}-${ZIG_VERSION}`;
   const zigCacheRoot = path.join(
     os.homedir(),
     ".cache",
     "eliza-android-agent",
     "zig",
   );
-  const zigBin = path.join(zigCacheRoot, zigDirName, "zig");
+  const zigBin = path.join(zigCacheRoot, zigToolchain.dirName, "zig");
   try {
     if (!fs.existsSync(zigBin)) {
       fs.mkdirSync(zigCacheRoot, { recursive: true });
-      const tarball = path.join(zigCacheRoot, `${zigDirName}.tar.xz`);
-      const url = `https://ziglang.org/download/${ZIG_VERSION}/${zigDirName}.tar.xz`;
-      log?.(`Downloading pinned zig ${ZIG_VERSION} for the SIGSYS shim: ${url}`);
+      const tarball = path.join(zigCacheRoot, `${zigToolchain.dirName}.tar.xz`);
+      const url = `https://ziglang.org/download/${ZIG_VERSION}/${zigToolchain.dirName}.tar.xz`;
+      log?.(
+        `Downloading pinned zig ${ZIG_VERSION} for the SIGSYS shim: ${url}`,
+      );
       execFileSync("curl", ["-fsSL", "-o", tarball, url], {
         stdio: ["ignore", "inherit", "inherit"],
       });
+      const actualSha256 = sha256File(tarball);
+      if (actualSha256 !== zigToolchain.sha256) {
+        fs.rmSync(tarball, { force: true });
+        throw new Error(
+          `zig ${ZIG_VERSION} tarball SHA-256 mismatch: expected ` +
+            `${zigToolchain.sha256}, got ${actualSha256}`,
+        );
+      }
       execFileSync("tar", ["xJf", tarball, "-C", zigCacheRoot], {
         stdio: ["ignore", "inherit", "inherit"],
       });
@@ -940,7 +961,9 @@ export function autoProvisionSeccompShim({
       "aosp",
       "compile-shim.mjs",
     );
-    log?.(`Compiling SIGSYS shim for ${androidAbi} with pinned zig ${ZIG_VERSION}.`);
+    log?.(
+      `Compiling SIGSYS shim for ${androidAbi} with pinned zig ${ZIG_VERSION}.`,
+    );
     execFileSync(
       process.execPath,
       [
@@ -1501,5 +1524,6 @@ export const __testables = {
   riscv64BunFilePath,
   riscv64BunArtifactSource,
   riscv64BunSha256,
+  resolveZigToolchain,
   provenancePath,
 };

@@ -73,6 +73,20 @@ test("riscv64 Bun artifact hash resolves from the ELIZA_BUN_RISCV64_SHA256 env",
   assert.equal(resolved, hash);
 });
 
+test("SIGSYS shim Zig auto-provision uses pinned release metadata for this host", () => {
+  const toolchain = __testables.resolveZigToolchain();
+  if (process.platform === "darwin" || process.platform === "linux") {
+    assert.ok(toolchain);
+    assert.match(
+      toolchain.dirName,
+      /^zig-(macos|linux)-(x86_64|aarch64)-0\.13\.0$/,
+    );
+    assert.match(toolchain.sha256, /^[a-f0-9]{64}$/);
+  } else {
+    assert.equal(toolchain, null);
+  }
+});
+
 test("runtime provenance manifest name is exported for APK provenance embedding", () => {
   assert.equal(
     __testables.RUNTIME_PROVENANCE_FILENAME,
