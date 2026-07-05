@@ -66,6 +66,13 @@ on:
         options:
           - staging
           - production
+      force_deploy:
+        description: >-
+          Bypass the freshness guard and deploy even if an equal-or-newer build
+          is already served (intentional rollback / re-deploy of an older ref).
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # Serialize branch deploys (push + workflow_dispatch) per ref so the shared-host
@@ -808,8 +815,47 @@ jobs:
             fi
           fi
 
-      - name: Deploy to Cloudflare Pages
+      - name: Check deploy freshness
+        id: fresh
         if: steps.cf.outputs.configured == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          FORCE_DEPLOY: ${{ github.event.inputs.force_deploy }}
+          PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
+          PAGES_PROJECT: eliza-cloud
+          RUN_SHA: ${{ github.sha }}
+        # Guard against a stale queued run (woken after a runner freeze) deploying
+        # its old ref OVER a newer already-served build (#14083 — hit prod/staging
+        # twice on 07-05). Compares this run's SHA to the commit the shared alias
+        # currently serves; skips only when strictly older. Fail-open: PR previews,
+        # unknown hosts, an unreachable manifest, or undecidable ancestry all
+        # proceed — the guard never blocks a legitimate deploy.
+        run: |
+          echo "stale=false" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE_DEPLOY" = "true" ]; then
+            echo "force_deploy=true — skipping freshness guard"; exit 0
+          fi
+          case "$PAGES_PROJECT:$PAGES_BRANCH" in
+            eliza-cloud:main) HOST=elizacloud.ai ;;
+            eliza-cloud:develop) HOST=staging.elizacloud.ai ;;
+            eliza-app:main) HOST=app.elizacloud.ai ;;
+            eliza-app:develop) HOST=app-staging.elizacloud.ai ;;
+            *) echo "branch '$PAGES_BRANCH' is not a shared alias — no freshness guard"; exit 0 ;;
+          esac
+          SERVED=$(curl -fsS "https://$HOST/eliza-renderer-build.json" 2>/dev/null \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))" 2>/dev/null || echo "")
+          if [ -z "$SERVED" ]; then echo "no served commit at $HOST — proceeding"; exit 0; fi
+          if [ "$SERVED" = "$RUN_SHA" ]; then echo "served == this run — idempotent redeploy, proceeding"; exit 0; fi
+          git fetch --quiet origin "$SERVED" 2>/dev/null || true
+          if git merge-base --is-ancestor "$RUN_SHA" "$SERVED" 2>/dev/null; then
+            echo "::warning::$HOST already serves a NEWER build ($SERVED); this run ($RUN_SHA) is older — skipping stale deploy. Re-dispatch with force_deploy=true to override."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "this run is not older than the served build — proceeding"
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf.outputs.configured == 'true' && steps.fresh.outputs.stale != 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -1167,8 +1213,42 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler pages project create eliza-app --production-branch=main 2>/dev/null || true
 
-      - name: Deploy to Cloudflare Pages
+      - name: Check deploy freshness
+        id: fresh
         if: steps.cf.outputs.configured == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          FORCE_DEPLOY: ${{ github.event.inputs.force_deploy }}
+          PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
+          PAGES_PROJECT: eliza-app
+          RUN_SHA: ${{ github.sha }}
+        # See the deploy-console job for the rationale (#14083 stale-clobber guard).
+        run: |
+          echo "stale=false" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE_DEPLOY" = "true" ]; then
+            echo "force_deploy=true — skipping freshness guard"; exit 0
+          fi
+          case "$PAGES_PROJECT:$PAGES_BRANCH" in
+            eliza-cloud:main) HOST=elizacloud.ai ;;
+            eliza-cloud:develop) HOST=staging.elizacloud.ai ;;
+            eliza-app:main) HOST=app.elizacloud.ai ;;
+            eliza-app:develop) HOST=app-staging.elizacloud.ai ;;
+            *) echo "branch '$PAGES_BRANCH' is not a shared alias — no freshness guard"; exit 0 ;;
+          esac
+          SERVED=$(curl -fsS "https://$HOST/eliza-renderer-build.json" 2>/dev/null \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))" 2>/dev/null || echo "")
+          if [ -z "$SERVED" ]; then echo "no served commit at $HOST — proceeding"; exit 0; fi
+          if [ "$SERVED" = "$RUN_SHA" ]; then echo "served == this run — idempotent redeploy, proceeding"; exit 0; fi
+          git fetch --quiet origin "$SERVED" 2>/dev/null || true
+          if git merge-base --is-ancestor "$RUN_SHA" "$SERVED" 2>/dev/null; then
+            echo "::warning::$HOST already serves a NEWER build ($SERVED); this run ($RUN_SHA) is older — skipping stale deploy. Re-dispatch with force_deploy=true to override."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "this run is not older than the served build — proceeding"
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cf.outputs.configured == 'true' && steps.fresh.outputs.stale != 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
