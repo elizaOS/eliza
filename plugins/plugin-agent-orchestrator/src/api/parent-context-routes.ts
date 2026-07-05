@@ -346,7 +346,9 @@ async function loadOriginatingTask(
  * or its project carries no Cloud app. Reads the shared core project registry
  * (`projects.json`) — the single source of truth for the Project↔Cloud-app
  * relation the broker writes back on apps.create. */
-function resolveCloudAppId(projectId: string | null | undefined): string | null {
+function resolveCloudAppId(
+  projectId: string | null | undefined,
+): string | null {
   const id = readString(projectId);
   if (!id) return null;
   return readString(getProjectById(id)?.cloudAppId);

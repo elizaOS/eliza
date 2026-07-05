@@ -117,6 +117,35 @@ describe("buildGoalPrompt capability fence", () => {
   });
 });
 
+describe("buildGoalPrompt Cloud app descriptor (#14119)", () => {
+  const baseInput = { agentName: "Ada", goal: "ship the thing" };
+
+  it("omits the Cloud app line when no cloudAppId is bound", () => {
+    expect(buildGoalPrompt(baseInput)).not.toContain("Cloud app:");
+    expect(buildGoalPrompt({ ...baseInput, cloudAppId: "   " })).not.toContain(
+      "Cloud app:",
+    );
+  });
+
+  it("renders the bound Cloud app id in the Workspace descriptor", () => {
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      workdir: "/repo",
+      cloudAppId: "app_abc",
+    });
+    expect(prompt).toContain("--- Workspace ---");
+    expect(prompt).toContain("Cloud app: app_abc");
+    expect(prompt).toContain("apps.get/apps.update");
+    expect(prompt).toContain("instead of creating a new one");
+  });
+
+  it("renders the Workspace section even with no workdir/repo when only a Cloud app is bound", () => {
+    const prompt = buildGoalPrompt({ ...baseInput, cloudAppId: "app_only" });
+    expect(prompt).toContain("--- Workspace ---");
+    expect(prompt).toContain("Cloud app: app_only");
+  });
+});
+
 describe("buildGoalPrompt attempt reflections (#8899)", () => {
   const baseInput = { agentName: "Ada", goal: "ship the thing" };
 

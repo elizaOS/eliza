@@ -2,7 +2,11 @@
  * Verifies runParentAgentBroker.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { getProjectById, upsertProject } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
 import {
@@ -279,6 +283,182 @@ describe("runParentAgentBroker", () => {
     expect(init.body).toBe(
       JSON.stringify({ name: "Test App", description: "integration test" }),
     );
+  });
+
+  describe("apps.create project write-back (#14119)", () => {
+    let stateDir: string;
+    let priorStateDir: string | undefined;
+
+    afterEach(() => {
+      if (priorStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = priorStateDir;
+      if (stateDir) rmSync(stateDir, { recursive: true, force: true });
+    });
+
+    function withProjectState(cloudAppId?: string): {
+      projectId: string;
+    } {
+      stateDir = mkdtempSync(join(os.tmpdir(), "broker-project-"));
+      priorStateDir = process.env.ELIZA_STATE_DIR;
+      process.env.ELIZA_STATE_DIR = stateDir;
+      const project = upsertProject({
+        name: "shop",
+        localPath: "/tmp/broker-shop",
+        ...(cloudAppId ? { cloudAppId } : {}),
+      });
+      return { projectId: project.id };
+    }
+
+    /** Runtime whose task service maps the session's task to `projectId`,
+     * matching the real ORCHESTRATOR_TASK_SERVICE.getTask contract the broker
+     * resolves. */
+    function taskBoundRuntime(projectId: string): IAgentRuntime {
+      return createRuntime({
+        getService: ((name: string) =>
+          name === "ORCHESTRATOR_TASK_SERVICE"
+            ? { getTask: async (_id: string) => ({ projectId }) }
+            : null) as IAgentRuntime["getService"],
+      });
+    }
+
+    function appsCreateArgs() {
+      return {
+        mode: "cloud-command" as const,
+        command: "apps.create",
+        params: { body: { name: "Test App" } },
+      };
+    }
+
+    it("writes the created app id back to the task's bound project", async () => {
+      const { projectId } = withProjectState();
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+      vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+      const fetchMock = vi.fn(async () => {
+        // Cloud returns the created app nested under `app` (service shape).
+        return new Response(
+          JSON.stringify({ app: { id: "app_created_99" }, apiKey: "secret" }),
+          { status: 201, headers: { "content-type": "application/json" } },
+        );
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const runtime = taskBoundRuntime(projectId);
+      const session = {
+        id: "session-9",
+        status: "running",
+        metadata: { taskId: "task-9" },
+      } as unknown as Parameters<typeof runParentAgentBroker>[0]["session"];
+
+      // Two-phase: pending confirmation, then the confirmed run.
+      await runParentAgentBroker({
+        runtime,
+        sessionId: "session-9",
+        session,
+        message: brokerMessage(),
+        args: appsCreateArgs(),
+      });
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId: "session-9",
+        session,
+        message: brokerMessage("yes"),
+        args: appsCreateArgs(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.boundCloudAppId).toBe("app_created_99");
+      // Persisted to the real registry, atomically.
+      expect(getProjectById(projectId)?.cloudAppId).toBe("app_created_99");
+    });
+
+    it("does not write back when the session has no bound project", async () => {
+      const { projectId } = withProjectState();
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+      vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ app: { id: "app_x" } }), {
+              status: 201,
+              headers: { "content-type": "application/json" },
+            }),
+        ),
+      );
+      // Runtime with a task service that returns an UNBOUND task (no projectId).
+      const runtime = createRuntime({
+        getService: ((name: string) =>
+          name === "ORCHESTRATOR_TASK_SERVICE"
+            ? { getTask: async () => ({ projectId: null }) }
+            : null) as IAgentRuntime["getService"],
+      });
+      const session = {
+        id: "s",
+        status: "running",
+        metadata: { taskId: "task-unbound" },
+      } as unknown as Parameters<typeof runParentAgentBroker>[0]["session"];
+
+      await runParentAgentBroker({
+        runtime,
+        sessionId: "s",
+        session,
+        message: brokerMessage(),
+        args: appsCreateArgs(),
+      });
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId: "s",
+        session,
+        message: brokerMessage("yes"),
+        args: appsCreateArgs(),
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data?.boundCloudAppId).toBeUndefined();
+      // The project keeps no cloudAppId — nothing was written.
+      expect(getProjectById(projectId)?.cloudAppId).toBeUndefined();
+    });
+
+    it("does not write back when apps.create fails (non-ok response)", async () => {
+      const { projectId } = withProjectState();
+      vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+      vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(JSON.stringify({ error: "quota" }), {
+              status: 402,
+              headers: { "content-type": "application/json" },
+            }),
+        ),
+      );
+      const runtime = taskBoundRuntime(projectId);
+      const session = {
+        id: "sf",
+        status: "running",
+        metadata: { taskId: "task-fail" },
+      } as unknown as Parameters<typeof runParentAgentBroker>[0]["session"];
+
+      await runParentAgentBroker({
+        runtime,
+        sessionId: "sf",
+        session,
+        message: brokerMessage(),
+        args: appsCreateArgs(),
+      });
+      const result = await runParentAgentBroker({
+        runtime,
+        sessionId: "sf",
+        session,
+        message: brokerMessage("yes"),
+        args: appsCreateArgs(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.data?.boundCloudAppId).toBeUndefined();
+      expect(getProjectById(projectId)?.cloudAppId).toBeUndefined();
+    });
   });
 
   it("does not leak Cloud path params into inferred request bodies", async () => {

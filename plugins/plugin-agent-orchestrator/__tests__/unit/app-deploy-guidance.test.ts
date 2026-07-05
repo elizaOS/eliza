@@ -328,4 +328,68 @@ describe("app-deploy-guidance", () => {
       expect(out).not.toContain("POST /api/v1/apps");
     });
   });
+
+  // #14119: when the task's Project already owns a Cloud app, the guidance must
+  // flip apps.create -> apps.get/apps.update on that id so a follow-up task does
+  // not mint a duplicate app.
+  describe("bound Cloud app id mode-switch (#14119)", () => {
+    it("adds no bound-app line when cloudAppId is absent", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a website about cats",
+      );
+      expect(out).not.toContain("apps.update");
+      expect(out).not.toContain("bound to Cloud app");
+    });
+
+    it("instructs apps.get/apps.update on the bound id instead of apps.create", () => {
+      const out = buildAppDeployGuidance(
+        { target: "eliza-cloud" },
+        "build a website about cats",
+        false,
+        "app_bound_42",
+      );
+      expect(out).toContain("bound to Cloud app `app_bound_42`");
+      expect(out).toContain("Do NOT `apps.create`");
+      expect(out).toContain("`apps.get`");
+      expect(out).toContain("`apps.update`");
+    });
+
+    it("augmentTaskWithDeployGuidance threads cloudAppId into a cloud app build", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build a website about cats",
+        { target: "eliza-cloud" },
+        { cloudAppId: "app_thread" },
+      );
+      expect(out).toContain("--- App Deployment (Eliza Cloud) ---");
+      expect(out).toContain("bound to Cloud app `app_thread`");
+    });
+
+    it("a monetized custom-host app still gets the bound-app line (it touches Cloud)", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "an app where people pay $1 to chat with a bot",
+        {
+          target: "custom",
+          customAppsDir: "/data/apps",
+          customBaseUrl: "https://example.test",
+        },
+        { monetized: true, cloudAppId: "app_custom" },
+      );
+      expect(out).toContain("bound to Cloud app `app_custom`");
+      expect(out).toContain("`apps.update`");
+    });
+
+    it("a non-monetized custom-host app gets no Cloud bound-app line", () => {
+      const out = augmentTaskWithDeployGuidance(
+        "build a plain static landing page",
+        {
+          target: "custom",
+          customAppsDir: "/data/apps",
+          customBaseUrl: "https://example.test",
+        },
+        { cloudAppId: "app_ignored" },
+      );
+      expect(out).not.toContain("bound to Cloud app");
+    });
+  });
 });

@@ -8,6 +8,7 @@ import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import {
+  getProjectById,
   logger,
   setActiveProject,
   stringToUuid,
@@ -16,8 +17,10 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  bindProjectCloudApp,
   deriveProjectWorldId,
   findProjectByWorkdir,
+  resolveBoundProjectCloudAppId,
   resolveBoundProjectWorkdir,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
@@ -196,6 +199,58 @@ describe("project-binding", () => {
     expect(deriveProjectWorldId("proj-2")).not.toBe(a);
     expect(a).toBe(stringToUuid("project:proj-1"));
     expect(a).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("resolveBoundProjectCloudAppId returns the project's cloudAppId or null", () => {
+    const withApp = upsertProject(
+      { name: "with-app", localPath: "/tmp/with-app", cloudAppId: "app_123" },
+      env,
+    );
+    const noApp = upsertProject(
+      { name: "no-app", localPath: "/tmp/no-app" },
+      env,
+    );
+    expect(resolveBoundProjectCloudAppId(withApp.id, env)).toBe("app_123");
+    expect(resolveBoundProjectCloudAppId(noApp.id, env)).toBeNull();
+    expect(resolveBoundProjectCloudAppId("stale-id", env)).toBeNull();
+    expect(resolveBoundProjectCloudAppId(undefined, env)).toBeNull();
+  });
+
+  it("bindProjectCloudApp writes cloudAppId back and persists it atomically", () => {
+    const p = upsertProject({ name: "p", localPath: "/tmp/bind-app" }, env);
+    expect(getProjectById(p.id, env)?.cloudAppId).toBeUndefined();
+
+    const bound = bindProjectCloudApp(p.id, "app_new", env);
+    expect(bound?.cloudAppId).toBe("app_new");
+    // Persisted to disk: a fresh read (new registry parse) sees the id, other
+    // fields (id/localPath/createdAt) are preserved by the localPath-keyed upsert.
+    const reread = getProjectById(p.id, env);
+    expect(reread?.cloudAppId).toBe("app_new");
+    expect(reread?.id).toBe(p.id);
+    expect(reread?.localPath).toBe("/tmp/bind-app");
+    expect(reread?.createdAt).toBe(p.createdAt);
+  });
+
+  it("bindProjectCloudApp overwrites a different existing cloudAppId (latest create wins)", () => {
+    const p = upsertProject(
+      { name: "p", localPath: "/tmp/rebind", cloudAppId: "app_old" },
+      env,
+    );
+    const bound = bindProjectCloudApp(p.id, "app_replacement", env);
+    expect(bound?.cloudAppId).toBe("app_replacement");
+    expect(getProjectById(p.id, env)?.cloudAppId).toBe("app_replacement");
+  });
+
+  it("bindProjectCloudApp is a no-op for an unknown project or blank app id", () => {
+    const p = upsertProject(
+      { name: "p", localPath: "/tmp/noop", cloudAppId: "app_keep" },
+      env,
+    );
+    expect(bindProjectCloudApp("stale-id", "app_x", env)).toBeNull();
+    expect(bindProjectCloudApp(p.id, "  ", env)).toBeNull();
+    expect(bindProjectCloudApp(undefined, "app_x", env)).toBeNull();
+    // The existing binding is untouched by the no-op calls.
+    expect(getProjectById(p.id, env)?.cloudAppId).toBe("app_keep");
   });
 
   it("a projectId bound via the legacy workspace-folder.json synthesis resolves back to its workdir", () => {

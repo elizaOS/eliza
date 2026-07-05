@@ -3,9 +3,13 @@
  * endpoints and the originatingTask read-back added for #13774.
  * Deterministic unit test with stubbed runtime + services; no live model.
  */
+import { mkdtempSync, rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import os from "node:os";
+import { join } from "node:path";
 import { Readable } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { upsertProject } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleParentContextRoutes } from "../../src/api/parent-context-routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";
 
@@ -72,6 +76,7 @@ function makeCtx(opts: {
   task?: {
     goal: string;
     acceptanceCriteria?: string[];
+    projectId?: string | null;
     decisions?: Array<Record<string, unknown>>;
   } | null;
   noSkillsService?: boolean;
@@ -267,6 +272,89 @@ describe("parent-context originatingTask", () => {
       ctx,
     );
     expect((body as { originatingTask: unknown }).originatingTask).toBeNull();
+  });
+});
+
+describe("parent-context project↔Cloud-app binding (#14119)", () => {
+  // The bridge resolves cloudAppId from the REAL on-disk project registry keyed
+  // by the task's projectId, so point the state dir at a temp registry.
+  let stateDir: string;
+  let priorStateDir: string | undefined;
+
+  beforeEach(() => {
+    stateDir = mkdtempSync(join(os.tmpdir(), "parent-context-project-"));
+    priorStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+  });
+
+  afterEach(() => {
+    if (priorStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = priorStateDir;
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it("surfaces cloudAppId for a task bound to a project that owns a Cloud app", async () => {
+    const project = upsertProject({
+      name: "shop",
+      localPath: "/tmp/shop",
+      cloudAppId: "app_live_1",
+    });
+    const ctx = makeCtx({
+      sessionMetadata: { taskId: "task-1" },
+      task: {
+        goal: "update the shop",
+        projectId: project.id,
+        decisions: [],
+      },
+    });
+    const { body } = await call(
+      `/api/coding-agents/${SESSION}/parent-context`,
+      ctx,
+    );
+    const originating = (body as { originatingTask: Record<string, unknown> })
+      .originatingTask;
+    expect(originating.projectId).toBe(project.id);
+    expect(originating.cloudAppId).toBe("app_live_1");
+    // Hoisted top-level descriptor mirrors it.
+    expect((body as { project: Record<string, unknown> }).project).toEqual({
+      projectId: project.id,
+      cloudAppId: "app_live_1",
+    });
+  });
+
+  it("cloudAppId is null when the bound project owns no Cloud app", async () => {
+    const project = upsertProject({ name: "bare", localPath: "/tmp/bare" });
+    const ctx = makeCtx({
+      sessionMetadata: { taskId: "task-2" },
+      task: { goal: "build", projectId: project.id, decisions: [] },
+    });
+    const { body } = await call(
+      `/api/coding-agents/${SESSION}/parent-context`,
+      ctx,
+    );
+    const originating = (body as { originatingTask: Record<string, unknown> })
+      .originatingTask;
+    expect(originating.projectId).toBe(project.id);
+    expect(originating.cloudAppId).toBeNull();
+    expect(
+      (body as { project: { cloudAppId: unknown } }).project.cloudAppId,
+    ).toBeNull();
+  });
+
+  it("project descriptor is null for an unbound task (no projectId)", async () => {
+    const ctx = makeCtx({
+      sessionMetadata: { taskId: "task-3" },
+      task: { goal: "build", projectId: null, decisions: [] },
+    });
+    const { body } = await call(
+      `/api/coding-agents/${SESSION}/parent-context`,
+      ctx,
+    );
+    const originating = (body as { originatingTask: Record<string, unknown> })
+      .originatingTask;
+    expect(originating.projectId).toBeNull();
+    expect(originating.cloudAppId).toBeNull();
+    expect((body as { project: unknown }).project).toBeNull();
   });
 });
 
