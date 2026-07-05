@@ -23,7 +23,10 @@ const DEFAULT_REPO_ROOT = resolve(
 const OWNED_WORKFLOWS = [
   { file: ".github/workflows/test.yml", owner: "test-orchestrator" },
   { file: ".github/workflows/scenario-pr.yml", owner: "scenario-pr-zero-key" },
-  { file: ".github/workflows/keyless-harness-e2e.yml", owner: "keyless-harness" },
+  {
+    file: ".github/workflows/keyless-harness-e2e.yml",
+    owner: "keyless-harness",
+  },
   { file: ".github/workflows/ui-fixture-e2e.yml", owner: "ui-fixture-e2e" },
 ];
 
@@ -61,7 +64,7 @@ function extractJobBlocks(workflowText) {
   const lines = workflowText.slice(jobsIndex).split(/\r?\n/);
   const starts = [];
   for (let i = 1; i < lines.length; i += 1) {
-    if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[i])) starts.push(i);
+    if (/^ {2}[A-Za-z0-9_-]+:\s*$/.test(lines[i])) starts.push(i);
   }
   const blocks = [];
   for (let i = 0; i < starts.length; i += 1) {
@@ -149,7 +152,10 @@ export function findDuplicateOwnedCommands(rows) {
 
 export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   const rows = collectZeroKeyCommands(repoRoot);
-  assert(rows.length > 0, "zero-key command ownership census found no commands");
+  assert(
+    rows.length > 0,
+    "zero-key command ownership census found no commands",
+  );
   const duplicates = findDuplicateOwnedCommands(rows);
   assert(
     duplicates.length === 0,
