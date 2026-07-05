@@ -175,9 +175,11 @@ The iOS app ships three runtime modes; their unattended (CI) coverage is:
 |---|---|---|---|
 | **remote** (pair to a host agent) | none — proxies to a paired host | `build-ios` job in `.github/workflows/mobile-build-smoke.yml` (onboarding smoke + `serve-real-local-agent` host + local-chat smoke) | PR-blocking |
 | **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds `build:ios:local:sim` (`ELIZA_IOS_FULL_BUN_ENGINE=1`), caches + stages a real small GGUF, boots a sim, installs, runs `test:sim:local-chat:ios:full-bun` and asserts the exact on-device reply | nightly-gating |
-| **cloud** (managed agent) | none — talks to Eliza Cloud | N/A — the XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) XCTSkips at the OAuth wall with no device Cloud session, and `cloud-provisioning-e2e.mjs` is only reachable behind the unwired `ios-e2e.mjs --cloud`. Needs a documented headless session/JWT seed against a staging Cloud org before it can run unattended (see #13578 done-when #2). | none (blocked) |
+| **cloud** (managed agent) | none — talks to Eliza Cloud | `ios-cloud-mode` job in `mobile-build-smoke.yml` — nightly `schedule` / `workflow_dispatch` (provisioning a real Hetzner-backed agent costs org credit, so it never runs on the PR path). Seeds a real Cloud credential from `secrets.ELIZACLOUD_API_KEY` (the headless session seed — bypasses the interactive device-code / OAuth browser leg that XCTSkips on the simulator) and runs `cloud-provisioning-e2e.mjs --fresh-agent`: creates a Cloud agent, waits for its runtime URL, and probes `/api/status|health|me`. With the seed present it is a HARD gate (no `continue-on-error`); when the secret is absent it records an explicit skip in the step summary. | nightly-gating (when seeded) |
 
 Keep this table honest: an N/A row must name what is missing, not hide it.
+
+The XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) still XCTSkips at the OAuth wall without a device Cloud session; the `ios-cloud-mode` lane covers the cloud *runtime* mode programmatically (the same path `ios-e2e.mjs --cloud` calls) rather than driving the simulator UI through OAuth. A device-UI cloud-onboarding lane needs the WebView-side session seed (`steward_session_token` / `POST /api/cloud/login/persist`) and is tracked in #13578 done-when #2.
 
 ## Config / env vars
 

@@ -7,6 +7,11 @@ on:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
+    inputs:
+      cloud_api_base:
+        description: "Eliza Cloud API base for the iOS cloud runtime-mode smoke (defaults to the staging sandbox var, then prod)"
+        required: false
+        default: ""
   schedule:
     # Nightly iOS local (full-Bun on-device engine) lane (#13578). This mode
     # is too heavy for the PR path — a full-Bun engine build, a real ~1.3GB
@@ -405,6 +410,80 @@ jobs:
         with:
           name: ios-full-bun-local-chat
           path: packages/app/test-results/ios-full-bun-local-chat/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-cloud-mode:
+    name: iOS Cloud Runtime-Mode Smoke
+    # Nightly / on-demand only — never on the PR path. Provisioning a real Eliza
+    # Cloud agent (Hetzner-backed) is slow and costs org credit, so the cloud
+    # runtime mode gates the scheduled run alongside the full-Bun local lane.
+    # This closes the third row of the #13578 coverage matrix: remote mode is
+    # PR-blocking and local (full-Bun) mode gates nightly, but cloud mode had no
+    # unattended lane at all — the XCUITest cloud-onboarding path XCTSkips at the
+    # OAuth wall without a device Cloud session, and cloud-provisioning-e2e.mjs
+    # (the programmatic cloud runtime assertion) was only reachable behind the
+    # unwired `ios-e2e.mjs --cloud`. cloud-provisioning-e2e.mjs has no workspace
+    # imports (node built-ins + fetch only) and needs no build/simulator, so the
+    # cloud runtime-mode gate is a fast ubuntu job seeded with a real Cloud
+    # credential rather than a browser OAuth leg.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Headless session seed (#13578 done-when #2): a real Cloud credential
+      # injected from the org secret, bypassing the interactive device-code /
+      # OAuth browser leg that XCTSkips on the simulator. ELIZACLOUD_API_KEY is
+      # the same secret launch-hardening-8756.yml uses for its fresh-agent probe.
+      ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZACLOUD_API_KEY }}
+      # ORIGIN ONLY — cloud-provisioning-e2e.mjs appends `/api/v1/...` itself, so
+      # this must NOT carry an `/api/v1` suffix (unlike the sandbox-live-smoke
+      # `_URL` var, which does). Overridable via workflow_dispatch to target a
+      # throwaway org; defaults to production Cloud otherwise.
+      ELIZA_CLOUD_API_BASE: ${{ github.event.inputs.cloud_api_base || 'https://api.elizacloud.ai' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+
+      - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
+        # Gating check for the cloud runtime mode. With the seed present this is a
+        # HARD gate (no continue-on-error): a regression in cloud agent creation,
+        # Hetzner provisioning, or the provisioned runtime never answering fails
+        # the scheduled run. cloud-provisioning-e2e.mjs provisions a real agent,
+        # waits for its runtime URL, and probes /api/status|health|me — the same
+        # programmatic cloud path the iOS `ios-e2e.mjs --cloud` route calls. When
+        # the secret is absent (forks without secret access) the lane records an
+        # explicit skip in the step summary rather than silently passing green.
+        run: |
+          set -euo pipefail
+          if [ -z "${ELIZA_CLOUD_AUTH_TOKEN:-}" ]; then
+            {
+              echo "### iOS cloud runtime-mode smoke"
+              echo ""
+              echo "skipped: missing ELIZACLOUD_API_KEY secret (no Cloud session seed available)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "iOS cloud runtime-mode smoke skipped: missing ELIZACLOUD_API_KEY secret"
+            exit 0
+          fi
+          mkdir -p packages/app/test-results/ios-cloud-mode
+          node packages/app/scripts/cloud-provisioning-e2e.mjs \
+            --fresh-agent \
+            --agent-name "Eliza iOS Cloud Runtime-Mode Smoke" \
+            --report packages/app/test-results/ios-cloud-mode/cloud-provisioning.json \
+            2>&1 | tee packages/app/test-results/ios-cloud-mode/smoke.log
+
+      - name: Upload iOS cloud runtime-mode evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-cloud-mode
+          path: packages/app/test-results/ios-cloud-mode/**
           if-no-files-found: warn
           retention-days: 7
 
