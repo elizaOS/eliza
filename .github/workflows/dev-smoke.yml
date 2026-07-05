@@ -49,7 +49,8 @@ env:
 jobs:
   changes:
     name: Classify changed paths
-    runs-on: [self-hosted, hetzner-robot]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
     steps:
