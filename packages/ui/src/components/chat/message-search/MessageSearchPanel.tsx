@@ -26,6 +26,22 @@ export interface MessageSearchPanelProps {
   onClose: () => void;
   /** Optional initial query (e.g. selected text). */
   initialQuery?: string;
+  /**
+   * Where the search input sits relative to its results.
+   *
+   * - `"stacked"` (default): the input is the FIRST child and the results/
+   *   status flow beneath it. The desktop / no-keyboard reading order.
+   * - `"keyboard-anchored"`: the input is the LAST child, pinned to the panel
+   *   bottom (right above a raised mobile keyboard) while the results scroll in
+   *   the space ABOVE it. This is the mobile chat-sheet layout: it guarantees
+   *   the input the user is typing into is never occluded by the soft keyboard,
+   *   and the results occupy the shrinking visible region between the sheet top
+   *   and the keyboard (matching the composer's own bottom-anchored geometry).
+   *   The container is responsible for being a bottom-anchored flex column; the
+   *   panel renders `results (scroll) → input` in DOM order so the input is the
+   *   flex item pinned at the bottom.
+   */
+  layout?: "stacked" | "keyboard-anchored";
 }
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -35,7 +51,9 @@ export function MessageSearchPanel({
   onJump,
   onClose,
   initialQuery = "",
+  layout = "stacked",
 }: MessageSearchPanelProps) {
+  const keyboardAnchored = layout === "keyboard-anchored";
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<ConversationMessageSearchResult[]>([]);
   const [status, setStatus] = useState<Status>("idle");
@@ -101,24 +119,24 @@ export function MessageSearchPanel({
   const trimmed = query.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_QUERY_LENGTH;
 
-  return (
-    <div
-      data-testid="message-search-panel"
-      role="dialog"
+  const inputEl = (
+    <Input
+      ref={inputRef}
+      type="search"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      placeholder="Search messages…"
       aria-label="Search messages"
-      onKeyDown={onKeyDown}
-      className="flex flex-col gap-2"
-    >
-      <Input
-        ref={inputRef}
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search messages…"
-        aria-label="Search messages"
-        data-testid="message-search-input"
-      />
+      data-testid="message-search-input"
+      // In the keyboard-anchored layout the input is the flex item pinned at
+      // the panel bottom (right above the soft keyboard); it must never shrink
+      // away when the results list above it is long.
+      className={keyboardAnchored ? "shrink-0" : undefined}
+    />
+  );
 
+  const statusEl = (
+    <>
       {tooShort ? (
         <p className="px-1 text-xs text-muted-foreground">
           Type at least {MIN_QUERY_LENGTH} characters.
@@ -151,32 +169,74 @@ export function MessageSearchPanel({
           No messages match “{trimmed}”.
         </p>
       ) : null}
+    </>
+  );
 
-      {results.length > 0 ? (
-        <ul
-          data-testid="message-search-results"
-          className="flex flex-col gap-1"
+  const resultsListEl =
+    results.length > 0 ? (
+      <ul data-testid="message-search-results" className="flex flex-col gap-1">
+        {results.map((result) => (
+          <li key={result.messageId}>
+            <Button
+              data-testid="message-search-result"
+              onClick={() => handleJump(result)}
+              variant="ghost"
+              className="flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
+            >
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {result.role === "assistant" ? "Agent" : "You"} ·{" "}
+                {formatTimestamp(result.createdAt)}
+              </span>
+              <span className="line-clamp-2 text-sm text-foreground">
+                {result.snippet}
+              </span>
+            </Button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  if (keyboardAnchored) {
+    // Bottom-anchored: results scroll in the region ABOVE the input, the input
+    // (+ its status line) is pinned to the bottom right above the keyboard.
+    // `min-h-0` on the scroll region lets it actually shrink+scroll under a
+    // raised keyboard instead of pushing the input off-screen; the container
+    // (in the overlay) is a bottom-anchored flex column bounded by panelMaxH.
+    return (
+      <div
+        data-testid="message-search-panel"
+        data-layout="keyboard-anchored"
+        role="dialog"
+        aria-label="Search messages"
+        onKeyDown={onKeyDown}
+        className="flex min-h-0 flex-1 flex-col gap-2"
+      >
+        <div
+          data-testid="message-search-scroll"
+          className="flex min-h-0 flex-1 flex-col justify-end gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
         >
-          {results.map((result) => (
-            <li key={result.messageId}>
-              <Button
-                data-testid="message-search-result"
-                onClick={() => handleJump(result)}
-                variant="ghost"
-                className="flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
-              >
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {result.role === "assistant" ? "Agent" : "You"} ·{" "}
-                  {formatTimestamp(result.createdAt)}
-                </span>
-                <span className="line-clamp-2 text-sm text-foreground">
-                  {result.snippet}
-                </span>
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+          {resultsListEl}
+        </div>
+        <div className="flex shrink-0 flex-col gap-1">
+          {statusEl}
+          {inputEl}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="message-search-panel"
+      data-layout="stacked"
+      role="dialog"
+      aria-label="Search messages"
+      onKeyDown={onKeyDown}
+      className="flex flex-col gap-2"
+    >
+      {inputEl}
+      {statusEl}
+      {resultsListEl}
     </div>
   );
 }

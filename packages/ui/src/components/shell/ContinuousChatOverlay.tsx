@@ -1555,7 +1555,16 @@ export function ContinuousChatOverlay({
   // a hit jumps to its conversation + message, loading a centered window if the
   // hit predates the loaded recent window, then scroll-flashes the anchor.
   const [searchOpen, setSearchOpen] = React.useState(false);
-  const openSearch = React.useCallback(() => setSearchOpen(true), []);
+  const openSearch = React.useCallback(() => {
+    // Grow the sheet to FULL when search opens so the results region has the
+    // most room above a raised keyboard (the panel bottom-anchors its input
+    // right above the keyboard; the taller the sheet, the more results are
+    // visible in the space above it). The header — hence the search control —
+    // only exists at half+, so this only ever grows the sheet, never shrinks it.
+    setFreeH(null);
+    setMode("full");
+    setSearchOpen(true);
+  }, []);
   const closeSearch = React.useCallback(() => setSearchOpen(false), []);
   // Collapse search when the sheet closes so a re-open lands on the transcript.
   React.useEffect(() => {
@@ -4268,12 +4277,24 @@ export function ContinuousChatOverlay({
                 {searchOpen && sheetOpen ? (
                   <div
                     data-testid="chat-message-search"
-                    className="absolute inset-0 z-30 flex flex-col overflow-y-auto overscroll-contain bg-scrim px-4 pb-4 pt-2 backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    data-keyboard-open={keyboardLiftActive ? "true" : undefined}
+                    // Bottom-anchored, NON-scrolling flex column. The panel
+                    // itself owns scrolling in its results region and pins its
+                    // search input to the bottom (`keyboard-anchored` layout),
+                    // so the input the user types into always sits right above
+                    // a raised soft keyboard — the whole overlay is already
+                    // lifted by `effectiveKeyboardInset`, so the panel bottom IS
+                    // the top of the keyboard. Making THIS wrapper scroll (the
+                    // old `overflow-y-auto`) let the input scroll away under the
+                    // keyboard on iOS; keep it `overflow-hidden` and let the
+                    // inner results list be the only scroll region.
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-scrim px-4 pb-3 pt-2 backdrop-blur-xl"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
                       onJump={handleSearchJump}
                       onClose={closeSearch}
+                      layout="keyboard-anchored"
                     />
                   </div>
                 ) : null}
