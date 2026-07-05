@@ -69,13 +69,6 @@ export interface OrchestratorTaskRecord {
   projectId?: string;
   roomId?: string;
   taskRoomId?: string;
-  /** The {@link Project} this task is bound to (see project-registry). Set once
-   * at creation so every session of a task targets the same repo/workdir —
-   * without it, workdir/repo were only derivable from the most-recent session,
-   * letting two sessions of one task silently drift to different repos (#13776).
-   * A backfilled indexed SQL column makes "all tasks for project X" an index
-   * lookup instead of a JSON-document scan. */
-  projectId?: string;
   /** Lineage: the task this one was forked from, if any. */
   parentTaskId?: string;
   forkSource?: string;
@@ -387,7 +380,6 @@ export interface CreateTaskInput {
   workdir?: string;
   roomId?: string;
   taskRoomId?: string;
-  projectId?: string;
   parentTaskId?: string;
   forkSource?: string;
   providerPolicy?: TaskProviderPolicy;

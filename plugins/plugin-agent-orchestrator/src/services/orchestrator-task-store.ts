@@ -251,23 +251,6 @@ function normalizeRowset(result: unknown): unknown[] {
   return [];
 }
 
-/** True for the "column already exists" error every supported backend raises
- * when an ADD COLUMN targets a column that is already present — Postgres/pglite
- * SQLSTATE 42701, or the sqlite/pg message text. Used so the idempotent
- * project_id migration tolerates only that case and rethrows everything else. */
-function isDuplicateColumnError(err: unknown): boolean {
-  const code = isRecord(err) && typeof err.code === "string" ? err.code : "";
-  if (code === "42701") return true;
-  const message = (
-    err instanceof Error ? err.message : String(err ?? "")
-  ).toLowerCase();
-  return (
-    message.includes("duplicate column") ||
-    (message.includes("project_id") && message.includes("already exists")) ||
-    message.includes('column "project_id"')
-  );
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -313,7 +296,6 @@ function newTaskDocument(input: CreateTaskInput): OrchestratorTaskDocument {
     projectId: input.projectId,
     roomId: input.roomId,
     taskRoomId: input.taskRoomId,
-    projectId: input.projectId,
     parentTaskId: input.parentTaskId,
     forkSource: input.forkSource,
     providerPolicy: input.providerPolicy,
