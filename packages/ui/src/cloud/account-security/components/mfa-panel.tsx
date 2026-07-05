@@ -60,20 +60,20 @@ export function MfaPanel() {
       <div className="relative z-10 space-y-3">
         <div className="flex items-center gap-2">
           <Lock className="h-5 w-5 text-[var(--brand-orange)]" />
-          <h3 className="text-lg font-bold text-white">
+          <h3 className="text-lg font-bold text-txt-strong">
             {t("cloud.mfaPanel.title", {
               defaultValue: "Two-factor authentication",
             })}
           </h3>
         </div>
         {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">
+          <p className="text-sm text-muted">
             {t("cloud.mfaPanel.loading", {
               defaultValue: "Loading MFA status...",
             })}
           </p>
         ) : state.kind === "unavailable" ? (
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.mfaPanel.notAvailable", {
               reason: state.reason ?? "",
               defaultValue: "MFA enrollment is unavailable on this server.",
@@ -93,7 +93,7 @@ export function MfaPanel() {
             })}
           </p>
         ) : (
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-muted">
             {t("cloud.mfaPanel.notEnabled", {
               defaultValue:
                 "MFA is not enabled. Adding a second factor protects your account even if your password is compromised.",

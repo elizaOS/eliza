@@ -58,7 +58,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="relative z-10 text-center py-12">
-          <p className="text-white/60">No organization found</p>
+          <p className="text-muted">No organization found</p>
         </div>
       </BrandCard>
     );
@@ -77,16 +77,16 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
                 {user.organization.name}
               </h2>
             </div>
-            <p className="text-xs md:text-sm font-mono text-white/60">
+            <p className="text-xs md:text-sm font-mono text-muted">
               {user.organization.slug}
             </p>
           </div>
-          <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface px-4 py-3">
+          <div className="bg-surface border border-brand-surface px-4 py-3">
             <div className="text-left sm:text-right">
-              <p className="text-xl md:text-2xl font-mono font-bold text-white">
+              <p className="text-xl md:text-2xl font-mono font-bold text-txt-strong">
                 ${Number(user.organization.credit_balance).toFixed(2)}
               </p>
-              <p className="text-xs font-mono text-white/50 uppercase tracking-wide">
+              <p className="text-xs font-mono text-muted uppercase tracking-wide">
                 Credits Available
               </p>
             </div>

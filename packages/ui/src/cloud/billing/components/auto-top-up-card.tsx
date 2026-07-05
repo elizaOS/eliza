@@ -183,7 +183,7 @@ export function AutoTopUpCard() {
 
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <Label className="text-white font-mono text-sm">
+            <Label className="text-txt-strong font-mono text-sm">
               {t("cloud.autoTopUp.enableLabel", {
                 defaultValue: "Enable card auto top-up",
               })}
@@ -249,7 +249,7 @@ export function AutoTopUpCard() {
           />
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-white/10 pt-4">
+        <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
           {validationError ? (
             <p className="text-xs font-mono text-red-400 mr-auto">
               {validationError}
