@@ -26,6 +26,8 @@ const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 const originalMarkdownDir = process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
 const originalTrajectoryLogging = process.env.ELIZA_TRAJECTORY_LOGGING;
+const originalDisableTrajectoryLogging =
+	process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
@@ -34,6 +36,7 @@ beforeEach(async () => {
 	delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 	delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	delete process.env.CEREBRAS_API_KEY;
+	delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
 	// The unified gate (#13775) defaults recording OFF under NODE_ENV=test,
 	// which vitest sets; this suite exercises real file writes, so it opts in
 	// explicitly. The gate's default-off policy stays covered by
@@ -62,6 +65,12 @@ afterEach(async () => {
 		delete process.env.ELIZA_TRAJECTORY_LOGGING;
 	} else {
 		process.env.ELIZA_TRAJECTORY_LOGGING = originalTrajectoryLogging;
+	}
+	if (originalDisableTrajectoryLogging === undefined) {
+		delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+	} else {
+		process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING =
+			originalDisableTrajectoryLogging;
 	}
 });
 
@@ -806,6 +815,8 @@ describe("JsonFileTrajectoryRecorder", () => {
 		delete process.env.ELIZA_TRAJECTORY_LOGGING;
 		const priorLegacyRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
 		delete process.env.ELIZA_TRAJECTORY_RECORDING;
+		const priorDisableLogging = process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+		delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
 		const priorNodeEnv = process.env.NODE_ENV;
 		process.env.NODE_ENV = "test";
 		try {
@@ -833,6 +844,9 @@ describe("JsonFileTrajectoryRecorder", () => {
 			if (priorLegacyRecording === undefined)
 				delete process.env.ELIZA_TRAJECTORY_RECORDING;
 			else process.env.ELIZA_TRAJECTORY_RECORDING = priorLegacyRecording;
+			if (priorDisableLogging === undefined)
+				delete process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING;
+			else process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = priorDisableLogging;
 		}
 	});
 
