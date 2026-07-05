@@ -13,6 +13,8 @@
  *  - cross-task status aggregation and bulk pause/resume.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
@@ -83,7 +85,7 @@ class FakeAcp {
     return Promise.resolve({
       sessionId: `session-${this.counter}`,
       agentType: (opts.agentType as string | undefined) ?? "codex",
-      workdir: (opts.workdir as string | undefined) ?? "/repo",
+      workdir: (opts.workdir as string | undefined) ?? process.cwd(),
       status: "ready",
     });
   }
@@ -272,6 +274,28 @@ describe("OrchestratorTaskService — sub-agent naming", () => {
     expect(must(first, "first").label.length).toBeGreaterThan(0);
     expect(must(second, "second").label.length).toBeGreaterThan(0);
     expect(must(first, "first").label).not.toBe(must(second, "second").label);
+  });
+
+  it("pins follow-up spawns to the task's first resolved workdir", async () => {
+    const workdir = mkdtempSync(join(process.cwd(), ".orch-workdir-lock-"));
+    try {
+      const acp = new FakeAcp();
+      const service = makeService(acp);
+      await service.start();
+      const task = await service.createTask(createInput());
+
+      await service.spawnAgentForTask(task.id, { workdir });
+      await service.spawnAgentForTask(task.id);
+
+      expect(acp.spawnArgs.map((args) => args.workdir)).toEqual([
+        workdir,
+        workdir,
+      ]);
+      const detail = must(await service.getTask(task.id), "task detail");
+      expect(detail.metadata.resolvedWorkdir).toBe(workdir);
+    } finally {
+      rmSync(workdir, { recursive: true, force: true });
+    }
   });
 
   it("keeps an explicit caller label instead of assigning a pooled name", async () => {

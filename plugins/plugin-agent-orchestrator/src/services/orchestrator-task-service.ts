@@ -190,6 +190,7 @@ const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
  *  before its await is abandoned (treated as inconclusive). Overridable via
  *  `ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY_TIMEOUT_MS`. */
 const DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS = 600_000;
+const RESOLVED_WORKDIR_METADATA_KEY = "resolvedWorkdir";
 
 function independentVerifyTimeoutMs(runtime: {
   getSetting?: (key: string) => unknown;
@@ -206,6 +207,15 @@ function independentVerifyTimeoutMs(runtime: {
   return Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : DEFAULT_INDEPENDENT_VERIFY_TIMEOUT_MS;
+}
+
+function storedResolvedWorkdir(
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const value = metadata?.[RESOLVED_WORKDIR_METADATA_KEY];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export interface SpawnAgentForTaskOptions {
@@ -2706,8 +2716,10 @@ export class OrchestratorTaskService extends Service {
     }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
-    const workdir = opts.workdir
-      ? await resolveAllowedWorkdir(opts.workdir)
+    const requestedWorkdir =
+      opts.workdir ?? storedResolvedWorkdir(doc.task.metadata);
+    const workdir = requestedWorkdir
+      ? await resolveAllowedWorkdir(requestedWorkdir)
       : undefined;
 
     const policy = doc.task.providerPolicy ?? {};
@@ -2857,6 +2869,14 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(result.sessionId, taskId);
     try {
       await this.store.addSession(session);
+      if (!storedResolvedWorkdir(doc.task.metadata)) {
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            [RESOLVED_WORKDIR_METADATA_KEY]: result.workdir,
+          },
+        });
+      }
       await this.advanceTaskStatus(taskId, "active");
       return this.getTask(taskId);
     } catch (err) {
