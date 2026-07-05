@@ -39,16 +39,13 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { useCreditsBalance } from "../instances/lib/data/credits";
 import { formatUsd } from "../lib/format-usd";
-import {
-  clearStewardSession,
-  clearStoredStewardToken,
-  hasHydratableStewardToken,
-} from "../lib/steward-session";
+import { hasHydratableStewardToken } from "../lib/steward-session";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
   CONSOLE_OVERVIEW_NAV_ITEM,
   CONSOLE_SURFACES,
 } from "./console-surfaces";
+import { clearStaleStewardSession } from "./StewardProviderShared";
 
 /**
  * The console nav is one flat list so sidebar section labels never compete
@@ -159,8 +156,7 @@ function ConsoleUserMenu({
           <DropdownMenuItem
             className="text-red-400 focus:text-red-300"
             onSelect={() => {
-              clearStoredStewardToken();
-              clearStewardSession();
+              clearStaleStewardSession();
               navigate("/login", { replace: true });
             }}
           >

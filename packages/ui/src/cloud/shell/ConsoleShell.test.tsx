@@ -26,13 +26,13 @@ const sessionState = {
 };
 let storedToken = false;
 const stewardSessionMock = vi.hoisted(() => ({
-  clearStewardSession: vi.fn(),
-  clearStoredStewardToken: vi.fn(),
+  clearStaleStewardSession: vi.fn(),
 }));
 vi.mock("../lib/steward-session", () => ({
-  clearStewardSession: stewardSessionMock.clearStewardSession,
-  clearStoredStewardToken: stewardSessionMock.clearStoredStewardToken,
   hasHydratableStewardToken: () => storedToken,
+}));
+vi.mock("./StewardProviderShared", () => ({
+  clearStaleStewardSession: stewardSessionMock.clearStaleStewardSession,
 }));
 
 vi.mock("../lib/use-session-auth", () => ({
@@ -105,8 +105,7 @@ describe("ConsoleShell", () => {
     sessionState.ready = true;
     sessionState.authenticated = true;
     storedToken = false;
-    stewardSessionMock.clearStewardSession.mockReset();
-    stewardSessionMock.clearStoredStewardToken.mockReset();
+    stewardSessionMock.clearStaleStewardSession.mockReset();
   });
 
   it("renders the sidebar directory, the page body, and the captured page title", () => {
@@ -175,7 +174,7 @@ describe("ConsoleShell", () => {
     ).toBe("/dashboard/account");
   });
 
-  it("clears the stored Steward token when signing out from the header menu", async () => {
+  it("uses the hardened Steward cleanup path when signing out from the header menu", async () => {
     render(
       <MemoryRouter initialEntries={["/dashboard"]}>
         <Routes>
@@ -199,8 +198,9 @@ describe("ConsoleShell", () => {
     fireEvent.pointerDown(accountMenu, { button: 0, pointerId: 1 });
     fireEvent.click(await screen.findByRole("menuitem", { name: /sign out/i }));
 
-    expect(stewardSessionMock.clearStoredStewardToken).toHaveBeenCalledTimes(1);
-    expect(stewardSessionMock.clearStewardSession).toHaveBeenCalledTimes(1);
+    expect(stewardSessionMock.clearStaleStewardSession).toHaveBeenCalledTimes(
+      1,
+    );
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
   });
 
