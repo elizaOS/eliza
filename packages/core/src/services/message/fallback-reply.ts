@@ -86,6 +86,28 @@ export function isRateLimitError(error: unknown): boolean {
  * "something went wrong". Mirrors {@link isRateLimitError}: structured HTTP status
  * first, message-substring fallback second.
  */
+/**
+ * Detect credit exhaustion (402 insufficient_credits — the org's balance ran
+ * dry) so the failure reply can say "out of credits — top up" instead of the
+ * generic retry copy. Retrying is exactly wrong here: the drained-org retry
+ * loop is what #13665 killed server-side (#13962). Mirrors the siblings:
+ * structured HTTP status first, message-substring fallback second.
+ */
+export function isCreditsExhaustedError(error: unknown): boolean {
+	const unwrapped = unwrapRetryError(error);
+	if (hasHttpStatus(unwrapped, [402])) {
+		return true;
+	}
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("insufficient_credits") ||
+		haystack.includes("insufficient credits") ||
+		haystack.includes("payment required") ||
+		/\b402\b/.test(haystack)
+	);
+}
+
 export function isAuthError(error: unknown): boolean {
 	const unwrapped = unwrapRetryError(error);
 	if (hasHttpStatus(unwrapped, [401, 403])) {

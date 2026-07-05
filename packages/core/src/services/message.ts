@@ -270,6 +270,7 @@ import {
 import {
 	buildFailureReplyPrompt,
 	isAuthError,
+	isCreditsExhaustedError,
 	isRateLimitError,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
@@ -1501,6 +1502,7 @@ type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
 	| { kind: "rateLimited" }
+	| { kind: "creditsExhausted" }
 	| { kind: "authFailed" };
 
 export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
@@ -10593,6 +10595,7 @@ export class DefaultMessageService implements IMessageService {
 		stage: string,
 	): Promise<FailureReplyAttempt> {
 		let sawRateLimit = false;
+		let sawCreditsExhausted = false;
 		let sawAuthError = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
@@ -10636,6 +10639,7 @@ export class DefaultMessageService implements IMessageService {
 				// failed for unrelated reasons where retrying won't help). The
 				// all-429 cascade from the live incident still lands here.
 				sawRateLimit = isRateLimitError(error);
+				sawCreditsExhausted = isCreditsExhaustedError(error);
 				sawAuthError = isAuthError(error);
 				runtime.logger.warn(
 					{
@@ -10654,6 +10658,12 @@ export class DefaultMessageService implements IMessageService {
 		// shortly", not "something broke".
 		if (sawRateLimit) {
 			return { kind: "rateLimited" };
+		}
+		// 402 credit exhaustion is the MOST actionable failure: the fix is
+		// topping up, and "try again" is actively wrong (drained-org retry
+		// loop, #13665/#13962) — classify before the broader auth bucket.
+		if (sawCreditsExhausted) {
+			return { kind: "creditsExhausted" };
 		}
 		// An auth failure (bad/expired/unauthorized cloud key) is actionable —
 		// tell the user to fix their key/credits, not the opaque generic message.
@@ -10706,7 +10716,9 @@ export class DefaultMessageService implements IMessageService {
 		}
 
 		let replyText =
-			attempt.kind === "rateLimited" || attempt.kind === "authFailed"
+			attempt.kind === "rateLimited" ||
+			attempt.kind === "authFailed" ||
+			attempt.kind === "creditsExhausted"
 				? ""
 				: attempt.value;
 		if (!replyText) {
@@ -10720,6 +10732,11 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
+			} else if (attempt.kind === "creditsExhausted") {
+				const tmpl = runtime.character.templates?.creditsExhaustedReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"I'm out of Eliza Cloud credits, so I can't think right now — add credits to your account (Billing in the Eliza Cloud dashboard), then message me again.";
 			} else if (attempt.kind === "authFailed") {
 				const tmpl = runtime.character.templates?.authFailedReply;
 				replyText =
