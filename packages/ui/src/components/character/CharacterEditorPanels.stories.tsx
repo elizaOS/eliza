@@ -2,8 +2,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import type { CharacterData } from "../../api/client-types-config";
 import {
-  CharacterExamplesPanel,
+  CharacterChatExamplesPanel,
   CharacterIdentityPanel,
+  CharacterPostExamplesPanel,
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
 
@@ -105,9 +106,9 @@ export const StyleRulesEmpty: Story = {
   ),
 };
 
-export const ExamplesPopulated: Story = {
+export const ChatExamplesPopulated: Story = {
   render: () => (
-    <CharacterExamplesPanel
+    <CharacterChatExamplesPanel
       d={sampleCharacter}
       normalizedMessageExamples={sampleCharacter.messageExamples ?? []}
       handleFieldEdit={noop}
@@ -116,9 +117,31 @@ export const ExamplesPopulated: Story = {
   ),
 };
 
-export const ExamplesEmpty: Story = {
+export const ChatExamplesEmpty: Story = {
   render: () => (
-    <CharacterExamplesPanel
+    <CharacterChatExamplesPanel
+      d={{ name: "Aria", postExamples: [], messageExamples: [] }}
+      normalizedMessageExamples={[]}
+      handleFieldEdit={noop}
+      t={t}
+    />
+  ),
+};
+
+export const PostExamplesPopulated: Story = {
+  render: () => (
+    <CharacterPostExamplesPanel
+      d={sampleCharacter}
+      normalizedMessageExamples={sampleCharacter.messageExamples ?? []}
+      handleFieldEdit={noop}
+      t={t}
+    />
+  ),
+};
+
+export const PostExamplesEmpty: Story = {
+  render: () => (
+    <CharacterPostExamplesPanel
       d={{ name: "Aria", postExamples: [], messageExamples: [] }}
       normalizedMessageExamples={[]}
       handleFieldEdit={noop}

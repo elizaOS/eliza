@@ -28,8 +28,9 @@ import {
 import { DocumentsView } from "../pages/DocumentsView";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
-  CharacterExamplesPanel,
+  CharacterChatExamplesPanel,
   CharacterIdentityPanel,
+  CharacterPostExamplesPanel,
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
 import { CharacterHubView } from "./CharacterHubView";
@@ -38,6 +39,7 @@ import {
   createCustomPackRosterEntry,
   resolveRosterEntries,
 } from "./CharacterRoster.helpers";
+import type { CharacterPersonalitySection } from "./CharacterSectionNav";
 import {
   buildCharacterDraftFromPreset,
   type FirstRunPreset,
@@ -1254,6 +1256,18 @@ export function CharacterEditor({
   /* ── Derived ────────────────────────────────────────────────────── */
   const combinedSaveError = voiceSaveError ?? characterSaveError;
 
+  // Map the legacy editor-page entry point onto the personality section the
+  // standalone hub opens on. `documents` is a promoted top-level view now, not a
+  // personality section, so it has no hub section (the hub derives from path).
+  const hubInitialSection: CharacterPersonalitySection | undefined =
+    initialPage === "personality"
+      ? "about"
+      : initialPage === "style"
+        ? "style"
+        : initialPage === "examples"
+          ? "chat-examples"
+          : undefined;
+
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
     return (
@@ -1445,8 +1459,15 @@ export function CharacterEditor({
                     style={{
                       display: rightTab === "examples" ? undefined : "none",
                     }}
+                    className="flex flex-col gap-6"
                   >
-                    <CharacterExamplesPanel
+                    <CharacterChatExamplesPanel
+                      d={d}
+                      normalizedMessageExamples={normalizedMessageExamples}
+                      handleFieldEdit={handleFieldEdit}
+                      t={t}
+                    />
+                    <CharacterPostExamplesPanel
                       d={d}
                       normalizedMessageExamples={normalizedMessageExamples}
                       handleFieldEdit={handleFieldEdit}
@@ -1466,17 +1487,12 @@ export function CharacterEditor({
           {/* ── Standalone page: character hub */}
           {!sceneOverlay && (
             <CharacterHubView
-              initialSection={
-                initialPage === "documents" || initialPage === "personality"
-                  ? initialPage
-                  : undefined
-              }
+              initialSection={hubInitialSection}
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}
               pendingStyleEntries={pendingStyleEntries}
               styleEntryDrafts={styleEntryDrafts}
-              handleFieldEdit={handleFieldEdit}
               applyFieldEdit={(field, value) => {
                 handleCharacterFieldInput(
                   field as keyof CharacterData,
@@ -1486,11 +1502,6 @@ export function CharacterEditor({
               handlePendingStyleEntryChange={handlePendingStyleEntryChange}
               applyStyleEdit={handleCharacterStyleInput}
               handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              characterSaving={characterSaving}
-              characterSaveSuccess={characterSaveSuccess}
-              characterSaveError={characterSaveError}
-              hasPendingChanges={hasPendingChanges}
-              onSave={handleSaveCharacter}
             />
           )}
         </div>

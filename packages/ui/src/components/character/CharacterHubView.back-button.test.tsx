@@ -1,57 +1,31 @@
 // @vitest-environment jsdom
 //
-// Guards the per-view back affordance that replaced the global corner back
-// button (removed from the app shell in App.tsx). The Character view now renders
-// a shared `ViewHeader` whose chromeless "Back to launcher" control is the
-// in-context way back — it must be present so removing the shell button never
-// strands the user. See CharacterHubView (ViewHeader) + components/shared/ViewHeader.
+// Character personality view (#13591): the endless single-page form is now a
+// top-bar section nav (About / Style Rules / Chat Examples / Post Examples)
+// under a shared ViewHeader. Guards (a) the in-context back affordance that
+// replaced the removed global shell back button, (b) the four ordered section
+// tabs, (c) path-driven active section + section switching, and (d) that the
+// deleted overview CTA grid is gone. Panels are stubbed so the test isolates
+// the nav/routing, not the (separately story-tested) editor panels.
 
-import { cleanup, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Peripheral collaborators of the subpage — mocked so the test isolates the
-// back-button rendering logic under test, not these data/section modules.
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (s: unknown) => unknown) =>
     selector({
-      setActionNotice: vi.fn(),
-      setTab: vi.fn(),
-      tab: "documents",
       t: (_key: string, opts?: { defaultValue?: string }) =>
         opts?.defaultValue ?? _key,
     }),
 }));
 
-const emptySlice = <T,>(data: T) => ({
-  data,
-  loading: false,
-  error: null,
-  refetch: vi.fn(),
-  mutate: vi.fn(),
-});
-
-vi.mock("./useCharacterHubData", () => ({
-  useCharacterHubData: () => ({
-    documents: emptySlice([]),
-    history: emptySlice([]),
-    experiences: emptySlice([]),
-    relationshipActivity: emptySlice([]),
-    learnedSkills: emptySlice([]),
-  }),
-}));
-
-vi.mock("../../api/client", () => ({ client: {} }));
-vi.mock("../../widgets/WidgetHost", () => ({
-  WidgetHost: () => null,
-}));
-vi.mock("../pages/DocumentsView", () => ({
-  DocumentsView: () => <div data-testid="documents-view-stub" />,
-}));
-vi.mock("../views/ShellViewAgentSurface", () => ({
-  ShellViewAgentSurface: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
+vi.mock("../../api/client", () => ({ client: { updateCharacter: vi.fn() } }));
+vi.mock("../../widgets/WidgetHost", () => ({ WidgetHost: () => null }));
+vi.mock("./CharacterEditorPanels", () => ({
+  CharacterIdentityPanel: () => <div data-testid="panel-about" />,
+  CharacterStylePanel: () => <div data-testid="panel-style" />,
+  CharacterChatExamplesPanel: () => <div data-testid="panel-chat" />,
+  CharacterPostExamplesPanel: () => <div data-testid="panel-post" />,
 }));
 
 import { CharacterHubView } from "./CharacterHubView";
@@ -60,45 +34,70 @@ afterEach(cleanup);
 
 const noop = vi.fn();
 
-function renderKnowledgeSubpage() {
+function renderHub(initialSection?: undefined) {
   return render(
     <CharacterHubView
-      initialSection="documents"
+      initialSection={initialSection}
       d={{}}
       bioText=""
       normalizedMessageExamples={[]}
       pendingStyleEntries={{}}
       styleEntryDrafts={{}}
-      handleFieldEdit={noop}
       applyFieldEdit={noop}
       handlePendingStyleEntryChange={noop}
       applyStyleEdit={noop}
       handleStyleEntryDraftChange={noop}
-      characterSaving={false}
-      characterSaveSuccess={null}
-      characterSaveError={null}
-      hasPendingChanges={false}
-      onSave={async () => undefined}
     />,
   );
 }
 
-describe("CharacterHubView in-context back affordance", () => {
-  it("renders its own ViewHeader 'Back to launcher' control (the shell no longer supplies a global corner back button)", () => {
-    renderKnowledgeSubpage();
-
-    const back = screen.getByRole("button", { name: "Back to launcher" });
-    expect(back).toBeTruthy();
-    // The ViewHeader shows the view's title (derived from the active tab).
-    expect(screen.getByText("Knowledge")).toBeTruthy();
-    // The section body still mounts under the header.
-    expect(screen.getByTestId("documents-view-stub")).toBeTruthy();
+describe("CharacterHubView personality section nav", () => {
+  it("renders the shared 'Back to launcher' control and centered 'Character' title", () => {
+    window.history.replaceState(null, "", "/character");
+    renderHub();
+    expect(
+      screen.getByRole("button", { name: "Back to launcher" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Character" })).toBeTruthy();
   });
 
-  it("does not render the removed global shell back button", () => {
-    renderKnowledgeSubpage();
+  it("renders the four ordered section tabs and defaults to About", () => {
+    window.history.replaceState(null, "", "/character");
+    renderHub();
+    const nav = screen.getByTestId("section-nav-character");
+    const tabs = nav.querySelectorAll("button");
+    expect([...tabs].map((b) => b.textContent)).toEqual([
+      "About",
+      "Style Rules",
+      "Chat Examples",
+      "Post Examples",
+    ]);
+    expect(screen.getByTestId("panel-about")).toBeTruthy();
+    // The About tab is marked active.
+    const about = screen.getByRole("button", { name: "About" });
+    expect(about.getAttribute("aria-current")).toBe("page");
+  });
 
+  it("opens the section its /character/* path selects", () => {
+    window.history.replaceState(null, "", "/character/chat-examples");
+    renderHub();
+    expect(screen.getByTestId("panel-chat")).toBeTruthy();
+    expect(screen.queryByTestId("panel-about")).toBeNull();
+  });
+
+  it("switches sections when a tab is clicked", () => {
+    window.history.replaceState(null, "", "/character");
+    renderHub();
+    fireEvent.click(screen.getByRole("button", { name: "Post Examples" }));
+    expect(screen.getByTestId("panel-post")).toBeTruthy();
+    expect(window.location.pathname).toBe("/character/post-examples");
+  });
+
+  it("no longer renders the removed overview CTA grid or the shell back button", () => {
+    window.history.replaceState(null, "", "/character");
+    renderHub();
     expect(screen.queryByTestId("shell-back-button")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Go back" })).toBeNull();
+    expect(screen.queryByText("Define your voice")).toBeNull();
+    expect(screen.queryByText("Browse skills")).toBeNull();
   });
 });

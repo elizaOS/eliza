@@ -1,8 +1,10 @@
 /**
- * The three editable panels of the character editor — identity, style, and
- * message examples — split out from CharacterEditor/CharacterHubView so each is
- * independently composable and story-testable. Each is a controlled component:
- * it renders the given draft and reports edits upward; it owns no fetches.
+ * The editable panels of the character editor — identity (About), style rules,
+ * chat examples, and post examples — split out from CharacterEditor/
+ * CharacterHubView so each is independently composable, story-testable, and
+ * maps to one tab of the personality section nav (#13591). Each is a controlled
+ * component: it renders the given draft and reports edits upward; it owns no
+ * fetches.
  */
 import type { MessageExampleGroup } from "@elizaos/core";
 import {
@@ -719,28 +721,20 @@ function PostExampleRow({
   );
 }
 
-export function CharacterExamplesPanel({
+/**
+ * Chat-example conversations — the multi-turn user/agent transcripts that seed
+ * the agent's few-shot style. Its own section tab in the personality nav
+ * (#13591), split from the former combined examples panel so Chat and Post
+ * examples are independently routable.
+ */
+export function CharacterChatExamplesPanel({
   d,
   normalizedMessageExamples,
   handleFieldEdit,
   t,
 }: CharacterExamplesPanelProps) {
-  const [dragPostIndex, setDragPostIndex] = useState<number | null>(null);
-  const postExamples = d.postExamples ?? [];
-  const duplicatePostIndices = getDuplicateIndices(postExamples);
-
-  const reorder = <T,>(list: T[], from: number, to: number): T[] => {
-    const next = [...list];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    return next;
-  };
-
   const addConversationLabel = t("charactereditor.AddConversation", {
     defaultValue: "Add conversation",
-  });
-  const addPostLabel = t("charactereditor.AddPost", {
-    defaultValue: "Add Post",
   });
 
   const addConversation = () => {
@@ -757,9 +751,6 @@ export function CharacterExamplesPanel({
     ];
     handleFieldEdit("messageExamples", updated);
   };
-  const addPost = () => {
-    handleFieldEdit("postExamples", [...postExamples, ""]);
-  };
 
   const { ref: addConversationRef, agentProps: addConversationAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -770,6 +761,144 @@ export function CharacterExamplesPanel({
       description: "Add a new chat-example conversation",
       onActivate: addConversation,
     });
+
+  return (
+    /* Flat, no card/border; whitespace separates conversations. */
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <span className="text-xs font-medium text-muted">
+          {t("charactereditor.ChatExamples", {
+            defaultValue: "Chat Examples",
+          })}
+        </span>
+        <span className="text-xs text-muted">
+          {normalizedMessageExamples.length}{" "}
+          {t("charactereditor.ConversationCount", {
+            defaultValue: "conversations",
+          })}
+        </span>
+      </div>
+      <div className="flex flex-col gap-6">
+        {normalizedMessageExamples.map((convo, ci) => (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+            key={`convo-${ci}`}
+            className="group/convo flex flex-col gap-2"
+          >
+            {convo.examples.map((msg, mi) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+                key={`msg-${ci}-${mi}`}
+                className="grid min-w-0 grid-cols-[4.5rem_1fr] items-start gap-2"
+              >
+                <span
+                  className={`mt-2 px-2 py-1 text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] ${
+                    msg.name === "{{user1}}" ? "text-muted" : "text-accent"
+                  }`}
+                >
+                  {msg.name === "{{user1}}" ? "user" : "agent"}
+                </span>
+                <ConversationTurnTextarea
+                  ci={ci}
+                  mi={mi}
+                  isUser={msg.name === "{{user1}}"}
+                  value={msg.content?.text ?? ""}
+                  onChange={(text) => {
+                    const updated = [...normalizedMessageExamples];
+                    const convoClone = {
+                      examples: [...updated[ci].examples],
+                    };
+                    convoClone.examples[mi] = {
+                      ...convoClone.examples[mi],
+                      content: { text },
+                    };
+                    updated[ci] = convoClone;
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                />
+              </div>
+            ))}
+            <ConversationFooter
+              ci={ci}
+              onAddTurn={() => {
+                const agentName =
+                  typeof d.name === "string" && d.name.trim()
+                    ? d.name.trim()
+                    : "Agent";
+                const updated = [...normalizedMessageExamples];
+                const convoClone = {
+                  examples: [
+                    ...updated[ci].examples,
+                    { name: "{{user1}}", content: { text: "" } },
+                    { name: agentName, content: { text: "" } },
+                  ],
+                };
+                updated[ci] = convoClone;
+                handleFieldEdit("messageExamples", updated);
+              }}
+              onRemove={() => {
+                const updated = [...normalizedMessageExamples];
+                updated.splice(ci, 1);
+                handleFieldEdit("messageExamples", updated);
+              }}
+              t={t}
+            />
+          </div>
+        ))}
+        {normalizedMessageExamples.length === 0 && (
+          <div className="py-4 text-sm text-muted">
+            {t("charactereditor.NoChatExamples", {
+              defaultValue: "No chat examples yet.",
+            })}
+          </div>
+        )}
+      </div>
+      <Button
+        ref={addConversationRef}
+        variant="ghost"
+        size="sm"
+        className="inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+        onClick={addConversation}
+        title={addConversationLabel}
+        aria-label={addConversationLabel}
+        {...addConversationAgentProps}
+      >
+        <PlusIconSvg />
+        {addConversationLabel}
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * Post examples — the standalone social-post samples that seed the agent's
+ * posting voice. Its own section tab in the personality nav (#13591), split
+ * from the former combined examples panel.
+ */
+export function CharacterPostExamplesPanel({
+  d,
+  handleFieldEdit,
+  t,
+}: CharacterExamplesPanelProps) {
+  const [dragPostIndex, setDragPostIndex] = useState<number | null>(null);
+  const postExamples = d.postExamples ?? [];
+  const duplicatePostIndices = getDuplicateIndices(postExamples);
+
+  const reorder = <T,>(list: T[], from: number, to: number): T[] => {
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  };
+
+  const addPostLabel = t("charactereditor.AddPost", {
+    defaultValue: "Add Post",
+  });
+
+  const addPost = () => {
+    handleFieldEdit("postExamples", [...postExamples, ""]);
+  };
+
   const { ref: addPostRef, agentProps: addPostAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "post-example-add",
@@ -781,204 +910,97 @@ export function CharacterExamplesPanel({
     });
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Chat Examples — flat, no card/border; whitespace separates conversations. */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <span className="text-xs font-medium text-muted">
-            {t("charactereditor.ChatExamples", {
-              defaultValue: "Chat Examples",
+    /* Flat, no card/border; whitespace separates posts. */
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <span className="text-xs font-medium text-muted">
+          {t("charactereditor.PostExamples", {
+            defaultValue: "Post Examples",
+          })}
+        </span>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span>
+            {postExamples.length}{" "}
+            {t("charactereditor.PostCount", {
+              defaultValue: "posts",
             })}
           </span>
-          <span className="text-xs text-muted">
-            {normalizedMessageExamples.length}{" "}
-            {t("charactereditor.ConversationCount", {
-              defaultValue: "conversations",
-            })}
-          </span>
-        </div>
-        <div className="flex flex-col gap-6">
-          {normalizedMessageExamples.map((convo, ci) => (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-              key={`convo-${ci}`}
-              className="group/convo flex flex-col gap-2"
-            >
-              {convo.examples.map((msg, mi) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                  key={`msg-${ci}-${mi}`}
-                  className="grid min-w-0 grid-cols-[4.5rem_1fr] items-start gap-2"
-                >
-                  <span
-                    className={`mt-2 px-2 py-1 text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] ${
-                      msg.name === "{{user1}}" ? "text-muted" : "text-accent"
-                    }`}
-                  >
-                    {msg.name === "{{user1}}" ? "user" : "agent"}
-                  </span>
-                  <ConversationTurnTextarea
-                    ci={ci}
-                    mi={mi}
-                    isUser={msg.name === "{{user1}}"}
-                    value={msg.content?.text ?? ""}
-                    onChange={(text) => {
-                      const updated = [...normalizedMessageExamples];
-                      const convoClone = {
-                        examples: [...updated[ci].examples],
-                      };
-                      convoClone.examples[mi] = {
-                        ...convoClone.examples[mi],
-                        content: { text },
-                      };
-                      updated[ci] = convoClone;
-                      handleFieldEdit("messageExamples", updated);
-                    }}
-                  />
-                </div>
-              ))}
-              <ConversationFooter
-                ci={ci}
-                onAddTurn={() => {
-                  const agentName =
-                    typeof d.name === "string" && d.name.trim()
-                      ? d.name.trim()
-                      : "Agent";
-                  const updated = [...normalizedMessageExamples];
-                  const convoClone = {
-                    examples: [
-                      ...updated[ci].examples,
-                      { name: "{{user1}}", content: { text: "" } },
-                      { name: agentName, content: { text: "" } },
-                    ],
-                  };
-                  updated[ci] = convoClone;
-                  handleFieldEdit("messageExamples", updated);
-                }}
-                onRemove={() => {
-                  const updated = [...normalizedMessageExamples];
-                  updated.splice(ci, 1);
-                  handleFieldEdit("messageExamples", updated);
-                }}
-                t={t}
-              />
-            </div>
-          ))}
-          {normalizedMessageExamples.length === 0 && (
-            <div className="py-4 text-sm text-muted">
-              {t("charactereditor.NoChatExamples", {
-                defaultValue: "No chat examples yet.",
-              })}
-            </div>
-          )}
-        </div>
-        <Button
-          ref={addConversationRef}
-          variant="ghost"
-          size="sm"
-          className="inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
-          onClick={addConversation}
-          title={addConversationLabel}
-          aria-label={addConversationLabel}
-          {...addConversationAgentProps}
-        >
-          <PlusIconSvg />
-          {addConversationLabel}
-        </Button>
-      </section>
-
-      {/* Post Examples — flat, no card/border; whitespace separates posts. */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <span className="text-xs font-medium text-muted">
-            {t("charactereditor.PostExamples", {
-              defaultValue: "Post Examples",
-            })}
-          </span>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            <span>
-              {postExamples.length}{" "}
-              {t("charactereditor.PostCount", {
-                defaultValue: "posts",
+          {duplicatePostIndices.size > 0 ? (
+            <span className="text-warning">
+              {duplicatePostIndices.size}{" "}
+              {t("charactereditor.PossibleDuplicates", {
+                defaultValue: "possible duplicates",
               })}
             </span>
-            {duplicatePostIndices.size > 0 ? (
-              <span className="text-warning">
-                {duplicatePostIndices.size}{" "}
-                {t("charactereditor.PossibleDuplicates", {
-                  defaultValue: "possible duplicates",
-                })}
-              </span>
-            ) : null}
+          ) : null}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {postExamples.map((post, pi) => {
+          const isDragging = dragPostIndex === pi;
+          const isDuplicate = duplicatePostIndices.has(pi);
+          return (
+            <PostExampleRow
+              // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
+              key={`post-${pi}`}
+              pi={pi}
+              post={post}
+              isDuplicate={isDuplicate}
+              isDragging={isDragging}
+              onDragStart={(e) => {
+                setDragPostIndex(pi);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                if (dragPostIndex === null || dragPostIndex === pi) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragPostIndex === null || dragPostIndex === pi) return;
+                handleFieldEdit(
+                  "postExamples",
+                  reorder(postExamples, dragPostIndex, pi),
+                );
+                setDragPostIndex(null);
+              }}
+              onDragEnd={() => setDragPostIndex(null)}
+              onChange={(value) => {
+                const updated = [...postExamples];
+                updated[pi] = value;
+                handleFieldEdit("postExamples", updated);
+              }}
+              onRemove={() => {
+                const updated = [...postExamples];
+                updated.splice(pi, 1);
+                handleFieldEdit("postExamples", updated);
+              }}
+              t={t}
+            />
+          );
+        })}
+        {postExamples.length === 0 && (
+          <div className="py-4 text-sm text-muted">
+            {t("charactereditor.NoPostExamples", {
+              defaultValue: "No post examples yet.",
+            })}
           </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          {postExamples.map((post, pi) => {
-            const isDragging = dragPostIndex === pi;
-            const isDuplicate = duplicatePostIndices.has(pi);
-            return (
-              <PostExampleRow
-                // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
-                key={`post-${pi}`}
-                pi={pi}
-                post={post}
-                isDuplicate={isDuplicate}
-                isDragging={isDragging}
-                onDragStart={(e) => {
-                  setDragPostIndex(pi);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  if (dragPostIndex === null || dragPostIndex === pi) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragPostIndex === null || dragPostIndex === pi) return;
-                  handleFieldEdit(
-                    "postExamples",
-                    reorder(postExamples, dragPostIndex, pi),
-                  );
-                  setDragPostIndex(null);
-                }}
-                onDragEnd={() => setDragPostIndex(null)}
-                onChange={(value) => {
-                  const updated = [...postExamples];
-                  updated[pi] = value;
-                  handleFieldEdit("postExamples", updated);
-                }}
-                onRemove={() => {
-                  const updated = [...postExamples];
-                  updated.splice(pi, 1);
-                  handleFieldEdit("postExamples", updated);
-                }}
-                t={t}
-              />
-            );
-          })}
-          {postExamples.length === 0 && (
-            <div className="py-4 text-sm text-muted">
-              {t("charactereditor.NoPostExamples", {
-                defaultValue: "No post examples yet.",
-              })}
-            </div>
-          )}
-          <Button
-            ref={addPostRef}
-            variant="ghost"
-            size="sm"
-            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
-            onClick={addPost}
-            title={addPostLabel}
-            aria-label={addPostLabel}
-            {...addPostAgentProps}
-          >
-            <PlusIconSvg />
-            {addPostLabel}
-          </Button>
-        </div>
-      </section>
-    </div>
+        )}
+        <Button
+          ref={addPostRef}
+          variant="ghost"
+          size="sm"
+          className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10"
+          onClick={addPost}
+          title={addPostLabel}
+          aria-label={addPostLabel}
+          {...addPostAgentProps}
+        >
+          <PlusIconSvg />
+          {addPostLabel}
+        </Button>
+      </div>
+    </section>
   );
 }
