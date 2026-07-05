@@ -2795,6 +2795,25 @@ export const INVALID_TRACER_PROVIDER = {};
             find: /^@elizaos\/tui$/,
             replacement: path.join(tuiSource, "index.ts"),
           },
+          // @elizaos/import-conversations resolves from source for the same
+          // reason: the renderer (MemoryViewerView) imports its `/browser`
+          // subpath, whose export map points at dist/ — absent in renderer
+          // builds that don't pre-build the package, failing with "Rollup
+          // failed to resolve import '@elizaos/import-conversations/browser'".
+          {
+            find: /^@elizaos\/import-conversations$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/import-conversations/src/index.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/import-conversations\/(.+)$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/import-conversations/src/$1.ts",
+            ),
+          },
           {
             find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
             replacement: path.join(
