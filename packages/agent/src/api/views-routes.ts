@@ -124,6 +124,9 @@ function contentTypeForViewAsset(assetPath: string): string {
     case ".json":
     case ".map":
       return "application/json; charset=utf-8";
+    case ".html":
+    case ".htm":
+      return "text/html; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
     case ".png":
@@ -402,7 +405,7 @@ export async function handleViewsRoutes(
     // user enabled, so kind-gating is a client responsibility.
     const allViews = listViews({ includeAllKinds: true, viewType });
     // On restricted platforms (iOS/Android store builds), only surface views
-    // without dynamic code URLs (already in-process).
+    // without dynamic bundle/frame URLs (already in-process).
     const filtered = dynamicAllowed
       ? allViews
       : allViews.filter((v) => !v.bundleUrl && !v.frameUrl);
@@ -653,7 +656,11 @@ export async function handleViewsRoutes(
 
     const framePath = getFrameDiskPath(entry);
     if (!framePath) {
-      error(res, `View "${id}" has no sandbox frame document configured.`, 404);
+      error(
+        res,
+        `View "${id}" has no frame path configured. Build or declare the sandboxed frame document first.`,
+        404,
+      );
       return true;
     }
 
@@ -662,26 +669,23 @@ export async function handleViewsRoutes(
       stat = await fs.stat(framePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        error(res, `Sandbox frame document not built for view "${id}".`, 404);
+        error(
+          res,
+          `Frame document not built for view "${id}". Build the plugin frame document first.`,
+          404,
+        );
       } else {
         logger.error(
           { src: "ViewsRoutes", viewId: id, framePath, err },
-          `[ViewsRoutes] Failed to stat sandbox frame for view "${id}"`,
+          `[ViewsRoutes] Failed to stat frame document for view "${id}"`,
         );
-        error(res, `Failed to read sandbox frame for view "${id}"`, 500);
+        error(res, `Failed to read frame document for view "${id}"`, 500);
       }
       return true;
     }
 
-    let data: Buffer;
-    try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(framePath);
-    } catch (err) {
-      logger.error(
-        { src: "ViewsRoutes", viewId: id, framePath, err },
-        `[ViewsRoutes] Failed to read sandbox frame for view "${id}"`,
-      );
-      error(res, `Failed to read sandbox frame for view "${id}"`, 500);
+    if (!stat.isFile()) {
+      error(res, `Frame document not built for view "${id}".`, 404);
       return true;
     }
 
@@ -697,20 +701,47 @@ export async function handleViewsRoutes(
       return true;
     }
 
+    let data: Buffer;
+    try {
+      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(framePath);
+    } catch (err) {
+      logger.error(
+        { src: "ViewsRoutes", viewId: id, framePath, err },
+        `[ViewsRoutes] Failed to read frame document for view "${id}"`,
+      );
+      error(res, `Failed to read frame document for view "${id}"`, 500);
+      return true;
+    }
+
+    const vParam = url.searchParams.get("v");
+    const contentHashMatch = entry.frameHash && vParam === entry.frameHash;
+    const cacheControl = contentHashMatch
+      ? "public, max-age=31536000, immutable"
+      : "no-cache";
     const raw = res as {
       writeHead?: (
         status: number,
         headers: Record<string, string | number>,
       ) => void;
+      setHeader?: (name: string, value: string | number) => void;
       end?: (chunk?: unknown) => void;
     };
-    raw.writeHead?.(200, {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Length": stat.size,
-      "Cache-Control": "no-cache",
-      "X-Content-Type-Options": "nosniff",
-      ETag: etag,
-    });
+
+    if (typeof raw.writeHead === "function") {
+      raw.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": data.byteLength,
+        "Cache-Control": cacheControl,
+        "X-Content-Type-Options": "nosniff",
+        ETag: etag,
+      });
+    } else if (typeof raw.setHeader === "function") {
+      raw.setHeader("Content-Type", "text/html; charset=utf-8");
+      raw.setHeader("Content-Length", data.byteLength);
+      raw.setHeader("Cache-Control", cacheControl);
+      raw.setHeader("X-Content-Type-Options", "nosniff");
+      raw.setHeader("ETag", etag);
+    }
     raw.end?.(method === "HEAD" ? undefined : data);
     return true;
   }

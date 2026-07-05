@@ -1177,7 +1177,7 @@ async function handleStandardCapability(
 
 interface DynamicViewLoaderProps {
   /** The URL of the JS bundle to dynamically import. */
-  bundleUrl: string;
+  bundleUrl?: string;
   /** HTML document URL for sandboxed-iframe views. */
   frameUrl?: string;
   /** Named export inside the bundle to use as the root component. Defaults to "default". */
@@ -1251,7 +1251,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // re-run this effect to invalidate the module cache.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a manual cache-bust trigger
   useEffect(() => {
-    if (!dynamicLoadingAllowed || isSandboxed) return;
+    if (!dynamicLoadingAllowed || isSandboxed || !bundleUrl) return;
 
     let cancelled = false;
     const lease = acquireBundleModule(bundleUrl, componentExport);
@@ -1320,6 +1320,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           // Standard capabilities are handled here regardless of whether the
           // module exports interact — they operate on the registry or the DOM.
           if (STANDARD_CAPABILITIES.has(capability)) {
+            if (!bundleUrl) {
+              throw new Error(
+                `View "${viewId}" has no bundleUrl for capability "${capability}"`,
+              );
+            }
             return handleStandardCapability(
               capability,
               params,
@@ -1377,6 +1382,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   // ErrorBoundary key below, remounting it with cleared state — so a view that
   // crashed at render is genuinely retried, not stuck behind a latched boundary.
   const recoverView = useCallback(() => {
+    if (!bundleUrl) return;
     invalidateBundleModule(`${bundleUrl}::${componentExport}`);
     setLoadError(null);
     setReloadKey((k) => k + 1);
@@ -1401,7 +1407,6 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               "Sandboxed iframe views require a frameUrl HTML document; bundleUrl is a JavaScript module.",
             )
           }
-          onRetry={recoverView}
           onBack={navigateToViews}
         />
       );
@@ -1418,6 +1423,19 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     );
   }
 
+  if (!bundleUrl) {
+    return (
+      <ViewErrorState
+        viewId={viewId}
+        error={
+          new Error(
+            `Dynamic view "${viewId}" requires bundleUrl unless it declares sandboxed-iframe isolation with frameUrl.`,
+          )
+        }
+        onBack={navigateToViews}
+      />
+    );
+  }
   if (loadError) {
     return (
       <ViewErrorState

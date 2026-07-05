@@ -188,7 +188,7 @@ export function getBundleDiskPath(entry: ViewRegistryEntry): string | null {
 }
 
 /**
- * Resolve the absolute on-disk path for a sandbox frame HTML document.
+ * Resolve the absolute on-disk path for a sandboxed frame document.
  * Returns `null` when the entry has no `framePath` or no `pluginDir`.
  */
 export function getFrameDiskPath(entry: ViewRegistryEntry): string | null {
@@ -409,6 +409,8 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
         pluginDir,
         bundleUrl: undefined,
         bundleUrlVersioned: undefined,
+        frameUrl: undefined,
+        frameUrlVersioned: undefined,
         heroImageUrl: `/api/views/${encodeURIComponent(view.id)}/hero${
           query ? `?${query}` : ""
         }`,
@@ -520,8 +522,8 @@ export function getView(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Compute a short content hash for a bundle file. Returns `null` on any I/O error. */
-async function computeBundleHash(filePath: string): Promise<string | null> {
+/** Compute a short content hash for a served view file. Returns `null` on any I/O error. */
+async function computeFileHash(filePath: string): Promise<string | null> {
   try {
     const content = await fs.readFile(filePath);
     return createHash("sha256").update(content).digest("hex").slice(0, 12);
@@ -540,7 +542,7 @@ async function buildEntry(
   const registryKey = viewRegistryKey(view.id, normalizedViewType);
   const requiresFrameDocument = view.surface?.isolation === "sandboxed-iframe";
 
-  // Check bundle availability and collect hash + size when resolvable.
+  // Check bundle/frame availability and collect hashes + sizes when resolvable.
   let available = requiresFrameDocument
     ? Boolean(view.frameUrl)
     : Boolean(view.bundleUrl || view.frameUrl);
@@ -550,13 +552,13 @@ async function buildEntry(
     const bundleAbs = path.resolve(pluginDir, view.bundlePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (bundleAbs.startsWith(packageRoot)) {
-      const bundleExists = await fileExists(bundleAbs);
-      if (!requiresFrameDocument) {
-        available = bundleExists;
+      const bundleAvailable = await fileExists(bundleAbs);
+      if (bundleAvailable && !requiresFrameDocument) {
+        available = true;
       }
-      if (bundleExists) {
+      if (bundleAvailable) {
         const [hash, stat] = await Promise.all([
-          computeBundleHash(bundleAbs),
+          computeFileHash(bundleAbs),
           fs.stat(bundleAbs).catch(() => null),
         ]);
         if (hash) bundleHash = hash;
@@ -588,15 +590,23 @@ async function buildEntry(
       }
     }
   }
+  let frameHash: string | undefined;
+  let frameSize: number | undefined;
   if (!view.frameUrl && pluginDir && view.framePath) {
     const frameAbs = path.resolve(pluginDir, view.framePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (frameAbs.startsWith(packageRoot)) {
-      const frameExists = await fileExists(frameAbs);
-      if (requiresFrameDocument) {
-        available = frameExists;
-      } else if (!available) {
-        available = frameExists;
+      const frameAvailable = await fileExists(frameAbs);
+      if (frameAvailable) {
+        available = true;
+      }
+      if (frameAvailable) {
+        const [hash, stat] = await Promise.all([
+          computeFileHash(frameAbs),
+          fs.stat(frameAbs).catch(() => null),
+        ]);
+        if (hash) frameHash = hash;
+        if (stat) frameSize = stat.size;
       }
     }
   }
@@ -634,6 +644,11 @@ async function buildEntry(
     : view.framePath
       ? buildAssetUrl("frame.html", loadedAt)
       : undefined;
+  const frameUrlVersioned = view.frameUrl
+    ? view.frameUrl
+    : view.framePath && frameHash
+      ? buildAssetUrl("frame.html", frameHash)
+      : frameUrl;
 
   const heroImageUrl = buildAssetUrl("hero");
   // Probe for a real hero asset so the client can choose a photo vs. its icon.
@@ -658,6 +673,7 @@ async function buildEntry(
     bundleUrl,
     bundleUrlVersioned,
     frameUrl,
+    frameUrlVersioned,
     heroImageUrl,
     hasHeroImage,
     available,
@@ -665,5 +681,7 @@ async function buildEntry(
     platform,
     bundleHash,
     bundleSize,
+    frameHash,
+    frameSize,
   };
 }

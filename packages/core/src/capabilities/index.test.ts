@@ -2021,4 +2021,58 @@ describe("capability router", () => {
 				"bundleUrl must be an absolute http(s) URL without embedded credentials.",
 		});
 	});
+
+	it("rejects remote plugin views with unsafe frame paths", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-panel",
+								label: "Weather",
+								framePath: "../frame.html",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views",
+			message:
+				"framePath must not contain empty, current-directory, or parent-directory segments.",
+		});
+	});
+
+	it("rejects remote plugin views with unsafe frame URLs", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-panel",
+								label: "Weather",
+								frameUrl: "javascript:alert(1)",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views",
+			message:
+				"frameUrl must be an absolute http(s) URL without embedded credentials.",
+		});
+	});
 });

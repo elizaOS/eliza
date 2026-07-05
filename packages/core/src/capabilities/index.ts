@@ -3537,7 +3537,7 @@ function requireRemotePluginView(
 		validateRemotePluginAssetPath(framePath, "framePath", method);
 	}
 	if (frameUrl !== undefined) {
-		validateRemotePluginBrowserUrl(frameUrl, "frameUrl", method);
+		validateRemotePluginBundleUrl(frameUrl, "frameUrl", method);
 	}
 	const backgroundPolicy = optionalBackgroundPolicy(
 		object,

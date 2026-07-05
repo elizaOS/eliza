@@ -852,13 +852,16 @@ export interface ViewScopedAction {
  *
  * Views are compiled to JavaScript bundles, served by the agent router at
  * `/api/views/<id>/bundle.js`, and loaded dynamically by the frontend shell
- * via `import()`. On platforms where dynamic code loading is restricted (iOS
- * App Store, Google Play store builds), bundles are pre-compiled into the app
- * binary and the agent serves them from bundled assets — no remote download.
+ * via `import()`. Views that declare `surface.isolation: "sandboxed-iframe"`
+ * instead supply a complete HTML document via `framePath`/`frameUrl`; the shell
+ * mounts that document in `<iframe sandbox>` and never substitutes a JS bundle
+ * URL for it. On platforms where dynamic code loading is restricted (iOS App
+ * Store, Google Play store builds), dynamic bundle/frame URLs are filtered out.
  *
  * The frontend shell:
  *   1. Fetches `GET /api/views` to discover all registered views.
- *   2. Calls `import(bundleUrl)` when a view is first requested.
+ *   2. Calls `import(bundleUrl)` for host-realm views, or mounts `frameUrl` for
+ *      sandboxed iframe views.
  *   3. Mounts `module[componentExport ?? "default"]` in an error boundary.
  *   4. Calls the view's `cleanup()` export on unmount.
  */
@@ -1001,14 +1004,15 @@ export interface ViewDeclaration {
 	 */
 	bundleUrl?: string;
 	/**
-	 * Path from the plugin's package root to a sandbox frame HTML document.
-	 * Required for `surface.isolation: "sandboxed-iframe"` local plugin views;
-	 * the registry resolves this to `/api/views/<id>/frame.html`.
+	 * Path from the plugin's package root to a complete HTML document for
+	 * `surface.isolation: "sandboxed-iframe"` views. The registry resolves this
+	 * to `/api/views/<id>/frame.html`; it is a document URL, never a JS bundle.
 	 */
 	framePath?: string;
 	/**
-	 * Fully resolved sandbox frame document URL for remote/containerized views.
-	 * This is an HTML document URL, not a JavaScript bundle URL.
+	 * Fully resolved HTML document URL for `surface.isolation: "sandboxed-iframe"`
+	 * views served by a remote capability module or container. The shell mounts
+	 * this in `<iframe sandbox>` and must never substitute `bundleUrl` here.
 	 */
 	frameUrl?: string;
 	/** Capabilities the agent can exercise on this view when it is mounted. */

@@ -3653,7 +3653,8 @@ describe("remote plugin adapter", () => {
                 {
                   id: "localhost.panel",
                   label: "Localhost Panel",
-                  bundlePath: "/assets/localhost-panel.js",
+                  bundlePath: "assets/localhost-panel.js",
+                  framePath: "assets/localhost-frame.html",
                 },
               ],
             },
@@ -3671,9 +3672,11 @@ describe("remote plugin adapter", () => {
         }),
         getAsset: async ({ path }) => ({
           path,
-          contentType: "text/javascript",
+          contentType: path.endsWith(".html") ? "text/html" : "text/javascript",
           bodyBase64: Buffer.from(
-            "export const marker = 'remote-panel';",
+            path.endsWith(".html")
+              ? "<!doctype html><html><body>remote frame</body></html>"
+              : "export const marker = 'remote-panel';",
           ).toString("base64"),
         }),
       }),
@@ -3690,9 +3693,8 @@ describe("remote plugin adapter", () => {
         }),
       );
 
-      await expect(
-        bootstrapRemoteCapabilityPlugins(runtime),
-      ).resolves.toMatchObject({
+      const bootstrapResult = await bootstrapRemoteCapabilityPlugins(runtime);
+      expect(bootstrapResult).toMatchObject({
         registered: [
           expect.objectContaining({ name: "@remote/localhost-tools" }),
         ],
@@ -3708,15 +3710,20 @@ describe("remote plugin adapter", () => {
       });
       const expectedBundleUrl =
         "/api/capability-router/assets/primary/localhost-tools/assets/localhost-panel.js";
+      const expectedFrameUrl =
+        "/api/capability-router/assets/primary/localhost-tools/assets/localhost-frame.html";
       expect(runtime.plugins[0]?.views?.[0]).toMatchObject({
         id: "localhost.panel",
         bundleUrl: expectedBundleUrl,
+        frameUrl: expectedFrameUrl,
       });
       expect(getView("localhost.panel")).toMatchObject({
         id: "localhost.panel",
         pluginName: "@remote/localhost-tools",
         bundleUrl: expectedBundleUrl,
         bundleUrlVersioned: expectedBundleUrl,
+        frameUrl: expectedFrameUrl,
+        frameUrlVersioned: expectedFrameUrl,
         available: true,
       });
       const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/localhost-tools/assets/localhost-panel.js`;
@@ -3729,6 +3736,13 @@ describe("remote plugin adapter", () => {
       );
       const bundleSource = await bundleResponse.text();
       expect(bundleSource).toBe("export const marker = 'remote-panel';");
+      const remoteFrameUrl = `${server.baseUrl}/v1/capabilities/assets/localhost-tools/assets/localhost-frame.html`;
+      const frameResponse = await fetch(remoteFrameUrl, {
+        headers: { authorization: "Bearer local-server-token" },
+      });
+      expect(frameResponse.status).toBe(200);
+      expect(frameResponse.headers.get("content-type")).toBe("text/html");
+      await expect(frameResponse.text()).resolves.toContain("remote frame");
       const moduleUrl = `data:text/javascript;base64,${Buffer.from(
         bundleSource,
       ).toString("base64")}`;

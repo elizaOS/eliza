@@ -1039,10 +1039,6 @@ function remoteViewAvailable(view: ViewRegistryEntry): boolean {
   return Boolean((view.bundleUrl || view.frameUrl) && view.available !== false);
 }
 
-function remoteViewLoaderUrl(view: ViewRegistryEntry): string | null {
-  return view.bundleUrl ?? view.frameUrl ?? null;
-}
-
 function remoteViewMatchesTab(
   view: ViewRegistryEntry,
   tab: string,
@@ -1103,12 +1099,11 @@ function findRemoteViewForRoute(
 }
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
-  const loaderUrl = remoteViewLoaderUrl(view);
-  if (!loaderUrl) return null;
+  if (!view.bundleUrl && !view.frameUrl) return null;
   return (
     <TabContentView nav={nav}>
       <DynamicViewLoader
-        bundleUrl={loaderUrl}
+        bundleUrl={view.bundleUrl}
         frameUrl={view.frameUrl}
         componentExport={view.componentExport}
         viewId={view.id}
@@ -1210,36 +1205,33 @@ function ViewLayoutSurface({
           )} eliza-continuous-chat-scroll pb-[calc(0.5rem+var(--eliza-continuous-chat-clearance,5.25rem))]`}
         >
           {entries.length > 0 ? (
-            entries.map((view) => {
-              const loaderUrl = remoteViewLoaderUrl(view);
-              return (
-                <section
-                  key={view.id}
-                  data-testid={`view-layout-pane-${view.id}`}
-                  className={paneClassName}
-                >
-                  <div className="flex h-9 shrink-0 items-center border-b border-border/35 px-2.5">
-                    <span className="truncate text-xs font-medium text-muted">
-                      {view.label}
-                    </span>
-                  </div>
-                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-                    {loaderUrl ? (
-                      <DynamicViewLoader
-                        bundleUrl={loaderUrl}
-                        frameUrl={view.frameUrl}
-                        componentExport={view.componentExport}
-                        viewId={view.id}
-                        viewType={view.viewType}
-                        surface={view.surface}
-                      />
-                    ) : (
-                      <ViewRouter routeOverride={routeOverrideForView(view)} />
-                    )}
-                  </div>
-                </section>
-              );
-            })
+            entries.map((view) => (
+              <section
+                key={view.id}
+                data-testid={`view-layout-pane-${view.id}`}
+                className={paneClassName}
+              >
+                <div className="flex h-9 shrink-0 items-center border-b border-border/35 px-2.5">
+                  <span className="truncate text-xs font-medium text-muted">
+                    {view.label}
+                  </span>
+                </div>
+                <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {view.bundleUrl || view.frameUrl ? (
+                    <DynamicViewLoader
+                      bundleUrl={view.bundleUrl}
+                      frameUrl={view.frameUrl}
+                      componentExport={view.componentExport}
+                      viewId={view.id}
+                      viewType={view.viewType}
+                      surface={view.surface}
+                    />
+                  ) : (
+                    <ViewRouter routeOverride={routeOverrideForView(view)} />
+                  )}
+                </div>
+              </section>
+            ))
           ) : (
             <div className="flex min-h-[18rem] items-center justify-center border border-border/45 px-4 text-center text-sm text-muted">
               Requested views are not available.
@@ -1497,7 +1489,7 @@ function renderViewRouterContent({
     tab,
     appSlug,
   );
-  if (remoteView && remoteViewLoaderUrl(remoteView)) {
+  if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
   return renderStaticViewRouterTab({

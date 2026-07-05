@@ -46,6 +46,12 @@ export interface ViewRegistryEntry extends ViewDeclaration {
   bundleUrlVersioned?: string;
   /** Bundle file size in bytes. */
   bundleSize?: number;
+  /** First 12 hex chars of the SHA-256 content hash of the frame document. */
+  frameHash?: string;
+  /** Frame URL with `?v=<hash>` for immutable long-lived caching. */
+  frameUrlVersioned?: string;
+  /** Frame document file size in bytes. */
+  frameSize?: number;
   /**
    * True for entries registered by the built-in shell itself
    * (pluginName === "@elizaos/builtin"). These views live in the main

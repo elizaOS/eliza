@@ -130,7 +130,9 @@ const PLUGIN_NAMES = [
   "views-integration-dev",
   "views-integration-modalities",
   "views-integration-remote",
+  "views-integration-remote-frame",
   "views-integration-local-bundle",
+  "views-integration-local-frame",
   "todos",
 ];
 
@@ -159,6 +161,18 @@ async function createLocalBundlePlugin(bundleSource: string): Promise<{
   const bundlePath = path.join(bundleDir, "bundle.js");
   await writeFile(bundlePath, bundleSource);
   return { pluginDir, bundlePath };
+}
+
+async function createLocalFramePlugin(frameSource: string): Promise<{
+  pluginDir: string;
+  framePath: string;
+}> {
+  const pluginDir = await mkdtemp(path.join(tmpdir(), "eliza-view-frame-"));
+  const frameDir = path.join(pluginDir, "dist", "views");
+  await mkdir(frameDir, { recursive: true });
+  const absoluteFramePath = path.join(frameDir, "frame.html");
+  await writeFile(absoluteFramePath, frameSource);
+  return { pluginDir, framePath: path.relative(pluginDir, absoluteFramePath) };
 }
 
 function rawResponse(ctx: ViewsRouteContext): {
@@ -447,6 +461,57 @@ describe("GET /api/views", () => {
         "https://capability.example.test/assets/remote-panel.js",
     });
   });
+
+  it("returns absolute remote frameUrl for sandboxed remote capability views", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote-frame",
+        description: "remote frame",
+        actions: [],
+        views: [
+          {
+            id: "remote.frame",
+            label: "Remote Frame",
+            surface: { isolation: "sandboxed-iframe" },
+            frameUrl: "https://capability.example.test/assets/frame.html",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const registryEntry = getView("remote.frame");
+    expect(registryEntry).toMatchObject({
+      id: "remote.frame",
+      pluginName: "views-integration-remote-frame",
+      available: true,
+      bundleUrl: undefined,
+      frameUrl: "https://capability.example.test/assets/frame.html",
+      frameUrlVersioned: "https://capability.example.test/assets/frame.html",
+    });
+
+    const { ctx, json } = makeCtx("GET", "/api/views");
+    await handleViewsRoutes(ctx);
+
+    const [, payload] = json.mock.calls[0] as [
+      unknown,
+      {
+        views: Array<{
+          id: string;
+          available: boolean;
+          bundleUrl?: string;
+          frameUrl?: string;
+          frameUrlVersioned?: string;
+        }>;
+      },
+    ];
+    expect(payload.views.find((v) => v.id === "remote.frame")).toMatchObject({
+      available: true,
+      bundleUrl: undefined,
+      frameUrl: "https://capability.example.test/assets/frame.html",
+      frameUrlVersioned: "https://capability.example.test/assets/frame.html",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -536,6 +601,41 @@ describe("GET /api/views/:id", () => {
       id: "remote.panel",
       available: true,
       bundleUrl: "https://capability.example.test/assets/remote-panel.js",
+    });
+  });
+
+  it("returns single sandboxed view metadata with frameUrl and no bundleUrl", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote-frame",
+        description: "remote frame",
+        actions: [],
+        views: [
+          {
+            id: "remote.frame",
+            label: "Remote Frame",
+            surface: { isolation: "sandboxed-iframe" },
+            frameUrl: "https://capability.example.test/assets/frame.html",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const { ctx, json } = makeCtx("GET", "/api/views/remote.frame");
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledOnce();
+    const [, payload] = json.mock.calls[0] as [
+      unknown,
+      { id: string; available: boolean; bundleUrl?: string; frameUrl?: string },
+    ];
+    expect(payload).toMatchObject({
+      id: "remote.frame",
+      available: true,
+      bundleUrl: undefined,
+      frameUrl: "https://capability.example.test/assets/frame.html",
     });
   });
 });
@@ -756,6 +856,114 @@ describe("GET /api/views/:id/bundle.js", () => {
       unregisterPluginViews("views-integration-local-bundle");
       await rm(pluginDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/views/:id/frame.html — sandboxed iframe document
+// ---------------------------------------------------------------------------
+
+describe("GET /api/views/:id/frame.html", () => {
+  it("serves local frame documents with HTML content type and immutable versioned URLs", async () => {
+    const { pluginDir } = await createLocalFramePlugin(
+      '<!doctype html><html><body><main id="app">Frame v1</main></body></html>\n',
+    );
+
+    try {
+      await registerPluginViews(
+        {
+          name: "views-integration-local-frame",
+          description: "local frame",
+          actions: [],
+          views: [
+            {
+              id: "local.frame",
+              label: "Local Frame",
+              path: "/local-frame",
+              surface: { isolation: "sandboxed-iframe" },
+              framePath: "dist/views/frame.html",
+            },
+          ],
+        },
+        pluginDir,
+      );
+
+      const entry = getView("local.frame");
+      expect(entry).toMatchObject({
+        available: true,
+        bundleUrl: undefined,
+        framePath: "dist/views/frame.html",
+      });
+      expect(entry?.frameHash).toMatch(/^[a-f0-9]{12}$/);
+      expect(entry?.frameUrl).toContain("/api/views/local.frame/frame.html?v=");
+      expect(entry?.frameUrlVersioned).toContain(`v=${entry?.frameHash}`);
+
+      const { ctx: getCtx } = makeCtx(
+        "GET",
+        "/api/views/local.frame/frame.html",
+      );
+      await handleViewsRoutes(getCtx);
+      const getRes = rawResponse(getCtx);
+      const [, getHeaders] = getRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      const getBody = getRes.end.mock.calls[0]?.[0] as Buffer;
+      expect(getHeaders["Content-Type"]).toBe("text/html; charset=utf-8");
+      expect(getHeaders["X-Content-Type-Options"]).toBe("nosniff");
+      expect(getHeaders["Cache-Control"]).toBe("no-cache");
+      expect(getBody.toString("utf8")).toContain("Frame v1");
+
+      const { ctx: immutableCtx } = makeCtx(
+        "GET",
+        "/api/views/local.frame/frame.html",
+        { v: entry?.frameHash ?? "" },
+      );
+      await handleViewsRoutes(immutableCtx);
+      const immutableRes = rawResponse(immutableCtx);
+      const [, immutableHeaders] = immutableRes.writeHead.mock.calls[0] as [
+        number,
+        Record<string, string | number>,
+      ];
+      expect(immutableHeaders["Cache-Control"]).toBe(
+        "public, max-age=31536000, immutable",
+      );
+    } finally {
+      unregisterPluginViews("views-integration-local-frame");
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not fabricate a local frame route for remote absolute frameUrl views", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote-frame",
+        description: "remote frame",
+        actions: [],
+        views: [
+          {
+            id: "remote.frame",
+            label: "Remote Frame",
+            surface: { isolation: "sandboxed-iframe" },
+            frameUrl: "https://capability.example.test/assets/frame.html",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const { ctx, error } = makeCtx("GET", "/api/views/remote.frame/frame.html");
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledOnce();
+    const [, message, status] = error.mock.calls[0] as [
+      unknown,
+      string,
+      number,
+    ];
+    expect(status).toBe(404);
+    expect(message).toContain("no frame path configured");
   });
 });
 

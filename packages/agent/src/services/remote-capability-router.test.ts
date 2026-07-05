@@ -665,6 +665,7 @@ describe("remote capability router", () => {
                       id: "device-view",
                       label: "Device View",
                       bundlePath: "/assets/device-view.js",
+                      framePath: "/assets/device-frame.html",
                     },
                   ],
                   actions: [
@@ -733,6 +734,8 @@ describe("remote capability router", () => {
               id: "device-view",
               bundleUrl:
                 "https://device.example/v1/capabilities/assets/device-plugin/assets/device-view.js",
+              frameUrl:
+                "https://device.example/v1/capabilities/assets/device-plugin/assets/device-frame.html",
             },
           ],
         },
@@ -837,6 +840,44 @@ describe("remote capability router", () => {
     });
   });
 
+  it("rejects unsafe remote view frame URLs before exposing browser frame URLs", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "device-plugin",
+              name: "@remote/device",
+              views: [
+                {
+                  id: "device-view",
+                  label: "Device View",
+                  frameUrl: "javascript:alert(1)",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin frameUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    });
+  });
+
   it("rejects unsafe remote view bundle URLs before exposing browser import URLs", async () => {
     globalThis.fetch = vi.fn(async () =>
       jsonResponse({
@@ -875,7 +916,7 @@ describe("remote capability router", () => {
     });
   });
 
-  it("rejects unsafe remote view frame URLs before exposing browser frame URLs", async () => {
+  it("rejects unsafe sandboxed remote view frame URLs before exposing browser frame URLs", async () => {
     globalThis.fetch = vi.fn(async () =>
       jsonResponse({
         ok: true,

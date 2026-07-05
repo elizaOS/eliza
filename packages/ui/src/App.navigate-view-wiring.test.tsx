@@ -17,6 +17,7 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
 const appState = vi.hoisted(() => ({
   setTab: vi.fn(),
@@ -53,17 +54,20 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(
     ({
       bundleUrl,
+      frameUrl,
       surface,
       viewId,
       viewType,
     }: {
-      bundleUrl: string;
-      surface?: { capabilities?: string[] };
+      bundleUrl?: string;
+      frameUrl?: string;
+      surface?: { capabilities?: string[]; isolation?: string };
       viewId: string;
       viewType?: string;
     }) => (
       <div
-        data-bundle-url={bundleUrl}
+        data-bundle-url={bundleUrl ?? ""}
+        data-frame-url={frameUrl ?? ""}
         data-surface-capabilities={surface?.capabilities?.join(",") ?? ""}
         data-testid="dynamic-view-loader"
         data-view-id={viewId}
@@ -111,7 +115,7 @@ const shopifyView = {
 
 const shopifyAgentSurfaceView = {
   ...shopifyView,
-  surface: { capabilities: ["agent-surface"] },
+  surface: { capabilities: ["agent-surface" as const] },
 };
 
 const calendarView = {
@@ -145,7 +149,18 @@ const documentsView = {
   viewType: "gui" as const,
 };
 
-const mockAvailableViews = [
+const sandboxedFrameView = {
+  id: "sandboxed-frame",
+  label: "Sandboxed Frame",
+  available: true,
+  pluginName: "@elizaos/plugin-sandboxed-frame",
+  path: "/apps/sandboxed-frame",
+  frameUrl: "/api/views/sandboxed-frame/frame.html",
+  surface: { isolation: "sandboxed-iframe" as const },
+  viewType: "gui" as const,
+};
+
+const mockAvailableViews: ViewRegistryEntry[] = [
   remoteLedgerView,
   viewsManagerView,
   viewsManagerTuiView,
@@ -521,6 +536,32 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {
+    mockAvailableViews.push(sandboxedFrameView);
+    appState.tab = "apps";
+    window.history.replaceState(null, "", "/apps/sandboxed-frame");
+
+    const { getByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bundleUrl: undefined,
+          frameUrl: "/api/views/sandboxed-frame/frame.html",
+          viewId: "sandboxed-frame",
+          viewType: "gui",
+        }),
+        undefined,
+      );
+    });
+
+    const loader = getByTestId("dynamic-view-loader");
+    expect(loader.getAttribute("data-bundle-url")).toBe("");
+    expect(loader.getAttribute("data-frame-url")).toBe(
+      "/api/views/sandboxed-frame/frame.html",
+    );
   });
 
   it("renders no global corner back button on app routes (removed in favor of per-page back affordances + browser/OS back)", async () => {

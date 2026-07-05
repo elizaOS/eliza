@@ -150,6 +150,58 @@ describe("DynamicViewLoader", () => {
     );
   });
 
+  it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
+    const importBundle = vi.fn(async () => ({
+      default: function ShouldNotLoad() {
+        return <div>Host realm bundle loaded</div>;
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="/api/views/sandboxed.panel/bundle.js"
+        frameUrl="/api/views/sandboxed.panel/frame.html"
+        viewId="sandboxed.panel"
+        surface={{ isolation: "sandboxed-iframe" }}
+      />,
+    );
+
+    const frame = screen.getByTestId("sandboxed-view-frame-sandboxed.panel");
+    expect(frame.getAttribute("src")).toBe(
+      "/api/views/sandboxed.panel/frame.html",
+    );
+    expect(importBundle).not.toHaveBeenCalled();
+    expect(screen.queryByText("Host realm bundle loaded")).toBeNull();
+  });
+
+  it("fails closed when sandboxed iframe views omit frameUrl", () => {
+    const importBundle = vi.fn(async () => ({
+      default: function ShouldNotLoad() {
+        return <div>Host realm bundle loaded</div>;
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="/api/views/sandboxed.panel/bundle.js"
+        viewId="sandboxed.panel"
+        surface={{ isolation: "sandboxed-iframe" }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /require a frameUrl HTML document; bundleUrl is a JavaScript module/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("sandboxed-view-frame-sandboxed.panel"),
+    ).toBeNull();
+    expect(importBundle).not.toHaveBeenCalled();
+  });
+
   it("registers remote view interact handlers after the bundle loads", async () => {
     const bundleUrl = "https://capability.example.test/assets/interactive.js";
     const interact = vi.fn(async (capability: string) => ({ capability }));
