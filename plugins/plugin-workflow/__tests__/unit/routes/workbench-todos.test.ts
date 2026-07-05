@@ -12,14 +12,32 @@ import { handleWorkbenchTodosRoutes } from '../../../src/routes/workbench-todos'
 interface TaskStore {
   runtime: AgentRuntime;
   tasks: Map<string, Task>;
+  emittedEvents: Array<{
+    runId: string;
+    stream: string;
+    data: Record<string, unknown>;
+    agentId?: string;
+  }>;
   seed: (task: Partial<Task> & { id: string }) => void;
 }
 
 function createTaskRuntime(): TaskStore {
   const tasks = new Map<string, Task>();
+  const emittedEvents: TaskStore['emittedEvents'] = [];
   let counter = 0;
 
   const runtime = {
+    agentId: 'agent-test',
+    getService(serviceType: string) {
+      if (serviceType !== 'agent_event' && serviceType !== 'AGENT_EVENT') {
+        return null;
+      }
+      return {
+        emit(event: TaskStore['emittedEvents'][number]) {
+          emittedEvents.push(event);
+        },
+      };
+    },
     async getTasks(_params: Record<string, unknown>): Promise<Task[]> {
       return [...tasks.values()];
     },
@@ -45,6 +63,7 @@ function createTaskRuntime(): TaskStore {
   return {
     runtime,
     tasks,
+    emittedEvents,
     seed: (task) => tasks.set(task.id, task as Task),
   };
 }
@@ -235,6 +254,43 @@ describe('workbench todos CRUD route', () => {
 
     const again = await call(store.runtime, 'DELETE', `/api/workbench/todos/${id}`);
     expect(again.status).toBe(404);
+  });
+
+  test('mutations emit workbench todo change events for live clients', async () => {
+    const created = await call(store.runtime, 'POST', '/api/workbench/todos', {
+      name: 'Track live updates',
+    });
+    const id = (created.body as { todo: { id: string } }).todo.id;
+
+    await call(store.runtime, 'PUT', `/api/workbench/todos/${id}`, {
+      name: 'Track live update events',
+    });
+    await call(store.runtime, 'POST', `/api/workbench/todos/${id}/complete`, {
+      isCompleted: true,
+    });
+    await call(store.runtime, 'DELETE', `/api/workbench/todos/${id}`);
+
+    expect(store.emittedEvents.map((event) => event.stream)).toEqual([
+      'workbench',
+      'workbench',
+      'workbench',
+      'workbench',
+    ]);
+    expect(store.emittedEvents.map((event) => event.data.operation)).toEqual([
+      'created',
+      'updated',
+      'completed',
+      'deleted',
+    ]);
+    expect(store.emittedEvents.map((event) => event.data.type)).toEqual([
+      'workbench.todo.changed',
+      'workbench.todo.changed',
+      'workbench.todo.changed',
+      'workbench.todo.changed',
+    ]);
+    expect(store.emittedEvents.map((event) => event.data.todoId)).toEqual([id, id, id, id]);
+    expect(store.emittedEvents[0]?.data.todo).toMatchObject({ id, name: 'Track live updates' });
+    expect(store.emittedEvents[3]?.data.todo).toBeUndefined();
   });
 
   test('returns 503 when the runtime is unavailable', async () => {

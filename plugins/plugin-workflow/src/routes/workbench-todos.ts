@@ -13,7 +13,14 @@
  */
 
 import type http from 'node:http';
-import { type AgentRuntime, sendJson, sendJsonError, type Task, type UUID } from '@elizaos/core';
+import {
+  type AgentRuntime,
+  logger,
+  sendJson,
+  sendJsonError,
+  type Task,
+  type UUID,
+} from '@elizaos/core';
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
@@ -44,6 +51,17 @@ export interface WorkbenchTodosRouteContext {
   method: string;
   pathname: string;
   runtime: AgentRuntime | null;
+}
+
+type WorkbenchTodoMutation = 'created' | 'updated' | 'completed' | 'deleted';
+
+interface AgentEventEmitterLike {
+  emit(event: {
+    runId: string;
+    stream: string;
+    data: Record<string, unknown>;
+    agentId?: string;
+  }): void;
 }
 
 function parseNullableNumber(value: unknown): number | null {
@@ -118,6 +136,52 @@ function readJsonObjectBody(req: http.IncomingMessage): Record<string, unknown> 
   return {};
 }
 
+function getAgentEventEmitter(runtime: AgentRuntime): AgentEventEmitterLike | null {
+  const runtimeWithServices = runtime as {
+    getService?: (serviceType: string) => unknown;
+    agentId?: string;
+  };
+  const service =
+    runtimeWithServices.getService?.('agent_event') ??
+    runtimeWithServices.getService?.('AGENT_EVENT');
+  if (service && typeof (service as AgentEventEmitterLike).emit === 'function') {
+    return service as AgentEventEmitterLike;
+  }
+  return null;
+}
+
+function emitWorkbenchTodoChanged(
+  runtime: AgentRuntime,
+  operation: WorkbenchTodoMutation,
+  todoId: string,
+  todo?: WorkbenchTodoView
+): void {
+  const emitter = getAgentEventEmitter(runtime);
+  if (!emitter) return;
+
+  try {
+    emitter.emit({
+      runId: 'workbench-todos',
+      stream: 'workbench',
+      agentId: (runtime as { agentId?: string }).agentId,
+      data: {
+        type: 'workbench.todo.changed',
+        operation,
+        todoId,
+        ...(todo ? { todo } : {}),
+      },
+    });
+  } catch (error) {
+    // error-policy:J7 diagnostics/live-view notify must not roll back the
+    // already-committed todo mutation; the mutation response is still the
+    // authoritative result and the client can fall back to manual refresh.
+    logger.warn(
+      { src: 'plugin:workflow:workbench-todos', error, operation, todoId },
+      'Failed to emit workbench todo change event'
+    );
+  }
+}
+
 /**
  * Handle `/api/workbench/todos` CRUD. Returns `true` when the request matched a
  * todos endpoint (and a response was written), `false` otherwise.
@@ -188,6 +252,7 @@ export async function handleWorkbenchTodosRoutes(
       sendJsonError(res, 'Todo created but unavailable', 500);
       return true;
     }
+    emitWorkbenchTodoChanged(runtime, 'created', todo.id, todo);
     sendJson(res, { todo }, 201);
     return true;
   }
@@ -224,6 +289,9 @@ export async function handleWorkbenchTodosRoutes(
         },
       },
     });
+    const refreshed = await runtime.getTask(todoTask.id);
+    const refreshedTodo = refreshed ? toWorkbenchTodoView(refreshed) : null;
+    emitWorkbenchTodoChanged(runtime, 'completed', todoTask.id, refreshedTodo ?? undefined);
     sendJson(res, { ok: true });
     return true;
   }
@@ -256,6 +324,7 @@ export async function handleWorkbenchTodosRoutes(
         return true;
       }
       await runtime.deleteTask(todoTask.id);
+      emitWorkbenchTodoChanged(runtime, 'deleted', todoTask.id);
       sendJson(res, { ok: true });
       return true;
     }
@@ -327,6 +396,7 @@ export async function handleWorkbenchTodosRoutes(
       sendJsonError(res, 'Todo updated but unavailable', 500);
       return true;
     }
+    emitWorkbenchTodoChanged(runtime, 'updated', refreshedTodo.id, refreshedTodo);
     sendJson(res, { todo: refreshedTodo });
     return true;
   }

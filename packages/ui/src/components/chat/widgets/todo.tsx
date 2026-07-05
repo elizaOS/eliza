@@ -1,7 +1,7 @@
 /**
  * Chat-sidebar (and home-grid) TODO widget: lists the agent workbench's todos,
- * seeded from the app store's `workbench.todos` and refreshed by a poll that
- * runs only while authenticated and the document is visible. Exports
+ * seeded from the app store's `workbench.todos`, refreshed on live workbench
+ * events, and backed by a visible-tab poll for missed events. Exports
  * `TODO_PLUGIN_WIDGETS`, the widget-registry entry consumed by the sidebar.
  */
 import { ListTodo } from "lucide-react";
@@ -53,6 +53,22 @@ function dedupeTodos(todos: WorkbenchTodo[]): WorkbenchTodo[] {
     byId.set(todo.id, todo);
   }
   return sortTodosForWidget([...byId.values()]);
+}
+
+function isWorkbenchTodoChangeEvent(
+  event: ChatSidebarWidgetProps["events"][number],
+): boolean {
+  const source = event.source;
+  if (source?.type !== "agent_event" || source.stream !== "workbench") {
+    return false;
+  }
+  const data = source.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "type" in data &&
+    data.type === "workbench.todo.changed"
+  );
 }
 
 function TodoRow({ todo }: { todo: WorkbenchTodo }) {
@@ -150,6 +166,7 @@ function TodoItemsContent({
 }
 
 function TodoSidebarWidget({
+  events,
   slot,
   spanClassName = "col-span-2 row-span-1",
 }: ChatSidebarWidgetProps) {
@@ -165,6 +182,7 @@ function TodoSidebarWidget({
     dedupeTodos(workbench?.todos ?? []),
   );
   const [todosLoading, setTodosLoading] = useState(false);
+  const lastHandledTodoEventIdRef = useRef<string | null>(null);
 
   // The async todo fetch can resolve after the widget unmounts; guard the
   // post-await state writes so a late `finally` doesn't setState on an
@@ -218,8 +236,22 @@ function TodoSidebarWidget({
   useEffect(() => {
     void loadTodos(todos.length > 0);
   }, [loadTodos, todos.length]);
+
+  useEffect(() => {
+    const latestTodoEvent = events.find(isWorkbenchTodoChangeEvent);
+    if (
+      !latestTodoEvent ||
+      latestTodoEvent.id === lastHandledTodoEventIdRef.current
+    ) {
+      return;
+    }
+    lastHandledTodoEventIdRef.current = latestTodoEvent.id;
+    void loadTodos(true);
+  }, [events, loadTodos]);
+
   // Refresh only while the document is visible — pause the silent poll in a
-  // backgrounded app/tab instead of refetching the todo list every interval.
+  // backgrounded app/tab. Live workbench events do the normal foreground
+  // refresh; this poll is just a missed-event repair path.
   useIntervalWhenDocumentVisible(
     () => void loadTodos(true),
     TODO_REFRESH_INTERVAL_MS,

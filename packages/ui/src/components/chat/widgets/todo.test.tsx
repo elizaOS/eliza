@@ -116,6 +116,71 @@ describe("TodoSidebarWidget", () => {
     });
   });
 
+  it("refreshes immediately when a workbench todo change event arrives", async () => {
+    listWorkbenchTodosMock
+      .mockResolvedValueOnce({
+        todos: [
+          {
+            id: "cached-1",
+            name: "Cached todo",
+            description: "",
+            type: "task",
+            isCompleted: false,
+            isUrgent: false,
+            priority: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        todos: [
+          {
+            id: "live-1",
+            name: "Live todo",
+            description: "",
+            type: "task",
+            isCompleted: false,
+            isUrgent: false,
+            priority: null,
+          },
+        ],
+      });
+
+    const { rerender } = render(
+      <TodoWidget slot="chat-sidebar" events={[]} clearEvents={vi.fn()} />,
+    );
+
+    await waitFor(() => {
+      expect(listWorkbenchTodosMock).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(
+      <TodoWidget
+        slot="chat-sidebar"
+        clearEvents={vi.fn()}
+        events={[
+          {
+            id: "evt-workbench-1",
+            timestamp: Date.now(),
+            eventType: "workbench.todo.changed",
+            summary: "Todo updated",
+            source: {
+              type: "agent_event",
+              stream: "workbench",
+              data: {
+                type: "workbench.todo.changed",
+                operation: "created",
+                todoId: "live-1",
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByText("Live todo")).toBeTruthy();
+    expect(listWorkbenchTodosMock).toHaveBeenCalledTimes(2);
+  });
+
   it("home slot: applies the host-supplied spanClassName to its single root grid-item element (#11752)", async () => {
     // Hold the cached todo (no poll) so the card stays rendered while asserting.
     authMock.authenticated = false;
