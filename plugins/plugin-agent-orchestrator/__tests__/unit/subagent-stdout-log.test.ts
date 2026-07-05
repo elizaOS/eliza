@@ -15,18 +15,22 @@ import {
 
 let tmpDir: string;
 const priorTrajDir = process.env.ELIZA_TRAJECTORY_DIR;
+const priorLogging = process.env.ELIZA_TRAJECTORY_LOGGING;
 const priorRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "subagent-stdout-test-"));
   process.env.ELIZA_TRAJECTORY_DIR = tmpDir;
-  delete process.env.ELIZA_TRAJECTORY_RECORDING; // default ON
+  process.env.ELIZA_TRAJECTORY_LOGGING = "1";
+  delete process.env.ELIZA_TRAJECTORY_RECORDING;
 });
 
 afterEach(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true });
   if (priorTrajDir === undefined) delete process.env.ELIZA_TRAJECTORY_DIR;
   else process.env.ELIZA_TRAJECTORY_DIR = priorTrajDir;
+  if (priorLogging === undefined) delete process.env.ELIZA_TRAJECTORY_LOGGING;
+  else process.env.ELIZA_TRAJECTORY_LOGGING = priorLogging;
   if (priorRecording === undefined)
     delete process.env.ELIZA_TRAJECTORY_RECORDING;
   else process.env.ELIZA_TRAJECTORY_RECORDING = priorRecording;
@@ -63,6 +67,7 @@ describe("appendSubagentStdout", () => {
   });
 
   it("no-ops (writes nothing, returns undefined) when recording is disabled", async () => {
+    delete process.env.ELIZA_TRAJECTORY_LOGGING;
     process.env.ELIZA_TRAJECTORY_RECORDING = "0";
     const returned = await appendSubagentStdout(
       "ses_off",
