@@ -82,17 +82,26 @@ mock.module("./services/users", () => ({
 mock.module("./services/invites", () => ({
   invitesService: { findPendingInviteByEmail: async () => undefined },
 }));
-mock.module("./services/api-keys", () => ({
-  apiKeysService: {
-    listByOrganization: async () => [],
-    create: async () => {
-      apiKeyCreateStarted = true;
-      const v = await apiKeyCreate.promise;
-      apiKeyCreateResolved = true;
-      return v;
+mock.module("./services/api-keys", () => {
+  const create = async () => {
+    apiKeyCreateStarted = true;
+    const v = await apiKeyCreate.promise;
+    apiKeyCreateResolved = true;
+    return v;
+  };
+  return {
+    apiKeysService: {
+      listByOrganization: async () => [],
+      create,
+      // Mirrors the real service method: resolves only once the (deferred)
+      // key create has completed, so the await-not-fire-and-forget proof
+      // below still measures the provisioning write itself.
+      ensureUserHasApiKey: async () => {
+        await create();
+      },
     },
-  },
-}));
+  };
+});
 mock.module("./services/characters/characters", () => ({
   charactersService: {
     existsForOrganization: async () => false,

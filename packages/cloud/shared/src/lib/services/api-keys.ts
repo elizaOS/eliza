@@ -261,6 +261,54 @@ export class ApiKeysService {
     };
   }
 
+  /**
+   * Idempotent default-key provisioning: every user gets one personal API key
+   * in their organization so inference works out of the box. The single mint
+   * shared by direct signup (steward-sync), invite accept (both the brand-new
+   * -user pending-invite branch and the existing-user org move), and the
+   * session-auth self-heal. Checks per-user, not per-org — a teammate's key
+   * must not satisfy it.
+   *
+   * Failure is logged, never thrown: every caller runs after the signup or
+   * accept has already committed, so throwing would fail a request whose real
+   * work succeeded. The failure stays observable (logger.error) and heals
+   * deterministically — getCurrentUserFromRequest re-runs this mint on the
+   * next session-cache-miss login.
+   */
+  async ensureUserHasApiKey(userId: string, organizationId: string): Promise<void> {
+    if (!userId?.trim() || !organizationId?.trim()) {
+      logger.warn("[ApiKeysService] Invalid userId or organizationId, skipping default key", {
+        userId,
+        organizationId,
+      });
+      return;
+    }
+
+    try {
+      const existingKeys = await this.listByOrganization(organizationId);
+      if (existingKeys.some((key) => key.user_id === userId)) {
+        return;
+      }
+
+      await this.create({
+        user_id: userId,
+        organization_id: organizationId,
+        name: "Default API Key",
+        is_active: true,
+      });
+    } catch (error) {
+      // error-policy:J1 provisioning boundary: signup/invite/session resolution
+      // has already committed, so a default-key mint failure is logged and
+      // retried by the next session-cache-miss self-heal rather than failing
+      // the completed account transition.
+      logger.error("[ApiKeysService] Failed to provision default API key", {
+        userId,
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);

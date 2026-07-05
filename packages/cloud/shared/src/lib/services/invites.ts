@@ -15,6 +15,7 @@ import { conversationsRepository } from "../../db/repositories/conversations";
 import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
+import { apiKeysService } from "./api-keys";
 import { emailService } from "./email";
 import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
@@ -203,6 +204,14 @@ export class InvitesService {
     if (vacatedSoloOrgId && movedUser?.organization_id === invite.organization_id) {
       await this.cleanUpVacatedSoloOrganization(userId, vacatedSoloOrgId, invite.organization_id);
     }
+
+    // The user's personal default key belongs to the org they left (a vacated
+    // solo org's cascade even deletes it), so without the same mint a direct
+    // signup gets they would join the team unable to use inference. Awaited:
+    // on Cloudflare Workers a floating promise is cancelled when the response
+    // returns. Idempotent and swallows its own errors — the accept has already
+    // committed.
+    await apiKeysService.ensureUserHasApiKey(userId, invite.organization_id);
 
     return updatedInvite;
   }

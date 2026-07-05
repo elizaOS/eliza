@@ -85,6 +85,7 @@ mock.module("./services/api-keys", () => ({
   apiKeysService: {
     listByOrganization: async () => [],
     create: async () => ({ id: "key-1" }),
+    ensureUserHasApiKey: async () => undefined,
   },
 }));
 
