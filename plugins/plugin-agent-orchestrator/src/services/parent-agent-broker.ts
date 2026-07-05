@@ -17,6 +17,7 @@ import type {
 } from "@elizaos/core";
 import { requireConfirmation } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
+import { bindProjectCloudApp } from "./project-binding.js";
 import {
   addSessionSpendUsd,
   decideSpendAuthorization,
@@ -1065,6 +1066,51 @@ function brokerConfirmationMemory(
   } as Memory;
 }
 
+/**
+ * The id of the app a successful `apps.create` minted, dug out of the Cloud
+ * REST response. The envelope varies (`{id}`, `{app:{id}}`, or either nested
+ * under `{data}`), so probe the known shapes and take the first string id.
+ * error-policy:J3 — this parses an untrusted external API body; a shape we do
+ * not recognize yields null (no write-back), never a fabricated id.
+ */
+function extractCreatedAppId(payload: unknown): string | undefined {
+  const candidates: unknown[] = [];
+  const push = (v: unknown) => {
+    if (isRecord(v)) {
+      candidates.push(v.id);
+      if (isRecord(v.app)) candidates.push(v.app.id);
+    }
+  };
+  push(payload);
+  if (isRecord(payload)) push(payload.data);
+  for (const candidate of candidates) {
+    const id = normalizeString(candidate);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+/**
+ * The registered-Project id the child's task is bound to, resolved from the
+ * session's `taskId` via the orchestrator task service. Null when the session
+ * has no task, the service is absent, the task is unbound, or the task no longer
+ * exists — the write-back is skipped in every such case. Structural service
+ * lookup avoids a value import on the task service (loose coupling; no cycle).
+ */
+async function resolveSessionProjectId(
+  runtime: IAgentRuntime,
+  session: SessionInfo | undefined,
+): Promise<string | undefined> {
+  const taskId = normalizeString(session?.metadata?.taskId);
+  if (!taskId) return undefined;
+  const service = runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
+    getTask?: (id: string) => Promise<{ projectId?: string | null } | null>;
+  } | null;
+  if (typeof service?.getTask !== "function") return undefined;
+  const task = await service.getTask(taskId);
+  return normalizeString(task?.projectId);
+}
+
 async function runCloudCommand(args: {
   runtime: IAgentRuntime;
   command: string | undefined;
@@ -1072,6 +1118,9 @@ async function runCloudCommand(args: {
   confirmationMessage: Memory;
   /** Child session id — keys the per-session self-spend ledger. */
   sessionId: string;
+  /** Session the request came from — carries `metadata.taskId`, used to bind a
+   * created Cloud app back to the task's Project (#14119). */
+  session?: SessionInfo;
 }): Promise<{
   success: boolean;
   text: string;
@@ -1268,6 +1317,29 @@ async function runCloudCommand(args: {
     truncate(payloadText, CLOUD_RESPONSE_MAX_CHARS),
   ].join("\n");
 
+  // Bind the created Cloud app to the task's Project so the next task on this
+  // Project updates it instead of creating a duplicate (#14119). Only on a
+  // successful apps.create for a project-bound session; otherwise a no-op.
+  let boundCloudAppId: string | undefined;
+  if (definition.command === "apps.create" && response.ok) {
+    const createdAppId = extractCreatedAppId(payload);
+    const projectId = await resolveSessionProjectId(args.runtime, args.session);
+    const bound = bindProjectCloudApp(projectId, createdAppId);
+    if (bound) {
+      boundCloudAppId = bound.cloudAppId;
+      log?.info?.(
+        {
+          src: LOG_PREFIX,
+          event: "project_cloud_app_bound",
+          sessionId: args.sessionId,
+          projectId: bound.id,
+          cloudAppId: bound.cloudAppId,
+        },
+        `${LOG_PREFIX} bound Cloud app ${bound.cloudAppId} to project ${bound.id}`,
+      );
+    }
+  }
+
   return {
     success: response.ok,
     text,
@@ -1278,6 +1350,7 @@ async function runCloudCommand(args: {
       risk: definition.risk,
       status: response.status,
       path: `${built.url.pathname}${built.url.search}`,
+      ...(boundCloudAppId ? { boundCloudAppId } : {}),
     },
   };
 }
@@ -1560,6 +1633,7 @@ export async function runParentAgentBroker(
         params: args.params,
         confirmationMessage: brokerConfirmationMemory(request),
         sessionId: request.sessionId,
+        session: request.session,
       });
     } catch (error) {
       // error-policy:J1 boundary — translates a Cloud command fault into the structured {success:false} broker result.

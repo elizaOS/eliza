@@ -230,16 +230,32 @@ export function viewPluginGuidance(
     : buildLocalViewPluginPrompt();
 }
 
+/**
+ * When the task's Project is already bound to a Cloud app (`cloudAppId`, #14119),
+ * the child must UPDATE that app, not mint a duplicate. One extra line pins the
+ * id and flips the create verb to get/update — the rest of the deploy contract
+ * is unchanged. Empty string when there is no bound app.
+ */
+function existingCloudAppLine(cloudAppId?: string): string {
+  const id = cloudAppId?.trim();
+  if (!id) return "";
+  return `- This task's Project is already bound to Cloud app \`${id}\`. Do NOT \`apps.create\` a new app — that duplicates it. Read the existing app with \`apps.get\` (id \`${id}\`) and modify it with \`apps.update\`; deploy a new container revision to the SAME app id.`;
+}
+
 /** Build the deploy-guidance block for the configured target. */
 export function buildAppDeployGuidance(
   config?: AppDeployConfig,
   task?: string,
   monetized?: boolean,
+  cloudAppId?: string,
 ): string {
   const resolved = config ?? resolveAppDeployConfig();
-  return resolved.target === "custom"
-    ? customHostGuidance(resolved, task, monetized)
-    : elizaCloudGuidance(task, monetized);
+  const base =
+    resolved.target === "custom"
+      ? customHostGuidance(resolved, task, monetized)
+      : elizaCloudGuidance(task, monetized);
+  const boundLine = existingCloudAppLine(cloudAppId);
+  return boundLine ? `${base}\n${boundLine}` : base;
 }
 
 function isCloudDeployTarget(config: AppDeployConfig): boolean {
@@ -261,7 +277,7 @@ function extractViewPluginSourceDir(task: string): string | undefined {
 export function augmentTaskWithDeployGuidance(
   task: string,
   config?: AppDeployConfig,
-  opts?: { monetized?: boolean },
+  opts?: { monetized?: boolean; cloudAppId?: string },
 ): string {
   // Idempotent: if a deploy block is already present, no-op.
   if (
@@ -293,7 +309,12 @@ export function augmentTaskWithDeployGuidance(
   // the agent got no apps-dir context and could not find or edit the deployed
   // app. Letting the model decide from an always-present note is cleaner.
   if (resolved.target === "custom") {
-    return `${task.trimEnd()}\n\n${customHostGuidance(resolved, task, monetized)}`;
+    // A custom-host app only touches Cloud when it is monetized (it registers
+    // for billing); only then does an existing-app binding apply.
+    const boundLine = monetized ? existingCloudAppLine(opts?.cloudAppId) : "";
+    const custom = customHostGuidance(resolved, task, monetized);
+    const block = boundLine ? `${custom}\n${boundLine}` : custom;
+    return `${task.trimEnd()}\n\n${block}`;
   }
   // Force the deploy contract for a monetized task even when isAppBuildTask
   // misses it — a monetized request ("an app where people pay $1 to chat …") is
@@ -302,5 +323,5 @@ export function augmentTaskWithDeployGuidance(
   if (!monetized && !isAppBuildTask(task)) {
     return task;
   }
-  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(resolved, task, monetized)}`;
+  return `${task.trimEnd()}\n\n${buildAppDeployGuidance(resolved, task, monetized, opts?.cloudAppId)}`;
 }

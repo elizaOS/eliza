@@ -26,6 +26,7 @@ import {
   type ProjectRecord,
   readProjectRegistry,
   stringToUuid,
+  upsertProject,
   type UUID,
 } from "@elizaos/core";
 
@@ -174,4 +175,41 @@ export function resolveTaskSpawnWorkdir(
 
   // 4. Nothing bound/explicit — caller resolves route/convention/default.
   return { workdir: undefined, lockWorkdir: false, source: "unresolved" };
+}
+
+/** The Cloud app id a bound task's Project already owns, or `null` when the task
+ * is unbound, its project id is stale, or the project carries no Cloud app. Lets
+ * a spawn tell the worker to update the existing app instead of duplicating it
+ * (#14119). */
+export function resolveBoundProjectCloudAppId(
+  projectId: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const id = projectId?.trim();
+  if (!id) return null;
+  return getProjectById(id, env)?.cloudAppId ?? null;
+}
+
+/**
+ * Persist a Project↔Cloud-app binding: write `cloudAppId` onto the registered
+ * project so the next task on it updates the existing app instead of creating a
+ * duplicate (#14119). The registry is the single source of truth for this
+ * relation — the broker calls this on an `apps.create` success for a
+ * project-bound task. No-op returning `null` when the project id is unknown or
+ * the app id is blank; when the project already carries a DIFFERENT cloudAppId
+ * this overwrites it (the latest successful create wins). The underlying
+ * `upsertProject` write is atomic (tmp-file + rename).
+ */
+export function bindProjectCloudApp(
+  projectId: string | undefined,
+  cloudAppId: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): ProjectRecord | null {
+  const id = projectId?.trim();
+  const appId = cloudAppId?.trim();
+  if (!id || !appId) return null;
+  const project = getProjectById(id, env);
+  if (!project) return null;
+  if (project.cloudAppId === appId) return project;
+  return upsertProject({ ...project, cloudAppId: appId }, env);
 }

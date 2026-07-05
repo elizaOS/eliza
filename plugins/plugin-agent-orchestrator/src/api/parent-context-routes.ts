@@ -10,7 +10,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { getProjectById, ModelType } from "@elizaos/core";
 import { activeWorkspaceContextProvider } from "../providers/active-workspace-context.js";
 import {
   type SessionInfo,
@@ -65,6 +65,10 @@ interface OrchestratorTaskServiceShape {
   getTask: (taskId: string) => Promise<{
     goal: string;
     acceptanceCriteria?: string[];
+    /** Registered Project this task is bound to; drives the Cloud-app binding
+     * (`cloudAppId`) the bridge surfaces so a child updates the existing app
+     * instead of creating a duplicate. */
+    projectId?: string | null;
     decisions?: Array<{
       id: string;
       sessionId: string;
@@ -329,8 +333,23 @@ async function loadOriginatingTask(
     acceptanceCriteria: Array.isArray(task.acceptanceCriteria)
       ? task.acceptanceCriteria
       : [],
+    projectId: readString(task.projectId),
+    // The Cloud app this task's Project is bound to, when any. A child that sees
+    // this updates the existing app (apps.update) instead of apps.create-ing a
+    // duplicate (#14119). Absent for unbound tasks or projects with no Cloud app.
+    cloudAppId: resolveCloudAppId(task.projectId),
     decisions,
   };
+}
+
+/** The `cloudAppId` bound to a task's Project, or null when the task is unbound
+ * or its project carries no Cloud app. Reads the shared core project registry
+ * (`projects.json`) — the single source of truth for the Project↔Cloud-app
+ * relation the broker writes back on apps.create. */
+function resolveCloudAppId(projectId: string | null | undefined): string | null {
+  const id = readString(projectId);
+  if (!id) return null;
+  return readString(getProjectById(id)?.cloudAppId);
 }
 
 async function buildParentContext(
@@ -341,6 +360,7 @@ async function buildParentContext(
   const metadata = readSessionMetadata(session);
   const roomId = readOriginRoomId(metadata);
   const character = ctx.runtime.character;
+  const originatingTask = await loadOriginatingTask(ctx, metadata);
   return {
     sessionId,
     character: {
@@ -358,8 +378,27 @@ async function buildParentContext(
     currentRoom: await loadRoom(ctx.runtime, roomId),
     workdir: session?.workdir ?? null,
     model: normalizeModel(session, metadata),
-    originatingTask: await loadOriginatingTask(ctx, metadata),
+    originatingTask,
+    // Hoisted from originatingTask so a child can read the Project↔Cloud-app
+    // binding without unpacking the task block; null for unbound tasks (#14119).
+    project: buildProjectDescriptor(originatingTask),
   };
+}
+
+/** The bound Project's id + Cloud app, lifted to a top-level `project` field, or
+ * null when the session has no originating task. Mirrors what the goal-prompt
+ * project descriptor line carries so both spawn-time prompt and bridge agree. */
+function buildProjectDescriptor(originatingTask: JsonValue): JsonValue {
+  if (
+    !originatingTask ||
+    typeof originatingTask !== "object" ||
+    Array.isArray(originatingTask)
+  ) {
+    return null;
+  }
+  const projectId = readString(originatingTask.projectId);
+  if (!projectId) return null;
+  return { projectId, cloudAppId: readString(originatingTask.cloudAppId) };
 }
 
 async function searchParentMemory(

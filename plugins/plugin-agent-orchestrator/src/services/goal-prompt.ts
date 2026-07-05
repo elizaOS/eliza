@@ -106,6 +106,10 @@ export interface GoalPromptInput {
   worktreeRoomId?: string;
   workdir?: string;
   repo?: string;
+  /** The Cloud app this task's bound Project already owns (#14119). Rendered in
+   * the Workspace descriptor so the worker updates it rather than creating a
+   * duplicate app. Undefined = unbound project / no Cloud app. */
+  cloudAppId?: string;
   /** Named capability fence to apply when `allowedCapabilities` is not given.
    * Defaults to `"default"` (the coding-only fence). */
   capabilityProfile?: GoalCapabilityProfile;
@@ -203,6 +207,11 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
   const workspaceLines: string[] = [];
   if (input.workdir) workspaceLines.push(`Workdir: ${input.workdir}`);
   if (input.repo) workspaceLines.push(`Repo: ${input.repo}`);
+  if (input.cloudAppId?.trim()) {
+    workspaceLines.push(
+      `Cloud app: ${input.cloudAppId.trim()} — this Project already owns this app; update it (apps.get/apps.update) instead of creating a new one.`,
+    );
+  }
   if (workspaceLines.length > 0) {
     sections.push("--- Workspace ---", workspaceLines.join("\n"));
   }

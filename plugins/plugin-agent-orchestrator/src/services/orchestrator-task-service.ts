@@ -150,6 +150,7 @@ import {
 } from "./parent-agent-broker.js";
 import {
   deriveProjectWorldId,
+  resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
@@ -3585,6 +3586,11 @@ export class OrchestratorTaskService extends Service {
       doc.task.metadata?.capabilityProfile,
     );
     const brokerWired = isParentAgentBrokerWired(this.runtime);
+    // A task bound to a Project that already owns a Cloud app carries that app's
+    // id into the prompt so the worker updates it rather than minting a duplicate
+    // (#14119). Null for unbound tasks or projects with no Cloud app.
+    const cloudAppId =
+      resolveBoundProjectCloudAppId(doc.task.projectId) ?? undefined;
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -3593,6 +3599,7 @@ export class OrchestratorTaskService extends Service {
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
       workdir,
       repo: opts.repo,
+      ...(cloudAppId ? { cloudAppId } : {}),
       // Replay prior failed-verification post-mortems so a re-spawn of this task
       // doesn't repeat them (#8899).
       attemptReflections: readAttemptReflections(doc.task.metadata),

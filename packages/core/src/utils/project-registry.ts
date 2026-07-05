@@ -13,10 +13,12 @@
  * This mirrors `workspace-folder-config.ts` in shape and atomic-write style.
  *
  * `localPath` is the identity key for a project (realpath-compared against a
- * task's resolved workdir to bind it). `cloudAppId` is reserved but never
- * auto-populated here — that relation is an owner decision (epic #13766 WS4).
- * The VFS `projectId` (`virtual-filesystem.ts`) is a separate workbench-sandbox
- * namespace and is intentionally unrelated to a ProjectRecord id.
+ * task's resolved workdir to bind it). `cloudAppId` binds the project to an
+ * Eliza Cloud app: the orchestrator broker writes it here on an `apps.create`
+ * success for a task on this project (#14119), and a later task reads it back to
+ * update that app instead of minting a duplicate. The VFS `projectId`
+ * (`virtual-filesystem.ts`) is a separate workbench-sandbox namespace and is
+ * intentionally unrelated to a ProjectRecord id.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -52,7 +54,9 @@ export interface ProjectRecord {
 	worldId?: string;
 	/** macOS security-scoped bookmark for the picked folder, when present. */
 	bookmark?: string | null;
-	/** Reserved for the task↔Cloud-app relation; never auto-populated (#13766 WS4). */
+	/** The Eliza Cloud app this project owns, if any. Written back by the
+	 * orchestrator broker on an `apps.create` success for a task bound to this
+	 * project (#14119); read to update the existing app rather than duplicate it. */
 	cloudAppId?: string;
 	createdAt: string;
 	lastOpenedAt: string;
