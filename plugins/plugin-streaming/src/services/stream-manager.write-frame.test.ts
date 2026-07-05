@@ -14,14 +14,21 @@
 import { describe, expect, it, vi } from "vitest";
 
 const warn = vi.fn();
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    warn: (...args: unknown[]) => warn(...args),
-    info: vi.fn(),
-    error: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
+// Pass real `@elizaos/core` through (transitively pulled by stream-manager ->
+// tts-stream-bridge -> @elizaos/shared) and override only `logger` so the
+// broken-pipe warning is observable.
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    logger: {
+      warn: (...args: unknown[]) => warn(...args),
+      info: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    },
+  };
+});
 
 import { streamManager } from "./stream-manager.js";
 

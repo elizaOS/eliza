@@ -12,6 +12,7 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import type {
   GatewayRelayRequest,
   GatewayRelayRequestEnvelope,
@@ -63,7 +64,7 @@ function isCloudProvisionedRuntime(): boolean {
   if (typeof process === "undefined") {
     return false;
   }
-  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
 
 function isNodeHost(): boolean {

@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   isAbsolutePath,
   isUncPath,
@@ -338,7 +339,7 @@ function defaultBlockedPaths(): string[] {
 
 function isAndroidRuntime(): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }
