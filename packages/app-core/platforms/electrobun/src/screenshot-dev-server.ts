@@ -21,6 +21,7 @@
  */
 
 import http from "node:http";
+import { logger } from "./logger";
 import {
   getScreenCaptureManager,
   type ScreenshotCaptureResult,
@@ -111,18 +112,18 @@ export function startScreenshotDevServer(): (() => void) | undefined {
         try {
           const windowShot = await manager.captureWindow({ windowId });
           if (windowShot.available && windowShot.data) {
-            console.log(
+            logger.info(
               `[ScreenshotDev] window-scoped capture (windowId=${windowId})`,
             );
             shot = windowShot;
           } else {
-            console.warn(
+            logger.warn(
               `[ScreenshotDev] window capture unavailable (windowId=${windowId}); falling back to full screen`,
             );
             shot = await manager.takeScreenshot();
           }
         } catch (err) {
-          console.warn(
+          logger.warn(
             `[ScreenshotDev] window capture threw (windowId=${windowId}); falling back to full screen: ${
               err instanceof Error ? err.message : String(err)
             }`,
@@ -130,7 +131,7 @@ export function startScreenshotDevServer(): (() => void) | undefined {
           shot = await manager.takeScreenshot();
         }
       } else {
-        console.log(
+        logger.info(
           "[ScreenshotDev] full-screen capture (no window id resolvable)",
         );
         shot = await manager.takeScreenshot();
@@ -167,14 +168,14 @@ export function startScreenshotDevServer(): (() => void) | undefined {
   });
 
   if (!token) {
-    console.warn(
+    logger.warn(
       "[ScreenshotDev] No ELIZA_SCREENSHOT_SERVER_TOKEN set — screenshot endpoint is unprotected on loopback",
     );
   }
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     const inUse = err.code === "EADDRINUSE";
-    console.warn(
+    logger.warn(
       `[ScreenshotDev] Failed to start loopback server on 127.0.0.1:${port}: ${err.message}` +
         (inUse
           ? " (port in use — set ELIZA_SCREENSHOT_SERVER_PORT to a free port or stop the other process)"
@@ -183,7 +184,7 @@ export function startScreenshotDevServer(): (() => void) | undefined {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(
+    logger.info(
       `[ScreenshotDev] http://127.0.0.1:${port}/cursor-screenshot.png (loopback only` +
         (token ? "; token required" : "") +
         ")",
