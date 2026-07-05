@@ -25,7 +25,7 @@ export function buildCorsAllowedPorts(): Set<string> {
   const ports = new Set([
     String(resolveDesktopApiPort(process.env)),
     String(resolveUiPort(process.env)),
-    String(process.env.ELIZA_PORT ?? "2138"),
+    String(readAliasedEnv("ELIZA_PORT") ?? "2138"),
     String(readAliasedEnv("ELIZA_GATEWAY_PORT") ?? "18789"),
     String(readAliasedEnv("ELIZA_HOME_PORT") ?? "2142"),
   ]);
