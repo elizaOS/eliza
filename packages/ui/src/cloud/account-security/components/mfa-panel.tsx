@@ -23,6 +23,34 @@ type MfaState =
   | { kind: "ready"; enrolled: boolean; method: string | null }
   | { kind: "error"; message: string };
 
+function parseMfaStatusResponse(payload: MfaStatusResponse): MfaState {
+  if (payload.available === false) {
+    return { kind: "unavailable", reason: payload.reason ?? null };
+  }
+
+  if (typeof payload.enrolled !== "boolean") {
+    return {
+      kind: "error",
+      message: "Malformed MFA status response.",
+    };
+  }
+
+  if (payload.method !== null && payload.method !== undefined) {
+    if (typeof payload.method !== "string" || payload.method.length === 0) {
+      return {
+        kind: "error",
+        message: "Malformed MFA status response.",
+      };
+    }
+  }
+
+  return {
+    kind: "ready",
+    enrolled: payload.enrolled,
+    method: payload.method ?? null,
+  };
+}
+
 export function MfaPanel() {
   const t = useCloudT();
   const [state, setState] = useState<MfaState>({ kind: "loading" });
@@ -32,15 +60,7 @@ export function MfaPanel() {
     void api<MfaStatusResponse>("/api/v1/me/mfa")
       .then((payload) => {
         if (!active) return;
-        if (payload.available === false) {
-          setState({ kind: "unavailable", reason: payload.reason ?? null });
-          return;
-        }
-        setState({
-          kind: "ready",
-          enrolled: Boolean(payload.enrolled),
-          method: payload.method ?? null,
-        });
+        setState(parseMfaStatusResponse(payload));
       })
       .catch((error) => {
         if (!active) return;

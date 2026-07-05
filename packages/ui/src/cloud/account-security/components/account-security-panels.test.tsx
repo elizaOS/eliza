@@ -143,12 +143,36 @@ describe("account-security panels", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
   });
 
+  it("renders malformed sessions separately from healthy empty", async () => {
+    apiMock.mockResolvedValueOnce({});
+
+    render(<ActiveSessionsPanel />);
+
+    expect(
+      await screen.findByText("Malformed session inventory response."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
+    expect(screen.queryByText(/Session listing is unavailable/i)).toBeNull();
+  });
+
   it("renders MFA errors separately from unavailable and disabled", async () => {
     apiMock.mockRejectedValueOnce(new Error("mfa route failed"));
 
     render(<MfaPanel />);
 
     expect(await screen.findByText("mfa route failed")).toBeTruthy();
+    expect(screen.queryByText(/MFA enrollment is unavailable/i)).toBeNull();
+    expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
+  });
+
+  it("renders malformed MFA separately from disabled success", async () => {
+    apiMock.mockResolvedValueOnce({});
+
+    render(<MfaPanel />);
+
+    expect(
+      await screen.findByText("Malformed MFA status response."),
+    ).toBeTruthy();
     expect(screen.queryByText(/MFA enrollment is unavailable/i)).toBeNull();
     expect(screen.queryByText(/MFA is not enabled/i)).toBeNull();
   });

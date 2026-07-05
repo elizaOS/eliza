@@ -30,6 +30,37 @@ type SessionsState =
   | { kind: "ready"; sessions: SessionRow[] }
   | { kind: "error"; message: string };
 
+function parseSessionsResponse(payload: SessionsResponse): SessionsState {
+  if (payload.available === false) {
+    return {
+      kind: "unavailable",
+      reason: payload.reason ?? null,
+    };
+  }
+
+  if (!Array.isArray(payload.sessions)) {
+    return {
+      kind: "error",
+      message: "Malformed session inventory response.",
+    };
+  }
+
+  const invalidSession = payload.sessions.find(
+    (session) => typeof session.id !== "string" || session.id.length === 0,
+  );
+  if (invalidSession) {
+    return {
+      kind: "error",
+      message: "Malformed session inventory response.",
+    };
+  }
+
+  return {
+    kind: "ready",
+    sessions: payload.sessions,
+  };
+}
+
 export function ActiveSessionsPanel() {
   const t = useCloudT();
   const [state, setState] = useState<SessionsState>({ kind: "loading" });
@@ -39,17 +70,7 @@ export function ActiveSessionsPanel() {
     void api<SessionsResponse>("/api/v1/sessions")
       .then((payload) => {
         if (!active) return;
-        if (payload.available === false) {
-          setState({
-            kind: "unavailable",
-            reason: payload.reason ?? null,
-          });
-          return;
-        }
-        setState({
-          kind: "ready",
-          sessions: Array.isArray(payload.sessions) ? payload.sessions : [],
-        });
+        setState(parseSessionsResponse(payload));
       })
       .catch((error) => {
         if (!active) return;
@@ -125,9 +146,7 @@ export function ActiveSessionsPanel() {
                   <p className="font-mono text-[11px] text-white/50">
                     {t("cloud.activeSessions.ipLastSeen", {
                       ip: session.ip ?? "-",
-                      lastSeen: session.last_seen
-                        ? new Date(session.last_seen).toLocaleString()
-                        : "-",
+                      lastSeen: session.last_seen ? session.last_seen : "-",
                       defaultValue: "{{ip}} - last seen {{lastSeen}}",
                     })}
                   </p>
