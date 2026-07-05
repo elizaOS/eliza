@@ -17,12 +17,12 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
-import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
 import {
   type CreateTaskInput,
   type OrchestratorTaskSession,
   TERMINAL_TASK_STATUSES,
 } from "../../src/services/orchestrator-task-types.js";
+import { SessionCapError, type SessionInfo } from "../../src/services/types.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
 // the #8896 default-criteria feature. createTask now auto-populates acceptance
