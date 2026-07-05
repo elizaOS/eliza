@@ -37,7 +37,8 @@ function assertVipNotSilentlyQueued(ctx: ScenarioContext): string | undefined {
 export default scenario({
   lane: "live-only",
   id: "comms-flood-vip-misfile-trust-collapse-guard",
-  title: "Comms flood: a buried board-member VIP message is never silently misfiled",
+  title:
+    "Comms flood: a buried board-member VIP message is never silently misfiled",
   domain: "lifeops.inbox",
   tags: ["lifeops", "comms-flood", "personas", "vip", "adversarial", "12283"],
   status: "active",
@@ -55,7 +56,8 @@ export default scenario({
     {
       type: "contact",
       name: "Priya Anand",
-      notes: "Board member. VIP — breaks through digest and quiet hours on any channel.",
+      notes:
+        "Board member. VIP — breaks through digest and quiet hours on any channel.",
       categories: ["work", "vip"],
       tags: ["vip", "board", "breakthrough"],
     },

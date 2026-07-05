@@ -33,7 +33,6 @@ import {
 } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
-
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 const EVIDENCE_DIR = join(
 	__dirname,

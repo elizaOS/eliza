@@ -124,12 +124,12 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
     expect(bootCapture).toContain("reply-unrecognized-text");
 
     const markerBranch = bootCapture.match(
-      /if let c = candidate,\s*c\.localizedCaseInsensitiveContains\(replyMarker\)\s*\{(?<body>[\s\S]*?)\n            \}/,
+      /if let c = candidate,\s*c\.localizedCaseInsensitiveContains\(replyMarker\)\s*\{(?<body>[\s\S]*?)\n {12}\}/,
     );
     expect(markerBranch?.groups?.body).toContain("reply = c");
 
     const unrecognizedBranch = bootCapture.match(
-      /if let c = candidate, !looksNotReady\(c\) \{(?<body>[\s\S]*?)\n            \}/,
+      /if let c = candidate, !looksNotReady\(c\) \{(?<body>[\s\S]*?)\n {12}\}/,
     );
     expect(unrecognizedBranch?.groups?.body).toContain(
       "unrecognizedObservation = c",

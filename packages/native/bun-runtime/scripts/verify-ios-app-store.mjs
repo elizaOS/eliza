@@ -181,7 +181,7 @@ function selectXcframeworkLibraries(root, { target = "device" } = {}) {
     ? info.AvailableLibraries
     : [];
   const selected = libraries.filter((entry) => {
-    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    if (entry?.SupportedPlatform !== "ios") return false;
     const variant = entry.SupportedPlatformVariant;
     if (target === "all") return true;
     if (target === "simulator") return variant === "simulator";

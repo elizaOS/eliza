@@ -9,7 +9,7 @@
  * Drives the real exported `socialMediaService`; `getCredentialsForPlatform` and
  * provider methods are spied per the sibling credit-refund test's idiom.
  */
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";

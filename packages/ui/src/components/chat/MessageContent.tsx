@@ -45,6 +45,7 @@ import { renderPermissionCardFromPayload } from "../composites/chat/permission-c
 import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
 import { UiRenderer } from "../config-ui/ui-renderer";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
@@ -61,7 +62,6 @@ import {
   splitInlineCode,
 } from "./message-parser-helpers";
 import { ThinkingBlock } from "./ThinkingBlock";
-import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 // Side effect: registers the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
 import { getInlineWidget } from "./widgets/inline-registry";

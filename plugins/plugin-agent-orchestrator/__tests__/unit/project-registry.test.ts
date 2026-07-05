@@ -92,9 +92,7 @@ describe("InMemoryProjectRegistry", () => {
     expect(updated?.name).toBe("after");
     expect(updated?.defaultBranch).toBe("main");
     expect(updated?.createdAt).toBe(created.createdAt);
-    expect(
-      updated && updated.updatedAt >= created.updatedAt,
-    ).toBe(true);
+    expect(updated && updated.updatedAt >= created.updatedAt).toBe(true);
   });
 
   it("returns null when updating an unknown project", async () => {

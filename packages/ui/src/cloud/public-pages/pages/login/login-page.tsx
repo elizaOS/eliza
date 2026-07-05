@@ -66,7 +66,9 @@ export default function LoginPage() {
               })}
             </h1>
             <p className="text-sm text-muted">
-              {t("cloud.login.tagline", { defaultValue: "Run Eliza in Cloud." })}
+              {t("cloud.login.tagline", {
+                defaultValue: "Run Eliza in Cloud.",
+              })}
             </p>
           </div>
         </div>

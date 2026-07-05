@@ -202,9 +202,7 @@ export default function TermsOfServicePage() {
           <div className="prose prose-invert max-w-none space-y-10">
             {sections.map((section) => (
               <section key={section.title} className="space-y-3">
-                <h2 className="text-2xl font-bold text-txt">
-                  {section.title}
-                </h2>
+                <h2 className="text-2xl font-bold text-txt">{section.title}</h2>
                 {section.body}
               </section>
             ))}

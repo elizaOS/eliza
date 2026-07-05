@@ -54,7 +54,7 @@ function setLinuxToolset(opts: { wayland: boolean; xclip: boolean }): void {
   execSyncMock.mockImplementation((cmd: string) => {
     const target = cmd.split(" ")[1] ?? "";
     if (target === "wl-paste" || target === "wl-copy") {
-      if (opts.wayland) return "/usr/bin/" + target;
+      if (opts.wayland) return `/usr/bin/${target}`;
       throw new Error("not found");
     }
     if (target === "xclip") {

@@ -31,7 +31,9 @@ describe("project-binding", () => {
   it("binds an explicit projectId only when it is registered", () => {
     const p = upsertProject({ name: "a", localPath: "/tmp/a" }, env);
     expect(resolveTaskProjectId({ projectId: p.id }, env)).toBe(p.id);
-    expect(resolveTaskProjectId({ projectId: "unregistered" }, env)).toBeUndefined();
+    expect(
+      resolveTaskProjectId({ projectId: "unregistered" }, env),
+    ).toBeUndefined();
   });
 
   it("binds by realpath match of the workdir against a registered project", () => {
@@ -43,14 +45,19 @@ describe("project-binding", () => {
       const p = upsertProject({ name: "real", localPath: realDir }, env);
       expect(findProjectByWorkdir(link, env)?.id).toBe(p.id);
       expect(resolveTaskProjectId({ workdir: link }, env)).toBe(p.id);
-      expect(resolveTaskProjectId({ workdir: "/tmp/nomatch" }, env)).toBeUndefined();
+      expect(
+        resolveTaskProjectId({ workdir: "/tmp/nomatch" }, env),
+      ).toBeUndefined();
     } finally {
       rmSync(realDir, { recursive: true, force: true });
     }
   });
 
   it("explicit projectId beats a conflicting workdir match", () => {
-    const a = upsertProject({ name: "a", localPath: realpathSync(os.tmpdir()) }, env);
+    const a = upsertProject(
+      { name: "a", localPath: realpathSync(os.tmpdir()) },
+      env,
+    );
     const b = upsertProject({ name: "b", localPath: "/tmp/b-somewhere" }, env);
     // workdir matches A's localPath, but explicit id names B.
     expect(
@@ -60,7 +67,10 @@ describe("project-binding", () => {
   });
 
   it("resolveBoundProjectWorkdir returns the registered localPath or null", () => {
-    const p = upsertProject({ name: "a", localPath: "/tmp/bound-project" }, env);
+    const p = upsertProject(
+      { name: "a", localPath: "/tmp/bound-project" },
+      env,
+    );
     setActiveProject(p.id, env);
     expect(resolveBoundProjectWorkdir(p.id, env)).toBe("/tmp/bound-project");
     expect(resolveBoundProjectWorkdir("stale-id", env)).toBeNull();

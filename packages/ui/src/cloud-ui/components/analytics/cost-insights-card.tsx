@@ -32,7 +32,10 @@ export function CostInsightsCard({
         : `${costTrending.daysUntilBalanceZero}d`;
 
   return (
-    <BrandCard corners={false} className="border-[var(--accent)]/40 bg-[var(--accent)]/10">
+    <BrandCard
+      corners={false}
+      className="border-[var(--accent)]/40 bg-[var(--accent)]/10"
+    >
       <div className="flex flex-col gap-2 p-6 pb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-base font-semibold text-white">Cost outlook</h3>

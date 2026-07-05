@@ -42,9 +42,7 @@ export function statusDotColor(status: string): string {
 }
 
 export function statusBadgeColor(status: string): string {
-  return (
-    STATUS_BADGE_COLORS[status] ?? "bg-bg-muted text-muted border-border"
-  );
+  return STATUS_BADGE_COLORS[status] ?? "bg-bg-muted text-muted border-border";
 }
 
 /** Format a date into a human-readable relative time string. */

@@ -2358,11 +2358,6 @@ export {
   verifierVerdict,
 } from "./services/independent-verifier.js";
 export {
-  collectScreenshotPaths,
-  deliverScreenshots,
-  screenshotsToAttachments,
-} from "./services/screenshot-delivery.js";
-export {
   type CreateProjectInput,
   FileProjectRegistry,
   InMemoryProjectRegistry,
@@ -2373,6 +2368,11 @@ export {
   type ProjectRegistrySnapshot,
   type UpdateProjectInput,
 } from "./services/project-registry.js";
+export {
+  collectScreenshotPaths,
+  deliverScreenshots,
+  screenshotsToAttachments,
+} from "./services/screenshot-delivery.js";
 export {
   AcpSessionStore,
   FileSessionStore,

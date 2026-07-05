@@ -18,7 +18,6 @@ import {
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import { type Character, ModelType } from "../../types";
 
-
 function makeRuntime(enabled: boolean): AgentRuntime {
 	return new AgentRuntime({
 		character: {

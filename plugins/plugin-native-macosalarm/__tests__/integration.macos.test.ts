@@ -59,6 +59,6 @@ suite("macosalarm helper (darwin integration)", () => {
     // Accept the known-unbundled failure so the test is meaningful on a dev
     // machine without an app bundle. Packaging is deferred.
     expect(observedError).not.toBeNull();
-    expect(observedError!.message).toMatch(/bundleProxyForCurrentProcess/);
+    expect(observedError?.message).toMatch(/bundleProxyForCurrentProcess/);
   }, 30_000);
 });

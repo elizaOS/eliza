@@ -17,7 +17,6 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
 
-
 function makeRuntime(actions: Action[]): IAgentRuntime {
 	return {
 		actions,

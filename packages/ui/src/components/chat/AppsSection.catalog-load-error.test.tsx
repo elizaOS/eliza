@@ -48,9 +48,7 @@ describe("AppsSection — catalog load failure surfaces", () => {
     await waitFor(() => {
       expect(warnSpy).toHaveBeenCalledTimes(1);
     });
-    expect(warnSpy.mock.calls[0]?.[1]).toContain(
-      "catalog load failed",
-    );
+    expect(warnSpy.mock.calls[0]?.[1]).toContain("catalog load failed");
   });
 
   it("does not log when the catalog load succeeds", async () => {

@@ -33,16 +33,16 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import { applyPluginRoleGating } from "./plugin-role-gating.ts";
-import {
-  registerViewScopedActions,
-  unregisterViewScopedActions,
-} from "./view-scoped-actions.ts";
 import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
   type ToolCacheConfig,
   wrapActionWithCache,
 } from "./tool-call-cache-wrapper.ts";
+import {
+  registerViewScopedActions,
+  unregisterViewScopedActions,
+} from "./view-scoped-actions.ts";
 
 type ContextScoped = {
   contexts?: AgentContext[];

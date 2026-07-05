@@ -43,7 +43,7 @@ function pngChunk(type: string, data: Buffer): Buffer {
 function makeTinyPng(seed = 0, solid = false): Buffer {
   const w = 16;
   const h = 16;
-  const stride = w * 3;
+  const _stride = w * 3;
   const rows: number[] = [];
   for (let y = 0; y < h; y += 1) {
     rows.push(0); // filter = None
@@ -116,9 +116,9 @@ describe("dhash — block grid", () => {
   it("produces a cols*rows grid", () => {
     const grid = blockGrid(makeTinyPng(0), 4, 4);
     expect(grid).not.toBeNull();
-    expect(grid!.cols).toBe(4);
-    expect(grid!.rows).toBe(4);
-    expect(grid!.hashes.length).toBe(16);
+    expect(grid?.cols).toBe(4);
+    expect(grid?.rows).toBe(4);
+    expect(grid?.hashes.length).toBe(16);
   });
 
   it("identical frames produce identical block grids and zero dirty blocks", () => {

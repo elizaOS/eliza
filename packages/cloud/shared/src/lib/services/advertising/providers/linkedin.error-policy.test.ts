@@ -2,7 +2,7 @@
 // account-discovery fetch (transport reject or non-2xx) must surface its real
 // error and stay DISTINCT from a valid-but-empty account list. Deterministic —
 // global fetch is mocked; no live LinkedIn calls.
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 const originalFetch = globalThis.fetch;
 

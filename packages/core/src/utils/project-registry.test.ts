@@ -9,7 +9,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeWorkspaceFolderConfig } from "./workspace-folder-config.ts";
 import {
 	getActiveProject,
 	getProjectById,
@@ -19,6 +18,7 @@ import {
 	upsertProject,
 	writeProjectRegistry,
 } from "./project-registry.ts";
+import { writeWorkspaceFolderConfig } from "./workspace-folder-config.ts";
 
 describe("project-registry", () => {
 	let stateDir: string;

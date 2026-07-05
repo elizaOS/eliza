@@ -342,7 +342,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
       }
       case "upload": {
         const target = resolveTarget();
-        if (!target || target.tagName !== "INPUT") {
+        if (target?.tagName !== "INPUT") {
           throw new Error(
             "Eliza browser workspace upload requires a file input target.",
           );
@@ -666,7 +666,7 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           dom.window.document,
           command.selector,
         );
-        if (!frame || frame.tagName !== "IFRAME") {
+        if (frame?.tagName !== "IFRAME") {
           throw new Error(
             "Eliza browser workspace frame select requires an iframe selector.",
           );

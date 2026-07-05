@@ -2022,12 +2022,7 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
           probeForExistingInstall: true,
           defaultTarget: "embedded-local",
         },
-        {
-          persistedActiveServer: null,
-          restoredActiveServer: null,
-          shouldPreserveCompletedFirstRun: false,
-          hadPriorFirstRun: false,
-        },
+        null,
         1,
         { current: 1 },
         { current: false },

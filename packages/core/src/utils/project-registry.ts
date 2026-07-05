@@ -208,7 +208,10 @@ export function setActiveProject(
 	const projects = registry.projects.map((p) =>
 		p.id === projectId ? { ...p, lastOpenedAt: now } : p,
 	);
-	writeProjectRegistry({ ...registry, activeProjectId: projectId, projects }, env);
+	writeProjectRegistry(
+		{ ...registry, activeProjectId: projectId, projects },
+		env,
+	);
 	return { ...target, lastOpenedAt: now };
 }
 

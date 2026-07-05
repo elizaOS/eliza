@@ -81,7 +81,9 @@ describe("useDataLoaders — 404 refresh failure surfaces instead of swallowing"
 
     let outcome: { ok: boolean } | undefined;
     await act(async () => {
-      outcome = (await result.current.loadConversationMessages("conv-gone")) as {
+      outcome = (await result.current.loadConversationMessages(
+        "conv-gone",
+      )) as {
         ok: boolean;
       };
     });

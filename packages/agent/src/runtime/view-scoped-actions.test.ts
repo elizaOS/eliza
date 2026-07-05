@@ -12,7 +12,7 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import type { Action, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, isElizaError } from "@elizaos/core";
+import { type ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   registerPluginViews,
@@ -70,9 +70,7 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
         {
           name: `VIEW_${id.toUpperCase()}_MISSING_TARGET`,
           description: "Drives an element that is not mounted",
-          steps: [
-            { kind: "agent-click" as const, target: "ghost-button" },
-          ],
+          steps: [{ kind: "agent-click" as const, target: "ghost-button" }],
         },
       ],
       serverInteract: async (
@@ -231,7 +229,10 @@ describe("view-scoped action handler drives the interact protocol", () => {
   });
 
   it("throws a typed missing-element error when a target useAgentElement id is not mounted", async () => {
-    const settings = makeInteractiveView("settings", new Set(["provider-select"]));
+    const settings = makeInteractiveView(
+      "settings",
+      new Set(["provider-select"]),
+    );
     await registerPluginViews(
       {
         name: TEST_PLUGIN,
@@ -328,9 +329,7 @@ describe("view-scoped action registration reconciliation", () => {
       settings.view,
     ]);
 
-    expect(registered).toEqual(
-      scopedActionNames(settings.view.scopedActions),
-    );
+    expect(registered).toEqual(scopedActionNames(settings.view.scopedActions));
     expect(actions.has("VIEW_SETTINGS_SET_PROVIDER")).toBe(true);
     expect(actions.has("VIEW_SETTINGS_MISSING_TARGET")).toBe(true);
 

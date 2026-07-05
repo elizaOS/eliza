@@ -1767,7 +1767,15 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent)) {
+          if (
+            applyStreamChatDataLine(
+              line,
+              streamState,
+              onToken,
+              onStatus,
+              onToolEvent,
+            )
+          ) {
             buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
@@ -1785,7 +1793,13 @@ export class ElizaClient {
     if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) {
-          applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent);
+          applyStreamChatDataLine(
+            line,
+            streamState,
+            onToken,
+            onStatus,
+            onToolEvent,
+          );
         }
       }
     }

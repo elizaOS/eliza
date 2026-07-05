@@ -18,7 +18,6 @@ import {
 import { restorePiiInUserReplyText } from "../../services/message";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 
-
 /** A turn session over a known contact roster, exactly as the ingress mints one. */
 function sessionWithContacts(): PseudonymSession {
 	return new PseudonymSession({

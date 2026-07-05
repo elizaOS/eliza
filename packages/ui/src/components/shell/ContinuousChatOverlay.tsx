@@ -86,13 +86,13 @@ import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
-import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
 import { TurnStatus } from "../composites/chat/chat-typing-indicator";
+import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";

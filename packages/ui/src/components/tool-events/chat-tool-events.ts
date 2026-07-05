@@ -9,9 +9,7 @@
 import type { ChatToolCallEvent } from "../../api/client-types-chat";
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
 
-function toNativeToolCallEvent(
-  event: ChatToolCallEvent,
-): NativeToolCallEvent {
+function toNativeToolCallEvent(event: ChatToolCallEvent): NativeToolCallEvent {
   return {
     id: event.callId,
     callId: event.callId,
@@ -39,7 +37,9 @@ export function mergeChatToolEvent(
   event: ChatToolCallEvent,
 ): NativeToolCallEvent[] {
   const next = toNativeToolCallEvent(event);
-  const index = events.findIndex((existing) => existing.callId === event.callId);
+  const index = events.findIndex(
+    (existing) => existing.callId === event.callId,
+  );
   if (index === -1) return [...events, next];
   // Merge onto the existing row so the `call`'s args survive into the settled
   // `result`/`error` render.

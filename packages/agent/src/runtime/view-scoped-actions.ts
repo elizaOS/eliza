@@ -31,11 +31,11 @@ import {
   type ViewScopedActionStep,
   type ViewType,
 } from "@elizaos/core";
+import { getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,
   getViewsBroadcastWs,
 } from "../api/views-routes.ts";
-import { getView } from "../api/views-registry.ts";
 import { getActiveViewContext } from "./view-action-affinity.ts";
 
 /** How long a single agent-surface step waits for the frontend to resolve. */
@@ -49,9 +49,7 @@ const PARAM_TOKEN = /^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/;
  * params under `options.parameters` (the #10677 contract); fall back to the flat
  * `options` object for direct/test callers. Returns an empty object when absent.
  */
-function readActionParams(
-  options: unknown,
-): Record<string, unknown> {
+function readActionParams(options: unknown): Record<string, unknown> {
   if (!options || typeof options !== "object") return {};
   const record = options as Record<string, unknown>;
   const nested = record.parameters;
@@ -314,9 +312,7 @@ export function scopedActionNames(
   scopedActions: readonly ViewScopedAction[] | undefined,
 ): string[] {
   return [
-    ...new Set(
-      (scopedActions ?? []).map((a) => a.name.trim()).filter(Boolean),
-    ),
+    ...new Set((scopedActions ?? []).map((a) => a.name.trim()).filter(Boolean)),
   ];
 }
 
@@ -360,7 +356,12 @@ export function registerViewScopedActions(
       if (!name) continue;
       if (registered.has(name)) {
         logger.warn(
-          { src: "ViewScopedActions", owner, viewId: view.id, actionName: name },
+          {
+            src: "ViewScopedActions",
+            owner,
+            viewId: view.id,
+            actionName: name,
+          },
           `[ViewScopedActions] duplicate scoped-action name "${name}" for owner "${owner}" — keeping first`,
         );
         continue;
