@@ -783,11 +783,6 @@ export interface ViewCapability {
 	>;
 }
 
-/** Permissions granted to the host surface while a view is mounted. */
-export interface ViewSurfaceManifest {
-	/** Host-level capabilities the view can exercise through the mounted surface. */
-	capabilities?: string[];
-}
 
 /**
  * One agent-surface interaction step a {@link ViewScopedAction} expands into.
@@ -1017,11 +1012,6 @@ export interface ViewDeclaration {
 		capability: string,
 		params?: Record<string, unknown>,
 	) => Promise<unknown>;
-	/**
-	 * Host-level permissions granted while this view is mounted. Mutating
-	 * agent-surface protocol calls require the explicit `agent-surface` grant.
-	 */
-	surface?: ViewSurfaceManifest;
 	/** Allow this view to be pinned as a desktop tab. Default true. */
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
