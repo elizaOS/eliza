@@ -22,13 +22,8 @@
  */
 import { Globe, Plus, X } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
 import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 /** A tab as the switcher needs to render it — the view maps its richer
  *  `BrowserWorkspaceTab` down to this display shape so the switcher stays free
@@ -218,17 +213,12 @@ function BrowserTabCard({
         <span className="flex w-full min-w-0 items-center gap-2">
           <span
             className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-              isAgent
-                ? "bg-accent/15 text-accent"
-                : "bg-bg-muted text-muted"
+              isAgent ? "bg-accent/15 text-accent" : "bg-bg-muted text-muted"
             }`}
           >
             {tab.hasSessionFocus ? (
               <>
-                <span
-                  aria-hidden
-                  className="h-2 w-2 rounded-full bg-accent"
-                />
+                <span aria-hidden className="h-2 w-2 rounded-full bg-accent" />
                 <span className="sr-only">{agentActiveLabel}</span>
               </>
             ) : (

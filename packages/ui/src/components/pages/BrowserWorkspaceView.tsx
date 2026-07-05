@@ -12,8 +12,6 @@ import {
   ExternalLink,
   FolderOpen,
   Globe,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   RefreshCw,
   X,
@@ -39,12 +37,6 @@ import {
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
 import { PagePanel } from "../composites/page-panel";
-import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -52,6 +44,12 @@ import { useConfirm } from "../ui/confirm-dialog.hooks";
 import { Input } from "../ui/input";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { AppWorkspaceChrome } from "../workspace/AppWorkspaceChrome.js";
+import {
+  type BrowserSwitcherTab,
+  BrowserTabFoldControl,
+  BrowserTabSwitcher,
+  foldBrowserTabs,
+} from "./BrowserTabSwitcher";
 import {
   decodeBase64ForPreview,
   decodeSignableMessage,
@@ -76,8 +74,6 @@ const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // Default URL when the user opens a fresh tab via "+". The docs site
 // respects prefers-color-scheme so the OS theme drives light/dark.
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
-const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
-  "eliza:browser-workspace:collapsed-sections";
 // Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
 // surface doesn't paint over (or capture clicks within) React overlays
 // stacked on the same rect. Covers Radix Dialog/AlertDialog content
@@ -190,40 +186,6 @@ declare module "react/jsx-runtime" {
 
 type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
 type BrowserWorkspaceTabSectionKey = "agent" | "app" | "user";
-
-function readStoredBrowserWorkspaceCollapsedSections(): Set<BrowserWorkspaceTabSectionKey> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = window.localStorage.getItem(
-      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
-    );
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return new Set();
-    return new Set(
-      parsed.filter(
-        (value): value is BrowserWorkspaceTabSectionKey =>
-          value === "agent" || value === "app" || value === "user",
-      ),
-    );
-  } catch {
-    return new Set();
-  }
-}
-
-function persistBrowserWorkspaceCollapsedSections(
-  sections: Set<BrowserWorkspaceTabSectionKey>,
-): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
-      JSON.stringify([...sections]),
-    );
-  } catch {
-    /* ignore sandboxed storage */
-  }
-}
 
 function resolveBrowserWorkspaceTabSectionKey(
   tab: BrowserWorkspaceTab,
@@ -473,110 +435,6 @@ function BrowserAddressInput({
   );
 }
 
-function BrowserTabRow({
-  tab,
-  active,
-  tabHasSessionFocus,
-  label,
-  description,
-  closeTabLabel,
-  agentActiveLabel,
-  monogram,
-  onActivate,
-  onClose,
-}: {
-  tab: BrowserWorkspaceTab;
-  active: boolean;
-  tabHasSessionFocus: boolean;
-  label: string;
-  description: string;
-  closeTabLabel: string;
-  agentActiveLabel: string;
-  monogram: string;
-  onActivate: () => void;
-  onClose: () => void;
-}): React.JSX.Element {
-  const tabIsInternal = isInternalBrowserWorkspaceTab(tab);
-  const { ref: activateRef, agentProps: activateAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `tab-${tab.id}`,
-      role: "tab",
-      label,
-      group: "browser-tabs",
-      description: `Activate browser tab: ${label}`,
-      status: active ? "active" : "inactive",
-      onActivate,
-    });
-  const { ref: closeRef, agentProps: closeAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `tab-close-${tab.id}`,
-      role: "button",
-      label: `${closeTabLabel} ${label}`,
-      group: "browser-tabs",
-      description: `Close browser tab: ${label}`,
-      onActivate: onClose,
-    });
-
-  return (
-    <div className="group relative">
-      <Button
-        ref={activateRef}
-        {...activateAgentProps}
-        role="tab"
-        aria-selected={active}
-        aria-current={active ? "page" : undefined}
-        title={tab.url}
-        onClick={onActivate}
-        variant="ghost"
-        className={`flex h-auto w-full min-w-0 items-start justify-start gap-1.5 whitespace-normal rounded-sm px-1.5 py-1 text-left font-normal transition-colors ${
-          tabIsInternal ? "pr-1.5" : "pr-7"
-        } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
-      >
-        <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
-          {tabHasSessionFocus ? (
-            <>
-              <span aria-hidden className="h-2 w-2 rounded-full bg-accent " />
-              <span className="sr-only">{agentActiveLabel}</span>
-            </>
-          ) : (
-            <span className="text-[10px] font-semibold leading-none">
-              {monogram}
-            </span>
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs-tight font-medium leading-snug">
-            {label}
-          </span>
-          <span className="block truncate text-[11px] leading-snug text-muted/65">
-            {description}
-          </span>
-        </span>
-      </Button>
-      {tabIsInternal ? null : (
-        <Button
-          ref={closeRef}
-          {...closeAgentProps}
-          aria-label={`${closeTabLabel} ${label}`}
-          title={`${closeTabLabel}: ${label}`}
-          variant="ghost"
-          size="icon-sm"
-          className={`absolute right-0 top-1/2 h-5 w-5 -translate-y-1/2 rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger ${
-            active ? "opacity-100" : "opacity-0 group-hover:opacity-100 "
-          }`}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onClose();
-          }}
-        >
-          <X className="h-3 w-3" />
-        </Button>
-      )}
-    </div>
-  );
-}
-
 export function BrowserWorkspaceView(): React.JSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
@@ -619,14 +477,10 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [collapsedSections, setCollapsedSections] = useState<
-    Set<BrowserWorkspaceTabSectionKey>
-  >(() => readStoredBrowserWorkspaceCollapsedSections());
-  // Controlled collapsed state for the tabs sidebar so the URL bar can
-  // expose a toggle that's always reachable — when the sidebar is
-  // collapsed past its rail, the rail's expand button can sit behind
-  // the OOPIF and become unclickable.
-  const [tabsSidebarCollapsed, setTabsSidebarCollapsed] = useState(false);
+  // The folded-tab switcher overlay (#13596). The browser folds every tab into
+  // this one switcher instead of a permanent sidebar strip, so this is the only
+  // multi-tab surface — opened from the toolbar's fold control.
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
   const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
@@ -708,23 +562,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
     ? "about:blank"
     : locationInput || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-  const groupedTabs = useMemo(
-    () =>
-      workspace.tabs.reduce<
-        Record<BrowserWorkspaceTabSectionKey, BrowserWorkspaceTab[]>
-      >(
-        (groups, tab) => {
-          groups[resolveBrowserWorkspaceTabSectionKey(tab)].push(tab);
-          return groups;
-        },
-        { user: [], agent: [], app: [] },
-      ),
-    [workspace.tabs],
-  );
-  const collapsedRailTabs = useMemo(
-    () => [...groupedTabs.user, ...groupedTabs.agent, ...groupedTabs.app],
-    [groupedTabs],
-  );
   const primaryBrowserBridgeCompanion = useMemo(
     () =>
       browserBridgeCompanions.find(
@@ -737,20 +574,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const browserBridgeConnected =
     primaryBrowserBridgeCompanion?.connectionState === "connected";
 
-  const toggleSidebarSectionCollapsed = useCallback((key: string) => {
-    setCollapsedSections((current) => {
-      if (key !== "agent" && key !== "app" && key !== "user") {
-        return current;
-      }
-      const next = new Set(current);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []);
   const browserBridgeSupported = useMemo(
     () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
     [plugins],
@@ -1880,10 +1703,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   }, [loadWorkspace]);
 
   useEffect(() => {
-    persistBrowserWorkspaceCollapsedSections(collapsedSections);
-  }, [collapsedSections]);
-
-  useEffect(() => {
     void loadBrowserWalletState();
   }, [loadBrowserWalletState]);
 
@@ -2173,232 +1992,55 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     defaultValue: "Agent is on this tab",
   });
 
-  function renderBrowserWorkspaceTabRow(
-    tab: BrowserWorkspaceTab,
-  ): React.JSX.Element {
-    const active = tab.id === selectedTabId;
-    const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
-    const label = getBrowserWorkspaceTabLabel(tab, t);
-    const description = getBrowserWorkspaceTabDescription(tab, workspace.mode);
-
-    return (
-      <BrowserTabRow
-        key={tab.id}
-        tab={tab}
-        active={active}
-        tabHasSessionFocus={tabHasSessionFocus}
-        label={label}
-        description={description}
-        closeTabLabel={closeTabLabel}
-        agentActiveLabel={agentActiveLabel}
-        monogram={getBrowserWorkspaceTabMonogram(label)}
-        onActivate={() =>
-          void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
-            await activateBrowserWorkspaceTab(tab.id);
-          })
-        }
-        onClose={() =>
-          void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
-            await closeBrowserWorkspaceTabById(tab.id);
-          })
-        }
-      />
-    );
-  }
-
-  const browserTabsSidebar = (
-    <AppPageSidebar
-      testId="browser-workspace-sidebar"
-      collapsible
-      collapsed={tabsSidebarCollapsed}
-      onCollapsedChange={setTabsSidebarCollapsed}
-      contentIdentity="browser-workspace-tabs"
-      collapseButtonTestId="browser-workspace-sidebar-collapse-toggle"
-      expandButtonTestId="browser-workspace-sidebar-expand-toggle"
-      collapseButtonAriaLabel={t("browserworkspace.CollapseTabs", {
-        defaultValue: "Collapse browser tabs",
-      })}
-      expandButtonAriaLabel={t("browserworkspace.ExpandTabs", {
-        defaultValue: "Expand browser tabs",
-      })}
-      mobileTitle={
-        <SidebarContent.SectionLabel>{tabsLabel}</SidebarContent.SectionLabel>
-      }
-      collapsedRailAction={
-        <SidebarCollapsedActionButton
-          aria-label={newTabLabel}
-          onClick={() =>
-            void runBrowserWorkspaceAction("open:new", async () => {
-              await openNewBrowserWorkspaceTab(
-                newBrowserWorkspaceTabSeedUrl,
-                "user",
-              );
-            })
-          }
-        >
-          <Plus className="h-4 w-4" />
-        </SidebarCollapsedActionButton>
-      }
-      collapsedRailItems={collapsedRailTabs.map((tab) => {
+  // Map the section-grouped tabs down to the switcher's display shape and fold
+  // them (#13596). The switcher — not a permanent sidebar strip — is the only
+  // multi-tab surface, so it must carry every section (agent tabs stay visually
+  // distinct) while the toolbar shows just the folded count + active label.
+  const switcherTabs = useMemo<BrowserSwitcherTab[]>(
+    () =>
+      workspace.tabs.map((tab) => {
         const label = getBrowserWorkspaceTabLabel(tab, t);
-        const active = tab.id === selectedTabId;
-        const tabHasSessionFocus =
-          workspace.mode === "web" ? tab.visible : active;
-        return (
-          <SidebarContent.RailItem
-            key={tab.id}
-            aria-label={label}
-            title={label}
-            active={active}
-            indicatorTone={tabHasSessionFocus ? "accent" : undefined}
-            onClick={() =>
-              void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
-                await activateBrowserWorkspaceTab(tab.id);
-              })
-            }
-          >
-            {getBrowserWorkspaceTabMonogram(label)}
-          </SidebarContent.RailItem>
-        );
-      })}
-      aria-label={tabsLabel}
-    >
-      <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
-          <div className="space-y-3">
-            <CollapsibleSidebarSection
-              sectionKey="user"
-              label={userTabsLabel}
-              collapsed={collapsedSections.has("user")}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              onAdd={() =>
-                void runBrowserWorkspaceAction("open:new", async () => {
-                  await openNewBrowserWorkspaceTab(
-                    newBrowserWorkspaceTabSeedUrl,
-                    "user",
-                  );
-                })
-              }
-              addLabel={newTabLabel}
-              emptyLabel={t("browserworkspace.NoUserTabs", {
-                defaultValue: "Open a tab with +",
-              })}
-              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
-              bodyClassName="space-y-0.5 pl-3"
-              hoverActionsOnDesktop
-              testIdPrefix="browser-tab-section"
-            >
-              {groupedTabs.user.length > 0 ? (
-                <div
-                  role="tablist"
-                  aria-label={userTabsLabel}
-                  className="space-y-1"
-                >
-                  {groupedTabs.user.map((tab) =>
-                    renderBrowserWorkspaceTabRow(tab),
-                  )}
-                </div>
-              ) : null}
-            </CollapsibleSidebarSection>
-
-            <CollapsibleSidebarSection
-              sectionKey="agent"
-              label={agentTabsLabel}
-              collapsed={collapsedSections.has("agent")}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              emptyLabel={t("browserworkspace.NoAgentTabs", {
-                defaultValue: "Ask Eliza to open a page here",
-              })}
-              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
-              bodyClassName="space-y-0.5 pl-3"
-              hoverActionsOnDesktop
-              testIdPrefix="browser-tab-section"
-            >
-              {groupedTabs.agent.length > 0 ? (
-                <div
-                  role="tablist"
-                  aria-label={agentTabsLabel}
-                  className="space-y-1"
-                >
-                  {groupedTabs.agent.map((tab) =>
-                    renderBrowserWorkspaceTabRow(tab),
-                  )}
-                </div>
-              ) : null}
-            </CollapsibleSidebarSection>
-
-            <CollapsibleSidebarSection
-              sectionKey="app"
-              label={appTabsLabel}
-              collapsed={collapsedSections.has("app")}
-              onToggleCollapsed={toggleSidebarSectionCollapsed}
-              emptyLabel={t("browserworkspace.NoAppTabs", {
-                defaultValue: "App tabs open here automatically",
-              })}
-              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
-              bodyClassName="space-y-0.5 pl-3"
-              hoverActionsOnDesktop
-              testIdPrefix="browser-tab-section"
-            >
-              {groupedTabs.app.length > 0 ? (
-                <div
-                  role="tablist"
-                  aria-label={appTabsLabel}
-                  className="space-y-1"
-                >
-                  {groupedTabs.app.map((tab) =>
-                    renderBrowserWorkspaceTabRow(tab),
-                  )}
-                </div>
-              ) : null}
-            </CollapsibleSidebarSection>
-          </div>
-        </SidebarPanel>
-      </SidebarScrollRegion>
-    </AppPageSidebar>
+        return {
+          id: tab.id,
+          label,
+          description: getBrowserWorkspaceTabDescription(tab, workspace.mode),
+          monogram: getBrowserWorkspaceTabMonogram(label),
+          section: resolveBrowserWorkspaceTabSectionKey(tab),
+          closable: !isInternalBrowserWorkspaceTab(tab),
+          hasSessionFocus:
+            workspace.mode === "web" ? tab.visible : tab.id === selectedTabId,
+        };
+      }),
+    [selectedTabId, t, workspace.mode, workspace.tabs],
   );
+  const foldedTabs = useMemo(
+    () =>
+      foldBrowserTabs(switcherTabs, selectedTabId, {
+        user: userTabsLabel,
+        agent: agentTabsLabel,
+        app: appTabsLabel,
+      }),
+    [switcherTabs, selectedTabId, userTabsLabel, agentTabsLabel, appTabsLabel],
+  );
+  const foldControlActiveLabel =
+    foldedTabs.activeTab?.label ??
+    t("browserworkspace.NoActiveTab", { defaultValue: "No tab" });
+  const openTabSwitcherLabel = t("browserworkspace.OpenTabSwitcher", {
+    defaultValue: "Show {{count}} tabs",
+    count: foldedTabs.count,
+  });
 
   const navNode = (
     <div className="flex items-center gap-2 px-3 py-2">
-      {/* Toggle tabs sidebar. Lives in the URL bar so it's accessible
-          even when the sidebar is fully collapsed — the rail's own
-          expand button can sit behind the native OOPIF and become
-          unclickable. */}
-      <BrowserNavButton
-        agentId="toggle-tabs"
-        agentLabel={
-          tabsSidebarCollapsed
-            ? t("browserworkspace.ExpandTabs", {
-                defaultValue: "Expand browser tabs",
-              })
-            : t("browserworkspace.CollapseTabs", {
-                defaultValue: "Collapse browser tabs",
-              })
-        }
-        agentDescription="Toggle the browser tabs sidebar"
-        group="browser-nav"
-        onActivate={() => setTabsSidebarCollapsed((current) => !current)}
-        variant="ghost"
-        size="icon"
-        className="h-11 w-11 shrink-0"
-        aria-label={
-          tabsSidebarCollapsed
-            ? t("browserworkspace.ExpandTabs", {
-                defaultValue: "Expand browser tabs",
-              })
-            : t("browserworkspace.CollapseTabs", {
-                defaultValue: "Collapse browser tabs",
-              })
-        }
-        onClick={() => setTabsSidebarCollapsed((current) => !current)}
-        data-testid="browser-workspace-nav-tabs-toggle"
-      >
-        {tabsSidebarCollapsed ? (
-          <PanelLeftOpen className="h-4 w-4" />
-        ) : (
-          <PanelLeftClose className="h-4 w-4" />
-        )}
-      </BrowserNavButton>
+      {/* Folded tabs (#13596): one compact count control opens the switcher —
+          no permanent tab strip. It names the active tab so the user always
+          knows which page is live even with the rest folded away. */}
+      <BrowserTabFoldControl
+        activeLabel={foldControlActiveLabel}
+        count={foldedTabs.count}
+        openLabel={openTabSwitcherLabel}
+        onOpen={() => setSwitcherOpen(true)}
+      />
       <BrowserNavButton
         agentId="new-tab"
         agentLabel={newTabLabel}
@@ -2939,12 +2581,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   );
 
   // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
-  // "Browser" title sits ABOVE the browser toolbar (URL bar + tab control),
-  // never replacing it. The toolbar stays inside WorkspaceLayout's
+  // "Browser" title sits ABOVE the browser toolbar (URL bar + folded-tab
+  // control), never replacing it. The toolbar stays inside WorkspaceLayout's
   // contentHeader; the ViewHeader is a sibling stacked on top so back always
   // returns to the launcher and the header reads identically to every other
-  // view. `min-h-0` keeps the WorkspaceLayout free to fill the remaining
-  // height below the fixed-height header.
+  // view. Tabs are folded into the switcher (no `sidebar` prop) so the surface
+  // is single-column and the browser never grows an unbounded tab strip.
   const mainNode = (
     <div className="flex h-full min-h-0 w-full flex-col">
       <ViewHeader
@@ -2952,15 +2594,12 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <WorkspaceLayout
-          sidebar={browserTabsSidebar}
           contentHeader={navNode}
           contentHeaderClassName="mb-0"
           headerPlacement="inside"
           contentPadding={false}
           contentClassName="overflow-hidden"
           contentInnerClassName="min-h-0 overflow-hidden"
-          mobileSidebarLabel={tabsLabel}
-          mobileSidebarTriggerClassName="ml-3 mt-3"
         >
           {browserSurface}
         </WorkspaceLayout>
@@ -2971,6 +2610,38 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   return (
     <ShellViewAgentSurface viewId="browser">
       <AppWorkspaceChrome testId="browser-workspace-view" main={mainNode} />
+      <BrowserTabSwitcher
+        open={switcherOpen}
+        onOpenChange={setSwitcherOpen}
+        folded={foldedTabs}
+        activeTabId={selectedTabId}
+        title={tabsLabel}
+        closeLabel={closeTabLabel}
+        agentActiveLabel={agentActiveLabel}
+        newTabLabel={newTabLabel}
+        emptyLabel={t("browserworkspace.NoTabsYet", {
+          defaultValue: "No tabs open yet",
+        })}
+        actionsDisabled={busyAction !== null}
+        onActivateTab={(id) =>
+          void runBrowserWorkspaceAction(`show:${id}`, async () => {
+            await activateBrowserWorkspaceTab(id);
+          })
+        }
+        onCloseTab={(id) =>
+          void runBrowserWorkspaceAction(`close:${id}`, async () => {
+            await closeBrowserWorkspaceTabById(id);
+          })
+        }
+        onNewTab={() =>
+          void runBrowserWorkspaceAction("open:new", async () => {
+            await openNewBrowserWorkspaceTab(
+              newBrowserWorkspaceTabSeedUrl,
+              "user",
+            );
+          })
+        }
+      />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />
     </ShellViewAgentSurface>
