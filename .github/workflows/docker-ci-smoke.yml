@@ -3,11 +3,17 @@ name: Docker CI Smoke
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+  # Heavy family moved off per-PR push (#14051 Tier A): PR runs are opt-in via
+  # the `ci:full` label (job-level gate on `changes` below). Unlabeled PRs
+  # skip every job instantly and consume zero runners.
   pull_request:
     branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   push:
     branches: [develop]
+  schedule:
+    # Nightly heavy lane (#14051): 07:00 UTC.
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +26,10 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
+    # #14051: PRs only run this heavy family when explicitly opted in with the
+    # `ci:full` label. Every downstream job needs this one, so an unlabeled PR
+    # skips the whole workflow without touching a runner.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
     # Path classifier is a git-diff + node script: no self-hosted resources.
     # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
     # queued indefinitely and pile up runs (#13617/#8501).

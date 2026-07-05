@@ -65,7 +65,7 @@ export const worktreeAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["GIT_WORKTREE"],
   description:
-    "Manage current git worktree stack. action=enter creates/switches isolated worktree; action=exit leaves and optionally removes it.",
+    "Manage the session git worktree stack: enter creates/switches, exit leaves and can remove it.",
   descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
   parameters: [
     {
@@ -96,8 +96,7 @@ export const worktreeAction: Action = {
     },
     {
       name: "cleanup",
-      description:
-        "For action=exit: remove popped worktree dir with git worktree remove --force.",
+      description: "For action=exit: remove popped worktree dir.",
       required: false,
       schema: { type: "boolean" },
     },

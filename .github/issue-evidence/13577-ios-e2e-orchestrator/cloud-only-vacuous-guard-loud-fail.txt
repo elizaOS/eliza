@@ -1,0 +1,1 @@
+[ios-e2e] FAILED: refusing to run: every simulator-app verification leg (auth / local-chat) is skipped, so the orchestrator would report success without proving the installed app path. Drop --skip-auth or --skip-local-chat; --cloud alone is not enough.

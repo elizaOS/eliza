@@ -7,6 +7,12 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  buildRequireChatDecision,
+  probeAgentAvailability,
+  resolveAgentProbeTarget,
+  summarizeChatSkipAccounting,
+} from "./ios-device-capture.mjs";
+import {
   buildCodesignPlan,
   buildIosXcuitestShardPlan,
   buildOnlyTestingIdentifier,
@@ -1202,5 +1208,119 @@ describe("evaluateRunnerStaleness (#13566)", () => {
     });
     expect(decision.stale).toBe(false);
     expect(decision.newestSource).toBe(null);
+  });
+});
+
+
+describe("ios-device-capture agent availability preflight (#13569)", () => {
+  it("prefers the configured iOS API base over the cloud health fallback", () => {
+    expect(
+      resolveAgentProbeTarget(
+        {
+          VITE_ELIZA_IOS_API_BASE: "https://mac.example.test/api-root/",
+          VITE_ELIZA_CLOUD_BASE: "https://cloud.example.test",
+        },
+        {},
+      ),
+    ).toMatchObject({
+      kind: "api-base",
+      url: "https://mac.example.test/api/health",
+    });
+  });
+
+  it("falls back to the cloud health endpoint when no device API base is configured", () => {
+    expect(
+      resolveAgentProbeTarget(
+        { VITE_ELIZA_CLOUD_BASE: "https://cloud.example.test/" },
+        {},
+      ),
+    ).toMatchObject({
+      kind: "cloud-health",
+      url: "https://cloud.example.test/api/health",
+    });
+  });
+
+  it("maps probe responses to ready, not-ready, and unreachable verdicts", async () => {
+    await expect(
+      probeAgentAvailability({
+        target: { url: "https://agent.example.test/api/health" },
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ ready: true }), { status: 200 }),
+      }),
+    ).resolves.toMatchObject({ verdict: "ready" });
+
+    await expect(
+      probeAgentAvailability({
+        target: { url: "https://agent.example.test/api/health" },
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ ready: false }), { status: 200 }),
+      }),
+    ).resolves.toMatchObject({ verdict: "not-ready(ready=false)" });
+
+    await expect(
+      probeAgentAvailability({
+        target: { url: "https://agent.example.test/api/health" },
+        fetchImpl: async () => {
+          throw new Error("ECONNREFUSED");
+        },
+      }),
+    ).resolves.toMatchObject({ verdict: "unreachable(ECONNREFUSED)" });
+  });
+
+  it("summarizes skipped chat legs with the agent preflight verdict", () => {
+    const summary = {
+      tests: [
+        {
+          testIdentifierString: "MessageGestureUITests/testSendsMessage()",
+          testStatus: "Skipped",
+        },
+        {
+          testIdentifierString: "BootCaptureUITests/testBootsHome()",
+          testStatus: "Passed",
+        },
+        {
+          testIdentifierString: "OnboardingChatUITests/testFirstReply()",
+          status: "skipped",
+        },
+      ],
+    };
+
+    expect(
+      summarizeChatSkipAccounting(summary, "not-ready(ready=false)"),
+    ).toEqual({
+      count: 2,
+      tests: [
+        "MessageGestureUITests/testSendsMessage()",
+        "OnboardingChatUITests/testFirstReply()",
+      ],
+      message: "2 chat legs skipped: agent never ready (not-ready(ready=false))",
+    });
+  });
+
+  it("makes --require-chat fail for a bad preflight or skipped chat legs", () => {
+    expect(
+      buildRequireChatDecision({
+        requireChat: true,
+        agentProbeVerdict: "ready",
+        chatSkippedCount: 1,
+      }),
+    ).toMatchObject({ exitNonZero: true, reason: "1 chat leg skipped" });
+    expect(
+      buildRequireChatDecision({
+        requireChat: true,
+        agentProbeVerdict: "unreachable(timeout)",
+        chatSkippedCount: 0,
+      }),
+    ).toMatchObject({
+      exitNonZero: true,
+      reason: "agent preflight unreachable(timeout)",
+    });
+    expect(
+      buildRequireChatDecision({
+        requireChat: false,
+        agentProbeVerdict: "unreachable(timeout)",
+        chatSkippedCount: 1,
+      }),
+    ).toMatchObject({ exitNonZero: false });
   });
 });

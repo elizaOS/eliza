@@ -1080,7 +1080,7 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. Omit cwd unless the user supplied an exact directory or the session was explicitly moved; do not invent cwd from remembered repo paths. For questions about the currently running agent/runtime/source, use the default session cwd and inspect current process/service evidence before reporting git metadata. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer neutral no-key APIs such as CoinGecko simple price or Coinbase spot before exchange-gated APIs; do not start with legacy Coindesk or Binance when the same value can be fetched elsewhere. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
+    "Run shell commands or view/clear per-conversation shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed: "Run shell commands; clear/view shell history.",
   parameters: [
     {
@@ -1095,7 +1095,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. For public unauthenticated API reads, quote URLs and prefer stable no-key endpoints; avoid deprecated, region-blocked, or exchange-gated endpoints when a neutral data API can answer the same question. For crypto spot prices, prefer CoinGecko simple price or Coinbase spot before exchange-gated APIs; avoid legacy Coindesk and Binance when a neutral source can answer. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
+        "For action=run: /bin/bash -c command. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
       required: false,
       schema: { type: "string" },
     },
@@ -1115,7 +1115,7 @@ export const shellAction: Action = {
     {
       name: "cwd",
       description:
-        "Absolute cwd; must not resolve under blocked path. Omit unless the user supplied this exact directory or the session was explicitly moved; default session cwd is safer than remembered paths.",
+        "Absolute cwd within allowed roots. Omit to use the session cwd.",
       required: false,
       schema: { type: "string" },
     },

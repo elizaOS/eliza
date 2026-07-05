@@ -21,7 +21,6 @@ import type {
   RegisterGatewayRelaySessionResponse,
 } from "../types/cloud";
 import type { CloudAuthService } from "./cloud-auth";
-import { readAliasedEnv } from "@elizaos/shared";
 
 const POLL_TIMEOUT_MS = 25_000;
 const REQUEST_TIMEOUT_MS = POLL_TIMEOUT_MS + 5_000;

@@ -128,6 +128,28 @@ All config is passed to `start()` or `updateConfig()` — no process env vars ar
 | Electrobun (desktop) | Native STT | ElevenLabs streaming + system TTS fallback |
 | Browser | Web Speech API | `SpeechSynthesis` only (ElevenLabs blocked by CORS) |
 
+## Volume and mute policy
+
+TalkMode treats voice as an active communication session. The policy is:
+
+- **iOS:** configure `AVAudioSession` as `.playAndRecord` with `.voiceChat` and
+  `.defaultToSpeaker` while allowing Bluetooth output. TTS is expected to stay
+  audible during a voice session even when the hardware silent switch is on;
+  volume buttons control the active output route volume. Microphone capture is
+  unaffected by output volume or silent switch state.
+- **Android:** route TTS/PCM playback through `USAGE_VOICE_COMMUNICATION` while
+  the app is in `MODE_IN_COMMUNICATION`, defaulting to speaker unless a headset
+  is connected. The plugin may mute recognizer earcon streams during a session,
+  but it must not mute the voice-communication output path. Hardware volume keys
+  control the communication stream; OS mute can silence output, but capture and
+  the agent turn must remain interactive and recoverable.
+- **Electrobun desktop:** honor the operating system output volume/mute state.
+  Muting output may make TTS inaudible, but it must not stop microphone capture,
+  chat orchestration, or completion events.
+- **Browser:** `SpeechSynthesis` follows browser/OS output controls. Microphone
+  capture is governed by browser permission and should continue independently of
+  output volume.
+
 ## Building
 
 ```bash

@@ -72,17 +72,98 @@ describe("ElizaClient desktop status RPC fallback", () => {
     );
   });
 
-  it("keeps using desktop RPC status when it answers", async () => {
+  it("keeps the desktop RPC status verbatim when it already confirms readiness", async () => {
     installDesktopRpc({
       getAgentStatus: vi.fn(async () => ({
         state: "running",
         agentName: "Eliza",
+        canRespond: true,
       })),
     });
     const { client, request } = makeClientWithTransport({});
 
     await expect(client.getStatus()).resolves.toEqual({
       state: "running",
+      agentName: "Eliza",
+      canRespond: true,
+    });
+
+    // RPC already reports first-turn readiness — no HTTP merge needed.
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("merges /api/status readiness into a running desktop RPC snapshot missing canRespond", async () => {
+    // Regression for #14040 sub-defect 1: the electrobun `AgentStatusSnapshot`
+    // has no `canRespond`, so a cloud-routed / model-less agent that is up but
+    // hasn't confirmed first-turn readiness would poll to
+    // `deriveAgentReady=false` FOREVER off the RPC branch. When the process is
+    // running but the snapshot doesn't confirm `canRespond`, fill readiness from
+    // `/api/status` (mirrors the Android lifecycle branch).
+    const getAgentStatus = vi.fn(async () => ({
+      state: "running",
+      agentName: "Eliza",
+    }));
+    installDesktopRpc({ getAgentStatus });
+    const { client, request } = makeClientWithTransport({
+      "/api/status": {
+        state: "running",
+        canRespond: true,
+        model: "eliza-1-2b",
+      },
+    });
+
+    await expect(client.getStatus()).resolves.toEqual({
+      state: "running",
+      agentName: "Eliza",
+      canRespond: true,
+      model: "eliza-1-2b",
+    });
+
+    expect(getAgentStatus).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(
+      "http://agent.example:31337/api/status",
+      expect.any(Object),
+      { timeoutMs: 10_000 },
+    );
+  });
+
+  it("falls back to the RPC snapshot when the /api/status merge fetch is unreachable", async () => {
+    // The readiness merge must never make a running agent LOOK worse: an
+    // unreachable `/api/status` keeps the RPC snapshot rather than throwing.
+    const getAgentStatus = vi.fn(async () => ({
+      state: "running",
+      agentName: "Eliza",
+    }));
+    installDesktopRpc({ getAgentStatus });
+    const request = vi.fn<AgentRequestTransport["request"]>(async () => {
+      throw new Error("network down");
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    await expect(client.getStatus()).resolves.toEqual({
+      state: "running",
+      agentName: "Eliza",
+    });
+
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not merge /api/status for a non-running desktop RPC snapshot", async () => {
+    // Only a running-but-unconfirmed process needs the readiness backfill; a
+    // starting/error snapshot is authoritative and must not trigger an HTTP
+    // probe (which would 404/throw during boot).
+    const getAgentStatus = vi.fn(async () => ({
+      state: "starting",
+      agentName: "Eliza",
+    }));
+    installDesktopRpc({ getAgentStatus });
+    const { client, request } = makeClientWithTransport({
+      "/api/status": { state: "running", canRespond: true },
+    });
+
+    await expect(client.getStatus()).resolves.toEqual({
+      state: "starting",
       agentName: "Eliza",
     });
 
