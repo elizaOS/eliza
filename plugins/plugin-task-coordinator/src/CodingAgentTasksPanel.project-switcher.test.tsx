@@ -89,15 +89,17 @@ const PROJECT_A = {
   localPath: "/home/dev/alpha",
   lastOpenedAt: "2026-07-05T00:00:00.000Z",
 };
+const PROJECT_B = {
+  id: "proj-b",
+  name: "Beta",
+  localPath: "/home/dev/beta",
+  lastOpenedAt: "2026-07-04T00:00:00.000Z",
+};
 
 describe("CodingAgentTasksPanel project switcher integration", () => {
   beforeEach(() => {
     calls.listProjects.mockReset();
     calls.listCodingAgentTaskThreads.mockReset();
-    calls.listProjects.mockResolvedValue({
-      projects: [PROJECT_A],
-      activeProjectId: "proj-a",
-    });
     calls.listCodingAgentTaskThreads.mockResolvedValue([]);
   });
 
@@ -105,7 +107,11 @@ describe("CodingAgentTasksPanel project switcher integration", () => {
     cleanup();
   });
 
-  it("uses the initially active project for the first task-thread fetch", async () => {
+  it("filters the first task-thread fetch by the active project when ≥2 projects exist", async () => {
+    calls.listProjects.mockResolvedValue({
+      projects: [PROJECT_A, PROJECT_B],
+      activeProjectId: "proj-a",
+    });
     render(<CodingAgentTasksPanel />);
 
     await waitFor(() =>
@@ -115,6 +121,26 @@ describe("CodingAgentTasksPanel project switcher integration", () => {
       includeArchived: false,
       search: undefined,
       projectId: "proj-a",
+      limit: 30,
+    });
+  });
+
+  it("does NOT filter with a single project — the list stays unfiltered like today (#14112)", async () => {
+    calls.listProjects.mockResolvedValue({
+      projects: [PROJECT_A],
+      activeProjectId: "proj-a",
+    });
+    render(<CodingAgentTasksPanel />);
+
+    await waitFor(() =>
+      expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledTimes(1),
+    );
+    // projectId omitted (undefined) → server returns all threads, including
+    // project-unbound ones, identical to the pre-switcher single-project view.
+    expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledWith({
+      includeArchived: false,
+      search: undefined,
+      projectId: undefined,
       limit: 30,
     });
   });

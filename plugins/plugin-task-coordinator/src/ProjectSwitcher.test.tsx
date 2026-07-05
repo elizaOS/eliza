@@ -5,8 +5,9 @@
 // items are always in the DOM for assertions). Proves: it renders one row per
 // registered project with the active one marked, initial load reports the
 // active project to the host, selecting a row calls client.activateProject and
-// fires onActiveProjectChange with the new id, empty registry self-hides, and
-// registry/switch failures render visible error states.
+// fires onActiveProjectChange with the new id, the degenerate zero/one-project
+// case self-hides and reports null (unfiltered, exactly like pre-switcher
+// builds — #14112), and registry/switch failures render visible error states.
 
 import {
   cleanup,
@@ -183,6 +184,26 @@ describe("ProjectSwitcher", () => {
     expect(screen.queryByTestId("project-switcher-menu")).toBeNull();
     expect(screen.queryByTestId("project-switcher-trigger")).toBeNull();
     expect(container.textContent).toBe("");
+  });
+
+  it("self-hides with a single project and reports null so the list stays unfiltered (#14112)", async () => {
+    calls.listProjects.mockResolvedValue({
+      projects: [PROJECT_A],
+      activeProjectId: "proj-a",
+    });
+    const onChange = vi.fn();
+    const { container } = render(
+      <ProjectSwitcher onActiveProjectChange={onChange} />,
+    );
+    // The degenerate single-project case must look exactly like pre-switcher
+    // builds: no chrome rendered, and the host told to NOT filter (null), so
+    // project-unbound tasks stay visible.
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
+    expect(screen.queryByTestId("project-switcher-menu")).toBeNull();
+    expect(screen.queryByTestId("project-switcher-trigger")).toBeNull();
+    expect(container.textContent).toBe("");
+    // Never leaks the single project's id as a filter.
+    expect(onChange).not.toHaveBeenCalledWith("proj-a");
   });
 
   it("renders a visible unavailable state when the registry load fails", async () => {

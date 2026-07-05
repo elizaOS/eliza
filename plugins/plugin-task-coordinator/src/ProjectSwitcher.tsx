@@ -10,8 +10,14 @@
  * neutral "All projects" label when none is active), matching the task panel's
  * header chrome — design tokens only (no raw hex, no purple/blue, no
  * backdrop-blur), a single lucide folder glyph, and a check mark on the active
- * row. When the registry is empty (mobile/web or a fresh install) the switcher
- * self-hides so it never renders a dead control.
+ * row.
+ *
+ * The switcher self-hides in the degenerate case of zero or one project
+ * (#14112): most users only ever open a single workspace folder, and a control
+ * with nothing to switch *between* is dead chrome — the single-project panel
+ * header must stay identical to pre-switcher builds. It appears only once a
+ * second project is registered. In the hidden case it reports a `null`
+ * projectId to the host so the task list stays unfiltered exactly like today.
  */
 import {
   Button,
@@ -77,7 +83,11 @@ export function ProjectSwitcher({
           loading: false,
           error: null,
         }));
-        onActiveProjectChange?.(activeProjectId);
+        // With 0 or 1 project the switcher is hidden (see the render guard), so
+        // the task list must behave exactly like today: unfiltered, including
+        // project-unbound tasks. Only report a filtering projectId once there
+        // are ≥2 projects to switch between (#14112).
+        onActiveProjectChange?.(projects.length > 1 ? activeProjectId : null);
       } catch (error) {
         if (signal.cancelled) return;
         setState((prev) => ({
@@ -165,9 +175,13 @@ export function ProjectSwitcher({
     );
   }
 
-  // Hide entirely when there are no registered projects — a switcher with
-  // nothing to switch to is dead chrome (mobile/web, or a fresh install).
-  if (state.projects.length === 0) {
+  // Hide entirely in the degenerate case of zero or one registered project: a
+  // switcher with nothing to switch *between* is dead chrome. This keeps the
+  // single-project experience byte-identical to pre-switcher builds (#14112) —
+  // most users only ever open one workspace folder, so the panel header must
+  // stay unchanged for them; the switcher only earns its place once a second
+  // project exists to switch to (mobile/web with no registry also lands here).
+  if (state.projects.length <= 1) {
     return null;
   }
 
