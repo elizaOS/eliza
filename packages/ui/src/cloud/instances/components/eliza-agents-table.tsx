@@ -57,7 +57,7 @@ import {
   statusBadgeColor,
   statusDotColor,
 } from "../lib/sandbox-status";
-import { useJobPoller } from "../lib/use-job-poller";
+import { type TrackedJob, useJobPoller } from "../lib/use-job-poller";
 import {
   type SandboxListAgent,
   useSandboxListPoll,
@@ -191,6 +191,86 @@ function getRuntimeKind(
     return "sandbox";
   }
   return "notProvisioned";
+}
+
+/**
+ * Per-row values the desktop table row and the mobile card both derive from a
+ * row + poller state. Computed once per row via `buildAgentRowViewModel` so
+ * the two layouts render from the same facts and cannot drift.
+ */
+interface AgentRowViewModel {
+  isDocker: boolean;
+  runtimeKind: ReturnType<typeof getRuntimeKind>;
+  trackedJob: TrackedJob | undefined;
+  isProvisioningActive: boolean;
+  displayStatus: string;
+  busy: boolean;
+  canStart: boolean;
+  canStop: boolean;
+  hasStandaloneWebUi: boolean;
+}
+
+function buildAgentRowViewModel(
+  sb: ElizaAgentRow,
+  poller: {
+    getStatus: (key: string) => TrackedJob | undefined;
+    isActive: (key: string) => boolean;
+  },
+  actionInProgress: string | null,
+): AgentRowViewModel {
+  const isProvisioningActive = poller.isActive(sb.id);
+  const displayStatus = isProvisioningActive ? "provisioning" : sb.status;
+  const busy = actionInProgress === sb.id || isProvisioningActive;
+  return {
+    isDocker: isDockerBacked(sb),
+    runtimeKind: getRuntimeKind(sb),
+    trackedJob: poller.getStatus(sb.id),
+    isProvisioningActive,
+    displayStatus,
+    busy,
+    canStart:
+      ["stopped", "error", "pending", "disconnected"].includes(displayStatus) &&
+      !busy,
+    canStop: displayStatus === "running" && !busy,
+    hasStandaloneWebUi:
+      displayStatus === "running" &&
+      sb.execution_tier !== "shared" &&
+      Boolean(sb.canonical_web_ui_url),
+  };
+}
+
+/**
+ * Docker/Shared/Sandbox execution-kind chip (icon + label) rendered next to
+ * the agent name in both the desktop row and the mobile card.
+ */
+function RuntimeKindLabel({
+  sb,
+  isDocker,
+}: {
+  sb: ElizaAgentRow;
+  isDocker: boolean;
+}) {
+  const t = useT();
+  return (
+    <span className="inline-flex items-center gap-1 text-2xs text-muted">
+      {isDocker ? (
+        <Server className="h-2.5 w-2.5" />
+      ) : (
+        <Cloud className="h-2.5 w-2.5" />
+      )}
+      {isDocker
+        ? t("cloud.elizaAgentsTable.docker", {
+            defaultValue: "Docker",
+          })
+        : sb.execution_tier === "shared"
+          ? t("cloud.elizaAgentsTable.shared", {
+              defaultValue: "Shared",
+            })
+          : t("cloud.elizaAgentsTable.sandbox", {
+              defaultValue: "Sandbox",
+            })}
+    </span>
+  );
 }
 
 function StatusCell({
@@ -906,23 +986,17 @@ export function ElizaAgentsTable({
                 </TableRow>
               ) : (
                 filtered.map((sb) => {
-                  const isDocker = isDockerBacked(sb);
-                  const trackedJob = poller.getStatus(sb.id);
-                  const isProvisioningActive = poller.isActive(sb.id);
-                  const displayStatus = isProvisioningActive
-                    ? "provisioning"
-                    : sb.status;
-                  const busy =
-                    actionInProgress === sb.id || isProvisioningActive;
-                  const canStart =
-                    ["stopped", "error", "pending", "disconnected"].includes(
-                      displayStatus,
-                    ) && !busy;
-                  const canStop = displayStatus === "running" && !busy;
-                  const hasStandaloneWebUi =
-                    displayStatus === "running" &&
-                    sb.execution_tier !== "shared" &&
-                    Boolean(sb.canonical_web_ui_url);
+                  const {
+                    isDocker,
+                    runtimeKind,
+                    trackedJob,
+                    isProvisioningActive,
+                    displayStatus,
+                    busy,
+                    canStart,
+                    canStop,
+                    hasStandaloneWebUi,
+                  } = buildAgentRowViewModel(sb, poller, actionInProgress);
 
                   return (
                     <TableRow
@@ -956,24 +1030,7 @@ export function ElizaAgentsTable({
                             <AgentCostBadge status={displayStatus} />
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 text-2xs text-muted">
-                              {isDocker ? (
-                                <Server className="h-2.5 w-2.5" />
-                              ) : (
-                                <Cloud className="h-2.5 w-2.5" />
-                              )}
-                              {isDocker
-                                ? t("cloud.elizaAgentsTable.docker", {
-                                    defaultValue: "Docker",
-                                  })
-                                : sb.execution_tier === "shared"
-                                  ? t("cloud.elizaAgentsTable.shared", {
-                                      defaultValue: "Shared",
-                                    })
-                                  : t("cloud.elizaAgentsTable.sandbox", {
-                                      defaultValue: "Sandbox",
-                                    })}
-                            </span>
+                            <RuntimeKindLabel sb={sb} isDocker={isDocker} />
                             <span className="text-2xs text-muted font-mono tabular-nums">
                               {sb.id.slice(0, 8)}
                             </span>
@@ -992,15 +1049,15 @@ export function ElizaAgentsTable({
 
                       <TableCell>
                         <span className="text-xs text-muted-strong">
-                          {getRuntimeKind(sb) === "managed"
+                          {runtimeKind === "managed"
                             ? t("cloud.elizaAgentsTable.managedRuntime", {
                                 defaultValue: "Managed runtime",
                               })
-                            : getRuntimeKind(sb) === "shared"
+                            : runtimeKind === "shared"
                               ? t("cloud.elizaAgentsTable.sharedRuntime", {
                                   defaultValue: "Shared runtime",
                                 })
-                              : getRuntimeKind(sb) === "sandbox"
+                              : runtimeKind === "sandbox"
                                 ? t("cloud.elizaAgentsTable.cloudSandbox", {
                                     defaultValue: "Cloud sandbox",
                                   })
@@ -1172,22 +1229,16 @@ export function ElizaAgentsTable({
             </div>
           ) : (
             filtered.map((sb) => {
-              const isDocker = isDockerBacked(sb);
-              const trackedJob = poller.getStatus(sb.id);
-              const isProvisioningActive = poller.isActive(sb.id);
-              const displayStatus = isProvisioningActive
-                ? "provisioning"
-                : sb.status;
-              const busy = actionInProgress === sb.id || isProvisioningActive;
-              const canStart =
-                ["stopped", "error", "pending", "disconnected"].includes(
-                  displayStatus,
-                ) && !busy;
-              const canStop = displayStatus === "running" && !busy;
-              const hasStandaloneWebUi =
-                displayStatus === "running" &&
-                sb.execution_tier !== "shared" &&
-                Boolean(sb.canonical_web_ui_url);
+              const {
+                isDocker,
+                trackedJob,
+                isProvisioningActive,
+                displayStatus,
+                busy,
+                canStart,
+                canStop,
+                hasStandaloneWebUi,
+              } = buildAgentRowViewModel(sb, poller, actionInProgress);
 
               return (
                 <div
@@ -1207,24 +1258,7 @@ export function ElizaAgentsTable({
                       </a>
                       <AgentCostBadge status={displayStatus} />
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-2xs text-muted">
-                          {isDocker ? (
-                            <Server className="h-2.5 w-2.5" />
-                          ) : (
-                            <Cloud className="h-2.5 w-2.5" />
-                          )}
-                          {isDocker
-                            ? t("cloud.elizaAgentsTable.docker", {
-                                defaultValue: "Docker",
-                              })
-                            : sb.execution_tier === "shared"
-                              ? t("cloud.elizaAgentsTable.shared", {
-                                  defaultValue: "Shared",
-                                })
-                              : t("cloud.elizaAgentsTable.sandbox", {
-                                  defaultValue: "Sandbox",
-                                })}
-                        </span>
+                        <RuntimeKindLabel sb={sb} isDocker={isDocker} />
                         <span className="text-2xs text-muted font-mono tabular-nums">
                           {sb.id.slice(0, 8)}
                         </span>
