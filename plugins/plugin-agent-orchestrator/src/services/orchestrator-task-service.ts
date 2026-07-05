@@ -3763,8 +3763,9 @@ export class OrchestratorTaskService extends Service {
       try {
         await this.spawnAgentForTask(head.taskId, {
           ...admission.spawnOpts,
-          approvalPreset: admission.spawnOpts
-            .approvalPreset as ApprovalPreset | undefined,
+          approvalPreset: admission.spawnOpts.approvalPreset as
+            | ApprovalPreset
+            | undefined,
         });
       } catch (err) {
         if (err instanceof SessionCapError) {
@@ -3780,11 +3781,9 @@ export class OrchestratorTaskService extends Service {
         // reason (bad workdir, transport error). Report it so the agent/owner
         // sees the parked task did not launch; do not silently drop or re-park
         // forever (that would spin the reconcile tick).
-        this.runtime.reportError(
-          "OrchestratorTask.drainAdmissionQueue",
-          err,
-          { taskId: head.taskId },
-        );
+        this.runtime.reportError("OrchestratorTask.drainAdmissionQueue", err, {
+          taskId: head.taskId,
+        });
       }
     }
   }
@@ -3820,7 +3819,10 @@ export class OrchestratorTaskService extends Service {
       if (!taskId) continue;
       const doc = await this.store.getTask(taskId);
       if (!doc || !TERMINAL_TASK_STATUSES.has(doc.task.status)) continue;
-      candidates.push({ id: session.id, createdAt: session.createdAt.getTime() });
+      candidates.push({
+        id: session.id,
+        createdAt: session.createdAt.getTime(),
+      });
     }
     if (candidates.length === 0) return false;
     candidates.sort((a, b) => a.createdAt - b.createdAt);
@@ -3836,11 +3838,9 @@ export class OrchestratorTaskService extends Service {
       // error-policy:J7 idle-reclaim is a best-effort starvation guard; a failed
       // stop is reported (so a wedged session is visible) but must not abort the
       // drain — the reconcile tick retries.
-      this.runtime.reportError(
-        "OrchestratorTask.reclaimIdleSession",
-        err,
-        { sessionId: victim.id },
-      );
+      this.runtime.reportError("OrchestratorTask.reclaimIdleSession", err, {
+        sessionId: victim.id,
+      });
       return false;
     }
   }

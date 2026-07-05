@@ -274,7 +274,10 @@ async function readAdmissionSnapshot(
   const orchestrator = runtime.getService<Service & AdmissionSnapshotService>(
     ORCHESTRATOR_TASK_SERVICE_TYPE,
   );
-  if (!orchestrator || typeof orchestrator.getAdmissionSnapshot !== "function") {
+  if (
+    !orchestrator ||
+    typeof orchestrator.getAdmissionSnapshot !== "function"
+  ) {
     return null;
   }
   try {
@@ -305,7 +308,9 @@ function emptyResult(
   admission: AdmissionSnapshot | null = null,
 ) {
   const capacityLine = formatCapacityLine(capacity, admission);
-  const text = capacityLine ? `## Active sub-agent sessions\n${capacityLine}` : "";
+  const text = capacityLine
+    ? `## Active sub-agent sessions\n${capacityLine}`
+    : "";
   return {
     text,
     values: { activeSubAgents: text },

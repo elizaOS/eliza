@@ -400,6 +400,7 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
   const activeSessionCount = doc.sessions.filter(
     (session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
   ).length;
+  const admission = deriveAdmission(doc);
   return {
     id: doc.task.id,
     title: doc.task.title,
@@ -422,7 +423,7 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     updatedAt: doc.task.updatedAt,
     closedAt: doc.task.closedAt ?? null,
     archivedAt: doc.task.archivedAt ?? null,
-    ...(deriveAdmission(doc) ? { admission: deriveAdmission(doc)! } : {}),
+    ...(admission ? { admission } : {}),
   };
 }
 
