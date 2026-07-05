@@ -23,7 +23,7 @@ import {
   User,
 } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import {
   DashboardHeader,
   DashboardShellLayout,
@@ -144,6 +144,18 @@ export function ConsoleShell({
   const session = useRequireAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), []);
+
+  // A dead session must SEND THE USER TO LOGIN, not render the console with
+  // every query gated off — that state reads as a fake-empty account ("No
+  // agents yet", balance "—") and is indistinguishable from real data loss
+  // (#13709: expired staging session showed exactly that). returnTo brings
+  // them straight back after re-auth.
+  if (session.ready && !session.authenticated) {
+    const returnTo = encodeURIComponent(
+      `${location.pathname}${location.search}`,
+    );
+    return <Navigate to={`/login?returnTo=${returnTo}`} replace />;
+  }
 
   return (
     <PageHeaderProvider>

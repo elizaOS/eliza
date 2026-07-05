@@ -7,20 +7,20 @@
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const sessionState = {
+  ready: true,
+  authenticated: true,
+  user: { id: "u1", email: "qa@e.test" } as {
+    id: string;
+    email: string;
+  } | null,
+};
 vi.mock("../lib/use-session-auth", () => ({
-  useRequireAuth: () => ({
-    ready: true,
-    authenticated: true,
-    user: { id: "u1", email: "qa@e.test" },
-  }),
-  useSessionAuth: () => ({
-    ready: true,
-    authenticated: true,
-    user: { id: "u1", email: "qa@e.test" },
-  }),
+  useRequireAuth: () => sessionState,
+  useSessionAuth: () => sessionState,
 }));
 
 import {
@@ -77,7 +77,11 @@ function TitledInner() {
 }
 
 describe("ConsoleShell", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    sessionState.ready = true;
+    sessionState.authenticated = true;
+  });
 
   it("renders the sidebar directory, the page body, and the captured page title", () => {
     render(
@@ -143,5 +147,26 @@ describe("ConsoleShell", () => {
     expect(
       screen.getByRole("link", { name: /Account/i }).getAttribute("href"),
     ).toBe("/dashboard/account");
+  });
+
+  it("redirects to /login (returnTo preserved) when the session dies — never a fake-empty console (#13709)", () => {
+    sessionState.authenticated = false;
+    render(
+      <MemoryRouter initialEntries={["/dashboard/agents?x=1"]}>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route
+            path="*"
+            element={
+              <ConsoleShell>
+                <TitledPage />
+              </ConsoleShell>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("page-body")).toBeNull();
   });
 });
