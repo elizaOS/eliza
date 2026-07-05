@@ -7,6 +7,8 @@
 // asserting against a mock.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { SurfaceManifest } from "@elizaos/core";
+import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
@@ -22,6 +24,8 @@ import {
   hostImport,
   isSameOriginBundleUrl,
 } from "./DynamicViewLoader";
+import { sandboxStorageKey } from "./SandboxedViewFrame";
+import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";
 
 describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   it("accepts same-origin and root-relative /api/views bundle URLs", () => {
@@ -105,6 +109,40 @@ vi.mock("../../api", () => ({
   client: { sendWsMessage },
 }));
 
+const SANDBOXED_SURFACE: SurfaceManifest = {
+  isolation: "sandboxed-iframe",
+  capabilities: ["navigate", "storage"],
+};
+
+function postSandboxRequestFromFrame(
+  frameWindow: Window,
+  capability: string,
+  payload: unknown,
+  requestId: string,
+) {
+  const event = new MessageEvent("message", {
+    data: {
+      channel: SANDBOXED_VIEW_CHANNEL,
+      kind: "request",
+      requestId,
+      capability,
+      payload,
+    },
+  });
+  Object.defineProperty(event, "source", { value: frameWindow });
+  window.dispatchEvent(event);
+}
+
+function lastSandboxResponse(postSpy: ReturnType<typeof vi.spyOn>) {
+  const calls = postSpy.mock.calls;
+  return calls[calls.length - 1]?.[0] as {
+    requestId: string;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  };
+}
+
 describe("DynamicViewLoader", () => {
   beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, "innerText", {
@@ -119,6 +157,7 @@ describe("DynamicViewLoader", () => {
         escape: (value: string) => value.replaceAll('"', '\\"'),
       },
     });
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -130,6 +169,7 @@ describe("DynamicViewLoader", () => {
     vi.unstubAllGlobals();
     vi.clearAllTimers();
     vi.useRealTimers();
+    window.localStorage.clear();
   });
 
   it("imports absolute remote bundleUrl directly", async () => {
@@ -148,6 +188,98 @@ describe("DynamicViewLoader", () => {
     expect(importBundle).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/views/remote.panel/bundle.js"),
     );
+  });
+
+  it("renders sandboxed dynamic views from frameUrl and brokers opaque-frame requests", async () => {
+    const bundleUrl = "/api/views/sandboxed-plugin/bundle.js";
+    const frameUrl = "/api/views/sandboxed-plugin/frame.html";
+    const importBundle = vi.fn(async () => ({
+      default: function ShouldNotLoadInHostRealm() {
+        return <div>incorrect host realm load</div>;
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+    const navSpy = vi.fn();
+    window.addEventListener(NAVIGATE_VIEW_EVENT, navSpy);
+
+    render(
+      <DynamicViewLoader
+        bundleUrl={bundleUrl}
+        frameUrl={frameUrl}
+        viewId="sandboxed-plugin"
+        surface={SANDBOXED_SURFACE}
+      />,
+    );
+
+    const iframe = screen.getByTestId(
+      "sandboxed-view-frame-sandboxed-plugin",
+    ) as HTMLIFrameElement;
+    expect(iframe.getAttribute("src")).toBe(frameUrl);
+    expect(iframe.getAttribute("src")).not.toBe(bundleUrl);
+    expect(importBundle).not.toHaveBeenCalled();
+
+    const frameWindow = iframe.contentWindow;
+    if (!frameWindow) throw new Error("iframe contentWindow missing in jsdom");
+    const postSpy = vi
+      .spyOn(frameWindow, "postMessage")
+      .mockImplementation(() => {});
+
+    postSandboxRequestFromFrame(
+      frameWindow,
+      "storage",
+      { op: "set", key: "draft", value: "opaque-doc" },
+      "req-store",
+    );
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(1));
+    expect(lastSandboxResponse(postSpy)).toMatchObject({
+      requestId: "req-store",
+      ok: true,
+    });
+    expect(
+      window.localStorage.getItem(
+        sandboxStorageKey("sandboxed-plugin", "draft"),
+      ),
+    ).toBe("opaque-doc");
+    expect(window.localStorage.getItem("draft")).toBeNull();
+
+    postSandboxRequestFromFrame(
+      frameWindow,
+      "navigate",
+      { viewId: "chat" },
+      "req-nav",
+    );
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2));
+    expect(lastSandboxResponse(postSpy)).toMatchObject({
+      requestId: "req-nav",
+      ok: true,
+    });
+    await waitFor(() => expect(navSpy).toHaveBeenCalledTimes(1));
+    expect((navSpy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({
+      viewId: "chat",
+    });
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navSpy);
+  });
+
+  it("fails closed when a sandboxed dynamic view has no framed document URL", () => {
+    const importBundle = vi.fn(async () => ({
+      default: function ShouldNotLoadInHostRealm() {
+        return <div>incorrect host realm load</div>;
+      },
+    }));
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = importBundle;
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="/api/views/missing-doc/bundle.js"
+        viewId="missing-doc"
+        surface={{ isolation: "sandboxed-iframe" }}
+      />,
+    );
+
+    expect(screen.getByText("Failed to load view")).toBeTruthy();
+    expect(screen.getByText(/require a frameUrl/)).toBeTruthy();
+    expect(screen.queryByTestId("sandboxed-view-frame-missing-doc")).toBeNull();
+    expect(importBundle).not.toHaveBeenCalled();
   });
 
   it("registers remote view interact handlers after the bundle loads", async () => {
