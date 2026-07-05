@@ -10,16 +10,18 @@ name: Chat shell gestures
 # runs the boot-free coverage gate that fails when a gesture-handler site lacks a
 # matrix row, and uploads every runner's video + screenshots.
 #
-# Two shell runners are intentionally NOT in this lane:
+# One shell runner is intentionally NOT in this lane:
 #   - run-fused-wake-integration-e2e drives the REAL native desktop wake producer
 #     (libwakeword + the wakeword-cpp build), which this lane does not compile
 #     (install-native-deps:false) — it self-skips without the lib, so it lives in
 #     the native-desktop build lane.
-#   - run-perf-gate-e2e has a PRE-EXISTING CLS-gate failure (the perf-gate fixture
-#     layout shifts 0.80 during scroll+swipe — reproduces identically on develop
-#     before this issue's migration; its frame-budget checks pass). It is tracked
-#     independently of #12188; adding it here would red the lane over an unrelated
-#     bug. The overlay perf frame budget is still gated below via chat-perf-gate.
+#
+# run-perf-gate-e2e USED to be excluded here for a CLS 0.80 failure, but that
+# shift was the conversation-swipe layout thrash: #13531 removed swipe (one
+# infinite thread) and #13826 retargeted the gate onto scroll + maximize/restore,
+# so CLS is now 0.0000 on develop (stable across runs, not timing-flaky). It is
+# re-enabled below (#14333) — CLS is structural so it will not flake on slower
+# fleet hardware, and the frame budget carries ~3x margin (p95 ~10ms ≤ 33ms).
 #
 # Path-gated to packages/ui (and the app-side gate + matrix) so it only runs when
 # the surface it covers changes. The e2e runners bundle the fixtures with esbuild
@@ -184,6 +186,13 @@ jobs:
       # layout-stability detectors, hard-fail on dropped-frame % / p95 / CLS.
       - name: Chat overlay perf gate
         run: bun run --cwd packages/ui test:chat-perf-gate
+
+      # Scroll + maximize/restore perf gate over the REAL overlay (#9954 item 5,
+      # retargeted off the removed swipe path by #13826). Hard-fails on
+      # dropped-frame % / p95 frame time / CLS ≤ 0.1. Re-enabled in this lane by
+      # #14333 now that the swipe-CLS 0.80 is gone (CLS 0.0000 on develop).
+      - name: Chat overlay scroll/maximize perf gate
+        run: bun run --cwd packages/ui test:perf-gate-e2e
 
       # #9142 Part 2: capture a dense CDP frame burst across the pill→open spring
       # (animations ON) and run the single-frame-flash + two-pills-crossfade
