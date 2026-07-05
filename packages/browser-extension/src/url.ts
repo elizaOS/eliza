@@ -80,6 +80,7 @@ export function normalizeNavigableUrl(
     }
     return parsed.toString();
   } catch {
+    // error-policy:J3 untrusted query-string input resolves to an explicit invalid navigation target.
     return null;
   }
 }
