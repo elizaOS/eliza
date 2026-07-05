@@ -395,14 +395,22 @@ async function installDeleteConversationRoutes(
   );
 }
 
-async function openDeleteThread(page: Page): Promise<void> {
+/**
+ * Open the thread and wait for a stable message to render. `waitFor` defaults to
+ * the always-present KEEP message so this works both before AND after a delete
+ * (the target message is gone after deletion + reload).
+ */
+async function openDeleteThread(
+  page: Page,
+  waitFor: string = DELETE_KEEP_TEXT,
+): Promise<void> {
   const overlay = page.getByTestId("continuous-chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await page.getByTestId("chat-sheet-grabber").click();
   await expect(overlay).toHaveAttribute("data-open", "true", {
     timeout: 15_000,
   });
-  await expect(page.getByText(DELETE_TARGET_TEXT)).toBeVisible({
+  await expect(page.getByText(waitFor)).toBeVisible({
     timeout: 15_000,
   });
 }
