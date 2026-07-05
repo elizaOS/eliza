@@ -22,6 +22,7 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   PREMADE_VOICES,
+  readAliasedEnv,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
 import { getCompatApiToken } from "./auth.ts";
@@ -354,7 +355,7 @@ export function deriveFirstRunReplayBody(body: Record<string, unknown>): {
  * `ensureAuthSessionOrBootstrap`.
  */
 export function isCloudProvisioned(): boolean {
-  const hasCloudFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  const hasCloudFlag = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 
   const hasCloudApiKeyProvisioning =
     process.env.ELIZAOS_CLOUD_ENABLED === "true" &&

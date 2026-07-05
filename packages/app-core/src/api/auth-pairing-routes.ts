@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { AuthStore } from "../services/auth-store";
 import {
   createMachineSession,
@@ -75,7 +76,7 @@ export function _resetAuthPairingStateForTests(): void {
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+    readAliasedEnv("ELIZA_PAIRING_DISABLED") !== "1" &&
     !isCloudProvisioned()
   );
 }

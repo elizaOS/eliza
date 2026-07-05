@@ -176,6 +176,7 @@ import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 const _require = createRequire(import.meta.url);
 
 import {
+  readAliasedEnv,
   syncAppEnvToEliza,
   syncElizaEnvAliases,
 } from "@elizaos/shared/utils/env";
@@ -261,8 +262,8 @@ function resolveCompatConfigPaths(): {
   elizaConfigPath?: string;
   appConfigPath?: string;
 } {
-  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
-  const hasStateOverride = Boolean(process.env.ELIZA_STATE_DIR?.trim());
+  const explicitConfig = readAliasedEnv("ELIZA_CONFIG_PATH");
+  const hasStateOverride = Boolean(readAliasedEnv("ELIZA_STATE_DIR"));
   const configPath =
     explicitConfig ||
     (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);

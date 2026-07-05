@@ -5,17 +5,29 @@
  * full API runtime dependency graph.
  */
 
+import {
+  resolveAllowedOrigins,
+  resolveDesktopApiPort,
+  resolveUiPort,
+} from "@elizaos/shared/runtime-env";
+import { readAliasedEnv } from "@elizaos/shared/utils/env";
+
 /**
  * Build the set of localhost ports allowed for CORS.
  * Reads from env vars at call time so tests can override.
+ *
+ * Ports resolve through the alias-aware readers so a branded deployment's
+ * `<PREFIX>_API_PORT` / `<PREFIX>_UI_PORT` / `<PREFIX>_GATEWAY_PORT` /
+ * `<PREFIX>_HOME_PORT` are honoured without the `syncBrandEnvToEliza` mirror
+ * mutation, with the canonical `ELIZA_*` key still winning when present (#13422).
  */
 export function buildCorsAllowedPorts(): Set<string> {
   const ports = new Set([
-    String(process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337"),
-    String(process.env.ELIZA_UI_PORT || process.env.ELIZA_PORT || ""),
+    String(resolveDesktopApiPort(process.env)),
+    String(resolveUiPort(process.env)),
     String(process.env.ELIZA_PORT ?? "2138"),
-    String(process.env.ELIZA_GATEWAY_PORT ?? "18789"),
-    String(process.env.ELIZA_HOME_PORT ?? "2142"),
+    String(readAliasedEnv("ELIZA_GATEWAY_PORT") ?? "18789"),
+    String(readAliasedEnv("ELIZA_HOME_PORT") ?? "2142"),
   ]);
   // Electrobun renderer static server picks a free port in the 5174–5200
   // range. Allow the full range so cross-origin fetches from WKWebView
@@ -31,19 +43,17 @@ export function buildCorsAllowedPorts(): Set<string> {
  * way to allow non-loopback hosts.
  */
 export function getAllowedRemoteOrigins(): Set<string> {
-  const raw = process.env.ELIZA_ALLOWED_ORIGINS ?? "";
+  // `resolveAllowedOrigins` reads `ELIZA_ALLOWED_ORIGINS` (and the `CORS_ORIGINS`
+  // fallback) alias-aware, already split/trimmed/filtered, so a branded
+  // `<PREFIX>_ALLOWED_ORIGINS` resolves without the mirror mutation (#13422).
   return new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((origin) => {
-        try {
-          return originString(new URL(origin));
-        } catch {
-          return origin;
-        }
-      }),
+    resolveAllowedOrigins(process.env).map((origin) => {
+      try {
+        return originString(new URL(origin));
+      } catch {
+        return origin;
+      }
+    }),
   );
 }
 

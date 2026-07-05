@@ -118,7 +118,7 @@ console.log(
 );
 
 const port = resolveDesktopApiPort(process.env);
-const hadUserApiTokenInEnv = !!process.env.ELIZA_API_TOKEN?.trim();
+const hadUserApiTokenInEnv = !!resolveApiToken(process.env);
 
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;
