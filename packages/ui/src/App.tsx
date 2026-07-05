@@ -10,7 +10,9 @@ import {
   type AppShellBackgroundPolicy,
   type EnabledViewKinds,
   isViewVisible,
+  type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
+  resolveSurfaceManifest,
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
@@ -32,6 +34,7 @@ import {
   type ActiveViewLayout,
   createNavigateViewHandler,
   type NavigateViewDetail,
+  navigateBrowserPath,
 } from "./app-navigate-view";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
@@ -126,6 +129,10 @@ import { isShellPaintable } from "./state/startup-coordinator";
 import { firstRunOwnsLoginSurface } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
+import {
+  SurfaceRealmScope,
+  setActiveSurfaceRealmScope,
+} from "./surface-realm-broker";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
@@ -905,6 +912,114 @@ function useActiveScreenBackgroundPolicy({
   return useMemo(() => {
     void registryVersion;
     return resolveActiveScreenBackgroundPolicy({
+      tab,
+      navigationPath,
+      availableViews,
+      viewLayout,
+    });
+  }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
+}
+
+/**
+ * The active view's identity + resolved surface manifest — the same registration
+ * the background resolver above reads, resolved through the SAME
+ * {@link resolveSurfaceManifest} so there is one policy source. Drives the
+ * in-process host-realm broker (#14179): the shell scopes the active view's
+ * storage/navigation/DOM mutations from this manifest exactly as it derives the
+ * background from it.
+ */
+interface ActiveViewSurface {
+  manifest: ResolvedSurfaceManifest;
+  viewId: string;
+}
+
+function resolveActiveViewSurface({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): ActiveViewSurface {
+  // A split/tile layout or an unregistered builtin route has no manifest bearer;
+  // it resolves to the safe default (no grants) — the default-deny baseline.
+  if (viewLayout) {
+    return {
+      manifest: resolveSurfaceManifest(null),
+      viewId: `layout:${viewLayout.viewIds.join("+") || tab}`,
+    };
+  }
+
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (appShellPageForRoute) {
+    return {
+      manifest: resolveSurfaceManifest(appShellPageForRoute),
+      viewId: appShellPageForRoute.id,
+    };
+  }
+
+  const appSlug =
+    tab === "apps" || tab === "views"
+      ? getAppSlugFromPath(navigationPath)
+      : null;
+  const remoteView = findRemoteViewForRoute(
+    availableViews,
+    navigationPath,
+    tab,
+    appSlug,
+  );
+  if (remoteView) {
+    return {
+      manifest: resolveSurfaceManifest(remoteView),
+      viewId: remoteView.id,
+    };
+  }
+
+  const appShellPageForTab = listAppShellPages().find(
+    (entry) => entry.id === tab,
+  );
+  if (appShellPageForTab) {
+    return {
+      manifest: resolveSurfaceManifest(appShellPageForTab),
+      viewId: appShellPageForTab.id,
+    };
+  }
+
+  const registeredView = availableViews.find(
+    (view) =>
+      view.builtin !== true &&
+      (view.id === tab ||
+        view.path === navigationPath ||
+        view.path === trimmedNavigationPath(navigationPath)),
+  );
+  if (registeredView) {
+    return {
+      manifest: resolveSurfaceManifest(registeredView),
+      viewId: registeredView.id,
+    };
+  }
+
+  return { manifest: resolveSurfaceManifest(null), viewId: tab };
+}
+
+function useActiveViewSurface({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): ActiveViewSurface {
+  const registryVersion = useAppShellPageRegistryVersion();
+  return useMemo(() => {
+    void registryVersion;
+    return resolveActiveViewSurface({
       tab,
       navigationPath,
       availableViews,
@@ -2045,6 +2160,33 @@ export function App() {
     screenBackgroundPolicy === "shared" && !overlayAppSurfaceActive;
   const renderOpaqueAppBackground =
     screenBackgroundPolicy === "opaque" || overlayAppSurfaceActive;
+
+  // In-process host-realm isolation (#14179). Resolve the active view's surface
+  // manifest from the same registry as the background, then publish one broker
+  // scope per active view: storage/navigation gated on the manifest's grants,
+  // and the view's global root/body-class + `:root`-var mutations reset on
+  // teardown so nothing a view injected into the host realm survives into the
+  // next view. `resolveSurfaceManifest` stays the single policy source.
+  const activeViewSurface = useActiveViewSurface({
+    tab,
+    navigationPath,
+    availableViews: availableViewsForDesktopTabs,
+    viewLayout,
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const scope = new SurfaceRealmScope(
+      activeViewSurface.manifest,
+      activeViewSurface.viewId,
+      window.localStorage,
+      navigateBrowserPath,
+    );
+    setActiveSurfaceRealmScope(scope);
+    return () => {
+      scope.resetHostRealm();
+      setActiveSurfaceRealmScope(null);
+    };
+  }, [activeViewSurface]);
 
   const [editingAction, setEditingAction] = useState<
     import("./api").CustomActionDef | null
