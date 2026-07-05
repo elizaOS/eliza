@@ -205,7 +205,7 @@ export function ContainersPageWrapper({
 export function ElizaAgentsPageWrapper({
   children,
 }: DashboardRoutePageWrapperProps) {
-  return <DashboardRoutePage title="Instances">{children}</DashboardRoutePage>;
+  return <DashboardRoutePage title="Agents">{children}</DashboardRoutePage>;
 }
 
 export function AppsEmptyState({ description, action }: AppsEmptyStateProps) {
@@ -269,9 +269,7 @@ export function ContainersEmptyState() {
             )}
           >
             <span className="select-none text-muted">$</span>
-            <code className="flex-1 font-mono text-sm text-txt">
-              {cmd}
-            </code>
+            <code className="flex-1 font-mono text-sm text-txt">{cmd}</code>
             <Button
               variant="ghost"
               type="button"

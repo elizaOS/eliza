@@ -18,6 +18,10 @@ interface AccountPageClientProps {
   user: UserProfile;
 }
 
+function organizationMembershipSuffix(name: string): string {
+  return /\borganization$/i.test(name.trim()) ? "" : " organization";
+}
+
 export function AccountPageClient({ user }: AccountPageClientProps) {
   useSetPageHeader({
     title: "Account",
@@ -30,6 +34,7 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
     (user.wallet_address
       ? `${user.wallet_address.substring(0, 6)}...${user.wallet_address.substring(user.wallet_address.length - 4)}`
       : "User");
+  const organizationName = user.organization?.name?.trim();
 
   return (
     <DashboardPageContainer width="narrow" className="flex flex-col gap-6">
@@ -41,11 +46,11 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
               Welcome back, <span className="font-semibold">{displayName}</span>
               !
             </p>
-            {user.organization?.name && (
+            {organizationName && (
               <p className="text-xs text-muted mt-1">
                 You&apos;re part of{" "}
-                <span className="font-medium">{user.organization.name}</span>{" "}
-                organization
+                <span className="font-medium">{organizationName}</span>
+                {organizationMembershipSuffix(organizationName)}
               </p>
             )}
           </div>

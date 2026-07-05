@@ -787,7 +787,7 @@
   "cloud.agents.detail.webUiPort": "Web UI Port",
   "cloud.agents.loading": "Loading instances",
   "cloud.agents.metaDescription": "View, launch, and manage your instances backed by Eliza Cloud.",
-  "cloud.agents.metaTitle": "Instances",
+  "cloud.agents.metaTitle": "Agents",
   "cloud.analytics.custom": "Custom",
   "cloud.analytics.dataPointsCount": "{{n}} data points",
   "cloud.analytics.filters.aggregation": "Aggregation",
