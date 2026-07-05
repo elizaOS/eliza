@@ -1,6 +1,8 @@
 // Exercises cloud admin onboard docker node.test automation behavior with deterministic script fixtures.
 import { describe, expect, it } from "bun:test";
 import {
+  buildOnboardSshConfig,
+  hostKeyFingerprintForOnboardUpsert,
   parseArgs,
   parseDockerPs,
   selectZombieAgentContainers,
@@ -139,5 +141,72 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--host", "--node-id", "n"], emptyEnv)).toThrow(
       "requires a value",
     );
+  });
+});
+
+describe("host-key pinning helpers", () => {
+  const args = {
+    host: "203.0.113.10",
+    nodeId: "robot-1",
+    keyPath: "/ssh/key",
+    sshPort: 2222,
+    sshUser: "root",
+    capacity: 8,
+    dryRun: false,
+  };
+
+  it("passes an existing docker node pin into the SSH verifier before re-onboard", () => {
+    const onHostKeyDiscovered = async () => {};
+    const config = buildOnboardSshConfig(
+      args,
+      { host_key_fingerprint: "pinned-fingerprint" },
+      onHostKeyDiscovered,
+    );
+
+    expect(config).toEqual({
+      hostname: "203.0.113.10",
+      port: 2222,
+      username: "root",
+      privateKeyPath: "/ssh/key",
+      hostKeyFingerprint: "pinned-fingerprint",
+      onHostKeyDiscovered,
+    });
+  });
+
+  it("uses TOFU only when the existing docker node is unpinned or absent", () => {
+    const onHostKeyDiscovered = async () => {};
+
+    expect(
+      buildOnboardSshConfig(
+        args,
+        { host_key_fingerprint: null },
+        onHostKeyDiscovered,
+      ).hostKeyFingerprint,
+    ).toBeUndefined();
+    expect(
+      buildOnboardSshConfig(args, null, onHostKeyDiscovered).hostKeyFingerprint,
+    ).toBeUndefined();
+  });
+
+  it("never overwrites an established pin with a re-onboard capture", () => {
+    expect(
+      hostKeyFingerprintForOnboardUpsert(
+        { host_key_fingerprint: "pinned-fingerprint" },
+        "attacker-fingerprint",
+      ),
+    ).toBe("pinned-fingerprint");
+  });
+
+  it("persists the captured fingerprint for first onboard or still-unpinned nodes", () => {
+    expect(hostKeyFingerprintForOnboardUpsert(null, "first-pin")).toBe(
+      "first-pin",
+    );
+    expect(
+      hostKeyFingerprintForOnboardUpsert(
+        { host_key_fingerprint: null },
+        "first-pin",
+      ),
+    ).toBe("first-pin");
+    expect(hostKeyFingerprintForOnboardUpsert(null, undefined)).toBeNull();
   });
 });
