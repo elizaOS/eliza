@@ -97,7 +97,7 @@ async function installWalkthroughConversationStore(page: Page): Promise<void> {
   });
 
   await page.route(
-    "**/api/conversations/walkthrough-conversation/messages",
+    "**/api/conversations/walkthrough-conversation/messages**",
     async (route) => {
       if (route.request().method() === "GET") {
         await fulfillJson(route, 200, { messages });
@@ -227,7 +227,9 @@ test.describe("walkthrough capture smoke", () => {
     const onboarding = page.getByTestId("continuous-chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
     await expect(
-      page.getByText("First, where should your agent run?", { exact: false }),
+      page.getByText("Sign in to Eliza Cloud and I'll get you set up.", {
+        exact: false,
+      }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
     await expect(
@@ -235,12 +237,10 @@ test.describe("walkthrough capture smoke", () => {
     ).toBeVisible();
     await expect(
       page.getByTestId("choice-__first_run__:runtime:local"),
-    ).toBeVisible();
-    // Remote (connect to an existing agent) is the third location chip.
+    ).toHaveCount(0);
     await expect(
       page.getByTestId("choice-__first_run__:runtime:remote"),
-    ).toBeVisible();
-    // runtime:other ("Bring your own keys") stays removed as a location (#11509).
+    ).toHaveCount(0);
     await expect(
       page.getByTestId("choice-__first_run__:runtime:other"),
     ).toHaveCount(0);
@@ -253,6 +253,11 @@ test.describe("walkthrough capture smoke", () => {
     await openAppPath(page, "/chat");
     const overlay = page.getByTestId("continuous-chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
+    const setupSkip = page.getByRole("button", { name: "Skip for now" });
+    if (await setupSkip.isVisible().catch(() => false)) {
+      await setupSkip.click();
+      await expect(setupSkip).toBeHidden({ timeout: 10_000 });
+    }
     await captureState(page, testInfo, "walkthrough-02-chat-ready.png");
 
     const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();

@@ -1748,6 +1748,22 @@ function smokeDatabaseQuery(sql: string) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  await page.route("**/build-info.json", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        generatedAt: SMOKE_GENERATED_AT,
+        commit: "ui-smoke",
+        branch: "ui-smoke",
+      }),
+    });
+  });
+
   await page.route(/\/(?:brand|app-heroes)\//, async (route) => {
     if (await fulfillPublicAsset(route)) return;
     await route.fallback();

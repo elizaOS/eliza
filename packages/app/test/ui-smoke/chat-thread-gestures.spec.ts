@@ -11,9 +11,10 @@
 //   3. ArrowDown on the restore zone → same restore path (WCAG 2.1.1 operable).
 //   4. Escape from MAXIMIZED collapses the WHOLE sheet (not a restore) — the
 //      documented back/Escape semantics.
-//   5. REMOVAL guards: no `chat-full-clear` / `chat-full-maximize` control
-//      anywhere, and a horizontal drag on the OPEN thread does NOT switch
-//      conversations (swipe-to-switch removed; `swipeEnabled: !sheetOpen`).
+//   5. Header contract: the live new-chat control remains present, the removed
+//      maximize button stays absent, and a horizontal drag on the OPEN thread
+//      does NOT switch conversations (swipe-to-switch removed;
+//      `swipeEnabled: !sheetOpen`).
 //
 // The conversation is mocked statefully at the network layer for determinism.
 // Record a video with E2E_RECORD=1.
@@ -98,7 +99,7 @@ async function installConversationRoutes(page: Page): Promise<void> {
   });
 
   await page.route(
-    `**/api/conversations/${CONVERSATION_ID}/messages`,
+    `**/api/conversations/${CONVERSATION_ID}/messages**`,
     async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
@@ -149,6 +150,45 @@ async function pointerDrag(
     await page.mouse.move(cx + (dx * i) / steps, cy + (dy * i) / steps);
   }
   await page.mouse.up();
+}
+
+async function cdpTouchDrag(
+  page: Page,
+  selector: string,
+  dx: number,
+  dy: number,
+  steps = 20,
+  startXRatio = 0.5,
+  startYRatio = 0.5,
+): Promise<void> {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`no bounding box for ${selector}`);
+  const cx = box.x + box.width * startXRatio;
+  const cy = box.y + box.height * startYRatio;
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send("Emulation.setTouchEmulationEnabled", {
+      enabled: true,
+      maxTouchPoints: 1,
+    });
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: cx, y: cy }],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: cx + (dx * i) / steps, y: cy + (dy * i) / steps }],
+      });
+      await page.waitForTimeout(6);
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await client.detach();
+  }
 }
 
 /** Drive a genuine finger drag on `selector` by (dx, dy) via CDP touch. */
@@ -360,21 +400,22 @@ test("Escape from maximized collapses the whole sheet (not just restore)", async
   await expectNoPageDiagnostics(page, testInfo.title);
 });
 
-test("removed controls: no clear/maximize header buttons and no swipe-to-switch on the open thread", async ({
+test("header controls: new-chat exists, maximize is removed, and open-thread swipe does not switch", async ({
   page,
 }, testInfo) => {
   await openAppPath(page, "/chat");
   await openSheetToFull(page);
   const sheet = page.locator(SHEET);
 
-  // The removed single-thread controls (#13531) exist nowhere in the shell.
-  await expect(page.getByTestId("chat-full-clear")).toHaveCount(0);
+  // The new-chat control was restored after #13531; only the maximize button is
+  // genuinely removed because over-pull owns full-bleed maximize.
+  await expect(page.getByTestId("chat-full-clear")).toHaveCount(1);
   await expect(page.getByTestId("chat-full-maximize")).toHaveCount(0);
 
   // A horizontal drag across the OPEN thread must NOT switch conversations —
   // swipe-between-chats was removed (`swipeEnabled: !sheetOpen`).
   const convBefore = await sheet.getAttribute("data-conversation-id");
-  await pointerDrag(page, "#continuous-thread", -200, 0, 14);
+  await cdpTouchDrag(page, "#continuous-thread", -200, 0, 14, 0.9, 0.35);
   await page.waitForTimeout(500);
   await expect(sheet).toHaveAttribute("data-conversation-id", convBefore ?? "");
   await expect(page.getByText(LAST_TEXT)).toBeVisible();
