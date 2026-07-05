@@ -331,10 +331,6 @@ export async function handleAuthPairingCompatRoutes(
       sendJsonErrorResponse(res, 403, "Cannot determine client address");
       return true;
     }
-    if (!rateLimitPairing(remoteAddress)) {
-      sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
-      return true;
-    }
 
     const provided = normalizePairingCode(
       typeof body.code === "string" ? body.code : "",
@@ -351,6 +347,10 @@ export async function handleAuthPairingCompatRoutes(
     }
 
     if (!tokenMatches(normalizePairingCode(current), provided)) {
+      if (!rateLimitPairing(remoteAddress)) {
+        sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
+        return true;
+      }
       sendJsonErrorResponse(res, 403, "Invalid pairing code");
       return true;
     }
