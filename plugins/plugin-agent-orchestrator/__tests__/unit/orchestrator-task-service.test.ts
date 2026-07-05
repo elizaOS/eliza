@@ -1616,9 +1616,10 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
     const task = await service.createTask(createInput());
 
     // Simulate the respawn lineage the router would drive for a respawnable
-    // crash: each crashed session is replaced by a fresh spawn, until the budget
-    // (3) is exhausted. `session_state_lost` is the respawnable class.
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+    // crash: each crashed session is replaced by a fresh spawn until the shared
+    // errored-session budget is spent. With a budget of three errored sessions,
+    // the first two are retryable and the third is terminal.
+    for (let attempt = 1; attempt <= MAX_SESSION_RETRY_ATTEMPTS; attempt += 1) {
       const detail = must(
         await service.spawnAgentForTask(task.id),
         "spawn detail",
@@ -1631,12 +1632,64 @@ describe("OrchestratorTaskService — crash produces terminal failed (#13771)", 
         failureKind: "session_state_lost",
         message: `state lost ${attempt}`,
       });
+      const afterAttempt = must(await service.getTask(task.id), "attempt");
+      if (attempt < MAX_SESSION_RETRY_ATTEMPTS) {
+        expect(afterAttempt.status).not.toBe("failed");
+        expect(TERMINAL_TASK_STATUSES.has(afterAttempt.status)).toBe(false);
+      }
     }
 
     const final = must(await service.getTask(task.id), "final");
     expect(final.status).toBe("failed");
     expect(TERMINAL_TASK_STATUSES.has(final.status)).toBe(true);
     expect(final.events?.some((e) => e.eventType === "task_failed")).toBe(true);
+  });
+
+  it("resets the respawnable-crash retry window on operator restart", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const task = await service.createTask(createInput());
+
+    for (let attempt = 1; attempt <= MAX_SESSION_RETRY_ATTEMPTS; attempt += 1) {
+      const detail = must(
+        await service.spawnAgentForTask(task.id),
+        "spawn detail",
+      );
+      const sessionId = must(detail.sessions.at(-1), "session").sessionId;
+      await drive(acp, sessionId, "error", {
+        failureKind: "session_state_lost",
+        message: `state lost ${attempt}`,
+      });
+    }
+    expect(must(await service.getTask(task.id), "failed").status).toBe(
+      "failed",
+    );
+
+    const restarted = must(
+      await service.restartTask(task.id, { instruction: "restart cleanly" }),
+      "restarted",
+    );
+    const restartedSessionId = must(
+      restarted.sessions.at(-1),
+      "restarted session",
+    ).sessionId;
+    await drive(acp, restartedSessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "state lost after restart",
+    });
+
+    const afterRestartError = must(
+      await service.getTask(task.id),
+      "after restart error",
+    );
+    expect(afterRestartError.status).not.toBe("failed");
+    expect(TERMINAL_TASK_STATUSES.has(afterRestartError.status)).toBe(false);
+    const found = must(
+      await store.findSession(restartedSessionId),
+      "restarted session record",
+    );
+    expect(found.session.retryCount).toBe(1);
   });
 
   it("never mutates a task once it has reached terminal failed", async () => {
