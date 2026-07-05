@@ -249,6 +249,11 @@ describe("orchestrator admission queue — N tasks vs maxSessions (#13778)", () 
     expect(await service.getAdmissionSnapshot()).toMatchObject({
       queueDepth: 0,
     });
+    // queueDepth hits 0 the instant the final queued spawn is DEQUEUED, but its
+    // session row lands a `reserveSessionSlot` tick later (the slot lock
+    // serializes create). Poll on the observable count instead of asserting on
+    // the same turn the queue drained, or listSessions races in at N-1.
+    await poll(async () => (await acp.listSessions()).length === N);
     expect(await acp.listSessions()).toHaveLength(N);
 
     await service.stop();
