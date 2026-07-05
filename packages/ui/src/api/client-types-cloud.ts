@@ -1085,6 +1085,8 @@ export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
   roomId: string | null;
   taskRoomId: string | null;
   worldId: string | null;
+  /** The project this task is bound to; null for pre-project tasks (#13776). */
+  projectId: string | null;
   ownerUserId: string | null;
   parentTaskId: string | null;
   acceptanceCriteria: string[];

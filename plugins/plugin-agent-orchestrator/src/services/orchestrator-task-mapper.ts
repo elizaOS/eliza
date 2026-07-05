@@ -186,6 +186,7 @@ export interface TaskThreadDetailDto extends TaskThreadDto {
   roomId: string | null;
   taskRoomId: string | null;
   worldId: string | null;
+  projectId: string | null;
   ownerUserId: string | null;
   parentTaskId: string | null;
   acceptanceCriteria: string[];
@@ -411,6 +412,7 @@ export function toTaskThreadDetail(
     roomId: doc.task.roomId ?? null,
     taskRoomId: doc.task.taskRoomId ?? null,
     worldId: doc.task.worldId ?? null,
+    projectId: doc.task.projectId ?? null,
     ownerUserId: doc.task.ownerUserId ?? null,
     parentTaskId: doc.task.parentTaskId ?? null,
     acceptanceCriteria: doc.task.acceptanceCriteria,

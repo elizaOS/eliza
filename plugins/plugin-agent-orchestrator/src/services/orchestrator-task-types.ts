@@ -64,6 +64,13 @@ export interface OrchestratorTaskRecord {
   worldId?: string;
   roomId?: string;
   taskRoomId?: string;
+  /** The {@link Project} this task is bound to (see project-registry). Set once
+   * at creation so every session of a task targets the same repo/workdir —
+   * without it, workdir/repo were only derivable from the most-recent session,
+   * letting two sessions of one task silently drift to different repos (#13776).
+   * A backfilled indexed SQL column makes "all tasks for project X" an index
+   * lookup instead of a JSON-document scan. */
+  projectId?: string;
   /** Lineage: the task this one was forked from, if any. */
   parentTaskId?: string;
   forkSource?: string;
@@ -339,6 +346,9 @@ export interface TaskListFilter {
   search?: string;
   includeArchived?: boolean;
   limit?: number;
+  /** Restrict to tasks bound to this project (indexed column on the SQL
+   * backend; structural filter elsewhere). */
+  projectId?: string;
 }
 
 export interface CreateTaskInput {
@@ -352,6 +362,7 @@ export interface CreateTaskInput {
   worldId?: string;
   roomId?: string;
   taskRoomId?: string;
+  projectId?: string;
   parentTaskId?: string;
   forkSource?: string;
   providerPolicy?: TaskProviderPolicy;
