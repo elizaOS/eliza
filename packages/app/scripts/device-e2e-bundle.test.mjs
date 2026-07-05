@@ -10,11 +10,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  captureFailureForensics,
   collectBundleArtifacts,
   createDeviceE2eBundle,
   defaultDeviceE2eOutputDir,
   finalizeDeviceE2eBundle,
   finishBundleStep,
+  formatFailureForensicsBlock,
   parseOutputDirArg,
   recordBundleArtifact,
   runBundledCommand,
@@ -176,5 +178,71 @@ describe("device-e2e bundle assembly", () => {
     expect(
       fs.readFileSync(path.join(bundle.logsDir, "runner.log"), "utf8"),
     ).toContain("nope");
+  });
+
+  it("records step failure forensics and formats a compact stderr block", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "android",
+      outputDir: path.join(root, "bundle"),
+    });
+    const step = startBundleStep(bundle, "Android route coverage");
+    const error = new Error("route failed");
+
+    captureFailureForensics(
+      bundle,
+      step,
+      ({ failureDir }) => {
+        const cause = path.join(failureDir, "failure-cause.txt");
+        const log = path.join(failureDir, "logcat.txt");
+        const screen = path.join(failureDir, "screen.png");
+        fs.writeFileSync(cause, "route failed\n");
+        fs.writeFileSync(log, "log tail\n");
+        fs.writeFileSync(screen, ONE_BY_ONE_PNG);
+        return [cause, log, screen];
+      },
+      error,
+    );
+    finishBundleStep(bundle, step, "failed", error);
+    finalizeDeviceE2eBundle(bundle, "failed");
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    const block = formatFailureForensicsBlock(bundle, error);
+
+    expect(summary.steps[0].failureDir).toBe("failure/android-route-coverage");
+    expect(summary.steps[0].artifacts).toEqual([
+      "failure/android-route-coverage/failure-cause.txt",
+      "failure/android-route-coverage/logcat.txt",
+      "failure/android-route-coverage/screen.png",
+    ]);
+    expect(block).toContain("DEVICE E2E FAILURE FORENSICS");
+    expect(block).toContain("step: Android route coverage");
+    expect(block).toContain("screen.png");
+  });
+
+  it("keeps the original failed step when forensic capture fails", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "ios-sim",
+      outputDir: path.join(root, "bundle"),
+    });
+    const step = startBundleStep(bundle, "boot iOS Simulator");
+
+    captureFailureForensics(bundle, step, () => {
+      throw new Error("simulator disconnected");
+    });
+    finishBundleStep(bundle, step, "failed", new Error("boot failed"));
+    finalizeDeviceE2eBundle(bundle, "failed");
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    expect(summary.result).toBe("failed");
+    expect(summary.steps[0].error).toBe("boot failed");
+    expect(summary.warnings[0]).toContain("simulator disconnected");
   });
 });

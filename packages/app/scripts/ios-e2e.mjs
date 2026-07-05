@@ -30,9 +30,11 @@ import {
   selectBootedUdid,
 } from "./ios-e2e-lib.mjs";
 import {
+  captureFailureForensics,
   createDeviceE2eBundle,
   finalizeDeviceE2eBundle,
   finishBundleStep,
+  formatFailureForensicsBlock,
   recordBundleArtifact,
   runBundledCommand,
   setBundleBuild,
@@ -59,7 +61,62 @@ function readAppId() {
 }
 
 function run(bundle, name, cmd, args, env = {}) {
-  runBundledCommand(bundle, name, cmd, args, { cwd: appDir, env });
+  runBundledCommand(bundle, name, cmd, args, {
+    cwd: appDir,
+    env,
+    onFailure: (step, error) => captureIosFailure(bundle, step, error),
+  });
+}
+
+let activeIosContext = { udid: null };
+
+function captureIosFailure(bundle, step, error) {
+  const { udid } = activeIosContext;
+  return captureFailureForensics(
+    bundle,
+    step,
+    ({ failureDir }) => {
+      const files = [];
+      const causePath = path.join(failureDir, "failure-cause.txt");
+      fs.writeFileSync(causePath, `${error?.message ?? error}\n`);
+      files.push(causePath);
+      if (udid) {
+        const screenshotPath = path.join(failureDir, "screen.png");
+        simctl(["io", udid, "screenshot", "--type=png", screenshotPath]);
+        files.push(screenshotPath);
+        const logPath = path.join(failureDir, "ios-sim.log");
+        const result = spawnSync(
+          "xcrun",
+          [
+            "simctl",
+            "spawn",
+            udid,
+            "log",
+            "show",
+            "--style",
+            "compact",
+            "--last",
+            "2m",
+          ],
+          { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+        );
+        fs.writeFileSync(
+          logPath,
+          result.status === 0
+            ? result.stdout
+            : result.stderr || `simctl log show exited with ${result.status}\n`,
+        );
+        files.push(logPath);
+      }
+      return files;
+    },
+    error,
+  );
+}
+
+function failIosStep(bundle, step, error) {
+  captureIosFailure(bundle, step, error);
+  finishBundleStep(bundle, step, "failed", error);
 }
 
 function simctl(args) {
@@ -207,7 +264,7 @@ function runStep(bundle, step, { udid, appId }) {
         });
         finishBundleStep(bundle, installStep, "passed");
       } catch (error) {
-        finishBundleStep(bundle, installStep, "failed", error);
+        failIosStep(bundle, installStep, error);
         throw error;
       }
       return;
@@ -245,6 +302,7 @@ async function main() {
     outputDir: flags.output,
   });
   let finalResult = "failed";
+  let finalError = null;
   let lease = null;
   let udid = null;
   let appId = null;
@@ -259,9 +317,10 @@ async function main() {
     const bootStep = startBundleStep(bundle, "boot iOS Simulator");
     try {
       udid = ensureSimulatorBooted(flags.device);
+      activeIosContext = { udid };
       finishBundleStep(bundle, bootStep, "passed");
     } catch (error) {
-      finishBundleStep(bundle, bootStep, "failed", error);
+      failIosStep(bundle, bootStep, error);
       throw error;
     }
     log(`simulator udid=${udid}`);
@@ -277,6 +336,9 @@ async function main() {
     }
     finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");
+  } catch (error) {
+    finalError = error;
+    throw error;
   } finally {
     if (udid && appId) {
       try {
@@ -314,6 +376,10 @@ async function main() {
     }
     lease?.release();
     const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    if (finalError) {
+      const block = formatFailureForensicsBlock(bundle, finalError);
+      if (block) process.stderr.write(`\n${block}`);
+    }
     log(`bundle: ${bundleRoot}`);
   }
 }
