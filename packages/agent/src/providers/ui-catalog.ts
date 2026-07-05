@@ -130,10 +130,12 @@ When you need several specific values from the user at once, render a form
 instead of asking in prose. Emit INLINE (no code fences); body is a JSON object
 on its own line between the markers:
 [FORM]
-{"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
+{"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
 [/FORM]
-Field types: text | number | select (needs options) | checkbox. Each field "name"
-must start with a letter. The user's submitted values come back to you as a normal
+Field types: text | number | select (needs options) | checkbox | date | time |
+datetime. Prefer date/time/datetime over free-text for anything scheduled — they
+render native pickers and submit as YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm. Each
+field "name" must start with a letter. The user's submitted values come back to you as a normal
 message. Do NOT use [FORM] for secrets or API keys (those use the secure secret
 flow), and do NOT use it for a single free-text answer — just ask.
 

@@ -3,6 +3,51 @@
  */
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
+// Mirrors core's canonical truthy set (core/src/env-utils.ts); re-exported
+// through @elizaos/shared/env-utils, which gallery pages reach via
+// runtime-env — without it any page importing shared env helpers throws.
+const TRUTHY_ENV_VALUES = new Set(["1", "true", "yes", "y", "on", "enabled"]);
+// Browser-safe stand-ins for the core env/error helpers the shared package
+// re-exports. The gallery has no process env or boot config, so alias
+// resolution degrades to a direct lookup and errors format to their message.
+export function resolveAliasedEnvValue(
+  key: string,
+  _aliases?: readonly (readonly [string, string])[],
+  env: Record<string, string | undefined> | null = null,
+): string | undefined {
+  const value = env?.[key];
+  return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+// Mirrors core's throw-proof contract (utils/format-error.ts): this runs on
+// error paths, so it must never itself throw or return a non-string.
+export function formatError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
+// Deterministic, dependency-free stand-in for core's stringToUuid — the
+// gallery only needs stable, well-formed ids, not the runtime's exact hash.
+export function stringToUuid(target: string): string {
+  let h = 0;
+  for (let i = 0; i < target.length; i++) {
+    h = (h * 31 + target.charCodeAt(i)) >>> 0;
+  }
+  const hex = h.toString(16).padStart(8, "0");
+  return `${hex}-0000-4000-8000-${hex}${hex.slice(0, 4)}`;
+}
+export function isTruthyEnvValue(value: string | undefined | null): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  return TRUTHY_ENV_VALUES.has(normalized);
+}
+
 export type UUID = string;
 export type TrajectoryExportFormat = "json" | "jsonl" | "markdown";
 export type TriggerType = string;

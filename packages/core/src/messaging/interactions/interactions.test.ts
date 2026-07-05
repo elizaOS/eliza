@@ -175,6 +175,29 @@ describe("serialize", () => {
 		});
 	});
 
+	// #14323 — scheduling forms need native pickers; values submit as
+	// YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm strings.
+	it("parses and round-trips date/time/datetime field types (#14323)", () => {
+		const text = `[FORM]\n${JSON.stringify({
+			id: "sched",
+			title: "Set your reminder",
+			fields: [
+				{ name: "day", type: "date", label: "Day" },
+				{ name: "at", type: "time", label: "At" },
+				{ name: "exact", type: "datetime", label: "Exact moment" },
+			],
+		})}\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		const form = blocks[0] as FormInteraction;
+		expect(form.fields.map((f) => f.type)).toEqual([
+			"date",
+			"time",
+			"datetime",
+		]);
+		const reparsed = parseInteractionBlocks(serializeInteractionBlock(form));
+		expect((reparsed.blocks[0] as FormInteraction).fields).toEqual(form.fields);
+	});
+
 	it("round-trips a form block", () => {
 		const block: FormInteraction = {
 			kind: "form",

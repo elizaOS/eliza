@@ -29,6 +29,11 @@ export interface InteractionOption {
 	description?: string;
 }
 
+/**
+ * Date/time fields submit the native input's string value: `date` →
+ * `YYYY-MM-DD`, `time` → `HH:mm`, `datetime` → `YYYY-MM-DDTHH:mm` (local time,
+ * no zone suffix) — consuming actions can parse them deterministically (#14323).
+ */
 export type InteractionFieldType =
 	| "text"
 	| "number"
@@ -36,7 +41,10 @@ export type InteractionFieldType =
 	| "checkbox"
 	| "secret"
 	| "image"
-	| "file";
+	| "file"
+	| "date"
+	| "time"
+	| "datetime";
 
 /** A single field in a form or secret request. */
 export interface InteractionField {

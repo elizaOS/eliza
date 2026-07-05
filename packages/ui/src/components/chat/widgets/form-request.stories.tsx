@@ -168,3 +168,30 @@ export const Minimal: Story = {
     onSubmit: () => {},
   },
 };
+
+/** #14323 — scheduling form with native date/time/datetime pickers. */
+const reminderForm: FormRequestSpec = {
+  id: "reminder-form",
+  title: "Set your reminder",
+  description: "Pick when you want to be nudged.",
+  submitLabel: "Create reminder",
+  fields: [
+    {
+      name: "title",
+      type: "text",
+      label: "Reminder",
+      placeholder: "Take meds",
+      required: true,
+    },
+    { name: "day", type: "date", label: "Day", required: true },
+    { name: "at", type: "time", label: "At", required: true },
+    { name: "until", type: "datetime", label: "Repeat until (optional)" },
+  ],
+};
+
+export const SchedulingPickers: Story = {
+  args: {
+    form: reminderForm,
+    onSubmit: () => {},
+  },
+};

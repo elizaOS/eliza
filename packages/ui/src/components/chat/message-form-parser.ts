@@ -18,7 +18,7 @@
  *     "fields": [
  *       {
  *         "name": string,               // result key (required, safe chars only)
- *         "type": "text"|"number"|"select"|"checkbox",
+ *         "type": "text"|"number"|"select"|"checkbox"|"date"|"time"|"datetime",
  *         "label"?: string,
  *         "placeholder"?: string,
  *         "required"?: boolean,
@@ -31,7 +31,18 @@
  * the structured result back as a message via the existing action callback.
  */
 
-export type FormFieldType = "text" | "number" | "select" | "checkbox";
+/**
+ * Date/time fields submit the native input's string value: `date` →
+ * `YYYY-MM-DD`, `time` → `HH:mm`, `datetime` → `YYYY-MM-DDTHH:mm` (#14323).
+ */
+export type FormFieldType =
+  | "text"
+  | "number"
+  | "select"
+  | "checkbox"
+  | "date"
+  | "time"
+  | "datetime";
 
 export interface FormFieldSpec {
   name: string;
@@ -58,6 +69,9 @@ const FORM_FIELD_TYPES = new Set<FormFieldType>([
   "number",
   "select",
   "checkbox",
+  "date",
+  "time",
+  "datetime",
 ]);
 
 /** Field names become state-path segments + result keys; keep them safe. */

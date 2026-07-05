@@ -29,7 +29,11 @@ import type { FormFieldSpec, FormRequestSpec } from "../message-form-parser";
 
 export type { FormFieldSpec, FormRequestSpec };
 
-/** Value emitted per field: string for text/number/select, boolean for checkbox. */
+/**
+ * Value emitted per field: boolean for checkbox, string for everything else —
+ * date/time/datetime submit the native input string (YYYY-MM-DD, HH:mm,
+ * YYYY-MM-DDTHH:mm).
+ */
 export type FormResultValue = string | boolean;
 
 export type FormRequestProps = {
@@ -37,6 +41,16 @@ export type FormRequestProps = {
   /** Receives the structured result keyed by field name. */
   onSubmit: (formId: string, values: Record<string, FormResultValue>) => void;
 };
+
+/** Native `<input type>` per field type; select/checkbox render dedicated controls. */
+const INPUT_TYPE_BY_FIELD_TYPE: Partial<Record<FormFieldSpec["type"], string>> =
+  {
+    text: "text",
+    number: "number",
+    date: "date",
+    time: "time",
+    datetime: "datetime-local",
+  };
 
 function initialValueFor(field: FormFieldSpec): FormResultValue {
   return field.type === "checkbox" ? false : "";
@@ -182,7 +196,9 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
             </div>
           );
         }
-        // text / number
+        // text / number / date / time / datetime — native inputs, no
+        // custom picker; date/time values submit as the input's string value
+        // (YYYY-MM-DD, HH:mm, YYYY-MM-DDTHH:mm) per the parser contract (#14323).
         return (
           <div key={field.name} className="flex flex-col gap-1 text-xs">
             <span className="font-semibold">{label}</span>
@@ -192,7 +208,7 @@ export function FormRequest({ form, onSubmit }: FormRequestProps) {
                 density: "compact",
                 hasError: !!fieldErrors?.length,
               })}
-              type={field.type === "number" ? "number" : "text"}
+              type={INPUT_TYPE_BY_FIELD_TYPE[field.type] ?? "text"}
               name={field.name}
               placeholder={field.placeholder ?? ""}
               value={String(values[field.name] ?? "")}

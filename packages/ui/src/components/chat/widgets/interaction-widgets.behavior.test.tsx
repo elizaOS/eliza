@@ -65,9 +65,11 @@ describe("FormRequest — every input + submit", () => {
     fireEvent.change(screen.getByLabelText("Branch"), {
       target: { value: "feat/x" },
     });
-    fireEvent.change(screen.getByLabelText("Clone depth"), {
-      target: { value: "5" },
-    });
+    const depth = screen.getByLabelText("Clone depth") as HTMLInputElement;
+    // Pin the number → type="number" map entry: through a text input the
+    // submitted string would be identical, so only this assertion guards it.
+    expect(depth.type).toBe("number");
+    fireEvent.change(depth, { target: { value: "5" } });
     fireEvent.click(screen.getByLabelText("Private repo"));
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -107,6 +109,41 @@ describe("FormRequest — every input + submit", () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Submitted" })).toBeTruthy();
+  });
+
+  // #14323 — scheduling fields render native pickers and submit the input's
+  // string value (YYYY-MM-DD / HH:mm / YYYY-MM-DDTHH:mm).
+  it("renders native date/time/datetime pickers and submits their values", () => {
+    const onSubmit = vi.fn();
+    const scheduling: FormRequestSpec = {
+      id: "sched",
+      title: "Set your reminder",
+      submitLabel: "Create",
+      fields: [
+        { name: "day", type: "date", label: "Day", required: true },
+        { name: "at", type: "time", label: "At" },
+        { name: "exact", type: "datetime", label: "Exact moment" },
+      ],
+    };
+    render(<FormRequest form={scheduling} onSubmit={onSubmit} />);
+
+    const day = screen.getByLabelText("Day") as HTMLInputElement;
+    const at = screen.getByLabelText("At") as HTMLInputElement;
+    const exact = screen.getByLabelText("Exact moment") as HTMLInputElement;
+    expect(day.type).toBe("date");
+    expect(at.type).toBe("time");
+    expect(exact.type).toBe("datetime-local");
+
+    fireEvent.change(day, { target: { value: "2026-07-09" } });
+    fireEvent.change(at, { target: { value: "21:30" } });
+    fireEvent.change(exact, { target: { value: "2026-07-09T21:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(onSubmit).toHaveBeenCalledWith("sched", {
+      day: "2026-07-09",
+      at: "21:30",
+      exact: "2026-07-09T21:30",
+    });
   });
 
   it("renders a select field's options", () => {

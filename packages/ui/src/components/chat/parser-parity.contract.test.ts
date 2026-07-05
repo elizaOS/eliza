@@ -118,6 +118,46 @@ describe("parser parity — UI per-marker parsers vs @elizaos/core findInteracti
     }
   });
 
+  it("FORM: both impls accept date/time/datetime field types identically (#14323)", () => {
+    const text =
+      '[FORM]\n{"id":"sched","title":"T","fields":[{"name":"day","type":"date"},{"name":"at","type":"time"},{"name":"exact","type":"datetime"}]}\n[/FORM]';
+    const ui = findFormRegions(text).map((r) =>
+      r.form.fields.map((f) => ({ name: f.name, type: f.type })),
+    );
+    const core = findInteractionRegions(text)
+      .map((r) => r.block)
+      .filter(
+        (b): b is Extract<typeof b, { kind: "form" }> => b.kind === "form",
+      )
+      .map((b) => b.fields.map((f) => ({ name: f.name, type: f.type })));
+    expect(ui).toEqual(core);
+    expect(ui).toEqual([
+      [
+        { name: "day", type: "date" },
+        { name: "at", type: "time" },
+        { name: "exact", type: "datetime" },
+      ],
+    ]);
+  });
+
+  // KNOWN DIVERGENCE (tracked debt, #9304): an UNKNOWN field type is coerced to
+  // "text" by the UI parser, but core DROPS the field (`FIELD_TYPES.has` →
+  // null) — and a form whose only field is dropped is rejected entirely.
+  // Pinned so reconciling it is a conscious edit, not silent drift.
+  it("FORM unknown-field-type divergence is still present and tracked", () => {
+    const text =
+      '[FORM]\n{"id":"f","fields":[{"name":"x","type":"color"}]}\n[/FORM]';
+    const ui = findFormRegions(text);
+    expect(ui).toHaveLength(1);
+    expect(ui[0].form.fields[0].type).toBe("text");
+    const core = findInteractionRegions(text)
+      .map((r) => r.block)
+      .filter(
+        (b): b is Extract<typeof b, { kind: "form" }> => b.kind === "form",
+      );
+    expect(core).toHaveLength(0);
+  });
+
   // KNOWN DIVERGENCE (tracked debt, #9304): the core FORM field-name regex
   // (`^[\w.-]+$`) accepts dotted / leading-digit names; the UI's
   // (`^[A-Za-z][\w-]*$`) rejects them. This test PINS that difference so any

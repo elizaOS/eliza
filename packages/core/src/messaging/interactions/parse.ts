@@ -47,6 +47,9 @@ const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
 	"secret",
 	"image",
 	"file",
+	"date",
+	"time",
+	"datetime",
 ]);
 const FOLLOWUP_KINDS: ReadonlySet<FollowupKind> = new Set([
 	"reply",

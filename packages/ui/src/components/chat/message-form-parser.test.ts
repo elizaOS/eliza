@@ -54,6 +54,23 @@ describe("parseFormBody", () => {
     expect(form?.id.length).toBeGreaterThan(0);
   });
 
+  it("accepts date/time/datetime field types (#14323)", () => {
+    const form = parseFormBody(
+      JSON.stringify({
+        fields: [
+          { name: "day", type: "date" },
+          { name: "at", type: "time" },
+          { name: "exact", type: "datetime" },
+        ],
+      }),
+    );
+    expect(form?.fields.map((f) => f.type)).toEqual([
+      "date",
+      "time",
+      "datetime",
+    ]);
+  });
+
   it("defaults an unknown field type to text", () => {
     const form = parseFormBody(
       JSON.stringify({ fields: [{ name: "x", type: "color" }] }),

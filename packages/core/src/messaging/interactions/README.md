@@ -44,7 +44,9 @@ text. Secrets must never transit a chat transport as text.
 [TASK:<threadId>]<title>[/TASK]                                          # threadId: lowercase hex/uuid, 8–64 chars
 ```
 
-`field.type`: `text | number | select | checkbox | secret`. Parsing is strict —
+`field.type`: `text | number | select | checkbox | secret | image | file |
+date | time | datetime`. Date/time fields submit the native input string
+(`YYYY-MM-DD`, `HH:mm`, `YYYY-MM-DDTHH:mm`). Parsing is strict —
 a malformed block is left as plain text, never a broken control.
 
 ## Module API (`@elizaos/core`)
