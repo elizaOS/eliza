@@ -1,22 +1,26 @@
 // `selectPricedHoldings` selection logic: empty on missing balances, price-only
 // rows with no amount/holding value leaked, dust (<$1) skipped, capped at the top
-// 5 by holding value, only priced symbols included, same symbol aggregated across
-// chains (case-insensitive), native SOL/ETH counted. Pure function — no jsdom.
+// 3 by holding value, only priced symbols included, same symbol aggregated across
+// chains (case-insensitive), native SOL/ETH counted. Plus `selectDefaultPriceRows`
+// for the no-holdings state (BTC/SOL/ETH + trending fill). Pure function — no jsdom.
 import type {
   WalletBalancesResponse,
+  WalletMarketMover,
   WalletMarketPriceSnapshot,
 } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_WIDGET_SYMBOLS,
   MAX_PRICED_HOLDINGS,
   MIN_HOLDING_USD,
   type PricedHolding,
+  selectDefaultPriceRows,
   selectPricedHoldings,
 } from "./wallet-price-holdings.ts";
 
 /**
  * Price-only wallet widget derivation (#10706). The acceptance criteria are the
- * contract: top-5 HELD assets, prices only, skip holdings < $1, and never leak
+ * contract: top-3 HELD assets, prices only, skip holdings < $1, and never leak
  * the amount/holding value. Each is pinned here.
  */
 
@@ -112,7 +116,7 @@ describe("selectPricedHoldings", () => {
     expect(MIN_HOLDING_USD).toBe(1);
   });
 
-  it("caps the list at the top 5 by holding value (ranked desc)", () => {
+  it("caps the list at the top 3 by holding value (ranked desc)", () => {
     const held = [
       { symbol: "A", valueUsd: "10" },
       { symbol: "B", valueUsd: "60" },
@@ -127,8 +131,9 @@ describe("selectPricedHoldings", () => {
       held.map((h) => price(h.symbol, 1)),
     );
     expect(rows).toHaveLength(MAX_PRICED_HOLDINGS);
-    // top 5 by value: G(70) B(60) D(50) F(40) C(30)
-    expect(rows.map((r) => r.symbol)).toEqual(["G", "B", "D", "F", "C"]);
+    expect(MAX_PRICED_HOLDINGS).toBe(3);
+    // top 3 by value: G(70) B(60) D(50)
+    expect(rows.map((r) => r.symbol)).toEqual(["G", "B", "D"]);
   });
 
   it("only includes symbols that have a unit price in the market overview", () => {
@@ -169,5 +174,68 @@ describe("selectPricedHoldings", () => {
         price("SHIB", 0.00001),
       ]),
     ).toEqual([]);
+  });
+});
+
+const mover = (
+  symbol: string,
+  priceUsd: number,
+  change24hPct = 0,
+): WalletMarketMover => ({
+  id: symbol.toLowerCase(),
+  symbol,
+  name: symbol,
+  priceUsd,
+  change24hPct,
+  marketCapRank: null,
+  imageUrl: null,
+});
+
+describe("selectDefaultPriceRows (#14344)", () => {
+  it("returns [] for a null/absent overview (prices unavailable → widget hides)", () => {
+    expect(selectDefaultPriceRows(null)).toEqual([]);
+    expect(selectDefaultPriceRows(undefined)).toEqual([]);
+    expect(selectDefaultPriceRows({ prices: [], movers: [] })).toEqual([]);
+  });
+
+  it("returns BTC/SOL/ETH in display order from the fixed snapshots", () => {
+    // Snapshots arrive in MARKET_PRICE_IDS order (BTC, ETH, SOL); display is BTC/SOL/ETH.
+    const rows = selectDefaultPriceRows({
+      prices: [
+        price("BTC", 64000, 1.2),
+        price("ETH", 3000, -0.5),
+        price("SOL", 150, 2.1),
+      ],
+      movers: [],
+    });
+    expect(rows.map((r) => r.symbol)).toEqual([...DEFAULT_WIDGET_SYMBOLS]);
+    expect(rows).toEqual<PricedHolding[]>([
+      { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
+      { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
+      { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+    ]);
+  });
+
+  it("back-fills a missing fixed snapshot from trending movers, up to 3 rows", () => {
+    // Partial source: only BTC + ETH snapshots; SOL is missing → fill from movers.
+    const rows = selectDefaultPriceRows({
+      prices: [price("BTC", 64000), price("ETH", 3000)],
+      movers: [mover("DOGE", 0.12, 5.5), mover("PEPE", 0.000008, -3)],
+    });
+    expect(rows).toHaveLength(3);
+    // BTC, ETH from snapshots; DOGE fills the third slot (first eligible mover).
+    expect(rows.map((r) => r.symbol)).toEqual(["BTC", "ETH", "DOGE"]);
+  });
+
+  it("does not duplicate a symbol that is both a fixed snapshot and a mover", () => {
+    const rows = selectDefaultPriceRows({
+      prices: [price("BTC", 64000)],
+      movers: [
+        mover("BTC", 64000),
+        mover("DOGE", 0.12),
+        mover("PEPE", 0.00001),
+      ],
+    });
+    expect(rows.map((r) => r.symbol)).toEqual(["BTC", "DOGE", "PEPE"]);
   });
 });

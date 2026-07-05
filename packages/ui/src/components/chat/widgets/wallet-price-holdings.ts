@@ -4,6 +4,8 @@
  */
 import type {
   WalletBalancesResponse,
+  WalletMarketMover,
+  WalletMarketOverviewResponse,
   WalletMarketPriceSnapshot,
 } from "@elizaos/contracts";
 
@@ -21,7 +23,7 @@ import type {
  *      for ranking, never surfaced),
  *   4. keep only symbols that have a unit price in the market overview,
  *   5. rank by aggregated holding value (desc; ties broken by symbol), take
- *      top 5,
+ *      top {@link MAX_PRICED_HOLDINGS},
  *   6. return price-only rows — `{ symbol, priceUsd, change24hPct }`, with NO
  *      balance, holding value, or portfolio total.
  */
@@ -29,7 +31,16 @@ import type {
 /** The minimum holding value (USD) a position must be worth to appear. */
 export const MIN_HOLDING_USD = 1;
 /** Max assets shown in the price-only widget. */
-export const MAX_PRICED_HOLDINGS = 5;
+export const MAX_PRICED_HOLDINGS = 3;
+
+/**
+ * Default rows shown when the user holds nothing priceable, in display order.
+ * BTC/SOL/ETH are the tracked fixed snapshots (`MARKET_PRICE_IDS`); when a
+ * partial-source overview drops one, the gap is filled from trending movers.
+ */
+export const DEFAULT_WIDGET_SYMBOLS = ["BTC", "SOL", "ETH"] as const;
+/** Rows shown in the default (no-holdings) state. */
+export const MAX_DEFAULT_ROWS = 3;
 
 /** A price-only row — deliberately carries no amount/holding value. */
 export interface PricedHolding {
@@ -113,4 +124,60 @@ export function selectPricedHoldings(
       change24hPct: price.change24hPct,
     };
   });
+}
+
+type MarketOverviewLike = Pick<
+  WalletMarketOverviewResponse,
+  "prices" | "movers"
+>;
+
+function toPricedRow(
+  s: WalletMarketPriceSnapshot | WalletMarketMover,
+): PricedHolding | null {
+  if (!Number.isFinite(s.priceUsd)) return null;
+  return {
+    symbol: s.symbol,
+    priceUsd: s.priceUsd,
+    change24hPct: s.change24hPct,
+  };
+}
+
+/**
+ * Rows for the no-holdings default state: the tracked BTC/SOL/ETH price
+ * snapshots in {@link DEFAULT_WIDGET_SYMBOLS} order, back-filled from trending
+ * movers when a partial-source overview omits one, capped at
+ * {@link MAX_DEFAULT_ROWS}. Pure + deterministic. Returns `[]` for a null/absent
+ * overview — the widget treats an empty result as "prices unavailable, hide".
+ */
+export function selectDefaultPriceRows(
+  overview: MarketOverviewLike | null | undefined,
+): PricedHolding[] {
+  if (!overview) return [];
+
+  const priceBySymbol = new Map<string, WalletMarketPriceSnapshot>();
+  for (const p of overview.prices ?? []) {
+    const key = p.symbol.trim().toUpperCase();
+    if (key && !priceBySymbol.has(key)) priceBySymbol.set(key, p);
+  }
+
+  const rows: PricedHolding[] = [];
+  const present = new Set<string>();
+  const push = (row: PricedHolding | null) => {
+    if (!row || rows.length >= MAX_DEFAULT_ROWS) return;
+    const key = row.symbol.trim().toUpperCase();
+    if (!key || present.has(key)) return;
+    present.add(key);
+    rows.push(row);
+  };
+
+  for (const symbol of DEFAULT_WIDGET_SYMBOLS) {
+    const snap = priceBySymbol.get(symbol);
+    if (snap) push(toPricedRow(snap));
+  }
+  // Fill any gap (a partial-source overview) with trending movers.
+  for (const mover of overview.movers ?? []) {
+    if (rows.length >= MAX_DEFAULT_ROWS) break;
+    push(toPricedRow(mover));
+  }
+  return rows;
 }

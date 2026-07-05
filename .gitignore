@@ -15,6 +15,8 @@ packages/ui/src/components/shell/__e2e__/output-voice-recording/
 packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
 # FTU welcome e2e output (screenshots + webm — regenerate via test:ftu-home-e2e)
 packages/ui/src/components/chat/widgets/__e2e__/output-ftu/
+# Wallet widget e2e output (screenshots + stubs — regenerate via test:wallet-widget-e2e)
+packages/ui/src/components/chat/widgets/__e2e__/output-wallet/
 # Permission-priming e2e output (screenshots + webm + stubs — regenerate via test:permission-priming-e2e)
 packages/ui/src/components/permissions/__e2e__/output-permission-priming/
 # View-lifecycle e2e output (screenshots + webm + telemetry — regenerate via test:view-lifecycle-e2e)

@@ -2,13 +2,16 @@
 //
 // WalletBalanceWidget (price-only): loading placeholder until data resolves,
 // price-only rows for held assets (no amounts/holding value), skipping holdings
-// under $1, self-hide on empty balances, and opening the wallet view on tap.
-// jsdom render with the wallet balances/market API mocked (no backend).
+// under $1, the BTC/SOL/ETH default rows when nothing is held (#14344), the 60s
+// document-visibility-gated price refresh, self-hide only when prices are
+// unavailable, and opening the wallet view on tap. jsdom render with the wallet
+// balances/market API mocked (no backend).
 import type {
   WalletBalancesResponse,
   WalletMarketOverviewResponse,
 } from "@elizaos/shared";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -85,12 +88,18 @@ function balances(
 
 function overview(
   prices: { symbol: string; priceUsd: number; change24hPct?: number }[],
+  movers: { symbol: string; priceUsd: number; change24hPct?: number }[] = [],
 ): WalletMarketOverviewResponse {
   return {
     prices: prices.map((p) => ({
       symbol: p.symbol,
       priceUsd: p.priceUsd,
       change24hPct: p.change24hPct ?? 0,
+    })),
+    movers: movers.map((m) => ({
+      symbol: m.symbol,
+      priceUsd: m.priceUsd,
+      change24hPct: m.change24hPct ?? 0,
     })),
   } as unknown as WalletMarketOverviewResponse;
 }
@@ -183,5 +192,70 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     );
     fireEvent.click(screen.getByTestId("chat-widget-wallet-prices"));
     expect(navOpenView).toHaveBeenCalledWith("/wallet", "wallet");
+  });
+
+  it("shows BTC/SOL/ETH default rows when the user holds nothing (#14344)", async () => {
+    // Fresh account: no holdings, but the overview supplies the tracked prices.
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
+        { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+        { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
+      ]),
+    );
+    render(<WalletBalanceWidget />);
+    await waitFor(() =>
+      expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
+    );
+    const rows = screen.getAllByTestId(/^wallet-price-row-/);
+    // Display order is BTC / SOL / ETH regardless of snapshot arrival order.
+    expect(rows.map((r) => r.dataset.testid)).toEqual([
+      "wallet-price-row-BTC",
+      "wallet-price-row-SOL",
+      "wallet-price-row-ETH",
+    ]);
+    const text = screen.getByTestId("chat-widget-wallet-prices").textContent;
+    expect(text).toContain("$64,000.00");
+    expect(text).toContain("$150.00");
+    expect(text).toContain("$3,000.00");
+  });
+
+  it("refreshes prices on the 60s visibility-gated interval (#14344)", async () => {
+    vi.useFakeTimers();
+    try {
+      getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+      getWalletMarketOverview
+        .mockResolvedValueOnce(overview([{ symbol: "BTC", priceUsd: 64000 }]))
+        .mockResolvedValue(overview([{ symbol: "BTC", priceUsd: 70000 }]));
+      render(<WalletBalanceWidget />);
+      // Flush the initial fetch.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(
+        screen.getByTestId("chat-widget-wallet-prices").textContent,
+      ).toContain("$64,000.00");
+      expect(getWalletMarketOverview).toHaveBeenCalledTimes(1);
+      // One interval tick → a fresh fetch updates the displayed price.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(getWalletMarketOverview).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByTestId("chat-widget-wallet-prices").textContent,
+      ).toContain("$70,000.00");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hides (no error chrome) when the overview is unavailable", async () => {
+    // Overview down → no prices at all → the widget self-hides on the home.
+    getWalletBalances.mockResolvedValue({ evm: null, solana: null });
+    getWalletMarketOverview.mockRejectedValue(new Error("overview 503"));
+    const { container } = render(<WalletBalanceWidget />);
+    await waitFor(() => expect(getWalletMarketOverview).toHaveBeenCalled());
+    await waitFor(() => expect(container.firstChild).toBeNull());
   });
 });
