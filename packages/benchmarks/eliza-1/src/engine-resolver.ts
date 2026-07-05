@@ -17,6 +17,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { resolveAliasedEnvValue } from "@elizaos/core";
 
 /**
  * Eliza-1 tier ids — kept in lockstep with `@elizaos/shared` catalog. We
@@ -71,11 +72,15 @@ interface SharedPathsLike {
  * shared import chain is unreachable (the bench is at the edge of the
  * dep graph; some host environments don't have shared's transitive
  * `@elizaos/core` deps resolved). Same precedence as upstream:
- *   ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
+ *   ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
+ *
+ * State-dir and namespace resolve through core's non-mutating alias reader so
+ * a branded prefix (e.g. `MILADY_STATE_DIR`) is honoured without depending on
+ * the `syncBrandEnvToEliza` mirror mutation (#13422).
  */
-function benchElizaModelsDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
+export function benchElizaModelsDir(): string {
+  const explicit = resolveAliasedEnvValue("ELIZA_STATE_DIR");
+  const ns = resolveAliasedEnvValue("ELIZA_NAMESPACE") ?? "eliza";
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");
 }
