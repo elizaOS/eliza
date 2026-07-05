@@ -329,29 +329,29 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           <div className="flex items-start gap-3">
             <Key className="h-5 w-5 text-[var(--accent)] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white mb-2">
+              <p className="text-sm font-medium text-txt mb-2">
                 {t("cloud.apps.overview.apiKeyOnce", {
                   defaultValue: "Your API Key (shown once)",
                 })}
               </p>
               <div className="flex items-center gap-2 mb-2">
-                <code className="flex-1 bg-black/30 px-3 py-2 rounded-sm text-xs text-white/80 font-mono overflow-x-auto">
+                <code className="flex-1 bg-surface px-3 py-2 rounded-sm text-xs text-muted font-mono overflow-x-auto">
                   {displayApiKey}
                 </code>
                 <Button
                   variant="ghost"
                   type="button"
                   onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                  className="p-2 bg-white/10 hover:bg-white/20 rounded-sm transition-colors shrink-0"
+                  className="p-2 bg-surface hover:bg-surface rounded-sm transition-colors shrink-0"
                 >
                   {copiedItem === "API Key" ? (
                     <Check className="h-4 w-4 text-green-400" />
                   ) : (
-                    <Copy className="h-4 w-4 text-white/60" />
+                    <Copy className="h-4 w-4 text-muted" />
                   )}
                 </Button>
               </div>
-              <p className="text-xs text-white/74">
+              <p className="text-xs text-muted">
                 {t("cloud.apps.overview.saveKeyHint", {
                   defaultValue:
                     "Save this key securely. You won't see it again. This message disappears in 60 seconds.",
@@ -412,7 +412,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       {/* Deployment (#9145) — the client trigger for POST /apps/:id/deploy. */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Rocket className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.apps.overview.deployment", {
               defaultValue: "Deployment",
@@ -451,7 +451,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="https://github.com/org/app.git"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+              className="border-border bg-surface text-txt placeholder:text-neutral-600"
             />
           </label>
           <label className="space-y-1.5" htmlFor={deployRefInputId}>
@@ -467,7 +467,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="40-character SHA"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="font-mono border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+              className="font-mono border-border bg-surface text-txt placeholder:text-neutral-600"
             />
           </label>
           <div className="flex items-end">
@@ -475,7 +475,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               variant="ghost"
               type="submit"
               disabled={deploymentButtonDisabled}
-              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-white/10 hover:bg-white/15 flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-surface hover:bg-surface flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
             >
               {isDeploying || isPollingDeployment || deploymentInProgress ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -511,7 +511,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="Dockerfile"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-white/10 bg-black/30 text-white placeholder:text-neutral-600"
+              className="border-border bg-surface text-txt placeholder:text-neutral-600"
             />
           </label>
         </form>
@@ -526,7 +526,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         {/* API Key Card */}
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white flex items-center gap-2">
+            <h3 className="text-sm font-medium text-txt flex items-center gap-2">
               <Key className="h-4 w-4 text-[var(--accent)]" />
               {t("cloud.apps.overview.apiKey", { defaultValue: "API Key" })}
             </h3>
@@ -536,7 +536,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   variant="ghost"
                   type="button"
                   disabled={isRegenerating}
-                  className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors"
+                  className="text-xs text-neutral-400 hover:text-txt flex items-center gap-1 transition-colors"
                 >
                   {isRegenerating ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -581,9 +581,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </AlertDialog>
           </div>
 
-          <div className="bg-black/40 rounded-sm p-3 border border-white/10">
+          <div className="bg-surface rounded-sm p-3 border border-border">
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs text-white/70 font-mono overflow-x-auto">
+              <code className="flex-1 text-xs text-muted font-mono overflow-x-auto">
                 {showKey && displayApiKey ? displayApiKey : maskedApiKey}
               </code>
               {displayApiKey && (
@@ -592,24 +592,24 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     variant="ghost"
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
+                    className="p-1.5 hover:bg-surface rounded-sm transition-colors"
                   >
                     {showKey ? (
-                      <EyeOff className="h-3.5 w-3.5 text-white/50" />
+                      <EyeOff className="h-3.5 w-3.5 text-muted" />
                     ) : (
-                      <Eye className="h-3.5 w-3.5 text-white/50" />
+                      <Eye className="h-3.5 w-3.5 text-muted" />
                     )}
                   </Button>
                   <Button
                     variant="ghost"
                     type="button"
                     onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                    className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
+                    className="p-1.5 hover:bg-surface rounded-sm transition-colors"
                   >
                     {copiedItem === "API Key" ? (
                       <Check className="h-3.5 w-3.5 text-green-400" />
                     ) : (
-                      <Copy className="h-3.5 w-3.5 text-white/50" />
+                      <Copy className="h-3.5 w-3.5 text-muted" />
                     )}
                   </Button>
                 </>
@@ -626,7 +626,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
         {/* Basic Info Card */}
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Globe className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.apps.overview.appInformation", {
               defaultValue: "App Information",
@@ -692,7 +692,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <Coins className="h-5 w-5 text-orange-400" />
               </div>
               <div>
-                <h3 className="text-sm font-medium text-white">Monetization</h3>
+                <h3 className="text-sm font-medium text-txt">Monetization</h3>
                 <p className="text-xs text-neutral-500">
                   {monetizationEnabled
                     ? totalEarnings && totalEarnings > 0
@@ -707,7 +707,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 className={cn(
                   monetizationEnabled
                     ? "bg-green-500/20 text-green-400 border-green-500/30"
-                    : "bg-white/10 text-white/50 border-white/20",
+                    : "bg-surface text-muted border-border",
                 )}
               >
                 {monetizationEnabled ? "Enabled" : "Disabled"}
@@ -718,7 +718,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 onClick={() =>
                   navigate(`/dashboard/apps/${app.id}?tab=monetization`)
                 }
-                className="p-2 hover:bg-white/10 rounded-sm transition-colors"
+                className="p-2 hover:bg-surface rounded-sm transition-colors"
               >
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
               </Button>
@@ -730,15 +730,15 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       {/* Allowed Origins */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Shield className="h-4 w-4 text-white/70" />
+          <h3 className="text-sm font-medium text-txt flex items-center gap-2">
+            <Shield className="h-4 w-4 text-muted" />
             Allowed Origins
           </h3>
           <Button
             variant="ghost"
             type="button"
             onClick={() => navigate(`/dashboard/apps/${app.id}?tab=settings`)}
-            className="text-xs text-neutral-400 hover:text-white transition-colors"
+            className="text-xs text-neutral-400 hover:text-txt transition-colors"
           >
             Edit
           </Button>
@@ -751,7 +751,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             allowedOrigins.map((origin) => (
               <Badge
                 key={origin}
-                className="bg-white/5 text-white/70 border-white/10"
+                className="bg-surface text-muted border-border"
               >
                 {origin}
               </Badge>
@@ -791,7 +791,7 @@ function InfoRow({
               e.preventDefault();
             }
           }}
-          className="text-sm text-white hover:opacity-75 transition-opacity flex items-center gap-1 mt-0.5"
+          className="text-sm text-txt hover:opacity-75 transition-opacity flex items-center gap-1 mt-0.5"
         >
           {icon}
           <span className="truncate">{value}</span>
@@ -800,7 +800,7 @@ function InfoRow({
           )}
         </a>
       ) : (
-        <p className="text-sm text-white mt-0.5 line-clamp-2">{value}</p>
+        <p className="text-sm text-txt mt-0.5 line-clamp-2">{value}</p>
       )}
     </div>
   );

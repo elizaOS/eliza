@@ -219,8 +219,8 @@ function StudioBootFallback(): React.JSX.Element {
  * Opaque dark cloud surface for the native mount. The Applications pages are
  * authored against the cloud console's dark theme (`theme-cloud` tokens, white
  * text, `white/10` borders); on web `CloudRouterShell` mounts that surface
- * around every authenticated route (`theme-cloud min-h-dvh bg-black
- * text-white`). The native app shell instead renders registered pages over the
+ * around every authenticated route (`theme-cloud min-h-dvh bg-surface
+ * text-txt`). The native app shell instead renders registered pages over the
  * HOST app theme (light/orange), so without this wrapper the studio floods
  * with the host background and its white-on-dark text is unreadable. Sized to
  * fill the shell's flex slot and own its scrolling.
@@ -231,7 +231,7 @@ function StudioSurface({
   children: ReactNode;
 }): React.JSX.Element {
   return (
-    <div className="theme-cloud flex h-full min-h-0 w-full flex-col overflow-y-auto bg-black text-white">
+    <div className="theme-cloud flex h-full min-h-0 w-full flex-col overflow-y-auto bg-surface text-txt">
       {children}
     </div>
   );

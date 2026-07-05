@@ -105,7 +105,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
+          <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Megaphone className="h-4 w-4 text-[var(--accent)]" />
             {t("cloud.appPromote.title", {
               name: app.name,
@@ -125,7 +125,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             onClick={handleGenerateAssets}
             disabled={isGeneratingAssets}
-            className="border-white/10 hover:bg-white/10 rounded-sm"
+            className="border-border hover:bg-surface rounded-sm"
           >
             {isGeneratingAssets ? (
               <>
@@ -162,7 +162,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       {/* Suggestions */}
       {suggestions && (
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
-          <h3 className="text-sm font-medium text-white">
+          <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.tipsTitle", {
               defaultValue: "Promotion Tips",
             })}
@@ -180,14 +180,14 @@ export function AppPromote({ app }: AppPromoteProps) {
             ))}
           </div>
 
-          <div className="pt-3 border-t border-white/10">
+          <div className="pt-3 border-t border-border">
             <div className="flex items-center justify-between text-xs">
               <span className="text-neutral-500">
                 {t("cloud.appPromote.estimatedBudget", {
                   defaultValue: "Estimated budget range:",
                 })}
               </span>
-              <span className="text-white font-medium">
+              <span className="text-txt font-medium">
                 ${suggestions.estimatedBudget.min} - $
                 {suggestions.estimatedBudget.max}
               </span>
@@ -199,7 +199,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       {/* Connected Ad Accounts */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">
+          <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.connectedAccounts", {
               defaultValue: "Connected Ad Accounts",
             })}
@@ -208,7 +208,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             variant="outline"
             size="sm"
             asChild
-            className="border-white/10 hover:bg-white/10 rounded-sm"
+            className="border-border hover:bg-surface rounded-sm"
           >
             <Link
               to="/dashboard/settings?tab=connections"
@@ -250,16 +250,16 @@ export function AppPromote({ app }: AppPromoteProps) {
             {adAccounts.map((account) => (
               <div
                 key={account.id}
-                className="flex items-center justify-between p-3 rounded-sm bg-black/30 border border-white/5"
+                className="flex items-center justify-between p-3 rounded-sm bg-surface border border-border"
               >
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="outline"
-                    className="capitalize text-xs border-white/20"
+                    className="capitalize text-xs border-border"
                   >
                     {account.platform}
                   </Badge>
-                  <span className="text-sm text-white">
+                  <span className="text-sm text-txt">
                     {account.accountName}
                   </span>
                 </div>

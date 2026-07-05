@@ -193,7 +193,7 @@ export function AppSettings({ app }: AppSettingsProps) {
     <div className="space-y-4">
       {/* Basic Settings */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
-        <h3 className="text-sm font-medium text-white flex items-center gap-2">
+        <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
           {t("cloud.appSettings.basicSettings", {
             defaultValue: "Basic Settings",
@@ -214,7 +214,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               placeholder={t("cloud.appSettings.appNamePlaceholder", {
                 defaultValue: "My Awesome App",
               })}
-              className="bg-black/40 border-white/10  rounded-sm"
+              className="bg-surface border-border  rounded-sm"
             />
           </div>
 
@@ -234,7 +234,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 defaultValue: "A brief description of your app...",
               })}
               rows={3}
-              className="bg-black/40 border-white/10  resize-none rounded-sm"
+              className="bg-surface border-border  resize-none rounded-sm"
             />
           </div>
 
@@ -251,7 +251,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, app_url: e.target.value })
                 }
                 placeholder="https://myapp.com"
-                className="bg-black/40 border-white/10  rounded-sm"
+                className="bg-surface border-border  rounded-sm"
               />
             </div>
 
@@ -269,7 +269,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, website_url: e.target.value })
                 }
                 placeholder="https://website.com"
-                className="bg-black/40 border-white/10  rounded-sm"
+                className="bg-surface border-border  rounded-sm"
               />
             </div>
           </div>
@@ -288,13 +288,13 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, contact_email: e.target.value })
               }
               placeholder="contact@myapp.com"
-              className="bg-black/40 border-white/10  rounded-sm"
+              className="bg-surface border-border  rounded-sm"
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
+          <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
             <div>
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.activeStatus", {
                   defaultValue: "Active Status",
                 })}
@@ -320,8 +320,8 @@ export function AppSettings({ app }: AppSettingsProps) {
       {/* Allowed Origins */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div>
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Shield className="h-4 w-4 text-white/70" />
+          <h3 className="text-sm font-medium text-txt flex items-center gap-2">
+            <Shield className="h-4 w-4 text-muted" />
             {t("cloud.appSettings.allowedOrigins", {
               defaultValue: "Allowed Origins",
             })}
@@ -338,7 +338,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             value={newOrigin}
             onChange={(e) => setNewOrigin(e.target.value)}
             placeholder="https://example.com"
-            className="bg-black/40 border-white/10  rounded-sm"
+            className="bg-surface border-border  rounded-sm"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -351,7 +351,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             onClick={addOrigin}
             variant="outline"
             size="icon"
-            className="shrink-0 border-white/10 hover:bg-white/10"
+            className="shrink-0 border-border hover:bg-surface"
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -362,14 +362,14 @@ export function AppSettings({ app }: AppSettingsProps) {
             {allowedOrigins.map((origin) => (
               <Badge
                 key={origin}
-                className="bg-white/5 text-white/70 border-white/10 flex items-center gap-1 pr-1"
+                className="bg-surface text-muted border-border flex items-center gap-1 pr-1"
               >
                 {origin}
                 <Button
                   variant="ghost"
                   type="button"
                   onClick={() => removeOrigin(origin)}
-                  className="ml-1 p-0.5 hover:bg-white/10 rounded-sm transition-colors"
+                  className="ml-1 p-0.5 hover:bg-surface rounded-sm transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -384,7 +384,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         <Button
           onClick={handleSave}
           disabled={isLoading}
-          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+          className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt"
         >
           {isLoading ? (
             <>
@@ -410,9 +410,9 @@ export function AppSettings({ app }: AppSettingsProps) {
         </h3>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
+          <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.regenerateApiKey", {
                   defaultValue: "Regenerate API Key",
                 })}
@@ -427,7 +427,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
                   disabled={isRegenerating}
                 >
                   {isRegenerating ? (
@@ -442,9 +442,9 @@ export function AppSettings({ app }: AppSettingsProps) {
                   )}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-neutral-900 border-white/10">
+              <AlertDialogContent className="bg-neutral-900 border-border">
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="text-white">
+                  <AlertDialogTitle className="text-txt">
                     {t("cloud.appSettings.regenerateDialogTitle", {
                       defaultValue: "Regenerate API Key?",
                     })}
@@ -457,12 +457,12 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
+                  <AlertDialogCancel className="border-border text-txt hover:bg-surface">
                     {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-red-600 hover:bg-red-700 text-white"
+                    className="bg-red-600 hover:bg-red-700 text-txt"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {
                       defaultValue: "Regenerate API Key",
@@ -473,9 +473,9 @@ export function AppSettings({ app }: AppSettingsProps) {
             </AlertDialog>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
+          <div className="flex items-center justify-between p-4 bg-surface rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
-              <p className="text-sm font-medium text-white">
+              <p className="text-sm font-medium text-txt">
                 {t("cloud.appSettings.deleteApp", {
                   defaultValue: "Delete App",
                 })}
@@ -490,7 +490,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
                   disabled={isDeleting}
                 >
                   {isDeleting ? (
@@ -505,9 +505,9 @@ export function AppSettings({ app }: AppSettingsProps) {
                   )}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-neutral-900 border-white/10">
+              <AlertDialogContent className="bg-neutral-900 border-border">
                 <AlertDialogHeader>
-                  <AlertDialogTitle className="text-white">
+                  <AlertDialogTitle className="text-txt">
                     {t("cloud.appSettings.deleteDialogTitle", {
                       defaultValue: "Delete App?",
                     })}
@@ -517,7 +517,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                       defaultValue:
                         "This action cannot be undone. This will permanently delete the app",
                     })}
-                    <strong className="text-white"> {app.name}</strong>{" "}
+                    <strong className="text-txt"> {app.name}</strong>{" "}
                     {t("cloud.appSettings.deleteDialogOutro", {
                       defaultValue:
                         "and remove all associated data including analytics and user tracking.",
@@ -525,12 +525,12 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
+                  <AlertDialogCancel className="border-border text-txt hover:bg-surface">
                     {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-red-600 hover:bg-red-700 text-white"
+                    className="bg-red-600 hover:bg-red-700 text-txt"
                   >
                     {t("cloud.appSettings.deleteApp", {
                       defaultValue: "Delete App",

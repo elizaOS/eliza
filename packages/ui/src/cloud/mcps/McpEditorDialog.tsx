@@ -296,7 +296,7 @@ export function McpEditorDialog({
                   update_("slug", slugify(e.target.value));
                 }}
               />
-              <p className="text-xs text-white/40">
+              <p className="text-xs text-muted">
                 {t("cloud.mcps.slugHint", {
                   defaultValue: "Lowercase letters, numbers and dashes only.",
                 })}
@@ -402,7 +402,7 @@ export function McpEditorDialog({
             </div>
           )}
 
-          <div className="flex items-center justify-between rounded-sm border border-white/10 bg-white/5 px-3 py-2">
+          <div className="flex items-center justify-between rounded-sm border border-border bg-surface px-3 py-2">
             <Label htmlFor="mcp-x402-enabled" className="cursor-pointer">
               {t("cloud.mcps.x402EnabledLabel", {
                 defaultValue: "Enable x402 micropayments",
@@ -461,7 +461,7 @@ export function McpEditorDialog({
               }
               className="font-mono text-xs"
             />
-            <p className="text-xs text-white/40">
+            <p className="text-xs text-muted">
               {t("cloud.mcps.toolsHint", {
                 defaultValue:
                   "At least one tool is required before you can publish.",

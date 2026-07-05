@@ -171,7 +171,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
   return (
     <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
       <div>
-        <h3 className="text-sm font-medium text-white flex items-center gap-2">
+        <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
           {t("cloud.appDomains.buyTitle", { defaultValue: "Buy a Domain" })}
         </h3>
@@ -199,7 +199,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           aria-label={t("cloud.appDomains.buyInputLabel", {
             defaultValue: "Domain to buy",
           })}
-          className="bg-black/40 border-neutral-800 text-white"
+          className="bg-surface border-neutral-800 text-txt"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -222,7 +222,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
       </form>
 
       {result && !result.available && (
-        <div className="flex items-center gap-2 p-3 rounded-sm bg-black/40 text-sm text-neutral-300">
+        <div className="flex items-center gap-2 p-3 rounded-sm bg-surface text-sm text-neutral-300">
           <XCircle className="h-4 w-4 text-neutral-500 shrink-0" />
           <span>
             {t("cloud.appDomains.buyTaken", {
@@ -234,11 +234,11 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
       )}
 
       {result?.available && result.price && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-sm bg-black/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-sm bg-surface">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-[var(--accent)] shrink-0" />
-              <span className="text-sm font-medium text-white truncate">
+              <span className="text-sm font-medium text-txt truncate">
                 {result.domain}
               </span>
             </div>
@@ -327,7 +327,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               size="sm"
               variant="outline"
               onClick={openBilling}
-              className="self-start border-neutral-700 hover:bg-white/5"
+              className="self-start border-neutral-700 hover:bg-surface"
             >
               <CreditCard className="h-4 w-4 mr-1.5" />
               {t("cloud.appDomains.buyAddCredits", {

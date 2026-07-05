@@ -104,11 +104,11 @@ export function WithdrawDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md bg-neutral-900 border-white/10">
+      <DialogContent className="sm:max-w-md bg-neutral-900 border-border">
         {state === "confirm" && (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white">
+              <DialogTitle className="flex items-center gap-2 text-txt">
                 <Wallet className="h-5 w-5 text-[var(--brand-orange)]" />
                 Withdraw Earnings
               </DialogTitle>
@@ -120,7 +120,7 @@ export function WithdrawDialog({
 
             <div className="space-y-4 py-4">
               {/* Balance display */}
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
+              <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
                 <span className="text-sm text-neutral-400">
                   Available Balance
                 </span>
@@ -146,7 +146,7 @@ export function WithdrawDialog({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="pl-7 bg-black/40 border-white/10 text-white font-mono "
+                    className="pl-7 bg-surface border-border text-txt font-mono "
                     min={payoutThreshold}
                     max={withdrawableBalance}
                     step="0.01"
@@ -160,7 +160,7 @@ export function WithdrawDialog({
                     variant="ghost"
                     type="button"
                     onClick={() => setAmount(withdrawableBalance.toFixed(2))}
-                    className="text-white/60 hover:text-white transition-colors"
+                    className="text-muted hover:text-txt transition-colors"
                   >
                     Withdraw All
                   </Button>
@@ -182,14 +182,14 @@ export function WithdrawDialog({
               <Button
                 variant="ghost"
                 onClick={handleClose}
-                className="text-neutral-400 hover:text-white"
+                className="text-neutral-400 hover:text-txt"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleWithdraw}
                 disabled={!isValidAmount}
-                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:opacity-50"
+                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt disabled:opacity-50"
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
@@ -203,7 +203,7 @@ export function WithdrawDialog({
             <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center">
               <Loader2 className="h-8 w-8 text-[var(--brand-orange)] animate-spin" />
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">
+            <h3 className="text-lg font-medium text-txt-strong mb-2">
               Processing Withdrawal
             </h3>
             <p className="text-sm text-neutral-400">
@@ -217,7 +217,7 @@ export function WithdrawDialog({
             <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center bg-green-500/10 rounded-full border border-green-500/30">
               <CheckCircle2 className="h-8 w-8 text-green-400" />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">
+            <h3 className="text-xl font-semibold text-txt-strong mb-2">
               Withdrawal Complete!
             </h3>
             <p className="text-neutral-400 mb-2">
@@ -226,12 +226,12 @@ export function WithdrawDialog({
             <p className="text-xs text-neutral-500 mb-4">
               Visit your Earnings page to redeem as elizaOS tokens
             </p>
-            <div className="inline-block p-3 bg-black/30 rounded-sm border border-white/10">
+            <div className="inline-block p-3 bg-surface rounded-sm border border-border">
               <span className="text-xs text-neutral-500">
                 Remaining App Balance
               </span>
               {newBalance !== null ? (
-                <p className="text-lg font-mono font-semibold text-white">
+                <p className="text-lg font-mono font-semibold text-txt-strong">
                   ${newBalance.toFixed(2)}
                 </p>
               ) : (
@@ -243,7 +243,7 @@ export function WithdrawDialog({
             <DialogFooter className="mt-6">
               <Button
                 onClick={handleClose}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt"
               >
                 Done
               </Button>
@@ -256,7 +256,7 @@ export function WithdrawDialog({
             <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center bg-red-500/10 rounded-full border border-red-500/30">
               <AlertCircle className="h-8 w-8 text-red-400" />
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">
+            <h3 className="text-lg font-medium text-txt-strong mb-2">
               Withdrawal Failed
             </h3>
             <p className="text-sm text-red-400 mb-4">{error}</p>
@@ -264,13 +264,13 @@ export function WithdrawDialog({
               <Button
                 variant="ghost"
                 onClick={handleClose}
-                className="text-neutral-400 hover:text-white"
+                className="text-neutral-400 hover:text-txt"
               >
                 Cancel
               </Button>
               <Button
                 onClick={() => setState("confirm")}
-                className="bg-white/10 hover:bg-white/20 text-white"
+                className="bg-surface hover:bg-surface text-txt"
               >
                 Try Again
               </Button>

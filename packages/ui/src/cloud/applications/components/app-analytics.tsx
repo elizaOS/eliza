@@ -382,8 +382,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
                   activeTab === tab.value
-                    ? "bg-white/10 text-white"
-                    : "text-neutral-400 hover:text-white",
+                    ? "bg-surface text-txt"
+                    : "text-neutral-400 hover:text-txt",
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -401,10 +401,10 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 setPeriod(v)
               }
             >
-              <SelectTrigger className="w-[130px] h-9 bg-neutral-900 border-white/10 rounded-sm">
+              <SelectTrigger className="w-[130px] h-9 bg-neutral-900 border-border rounded-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-neutral-800 border-white/10 rounded-sm">
+              <SelectContent className="bg-neutral-800 border-border rounded-sm">
                 <SelectItem value="hourly">Hourly</SelectItem>
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="monthly">Monthly</SelectItem>
@@ -443,7 +443,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Total Users"
                 value={totalStats.totalUsers?.toLocaleString("en-US") || "0"}
-                icon={<Users className="h-5 w-5 text-white/70" />}
+                icon={<Users className="h-5 w-5 text-muted" />}
               />
               <DashboardStatCard
                 label="Credits Used"
@@ -454,7 +454,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           )}
 
           <div className="bg-neutral-900 rounded-sm p-4">
-            <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-[var(--brand-orange)]" />
               Requests Over Time
             </h3>
@@ -500,7 +500,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           </div>
 
           <div className="bg-neutral-900 rounded-sm p-4">
-            <h3 className="text-sm font-medium text-white mb-4">User Growth</h3>
+            <h3 className="text-sm font-medium text-txt mb-4">User Growth</h3>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={chartData}>
@@ -571,7 +571,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 <MiniStatCard
                   label="Unique Visitors"
                   value={requestStats.uniqueIps.toLocaleString("en-US")}
-                  color="text-white"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Avg Response"
@@ -580,18 +580,18 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       ? `${requestStats.avgResponseTime}ms`
                       : "N/A"
                   }
-                  color="text-white"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Total Credits"
                   value={`$${parseFloat(requestStats.totalCredits || "0").toFixed(4)}`}
-                  color="text-white"
+                  color="text-txt"
                 />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="bg-neutral-900 rounded-sm p-4">
-                  <h3 className="text-sm font-medium text-white mb-4">
+                  <h3 className="text-sm font-medium text-txt mb-4">
                     By Source
                   </h3>
                   {sourceData.length > 0 ? (
@@ -638,7 +638,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
 
                 <div className="bg-neutral-900 rounded-sm p-4">
-                  <h3 className="text-sm font-medium text-white mb-4">
+                  <h3 className="text-sm font-medium text-txt mb-4">
                     By Type
                   </h3>
                   {Object.keys(requestStats.byType).length > 0 ? (
@@ -659,7 +659,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                               {TYPE_LABELS[type] || type}
                             </span>
                             <div className="flex items-center gap-2">
-                              <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div className="w-24 h-1.5 bg-surface rounded-full overflow-hidden">
                                 <div
                                   className="h-full rounded-full"
                                   style={{
@@ -714,7 +714,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique Users"
                     value={requestStats.uniqueUsers.toLocaleString("en-US")}
-                    icon={<Users className="h-5 w-5 text-white/70" />}
+                    icon={<Users className="h-5 w-5 text-muted" />}
                   />
                   <DashboardStatCard
                     label="Avg Requests/IP"
@@ -732,7 +732,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
               <div className="bg-neutral-900 rounded-sm p-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-white">
+                  <h3 className="text-sm font-medium text-txt">
                     Top Visitors
                   </h3>
                   <Button
@@ -751,7 +751,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-white/10">
+                        <tr className="border-b border-border">
                           <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
                             IP Address
                           </th>
@@ -767,19 +767,19 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         {visitors.map((visitor, index) => (
                           <tr
                             key={visitor.ip}
-                            className="border-b border-white/5 hover:bg-white/5"
+                            className="border-b border-border hover:bg-surface"
                           >
                             <td className="py-2 px-3">
                               <div className="flex items-center gap-2">
                                 <span className="text-neutral-500 text-xs w-4">
                                   {index + 1}
                                 </span>
-                                <code className="text-white font-mono text-xs">
+                                <code className="text-txt font-mono text-xs">
                                   {visitor.ip}
                                 </code>
                               </div>
                             </td>
-                            <td className="py-2 px-3 text-right text-white text-xs">
+                            <td className="py-2 px-3 text-right text-txt text-xs">
                               {visitor.requestCount.toLocaleString("en-US")}
                             </td>
                             <td className="py-2 px-3 text-right text-neutral-500 text-xs">
@@ -825,7 +825,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={sessionAnalytics.summary.uniqueVisitors.toLocaleString(
                     "en-US",
                   )}
-                  color="text-white"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Page Views"
@@ -837,18 +837,18 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 <MiniStatCard
                   label="Pages/Session"
                   value={sessionAnalytics.summary.avgPagesPerSession.toFixed(1)}
-                  color="text-white"
+                  color="text-txt"
                 />
                 <MiniStatCard
                   label="Bounce Rate"
                   value={`${sessionAnalytics.summary.bounceRatePercent.toFixed(1)}%`}
-                  color="text-white"
+                  color="text-txt"
                 />
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                 <div className="bg-neutral-900 rounded-sm p-4">
-                  <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+                  <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
                     <GitBranch className="h-4 w-4 text-[var(--brand-orange)]" />
                     Funnel
                   </h3>
@@ -857,14 +857,14 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                       {sessionAnalytics.funnel.steps.map((step) => (
                         <div key={step.path} className="space-y-1.5">
                           <div className="flex items-center justify-between gap-3">
-                            <span className="text-sm text-white truncate">
+                            <span className="text-sm text-txt truncate">
                               {step.label}
                             </span>
                             <span className="text-xs text-neutral-400 whitespace-nowrap">
                               {step.sessions.toLocaleString("en-US")} sessions
                             </span>
                           </div>
-                          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-2 bg-surface rounded-full overflow-hidden">
                             <div
                               className="h-full bg-[var(--brand-orange)]"
                               style={{
@@ -892,14 +892,14 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
 
                 <div className="bg-neutral-900 rounded-sm p-4">
-                  <h3 className="text-sm font-medium text-white mb-4">
+                  <h3 className="text-sm font-medium text-txt mb-4">
                     Recent Sessions
                   </h3>
                   {sessionAnalytics.sessions.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-white/10">
+                          <tr className="border-b border-border">
                             <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
                               Entry
                             </th>
@@ -918,15 +918,15 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           {sessionAnalytics.sessions.slice(0, 10).map((s) => (
                             <tr
                               key={s.sessionId}
-                              className="border-b border-white/5 hover:bg-white/5"
+                              className="border-b border-border hover:bg-surface"
                             >
-                              <td className="py-2 px-3 text-white text-xs max-w-[180px] truncate">
+                              <td className="py-2 px-3 text-txt text-xs max-w-[180px] truncate">
                                 {s.entryPath}
                               </td>
                               <td className="py-2 px-3 text-neutral-300 text-xs max-w-[180px] truncate">
                                 {s.exitPath}
                               </td>
-                              <td className="py-2 px-3 text-right text-white text-xs">
+                              <td className="py-2 px-3 text-right text-txt text-xs">
                                 {s.pageViews.toLocaleString("en-US")}
                               </td>
                               <td className="py-2 px-3 text-right text-neutral-500 text-xs whitespace-nowrap">
@@ -959,7 +959,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
       {activeTab === "logs" && (
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-white">Request Logs</h3>
+            <h3 className="text-sm font-medium text-txt">Request Logs</h3>
             <div className="flex items-center gap-2">
               <span className="text-xs text-neutral-500">
                 {logsTotal.toLocaleString("en-US")} total
@@ -987,7 +987,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-white/10">
+                    <tr className="border-b border-border">
                       <th className="text-left py-2 px-2 text-neutral-500 font-medium">
                         Time
                       </th>
@@ -1012,7 +1012,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     {requestLogs.map((log) => (
                       <tr
                         key={log.id}
-                        className="border-b border-white/5 hover:bg-white/5"
+                        className="border-b border-border hover:bg-surface"
                       >
                         <td className="py-2 px-2 text-neutral-500 whitespace-nowrap">
                           {formatDistanceToNow(new Date(log.created_at), {

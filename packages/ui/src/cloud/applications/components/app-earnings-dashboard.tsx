@@ -180,14 +180,14 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
     return (
       <div className="bg-neutral-900 rounded-sm p-8 text-center">
         <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-400" />
-        <h3 className="text-lg font-medium text-white mb-2">
+        <h3 className="text-lg font-medium text-txt-strong mb-2">
           Error loading earnings
         </h3>
         <p className="text-neutral-400 mb-4 text-sm">{error}</p>
         <Button
           onClick={fetchEarnings}
           variant="outline"
-          className="border-white/10 hover:bg-white/10"
+          className="border-border hover:bg-surface"
         >
           Try Again
         </Button>
@@ -217,10 +217,10 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           value={period}
           onValueChange={(v) => setPeriod(v as typeof period)}
         >
-          <SelectTrigger className="w-[140px] h-9 bg-neutral-900 border-white/10 rounded-sm">
+          <SelectTrigger className="w-[140px] h-9 bg-neutral-900 border-border rounded-sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-neutral-800 border-white/10 rounded-sm">
+          <SelectContent className="bg-neutral-800 border-border rounded-sm">
             <SelectItem value="7">Last 7 days</SelectItem>
             <SelectItem value="30">Last 30 days</SelectItem>
             <SelectItem value="90">Last 90 days</SelectItem>
@@ -267,7 +267,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 <p className="text-xs text-neutral-500">
                   Total Lifetime Earnings
                 </p>
-                <p className="text-2xl font-semibold text-white mt-1">
+                <p className="text-2xl font-semibold text-txt-strong mt-1">
                   ${summary.totalLifetimeEarnings.toFixed(2)}
                 </p>
                 {breakdown && (
@@ -302,7 +302,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 <Button
                   onClick={() => setShowWithdrawDialog(true)}
                   size="sm"
-                  className="w-full bg-green-600 hover:bg-green-500 text-white"
+                  className="w-full bg-green-600 hover:bg-green-500 text-txt"
                 >
                   <Wallet className="h-4 w-4 mr-2" />
                   Withdraw Now
@@ -360,7 +360,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           ].map(({ label, data }) => (
             <div key={label} className="bg-neutral-900 rounded-sm p-3">
               <p className="text-xs text-neutral-500">{label}</p>
-              <p className="text-lg font-semibold text-white mt-1">
+              <p className="text-lg font-semibold text-txt-strong mt-1">
                 ${data.total.toFixed(2)}
               </p>
               <div className="flex gap-3 text-xs mt-2">
@@ -380,7 +380,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 
       {/* Chart */}
       <div className="bg-neutral-900 rounded-sm p-4">
-        <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+        <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-neutral-400" />
           Earnings Over Time
         </h3>
@@ -443,7 +443,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
 
       {/* Recent Transactions */}
       <div className="bg-neutral-900 rounded-sm p-4">
-        <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+        <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
           <Clock className="h-4 w-4 text-neutral-400" />
           Recent Earnings
         </h3>
@@ -453,12 +453,12 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             {transactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/5 hover:border-white/10 transition-colors"
+                className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border hover:border-border transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <TransactionIcon type={tx.type} />
                   <div>
-                    <p className="text-sm text-white">{tx.description}</p>
+                    <p className="text-sm text-txt">{tx.description}</p>
                     <p className="text-xs text-neutral-500">
                       {formatDistanceToNow(new Date(tx.created_at), {
                         addSuffix: true,
@@ -544,7 +544,7 @@ function TransactionBadge({ type }: { type: string }) {
       );
     default:
       return (
-        <Badge className="bg-white/10 text-neutral-400 border-white/20 text-[10px]">
+        <Badge className="bg-surface text-neutral-400 border-border text-[10px]">
           {type}
         </Badge>
       );

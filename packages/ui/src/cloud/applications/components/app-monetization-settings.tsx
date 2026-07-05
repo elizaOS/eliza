@@ -292,24 +292,24 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <div className="border border-white/10 bg-neutral-900 p-4">
+        <div className="border border-border bg-neutral-900 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <div
                 className={cn(
                   "mt-0.5 rounded-sm p-2",
-                  reviewApproved ? "bg-green-500/10" : "bg-white/5",
+                  reviewApproved ? "bg-green-500/10" : "bg-surface",
                 )}
               >
                 <ShieldCheck
                   className={cn(
                     "h-5 w-5",
-                    reviewApproved ? "text-green-400" : "text-white/50",
+                    reviewApproved ? "text-green-400" : "text-muted",
                   )}
                 />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-txt">
                   {getReviewStatusLabel(reviewStatus, t)}
                 </p>
                 <p className="mt-1 text-xs text-neutral-500">
@@ -335,7 +335,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 type="button"
                 onClick={submitForReview}
                 disabled={isSubmittingReview}
-                className="shrink-0 bg-[var(--brand-orange)] text-white hover:bg-[#e54f00]"
+                className="shrink-0 bg-[var(--brand-orange)] text-txt hover:bg-[#e54f00]"
               >
                 {isSubmittingReview ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -356,14 +356,14 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
             "rounded-sm p-4 border transition-colors",
             settings.monetizationEnabled
               ? "bg-green-500/5 border-green-500/20"
-              : "bg-neutral-900 border-white/10",
+              : "bg-neutral-900 border-border",
           )}
         >
           <div className="flex items-start gap-3">
             <div
               className={cn(
                 "p-2 rounded-sm mt-0.5",
-                settings.monetizationEnabled ? "bg-green-500/10" : "bg-white/5",
+                settings.monetizationEnabled ? "bg-green-500/10" : "bg-surface",
               )}
             >
               <DollarSign
@@ -371,13 +371,13 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   "h-5 w-5",
                   settings.monetizationEnabled
                     ? "text-green-400"
-                    : "text-white/40",
+                    : "text-muted",
                 )}
               />
             </div>
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-white">
+                <p className="text-sm font-medium text-txt">
                   {settings.monetizationEnabled
                     ? t("cloud.monetization.active", {
                         defaultValue: "Monetization Active",
@@ -421,7 +421,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   onClick={() =>
                     navigate(`/dashboard/apps/${appId}?tab=earnings`)
                   }
-                  className="mt-2 text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1"
+                  className="mt-2 text-xs text-muted hover:text-txt transition-colors flex items-center gap-1"
                 >
                   {t("cloud.monetization.earned", {
                     amount: settings.totalCreatorEarnings.toFixed(2),
@@ -438,7 +438,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Markup Controls */}
           <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
-            <h3 className="text-sm font-medium text-white">
+            <h3 className="text-sm font-medium text-txt">
               {t("cloud.monetization.revenueSettings", {
                 defaultValue: "Revenue Settings",
               })}
@@ -448,7 +448,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white">
+                  <span className="text-sm text-txt">
                     {t("cloud.monetization.inferenceMarkup", {
                       defaultValue: "Inference Markup",
                     })}
@@ -459,7 +459,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
-                      className="max-w-[200px] bg-neutral-800 border-white/10 text-white"
+                      className="max-w-[200px] bg-neutral-800 border-border text-txt"
                     >
                       {t("cloud.monetization.inferenceMarkupTooltip", {
                         defaultValue:
@@ -492,7 +492,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.inferenceMarkupPercentage === preset
                         ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                        : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
+                        : "bg-surface text-neutral-400 hover:bg-surface border border-transparent",
                     )}
                     onClick={() =>
                       updateSetting("inferenceMarkupPercentage", preset)
@@ -504,13 +504,13 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               </div>
             </div>
 
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-surface" />
 
             {/* Purchase Share */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-white">
+                  <span className="text-sm text-txt">
                     {t("cloud.monetization.purchaseShare", {
                       defaultValue: "Purchase Share",
                     })}
@@ -521,7 +521,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     </TooltipTrigger>
                     <TooltipContent
                       side="right"
-                      className="max-w-[200px] bg-neutral-800 border-white/10 text-white"
+                      className="max-w-[200px] bg-neutral-800 border-border text-txt"
                     >
                       {t("cloud.monetization.purchaseShareTooltip", {
                         defaultValue:
@@ -553,8 +553,8 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
-                        ? "bg-orange-500/20 text-white border border-orange-500/30"
-                        : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
+                        ? "bg-orange-500/20 text-txt border border-orange-500/30"
+                        : "bg-surface text-neutral-400 hover:bg-surface border border-transparent",
                     )}
                     onClick={() =>
                       updateSetting("purchaseSharePercentage", preset)
@@ -571,7 +571,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:bg-white/5 disabled:text-white/30"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt disabled:bg-surface disabled:text-muted"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -603,9 +603,9 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
 
         {/* Enable Monetization Confirmation Dialog */}
         <AlertDialog open={showEnableDialog} onOpenChange={setShowEnableDialog}>
-          <AlertDialogContent className="bg-neutral-900 border-white/10">
+          <AlertDialogContent className="bg-neutral-900 border-border">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-white text-center sm:text-left">
+              <AlertDialogTitle className="text-txt text-center sm:text-left">
                 {t("cloud.monetization.enableDialogTitle", {
                   defaultValue: "Enable Monetization?",
                 })}
@@ -645,7 +645,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               </p>
             </div>
             <AlertDialogFooter className="gap-2 sm:gap-2">
-              <AlertDialogCancel className="border-0 bg-transparent text-neutral-400 hover:text-white hover:bg-transparent">
+              <AlertDialogCancel className="border-0 bg-transparent text-neutral-400 hover:text-txt hover:bg-transparent">
                 {t("cloud.monetization.cancel", { defaultValue: "Cancel" })}
               </AlertDialogCancel>
               <AlertDialogAction
@@ -653,7 +653,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white px-6"
+                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt px-6"
               >
                 {t("cloud.monetization.startEarning", {
                   defaultValue: "Start Earning",
@@ -720,12 +720,12 @@ function SelfHostCTA() {
           <Server className="h-5 w-5 text-[var(--brand-orange)]" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-mono text-white mb-1">
+          <h3 className="text-base font-mono text-txt mb-1">
             {t("cloud.monetization.selfHostTitle", {
               defaultValue: "Let this app host itself.",
             })}
           </h3>
-          <p className="text-sm text-white/60 mb-3">
+          <p className="text-sm text-muted mb-3">
             {t("cloud.monetization.selfHostDesc", {
               defaultValue:
                 "Deploy as a container — daily hosting bills are paid from your app earnings first, then your credits. No setup, no settings. Cashout still works whenever you want.",
@@ -741,7 +741,7 @@ function SelfHostCTA() {
                   e.preventDefault();
                 }
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               {t("cloud.monetization.deployAgent", {
@@ -757,7 +757,7 @@ function SelfHostCTA() {
                   e.preventDefault();
                 }
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:bg-foreground hover:text-background text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 text-muted hover:bg-foreground hover:text-background text-sm font-mono transition-colors"
             >
               <Coins className="h-4 w-4" />
               {t("cloud.monetization.viewEarnings", {
