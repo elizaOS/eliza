@@ -15,6 +15,10 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
+import {
+  assertSharedViewHeaderContract,
+  clickViewHeaderBack,
+} from "./helpers/view-header";
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -27,6 +31,15 @@ type RouteProbe = {
   readyChecks: readonly ReadyCheck[];
   mode?: "any" | "all";
   timeoutMs?: number;
+  /**
+   * When set, the route is a `normal` view that MUST render the shared
+   * ViewHeader (#13586) — the probe asserts the icon-only-back contract via
+   * `assertSharedViewHeaderContract`. Chat / launcher-catalog / onboarding
+   * surfaces render no shared header (they own their chrome), so they leave
+   * this unset and are not asserted — matching `assertSharedViewHeader`'s
+   * no-op-for-exempt-views semantics.
+   */
+  requireViewHeader?: boolean;
 };
 
 type ViewportProbe = {
@@ -157,6 +170,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/automations",
     readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
   {
     name: "browser",
@@ -184,6 +198,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
   {
     name: "stream",
@@ -204,6 +219,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/settings",
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
   // Phone / Messages / Contacts are `androidOnly: true` overlay apps. Their
   // side-effect registrations only fire when `isElizaOS()` is true (an AOSP
@@ -263,9 +279,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     // plus the view title.
     name: "character skills deep link",
     path: "/character/skills",
-    readyChecks: [{ selector: '[data-testid="view-header"]' }, { text: "Skills" }],
+    readyChecks: [
+      { selector: '[data-testid="view-header"]' },
+      { text: "Skills" },
+    ],
     mode: "all",
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
   {
     name: "character experience deep link",
@@ -276,6 +296,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     ],
     mode: "all",
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
   {
     name: "automation node catalog deep link",
@@ -324,6 +345,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     path: "/help",
     readyChecks: [{ selector: '[data-testid="help-view"]' }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
   },
 ];
 
@@ -1468,6 +1490,15 @@ async function probeRoute(page: Page, route: RouteProbe): Promise<void> {
     route.timeoutMs,
   );
   await expectMainShell(page, route);
+  // A normal view must uphold the shared ViewHeader icon-only-back contract
+  // (#13586). On the mobile viewport, also enforce the ≥44px tap target.
+  if (route.requireViewHeader) {
+    const viewport = page.viewportSize();
+    const isMobileViewport = Boolean(viewport && viewport.width <= 500);
+    await assertSharedViewHeaderContract(page, {
+      requireTapTarget: isMobileViewport,
+    });
+  }
 }
 
 async function openRouteAndExpectUrl(
@@ -1660,4 +1691,19 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   }
 
   await clickSafeAllowlist(page, issues);
+});
+
+test("shared ViewHeader back control navigates away without crashing (#13586)", async ({
+  page,
+}) => {
+  const issues = installPageIssueGuards(page);
+  await page.setViewportSize(DESKTOP_PROBE.size);
+
+  // Settings is a canonical `normal` view with the shared ViewHeader. Open it,
+  // assert the icon-only-back contract, then click back and assert the shell
+  // survives the navigation (no crash, no 404) and leaves the view.
+  await probeRoute(page, coreRouteProbe("settings"));
+  await assertSharedViewHeaderContract(page);
+  await clickViewHeaderBack(page);
+  await expectNoPageIssues(issues, "settings view-header back");
 });

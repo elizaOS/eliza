@@ -1,0 +1,128 @@
+name: Views Soak
+
+# Scheduled, HARD-FAIL run of the real-app view-lifecycle soak
+# (`packages/app audit:views` → audit-views-soak.mjs). The soak is the strongest
+# view-isolation gate in the repo — it drives the ACTUAL running app (renderer +
+# API/agent), enumerates every registered view via /api/views, cycles each one
+# through the real ViewRouter many times, and fails (non-zero) on a render-storm,
+# an unbounded module cache, or unbounded heap growth. Before this workflow it
+# ran manual-only (audit item 7: "audit:views is in NO CI workflow"), so a
+# view-isolation regression could land unseen.
+#
+# It hard-fails — no `|| true` — so a regression reds this lane. It runs nightly
+# (off the PR path so it never blocks a merge on flake) plus on demand.
+
+on:
+  schedule:
+    # 08:00 UTC daily — after the app-live-e2e nightly (07:00) settles.
+    - cron: "0 8 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: views-soak-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  PGLITE_WASM_MODE: node
+  # The soak connects to the dev stack on the default dev ports.
+  ELIZA_UI_PORT: "2138"
+  ELIZA_API_PORT: "31337"
+
+jobs:
+  views-soak:
+    name: real-app view-lifecycle soak (hard-fail)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Free disk space for browser soak
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      # Prebuild the renderer + core/shared bundles so the dev server serves the
+      # compiled browser bundle instead of a cold ~12 min on-demand vite graph
+      # (the composer/views must mount inside the soak's per-view timeouts).
+      - name: Build @elizaos/core + @elizaos/shared browser bundles
+        run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      - name: Build app renderer bundle
+        run: bun run --cwd packages/app build:web
+
+      # Boot the real dev stack (renderer + API/agent) in the background, then
+      # wait for BOTH ports before running the soak against it. The soak reads
+      # UI=127.0.0.1:2138 / API=127.0.0.1:31337 (its defaults).
+      - name: Boot dev stack + run views soak (hard-fail)
+        run: |
+          set -euo pipefail
+          bun run dev > /tmp/views-soak-dev.log 2>&1 &
+          DEV_PID=$!
+          echo "dev stack PID=$DEV_PID"
+          cleanup() { kill "$DEV_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          wait_for() {
+            local url="$1" name="$2" tries=0
+            until curl -sf -o /dev/null "$url"; do
+              tries=$((tries + 1))
+              if [ "$tries" -gt 180 ]; then
+                echo "::error::$name did not come up at $url within 6 minutes"
+                echo "---- dev stack log (tail) ----"
+                tail -n 200 /tmp/views-soak-dev.log || true
+                exit 1
+              fi
+              sleep 2
+            done
+            echo "$name is up ($url)"
+          }
+          wait_for "http://127.0.0.1:31337/api/views" "API"
+          wait_for "http://127.0.0.1:2138" "UI"
+
+          # Hard-fail: no `|| true`. A render-storm / unbounded cache / heap growth
+          # reds this lane.
+          UI=http://127.0.0.1:2138 API=http://127.0.0.1:31337 \
+            bun run --cwd packages/app audit:views
+
+      - name: Upload views-soak artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: views-soak
+          path: |
+            .github/issue-evidence/10196-views-state/
+            /tmp/views-soak-dev.log
+          if-no-files-found: ignore
+          retention-days: 7

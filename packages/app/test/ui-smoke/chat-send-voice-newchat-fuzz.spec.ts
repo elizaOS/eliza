@@ -1,16 +1,18 @@
-// Full-stack e2e for the interleaved send / new-chat message lifecycle on the
-// REAL web app — the genuinely-real useShellController + useChatSend + composer,
+// Full-stack e2e for the interleaved send message-routing lifecycle on the REAL
+// web app — the genuinely-real useShellController + useChatSend + composer,
 // driven with real keyboard/pointer input, network mocked statefully (#10700).
 //
 // The composer submit + tapped suggestions + voice converse turns all route
 // through the shell `send()` path, which enqueues WITHOUT an explicit
 // conversationId. Before #10700's fix, `runQueuedChatSend` resolved the target
-// LATE (activeConversationIdRef at drain time), so a new-chat issued while a turn
-// was still queued rerouted that turn into the wrong conversation. This spec
-// proves, end to end in the browser, that a turn lands in the conversation it was
-// sent in even when a new chat is started while it is mid-flight — and that a
-// storm of interleaved sends / new-chats / swipes / view-switches raises no page
-// diagnostics and leaves no stuck state.
+// LATE (activeConversationIdRef at drain time), so a context change (view switch,
+// new-chat) issued while a turn was still queued rerouted that turn into the
+// wrong conversation. This spec proves, end to end in the browser, that a turn
+// lands in the conversation it was sent in even when the active-conversation
+// context churns under it mid-flight — and that a storm of interleaved sends /
+// swipes / view-switches raises no page diagnostics and leaves no stuck state.
+// (The overlay's new-chat trigger was removed with the single infinite thread in
+// #13531, so the mid-flight perturbations here are view switches, not new-chats.)
 //
 // The stateful store records, per conversation, the user messages the client
 // actually delivered to `…/messages/stream` — the routing ground truth. Record a
@@ -264,8 +266,8 @@ const COMPOSER =
   'textarea[aria-label="message"], [data-testid="chat-composer-textarea"]';
 
 async function expandToFull(page: import("@playwright/test").Page) {
-  // Focus the composer to open the sheet, then maximize so the header controls
-  // (new-chat / clear) are reachable.
+  // Focus the composer to open the sheet, then pull it up to the FULL detent so
+  // the transcript is fully revealed.
   await page.locator(COMPOSER).first().click();
   const grabber = page.getByTestId("chat-sheet-grabber");
   if (await grabber.count()) {
@@ -298,9 +300,18 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("a turn queued while a new chat starts lands in the conversation it was sent in, not the new one (#10700)", async ({
+test("a turn queued while the view switches away and back lands in the conversation it was sent in (#10700)", async ({
   page,
 }, testInfo) => {
+  // Post-#13531 the single infinite thread removed the overlay's new-chat
+  // trigger (chat-full-clear), so the original "start a new chat mid-flight"
+  // perturbation is no longer reachable on this surface. The #10700 routing
+  // invariant it protected — a queued turn is delivered ONLY to the conversation
+  // it was enqueued in, never rerouted when the active conversation context
+  // changes under it — is exercised here by switching the view away and back
+  // while a turn is still queued (a real, overlay-supported perturbation). The
+  // exact per-turn ordering is pinned deterministically by the component fuzz
+  // (useChatSend.send-voice-newchat.race.test.tsx).
   await installConversationStore(page, store, 1600);
   await openAppPath(page, "/chat");
   const overlay = page.getByTestId(OVERLAY);
@@ -320,18 +331,22 @@ test("a turn queued while a new chat starts lands in the conversation it was sen
   await composer.fill("route-beta");
   await page.getByTestId("chat-composer-action").click();
 
-  // Start a NEW chat while turn 2 is still queued. Pre-fix this rerouted the
-  // queued turn to the fresh conversation; post-fix it is pinned to conv-primary.
-  const clear = page.getByTestId("chat-full-clear");
-  await expect(clear).toBeVisible({ timeout: 15_000 });
-  await clear.click();
-  await testInfo.attach("02-new-chat-mid-flight.png", {
+  // Switch the view away (home) and back to chat while turn 2 is still queued —
+  // the active-conversation context churns under the in-flight queue. Pre-fix a
+  // late-resolved target could misroute the queued turn; post-fix it is pinned
+  // to conv-primary at enqueue.
+  await openAppPath(page, "/");
+  await page.waitForTimeout(200);
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId(OVERLAY)).toBeVisible({ timeout: 15_000 });
+  await expandToFull(page);
+  await testInfo.attach("02-view-switch-mid-flight.png", {
     body: await page.screenshot(),
     contentType: "image/png",
   });
 
   // Let the in-flight turn drain (its held stream releases after ~1.6s) and the
-  // queue settle after the new-chat.
+  // queue settle after the view switch.
   await expect
     .poll(() => (store.delivered["conv-primary"] ?? []).length, {
       timeout: 15_000,
@@ -340,31 +355,29 @@ test("a turn queued while a new chat starts lands in the conversation it was sen
   await page.waitForTimeout(2500);
 
   // ROUTING INVARIANT — the #10700 fix's guarantee: a turn is delivered ONLY to
-  // the conversation it was sent in. route-alpha (in flight when the new chat
-  // started) lands in conv-primary; route-beta, if it survives the new-chat,
-  // also lands in conv-primary — but NEITHER is ever misrouted into the freshly
-  // created conversation (the pre-fix bug). This holds regardless of send-queue
-  // timing; the exact per-turn ordering is pinned deterministically by the
-  // component fuzz (useChatSend.send-voice-newchat.race.test.tsx).
+  // the conversation it was sent in. Both route-alpha and route-beta land in
+  // conv-primary; no turn leaks into any OTHER conversation the store knows
+  // about (conv-secondary or a fresh one), regardless of send-queue timing.
   const primary = store.delivered["conv-primary"] ?? [];
   expect(primary).toContain("route-alpha");
   expect(primary.every((t) => t === "route-alpha" || t === "route-beta")).toBe(
     true,
   );
-  for (const freshId of store.created) {
-    const fresh = store.delivered[freshId] ?? [];
-    expect(fresh).not.toContain("route-alpha");
-    expect(fresh).not.toContain("route-beta");
+  for (const otherId of Object.keys(store.delivered)) {
+    if (otherId === "conv-primary") continue;
+    const other = store.delivered[otherId] ?? [];
+    expect(other).not.toContain("route-alpha");
+    expect(other).not.toContain("route-beta");
   }
   await testInfo.attach("03-routing-settled.png", {
     body: await page.screenshot(),
     contentType: "image/png",
   });
 
-  await expectNoPageDiagnostics(page, "send-newchat-race");
+  await expectNoPageDiagnostics(page, "send-view-switch-race");
 });
 
-test("interleaved send / new-chat / swipe / view-switch storm raises no diagnostics and never gets stuck (#10700)", async ({
+test("interleaved send / swipe / view-switch storm raises no diagnostics and never gets stuck (#10700)", async ({
   page,
 }, testInfo) => {
   await installConversationStore(page, store, 0);
@@ -373,17 +386,13 @@ test("interleaved send / new-chat / swipe / view-switch storm raises no diagnost
   await expect(overlay).toBeVisible({ timeout: 20_000 });
   await expandToFull(page);
 
-  // A user iterating like a real person: send, new chat, send, swipe, send,
-  // switch view + back, send, new chat — rapidly, in the same session.
+  // A user iterating like a real person: send, send, swipe the thread, switch
+  // view + back, send — rapidly, in the same session. (New-chat was removed with
+  // the single infinite thread in #13531, so the perturbations here are the ones
+  // the overlay still supports.)
   for (let round = 0; round < 4; round++) {
     await typeAndSend(page, `storm-${round}-a`);
     await page.waitForTimeout(120);
-    // New chat.
-    const clear = page.getByTestId("chat-full-clear");
-    if (await clear.count()) {
-      await clear.click();
-      await page.waitForTimeout(120);
-    }
     await typeAndSend(page, `storm-${round}-b`);
     await page.waitForTimeout(120);
     // Swipe the thread (real touch drag via CDP).

@@ -1,0 +1,171 @@
+/**
+ * REAL-browser fixture for the infinite upward scroll (#13532) — driven by
+ * run-chat-infinite-scroll-e2e.mjs.
+ *
+ * Mounts the PRODUCTION load-older engine — the real `useLoadOlderOnScroll`
+ * hook and the real `loadOlderConversationMessages` orchestration — over a real
+ * scroller in a real Chromium layout, so the pieces jsdom fakes (a genuine
+ * IntersectionObserver, real scrollHeight/scrollTop geometry, a real `?before=`
+ * network fetch) run for real. The `client` performs an actual `fetch()` to a
+ * `?before=<cursor>` endpoint the runner stubs, so the request is observable on
+ * the wire; the reducer prepend is the real dedupe/order contract.
+ *
+ * Query params (set by the runner): `?empty` seeds an empty thread (no fetch
+ * loop); `?fail` makes the first older-page fetch reject (error path — the guard
+ * re-arms, no retry storm). Default is a multi-page thread.
+ */
+
+import * as React from "react";
+import { useCallback, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
+
+import type { ConversationMessage } from "../../../api/client-types-chat";
+import { useLoadOlderOnScroll } from "../../../hooks/useLoadOlderOnScroll";
+import {
+  type LoadOlderClient,
+  loadOlderConversationMessages,
+} from "../../../state/load-older-conversation-messages";
+
+const CONVERSATION_ID = "conv-infinite";
+const PAGE_SIZE = 20;
+
+type Win = typeof window & {
+  /** Every `?before=` cursor the client actually fetched, in order. */
+  __beforeFetches?: number[];
+  /** Count of older-page loads that resolved (used to detect a retry storm). */
+  __loadResolves?: number;
+  /** Whether the last older-page fetch rejected. */
+  __lastFetchFailed?: boolean;
+};
+
+const params = new URLSearchParams(window.location.search);
+const MODE_EMPTY = params.has("empty");
+const MODE_FAIL = params.has("fail");
+
+/** Build the newest page (tail) the thread mounts with, oldest-first. */
+function initialMessages(): ConversationMessage[] {
+  if (MODE_EMPTY) return [];
+  const now = Date.now();
+  const msgs: ConversationMessage[] = [];
+  for (let i = 0; i < PAGE_SIZE; i += 1) {
+    msgs.push({
+      id: `tail-${i}`,
+      role: i % 2 === 0 ? "user" : "assistant",
+      text: `Tail message ${i} — the newest page mounted first.`,
+      timestamp: now - (PAGE_SIZE - i) * 1000,
+    });
+  }
+  return msgs;
+}
+
+/**
+ * A real fetch-backed client. `getConversationMessages({ before })` hits the
+ * stubbed endpoint so the `?before=` request is real network traffic; `?fail`
+ * makes the first call reject to exercise the hook's error path.
+ */
+function makeClient(): LoadOlderClient {
+  let failedOnce = false;
+  return {
+    async getConversationMessages(id, options) {
+      const win = window as Win;
+      const before = options?.before;
+      if (typeof before === "number") {
+        (win.__beforeFetches ??= []).push(before);
+      }
+      const url = `/api/conversations/${encodeURIComponent(id)}/messages?before=${before}&limit=${options?.limit ?? PAGE_SIZE}`;
+      if (MODE_FAIL && !failedOnce) {
+        failedOnce = true;
+        win.__lastFetchFailed = true;
+        // A real failed fetch (network-level): the hook's guard must re-arm
+        // without a retry storm and surface nothing fabricated.
+        throw new Error("simulated older-page fetch failure");
+      }
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`older-page fetch ${res.status}`);
+      return (await res.json()) as {
+        messages: ConversationMessage[];
+        hasMore?: boolean;
+      };
+    },
+  };
+}
+
+function Harness(): React.JSX.Element {
+  const [messages, setMessages] = useState<ConversationMessage[]>(
+    initialMessages,
+  );
+  const [hasMore, setHasMore] = useState(!MODE_EMPTY);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const clientRef = useRef<LoadOlderClient>(makeClient());
+
+  const prependMessages = useCallback((older: ConversationMessage[]) => {
+    setMessages((prev) => {
+      const seen = new Set(prev.map((m) => m.id));
+      const fresh = older.filter((m) => !seen.has(m.id));
+      return [...fresh, ...prev];
+    });
+  }, []);
+
+  const onLoadOlder = useCallback(async () => {
+    const result = await loadOlderConversationMessages({
+      client: clientRef.current,
+      conversationId: CONVERSATION_ID,
+      currentMessages: messages,
+      prependMessages,
+      limit: PAGE_SIZE,
+    });
+    (window as Win).__loadResolves = ((window as Win).__loadResolves ?? 0) + 1;
+    setHasMore(result.hasMore);
+  }, [messages, prependMessages]);
+
+  useLoadOlderOnScroll<HTMLDivElement>({
+    scrollRef,
+    sentinelRef,
+    onLoadOlder,
+    hasMore,
+    topItemKey: messages[0]?.id ?? "",
+    enabled: true,
+  });
+
+  return (
+    <div
+      style={{
+        maxWidth: 480,
+        margin: "0 auto",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        ref={scrollRef}
+        id="infinite-scroll-scroller"
+        data-testid="infinite-scroll-scroller"
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 12 }}
+      >
+        <div ref={sentinelRef} data-testid="infinite-scroll-top-sentinel" />
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            data-message-id={m.id}
+            data-testid="infinite-scroll-row"
+            style={{
+              padding: "10px 12px",
+              margin: "8px 0",
+              borderRadius: 8,
+              background: m.role === "user" ? "#1c2333" : "#232a3a",
+              color: "#e6ebf5",
+              minHeight: 44,
+            }}
+          >
+            {m.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const root = document.getElementById("root");
+if (root) createRoot(root).render(<Harness />);
