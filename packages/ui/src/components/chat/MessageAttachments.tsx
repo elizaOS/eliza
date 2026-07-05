@@ -828,7 +828,14 @@ function CodeTile({
         value={text}
         copyable
         data-language={language}
-        className="max-h-[24rem] overflow-auto rounded-none border-0 bg-transparent"
+        // overscroll-x-contain: this preview scrolls on both axes for wide code,
+        // but its horizontal reach must stay inside its own box. Without it a
+        // trackpad deltaX that runs past the end chains up to the
+        // #continuous-thread scroller (ContinuousChatOverlay), and once that
+        // thread's cross axis is coerced open it pans the whole transcript
+        // sideways (#14328). The thread is pinned with overflow-x-hidden; this
+        // stops the designed inner scroll from chaining out to defeat it.
+        className="max-h-[24rem] overflow-auto overscroll-x-contain rounded-none border-0 bg-transparent"
       />
     </figure>
   );
