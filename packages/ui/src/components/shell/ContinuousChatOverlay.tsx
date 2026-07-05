@@ -1607,12 +1607,14 @@ export function ContinuousChatOverlay({
       const trimmed = text.trim();
       // An image-only turn is valid; only bail when there's nothing to send.
       if (!trimmed && images.length === 0) return;
-      // During onboarding the composer is unlocked (#12178) but free text is
-      // answered locally by the in-chat conductor and NEVER reaches the server.
-      // Route it through the shared action funnel (classify → "conductor" →
-      // conductor text handler) — `controller.send` is never called here, so
-      // "no server send pre-completion" holds. Attach is disabled during
-      // onboarding, so any images are dropped (text-only echo).
+      // During onboarding the composer is unlocked (#12178). Route free text
+      // through the shared action funnel: before a runtime is chosen it is
+      // answered locally by the in-chat conductor (classify → "conductor") and
+      // does not reach the server; once a Cloud agent is provisioning behind a
+      // ready bootstrap bridge the funnel classifies it as "send" so the first
+      // real message reaches the bootstrap-bridge agent (#14103). Either way
+      // `controller.send` is never called here — the funnel owns the decision.
+      // Attach is disabled during onboarding, so any images are dropped.
       if (firstRunOpen) {
         if (trimmed) void sendActionMessage(trimmed);
         setDraft("");
