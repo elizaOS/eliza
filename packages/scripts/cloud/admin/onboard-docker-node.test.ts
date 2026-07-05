@@ -1,4 +1,8 @@
-// Exercises cloud admin onboard docker node.test automation behavior with deterministic script fixtures.
+/**
+ * Deterministic coverage for docker-node onboarding helpers. The tests exercise
+ * argument parsing, container selection, and host-key pin preservation without
+ * opening SSH connections or touching a real control-plane database.
+ */
 import { describe, expect, it } from "bun:test";
 import {
   buildOnboardSshConfig,
