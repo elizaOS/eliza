@@ -200,6 +200,16 @@ export function isOwnedScratchDir(workdir: string): boolean {
   );
 }
 const ACP_SCRATCH_DIR_PREFIX = "task-";
+// Every scratch dir this service creates is `task-<randomUUID()>` (spawnSession
+// is computeSessionWorkdir's only production caller), so destructive reclaim
+// matches the full UUID shape rather than the bare prefix: workspace roots
+// double as scratch roots above, and a human repo named `task-master` or
+// `task-runner` sitting under one must never look reclaimable (#13895).
+const ACP_SCRATCH_DIR_NAME_RE =
+  /^task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isAcpScratchDirName(name: string): boolean {
+  return ACP_SCRATCH_DIR_NAME_RE.test(name);
+}
 const ACP_METADATA_ISOLATED_WORKDIR = "isolatedWorkdir";
 const ACP_METADATA_WORKDIR_ROOT = "workdirRoot";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
@@ -746,9 +756,7 @@ export class AcpService extends Service {
         // explicit zero-work result, not a masked read failure.
         continue;
       }
-      const taskDirs = entries.filter((name) =>
-        name.startsWith(ACP_SCRATCH_DIR_PREFIX),
-      );
+      const taskDirs = entries.filter((name) => isAcpScratchDirName(name));
       await Promise.allSettled(
         taskDirs.map(async (name) => {
           const path = join(root, name);
@@ -756,6 +764,14 @@ export class AcpService extends Service {
           // A live (non-terminal) session is still using its workspace — never
           // reclaim it; resumeOrphanedBusySessions may pick the work back up.
           if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
+            kept++;
+            return;
+          }
+          // A terminal session that did NOT own an isolated scratch dir ran
+          // inside a directory handed to it (explicit route workdir, opt-out,
+          // self-checkout) — never reclaimable here, even when the dir name
+          // happens to match the scratch shape (#13895).
+          if (session && !this.sessionOwnsIsolatedWorkdir(session)) {
             kept++;
             return;
           }

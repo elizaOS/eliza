@@ -85,9 +85,12 @@ describe("ACP scratch workspace lifecycle", () => {
       },
     );
     const shim = service as unknown as ScratchLifecycleShim;
-    const oldOrphan = join(root, "task-old-orphan");
-    const tracked = join(root, "task-tracked");
-    const fresh = join(root, "task-fresh");
+    // Real scratch dirs are always `task-<randomUUID()>`; only that shape may
+    // ever be reclaimed.
+    const trackedId = "11111111-2222-4333-8444-555555555555";
+    const oldOrphan = join(root, "task-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+    const tracked = join(root, `task-${trackedId}`);
+    const fresh = join(root, "task-99999999-8888-4777-8666-555555555544");
     const manual = join(root, "manual-old");
     await Promise.all([
       mkdir(oldOrphan, { recursive: true }),
@@ -101,7 +104,7 @@ describe("ACP scratch workspace lifecycle", () => {
       utimes(manual, oldDate, oldDate),
     ]);
     await store.create(
-      makeSession("tracked", tracked, {
+      makeSession(trackedId, tracked, {
         isolatedWorkdir: true,
         workdirRoot: root,
       }),
@@ -113,5 +116,50 @@ describe("ACP scratch workspace lifecycle", () => {
     expect(existsSync(tracked)).toBe(true);
     expect(existsSync(fresh)).toBe(true);
     expect(existsSync(manual)).toBe(true);
+  });
+
+  it("never reclaims human-named task-* dirs or non-isolated sessions' real workdirs under a workspace root", async () => {
+    // The false-positive class from #13895: workspace roots double as scratch
+    // roots, so a user repo named `task-master` (48h idle) and a real repo a
+    // NON-isolated terminal session ran inside must both survive boot GC.
+    const root = mkdtempSync(join(tmpdir(), "acp-scratch-guard-"));
+    roots.push(root);
+    const store = new InMemorySessionStore();
+    const service = new AcpService(makeRuntime({ ELIZA_WORKSPACE_DIR: root }), {
+      store,
+    });
+    const shim = service as unknown as ScratchLifecycleShim;
+    const humanRepo = join(root, "task-master");
+    const nonIsolatedId = "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb";
+    const nonIsolatedRepo = join(root, `task-${nonIsolatedId}`);
+    const ownedId = "cccccccc-4444-4555-8666-dddddddddddd";
+    const ownedScratch = join(root, `task-${ownedId}`);
+    await Promise.all([
+      mkdir(humanRepo, { recursive: true }),
+      mkdir(nonIsolatedRepo, { recursive: true }),
+      mkdir(ownedScratch, { recursive: true }),
+    ]);
+    const oldDate = new Date(Date.now() - 48 * 60 * 60_000);
+    await utimes(humanRepo, oldDate, oldDate);
+    const nonIsolated = makeSession(nonIsolatedId, nonIsolatedRepo, {
+      isolatedWorkdir: false,
+    });
+    nonIsolated.status = "stopped";
+    await store.create(nonIsolated);
+    const owned = makeSession(ownedId, ownedScratch, {
+      isolatedWorkdir: true,
+      workdirRoot: root,
+    });
+    owned.status = "stopped";
+    await store.create(owned);
+
+    await shim.cleanOrphanedScratchWorkdirs();
+
+    // Human-named repo: filtered out by the UUID-shape match despite age.
+    expect(existsSync(humanRepo)).toBe(true);
+    // Terminal but NOT isolation-owned: the ownership gate keeps it.
+    expect(existsSync(nonIsolatedRepo)).toBe(true);
+    // Terminal AND isolation-owned: reclaimed regardless of age.
+    expect(existsSync(ownedScratch)).toBe(false);
   });
 });
