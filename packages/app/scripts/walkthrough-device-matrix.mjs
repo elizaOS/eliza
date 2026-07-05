@@ -372,10 +372,16 @@ export function captureIos({ duration, deps = {} }) {
     );
 
   const phaseSpecs = [
-    ["ios-onboarding-smoke.mjs", []],
+    ["ios-onboarding-smoke.mjs", ["--app-path", app]],
     [
       "mobile-local-chat-smoke.mjs",
-      ["--platform", "ios", "--require-installed"],
+      [
+        "--platform",
+        "ios",
+        "--require-installed",
+        "--ios-select-local",
+        "--ios-full-bun-smoke",
+      ],
     ],
     [
       "capture-ios-sim.mjs",

@@ -372,10 +372,16 @@ describe("iOS simulator lane (captureIos)", () => {
         "capture-ios-sim.mjs",
       ],
     );
+    assert.deepEqual(invocations[0].argv, [
+      "--app-path",
+      "/DerivedData/App.app",
+    ]);
     assert.deepEqual(invocations[1].argv, [
       "--platform",
       "ios",
       "--require-installed",
+      "--ios-select-local",
+      "--ios-full-bun-smoke",
     ]);
     assert.equal(
       invocations[2].argv[invocations[2].argv.indexOf("--duration") + 1],
