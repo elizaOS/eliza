@@ -8,8 +8,10 @@
 // header (the shared CharacterSectionNav supplies it). The panels are stubbed so
 // the test isolates the hub's own structure, not their internals.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { updateCharacter } = vi.hoisted(() => ({ updateCharacter: vi.fn() }));
 
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (selector: (s: unknown) => unknown) =>
@@ -19,21 +21,40 @@ vi.mock("../../state", () => ({
         opts?.defaultValue ?? _key,
     }),
 }));
-vi.mock("../../api/client", () => ({ client: { updateCharacter: vi.fn() } }));
+vi.mock("../../api/client", () => ({ client: { updateCharacter } }));
 vi.mock("../../widgets/WidgetHost", () => ({ WidgetHost: () => null }));
+// The identity-panel stub exposes a button that drives the `handleFieldEdit`
+// prop the hub passes in, so the bio-autosave wiring can be exercised without
+// rendering the real Textarea/agent-surface machinery.
 vi.mock("./CharacterEditorPanels", () => ({
-  CharacterIdentityPanel: () => <div data-testid="identity-panel" />,
+  CharacterIdentityPanel: ({
+    handleFieldEdit,
+  }: {
+    handleFieldEdit: (field: string, value: unknown) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="identity-panel"
+      onClick={() => handleFieldEdit("bio", "new bio text")}
+    >
+      identity
+    </button>
+  ),
   CharacterStylePanel: () => <div data-testid="style-panel" />,
   CharacterExamplesPanel: () => <div data-testid="examples-panel" />,
 }));
 
 import { CharacterHubView } from "./CharacterHubView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  updateCharacter.mockReset();
+  vi.useRealTimers();
+});
 
 const noop = vi.fn();
 
-function renderHub() {
+function renderHub(applyFieldEdit: (field: string, value: unknown) => void = noop) {
   return render(
     <CharacterHubView
       d={{}}
@@ -41,8 +62,7 @@ function renderHub() {
       normalizedMessageExamples={[]}
       pendingStyleEntries={{}}
       styleEntryDrafts={{}}
-      handleFieldEdit={noop}
-      applyFieldEdit={noop}
+      applyFieldEdit={applyFieldEdit}
       handlePendingStyleEntryChange={noop}
       applyStyleEdit={noop}
       handleStyleEntryDraftChange={noop}
@@ -93,5 +113,22 @@ describe("CharacterHubView (Personality-only collapse)", () => {
   it("has no manual Save button (edits autosave)", () => {
     renderHub();
     expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
+  });
+
+  // With the manual Save button gone, an identity (bio) edit must debounce-persist
+  // on its own — otherwise it would be lost on section-switch (the regression this
+  // guards). The style/examples panels already autosaved; bio did not.
+  it("autosaves a bio edit (debounced PATCH), applying the draft immediately", () => {
+    vi.useFakeTimers();
+    const applyFieldEdit = vi.fn();
+    renderHub(applyFieldEdit);
+
+    fireEvent.click(screen.getByTestId("identity-panel"));
+    // Draft update is synchronous; the network patch is debounced.
+    expect(applyFieldEdit).toHaveBeenCalledWith("bio", "new bio text");
+    expect(updateCharacter).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(700);
+    expect(updateCharacter).toHaveBeenCalledWith({ bio: "new bio text" });
   });
 });

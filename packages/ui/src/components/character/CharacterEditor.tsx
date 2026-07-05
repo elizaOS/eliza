@@ -1455,7 +1455,6 @@ export function CharacterEditor({
               normalizedMessageExamples={normalizedMessageExamples}
               pendingStyleEntries={pendingStyleEntries}
               styleEntryDrafts={styleEntryDrafts}
-              handleFieldEdit={handleFieldEdit}
               applyFieldEdit={(field, value) => {
                 handleCharacterFieldInput(
                   field as keyof CharacterData,

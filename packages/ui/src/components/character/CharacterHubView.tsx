@@ -48,7 +48,6 @@ export function CharacterHubView({
   normalizedMessageExamples,
   pendingStyleEntries,
   styleEntryDrafts,
-  handleFieldEdit,
   applyFieldEdit,
   handlePendingStyleEntryChange,
   applyStyleEdit,
@@ -60,7 +59,6 @@ export function CharacterHubView({
   normalizedMessageExamples: MessageExampleGroup[];
   pendingStyleEntries: Record<string, string>;
   styleEntryDrafts: Record<string, string[]>;
-  handleFieldEdit: (field: string, value: unknown) => void;
   applyFieldEdit: (field: string, value: unknown) => void;
   handlePendingStyleEntryChange: (key: string, value: string) => void;
   applyStyleEdit: (key: CharacterStyleSection, value: string) => void;
@@ -133,6 +131,18 @@ export function CharacterHubView({
       if (field === "messageExamples" || field === "postExamples") {
         scheduleAutoSave({ [field]: value } as CharacterData);
       }
+    },
+    [applyFieldEdit, scheduleAutoSave],
+  );
+
+  // Identity fields (bio) autosave on the same debounce as style/examples. This
+  // view has no manual Save button, so an identity edit that only updated the
+  // draft would be lost on section-switch; scheduling the patch here is the only
+  // persistence path for the field.
+  const handleAutoSavedFieldEdit = useCallback(
+    (field: string, value: unknown) => {
+      applyFieldEdit(field, value);
+      scheduleAutoSave({ [field]: value } as CharacterData);
     },
     [applyFieldEdit, scheduleAutoSave],
   );
@@ -230,7 +240,7 @@ export function CharacterHubView({
           <section>
             <CharacterIdentityPanel
               bioText={bioText}
-              handleFieldEdit={handleFieldEdit}
+              handleFieldEdit={handleAutoSavedFieldEdit}
               t={t}
             />
           </section>
