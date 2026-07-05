@@ -176,6 +176,61 @@ describe("durable task→workdir binding (#13776)", () => {
     }
   });
 
+  it("serializes two in-flight binds so the second observes the first's write (#13920)", async () => {
+    // Unlike the sequential stale-bind tests above, this fires both binds
+    // WITHOUT awaiting between them, so the second chains onto the first
+    // through `taskWorkdirBindQueues` while the first is still in flight —
+    // the exact overlap #13920's per-task serialization exists to make safe.
+    // Both callers hold the same unbound snapshot and target DIFFERENT
+    // workdir+repo pairs; without the queue both would read an unbound record
+    // and the later store write would clobber the earlier binding (a lost
+    // update). Serialized, the first-enqueued bind wins the workdir/repo and
+    // the second reads the freshly persisted record and declines to overwrite.
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedTask(store);
+      const unbound = (await store.getTask(taskId))?.task;
+      expect(unbound).toBeTruthy();
+      if (!unbound) throw new Error("seeded task was not persisted");
+      const bindTaskWorkdir = (
+        service as unknown as {
+          bindTaskWorkdir: (
+            taskId: string,
+            current: typeof unbound,
+            workdir: string,
+            repo: string | undefined,
+          ) => Promise<void>;
+        }
+      ).bindTaskWorkdir.bind(service);
+
+      await Promise.all([
+        bindTaskWorkdir(
+          taskId,
+          unbound,
+          firstDir,
+          "https://example.com/repo-a.git",
+        ),
+        bindTaskWorkdir(
+          taskId,
+          unbound,
+          overrideDir,
+          "https://example.com/repo-b.git",
+        ),
+      ]);
+
+      const record = await store.getTask(taskId);
+      expect(record?.task.boundWorkdir).toBe(firstDir);
+      expect(record?.task.boundRepo).toBe("https://example.com/repo-a.git");
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   it("does not let a stale same-workdir bind overwrite the first repo binding", async () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const acp = makeWorkdirCapturingAcp();
