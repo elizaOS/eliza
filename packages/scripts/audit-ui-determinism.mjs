@@ -285,6 +285,37 @@ function scanFile(file, sourceText) {
   return findings;
 }
 
+function occurrenceKind(occurrence) {
+  const match = /^L\d+\s+(.+)$/.exec(occurrence);
+  return match?.[1] ?? occurrence;
+}
+
+function countByKind(occurrences) {
+  const counts = new Map();
+  for (const occurrence of occurrences) {
+    const kind = occurrenceKind(occurrence);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function regressionsForFile(currentOccurrences, baselineOccurrences) {
+  const allowedCounts = countByKind(baselineOccurrences);
+  const seenCounts = new Map();
+  const fresh = [];
+
+  for (const occurrence of currentOccurrences) {
+    const kind = occurrenceKind(occurrence);
+    const seen = (seenCounts.get(kind) ?? 0) + 1;
+    seenCounts.set(kind, seen);
+    if (seen > (allowedCounts.get(kind) ?? 0)) {
+      fresh.push(occurrence);
+    }
+  }
+
+  return fresh;
+}
+
 // ---------------------------------------------------------------------------
 // self-test
 // ---------------------------------------------------------------------------
@@ -377,6 +408,32 @@ function runSelfTest() {
       console.log(`OK ${label}`);
     }
   }
+  const driftOnly = regressionsForFile(
+    ["L42 Date.now()", "L99 toLocaleString() [no locale]"],
+    ["L12 Date.now()", "L16 toLocaleString() [no locale]"],
+  );
+  if (driftOnly.length) {
+    failed++;
+    console.error(
+      `FAIL baseline line drift: expected no regression, got ${JSON.stringify(driftOnly)}`,
+    );
+  } else {
+    console.log("OK baseline line drift");
+  }
+
+  const extraOccurrence = regressionsForFile(
+    ["L42 Date.now()", "L99 Date.now()"],
+    ["L12 Date.now()"],
+  );
+  if (JSON.stringify(extraOccurrence) !== JSON.stringify(["L99 Date.now()"])) {
+    failed++;
+    console.error(
+      `FAIL baseline extra occurrence: expected one new occurrence, got ${JSON.stringify(extraOccurrence)}`,
+    );
+  } else {
+    console.log("OK baseline extra occurrence");
+  }
+
   if (failed) {
     console.error(`\nself-test FAILED (${failed})`);
     process.exit(1);
@@ -442,9 +499,7 @@ function main() {
   const regressions = {};
   let regressionCount = 0;
   for (const [file, occ] of Object.entries(renderTime)) {
-    const allowed = new Set(baseline[file] || []);
-    const now = new Set(occ);
-    const fresh = [...now].filter((o) => !allowed.has(o));
+    const fresh = regressionsForFile(occ, baseline[file] || []);
     if (fresh.length) {
       regressions[file] = fresh;
       regressionCount += fresh.length;

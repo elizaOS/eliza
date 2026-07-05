@@ -1211,8 +1211,17 @@ function SchedulePreview({
   form: TriggerFormState;
   t: TranslateFn;
 }) {
+  const [previewNow, setPreviewNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setPreviewNow(new Date());
+    const id = window.setInterval(() => setPreviewNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const preview = useMemo(() => {
-    const now = new Date();
+    if (!previewNow) return null;
+    const now = previewNow;
 
     if (form.triggerType === "interval") {
       const value = Number(form.durationValue);
@@ -1258,6 +1267,7 @@ function SchedulePreview({
     form.scheduledAtIso,
     form.cronExpression,
     form.eventKind,
+    previewNow,
     t,
   ]);
 
