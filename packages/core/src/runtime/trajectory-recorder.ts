@@ -27,6 +27,7 @@ import {
 } from "../features/trajectories/pricing";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
+import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
 
 // ---------------------------------------------------------------------------
@@ -1165,8 +1166,11 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectoryId: id,
 			agentId: input.agentId,
 			roomId: input.roomId,
-			runId: input.runId ?? process.env.ELIZA_LIFEOPS_RUN_ID,
-			scenarioId: input.scenarioId ?? process.env.ELIZA_LIFEOPS_SCENARIO_ID,
+			// The scenario CLI stamps these before each run/scenario (cli.ts); an
+			// explicit call-site value wins. readEnv treats blank/whitespace as
+			// unset so a cleared env var never writes an empty correlation key.
+			runId: input.runId ?? readEnv("ELIZA_LIFEOPS_RUN_ID"),
+			scenarioId: input.scenarioId ?? readEnv("ELIZA_LIFEOPS_SCENARIO_ID"),
 			rootMessage: cloneRootMessageForRecord(input.rootMessage),
 			startedAt: Date.now(),
 			status: "running",
