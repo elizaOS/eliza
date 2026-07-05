@@ -4,6 +4,8 @@
  * and agent base from the query string, then polls the agent for the group's
  * required tasks and links back to LifeOps so the user can clear the block.
  */
+import { normalizeNavigableUrl } from "../src/url";
+
 const POLL_INTERVAL_MS = 30_000;
 
 interface RequiredTask {
@@ -118,10 +120,10 @@ async function loadBlockingReason(): Promise<void> {
 async function pollForUnblock(): Promise<void> {
   const data = await fetchBlockingReason();
   if (data && !data.blocked) {
-    const target = blockedUrl.startsWith("http")
-      ? blockedUrl
-      : `https://${blockedUrl}`;
-    window.location.href = target;
+    const target = normalizeNavigableUrl(blockedUrl);
+    if (target) {
+      window.location.href = target;
+    }
   }
 }
 
