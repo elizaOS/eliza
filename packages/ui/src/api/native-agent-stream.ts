@@ -203,6 +203,10 @@ export async function createNativeStreamingResponse(
     idleTimer = setTimeout(() => {
       if (detached) return;
       const idle = new Error("native stream idle timeout");
+      if (!headSettled) {
+        failStream(idle);
+        return;
+      }
       if (controller) {
         controller.error(idle);
         detach();

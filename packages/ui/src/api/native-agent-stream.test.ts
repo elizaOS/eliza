@@ -18,7 +18,10 @@ import {
 function makeFakeAgent(
   streamId = "s1",
   completion?: Promise<unknown>,
-  options: { addListenerDelayMs?: number } = {},
+  options: {
+    addListenerDelayMs?: number;
+    emitOnAdd?: { eventName: string; payload: unknown };
+  } = {},
 ) {
   const listeners = new Map<string, Array<(e: unknown) => void>>();
   const agent: NativeStreamingAgentPlugin = {
@@ -34,6 +37,9 @@ function makeFakeAgent(
       const arr = listeners.get(eventName) ?? [];
       arr.push(listener);
       listeners.set(eventName, arr);
+      if (options.emitOnAdd?.eventName === eventName) {
+        listener(options.emitOnAdd.payload);
+      }
       return {
         remove() {
           listeners.set(
@@ -296,6 +302,34 @@ describe("createNativeStreamingResponse", () => {
       // Stream stalls: the next chunk never comes.
       const readPromise = reader.read();
       const rejected = expect(readPromise).rejects.toThrow(
+        "native stream idle timeout",
+      );
+      await vi.advanceTimersByTimeAsync(30000);
+      await rejected;
+      expect(listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects the head if a chunk arrives before the response and then the stream stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { agent, listenerCount } = makeFakeAgent("s1", undefined, {
+        emitOnAdd: {
+          eventName: "agentStreamChunk",
+          payload: {
+            streamId: "s1",
+            dataBase64: b64("data: early\n\n"),
+          },
+        },
+      });
+      const responsePromise = createNativeStreamingResponse(agent, {
+        path: "/x",
+        timeoutMs: 30000,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const rejected = expect(responsePromise).rejects.toThrow(
         "native stream idle timeout",
       );
       await vi.advanceTimersByTimeAsync(30000);
