@@ -38,13 +38,14 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
+import { PagePanel } from "../composites/page-panel";
 import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import { ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useConfirm } from "../ui/confirm-dialog.hooks";
@@ -2621,44 +2622,33 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto pt-3 pb-[calc(var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]">
-            <ChatEmptyStateWithRecommendations
-              icon={Globe}
-              className="flex-none gap-2 py-1 sm:gap-3 sm:py-2"
-              recommendations={[
-                {
-                  label: t("browserworkspace.RecOpenDocs", {
-                    defaultValue: "Open docs.elizaos.ai",
-                  }),
-                  prompt: "Open docs.elizaos.ai in the browser",
-                },
-                {
-                  label: t("browserworkspace.RecSearch", {
-                    defaultValue: "Search the web",
-                  }),
-                  prompt:
-                    "Search Google for the latest elizaOS release notes and open the top result",
-                },
-                {
-                  label: t("browserworkspace.RecSummarize", {
-                    defaultValue: "Summarize a page",
-                  }),
-                  prompt:
-                    "Open a website and summarize what's on the page for me",
-                },
-              ]}
-              primaryAction={{
-                label: t("browserworkspace.OpenWebsite", {
-                  defaultValue: "Open a website",
-                }),
-                icon: Plus,
-                onClick: () =>
-                  void runBrowserWorkspaceAction("open:home", async () => {
-                    await openNewBrowserWorkspaceTab(
-                      BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                      "user",
-                    );
-                  }),
-              }}
+            <PagePanel.Empty
+              variant="inset"
+              className="flex-none py-1 sm:py-2"
+              icon={<Globe className="h-6 w-6" aria-hidden />}
+              title={t("browserworkspace.EmptyTitle", {
+                defaultValue: "No page open",
+              })}
+              action={
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="min-h-11 gap-1.5"
+                  onClick={() =>
+                    void runBrowserWorkspaceAction("open:home", async () => {
+                      await openNewBrowserWorkspaceTab(
+                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                        "user",
+                      );
+                    })
+                  }
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  {t("browserworkspace.OpenWebsite", {
+                    defaultValue: "Open a website",
+                  })}
+                </Button>
+              }
             />
             {workspace.mode === "web" &&
             browserBridgeSupported &&
@@ -2948,20 +2938,34 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     </div>
   );
 
+  // Uniform top bar (#13451/#13596): a bare-icon ViewHeader with a centered
+  // "Browser" title sits ABOVE the browser toolbar (URL bar + tab control),
+  // never replacing it. The toolbar stays inside WorkspaceLayout's
+  // contentHeader; the ViewHeader is a sibling stacked on top so back always
+  // returns to the launcher and the header reads identically to every other
+  // view. `min-h-0` keeps the WorkspaceLayout free to fill the remaining
+  // height below the fixed-height header.
   const mainNode = (
-    <WorkspaceLayout
-      sidebar={browserTabsSidebar}
-      contentHeader={navNode}
-      contentHeaderClassName="mb-0"
-      headerPlacement="inside"
-      contentPadding={false}
-      contentClassName="overflow-hidden"
-      contentInnerClassName="min-h-0 overflow-hidden"
-      mobileSidebarLabel={tabsLabel}
-      mobileSidebarTriggerClassName="ml-3 mt-3"
-    >
-      {browserSurface}
-    </WorkspaceLayout>
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <ViewHeader
+        title={t("browserworkspace.ViewTitle", { defaultValue: "Browser" })}
+      />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <WorkspaceLayout
+          sidebar={browserTabsSidebar}
+          contentHeader={navNode}
+          contentHeaderClassName="mb-0"
+          headerPlacement="inside"
+          contentPadding={false}
+          contentClassName="overflow-hidden"
+          contentInnerClassName="min-h-0 overflow-hidden"
+          mobileSidebarLabel={tabsLabel}
+          mobileSidebarTriggerClassName="ml-3 mt-3"
+        >
+          {browserSurface}
+        </WorkspaceLayout>
+      </div>
+    </div>
   );
 
   return (

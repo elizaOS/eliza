@@ -156,6 +156,25 @@ async function drive(
   await flush();
 }
 
+/** Poll until the task reaches `status`. The `task_complete` bridge path does
+ * real async IO (change-set mirror, trajectory ingest #13775) before the
+ * `completion_reported` status advance, so a single-macrotask {@link flush}
+ * races it — asserting the post-completion status directly is flaky. */
+async function settleStatus(
+  service: OrchestratorTaskService,
+  taskId: string,
+  status: string,
+): Promise<void> {
+  const deadline = Date.now() + 5000;
+  let last: string | undefined;
+  while (Date.now() < deadline) {
+    last = must(await service.getTask(taskId), "task").status;
+    if (last === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  expect(last).toBe(status);
+}
+
 /** A started service with one task and one spawned (ready) session, plus the
  * fake ACP wired to its event bridge. */
 async function withSpawnedSession(): Promise<{
@@ -1113,9 +1132,7 @@ describe("OrchestratorTaskService — task status guards", () => {
   it("moves the task to validating on completion, never straight to done", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
-    expect(must(await service.getTask(taskId), "detail").status).toBe(
-      "validating",
-    );
+    await settleStatus(service, taskId, "validating");
   });
 
   it("routes blocked and login_required to the right task status", async () => {
@@ -1142,6 +1159,7 @@ describe("OrchestratorTaskService — task status guards", () => {
   it("does not let a later active signal stomp validating", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, taskId, "validating");
     await drive(acp, sessionId, "tool_running", { toolCall: { title: "ls" } });
     expect(must(await service.getTask(taskId), "detail").status).toBe(
       "validating",
@@ -1151,6 +1169,7 @@ describe("OrchestratorTaskService — task status guards", () => {
   it("never mutates a terminal task from a session event", async () => {
     const { service, acp, taskId, sessionId } = await withSpawnedSession();
     await drive(acp, sessionId, "task_complete", { response: "done" });
+    await settleStatus(service, taskId, "validating");
     await service.validateTask(taskId, { passed: true, summary: "verified" });
     await drive(acp, sessionId, "tool_running", { toolCall: { title: "ls" } });
     expect(must(await service.getTask(taskId), "detail").status).toBe("done");
@@ -1633,5 +1652,52 @@ describe("OrchestratorTaskService — restart reconstruction (#13771)", () => {
     const after = must(await restarted.getTask(task.id), "after restart");
     expect(after.status).toBe("blocked");
     expect(after.events?.some((e) => e.eventType === "blocked")).toBe(true);
+  });
+});
+
+// A late `error` for a session that already posted `task_complete` is a
+// teardown race — the process dropped its state AFTER the deliverable shipped.
+// The router suppresses its respawn for exactly this case (the completion
+// claim in router-loop-guard); the task bridge must be symmetric: keep the
+// `completed` session record, keep the task in `validating` so the in-flight
+// verification can finish (validateTask requires `validating`), and spend
+// nothing from the crash-retry budget.
+describe("OrchestratorTaskService — post-completion teardown race (#13830 audit)", () => {
+  it("drops a late session error after task_complete: task stays validating, session stays completed", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "task_complete", { response: "shipped" });
+    await settleStatus(service, taskId, "validating");
+    expect(
+      must(must(await service.getTask(taskId), "mid").sessions[0], "session")
+        .status,
+    ).toBe("completed");
+
+    await drive(acp, sessionId, "error", {
+      failureKind: "session_state_lost",
+      message: "session state lost during teardown",
+    });
+    // Give the straggler's (fast, in-memory) error path time to land before
+    // asserting it changed nothing.
+    await flush();
+
+    const after = must(await service.getTask(taskId), "after");
+    expect(after.status).toBe("validating");
+    expect(must(after.sessions[0], "session").status).toBe("completed");
+    expect(
+      after.events?.some((e) => e.eventType === "session_error_retrying"),
+    ).toBe(false);
+    expect(after.events?.some((e) => e.eventType === "task_failed")).toBe(
+      false,
+    );
+  });
+
+  it("still fails the task when a plain crash errors a session that never completed", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "error", {
+      message: "process exited with code 1",
+    });
+    await settleStatus(service, taskId, "failed");
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(must(detail.sessions[0], "session").status).toBe("errored");
   });
 });

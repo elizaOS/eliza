@@ -18,16 +18,26 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   getTrajectoryContext,
   type IAgentRuntime,
+  type RecordedTrajectory,
   resolveStateDir,
   resolveTrajectoryGate,
+  rollUpTrajectoryUsage,
   Service,
   TRACE_ENV,
+  type TrajectoryUsageRollup,
 } from "@elizaos/core";
 import {
   detectTaskType,
@@ -182,6 +192,20 @@ type RuntimeLike = IAgentRuntime & {
   getSetting?: (key: string) => string | undefined | null;
 };
 
+export interface TraceUsageArtifactError {
+  path: string;
+  reason: "read_failed" | "invalid_trajectory";
+  message: string;
+}
+
+export interface TaskTraceUsageRollup extends TrajectoryUsageRollup {
+  readState: "complete" | "partial";
+  artifactCount: number;
+  readableArtifactCount: number;
+  unreadableArtifactCount: number;
+  artifactErrors: TraceUsageArtifactError[];
+}
+
 /**
  * The deployment's configured default coding agent type, if any
  * (`ELIZA_ACP_DEFAULT_AGENT` or its alias `ELIZA_DEFAULT_AGENT_TYPE` — e.g.
@@ -268,6 +292,14 @@ export interface SpawnAgentForTaskOptions {
    * the max-nesting-depth cap so self-spawning can't run away.
    */
   nestingDepth?: number;
+  /**
+   * Internal: the admission-queue drain sets this false so a cap race during a
+   * replayed dispatch RETHROWS SessionCapError instead of self-parking. The
+   * drain then re-parks the task at the head with its ORIGINAL admission record
+   * (seniority + aging preserved); self-parking here would mint a fresh
+   * enqueuedAt and push the task to the back of its band.
+   */
+  parkOnCap?: boolean;
 }
 
 /**
@@ -1005,10 +1037,6 @@ export class OrchestratorTaskService extends Service {
         break;
       }
       case "error": {
-        await this.store.updateSession(sessionId, {
-          status: "errored",
-          stoppedAt: Date.now(),
-        });
         const failureKind = str(record.failureKind);
         const message = str(record.message) ?? "";
         if (
@@ -1026,6 +1054,21 @@ export class OrchestratorTaskService extends Service {
             message,
           );
         }
+        // A late error for a session that already delivered its result is a
+        // teardown race (the process dropped its state AFTER task_complete
+        // posted), not a work failure — the router suppresses its respawn for
+        // exactly this case (router-loop-guard `state_lost` completion claim).
+        // It must not overwrite the `completed` session record with `errored`,
+        // inflate the crash-retry budget, or knock a `validating` task back to
+        // `active` mid-verification (that aborts validateTask — status is no
+        // longer `validating` — and wedges the task with no live worker). The
+        // raw event is already on the task timeline via recordSessionEvent.
+        const prior = (await this.store.findSession(sessionId))?.session;
+        if (prior?.status === "completed") break;
+        await this.store.updateSession(sessionId, {
+          status: "errored",
+          stoppedAt: Date.now(),
+        });
         await this.advanceTaskOnSessionError(taskId, sessionId, {
           failureKind,
           message,
@@ -2561,7 +2604,10 @@ export class OrchestratorTaskService extends Service {
         correction,
         "validation_failed",
       );
-      await this.store.updateTask(taskId, { status: "active" });
+      // Route the validating→active retry through the transition table so an
+      // operator archive/pause that landed while the judge was running is not
+      // stomped by a direct status write (illegal moves drop as no-ops).
+      await this.advanceTaskStatus(taskId, "validation_failed");
     } catch (sendErr) {
       // error-policy:J1 boundary — a failed corrective send becomes a structured
       // escalation (event + waiting_on_user), never a silent stall.
@@ -3120,6 +3166,93 @@ export class OrchestratorTaskService extends Service {
     return doc ? summarizeUsage(doc) : null;
   }
 
+  /**
+   * Per-trace token/cost roll-up across this task's INGESTED SUB-AGENT
+   * TRAJECTORY FILES (#13775 item 5). Distinct from {@link getUsage}: that sums
+   * the ACP terminal `OrchestratorTaskUsage` frames (the spend a sub-agent's
+   * ACP surface reported for the whole session); this reads the file-recorder
+   * `trajectory` artifacts item 2 attached and sums their inner per-model-call
+   * metrics, grouped by the shared `traceId`. The two count different things
+   * (ACP-reported session spend vs. file-recorded inner-call spend) and are
+   * deliberately kept apart so nothing is double-summed. For an eliza-backend
+   * sub-agent whose ACP frame is coarse/absent, this is the only surface that
+   * attributes the real inner spend to the logical run.
+   *
+   * Attach-by-reference means the files live where the child wrote them. A
+   * missing/unreadable/parse-failed file keeps the endpoint partial: readable
+   * files still contribute to totals, and failed files are returned as
+   * `artifactErrors` so operators never mistake partial spend for a complete
+   * clean roll-up.
+   */
+  async getTraceUsage(taskId: string): Promise<TaskTraceUsageRollup | null> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return null;
+    // Dedupe by path: `ingestChildTrajectories` rescans the task-wide child
+    // dir on every task_complete, so a multi-session / retried task can hold
+    // more than one artifact row pointing at the SAME trajectory file. Summing
+    // each row would double-count that file's tokens/cost, so read each
+    // distinct path once.
+    const paths = [
+      ...new Set(
+        doc.artifacts
+          .filter(
+            (artifact) =>
+              artifact.artifactType === "trajectory" && Boolean(artifact.path),
+          )
+          .map((artifact) => artifact.path as string),
+      ),
+    ];
+    const trajectories: RecordedTrajectory[] = [];
+    const artifactErrors: TraceUsageArtifactError[] = [];
+    for (const path of paths) {
+      try {
+        const raw = await readFile(path, "utf8");
+        const parsed = JSON.parse(raw) as unknown;
+        // A well-formed trajectory carries a metrics block; anything else is a
+        // mislabeled artifact and is surfaced as partial rather than trusted.
+        if (
+          parsed &&
+          typeof parsed === "object" &&
+          "metrics" in parsed &&
+          parsed.metrics &&
+          typeof parsed.metrics === "object"
+        ) {
+          trajectories.push(parsed as RecordedTrajectory);
+        } else {
+          artifactErrors.push({
+            path,
+            reason: "invalid_trajectory",
+            message: "Trajectory artifact does not contain metrics.",
+          });
+        }
+      } catch (err) {
+        // error-policy:J4 trace usage is a user-facing accounting surface; keep
+        // readable totals available, but return artifactErrors/readState so a
+        // corrupt or missing file cannot look like complete zero spend.
+        const message = err instanceof Error ? err.message : String(err);
+        artifactErrors.push({
+          path,
+          reason: "read_failed",
+          message,
+        });
+        this.log("warn", "partial trace usage due to unreadable artifact", {
+          taskId,
+          path,
+          error: message,
+        });
+      }
+    }
+    const rollup = rollUpTrajectoryUsage(trajectories);
+    return {
+      ...rollup,
+      readState: artifactErrors.length > 0 ? "partial" : "complete",
+      artifactCount: paths.length,
+      readableArtifactCount: trajectories.length,
+      unreadableArtifactCount: artifactErrors.length,
+      artifactErrors,
+    };
+  }
+
   // ---- sub-agent control -------------------------------------------------
 
   async spawnAgentForTask(
@@ -3281,6 +3414,7 @@ export class OrchestratorTaskService extends Service {
         err instanceof SessionCapError &&
         err.slotClass === "worker" &&
         nestingDepth === 0 &&
+        opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
       ) {
         return this.enqueueAdmission(taskId, doc.task.priority, {
@@ -3359,6 +3493,12 @@ export class OrchestratorTaskService extends Service {
     // session's events even if the durable write below degrades.
     this.sessionTaskIndex.set(result.sessionId, taskId);
     try {
+      // A task can be spawned directly (API/action) while it is still parked in
+      // the admission queue — e.g. a slot freed silently and the user beat the
+      // reconcile tick. Clear the parked state now the spawn succeeded, or the
+      // next drain would replay the stale admission record and dispatch a
+      // DUPLICATE agent for the same goal. No-op for non-parked tasks.
+      await this.dequeueAdmission(taskId);
       await this.store.addSession(session);
       // Pin (or re-pin, on explicit override) the durable workdir/repo binding
       // from the workdir the session actually landed in, so subsequent
@@ -4001,6 +4141,10 @@ export class OrchestratorTaskService extends Service {
     for (const task of open) {
       const admission = OrchestratorTaskService.admissionOf(task);
       if (!admission) continue;
+      // A paused task keeps its durable admission record (pauseTask passes
+      // clearMetadata=false so resume can replay the original spawn) but must
+      // NOT re-enter the dispatch order — resumeTask re-seeds it explicitly.
+      if (task.paused) continue;
       entries.push({
         taskId: task.id,
         enqueuedAt: admission.enqueuedAt,
@@ -4101,10 +4245,12 @@ export class OrchestratorTaskService extends Service {
    * Dispatch parked tasks into freed worker slots, most-eligible first.
    * Serialized via a promise-chain lock so a terminal-event drain and the
    * reconcile tick never double-dispatch. For each free slot it re-reads the
-   * head task's live state (dropping terminal/paused entries — starvation guard
-   * #2 is covered by idle-reclaim below), clears the admission record, and
-   * replays the saved spawn. A fresh SessionCapError re-parks the head and stops
-   * the pass (another spawn raced us). When no slot is free but the queue is
+   * head task's live state (terminal entries are dropped with their record;
+   * paused entries are dropped from the order but KEEP the record for resume),
+   * clears the admission record, and replays the saved spawn with
+   * `parkOnCap: false`. A fresh SessionCapError re-parks the head with its
+   * original record and stops the pass (another spawn raced us). When no slot
+   * is free but the queue is
    * non-empty, one idle keepAlive session whose task is already terminal is
    * reclaimed to unblock the queue.
    */
@@ -4148,10 +4294,14 @@ export class OrchestratorTaskService extends Service {
       const doc = await this.store.getTask(head.taskId);
       const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
       if (!doc || !admission) continue;
-      if (TERMINAL_TASK_STATUSES.has(doc.task.status) || doc.task.paused) {
+      if (TERMINAL_TASK_STATUSES.has(doc.task.status)) {
         await this.writeAdmission(head.taskId, null);
         continue;
       }
+      // A pause that raced this pass: drop the task from the dispatch order but
+      // KEEP the durable record — pauseTask retained it so resume can replay
+      // the original spawn (clearing it here would make resume a silent no-op).
+      if (doc.task.paused) continue;
       await this.writeAdmission(head.taskId, null);
       try {
         await this.spawnAgentForTask(head.taskId, {
@@ -4159,6 +4309,9 @@ export class OrchestratorTaskService extends Service {
           approvalPreset: admission.spawnOpts.approvalPreset as
             | ApprovalPreset
             | undefined,
+          // A cap race must RETHROW so the catch below re-parks with the
+          // original record; the spawn's own self-park would reset seniority.
+          parkOnCap: false,
         });
       } catch (err) {
         if (err instanceof SessionCapError) {

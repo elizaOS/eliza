@@ -91,6 +91,7 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 	"agent-private",
 ]);
 const DOCUMENT_ADDED_FROM_VALUES = new Set<DocumentAddedFrom>([
+	"import",
 	"chat",
 	"upload",
 	"url",

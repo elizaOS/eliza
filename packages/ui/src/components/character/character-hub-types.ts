@@ -1,24 +1,8 @@
 /**
- * View-model types shared across the character hub components — activity items,
- * personality-history entries, and the experience record/draft shapes — kept
- * separate from the API transport types so the hub renders a stable UI shape.
+ * View-model types for the Character family — the personality-history entry and
+ * the experience record/draft shapes — kept separate from the API transport
+ * types so the views render a stable UI shape.
  */
-export type CharacterHubActivityKind =
-  | "personality"
-  | "documents"
-  | "experience"
-  | "relationship";
-
-export interface CharacterHubActivityItem {
-  id: string;
-  kind: CharacterHubActivityKind;
-  title: string;
-  description: string;
-  badge?: string | null;
-  meta?: string | null;
-  timestamp?: string | null;
-}
-
 export type CharacterPersonalityHistoryScope = "auto" | "global" | "user";
 
 export interface CharacterPersonalityHistoryItem {

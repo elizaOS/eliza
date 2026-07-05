@@ -1,0 +1,90 @@
+{
+  "defer": "1",
+  "firstHttp": 6505,
+  "chatRepliedAt": 14418,
+  "statusRunningAt": 11573,
+  "statusCanRespondAt": 13143,
+  "healthReadyAt": 11533,
+  "events": [
+    {
+      "t": 9,
+      "name": "SPAWNED",
+      "detail": "pid=972163 defer=1"
+    },
+    {
+      "t": 6505,
+      "name": "HTTP_ACCEPTING",
+      "detail": "health HTTP 200"
+    },
+    {
+      "t": 6506,
+      "name": "HEALTH_CHANGE",
+      "detail": "{\"s\":200,\"ready\":false,\"canRespond\":false,\"st\":\"starting\"}"
+    },
+    {
+      "t": 6768,
+      "name": "STATUS_CHANGE",
+      "detail": "{\"s\":200,\"state\":\"starting\",\"canRespond\":false,\"model\":null}"
+    },
+    {
+      "t": 9284,
+      "name": "CONV_CREATED",
+      "detail": "id=1e0d684d-84b5-4aa7-8b89-b5dfc50574a1"
+    },
+    {
+      "t": 11488,
+      "name": "CHAT_REPLIED_ANY",
+      "detail": "HTTP 200 text=\"This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environm\""
+    },
+    {
+      "t": 11488,
+      "name": "CHAT_REPLY_NOPROVIDER",
+      "detail": "\"This agent has no LLM provider configured. Set ANTHROPIC_API\""
+    },
+    {
+      "t": 11533,
+      "name": "HEALTH_CHANGE",
+      "detail": "{\"s\":200,\"ready\":true,\"canRespond\":false,\"st\":\"running\"}"
+    },
+    {
+      "t": 11533,
+      "name": "HEALTH_READY_TRUE",
+      "detail": ""
+    },
+    {
+      "t": 11573,
+      "name": "STATUS_CHANGE",
+      "detail": "{\"s\":200,\"state\":\"running\",\"canRespond\":false,\"model\":\"openai\"}"
+    },
+    {
+      "t": 11573,
+      "name": "STATUS_STATE_RUNNING",
+      "detail": ""
+    },
+    {
+      "t": 12346,
+      "name": "CHAT_REPLY_NOPROVIDER",
+      "detail": "\"This agent has no LLM provider configured. Set ANTHROPIC_API\""
+    },
+    {
+      "t": 13073,
+      "name": "HEALTH_CHANGE",
+      "detail": "{\"s\":200,\"ready\":true,\"canRespond\":true,\"st\":\"running\"}"
+    },
+    {
+      "t": 13143,
+      "name": "STATUS_CHANGE",
+      "detail": "{\"s\":200,\"state\":\"running\",\"canRespond\":true,\"model\":\"openai\"}"
+    },
+    {
+      "t": 13143,
+      "name": "STATUS_CANRESPOND_TRUE",
+      "detail": ""
+    },
+    {
+      "t": 14418,
+      "name": "CHAT_REPLIED_MODEL",
+      "detail": "HTTP 200 text=\"<response><action>RESPOND</action><reasoning>probe</reasoning></response>\""
+    }
+  ]
+}

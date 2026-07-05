@@ -2,10 +2,12 @@
 import { describe, expect, test } from "vitest";
 import {
   type AppMonetizationConfig,
+  CorruptAppMonetizationNumberError,
   computeInferenceCharge,
   computePurchaseSplit,
   computeReconciliation,
   isAppMonetizationActive,
+  parseAppMonetizationNumber,
 } from "./app-credit-math";
 
 /**
@@ -23,6 +25,46 @@ const enabled: AppMonetizationConfig = {
   inferenceMarkupPercentage: 20,
 };
 const disabled: AppMonetizationConfig = { ...enabled, monetizationEnabled: false };
+
+describe("parseAppMonetizationNumber", () => {
+  test("parses healthy NUMERIC strings and numbers, including domain zero", () => {
+    expect(parseAppMonetizationNumber("inference_markup_percentage", "20.00")).toBe(20);
+    expect(parseAppMonetizationNumber("purchase_share_percentage", 70)).toBe(70);
+    expect(parseAppMonetizationNumber("platform_offset_amount", "0")).toBe(0);
+    expect(parseAppMonetizationNumber("platform_offset_amount", 0)).toBe(0);
+    expect(parseAppMonetizationNumber("total_creator_earnings", "12.34", { min: 0 })).toBe(12.34);
+  });
+
+  test("REGRESSION: throws on corrupt NaN instead of returning NaN", () => {
+    expect(() => parseAppMonetizationNumber("inference_markup_percentage", "NaN")).toThrow(
+      CorruptAppMonetizationNumberError,
+    );
+    expect(() => parseAppMonetizationNumber("inference_markup_percentage", Number.NaN)).toThrow(
+      CorruptAppMonetizationNumberError,
+    );
+    expect(Number("NaN")).toBeNaN();
+  });
+
+  test("throws on null/undefined/blank/non-finite/garbage", () => {
+    for (const bad of [
+      null,
+      undefined,
+      "",
+      "   ",
+      "abc",
+      "12abc",
+      "1e3",
+      "0x10",
+      "Infinity",
+      {},
+      [],
+    ]) {
+      expect(() => parseAppMonetizationNumber("purchase_share_percentage", bad)).toThrow(
+        CorruptAppMonetizationNumberError,
+      );
+    }
+  });
+});
 
 describe("computePurchaseSplit", () => {
   test("applies platform fee then creator share when monetized", () => {
@@ -50,6 +92,40 @@ describe("computePurchaseSplit", () => {
       creditsToAdd: 1000,
     });
   });
+
+  test("REGRESSION: corrupt purchase config fails closed instead of minting NaN earnings", () => {
+    expect(() =>
+      computePurchaseSplit(1000, { ...enabled, purchaseSharePercentage: "NaN" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
+    expect(() => computePurchaseSplit(1000, { ...enabled, platformOffsetAmount: "NaN" })).toThrow(
+      CorruptAppMonetizationNumberError,
+    );
+  });
+
+  test("REGRESSION: out-of-domain purchase config fails closed", () => {
+    expect(() => computePurchaseSplit(1000, { ...enabled, platformOffsetAmount: "-1" })).toThrow(
+      CorruptAppMonetizationNumberError,
+    );
+    expect(() =>
+      computePurchaseSplit(1000, { ...enabled, purchaseSharePercentage: "101" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
+  });
+
+  test("disabled monetization ignores corrupt stored purchase config", () => {
+    expect(
+      computePurchaseSplit(1000, {
+        monetizationEnabled: false,
+        platformOffsetAmount: "NaN",
+        purchaseSharePercentage: "NaN",
+        inferenceMarkupPercentage: "NaN",
+      }),
+    ).toEqual({
+      platformOffset: 0,
+      amountAfterOffset: 1000,
+      creatorEarnings: 0,
+      creditsToAdd: 1000,
+    });
+  });
 });
 
 describe("computeInferenceCharge", () => {
@@ -66,6 +142,21 @@ describe("computeInferenceCharge", () => {
       creatorMarkup: 0,
       totalCost: 500,
     });
+  });
+
+  test("REGRESSION: corrupt inference markup fails closed instead of charging NaN credits", () => {
+    expect(() =>
+      computeInferenceCharge(500, { ...enabled, inferenceMarkupPercentage: "NaN" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
+  });
+
+  test("REGRESSION: out-of-domain inference markup fails closed", () => {
+    expect(() =>
+      computeInferenceCharge(500, { ...enabled, inferenceMarkupPercentage: "-1" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
+    expect(() =>
+      computeInferenceCharge(500, { ...enabled, inferenceMarkupPercentage: "1001" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
   });
 });
 
@@ -88,6 +179,12 @@ describe("computeReconciliation", () => {
     expect(recon.markupPercentage).toBe(0);
     expect(recon.totalCostDifference).toBe(50);
     expect(recon.creatorMarkupDifference).toBe(0);
+  });
+
+  test("REGRESSION: corrupt inference markup fails closed instead of reconciling NaN deltas", () => {
+    expect(() =>
+      computeReconciliation(50, { ...enabled, inferenceMarkupPercentage: "NaN" }),
+    ).toThrow(CorruptAppMonetizationNumberError);
   });
 });
 

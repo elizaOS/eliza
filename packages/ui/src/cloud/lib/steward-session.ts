@@ -30,6 +30,11 @@ import {
   StewardSessionError,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
+import {
+  readStoredToken,
+  tokenIsExpired,
+} from "../shell/StewardProviderShared";
+import { decodeJwtPayload } from "./jwt";
 
 export type { ClearOpts, StewardSessionErrorCode };
 export {
@@ -57,4 +62,18 @@ export function getStewardToken(): string | null {
 /** Whether a Steward session token is currently stored in the browser. */
 export function hasStewardToken(): boolean {
   return readStoredStewardToken() !== null;
+}
+
+/**
+ * Whether a stored Steward token is worth holding the console auth gate for.
+ * Raw presence is not enough: expired, malformed, and identity-less tokens read
+ * as signed-out in `useSessionAuth`, so holding on them would replace the
+ * intended login redirect with an uncloseable busy state.
+ */
+export function hasHydratableStewardToken(): boolean {
+  const token = readStoredToken();
+  if (!token || tokenIsExpired(token)) return false;
+  const claims = decodeJwtPayload(token);
+  const id = claims?.userId ?? claims?.sub;
+  return typeof id === "string" && id.trim().length > 0;
 }

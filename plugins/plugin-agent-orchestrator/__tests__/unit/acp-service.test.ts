@@ -423,6 +423,50 @@ describe("AcpService", () => {
     }
   });
 
+  it("does not clobber an existing SKILLS.md in a non-isolated workdir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acp-skills-existing-"));
+    try {
+      const existing = "# Repo's own SKILLS.md\nDo not overwrite me.\n";
+      await fs.writeFile(join(dir, "SKILLS.md"), existing, "utf8");
+      const skillsService = {
+        getEligibleSkills: async () => [
+          {
+            slug: "github",
+            name: "GitHub",
+            description: "gh CLI usage.",
+            content: "# GitHub\n",
+          },
+        ],
+        isSkillEnabled: () => true,
+      };
+      const reg = nextProc();
+      const service = new AcpService(
+        runtime({}, { AGENT_SKILLS_SERVICE: skillsService }),
+      );
+      await service.start();
+      // workdir supplied without isolateWorkdir → isolate=false → writes into
+      // the real repo root; the pre-existing SKILLS.md must survive.
+      const promise = service.spawnSession({
+        name: "skills-existing",
+        agentType: "codex",
+        workdir: dir,
+      });
+      await waitForSpawn(reg);
+      reg.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"skills-existing"}}\n',
+        ),
+      );
+      closeOk(reg);
+      await promise;
+
+      expect(readFileSync(join(dir, "SKILLS.md"), "utf8")).toBe(existing);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("advertises the broker in SKILLS.md + manual when the router is wired", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acp-skills-broker-"));
     try {
@@ -1093,7 +1137,7 @@ describe("AcpService", () => {
     const priorRecording = process.env.ELIZA_TRAJECTORY_RECORDING;
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "acp-stdout-"));
     process.env.ELIZA_TRAJECTORY_DIR = tmpDir;
-    delete process.env.ELIZA_TRAJECTORY_RECORDING;
+    process.env.ELIZA_TRAJECTORY_RECORDING = "1";
     try {
       const create = nextProc();
       const service = new AcpService(runtime());

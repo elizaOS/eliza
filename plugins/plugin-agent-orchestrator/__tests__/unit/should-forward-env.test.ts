@@ -74,6 +74,24 @@ describe("shouldForwardEnv", () => {
     expect(shouldForwardEnv("GITHUB_TOKEN")).toBe(false);
   });
 
+  // Broker-first (#14118): the owner's raw ELIZAOS_CLOUD* creds are NOT forwarded
+  // into a child by default — a sub-agent reaches Cloud through the parent broker
+  // (apps.create / containers.create, spend-gated). The explicit
+  // ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
+  it("does NOT forward the raw owner cloud creds by default (broker-first)", () => {
+    expect(shouldForwardEnv("ELIZAOS_CLOUD_API_KEY")).toBe(false);
+    expect(shouldForwardEnv("ELIZAOS_CLOUD_URL")).toBe(false);
+    expect(isEnvForwardableToSubAgent("ELIZAOS_CLOUD_API_KEY")).toBe(false);
+  });
+
+  it("forwards the raw owner cloud creds only when the opt-in flag is passed", () => {
+    expect(shouldForwardEnv("ELIZAOS_CLOUD_API_KEY", true)).toBe(true);
+    expect(shouldForwardEnv("ELIZAOS_CLOUD_URL", true)).toBe(true);
+    expect(isEnvForwardableToSubAgent("ELIZAOS_CLOUD_API_KEY", true)).toBe(
+      true,
+    );
+  });
+
   // The app-deploy contract's docker push needs a registry login — without a
   // forwarded credential every ghcr.io push 403s before deploy is attempted.
   // Only the DEDICATED registry-scoped names pass (a packages:write PAT); the
@@ -202,5 +220,25 @@ describe("forwardableSubAgentEnv", () => {
     expect(out.ELIZA_APP_IMAGE_REGISTRY_USERNAME).toBe("pusher");
     expect(out.ELIZA_APP_IMAGE_REGISTRY_TOKEN).toBe("ghp-registry-scoped");
     expect(out.GITHUB_TOKEN).toBeUndefined();
+  });
+
+  // #14118: the owner's raw cloud creds are stripped from the child env by
+  // default (broker-first), and restored only under the explicit opt-in. The
+  // flag is passed explicitly here so the test does not depend on config-env.
+  it("strips the raw owner cloud creds by default, restores them under the opt-in", () => {
+    const source = {
+      ELIZAOS_CLOUD_API_KEY: "eliza_owner_key",
+      ELIZAOS_CLOUD_URL: "https://www.elizacloud.ai",
+      ANTHROPIC_API_KEY: "sk-x",
+    };
+    const gated = forwardableSubAgentEnv(source, false);
+    expect(gated.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+    expect(gated.ELIZAOS_CLOUD_URL).toBeUndefined();
+    // Unrelated allowlisted vars are unaffected by the cloud gate.
+    expect(gated.ANTHROPIC_API_KEY).toBe("sk-x");
+
+    const opted = forwardableSubAgentEnv(source, true);
+    expect(opted.ELIZAOS_CLOUD_API_KEY).toBe("eliza_owner_key");
+    expect(opted.ELIZAOS_CLOUD_URL).toBe("https://www.elizacloud.ai");
   });
 });

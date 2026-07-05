@@ -325,15 +325,29 @@ export function classifyImeAsrOutcome(logcatOutput) {
 
 /**
  * Roll the individual scrape results into one lane verdict. Fails the lane if
- * any required surface is missing/misrouted; when a full engine is required, an
- * engine-off ASR outcome fails too (an honest ENGINE_OFF is only acceptable
- * when the engine is not required to be present).
+ * any required surface is missing/misrouted. The surface/routing checks always
+ * gate; the ASR-outcome checks are conditioned on whether a full engine is
+ * required, because the verify lane only drives the deep-link entry points — it
+ * never raises the IME keyboard or captures audio, so the mic→transcribe round
+ * trip is exercised only on a full-engine build/device, never on the engine-less
+ * emulator lane.
+ *
+ * ASR-outcome gating:
+ *   - `error` always fails: the native code hit a transcription exception, which
+ *     is a real defect regardless of whether an engine was expected.
+ *   - `engineOff`/`unknown` fail ONLY when `requireAgent` is set. An honest
+ *     ENGINE_OFF (loopback refused) is the designed state when no engine is
+ *     staged; `unknown` is the "the round-trip was never driven" state the
+ *     emulator lane legitimately produces (the deep-link path logs no ASR line).
+ *     When a full engine IS required, neither is acceptable — the lane must see a
+ *     committed transcript (or the model-not-ready shape), so both fail loud.
  *
  * @param {object} results
  * @param {boolean} results.surfacesRegistered
  * @param {boolean} results.roleHeld
  * @param {boolean} results.imeSelected
- * @param {boolean} results.assistLanded
+ * @param {boolean} results.voiceinteractionLanded
+ * @param {boolean} results.assistKeyLanded
  * @param {boolean} results.imeLanded
  * @param {string}  results.asrOutcome  from classifyImeAsrOutcome
  * @param {boolean} requireAgent        when true, engine must be up (committed/modelNotReady only)
@@ -344,17 +358,24 @@ export function summarizeLaneVerdict(results, requireAgent) {
     failures.push("assistant/IME surfaces not registered");
   if (!results.roleHeld) failures.push("assistant role not held by Eliza");
   if (!results.imeSelected) failures.push("Eliza IME not selected");
-  if (!results.assistLanded)
-    failures.push("assist invocation did not reach MainActivity");
+  if (!results.voiceinteractionLanded)
+    failures.push("cmd voiceinteraction show did not reach MainActivity");
+  if (!results.assistKeyLanded)
+    failures.push("KEYCODE_ASSIST did not reach MainActivity");
   if (!results.imeLanded)
     failures.push("IME invocation did not reach MainActivity");
+  if (results.asrOutcome === "error")
+    failures.push("IME ASR round-trip errored");
   if (requireAgent && results.asrOutcome === "engineOff") {
     failures.push(
       "full engine required but ASR loopback was unreachable (ENGINE_OFF)",
     );
   }
-  if (results.asrOutcome === "error")
-    failures.push("IME ASR round-trip errored");
+  if (requireAgent && results.asrOutcome === "unknown") {
+    failures.push(
+      "full engine required but IME ASR outcome was unknown (no committed transcript)",
+    );
+  }
   return { pass: failures.length === 0, failures };
 }
 

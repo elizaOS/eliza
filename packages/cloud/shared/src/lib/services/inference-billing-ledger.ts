@@ -360,10 +360,105 @@ export interface LedgerSweepStats {
   scanned: number;
   settled: number;
   skipped: number;
+  /**
+   * Pending rows the sweep could not settle because their persisted
+   * `estimated_cost_usd` read back corrupt (`'NaN'::numeric`, empty, non-finite, negative).
+   * They are transitioned out of `pending` to `corrupt` (auditable, no debit)
+   * rather than fabricated-settled at $0. Distinct from `skipped` (lost the claim
+   * to a concurrent inline settle — already handled).
+   */
+  corrupt: number;
   batches: number;
   gcDeleted: number;
   /** true when the sweep hit its batch ceiling — a backlog larger than one run can drain. */
   capHit: boolean;
+}
+
+/**
+ * Corrupt-value marker raised when a swept pending charge's persisted
+ * `estimated_cost_usd` cannot be read as a finite, non-negative number.
+ */
+export class CorruptPendingChargeEstimateError extends Error {
+  constructor(
+    readonly requestId: string,
+    readonly rawValue: unknown,
+  ) {
+    super(
+      `[InferenceLedger] pending charge ${requestId} has a corrupt estimated_cost_usd: ${JSON.stringify(
+        rawValue,
+      )}`,
+    );
+    this.name = "CorruptPendingChargeEstimateError";
+  }
+}
+
+/**
+ * Fail-closed boundary for the sweep's persisted `estimated_cost_usd` read.
+ *
+ * `estimated_cost_usd` is a NOT NULL `numeric(12,6)` column, so it arrives from
+ * the driver as a string. Postgres NUMERIC can legitimately hold `'NaN'::numeric`
+ * (a DB corruption / migration artifact / manual edit), which reads back as the
+ * string `"NaN"`; `Number("NaN")` is `NaN`. The sweep previously coerced with
+ * `Number.isFinite(estimate) ? estimate : 0`, i.e. it SETTLED a corrupt charge at
+ * `$0` — a fabricated-default free-inference collection that clears the pending
+ * row as if the cost were legitimately zero. That is exactly the fallback-slop
+ * class #13415 targets: a failed read becoming a success-shaped value.
+ *
+ * This parser throws on a missing/empty/non-finite/negative value so the sweep
+ * can route the row to an auditable `corrupt` terminal state instead of a silent
+ * $0 settle. An explicit domain `0` (a genuinely free request) is allowed through.
+ */
+function parseSweepEstimate(
+  requestId: string,
+  rawValue: string | number | null | undefined,
+): number {
+  if (rawValue === null || rawValue === undefined || String(rawValue).trim() === "") {
+    throw new CorruptPendingChargeEstimateError(requestId, rawValue);
+  }
+  const parsed = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new CorruptPendingChargeEstimateError(requestId, rawValue);
+  }
+  return parsed;
+}
+
+/**
+ * Transition a corrupt swept pending charge OUT of `pending` to an auditable
+ * `corrupt` terminal state, without debiting and without fabricating a $0 settle.
+ * Only claims a still-`pending` row (so a concurrent inline settle that already
+ * won the row is not clobbered), and records `settled_at` so the existing GC clause
+ * can reclaim it. Never throws (a failed transition leaves the row `pending` for
+ * the next sweep — still fail-closed, never a fabricated collection).
+ */
+async function markSweepPendingCorrupt(
+  requestId: string,
+  organizationId: string,
+): Promise<boolean> {
+  try {
+    const rows = await sqlRows<{ request_id: string }>(
+      dbWrite,
+      sql`
+        UPDATE inference_pending_charges
+        SET status = 'corrupt', settled_at = NOW()
+        WHERE request_id = ${requestId} AND status = 'pending'
+        RETURNING request_id
+      `,
+    );
+    return rows.length > 0;
+  } catch (error) {
+    // Fail-closed: leave the row `pending` for the next sweep rather than risk a
+    // fabricated success. Surface it so the corruption + failed transition is
+    // observable. error-policy:J1
+    logger.error(
+      "[InferenceLedger] failed to mark corrupt pending charge; left pending for retry",
+      {
+        requestId,
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return false;
+  }
 }
 
 interface SweepRow {
@@ -405,6 +500,7 @@ export async function sweepStalePendingInferenceChargesDb(opts?: {
     scanned: 0,
     settled: 0,
     skipped: 0,
+    corrupt: 0,
     batches: 0,
     gcDeleted: 0,
     capHit: false,
@@ -427,7 +523,30 @@ export async function sweepStalePendingInferenceChargesDb(opts?: {
     stats.scanned += rows.length;
 
     for (const row of rows) {
-      const estimate = Number(row.estimated_cost_usd);
+      // Fail-closed on a corrupt persisted estimate: a `'NaN'::numeric` or negative
+      // estimate must NOT settle at $0 / as a credit (that fabricates a
+      // success-shaped collection and clears the row as if the cost were
+      // legitimate). Route it to an auditable `corrupt` terminal state instead.
+      // error-policy:J1
+      let estimate: number;
+      try {
+        estimate = parseSweepEstimate(row.request_id, row.estimated_cost_usd);
+      } catch (error) {
+        if (error instanceof CorruptPendingChargeEstimateError) {
+          logger.error("[InferenceLedger] corrupt pending-charge estimate; not settling at $0", {
+            requestId: row.request_id,
+            organizationId: row.organization_id,
+            userId: row.user_id,
+            rawEstimate: row.estimated_cost_usd,
+          });
+          const marked = await markSweepPendingCorrupt(row.request_id, row.organization_id);
+          if (marked) stats.corrupt++;
+          else stats.skipped++; // transition failed OR row already left pending — next sweep retries
+          continue;
+        }
+        throw error;
+      }
+
       const outcome = await settleLedgerCharge(
         {
           requestId: row.request_id,
@@ -438,7 +557,7 @@ export async function sweepStalePendingInferenceChargesDb(opts?: {
           provider: row.provider,
           billingSource: row.billing_source,
         },
-        Number.isFinite(estimate) ? estimate : 0,
+        estimate,
         "sweep",
       );
       if (outcome.claimed) stats.settled++;
@@ -457,7 +576,7 @@ export async function sweepStalePendingInferenceChargesDb(opts?: {
       dbWrite,
       sql`
         DELETE FROM inference_pending_charges
-        WHERE status IN ('settled', 'uncollected')
+        WHERE status IN ('settled', 'uncollected', 'corrupt')
           AND settled_at IS NOT NULL
           AND settled_at < NOW() - (${String(retentionMs)} || ' milliseconds')::interval
         RETURNING request_id
@@ -477,7 +596,7 @@ export async function sweepStalePendingInferenceChargesDb(opts?: {
       scanned: stats.scanned,
     });
   }
-  if (stats.settled > 0 || stats.skipped > 0 || stats.gcDeleted > 0) {
+  if (stats.settled > 0 || stats.skipped > 0 || stats.corrupt > 0 || stats.gcDeleted > 0) {
     logger.warn("[InferenceLedger] swept stale pending charges (dropped inline settles)", stats);
   }
   return stats;

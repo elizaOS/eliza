@@ -7,6 +7,12 @@ on:
       - ".github/workflows/setup-bun-workspace-self-test.yml"
   workflow_dispatch:
 
+# #14051 Tier B: cancel superseded self-test runs on rapid pushes to the
+# setup-bun action so iterating on it doesn't queue duplicate fleet jobs.
+concurrency:
+  group: setup-bun-workspace-self-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

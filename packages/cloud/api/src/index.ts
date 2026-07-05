@@ -54,6 +54,7 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       status: "ok",
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
+      commit: env.ELIZA_DEPLOY_COMMIT ?? null,
     },
     {
       status: 200,

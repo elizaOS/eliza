@@ -97,7 +97,7 @@ function initStripe(): Stripe | null {
   // fake money. Loud warning, not fatal, so a prod deploy is not bricked.
   if (shouldWarnTestStripeKeyInProduction(env)) {
     logger.warn(
-      "[Stripe] STRIPE_SECRET_KEY is a TEST-mode key (sk_test_) in a production deployment. Checkouts will not move real money. Verify the environment's Stripe secrets (#13752).",
+      "[Stripe] STRIPE_SECRET_KEY is a TEST-mode key (sk_test_/rk_test_) in a production deployment. Checkouts will not move real money. Verify the environment's Stripe secrets (#13752).",
     );
   }
 

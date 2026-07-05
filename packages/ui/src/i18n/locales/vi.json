@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "Tab",
   "browserworkspace.UnsupportedProtocol": "Chỉ hỗ trợ URL http và https.",
   "browserworkspace.UserTabs": "Tab người dùng",
+  "browserworkspace.ViewTitle": "Trình duyệt",
   "browserworkspace.Visible": "Đang hiển thị",
   "browserworkspace.WebWorkspace": "Không gian làm việc web iframe",
   "browserworkspace.Working": "Đang xử lý: {{action}}",

@@ -10,12 +10,16 @@
  * Gated by the SAME policy as the trajectory recorder
  * (`isTrajectoryRecordingEnabled`): when recording is off, nothing is written.
  * Rotation mirrors the orchestrator audit log (single-generation `.1`) so a
- * long-lived, chatty session cannot grow the file unbounded.
+ * long-lived, chatty session cannot grow the file unbounded. Provider
+ * credentials are masked at write time (`redactSensitiveText`) so this persisted
+ * file — which outlives the session — can never leak the model key the
+ * sub-agent echoed to stdout.
  */
 import { appendFile, mkdir, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
   isTrajectoryRecordingEnabled,
+  redactSensitiveText,
   resolveTrajectoryDir,
 } from "@elizaos/core";
 
@@ -57,9 +61,17 @@ export async function appendSubagentStdout(
   const path = subagentStdoutLogPath(sessionId);
   await mkdir(stdoutLogDir(), { recursive: true });
   await rotateIfTooLarge(path);
-  // One JSON object per line: ts + the raw chunk. Keeping the chunk verbatim
-  // (not line-split) preserves the exact stream the CLI agent produced.
-  const record = JSON.stringify({ ts: new Date().toISOString(), text });
+  // One JSON object per line: ts + the chunk. Kept verbatim (not line-split) to
+  // preserve the exact stream the CLI agent produced, EXCEPT that provider
+  // credentials are masked first: sub-agent stdout regularly echoes the model
+  // key / Bearer token used, and this file outlives the session, so a raw secret
+  // here would be a durable on-disk leak. redactSensitiveText is core's canonical
+  // value-shape redactor (security/redact.ts) — the same pattern set the log sink
+  // and runtime.redactSecrets apply, so a leaked key shape is masked everywhere.
+  const record = JSON.stringify({
+    ts: new Date().toISOString(),
+    text: redactSensitiveText(text),
+  });
   await appendFile(path, `${record}\n`, "utf8");
   return path;
 }

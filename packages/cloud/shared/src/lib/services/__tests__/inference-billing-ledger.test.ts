@@ -652,6 +652,148 @@ describe("sweepStalePendingInferenceChargesDb — cron backstop", () => {
   );
 });
 
+describe("sweepStalePendingInferenceChargesDb — corrupt estimate fails closed (#13415)", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    await seedOrg("100.000000");
+  });
+
+  /** Force a NaN estimate onto a stale pending row the way DB corruption would. */
+  async function insertCorruptPending(requestId: string, ageMs: number): Promise<void> {
+    await dbWrite.execute(
+      `INSERT INTO inference_pending_charges
+         (request_id, organization_id, user_id, api_key_id, model, provider, billing_source, estimated_cost_usd, status, enqueued_at)
+       VALUES ('${requestId}', '${ORG_ID}', '${USER_ID}', NULL, 'gpt-oss-120b', 'cerebras', 'platform', 'NaN'::numeric, 'pending', NOW() - INTERVAL '${ageMs} milliseconds');`,
+    );
+  }
+
+  test(
+    "a corrupt 'NaN' estimate is NOT settled at $0 — it fails closed to an auditable 'corrupt' row (no debit)",
+    async () => {
+      if (!pgliteReady) return;
+      const corrupt = nextRequestId();
+      await insertCorruptPending(corrupt, 30 * 60 * 1000); // stale
+
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+
+      // REGRESSION GUARD: the old `Number.isFinite(estimate) ? estimate : 0` path
+      // would have `settled` this row at $0 (a fabricated free-inference collection).
+      expect(stats.settled).toBe(0);
+      expect(stats.corrupt).toBe(1);
+      expect(await debitCount()).toBe(0); // no fabricated $0 debit row
+      expect(await readBalance()).toBeCloseTo(100, 6); // balance untouched
+      const rows = await pendingRows();
+      const row = rows.find((r) => r.request_id === corrupt);
+      expect(row?.status).toBe("corrupt"); // left `pending`? NO — auditable terminal, not settled
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a negative estimate is NOT settled — it fails closed to an auditable 'corrupt' row (no debit)",
+    async () => {
+      if (!pgliteReady) return;
+      const negative = nextRequestId();
+      await dbWrite.execute(
+        `INSERT INTO inference_pending_charges
+           (request_id, organization_id, user_id, api_key_id, model, provider, billing_source, estimated_cost_usd, status, enqueued_at)
+         VALUES ('${negative}', '${ORG_ID}', '${USER_ID}', NULL, 'gpt-oss-120b', 'cerebras', 'platform', '-5.000000'::numeric, 'pending', NOW() - INTERVAL '1800000 milliseconds');`,
+      );
+
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+
+      expect(stats.settled).toBe(0);
+      expect(stats.corrupt).toBe(1);
+      expect(await debitCount()).toBe(0);
+      expect(await readBalance()).toBeCloseTo(100, 6);
+      const rows = await pendingRows();
+      const row = rows.find((r) => r.request_id === negative);
+      expect(row?.status).toBe("corrupt");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a corrupt row is transitioned out of 'pending' so it does not re-scan forever, and GCs like other terminals",
+    async () => {
+      if (!pgliteReady) return;
+      const corrupt = nextRequestId();
+      await insertCorruptPending(corrupt, 30 * 60 * 1000);
+
+      // First sweep marks it corrupt (settled_at = NOW()).
+      await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+      expect((await pendingRows()).find((r) => r.request_id === corrupt)?.status).toBe("corrupt");
+
+      // A second sweep does NOT re-scan it as pending (it's terminal now).
+      const second = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+      expect(second.corrupt).toBe(0);
+      expect(second.scanned).toBe(0);
+
+      // Age it past retention and confirm the GC clause reclaims a 'corrupt' terminal.
+      await dbWrite.execute(
+        `UPDATE inference_pending_charges SET settled_at = NOW() - INTERVAL '49 hours' WHERE request_id = '${corrupt}';`,
+      );
+      const third = await ledger.sweepStalePendingInferenceChargesDb({
+        graceMs: 20 * 60 * 1000,
+        retentionMs: 24 * 60 * 60 * 1000,
+      });
+      expect(third.gcDeleted).toBe(1);
+      expect((await pendingRows()).map((r) => r.request_id)).not.toContain(corrupt);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "corrupt rows do not block healthy rows in the same sweep batch",
+    async () => {
+      if (!pgliteReady) return;
+      const corrupt = nextRequestId();
+      const healthy = nextRequestId();
+      await insertCorruptPending(corrupt, 40 * 60 * 1000);
+      await insertPending(healthy, "3.000000", 35 * 60 * 1000);
+
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+
+      expect(stats.corrupt).toBe(1);
+      expect(stats.settled).toBe(1); // the healthy $3 charge still settled
+      expect(await readBalance()).toBeCloseTo(97, 6);
+      const rows = await pendingRows();
+      expect(rows.find((r) => r.request_id === corrupt)?.status).toBe("corrupt");
+      expect(rows.find((r) => r.request_id === healthy)?.status).toBe("settled");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an explicit $0 estimate is a legitimate free request — settled, NOT flagged corrupt",
+    async () => {
+      if (!pgliteReady) return;
+      const free = nextRequestId();
+      await insertPending(free, "0.000000", 30 * 60 * 1000);
+
+      const stats = await ledger.sweepStalePendingInferenceChargesDb({ graceMs: 20 * 60 * 1000 });
+
+      expect(stats.corrupt).toBe(0);
+      expect(stats.settled).toBe(1); // claimed, charges nothing
+      expect(await debitCount()).toBe(0); // $0 → no debit row (settle(0) claims-only)
+      expect(await readBalance()).toBeCloseTo(100, 6);
+      expect((await pendingRows()).find((r) => r.request_id === free)?.status).toBe("settled");
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
+describe("parseSweepEstimate boundary + CorruptPendingChargeEstimateError", () => {
+  test("exports the fail-closed error type", () => {
+    expect(typeof ledger.CorruptPendingChargeEstimateError).toBe("function");
+    const err = new ledger.CorruptPendingChargeEstimateError("req-x", "NaN");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("CorruptPendingChargeEstimateError");
+    expect(err.requestId).toBe("req-x");
+    expect(err.rawValue).toBe("NaN");
+  });
+});
+
 describe("resolveInferenceBillingLedger — backstop selector", () => {
   test("only 'db' (case/space-insensitive) selects the DB ledger; everything else is 'kv'", () => {
     expect(ledger.resolveInferenceBillingLedger({ INFERENCE_BILLING_LEDGER: "db" })).toBe("db");

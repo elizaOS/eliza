@@ -306,9 +306,8 @@ export function TaskListHeader({
   title: string;
   counts: ReactNode;
   action?: ReactNode;
-  /** Optional control rendered flush-left before the icon — the full-page
-   *  Tasks view passes the shared back-to-launcher button here so its header
-   *  chrome matches the other top-level views. */
+  /** Optional control rendered flush-left before the icon (e.g. a back
+   *  affordance) for hosts whose surface has no outer header of its own. */
   leading?: ReactNode;
 }) {
   return (

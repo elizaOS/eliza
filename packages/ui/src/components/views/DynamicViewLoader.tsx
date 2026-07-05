@@ -20,6 +20,11 @@
  */
 
 import {
+  type ResolvedSurfaceManifest,
+  resolveSurfaceManifest,
+  type SurfaceManifest,
+} from "@elizaos/core";
+import {
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,
   type HostExternalBundleFactory,
@@ -32,6 +37,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -99,6 +105,7 @@ import {
   ViewLoadingSkeleton,
   ViewRestrictedState,
 } from "./ViewStatusStates";
+import { brokerViewInteract } from "./view-capability-broker";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -1121,6 +1128,14 @@ interface DynamicViewLoaderProps {
   viewProps?: Record<string, unknown>;
   /** Presentation/runtime family for this view. Defaults to GUI. */
   viewType?: "gui" | "tui" | "xr";
+  /**
+   * The view's declared surface manifest (#13452). Resolved to a
+   * {@link ResolvedSurfaceManifest} and used to broker the interact channel: a
+   * plugin view only gets the mutating agent-surface capabilities when its
+   * manifest grants `agent-surface`. Omitted → the safe default (no grants), so
+   * an un-manifested plugin view exposes read-only introspection only.
+   */
+  surface?: SurfaceManifest;
 }
 
 /**
@@ -1140,7 +1155,15 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   viewId,
   viewProps: forwardedViewProps,
   viewType = "gui",
+  surface,
 }: DynamicViewLoaderProps) {
+  // Resolve the declared manifest once per surface declaration so the interact
+  // broker gate reads a stable {@link ResolvedSurfaceManifest}. An absent
+  // manifest resolves to the safe default (no capability grants).
+  const resolvedManifest: ResolvedSurfaceManifest = useMemo(
+    () => resolveSurfaceManifest({ surface }),
+    [surface],
+  );
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   // Incrementing this key invalidates the module cache entry and forces a
@@ -1196,49 +1219,57 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   useLayoutEffect(() => {
     if (!bundle) return;
 
+    // The capability broker (#13452) gates the interact channel on the view's
+    // resolved manifest: read-only introspection is always allowed, but mutating
+    // agent-surface/standard capabilities require the `agent-surface` grant. A
+    // denied capability throws, surfacing to the agent instead of a silent no-op.
     const unregister = registerViewInteractHandler(
       viewId,
       viewType,
-      async (capability, params) => {
-        const registry = getViewRegistry(viewId, viewType);
-        // Generic agent-surface capabilities (list-elements, agent-fill, …)
-        // operate on the view's element registry.
-        if (isAgentSurfaceCapability(capability)) {
-          if (registry && registry.size() > 0) {
-            return handleAgentSurfaceCapability(registry, capability, params);
+      brokerViewInteract(
+        viewId,
+        resolvedManifest,
+        async (capability, params) => {
+          const registry = getViewRegistry(viewId, viewType);
+          // Generic agent-surface capabilities (list-elements, agent-fill, …)
+          // operate on the view's element registry.
+          if (isAgentSurfaceCapability(capability)) {
+            if (registry && registry.size() > 0) {
+              return handleAgentSurfaceCapability(registry, capability, params);
+            }
+            return handleDomAgentSurfaceCapability(
+              viewId,
+              viewType,
+              capability,
+              params,
+              containerRef.current,
+            );
           }
-          return handleDomAgentSurfaceCapability(
-            viewId,
-            viewType,
-            capability,
-            params,
-            containerRef.current,
+          // Standard capabilities are handled here regardless of whether the
+          // module exports interact — they operate on the registry or the DOM.
+          if (STANDARD_CAPABILITIES.has(capability)) {
+            return handleStandardCapability(
+              capability,
+              params,
+              containerRef.current,
+              setReloadKey,
+              `${bundleUrl}::${componentExport}`,
+              registry,
+            );
+          }
+          // Delegate to the module's interact export if present.
+          if (bundle.interact) {
+            return bundle.interact(capability, params);
+          }
+          throw new Error(
+            `View "${viewId}" does not support capability "${capability}"`,
           );
-        }
-        // Standard capabilities are handled here regardless of whether the
-        // module exports interact — they operate on the registry or the DOM.
-        if (STANDARD_CAPABILITIES.has(capability)) {
-          return handleStandardCapability(
-            capability,
-            params,
-            containerRef.current,
-            setReloadKey,
-            `${bundleUrl}::${componentExport}`,
-            registry,
-          );
-        }
-        // Delegate to the module's interact export if present.
-        if (bundle.interact) {
-          return bundle.interact(capability, params);
-        }
-        throw new Error(
-          `View "${viewId}" does not support capability "${capability}"`,
-        );
-      },
+        },
+      ),
     );
 
     return unregister;
-  }, [bundle, bundleUrl, componentExport, viewId, viewType]);
+  }, [bundle, bundleUrl, componentExport, resolvedManifest, viewId, viewType]);
 
   // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
   // ETag changes the bundle has been rebuilt — evict the cache entry and bump

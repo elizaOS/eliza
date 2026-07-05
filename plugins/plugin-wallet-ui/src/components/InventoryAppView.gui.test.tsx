@@ -46,35 +46,6 @@ vi.mock("@elizaos/ui", () => ({
   client: walletClient,
   Button: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
     React.createElement("button", { type: "button", ...props }),
-  ChatEmptyStateWithRecommendations: ({
-    title,
-    recommendations = [],
-    primaryAction,
-  }: {
-    title?: string;
-    recommendations?: Array<string | { label: string; prompt?: string }>;
-    primaryAction?: { label: string; onClick: () => void };
-  }) =>
-    React.createElement(
-      "div",
-      null,
-      title ? React.createElement("div", null, title) : null,
-      primaryAction
-        ? React.createElement(
-            "button",
-            { type: "button", onClick: primaryAction.onClick },
-            primaryAction.label,
-          )
-        : null,
-      ...recommendations.map((rec) => {
-        const label = typeof rec === "string" ? rec : rec.label;
-        return React.createElement(
-          "button",
-          { type: "button", key: label },
-          label,
-        );
-      }),
-    ),
   cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
   useActivityEvents: () => appHooks.activityEvents,
   useApp: appHooks.useApp,

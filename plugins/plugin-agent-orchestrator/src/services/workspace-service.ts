@@ -84,6 +84,11 @@ import {
   gcOrphanedWorkspaces,
   removeScratchDir,
 } from "./workspace-lifecycle.js";
+import {
+  getSharedWorkspaceRegistry,
+  resolveDiskBudgetConfig,
+  type WorkspaceRegistry,
+} from "./workspace-registry.js";
 
 export type {
   CodingWorkspaceConfig,
@@ -275,6 +280,10 @@ export class CodingWorkspaceService {
   private githubClient: GitHubPatClientInstance | null = null;
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
+  // Shared with every AcpService so one disk cap spans scratch + git workspaces
+  // (#13773). Git workspaces ARE reclaimable by the registry (this clone path
+  // has no other GC on the cap), unlike accounting-only ACP scratch dirs.
+  private readonly workspaceRegistry: WorkspaceRegistry;
   private workspaces: Map<string, WorkspaceResult> = new Map();
   private ambientCredentialWorkspaceIds = new Set<string>();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
@@ -290,6 +299,7 @@ export class CodingWorkspaceService {
 
   constructor(runtime: IAgentRuntime, config: CodingWorkspaceConfig = {}) {
     this.runtime = runtime;
+    this.workspaceRegistry = getSharedWorkspaceRegistry();
     this.serviceConfig = {
       baseDir: config.baseDir ?? resolveDefaultBaseDir(runtime),
       branchPrefix: config.branchPrefix ?? "eliza",
@@ -492,6 +502,12 @@ export class CodingWorkspaceService {
       "baseBranch",
     );
 
+    // Disk backpressure BEFORE the clone/worktree hits disk: refuse (after
+    // evicting terminal git workspaces LRU) when the shared cap or free-disk
+    // floor cannot be met, so repeated provisions can't fill the volume — the
+    // gap #13803 review blocker #3 flagged (the cap only blocked ACP spawns).
+    await this.enforceWorkspaceDiskBudget(this.serviceConfig.baseDir as string);
+
     const workspaceConfig: WorkspaceConfig = {
       repo,
       strategy: options.useWorktree ? "worktree" : "clone",
@@ -527,8 +543,58 @@ export class CodingWorkspaceService {
     };
 
     this.workspaces.set(workspace.id, result);
+    // Register AFTER a successful provision so an unregistered clone is never
+    // reclaimable. Worktrees share their parent clone's checkout, so only a full
+    // clone is registered as reclaimable disk — a worktree's teardown is owned
+    // by the parent workspace and double-counting it would let the cap evict a
+    // dir whose bytes are the parent's.
+    if (!result.isWorktree) {
+      this.workspaceRegistry.register(
+        "git-workspace",
+        result.path,
+        workspace.id,
+      );
+    }
     this.log(`Provisioned workspace ${workspace.id}`);
     return result;
+  }
+
+  /**
+   * Run the shared disk-backpressure gate before cloning under `targetRoot`.
+   * Throws (fails the provision loudly) when the total cap or free-disk floor
+   * cannot be met even after evicting terminal git workspaces — a clone that
+   * would overflow the disk must surface, never proceed.
+   */
+  private async enforceWorkspaceDiskBudget(targetRoot: string): Promise<void> {
+    const config = resolveDiskBudgetConfig((key) => this.readSetting(key));
+    const decision = await this.workspaceRegistry.checkDiskBudget(
+      targetRoot,
+      config,
+    );
+    if (decision.reclaimedCount > 0) {
+      this.log(
+        `disk budget reclaimed ${decision.reclaimedCount} terminal workspaces ` +
+          `(${decision.reclaimedBytes} bytes)`,
+      );
+    }
+    if (!decision.allowed) {
+      throw new Error(
+        `workspace disk budget exceeded (${decision.reason}): ` +
+          `used=${decision.usedBytes} free=${decision.freeBytes} ` +
+          `cap=${config.capBytes} minFree=${config.minFreeBytes} root=${targetRoot}`,
+      );
+    }
+  }
+
+  private readSetting(key: string): string | undefined {
+    const fromRuntime = this.runtime.getSetting(key);
+    if (typeof fromRuntime === "string" && fromRuntime.length > 0) {
+      return fromRuntime;
+    }
+    const fromConfig = this.readConfigEnvKey(key);
+    if (fromConfig && fromConfig.length > 0) return fromConfig;
+    const fromEnv = process.env[key];
+    return fromEnv && fromEnv.length > 0 ? fromEnv : undefined;
   }
 
   getWorkspace(id: string): WorkspaceResult | undefined {
@@ -630,13 +696,15 @@ export class CodingWorkspaceService {
     if (!workspace) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
-    return gitCreatePR(
+    const result = await gitCreatePR(
       this.workspaceService,
       workspace,
       workspaceId,
       options,
       (msg) => this.log(msg),
     );
+    this.markWorkspaceTerminal(workspaceId);
+    return result;
   }
 
   // === Delegated GitHub / Issue Management ===
@@ -750,8 +818,27 @@ export class CodingWorkspaceService {
     if (workspace?.label) {
       this.labels.delete(workspace.label);
     }
+    // Drop the shared-cap accounting entry after cleanup removed the dir. Only
+    // full clones were registered, so a worktree removal is a no-op here.
+    if (workspace && !workspace.isWorktree) {
+      this.workspaceRegistry.unregister(workspace.path);
+    }
     this.workspaces.delete(workspaceId);
     this.log(`Removed workspace ${workspaceId}`);
+  }
+
+  /**
+   * Release a full-clone workspace from active accounting without deleting it.
+   * A submitted/archived workspace stays inspectable until explicit removal, but
+   * disk pressure may reclaim it later through the registry's LRU path.
+   */
+  markWorkspaceTerminal(workspaceId: string): void {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace || workspace.isWorktree) {
+      return;
+    }
+    this.workspaceRegistry.markTerminal(workspace.path);
+    this.log(`Marked workspace ${workspaceId} terminal for disk reclaim`);
   }
 
   onEvent(callback: WorkspaceEventCallback): () => void {

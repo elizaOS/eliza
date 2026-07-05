@@ -14,19 +14,30 @@ import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { RelationshipsWorkspaceView } from "./relationships/RelationshipsWorkspaceView";
 export function RelationshipsView({
   contentHeader,
+  hideHeader = false,
 }: {
   contentHeader?: ReactNode;
+  /**
+   * When mounted as a Character-family section (#13591) the shared
+   * `CharacterSectionNav` owns the "Character" header + strip, so this view
+   * suppresses its own header. The mobile people-sidebar trigger falls back to
+   * the workspace layout's inline drawer button (which `WorkspaceMobileSidebarScope`
+   * un-suppresses once no header trigger renders).
+   */
+  hideHeader?: boolean;
 } = {}) {
   const mobileSidebarHeader = useWorkspaceMobileSidebarHeader();
   return (
     <ShellViewAgentSurface viewId="relationships">
       <div className="flex h-full min-h-0 w-full flex-col">
-        <ViewHeader
-          title="Relationships"
-          right={
-            <ViewHeaderSidebarTrigger control={mobileSidebarHeader.control} />
-          }
-        />
+        {hideHeader ? null : (
+          <ViewHeader
+            title="Relationships"
+            right={
+              <ViewHeaderSidebarTrigger control={mobileSidebarHeader.control} />
+            }
+          />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">
           <WorkspaceMobileSidebarScope controls={mobileSidebarHeader.controls}>
             <RelationshipsWorkspaceView contentHeader={contentHeader} />

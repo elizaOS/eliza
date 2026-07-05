@@ -11,15 +11,17 @@
 import { Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConsolePage } from "../shell/ConsolePage";
 import { AccountSurface } from "./AccountSurface";
 
 export function AccountPage() {
   const t = useCloudT();
-  // No local PageHeaderProvider: the surface's useSetPageHeader must reach
-  // ConsoleShell's provider or the top bar shows no title (a local provider
-  // is a dead context nothing reads). Document title is set by AccountSurface.
+  // No titleKey and no local PageHeaderProvider: the surface's useSetPageHeader
+  // must reach ConsoleShell's provider or the top bar shows no title (a local
+  // provider is a dead context nothing reads). Document title is set by
+  // AccountSurface.
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
+    <ConsolePage>
       <AccountSurface />
       {/* Security lost its sidebar slot in the launch nav cut; keep it one
           click away from the account it belongs to. */}
@@ -43,7 +45,7 @@ export function AccountPage() {
           </span>
         </span>
       </Link>
-    </div>
+    </ConsolePage>
   );
 }
 

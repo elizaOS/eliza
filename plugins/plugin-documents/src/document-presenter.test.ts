@@ -44,6 +44,27 @@ describe("presentDocument — transcript link passthrough", () => {
   });
 });
 
+describe("presentDocument — import provenance", () => {
+  it("labels conversation imports distinctly from manual uploads", () => {
+    const dto = presentDocument(
+      docMemory({
+        type: "document",
+        source: "import",
+        addedFrom: "import",
+        filename: "claude/conv-1.md",
+      }),
+      1,
+    );
+
+    expect(dto.source).toBe("import");
+    expect(dto.addedFrom).toBe("import");
+    expect(dto.provenance).toEqual({
+      kind: "import",
+      label: "Conversation import",
+    });
+  });
+});
+
 describe("getDocumentTitleFromMetadata — derived-title truncation", () => {
   it("never splits a surrogate pair at the truncation cut", () => {
     // The 😀 spans code units 78..79 of the first line, exactly where the

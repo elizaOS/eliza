@@ -41,6 +41,7 @@ import {
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
+  MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
   type PluginLoadReasons,
   resolvePluginPackageAlias,
@@ -1603,6 +1604,15 @@ async function discoverPluginCandidatesUncached(): Promise<
  */
 export type PluginResolutionPhase = "all" | "blocking" | "deferred";
 
+/**
+ * Model-provider plugin names the most recent blocking-phase resolve claimed
+ * (kept in its load set). The deferred pass excludes exactly this set so the
+ * two phases partition providers deterministically even though the static
+ * plugin registry — which decides mobile loadability — grows between the
+ * passes. Reset at the start of every blocking-phase resolve.
+ */
+const blockingPhaseClaimedProviderNames = new Set<string>();
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -1769,11 +1779,71 @@ export async function resolvePlugins(
 
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;
+    // Model-provider plugins in the load set are blocking alongside
+    // BLOCKING_CORE_PLUGINS: a TEXT_GENERATION handler is the one capability a
+    // chat turn cannot answer without, so a configured provider must register
+    // before the runtime flips ready (agentState `running`, `canRespond`, and
+    // the warming-gate release all key off that flip). Left in the deferred
+    // wave, the readiness signal reads not-ready while early turns answer
+    // "no LLM provider configured" (#14038).
+    //
+    // Mobile bundles can only import statically registered modules, and the
+    // deferred static wave has not run when the blocking pass resolves — so on
+    // mobile a provider is promoted only when its module is already loadable
+    // (the boot pre-registers configured providers' statics up front). The
+    // deferred pass then excludes exactly the set the blocking pass claimed
+    // (recorded below) rather than re-deriving it from the static registry,
+    // which grows between the two passes — re-deriving would classify a
+    // provider deferred in the blocking pass but blocking in the deferred
+    // pass, dropping it from both.
+    // A model-provider plugin can only be CLAIMED by the blocking pass (and
+    // thus force-loaded now / excluded from the deferred pass) if it is
+    // actually loadable in the current phase. Off-mobile, node_modules is
+    // present so any provider is loadable. On mobile the bundle has no
+    // node_modules, so a provider is loadable only when its module is already
+    // in the static registry (STATIC_ELIZA_PLUGINS) or has a static loader
+    // (STATIC_ELIZA_PLUGIN_LOADERS) — the boot pre-registers configured
+    // providers' statics up front via ensureStaticPluginsRegisteredByName(),
+    // but a provider whose module is not baked into the bundle (e.g.
+    // DEEPSEEK_API_KEY -> @elizaos/plugin-deepseek) never becomes loadable.
+    // Claiming such a provider would strand it: the blocking pass records it as
+    // claimed but fails to load it (no static entry), and the deferred pass
+    // then excludes it because the claimed set says blocking owns it — dropping
+    // the configured provider from BOTH phases and deadlocking readiness on a
+    // provider that can never register (#14039).
+    const isProviderLoadableNow = (pluginName: string): boolean =>
+      !isMobilePlatform() ||
+      Boolean(STATIC_ELIZA_PLUGINS[pluginName]) ||
+      Boolean(STATIC_ELIZA_PLUGIN_LOADERS[pluginName]);
+    if (phase === "blocking") {
+      blockingPhaseClaimedProviderNames.clear();
+      for (const pluginName of pluginsToLoad) {
+        if (!MODEL_PROVIDER_PLUGIN_NAMES.has(pluginName)) continue;
+        if (isProviderLoadableNow(pluginName)) {
+          blockingPhaseClaimedProviderNames.add(pluginName);
+        }
+      }
+    }
     for (const pluginName of Array.from(pluginsToLoad)) {
       if (forceIncludePluginNames.has(pluginName)) {
-        continue;
+        // Force-include only applies to model providers that are loadable in
+        // this phase. An unloadable-on-mobile provider must NOT be force-kept
+        // in the blocking set (it can never register) and must NOT be claimed —
+        // fall through to the normal partition so the deferred pass can still
+        // own it. For non-provider force-includes, keep the original behaviour.
+        const isProvider = MODEL_PROVIDER_PLUGIN_NAMES.has(pluginName);
+        if (!isProvider || isProviderLoadableNow(pluginName)) {
+          if (phase === "blocking" && isProvider) {
+            blockingPhaseClaimedProviderNames.add(pluginName);
+          }
+          continue;
+        }
+        // Unloadable-on-mobile forced provider: do not claim, do not force-keep.
+        // Fall through to the standard phase partition below.
       }
-      const isBlocking = blockingPluginSet.has(pluginName);
+      const isBlocking =
+        blockingPluginSet.has(pluginName) ||
+        blockingPhaseClaimedProviderNames.has(pluginName);
       if (
         (phase === "blocking" && !isBlocking) ||
         (phase === "deferred" && isBlocking)

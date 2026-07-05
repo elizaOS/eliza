@@ -284,7 +284,8 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
     surfacesRegistered: true,
     roleHeld: true,
     imeSelected: true,
-    assistLanded: true,
+    voiceinteractionLanded: true,
+    assistKeyLanded: true,
     imeLanded: true,
     asrOutcome: "committed",
   };
@@ -309,6 +310,42 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
   );
   assert.equal(roleMissing.pass, false);
   assert.match(roleMissing.failures.join(" "), /assistant role/);
+
+  const voiceinteractionMissing = summarizeLaneVerdict(
+    { ...green, voiceinteractionLanded: false },
+    false,
+  );
+  assert.equal(voiceinteractionMissing.pass, false);
+  assert.match(voiceinteractionMissing.failures.join(" "), /voiceinteraction/);
+
+  const assistKeyMissing = summarizeLaneVerdict(
+    { ...green, assistKeyLanded: false },
+    false,
+  );
+  assert.equal(assistKeyMissing.pass, false);
+  assert.match(assistKeyMissing.failures.join(" "), /KEYCODE_ASSIST/);
+
+  // An unknown ASR outcome is the emulator lane's designed state: the verify
+  // lane never raises the IME keyboard or captures audio, so no ASR line is
+  // logged and the round-trip cannot be classified. It is acceptable when the
+  // agent is NOT required...
+  assert.equal(
+    summarizeLaneVerdict({ ...green, asrOutcome: "unknown" }, false).pass,
+    true,
+  );
+  // ...but a hard failure when a full engine IS required (never green-by-skip).
+  const requiredButUnknown = summarizeLaneVerdict(
+    { ...green, asrOutcome: "unknown" },
+    true,
+  );
+  assert.equal(requiredButUnknown.pass, false);
+  assert.match(requiredButUnknown.failures.join(" "), /unknown/);
+
+  // A transcription error always fails, engine required or not.
+  assert.equal(
+    summarizeLaneVerdict({ ...green, asrOutcome: "error" }, false).pass,
+    false,
+  );
 
   const notRegistered = summarizeLaneVerdict(
     { ...green, surfacesRegistered: false },

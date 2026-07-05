@@ -3,6 +3,7 @@ import type { Memory } from "@elizaos/core";
 import type { DocumentVisibilityScope } from "./service-loader.js";
 
 export type DocumentProvenanceKind =
+  | "import"
   | "upload"
   | "learned"
   | "character"
@@ -207,6 +208,8 @@ export function normalizeDocumentSource(
   source: unknown,
 ): DocumentProvenanceKind {
   switch (source) {
+    case "import":
+      return "import";
     case "upload":
     case "rag-service-main-upload":
       return "upload";
@@ -230,6 +233,8 @@ export function getDocumentProvenance(
 ): DocumentProvenance {
   const kind = normalizeDocumentSource(metadata?.source);
   switch (kind) {
+    case "import":
+      return { kind, label: "Conversation import" };
     case "upload":
       return { kind, label: "Manual upload" };
     case "learned":

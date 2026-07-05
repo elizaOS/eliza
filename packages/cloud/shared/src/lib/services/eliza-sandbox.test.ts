@@ -1621,6 +1621,180 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       lockSpy.mockRestore();
     }
   });
+
+  test("(8) status='running' persists BEFORE the backup-restore push (#14038 wake-lag)", async () => {
+    // The status column is the reachability gate: the dedicated-agent proxy
+    // synthesizes 202 "starting" for every request (including the launcher's
+    // /api/status poll) until status='running'. The container serves the moment
+    // the health check + runtime-agent start succeed, so the flip must not wait
+    // for the (potentially long) state restore — that ordering is exactly the
+    // "agent answers in ~8s but launcher says waking for 90s+" prod window.
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row = provisioningReadyRow();
+    const backup: AgentSandboxBackup = {
+      id: "33333333-3333-4333-8333-333333333333",
+      sandbox_record_id: row.id,
+      snapshot_type: "pre-shutdown",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: new Date("2026-06-04T12:05:00.000Z"),
+    };
+    const order: string[] = [];
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(backup);
+    const reconstructedSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") order.push("status-running");
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const pushStateSpy = spyOn(
+      svc as unknown as { pushState: () => Promise<unknown> },
+      "pushState",
+    ).mockImplementation(async () => {
+      order.push("push-state");
+      return null;
+    });
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create: mock(async () => providerHandle()),
+      stop: mock(async () => {}),
+      checkHealth: async () => true,
+    } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(true);
+      expect(order).toEqual(["status-running", "push-state"]);
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      reconstructedSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      pushStateSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("(9) restore failure after the early running-write still ends in markError", async () => {
+    // 'running' must never stick on a failed provision: a restore failure takes
+    // the same catch as before (ghost cleanup → markError), so the early
+    // reachability flip cannot leave a broken agent advertised as running.
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row: AgentSandbox = {
+      ...provisioningReadyRow(),
+      execution_tier: "dedicated-lazy",
+    };
+    const backup: AgentSandboxBackup = {
+      id: "44444444-4444-4444-8444-444444444444",
+      sandbox_record_id: row.id,
+      snapshot_type: "pre-shutdown",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: new Date("2026-06-04T12:05:00.000Z"),
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findById").mockResolvedValue({
+      ...row,
+      status: "error",
+    });
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(backup);
+    const reconstructedSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    let runningWrites = 0;
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") runningWrites += 1;
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const markErrorSpy = spyOn(
+      svc as unknown as { markError: (rec: AgentSandbox, msg: string) => Promise<void> },
+      "markError",
+    ).mockResolvedValue(undefined);
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const pushStateSpy = spyOn(
+      svc as unknown as { pushState: () => Promise<unknown> },
+      "pushState",
+    ).mockRejectedValue(new Error("State restore failed: HTTP 500"));
+    const stop = mock(async () => {});
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create: mock(async () => providerHandle()),
+      stop,
+      checkHealth: async () => true,
+    } as SandboxProvider);
+    try {
+      const res = await svc.provision(AGENT, ORG);
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("State restore failed: HTTP 500");
+      expect(runningWrites).toBe(1);
+      expect(markErrorSpy).toHaveBeenCalledTimes(1);
+      // Ghost cleanup still stops the container whose restore failed.
+      expect(stop).toHaveBeenCalledWith("sandbox-blue-1");
+    } finally {
+      findSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      reconstructedSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      markErrorSpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      pushStateSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
 });
 
 // LARP H3 — executeUpgrade() blue/green rollback, digest-mismatch, and the

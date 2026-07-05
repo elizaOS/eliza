@@ -50,9 +50,17 @@ on:
       - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
   workflow_dispatch:
 
+# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
+# github.run_id on push, so every develop push got a unique group and
+# nothing ever superseded. A 37-merge wave queued thousands of push runs
+# and starved the self-hosted fleet. Fall back to github.ref (all develop
+# pushes share a group) and cancel superseded runs on push too. PR behavior
+# is unchanged (pull_request.number still wins the key); merge_group and
+# schedule events are not in the cancel set, so the merge queue and nightly
+# runs always complete.
 concurrency:
-  group: chat-shell-gestures-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: chat-shell-gestures-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -120,6 +128,14 @@ jobs:
       # The iOS-style chat-sheet detent/gesture state machine (mouse + touch).
       - name: Chat-sheet gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
+
+      # "can't scroll chat on web" repro (#chat-scroll-web): seeds a long
+      # transcript, opens the sheet to FULL, and asserts the transcript scroller
+      # resolves a BOUNDED clientHeight (so there is overflow) and that a real
+      # vertical finger-drag moves scrollTop natively instead of being hijacked
+      # into the sheet pull. RED before the fix, GREEN after.
+      - name: Chat-scroll web e2e
+        run: bun run --cwd packages/ui test:chat-scroll-web-e2e
 
       # TopicGroup flick-collapse/expand gestures.
       - name: TopicGroup gesture e2e

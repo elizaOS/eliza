@@ -80,6 +80,16 @@ describe("CloudRouterShell apex catch-all", () => {
     expect(screen.queryByTestId("agent-app")).toBeNull();
   });
 
+  it("redirects an apex visitor with an invalid stored token instead of holding forever outside StewardAuthProvider", () => {
+    setHostname("elizacloud.ai");
+    localStorage.setItem(STEWARD_TOKEN_KEY, "not-a-jwt");
+    renderCatchAll("/settings");
+
+    expect(screen.getByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(screen.queryByText("Signing you in…")).toBeNull();
+  });
+
   it("redirects an authenticated apex ROOT visitor to the /dashboard console home, not chat", () => {
     setHostname("elizacloud.ai");
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));

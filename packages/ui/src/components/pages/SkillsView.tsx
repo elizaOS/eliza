@@ -5,7 +5,7 @@
  * install/create mutations come from the app store; tiles register with the
  * agent surface via `useAgentElement`.
  */
-import { Brain, Store } from "lucide-react";
+import { Brain } from "lucide-react";
 import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { SkillInfo } from "../../api";
@@ -13,7 +13,6 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
@@ -547,27 +546,12 @@ function SkillsFullViewContent({
                   data-testid="skills-empty-state"
                   className="flex min-h-[20rem]"
                 >
-                  <ChatEmptyStateWithRecommendations
-                    icon={Brain}
+                  <PagePanel.Empty
+                    className="flex-1"
+                    icon={<Brain className="h-6 w-6" aria-hidden />}
                     title={t("skillsview.noSkillsInstalled", {
                       defaultValue: "No Skills Installed",
                     })}
-                    recommendations={[
-                      t("skillsview.recommendEmail", {
-                        defaultValue: "Find me an Email skill to install",
-                      }),
-                      t("skillsview.recommendSearch", {
-                        defaultValue: "Add a web Search skill",
-                      }),
-                      t("skillsview.recommendWeather", {
-                        defaultValue: "Install a Weather skill",
-                      }),
-                    ]}
-                    primaryAction={{
-                      label: t("skillsview.BrowseMarketplace"),
-                      onClick: () => setInstallModalOpen(true),
-                      icon: Store,
-                    }}
                   />
                 </div>
               ) : filteredSkills.length === 0 && !skillCreateFormOpen ? (

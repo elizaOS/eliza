@@ -153,8 +153,12 @@ const ENV_VARS = {
   STRIPE_SECRET_KEY: {
     required: false,
     description: "Stripe secret key for payments",
-    validate: (value: string) => value.startsWith("sk_test_") || value.startsWith("sk_live_"),
-    errorMessage: "Must start with 'sk_test_' or 'sk_live_'",
+    validate: (value: string) =>
+      value.startsWith("sk_test_") ||
+      value.startsWith("sk_live_") ||
+      value.startsWith("rk_test_") ||
+      value.startsWith("rk_live_"),
+    errorMessage: "Must start with 'sk_test_', 'sk_live_', 'rk_test_', or 'rk_live_'",
   },
   STRIPE_WEBHOOK_SECRET: {
     required: false,

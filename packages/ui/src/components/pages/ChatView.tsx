@@ -743,11 +743,7 @@ export function ChatView({
 
   const messagesContent =
     visibleMsgs.length === 0 && !chatSending ? (
-      <ChatEmptyState
-        agentName={agentName}
-        variant={variant}
-        onSuggestionClick={(suggestion) => setChatInput(suggestion)}
-      />
+      <ChatEmptyState agentName={agentName} variant={variant} />
     ) : (
       <>
         {/* Top sentinel for infinite upward scroll (#13532): a zero-height

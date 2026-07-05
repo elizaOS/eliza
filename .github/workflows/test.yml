@@ -19,9 +19,17 @@ on:
     # Nightly live smoke for container-backed remote capability plugins.
     - cron: "17 9 * * *"
 
+# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
+# github.run_id on push, so every develop push got a unique group and
+# nothing ever superseded. A 37-merge wave queued thousands of push runs
+# and starved the self-hosted fleet. Fall back to github.ref (all develop
+# pushes share a group) and cancel superseded runs on push too. PR behavior
+# is unchanged (pull_request.number still wins the key); merge_group and
+# schedule events are not in the cancel set, so the merge queue and nightly
+# runs always complete.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   CI: "true"
@@ -40,8 +48,59 @@ permissions:
   contents: read
 
 jobs:
+  stale-base-preflight:
+    name: PR stale-base preflight
+    if: github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
+    env:
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      ACK: ${{ contains(github.event.pull_request.labels.*.name, 'stale-base-ack') && '1' || '' }}
+    steps:
+      - name: Checkout target branch (guard logic comes from the base, not the PR)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 1
+          submodules: false
+
+      - name: Setup Node.js for stale-base guard
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Fetch PR head + bounded history (blobless)
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags --filter=blob:none --depth=1500 \
+            "https://github.com/${HEAD_REPO}.git" "$HEAD_SHA"
+          git fetch --quiet --no-tags --filter=blob:none --depth=1500 origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+      - name: Self-test the guard on fixture repos
+        run: node packages/scripts/stale-base-guard.self-test.mjs
+
+      - name: Detect silent reverts + stale base before fanning out tests
+        env:
+          GIT_NO_LAZY_FETCH: "1"
+        run: |
+          set -euo pipefail
+          node packages/scripts/stale-base-guard.mjs \
+            --base "refs/remotes/origin/${BASE_REF}" \
+            --head "$HEAD_SHA" \
+            --window 1200 \
+            --max-behind-commits 200 \
+            --max-behind-hours 72 \
+            ${ACK:+--ack} \
+            --github \
+            --summary "$GITHUB_STEP_SUMMARY"
+
   changes:
     name: Classify changed paths
+    needs: stale-base-preflight
+    if: always() && (github.event_name != 'pull_request' || needs.stale-base-preflight.result == 'success')
     # Route with the same fleet-aware conditional as the test lanes. GitHub-hosted
     # runners are billing-frozen (#13481), so a hardcoded ubuntu-24.04 here queued
     # forever and — since every lane needs this classifier — stalled the entire
@@ -128,6 +187,27 @@ jobs:
             --labels "$PR_LABELS" \
             --output "$GITHUB_OUTPUT" \
             --summary "$GITHUB_STEP_SUMMARY"
+
+  test-runner-vacuous-green-guard:
+    name: Test-runner vacuous-green guard
+    needs: changes
+    # #13620/#12342: this guard protects the ordinary PR path from runner lanes
+    # that collect no real tests or swallow a failure as "no tests found".
+    # Keep it outside path gates and outside the opt-in `ci:full` heavy family.
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Test-runner vacuous-green guard
+        run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
 
   server-tests:
     name: Server Tests
@@ -1391,7 +1471,9 @@ jobs:
     name: ci-ok
     if: ${{ !cancelled() && always() }}
     needs:
+      - stale-base-preflight
       - changes
+      - test-runner-vacuous-green-guard
       - merge-quality-gate
       - server-tests
       - client-tests
@@ -1414,7 +1496,9 @@ jobs:
         run: |
           set -u
           echo "=== Required test job results ==="
+          echo "stale-base-preflight:${{ needs.stale-base-preflight.result }}"
           echo "changes:          ${{ needs.changes.result }}"
+          echo "runner guard:     ${{ needs.test-runner-vacuous-green-guard.result }}"
           echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
@@ -1430,7 +1514,9 @@ jobs:
           strict_results="${{ github.event_name == 'push' || github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
           for pair in \
+            "stale-base-preflight:${{ needs.stale-base-preflight.result }}" \
             "changes:${{ needs.changes.result }}" \
+            "test-runner-vacuous-green-guard:${{ needs.test-runner-vacuous-green-guard.result }}" \
             "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
@@ -1444,6 +1530,10 @@ jobs:
             "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
+            if [ "$name" = "stale-base-preflight" ] && [ "$result" = "skipped" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+              echo "::notice title=Test gate::PR stale-base preflight is skipped for ${{ github.event_name }}; merge-quality-gate runs the strict stale-base guard for this event."
+              continue
+            fi
             if [ "$name" = "github-live-artifact-validate" ] && [ "$result" = "skipped" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "${{ github.event_name }}" != "schedule" ]; then
               echo "::notice title=Test gate::Live artifact validation is observed only on workflow_dispatch/schedule, so its skip is allowed for ${{ github.event_name }}."
               continue

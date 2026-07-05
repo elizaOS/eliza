@@ -1,8 +1,10 @@
-// Pins the --min-tasks vacuous-green guard in run-all-tests.mjs (#12342): a lane
-// that a filter/shard/glob collapses to (near-)zero collected tasks must fail
-// loudly (exit 3) instead of exiting green having asserted nothing. Runs the
-// real runner in --plan/collection mode with a filter that matches no package —
-// no vitest is spawned, so the harness is deterministic and fast.
+/**
+ * Pins the run-all-tests.mjs vacuous-green guards (#12342/#13620).
+ *
+ * The suite spawns the real runner against temporary workspace packages so a
+ * lane that collects no tasks, swallows a failure as "no tests found", or hides
+ * a test-file mismatch cannot exit green without exercising the runner path.
+ */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -12,17 +14,44 @@ import { fileURLToPath } from "node:url";
 const runner = fileURLToPath(new URL("../run-all-tests.mjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
+// Each case spawns the real runner (workspace discovery over the whole repo),
+// so give bun headroom well past the discovery cost on a cold/contended runner.
+const SPAWN_TIMEOUT_MS = 60_000;
+const OUTPUT_TAIL_CHARS = 4000;
+
+function tail(value) {
+  if (value.length <= OUTPUT_TAIL_CHARS) return value;
+  return value.slice(-OUTPUT_TAIL_CHARS);
+}
+
 function run(args, env = {}) {
-  const result = spawnSync(process.execPath, [runner, ...args], {
+  const command = [process.execPath, runner, ...args];
+  const result = spawnSync(command[0], command.slice(1), {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    timeout: SPAWN_TIMEOUT_MS,
     env: { ...process.env, ...env },
   });
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  if (result.error || result.signal) {
+    throw new Error(
+      [
+        `run-all-tests spawn did not complete: ${command.join(" ")}`,
+        `status=${String(result.status)} signal=${String(result.signal)}`,
+        `error=${result.error?.message ?? "none"}`,
+        `stdout tail:\n${tail(stdout)}`,
+        `stderr tail:\n${tail(stderr)}`,
+      ].join("\n\n"),
+    );
+  }
   return {
     status: result.status,
-    stdout: result.stdout || "",
-    stderr: result.stderr || "",
+    signal: result.signal,
+    error: result.error,
+    stdout,
+    stderr,
   };
 }
 
@@ -31,6 +60,11 @@ const TEMP_PACKAGE_DIR = join(
   repoRoot,
   "packages",
   "__run_all_tests_false_no_test_skip__",
+);
+const PLAN_FLOOR_PACKAGE_DIR = join(
+  repoRoot,
+  "packages",
+  "__run_all_tests_plan_floor_fixture__",
 );
 // A second temp package whose `test` script is a SINGLE `bun test <file>`
 // invocation — i.e. one that canSkipWhenOutputHasNoTests() treats as
@@ -47,10 +81,6 @@ const SKIPPABLE_EMPTY_PACKAGE_DIR = join(
   "packages",
   "__run_all_tests_genuinely_no_tests__",
 );
-
-// Each case spawns the real runner (workspace discovery over the whole repo),
-// so give bun headroom well past the discovery cost on a cold/contended runner.
-const SPAWN_TIMEOUT_MS = 60_000;
 
 describe("run-all-tests --min-tasks vacuous-green guard", () => {
   test(
@@ -103,9 +133,12 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
     "without the guard, a collapsed lane keeps its historical non-failing exit",
     () => {
       // The guard is strictly additive: omitting --min-tasks must not change the
-      // pre-existing behaviour of a zero-task collapse (it does not exit 3).
+      // pre-existing behaviour of a zero-task collapse (green, no guard text).
       const result = run(["--no-cloud", `--filter=${NOWHERE_FILTER}`]);
-      expect(result.status).not.toBe(3);
+      expect(result.status).toBe(0);
+      expect(`${result.stdout}${result.stderr}`).not.toContain(
+        "VACUOUS-GREEN GUARD",
+      );
     },
     SPAWN_TIMEOUT_MS,
   );
@@ -133,19 +166,41 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
   test(
     "plan mode still succeeds with a valid --min-tasks and reaches the floor",
     () => {
-      // Use a stable authored package instead of scanning the entire workspace:
-      // this file also creates/removes a temporary package in another test, and
-      // bun:test may overlap cases enough for an all-workspace plan to observe
-      // that transient fixture. The assertion we need here is narrower: a
-      // valid floor that is met must not make plan mode fail.
-      const result = run([
-        "--plan=json",
-        "--filter=@elizaos/agent",
-        "--min-tasks=1",
-      ]);
-      expect(result.status).toBe(0);
-      const parsed = JSON.parse(result.stdout);
-      expect(parsed.summary.taskCount).toBeGreaterThanOrEqual(1);
+      // Use a self-contained fixture instead of an authored workspace package:
+      // this guard is explicitly invoked from packages/scripts/__tests__, which
+      // can run in sparse worktrees where @elizaos/agent is absent. The runner
+      // only needs to prove a real discovered task satisfies the floor.
+      rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
+      mkdirSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true });
+      try {
+        writeFileSync(
+          join(PLAN_FLOOR_PACKAGE_DIR, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@elizaos/run-all-tests-plan-floor-fixture",
+              private: true,
+              type: "module",
+              scripts: {
+                test: 'node -e "process.exit(0)"',
+              },
+            },
+            null,
+            2,
+          )}\n`,
+        );
+
+        const result = run([
+          "--plan=json",
+          "--only=test",
+          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
+          "--min-tasks=1",
+        ]);
+        expect(result.status).toBe(0);
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.summary.taskCount).toBe(1);
+      } finally {
+        rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
+      }
     },
     SPAWN_TIMEOUT_MS,
   );
@@ -319,6 +374,9 @@ describe("run-all-tests no-test-skip failure-swallow guard (#13620)", () => {
         const output = `${result.stdout}${result.stderr}`;
 
         expect(result.status).toBe(0);
+        expect(output).toContain(
+          "SKIP @elizaos/run-all-tests-genuinely-no-tests-fixture",
+        );
         expect(output).not.toContain(
           "FAIL @elizaos/run-all-tests-genuinely-no-tests-fixture",
         );

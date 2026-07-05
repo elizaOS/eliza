@@ -203,6 +203,28 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
+  test("includes the deploy commit in API health for stale-run deploy guards", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: {
+          host: "api-staging.elizacloud.ai",
+        },
+      }),
+      {
+        CF_REGION: "local-test",
+        ELIZA_DEPLOY_COMMIT: "feedfacefeedfacefeedfacefeedfacefeedface",
+      } as never,
+      {} as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      status: "ok",
+      region: "local-test",
+      commit: "feedfacefeedfacefeedfacefeedfacefeedface",
+    });
+  });
+
   test("routes app-staging custom domain to the staging Worker", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),

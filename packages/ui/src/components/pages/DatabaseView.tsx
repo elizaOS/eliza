@@ -30,7 +30,6 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
@@ -404,62 +403,37 @@ export function DatabaseView({
     onCellClick: (v: string) => setCellInspect(v),
   };
 
-  // Shared empty/setup surfaces. The floating composer is this view's table
-  // filter (see chatBinding), so recommendation chips seed that filter; mode
-  // switches go through primaryAction.
+  // Designed empty/setup surfaces. The mode switcher (see setView above) is the
+  // in-view control for jumping to the SQL editor; these states describe the
+  // condition and the agent covers next steps in chat.
   const disconnectedState = (
-    <ChatEmptyStateWithRecommendations
-      icon={ServerOff}
+    <PagePanel.Empty
+      className="flex-1"
+      icon={<ServerOff className="h-6 w-6" aria-hidden />}
       title={
         statusLoadError ||
         t("databaseview.StartAgentToUseDatabase", {
           defaultValue: "Start the agent to use the database.",
         })
       }
-      primaryAction={{
-        label: t("databaseview.OpenSettings", {
-          defaultValue: "Open settings",
-        }),
-        onClick: () => {
-          window.location.hash = "#/settings";
-        },
-      }}
     />
   );
 
   const noTableSelectedState = (
-    <ChatEmptyStateWithRecommendations
-      icon={Table2}
+    <PagePanel.Empty
+      className="flex-1"
+      icon={<Table2 className="h-6 w-6" aria-hidden />}
       title={t("databaseview.SelectATable")}
-      primaryAction={{
-        label: t("databaseview.OpenSqlEditor", {
-          defaultValue: "Open SQL editor",
-        }),
-        onClick: () => setView("query"),
-      }}
-      recommendations={[
-        {
-          label: t("databaseview.SearchMemoriesRec", {
-            defaultValue: 'Search "memories"',
-          }),
-          prompt: "memories",
-        },
-      ]}
     />
   );
 
   const emptyTableState = (
-    <ChatEmptyStateWithRecommendations
-      icon={DatabaseIcon}
+    <PagePanel.Empty
+      className="flex-1"
+      icon={<DatabaseIcon className="h-6 w-6" aria-hidden />}
       title={t("databaseview.NoDataInsertViaSql", {
         defaultValue: "No data yet. Insert rows via the SQL editor.",
       })}
-      primaryAction={{
-        label: t("databaseview.OpenSqlEditor", {
-          defaultValue: "Open SQL editor",
-        }),
-        onClick: () => setView("query"),
-      }}
     />
   );
 

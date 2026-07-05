@@ -7,7 +7,11 @@
 import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { setActiveProject, upsertProject } from "@elizaos/core";
+import {
+  setActiveProject,
+  upsertProject,
+  writeWorkspaceFolderConfig,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   findProjectByWorkdir,
@@ -31,7 +35,9 @@ describe("project-binding", () => {
   it("binds an explicit projectId only when it is registered", () => {
     const p = upsertProject({ name: "a", localPath: "/tmp/a" }, env);
     expect(resolveTaskProjectId({ projectId: p.id }, env)).toBe(p.id);
-    expect(resolveTaskProjectId({ projectId: "unregistered" }, env)).toBeUndefined();
+    expect(
+      resolveTaskProjectId({ projectId: "unregistered" }, env),
+    ).toBeUndefined();
   });
 
   it("binds by realpath match of the workdir against a registered project", () => {
@@ -43,14 +49,19 @@ describe("project-binding", () => {
       const p = upsertProject({ name: "real", localPath: realDir }, env);
       expect(findProjectByWorkdir(link, env)?.id).toBe(p.id);
       expect(resolveTaskProjectId({ workdir: link }, env)).toBe(p.id);
-      expect(resolveTaskProjectId({ workdir: "/tmp/nomatch" }, env)).toBeUndefined();
+      expect(
+        resolveTaskProjectId({ workdir: "/tmp/nomatch" }, env),
+      ).toBeUndefined();
     } finally {
       rmSync(realDir, { recursive: true, force: true });
     }
   });
 
   it("explicit projectId beats a conflicting workdir match", () => {
-    const a = upsertProject({ name: "a", localPath: realpathSync(os.tmpdir()) }, env);
+    const a = upsertProject(
+      { name: "a", localPath: realpathSync(os.tmpdir()) },
+      env,
+    );
     const b = upsertProject({ name: "b", localPath: "/tmp/b-somewhere" }, env);
     // workdir matches A's localPath, but explicit id names B.
     expect(
@@ -60,10 +71,32 @@ describe("project-binding", () => {
   });
 
   it("resolveBoundProjectWorkdir returns the registered localPath or null", () => {
-    const p = upsertProject({ name: "a", localPath: "/tmp/bound-project" }, env);
+    const p = upsertProject(
+      { name: "a", localPath: "/tmp/bound-project" },
+      env,
+    );
     setActiveProject(p.id, env);
     expect(resolveBoundProjectWorkdir(p.id, env)).toBe("/tmp/bound-project");
     expect(resolveBoundProjectWorkdir("stale-id", env)).toBeNull();
     expect(resolveBoundProjectWorkdir(undefined, env)).toBeNull();
+  });
+
+  it("a projectId bound via the legacy workspace-folder.json synthesis resolves back to its workdir", () => {
+    // Migration window: workspace-folder.json exists, projects.json does not.
+    // The synthesized registry is minted fresh on every read, so the bind
+    // (createTask) and the later resolve (follow-up spawn) see two separate
+    // syntheses — the id must be stable between them or the #13776
+    // bound-workdir lock silently no-ops for every legacy install.
+    const legacyDir = mkdtempSync(join(os.tmpdir(), "legacy-workdir-"));
+    try {
+      writeWorkspaceFolderConfig({ path: legacyDir, bookmark: null }, env);
+
+      const bound = resolveTaskProjectId({ workdir: legacyDir }, env);
+      expect(bound).toBeTruthy();
+      expect(resolveTaskProjectId({ workdir: legacyDir }, env)).toBe(bound);
+      expect(resolveBoundProjectWorkdir(bound, env)).toBe(legacyDir);
+    } finally {
+      rmSync(legacyDir, { recursive: true, force: true });
+    }
   });
 });

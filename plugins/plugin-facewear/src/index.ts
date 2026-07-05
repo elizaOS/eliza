@@ -87,6 +87,10 @@ export const facewearPlugin: Plugin = {
 			// standalone view keeps only the agent-facing XR + TUI surfaces.
 			modalities: ["xr", "tui"],
 			bundlePath: "dist/views/bundle.js",
+			// First-party instrumented view (data-agent-id controls): grant the
+			// agent-surface capability so the view broker admits agent-driven
+			// fills/clicks (#13452 manifest gate).
+			surface: { capabilities: ["agent-surface"] },
 			componentExport: "FacewearView",
 			tags: ["facewear", "xr", "smartglasses", "wearable"],
 			relatedActions: [
@@ -142,6 +146,10 @@ export const facewearPlugin: Plugin = {
 			// standalone view keeps only the agent-facing XR + TUI surfaces.
 			modalities: ["xr", "tui"],
 			bundlePath: "dist/views/bundle.js",
+			// First-party instrumented view (data-agent-id controls): grant the
+			// agent-surface capability so the view broker admits agent-driven
+			// fills/clicks (#13452 manifest gate).
+			surface: { capabilities: ["agent-surface"] },
 			componentExport: "SmartglassesPanelView",
 			tags: [
 				"facewear",

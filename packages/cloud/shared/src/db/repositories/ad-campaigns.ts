@@ -10,6 +10,10 @@ import {
   type CampaignStatus,
   type NewAdCampaign,
 } from "../schemas/ad-campaigns";
+import {
+  parseAdAccountSpendCapCredits,
+  parseAdCampaignsAllocatedTotal,
+} from "./ad-campaigns-spend-cap-numeric";
 
 export type { AdCampaign, BudgetType, CampaignObjective, CampaignStatus, NewAdCampaign };
 
@@ -17,6 +21,7 @@ export type AccountSpendCapAllocationResult =
   | { status: "created"; campaign: AdCampaign }
   | { status: "updated"; campaign: AdCampaign }
   | { status: "cap_exceeded"; allocated: number; cap: number }
+  | { status: "cap_error"; reason: string }
   | { status: "conflict" };
 
 /**
@@ -110,8 +115,21 @@ export class AdCampaignsRepository {
           .select({ total: sum(adCampaigns.credits_allocated) })
           .from(adCampaigns)
           .where(eq(adCampaigns.ad_account_id, data.ad_account_id as string));
-        const allocated = Number(result?.total ?? 0) + allocationCredits;
-        const cap = Number(account.spendCapCredits);
+        let allocated: number;
+        let cap: number;
+        try {
+          allocated = parseAdCampaignsAllocatedTotal(result?.total) + allocationCredits;
+          cap = parseAdAccountSpendCapCredits(account.spendCapCredits);
+        } catch (error) {
+          // error-policy:J1 boundary translation - callers need a returned status so provider/credit compensation still runs.
+          // Fail closed: a corrupt spend cap or allocated total must DENY the
+          // allocation (never bypass the gate), but return a status the caller
+          // can compensate for rather than throwing past its refund/revert path.
+          return {
+            status: "cap_error",
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (allocated > cap + 1e-9) {
           return { status: "cap_exceeded", allocated, cap };
         }
@@ -176,7 +194,7 @@ export class AdCampaignsRepository {
       .select({ total: sum(adCampaigns.credits_allocated) })
       .from(adCampaigns)
       .where(and(...conditions));
-    return Number(result?.total ?? 0);
+    return parseAdCampaignsAllocatedTotal(result?.total);
   }
 
   async delete(id: string): Promise<void> {
@@ -235,8 +253,21 @@ export class AdCampaignsRepository {
           .select({ total: sum(adCampaigns.credits_allocated) })
           .from(adCampaigns)
           .where(and(eq(adCampaigns.ad_account_id, adAccountId), ne(adCampaigns.id, id)));
-        const allocated = Number(result?.total ?? 0) + newAllocatedCredits;
-        const cap = Number(account.spendCapCredits);
+        let allocated: number;
+        let cap: number;
+        try {
+          allocated = parseAdCampaignsAllocatedTotal(result?.total) + newAllocatedCredits;
+          cap = parseAdAccountSpendCapCredits(account.spendCapCredits);
+        } catch (error) {
+          // error-policy:J1 boundary translation - callers need a returned status so provider/credit compensation still runs.
+          // Fail closed: a corrupt spend cap or allocated total must DENY the
+          // allocation (never bypass the gate), but return a status the caller
+          // can compensate for rather than throwing past its refund/revert path.
+          return {
+            status: "cap_error",
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (allocated > cap + 1e-9) {
           return { status: "cap_exceeded", allocated, cap };
         }

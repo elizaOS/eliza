@@ -825,6 +825,15 @@ export class ElizaClient {
        *  loop starts waiting (#8628). Lets the chat surface a `waking` status
        *  while the agent boots. */
       onResuming?: () => void;
+      /** Skip the bounded 202 resume-retry loop and return the FIRST 202 body
+       *  as-is (#14040 sub-defect 2). The chat/stream path wants the eventual
+       *  real reply, so it keeps the loop; the readiness/status poll instead
+       *  wants to surface the 202 progress body (`{status:"starting",jobId,
+       *  retryAfterMs}`) as an honest "resuming" state on EVERY tick, rather
+       *  than blocking ~30s then throwing `agent_resuming` (which the poll
+       *  swallowed → spinner with no progress). Implies `allowNonOk` for the
+       *  202. */
+      skipResume?: boolean;
     },
   ): Promise<Response> {
     if (!this.apiAvailable) {
@@ -860,6 +869,12 @@ export class ElizaClient {
     // loop entirely, so ordinary requests are byte-for-byte unaffected.
     let resumeRetries = 0;
     if (res.status === 202) options?.onResuming?.();
+    // Status/readiness poll opts out of the wait-and-retry loop: it wants the
+    // live 202 progress body back immediately so it can render honest progress
+    // (#14040 sub-defect 2). Return the first 202 response untouched.
+    if (res.status === 202 && options?.skipResume) {
+      return res;
+    }
     while (res.status === 202 && resumeRetries < RESUME_MAX_RETRIES) {
       if (init?.signal?.aborted) break;
       await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
@@ -1099,7 +1114,20 @@ export class ElizaClient {
   async fetch<T>(
     path: string,
     init?: RequestInit,
-    options?: { allowNonOk?: boolean; timeoutMs?: number },
+    options?: {
+      allowNonOk?: boolean;
+      timeoutMs?: number;
+      /** Skip the 202 resume-retry loop (see `rawRequest.skipResume`). */
+      skipResume?: boolean;
+      /**
+       * Called with the (bounded-read, best-effort-parsed) body when the FIRST
+       * response is a 202 and `skipResume` is set — lets the status poll map the
+       * cloud resume-progress body to a real value WITHOUT bypassing the shared
+       * bounded body-read / timeout logic (#14040 sub-defect 2). Non-202
+       * responses go through the normal strict-parse path unchanged.
+       */
+      on202?: (body: unknown) => T;
+    },
   ): Promise<T> {
     const res = await this.rawRequest(
       path,
@@ -1114,6 +1142,23 @@ export class ElizaClient {
     );
     if (res.status === 204) {
       return undefined as T;
+    }
+    // 202 resume-progress (status poll only): read the body with the SAME
+    // bounded budget as any other body (never an unbounded `res.text()` — a
+    // stalled body must time out, not wedge the 1.5s poll), best-effort parse,
+    // and hand it to the caller's mapper. The proxy body is advisory, so a
+    // non-JSON 202 is tolerated (mapper still gets `undefined`).
+    if (res.status === 202 && options?.on202) {
+      const raw = await this.readBodyText(res, path, options?.timeoutMs, init);
+      let body: unknown;
+      if (raw !== "") {
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          // error-policy:J3 untrusted 202 progress body defaults to an explicit starting progress state.
+        }
+      }
+      return options.on202(body);
     }
     const text = await this.readBodyText(res, path, options?.timeoutMs, init);
     if (text === "") {
@@ -1767,7 +1812,15 @@ export class ElizaClient {
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
         for (const line of rawEvent.split(/\r?\n/)) {
           if (!line.startsWith("data:")) continue;
-          if (applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent)) {
+          if (
+            applyStreamChatDataLine(
+              line,
+              streamState,
+              onToken,
+              onStatus,
+              onToolEvent,
+            )
+          ) {
             buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
@@ -1785,7 +1838,13 @@ export class ElizaClient {
     if (!streamState.receivedDone && buffer.trim()) {
       for (const line of buffer.split(/\r?\n/)) {
         if (line.startsWith("data:")) {
-          applyStreamChatDataLine(line, streamState, onToken, onStatus, onToolEvent);
+          applyStreamChatDataLine(
+            line,
+            streamState,
+            onToken,
+            onStatus,
+            onToolEvent,
+          );
         }
       }
     }

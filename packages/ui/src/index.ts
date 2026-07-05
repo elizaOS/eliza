@@ -213,11 +213,6 @@ export {
 } from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.
-export {
-  ChatEmptyStateWithRecommendations,
-  type ChatEmptyStateWithRecommendationsProps,
-  type ChatRecommendation,
-} from "./components/composites/chat/ChatEmptyStateWithRecommendations";
 export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
@@ -276,6 +271,7 @@ export {
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
 export {
   isSectionPath,
+  navigateToSectionPath,
   SectionNav,
   SectionNavTab,
   type SectionPathRewrite,

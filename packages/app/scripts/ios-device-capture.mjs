@@ -70,6 +70,189 @@ const fail = (message) => {
   process.exit(1);
 };
 
+const DEFAULT_ELIZA_CLOUD_BASE = "https://elizacloud.ai";
+
+function readFirstString(env, keys) {
+  for (const key of keys) {
+    const value = env?.[key];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function withoutTrailingSlash(value) {
+  return value.replace(/\/+$/, "");
+}
+
+function withPath(base, pathname) {
+  const url = new URL(base);
+  url.pathname = pathname;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+/**
+ * Resolve the HTTP endpoint that proves the app's chat/reply path can answer
+ * before the iOS XCUITest suite starts. Prefer the device build's configured
+ * API base (local/remote-mac/hybrid builds), otherwise fall back to the cloud
+ * agent liveness endpoint used by cloud-only builds.
+ */
+export function resolveAgentProbeTarget(env = process.env, args = {}) {
+  const explicit = readFirstString(args, ["agent-probe-url"]);
+  if (explicit) {
+    return { kind: "explicit", url: explicit, source: "--agent-probe-url" };
+  }
+
+  const apiBase = readFirstString(env, [
+    "VITE_ELIZA_IOS_API_BASE",
+    "VITE_ELIZA_MOBILE_API_BASE",
+    "VITE_ELIZA_ANDROID_API_BASE",
+    "ELIZA_IOS_API_BASE",
+    "ELIZA_API_BASE",
+    "ELIZA_API_BASE_URL",
+  ]);
+  if (apiBase) {
+    return {
+      kind: "api-base",
+      url: withPath(withoutTrailingSlash(apiBase), "/api/health"),
+      source: "configured API base",
+    };
+  }
+
+  const cloudBase = withoutTrailingSlash(
+    readFirstString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
+      DEFAULT_ELIZA_CLOUD_BASE,
+  );
+  return {
+    kind: "cloud-health",
+    url: withPath(cloudBase, "/api/health"),
+    source: "cloud health endpoint",
+  };
+}
+
+function normalizeProbeVerdict(response, bodyText) {
+  if (!response?.ok) return `not-ready(http ${response?.status ?? "unknown"})`;
+  if (!bodyText?.trim()) return "ready";
+  let body;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    return "ready";
+  }
+  if (body?.ready === false) return "not-ready(ready=false)";
+  if (body?.alive === false) return "not-ready(alive=false)";
+  const status = typeof body?.status === "string" ? body.status : null;
+  if (status && /^(unhealthy|offline|draining|not[-_ ]?ready)$/i.test(status)) {
+    return `not-ready(status=${status})`;
+  }
+  return "ready";
+}
+
+export async function probeAgentAvailability({
+  target,
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 5000,
+} = {}) {
+  if (!target?.url) return { verdict: "unreachable(no target)", target };
+  if (typeof fetchImpl !== "function") {
+    return { verdict: "unreachable(fetch unavailable)", target };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(target.url, {
+      method: "GET",
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    const text = await response.text().catch(() => "");
+    return { verdict: normalizeProbeVerdict(response, text), target };
+  } catch (error) {
+    const detail =
+      error?.name === "AbortError" ? "timeout" : (error?.message ?? error);
+    return { verdict: `unreachable(${String(detail)})`, target };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function collectSkippedChatRows(value, rows = []) {
+  if (!value || typeof value !== "object") return rows;
+  if (Array.isArray(value)) {
+    for (const item of value) collectSkippedChatRows(item, rows);
+    return rows;
+  }
+  const statusFields = [
+    value.status,
+    value.result,
+    value.testStatus,
+    value.state,
+    value.outcome,
+  ]
+    .filter((field) => typeof field === "string")
+    .join(" ");
+  const skipped = /\bskip(?:ped)?\b/i.test(statusFields);
+  const identifier = [
+    value.testIdentifierString,
+    value.testIdentifier,
+    value.identifier,
+    value.testName,
+    value.name,
+  ]
+    .filter((field) => typeof field === "string" && field.trim())
+    .join(" ");
+  const chatLike = /chat|message|reply/i.test(identifier);
+  if (skipped && chatLike) {
+    rows.push({ identifier: identifier.trim() || "unknown-chat-test" });
+  }
+  for (const child of Object.values(value)) collectSkippedChatRows(child, rows);
+  return rows;
+}
+
+export function summarizeChatSkipAccounting(summaryJson, probeVerdict) {
+  const rows = collectSkippedChatRows(summaryJson);
+  const seen = new Set();
+  const tests = [];
+  for (const row of rows) {
+    const identifier = row.identifier.replace(/\s+/g, " ");
+    if (seen.has(identifier)) continue;
+    seen.add(identifier);
+    tests.push(identifier);
+  }
+  const count = tests.length;
+  return {
+    count,
+    tests,
+    message:
+      count > 0
+        ? `${count} chat leg${count === 1 ? "" : "s"} skipped: agent never ready (${probeVerdict})`
+        : null,
+  };
+}
+
+export function buildRequireChatDecision({
+  requireChat = false,
+  agentProbeVerdict = "ready",
+  chatSkippedCount = 0,
+} = {}) {
+  const reasons = [];
+  if (agentProbeVerdict !== "ready") {
+    reasons.push(`agent preflight ${agentProbeVerdict}`);
+  }
+  if (chatSkippedCount > 0) {
+    reasons.push(
+      `${chatSkippedCount} chat leg${chatSkippedCount === 1 ? "" : "s"} skipped`,
+    );
+  }
+  return {
+    exitNonZero: Boolean(requireChat && reasons.length > 0),
+    reason: reasons.join("; "),
+  };
+}
+
 function runInherit(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: "inherit", ...options });
   if (result.status !== 0) {
@@ -243,12 +426,13 @@ async function main() {
       "skip-build",
       "allow-stale-runner",
       "no-retry-isolation",
+      "require-chat",
       "help",
     ],
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--allow-stale-runner] [--no-retry-isolation] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
+      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--allow-stale-runner] [--no-retry-isolation] [--require-chat] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
     );
     return;
   }
@@ -699,6 +883,11 @@ async function main() {
       : {}),
   };
 
+  const agentProbeTarget = resolveAgentProbeTarget(process.env, args);
+  log(`agent availability preflight (${agentProbeTarget.source}): ${agentProbeTarget.url}`);
+  const agentProbe = await probeAgentAvailability({ target: agentProbeTarget });
+  log(`agent availability preflight verdict: ${agentProbe.verdict}`);
+
   const runHarness = (testing, bundlePath) => {
     fs.rmSync(bundlePath, { recursive: true, force: true });
     return spawnSync(
@@ -833,10 +1022,17 @@ async function main() {
       exitStatus: testResult.status,
       passed: testResult.status === 0,
       flakeClassification: null,
+      chatSkipAccounting: summarizeChatSkipAccounting(
+        artifacts.summaryJson,
+        agentProbe.verdict,
+      ),
     };
     log(
       `shard ${shard.resultName}: exit=${testResult.status} attachments=${artifacts.attachmentCount}`,
     );
+    if (shardSummary.chatSkipAccounting.message) {
+      log(shardSummary.chatSkipAccounting.message);
+    }
 
     if (testResult.status !== 0) {
       const suiteFailures = readFailedTestIdentifiers(
@@ -892,18 +1088,54 @@ async function main() {
     shardSummaries.push(shardSummary);
   }
 
+  const chatSkipAccounting = shardSummaries.reduce(
+    (acc, shard) => {
+      const tests = shard.chatSkipAccounting?.tests ?? [];
+      for (const test of tests) {
+        if (!acc.seen.has(test)) {
+          acc.seen.add(test);
+          acc.tests.push(test);
+        }
+      }
+      return acc;
+    },
+    { seen: new Set(), tests: [] },
+  );
+  const aggregateChatSkipAccounting = {
+    count: chatSkipAccounting.tests.length,
+    tests: chatSkipAccounting.tests,
+    message:
+      chatSkipAccounting.tests.length > 0
+        ? `${chatSkipAccounting.tests.length} chat leg${chatSkipAccounting.tests.length === 1 ? "" : "s"} skipped: agent never ready (${agentProbe.verdict})`
+        : null,
+  };
   const aggregate = {
     generatedAt: new Date().toISOString(),
     platform,
     bundleId,
     destination,
     sharded: args["only-testing"] ? "explicit-only-testing" : "default",
+    agentAvailability: agentProbe,
+    requireChat: Boolean(args["require-chat"]),
+    chatSkipAccounting: aggregateChatSkipAccounting,
     shards: shardSummaries,
   };
   fs.writeFileSync(
     path.join(outputDir, "test-summary.json"),
     `${JSON.stringify(aggregate, null, 2)}\n`,
   );
+
+  if (aggregateChatSkipAccounting.message) {
+    log(aggregateChatSkipAccounting.message);
+  }
+  const requireChatDecision = buildRequireChatDecision({
+    requireChat: Boolean(args["require-chat"]),
+    agentProbeVerdict: agentProbe.verdict,
+    chatSkippedCount: aggregateChatSkipAccounting.count,
+  });
+  if (requireChatDecision.exitNonZero) {
+    fail(`--require-chat failed: ${requireChatDecision.reason}.`);
+  }
 
   const failedShards = shardSummaries.filter((shard) => !shard.passed);
   if (failedShards.length > 0) {

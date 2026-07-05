@@ -62,7 +62,11 @@ permissions:
 # the same env concurrently. PR validation stays parallel (different group).
 concurrency:
   group: terraform-control-plane-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
-  cancel-in-progress: false
+  # #14051 Tier B: PR runs are fmt+validate only (no creds, no state) — safe to
+  # cancel a superseded PR run on the next push. workflow_dispatch (plan/apply
+  # against real state) groups by environment and is NEVER cancelled, so an
+  # in-flight apply cannot be interrupted.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   TF_DIR: packages/cloud/infra/cloud/terraform/hetzner/control-plane

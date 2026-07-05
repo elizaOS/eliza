@@ -24,16 +24,27 @@ const BASE_REFRESH = "steward-refresh-token";
 const BASE_AUTHED = "steward-authed";
 
 /**
- * The historical unsuffixed names: production's live names, and on
- * non-production the read-fallback + delete target during the rename window
- * (so pre-rename staging sessions migrate on their first refresh instead of
- * being dumped to login).
+ * The historical unsuffixed names. Production owns them; non-production may use
+ * the legacy access cookie only as a bounded read fallback. Legacy refresh
+ * cookies are not read in non-production, so pre-rename refresh-only sessions
+ * re-authenticate instead of mutating production's cookie namespace.
  */
 export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
   token: BASE_TOKEN,
   refreshToken: BASE_REFRESH,
   authed: BASE_AUTHED,
 };
+
+/**
+ * Whether this Worker may mutate the historical unsuffixed cookie names.
+ * Production owns those names on the shared parent domain; non-production may
+ * read the legacy access cookie during the bounded migration window, but must
+ * never clear or rotate the unsuffixed names because doing so logs out a live
+ * production tab.
+ */
+export function canMutateLegacyStewardCookies(environment: string | undefined): boolean {
+  return !environment || environment === "production";
+}
 
 /** Resolve the cookie names for a Worker environment (`c.env.ENVIRONMENT`).
  * Unset (local dev / tests) behaves as production: localhost cookies are

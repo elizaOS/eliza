@@ -27,8 +27,7 @@ import { spawnSync } from "node:child_process";
 
 export const ASSISTANT_ROLE = "android.app.role.ASSISTANT";
 export const DEFAULT_PACKAGE = "ai.elizaos.app";
-export const DEFAULT_IME_ID =
-  "ai.elizaos.app/.voice.ElizaVoiceInputMethodService";
+export const DEFAULT_IME_ID = "ai.elizaos.app/.ElizaVoiceInputMethodService";
 export const ASSIST_SESSION_DEEPLINK =
   "elizaos://voice?source=android-assistant-session";
 export const IME_SESSION_DEEPLINK = "elizaos://voice?source=android-ime";
@@ -36,8 +35,14 @@ export const MAIN_ACTIVITY = "MainActivity";
 
 function defaultExec(bin, args) {
   const r = spawnSync(bin, args, { encoding: "utf8" });
-  return { status: r.status ?? -1, stdout: r.stdout || "", stderr: r.stderr || "" };
+  return {
+    status: r.status ?? -1,
+    stdout: r.stdout || "",
+    stderr: r.stderr || "",
+  };
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** An adb runner bound to a serial. `exec(bin, args) => {status, stdout, stderr}` is injectable. */
 export function makeAdb(serial, exec = defaultExec, bin = "adb") {
@@ -88,6 +93,8 @@ export async function runLane({
   exec,
   pkg = DEFAULT_PACKAGE,
   imeId = DEFAULT_IME_ID,
+  settleMs = 2_500,
+  sleepFn = sleep,
 }) {
   const adb = makeAdb(serial, exec);
   const cmds = reapplyCommands(pkg, imeId);
@@ -101,18 +108,48 @@ export async function runLane({
   const vis = assertSecureSetting(adb, "voice_interaction_service", pkg);
   const dim = assertSecureSetting(adb, "default_input_method", imeId);
 
-  // 3. clear logcat, then fire the assistant + the AOSP assistant key.
+  // 3. Fire each route in its own log window so one working assistant entry
+  // point cannot hide another broken one.
   adb(["logcat", "-c"]);
   adb(["shell", "cmd", "voiceinteraction", "show"]);
-  adb(["shell", "input", "keyevent", "KEYCODE_ASSIST"]);
-
-  // 4. capture logcat + activity dump and assert the session deep-link landed.
-  const captured =
+  await sleepFn(settleMs);
+  const assistCaptured =
     (adb(["logcat", "-d"]).stdout || "") +
     "\n" +
     (adb(["shell", "dumpsys", "activity", "activities"]).stdout || "");
-  const assistLanded = sessionLanded(captured, ASSIST_SESSION_DEEPLINK);
-  const imeLanded = sessionLanded(captured, IME_SESSION_DEEPLINK);
+  const voiceinteractionLanded = sessionLanded(
+    assistCaptured,
+    ASSIST_SESSION_DEEPLINK,
+  );
+
+  adb(["logcat", "-c"]);
+  adb(["shell", "input", "keyevent", "KEYCODE_ASSIST"]);
+  await sleepFn(settleMs);
+  const keyCaptured =
+    (adb(["logcat", "-d"]).stdout || "") +
+    "\n" +
+    (adb(["shell", "dumpsys", "activity", "activities"]).stdout || "");
+  const assistKeyLanded = sessionLanded(keyCaptured, ASSIST_SESSION_DEEPLINK);
+
+  // The IME path is triggered as a direct view intent because headless CI often
+  // has no focused editor to raise the keyboard.
+  adb(["logcat", "-c"]);
+  adb([
+    "shell",
+    "am",
+    "start",
+    "-a",
+    "android.intent.action.VIEW",
+    "-d",
+    `${IME_SESSION_DEEPLINK}&action=voice&voice=1`,
+    `${pkg}/.MainActivity`,
+  ]);
+  await sleepFn(settleMs);
+  const imeCaptured =
+    (adb(["logcat", "-d"]).stdout || "") +
+    "\n" +
+    (adb(["shell", "dumpsys", "activity", "activities"]).stdout || "");
+  const imeLanded = sessionLanded(imeCaptured, IME_SESSION_DEEPLINK);
 
   const failures = [];
   if (!vis.ok) {
@@ -125,19 +162,27 @@ export async function runLane({
       `secure default_input_method='${dim.value}' is not ${imeId} — voice IME not selected`,
     );
   }
-  if (!assistLanded) {
+  if (!voiceinteractionLanded) {
     failures.push(
-      `assistant-key/voiceinteraction did not route ${ASSIST_SESSION_DEEPLINK} into ${MAIN_ACTIVITY}`,
+      `cmd voiceinteraction show did not route ${ASSIST_SESSION_DEEPLINK} into ${MAIN_ACTIVITY}`,
     );
   }
-  // The IME session deep-link is asserted only when it appears (the IME path is
-  // exercised by a keyboard interaction the caller may not have driven); its
-  // presence is reported for the full-engine lane.
+  if (!assistKeyLanded) {
+    failures.push(
+      `KEYCODE_ASSIST did not route ${ASSIST_SESSION_DEEPLINK} into ${MAIN_ACTIVITY}`,
+    );
+  }
+  if (!imeLanded) {
+    failures.push(
+      `IME open-app path did not route ${IME_SESSION_DEEPLINK} into ${MAIN_ACTIVITY}`,
+    );
+  }
   return {
     ok: failures.length === 0,
     vis,
     dim,
-    assistLanded,
+    voiceinteractionLanded,
+    assistKeyLanded,
     imeLanded,
     failures,
   };
@@ -170,7 +215,10 @@ async function main() {
     `[assistant-ime] default_input_method:      ${result.dim.ok ? "OK" : "FAIL"} (${result.dim.value})`,
   );
   console.log(
-    `[assistant-ime] assist session → MainActivity: ${result.assistLanded ? "OK" : "FAIL"}`,
+    `[assistant-ime] cmd voiceinteraction → MainActivity: ${result.voiceinteractionLanded ? "OK" : "FAIL"}`,
+  );
+  console.log(
+    `[assistant-ime] KEYCODE_ASSIST → MainActivity: ${result.assistKeyLanded ? "OK" : "FAIL"}`,
   );
   if (!result.ok) {
     for (const f of result.failures) console.error(`[assistant-ime] ✗ ${f}`);
@@ -179,12 +227,11 @@ async function main() {
   console.log("[assistant-ime] lane passed.");
 }
 
-if (
-  process.argv[1] &&
-  process.argv[1].endsWith("android-assistant-ime-lane.mjs")
-) {
+if (process.argv[1]?.endsWith("android-assistant-ime-lane.mjs")) {
   main().catch((err) => {
-    console.error(`[assistant-ime] ${err instanceof Error ? err.message : err}`);
+    console.error(
+      `[assistant-ime] ${err instanceof Error ? err.message : err}`,
+    );
     process.exit(1);
   });
 }

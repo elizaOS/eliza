@@ -755,7 +755,8 @@ describe("scenario PR workflow contract", () => {
       ].join("$"),
     );
     expect(workflow).toContain("- zero-key-e2e");
-    expect(workflow).toContain("test-status:");
+    // The aggregate merge gate job (required develop ruleset check).
+    expect(workflow).toContain("ci-ok:");
   });
 
   it("keeps PR-gated dynamic view loader coverage on remote load and interact flows", () => {

@@ -44,6 +44,7 @@ import type {
   World,
 } from "@elizaos/core";
 import {
+  createUniqueUuid,
   resolveEffectiveMuteState,
   setRoomMuteUntil,
   setWorldMuteState,
@@ -441,14 +442,36 @@ function muteUntilIsoFromDuration(
     : undefined;
 }
 
+/**
+ * A Discord thread inherits its parent channel's mute: the connector's
+ * inbound gate drops the thread's messages on the [room, parent] mute chain,
+ * so the inbox must report the thread muted too — never muted:false while its
+ * messages are being dropped. The parent linkage is not persisted on the room
+ * record, so it comes from the same cached live-channel lookup the chat list
+ * already uses for titles. When the Discord client is unreachable the parent
+ * is unknown and only the room's own state answers — consistent, because a
+ * disconnected client is not dropping messages either.
+ */
+async function resolveDiscordParentRoomId(
+  runtime: AgentRuntime,
+  room: Room | undefined,
+): Promise<UUID | undefined> {
+  if (!isDiscordConnectorSource(readRoomSource(room))) return undefined;
+  const profile = await resolveDiscordRoomProfile(runtime, room);
+  return profile?.parentChannelId
+    ? createUniqueUuid(runtime, profile.parentChannelId)
+    : undefined;
+}
+
 async function resolveInboxRoomMuteState(
   runtime: AgentRuntime,
   room: Room | undefined,
   roomId: UUID,
 ): Promise<Pick<InboxChat, "muted" | "mutedScope">> {
   const worldId = readRoomWorldId(room);
+  const parentRoomId = await resolveDiscordParentRoomId(runtime, room);
   const effective = await resolveEffectiveMuteState(runtime, {
-    roomIds: [roomId],
+    roomIds: parentRoomId ? [roomId, parentRoomId] : [roomId],
     ...(worldId ? { worldId: worldId as UUID } : {}),
   });
   if (!effective.muted) {
@@ -1058,6 +1081,7 @@ async function resolveDiscordRoomProfile(
 
   let title: string | null = null;
   let avatarUrl: string | undefined;
+  let parentChannelId: string | undefined;
   if (channel && typeof channel === "object") {
     const namedChannel = channel as { name?: unknown };
     if (typeof namedChannel.name === "string" && namedChannel.name.trim()) {
@@ -1072,6 +1096,13 @@ async function resolveDiscordRoomProfile(
       title = readDiscordDisplayName(recipient) ?? null;
       avatarUrl = readDiscordAvatarUrl(recipient);
     }
+    const parentRecord = channel as { parentId?: unknown };
+    if (
+      typeof parentRecord.parentId === "string" &&
+      parentRecord.parentId.length > 0
+    ) {
+      parentChannelId = parentRecord.parentId;
+    }
   }
 
   const profile: DiscordRoomProfile = {
@@ -1079,6 +1110,7 @@ async function resolveDiscordRoomProfile(
     ...(typeof avatarUrl === "string" && avatarUrl.length > 0
       ? { avatarUrl }
       : {}),
+    ...(parentChannelId ? { parentChannelId } : {}),
   };
 
   discordRoomProfileCache.set(channelId, {
@@ -1766,6 +1798,13 @@ const PostInboxChatMuteRequestSchema = z.object({
 type DiscordRoomProfile = {
   avatarUrl?: string;
   title: string | null;
+  /**
+   * Platform id of the channel this room hangs under (a thread's parent
+   * channel, a channel's category), read off the live channel object. Feeds
+   * mute inheritance: the connector's inbound gate drops messages on the
+   * [room, parent] mute chain, so the inbox must report the same.
+   */
+  parentChannelId?: string;
 };
 
 /**

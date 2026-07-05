@@ -25,7 +25,6 @@ import {
   PREMADE_VOICES,
   sanitizeApiKey,
 } from "../../voice/types";
-import { DocumentsView } from "../pages/DocumentsView";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CharacterExamplesPanel,
@@ -123,12 +122,12 @@ const idleSaveBtnStyle = {
 
 /* ── Constants ─────────────────────────────────────────────────────── */
 
-const CHARACTER_EDITOR_PAGES = [
-  "personality",
-  "style",
-  "examples",
-  "documents",
-] as const;
+// The companion scene-overlay's editor-panel tabs. These are sub-panels of the
+// Personality editor (a spatial surface with no shell chrome), a different axis
+// from the Character FAMILY sections (Personality/Relationships/Skills/
+// Experience) defined once in `CharacterSectionNav`. Knowledge is a standalone
+// peer hub (#13594), not an editor panel, so it is not a tab here.
+const CHARACTER_EDITOR_PAGES = ["personality", "style", "examples"] as const;
 type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
 
 /**
@@ -368,7 +367,7 @@ export function CharacterEditor({
   );
 
   const [activePage, setActivePage] = useState<CharacterEditorPage>(
-    initialPage ?? (tab === "documents" ? "documents" : "personality"),
+    initialPage ?? "personality",
   );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
@@ -385,17 +384,13 @@ export function CharacterEditor({
     else if (activePage === "examples") setRightTab("examples");
   }, [activePage]);
 
-  // Sync activePage when tab changes externally (e.g. nav to /documents) or
-  // when an embedded router renders a specific built-in subpage in split view.
+  // Sync activePage when an embedded router renders a specific editor sub-panel
+  // in split view.
   useEffect(() => {
     if (initialPage && activePage !== initialPage) {
       setActivePage(initialPage);
-      return;
     }
-    if (tab === "documents" && activePage !== "documents") {
-      setActivePage("documents");
-    }
-  }, [initialPage, tab, activePage]);
+  }, [initialPage, activePage]);
 
   /* ── Style entry state ──────────────────────────────────────────── */
   const [pendingStyleEntries, setPendingStyleEntries] = useState<
@@ -1337,13 +1332,9 @@ export function CharacterEditor({
                           ? t("charactereditor.TabStyles", {
                               defaultValue: "Styles",
                             })
-                          : page === "examples"
-                            ? t("charactereditor.TabExamples", {
-                                defaultValue: "Examples",
-                              })
-                            : t("nav.documents", {
-                                defaultValue: "Knowledge",
-                              });
+                          : t("charactereditor.TabExamples", {
+                              defaultValue: "Examples",
+                            });
                     return (
                       <CharacterPageTabButton
                         key={page}
@@ -1396,11 +1387,9 @@ export function CharacterEditor({
                     );
                   })}
                 </div>
-                {activePage !== "documents" && (
-                  <div className="ml-auto">
-                    {renderContentActionButtons("ce-vrm-upload")}
-                  </div>
-                )}
+                <div className="ml-auto">
+                  {renderContentActionButtons("ce-vrm-upload")}
+                </div>
               </div>
 
               <div
@@ -1454,23 +1443,13 @@ export function CharacterEditor({
                     />
                   </div>
                 </div>
-                <div
-                  className={`flex flex-col flex-1 min-h-0 overflow-hidden${activePage !== "documents" ? " hidden" : ""}`}
-                >
-                  <DocumentsView inModal />
-                </div>
               </div>
             </section>
           )}
 
-          {/* ── Standalone page: character hub */}
+          {/* ── Standalone page: the Personality section (Character family) */}
           {!sceneOverlay && (
             <CharacterHubView
-              initialSection={
-                initialPage === "documents" || initialPage === "personality"
-                  ? initialPage
-                  : undefined
-              }
               d={d}
               bioText={bioText}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -1486,11 +1465,7 @@ export function CharacterEditor({
               handlePendingStyleEntryChange={handlePendingStyleEntryChange}
               applyStyleEdit={handleCharacterStyleInput}
               handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              characterSaving={characterSaving}
-              characterSaveSuccess={characterSaveSuccess}
               characterSaveError={characterSaveError}
-              hasPendingChanges={hasPendingChanges}
-              onSave={handleSaveCharacter}
             />
           )}
         </div>
@@ -1609,13 +1584,9 @@ export function CharacterEditor({
                               ? t("charactereditor.TabStyles", {
                                   defaultValue: "Style",
                                 })
-                              : pendingNavigation.page === "examples"
-                                ? t("charactereditor.TabExamples", {
-                                    defaultValue: "Examples",
-                                  })
-                                : t("nav.documents", {
-                                    defaultValue: "Knowledge",
-                                  }),
+                              : t("charactereditor.TabExamples", {
+                                  defaultValue: "Examples",
+                                }),
                       })}`
                     : ""}
               </DialogDescription>

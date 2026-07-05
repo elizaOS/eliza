@@ -6,6 +6,7 @@
  * against the stores, not mocks of the thing under test.
  */
 import { describe, expect, it } from "vitest";
+import { createUniqueUuid } from "../../entities";
 import type { Room, World } from "../../types/environment";
 import type { UUID } from "../../types/primitives";
 import type {
@@ -259,6 +260,61 @@ describe("resolveMutedTargetFlags", () => {
 			false,
 			true,
 		]);
+	});
+
+	it("a thread target inherits its muted parent channel's mute", async () => {
+		// Mirrors the inbound gate: the connector drops a thread's messages when
+		// the thread's PARENT channel room is muted, so the listing must report
+		// the thread muted too — not just the parent.
+		const { runtime, states, rooms } = makeRuntime({ worlds: [world()] });
+		const parentRoomId = createUniqueUuid(runtime, "parent-channel-1");
+		states.set(`${parentRoomId}:${AGENT_ID}`, "MUTED");
+		rooms.set(parentRoomId, room(parentRoomId));
+		const targets: MessageConnectorTarget[] = [
+			{
+				target: {
+					source: "discord",
+					channelId: "thread-channel-1",
+					parentChannelId: "parent-channel-1",
+				},
+			},
+			// Sibling thread under an unmuted parent stays unmuted.
+			{
+				target: {
+					source: "discord",
+					channelId: "thread-channel-2",
+					parentChannelId: "parent-channel-2",
+				},
+			},
+		];
+		expect(await resolveMutedTargetFlags(runtime, targets)).toEqual([
+			true,
+			false,
+		]);
+	});
+
+	it("an expired timed parent mute does not flag the thread", async () => {
+		const past = new Date(Date.now() - 1_000).toISOString();
+		const { runtime, states, rooms } = makeRuntime();
+		const parentRoomId = createUniqueUuid(runtime, "parent-channel-3");
+		states.set(`${parentRoomId}:${AGENT_ID}`, "MUTED");
+		rooms.set(
+			parentRoomId,
+			room(parentRoomId, {
+				worldId: undefined,
+				metadata: { agentMuteUntilIso: past },
+			}),
+		);
+		const targets: MessageConnectorTarget[] = [
+			{
+				target: {
+					source: "discord",
+					channelId: "thread-channel-3",
+					parentChannelId: "parent-channel-3",
+				},
+			},
+		];
+		expect(await resolveMutedTargetFlags(runtime, targets)).toEqual([false]);
 	});
 
 	it("reports an expired timed room mute as unmuted without writing", async () => {

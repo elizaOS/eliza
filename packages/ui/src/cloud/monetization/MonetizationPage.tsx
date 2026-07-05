@@ -10,19 +10,17 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
-import { useDocumentTitle } from "../lib/use-document-title";
-import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConsolePage } from "../shell/ConsolePage";
 import { MonetizationView } from "./MonetizationSection";
 
 export function MonetizationPage() {
-  const t = useCloudT();
-  useDocumentTitle(
-    t("cloud.monetization.metaTitle", { defaultValue: "Monetization" }),
-  );
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
+    <ConsolePage
+      titleKey="cloud.monetization.metaTitle"
+      titleDefault="Monetization"
+    >
       <MonetizationView />
-    </div>
+    </ConsolePage>
   );
 }
 

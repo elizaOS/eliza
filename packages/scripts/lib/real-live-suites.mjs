@@ -64,7 +64,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
       "packages/agent/src/services/push/fcm-provider.ts",
     ],
     blocked:
-      "packages/agent/vitest.config.ts excludes *.real.test.ts in every lane; run explicitly via `bunx vitest run --config packages/agent/vitest.config.ts src/services/push/push-delivery.real.test.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
+      "packages/agent/vitest.config.ts excludes *.real.test.ts in every deterministic lane; run explicitly via `bunx vitest run --config packages/agent/vitest.push-real.config.ts` with ELIZA_APNS_* / ELIZA_FCM_SERVICE_ACCOUNT set. Real-device delivery is pending-hardware (needs an enrolled device).",
   },
   {
     file: "packages/app-core/src/services/coding-account-bridge.live.test.ts",

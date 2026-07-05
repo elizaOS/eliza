@@ -365,6 +365,10 @@ export const trainingPlugin: Plugin = {
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
       componentExport: "FineTuningView",
+      // FineTuningView instruments its panels with useAgentElement; without
+      // the grant the capability broker (#14068) denies agent-click/agent-fill
+      // on the one instrumented first-party view that missed the migration.
+      surface: { capabilities: ["agent-surface"] },
       relatedActions: ["RUNTIME"],
       tags: [
         "training",

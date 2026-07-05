@@ -27,8 +27,23 @@ export function chooseBestCandidatePricingEntry(
   requestedDimensions: PricingDimensions,
   canonicalModel: string,
 ): CandidatePreparedPricingEntry | null {
-  const matching = candidates.filter(({ entry }) =>
-    dimensionsAreSubset(normalizePricingDimensions(entry.dimensions), requestedDimensions),
+  const matching = candidates.filter(
+    ({ entry }) =>
+      // Drop any candidate whose price failed to parse to a finite, positive
+      // number. `unitPrice` is `Number(entry.unit_price)` over a Postgres
+      // NUMERIC column, so a corrupt row (`'NaN'::numeric` reads back as the
+      // string "NaN") yields `NaN`. Left in place, such a candidate (a) makes
+      // the `right.entry.unitPrice - left.entry.unitPrice` tie-break return
+      // `NaN` — an inconsistent sort comparator that can non-deterministically
+      // let the corrupt entry WIN over a valid one — and (b) if selected, is
+      // billed via `asDecimal(NaN).mul(quantity)` = a `NaN` charge. Fail closed
+      // by excluding it here so a corrupt price can never be chosen; the caller
+      // then degrades to the fallback tier (provider-max / env default) or
+      // fails closed, exactly as an absent price does. Mirrors the finite guard
+      // in `resolveFallbackTokenRate`.
+      Number.isFinite(entry.unitPrice) &&
+      entry.unitPrice > 0 &&
+      dimensionsAreSubset(normalizePricingDimensions(entry.dimensions), requestedDimensions),
   );
 
   if (matching.length === 0) {

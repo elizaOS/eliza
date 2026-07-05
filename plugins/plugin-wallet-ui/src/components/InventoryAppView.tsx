@@ -113,8 +113,7 @@ const compactFormatter = new Intl.NumberFormat("en-US", {
 /**
  * Calm neutral empty state (#13592): a bare muted glyph over one short line of
  * plain-fact copy. No suggestion chips, no marketing pitch, no setup CTA — an
- * empty panel states what is empty and stays quiet. Replaces the ten former
- * `ChatEmptyStateWithRecommendations` prompt-chip surfaces.
+ * empty panel states what is empty and stays quiet.
  */
 function CalmEmptyState({
   icon: Icon,

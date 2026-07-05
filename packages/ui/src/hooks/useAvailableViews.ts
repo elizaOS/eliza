@@ -8,6 +8,7 @@
 
 import type {
   AppShellBackgroundPolicy,
+  SurfaceManifest,
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
@@ -64,12 +65,24 @@ export interface ViewRegistryEntry {
   hasHeroImage?: boolean;
   /** Whether the view is currently loadable. */
   available: boolean;
-  /** Screen background policy for this view. Defaults to `"opaque"`. */
+  /**
+   * Declared surface contract for this view (#13452), forwarded from the owning
+   * `ViewDeclaration.surface` by `GET /api/views`. The shell derives the screen
+   * background from it (`surface.background` gated by the `wallpaper` grant), and
+   * DynamicViewLoader derives the plugin view's capability grants from it. The
+   * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback.
+   */
+  surface?: SurfaceManifest;
+  /**
+   * Screen background policy for this view. Defaults to `"opaque"`. Superseded
+   * by `surface.background` when a manifest is declared.
+   */
   backgroundPolicy?: AppShellBackgroundPolicy;
   /**
    * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
    * the shared `ViewHeader` on every `normal` view. `fullscreen`/`modal`/
-   * `immersive` opt a view out of the uniform top bar.
+   * `immersive` opt a view out of the uniform top bar. Superseded by
+   * `surface.header` when a manifest is declared.
    */
   headerPolicy?: ViewHeaderPolicy;
   /** The plugin that provides this view. */
@@ -324,6 +337,7 @@ function appShellPageToViewEntry(
     viewKind: page.viewKind,
     order: page.order,
     group: page.group,
+    surface: page.surface,
     backgroundPolicy: page.backgroundPolicy,
     headerPolicy: page.headerPolicy,
     visibleInManager: true,

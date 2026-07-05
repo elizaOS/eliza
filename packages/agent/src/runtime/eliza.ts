@@ -62,6 +62,7 @@ export {
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
 
+import { PROVIDER_PLUGIN_MAP } from "./plugin-collector.ts";
 import { STATIC_ELIZA_PLUGIN_LOADERS } from "./plugin-types.ts";
 
 export {
@@ -627,7 +628,7 @@ async function ensureStaticPluginsRegisteredByName(
   );
   if (missing.length > 0) {
     logger.debug(
-      `[boot] no static registration for preferred provider plugin(s): ${missing.join(", ")}`,
+      `[boot] no static registration for configured provider plugin(s): ${missing.join(", ")}`,
     );
   }
 
@@ -643,12 +644,12 @@ async function ensureStaticPluginsRegisteredByName(
         if (mod) {
           STATIC_ELIZA_PLUGINS[registryName] = mod;
           logger.info(
-            `[boot] preferred provider plugin ${registration.packageName} loaded before runtime initialization`,
+            `[boot] configured provider plugin ${registration.packageName} loaded before runtime initialization`,
           );
         }
       } catch (err) {
         logger.warn(
-          `[boot] preferred provider plugin ${registration.packageName} unavailable before runtime initialization: ${formatError(err)}`,
+          `[boot] configured provider plugin ${registration.packageName} unavailable before runtime initialization: ${formatError(err)}`,
         );
       }
     }),
@@ -4067,10 +4068,25 @@ export async function startEliza(
   const blockDeferredPluginImports = shouldBlockDeferredPluginImports();
   const initialPluginResolutionPhase: PluginResolutionPhase =
     blockDeferredPluginImports ? "all" : "blocking";
-  const initialForceIncludePluginNames =
-    !blockDeferredPluginImports && preferredProviderPluginName
-      ? [preferredProviderPluginName]
-      : [];
+  // Model-provider plugins load in the BLOCKING phase (see the phase filter in
+  // resolvePlugins): a configured provider must register its TEXT_GENERATION
+  // handler before the runtime reports ready, or /api/status flips `running`
+  // with `canRespond:false` and the warming gate releases chat turns into
+  // "no LLM provider configured" replies. Bundled runtimes (mobile: no
+  // node_modules) can only resolve statically registered modules, so import
+  // the providers whose auto-enable env key is present up front — the same
+  // modules the deferred static wave would have imported moments later.
+  const configuredProviderPluginNames = Object.entries(PROVIDER_PLUGIN_MAP)
+    .filter(([envKey]) => Boolean(process.env[envKey]?.trim()))
+    .map(([, pluginName]) => pluginName);
+  const initialForceIncludePluginNames = !blockDeferredPluginImports
+    ? [
+        ...new Set([
+          ...(preferredProviderPluginName ? [preferredProviderPluginName] : []),
+          ...configuredProviderPluginNames,
+        ]),
+      ]
+    : [];
   await ensureStaticPluginsRegisteredByName(initialForceIncludePluginNames);
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,

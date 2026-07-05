@@ -151,6 +151,41 @@ export interface AgentStatus {
   pendingRestart?: boolean;
   pendingRestartReasons?: string[];
   startup?: AgentStartupDiagnostics;
+  /**
+   * Live resume/provision progress for a dedicated cloud agent that answered
+   * the status probe with `202 Accepted` while it warms (#14040 sub-defect 2).
+   * Present only during an in-flight resume; carries the cloud proxy's honest
+   * progress body (`{status,jobId,retryAfterMs}`) so the launcher can render a
+   * "resuming…" state (and reset its slow-boot escalation) instead of an
+   * indistinguishable spinner. Absent for a normal running/stopped status.
+   */
+  resumeProgress?: AgentResumeProgress;
+}
+
+/**
+ * The cloud dedicated-agent-proxy's `202` resume body, mapped onto
+ * {@link AgentStatus.resumeProgress}. A truthy `jobId` (or any freshly-observed
+ * progress) is the launcher's "boot is still making progress" signal.
+ */
+export interface AgentResumeProgress {
+  /** The proxy's `status` field for the in-flight resume (e.g. "starting"). */
+  status: string;
+  /** The resume job's id when the proxy reports one; a change signals progress. */
+  jobId?: string;
+  /** Advertised retry interval (ms) the proxy asked the client to wait. */
+  retryAfterMs?: number;
+  /** True when the proxy reported the resume was already underway. */
+  alreadyInProgress?: boolean;
+  /**
+   * Client-side timestamp (ms) of THIS observed resume probe. A single
+   * long-running resume keeps the same `status`/`jobId` across polls, so those
+   * alone can't distinguish "still progressing" from "stalled"; a fresh
+   * `observedAt` on every successful 202 is the "a live probe just succeeded"
+   * heartbeat that resets the launcher's slow-boot escalation window (#14040
+   * sub-defect 3). Stamped by the status client on each observation, not by the
+   * server.
+   */
+  observedAt?: number;
 }
 
 export interface AgentBootProgress {

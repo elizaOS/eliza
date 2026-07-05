@@ -24,6 +24,7 @@ import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { ShortcutDefinition } from "./shortcut";
+import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
 import type { ViewKind } from "./view-kind";
 
@@ -527,12 +528,22 @@ export interface PluginAppNavTab {
 	 * grouped tab strips, e.g. workbench/dev/wallet groupings).
 	 */
 	group?: string;
-	/** Screen background policy for this tab. Defaults to `"opaque"`. */
+	/**
+	 * Declared surface contract for this tab (#13452) — mirrors
+	 * `ViewDeclaration.surface`. Preferred over the standalone `backgroundPolicy`
+	 * / `headerPolicy` below, which remain the legacy fallback.
+	 */
+	surface?: SurfaceManifest;
+	/**
+	 * Screen background policy for this tab. Defaults to `"opaque"`. Superseded
+	 * by `surface.background` when a manifest is declared.
+	 */
 	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
 	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
-	 * for surfaces that own their own chrome.
+	 * for surfaces that own their own chrome. Superseded by `surface.header` when
+	 * a manifest is declared.
 	 */
 	headerPolicy?: ViewHeaderPolicy;
 	/**
@@ -920,12 +931,26 @@ export interface ViewDeclaration {
 	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
-	/** Screen background policy for this view. Defaults to `"opaque"`. */
+	/**
+	 * Declared surface contract — background/header/isolation/lifecycle policy and
+	 * the capability grants the shell allows this view to exercise (#13452). The
+	 * single source of truth the shell derives every surface decision from; the
+	 * standalone `backgroundPolicy` / `headerPolicy` below are the legacy fallback
+	 * used only when the matching manifest field is absent. `surface.background:
+	 * "shared"` only paints the wallpaper when `surface.capabilities` also grants
+	 * `wallpaper` — a view can never opt into the shared wallpaper by accident.
+	 */
+	surface?: SurfaceManifest;
+	/**
+	 * Screen background policy for this view. Defaults to `"opaque"`. Superseded
+	 * by `surface.background` when a manifest is declared.
+	 */
 	backgroundPolicy?: AppShellBackgroundPolicy;
 	/**
 	 * Top-bar framing policy (#13586). Defaults to `"normal"`, which the shell
 	 * enforces with the shared `ViewHeader`. Set `fullscreen`/`modal`/`immersive`
 	 * for surfaces that own their own chrome (browser workbench, launcher, etc.).
+	 * Superseded by `surface.header` when a manifest is declared.
 	 */
 	headerPolicy?: ViewHeaderPolicy;
 	/**

@@ -19,7 +19,7 @@
  * namespace and is intentionally unrelated to a ProjectRecord id.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { resolveStateDir } from "./state-dir.ts";
@@ -119,6 +119,22 @@ export function readProjectRegistry(
 	return synthesizeFromLegacyWorkspaceFolder(env);
 }
 
+/**
+ * Deterministic id for the project synthesized from the legacy
+ * workspace-folder.json. The synthesized registry is re-minted on every read
+ * (reads never write), so a random id would differ between reads: a task bound
+ * during the migration window would persist a projectId that no later
+ * `getProjectById` could ever resolve, silently disabling the bound-workdir
+ * lock (#13776). Hashing the localPath keeps the id stable across reads, and
+ * because `upsertProject` keys by localPath and preserves an existing id, the
+ * first real write to projects.json persists this same id — so migration-window
+ * task bindings survive the switch off the legacy config.
+ */
+function legacyProjectId(localPath: string): string {
+	const digest = createHash("sha256").update(localPath).digest("hex");
+	return `legacy-${digest.slice(0, 16)}`;
+}
+
 function synthesizeFromLegacyWorkspaceFolder(
 	env: NodeJS.ProcessEnv,
 ): ProjectRegistry | null {
@@ -126,7 +142,7 @@ function synthesizeFromLegacyWorkspaceFolder(
 	if (!legacy?.path?.trim()) return null;
 	const now = legacy.updatedAt ?? new Date().toISOString();
 	const project: ProjectRecord = {
-		id: randomUUID(),
+		id: legacyProjectId(legacy.path),
 		name: basename(legacy.path),
 		localPath: legacy.path,
 		bookmark: legacy.bookmark,
@@ -208,7 +224,10 @@ export function setActiveProject(
 	const projects = registry.projects.map((p) =>
 		p.id === projectId ? { ...p, lastOpenedAt: now } : p,
 	);
-	writeProjectRegistry({ ...registry, activeProjectId: projectId, projects }, env);
+	writeProjectRegistry(
+		{ ...registry, activeProjectId: projectId, projects },
+		env,
+	);
 	return { ...target, lastOpenedAt: now };
 }
 

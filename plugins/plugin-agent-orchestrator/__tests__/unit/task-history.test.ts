@@ -61,6 +61,8 @@ function runtimeWithServices(opts: {
         : (opts.acpService ?? null),
     ),
     hasService: vi.fn(() => Boolean(opts.taskService ?? opts.acpService)),
+    getRoom: vi.fn(async () => null),
+    reportError: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as never;
 }

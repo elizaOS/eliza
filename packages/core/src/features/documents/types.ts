@@ -175,6 +175,7 @@ export type DocumentAddedByRole =
 	| "RUNTIME";
 
 export type DocumentAddedFrom =
+	| "import"
 	| "chat"
 	| "upload"
 	| "url"

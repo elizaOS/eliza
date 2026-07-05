@@ -9,17 +9,18 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
+import { ConsolePage } from "../shell/ConsolePage";
 import { ApiKeysSurface } from "./ApiKeysSurface";
 
 export function ApiKeysPage() {
-  // No local PageHeaderProvider: the surface's useSetPageHeader must reach
-  // ConsoleShell's provider so the top bar shows the title and the header
-  // "Create API Key" CTA actually renders (a local provider is a dead
+  // No titleKey and no local PageHeaderProvider: the surface's useSetPageHeader
+  // must reach ConsoleShell's provider so the top bar shows the title and the
+  // header "Create API Key" CTA actually renders (a local provider is a dead
   // context nothing reads). Document title is set by ApiKeysSurface.
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-6 md:py-8">
+    <ConsolePage>
       <ApiKeysSurface />
-    </div>
+    </ConsolePage>
   );
 }
 

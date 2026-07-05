@@ -262,7 +262,7 @@ export const fileAction: Action = {
   roleGate: { minRole: "ADMIN" },
   similes: ["FILE_OPERATION", "FILE_IO"],
   description:
-    "FILE action: read/write/edit/grep/glob/ls. Use target=device for device filesystem reads/writes/ls. Workspace paths absolute unless op defaults to session cwd.",
+    "Read, write, edit, grep, glob, or list files. Workspace paths are absolute unless the operation defaults to session cwd; target=device uses the device bridge.",
   descriptionCompressed:
     "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
   parameters: [
@@ -275,7 +275,7 @@ export const fileAction: Action = {
     {
       name: "target",
       description:
-        "Target filesystem. device = relative paths via device bridge; omit for workspace.",
+        "target=device uses device-relative paths; omit for workspace.",
       required: false,
       schema: { type: "string", enum: ["workspace", "device"] },
     },
@@ -288,7 +288,7 @@ export const fileAction: Action = {
     {
       name: "path",
       description:
-        "File/dir path for grep/glob/ls. Default session cwd where supported.",
+        "Path for grep/glob/ls; defaults to session cwd when supported.",
       required: false,
       schema: { type: "string" },
     },

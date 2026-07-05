@@ -64,6 +64,7 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "mt_bench": "smoke",
     "openclaw_bench": "smoke",
     "orchestrator_lifecycle": "smoke",
+    "multitask_bench": "smoke",  # hermetic perfect/wrong oracle lanes; live eliza/hermes/openclaw are key-gated
     "realm": "smoke",
     "recall_bench": "smoke",
     "rlm_bench": "smoke",

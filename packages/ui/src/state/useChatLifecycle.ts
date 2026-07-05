@@ -51,7 +51,18 @@ const RESET_LOG_PREFIX = "[eliza][reset]";
  */
 export function readinessPollSignature(status: AgentStatus | null): string {
   if (status == null) return "∅";
-  return `${status.state}|${status.port ?? ""}|${status.canRespond ?? ""}`;
+  // Include the cloud resume-progress signal so a fresh resume tick re-renders
+  // and `setAgentStatus` fires — the launcher's slow-boot escalation keys off
+  // "a live probe was just observed". A single long-running resume keeps the
+  // same status/jobId across polls, so we key off `observedAt` (stamped per
+  // observation): each successful 202 advances the signature and resets the
+  // escalation window, so a slow-but-progressing boot never looks stalled
+  // (#14040 sub-defect 2/3). No resume in flight → empty, so the running/stopped
+  // dedupe is unchanged.
+  const resume = status.resumeProgress
+    ? `${status.resumeProgress.status}:${status.resumeProgress.jobId ?? ""}:${status.resumeProgress.observedAt ?? ""}`
+    : "";
+  return `${status.state}|${status.port ?? ""}|${status.canRespond ?? ""}|${resume}`;
 }
 
 function logResetDebug(

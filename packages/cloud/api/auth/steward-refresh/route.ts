@@ -36,6 +36,7 @@ import {
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
 import {
+  canMutateLegacyStewardCookies,
   LEGACY_STEWARD_COOKIES,
   stewardCookieNames,
 } from "@/lib/auth/steward-cookies";
@@ -390,7 +391,9 @@ app.post("/", async (c) => {
       deleteCookie(c, cookieNames.token, opts);
       deleteCookie(c, cookieNames.refreshToken, opts);
       deleteCookie(c, cookieNames.authed, opts);
-      deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
+      if (canMutateLegacyStewardCookies(c.env.ENVIRONMENT)) {
+        deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
+      }
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
     }
     return c.json(

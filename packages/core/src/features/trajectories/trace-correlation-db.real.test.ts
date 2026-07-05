@@ -10,7 +10,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { IAgentRuntime } from "../../types";
+import type { IAgentRuntime, Memory, MessagePayload } from "../../types";
+import { trajectoriesPlugin } from "./index";
 import { TrajectoriesService } from "./TrajectoriesService";
 
 let db: ReturnType<typeof drizzle>;
@@ -124,5 +125,56 @@ describe("trajectories trace_id join key (real PGLite)", () => {
 			`SELECT trace_id FROM trajectories WHERE id = '${id}'`,
 		);
 		expect(rows[0]?.trace_id).toBe(traceId);
+	});
+
+	// Emit-first paths (the agent API chat route and connectors) emit
+	// MESSAGE_RECEIVED before messageService.handleMessage mints the turn's
+	// traceId, so the plugin handler is the first touchpoint and must mint +
+	// stamp the id itself or the DB row persists trace_id NULL and never joins
+	// the file trajectory (#13871 audit).
+	it("mints and persists a traceId when MESSAGE_RECEIVED arrives before message.ts stamps one", async () => {
+		const handler = trajectoriesPlugin.events?.MESSAGE_RECEIVED?.[0];
+		expect(typeof handler).toBe("function");
+
+		const runtime = {
+			agentId: "00000000-0000-4000-8000-000000000001",
+			adapter: { db },
+			getService: () => service,
+			getServicesByType: () => [service],
+			logger: {
+				debug() {},
+				info() {},
+				warn(...args: unknown[]) {
+					// The handler swallows failures via logger.warn; surface them so a
+					// broken insert cannot pass as green.
+					throw new Error(`trajectory handler warned: ${JSON.stringify(args)}`);
+				},
+				error() {},
+			},
+		} as unknown as IAgentRuntime;
+
+		const message = {
+			id: "10000000-0000-4000-8000-00000000aaaa",
+			roomId: "20000000-0000-4000-8000-00000000bbbb",
+			entityId: "30000000-0000-4000-8000-00000000cccc",
+			content: { text: "hello", source: "api" },
+			// No metadata: mirrors chat-routes.ts emitting before any stamp exists.
+		} as unknown as Memory;
+
+		await handler?.({ runtime, message, source: "api" } as MessagePayload);
+
+		const meta = message.metadata as {
+			traceId?: string;
+			trajectoryId?: string;
+		};
+		expect(typeof meta.traceId).toBe("string");
+		expect((meta.traceId ?? "").length).toBeGreaterThan(0);
+		expect(typeof meta.trajectoryId).toBe("string");
+
+		const rows = await raw(
+			`SELECT trace_id, metadata_json FROM trajectories WHERE id = '${meta.trajectoryId}'`,
+		);
+		expect(rows.length).toBe(1);
+		expect(rows[0]?.trace_id).toBe(meta.traceId);
 	});
 });

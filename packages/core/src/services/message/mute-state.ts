@@ -230,7 +230,10 @@ export async function resolveMutedWorldFlags(
  * an expired timed mute simply reports unmuted here. Targets map to rooms via
  * their explicit roomId or the canonical `createUniqueUuid(runtime, channelId)`
  * convention every connector uses for inbound messages; unknown mappings
- * report unmuted.
+ * report unmuted. A target that names a `parentChannelId` (a thread under a
+ * channel, a channel under a category) also inherits that parent room's mute —
+ * the same [room, parent] chain the inbound gate drops on — so a listing never
+ * reports a thread unmuted while its messages are being dropped.
  */
 export async function resolveMutedTargetFlags(
 	runtime: IAgentRuntime,
@@ -254,15 +257,18 @@ export async function resolveMutedTargetFlags(
 				(entry.target.channelId
 					? createUniqueUuid(runtime, entry.target.channelId)
 					: undefined);
-			if (roomId) {
+			const parentRoomId = entry.target.parentChannelId
+				? createUniqueUuid(runtime, entry.target.parentChannelId)
+				: undefined;
+			for (const id of [roomId, parentRoomId]) {
+				if (!id) continue;
 				const state = await runtime.getParticipantUserState(
-					roomId,
+					id,
 					runtime.agentId,
 				);
-				if (state === "MUTED") {
-					const room = await runtime.getRoom(roomId);
-					if (roomMuteActive(state, room, now)) return true;
-				}
+				if (state !== "MUTED") continue;
+				const room = await runtime.getRoom(id);
+				if (roomMuteActive(state, room, now)) return true;
 			}
 			return entry.target.serverId
 				? isServerMuted(entry.target.serverId)

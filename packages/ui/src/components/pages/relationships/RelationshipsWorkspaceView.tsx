@@ -25,7 +25,6 @@ import type {
 import { PageLayout } from "../../../layouts/page-layout/page-layout";
 import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
-import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
 import { PagePanel } from "../../composites/page-panel";
 import {
   Select,
@@ -283,9 +282,9 @@ export function RelationshipsWorkspaceView({
           heading={t("common.loading", { defaultValue: "Loading..." })}
         />
       ) : !graph || graph.people.length === 0 ? (
-        <ChatEmptyStateWithRecommendations
+        <PagePanel.Empty
           className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
-          icon={Network}
+          icon={<Network className="h-6 w-6" aria-hidden />}
           title={
             search || platform !== "all"
               ? t("relationships.noMatching", {
@@ -295,43 +294,6 @@ export function RelationshipsWorkspaceView({
                   defaultValue:
                     "No relationships yet. Ask Eliza to map who you know.",
                 })
-          }
-          recommendations={[
-            {
-              label: t("relationships.recAddContact", {
-                defaultValue: "Add someone to my network",
-              }),
-              prompt: "help me add someone to my network",
-            },
-            {
-              label: t("relationships.recIdentify", {
-                defaultValue: "Who do I know well?",
-              }),
-              prompt: "who do I know well in my network",
-            },
-            {
-              label: t("relationships.recImport", {
-                defaultValue: "Import contacts from my platforms",
-              }),
-              prompt:
-                "help me import my relationships from my connected platforms",
-            },
-          ]}
-          primaryAction={
-            search || platform !== "all"
-              ? undefined
-              : {
-                  label: t("relationships.connectPlatforms", {
-                    defaultValue: "Connect your platforms",
-                  }),
-                  icon: Network,
-                  onClick: () => {
-                    if (typeof window !== "undefined") {
-                      window.location.hash = "connectors";
-                    }
-                    setTab("settings");
-                  },
-                }
           }
         />
       ) : (

@@ -12,6 +12,7 @@ import { appsRepository } from "../../db/repositories/apps";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { containersRepository } from "../../db/repositories/containers";
 import { conversationsRepository } from "../../db/repositories/conversations";
+import { parseOrganizationCreditBalance } from "../../db/repositories/organizations-credit-balance-numeric";
 import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
@@ -20,6 +21,9 @@ import { emailService } from "./email";
 import { managedDomainsService } from "./managed-domains";
 import { organizationsService } from "./organizations";
 import { usersService } from "./users";
+
+const SOLO_ORG_CREDITS_BLOCK_MESSAGE =
+  "You cannot join another organization while your current organization holds credits beyond the signup grant. Contact support to transfer them first.";
 
 /**
  * Parameters for creating an organization invite.
@@ -261,10 +265,32 @@ export class InvitesService {
     }
 
     const organization = await organizationsService.getById(organizationId);
-    if (organization && Number(organization.credit_balance) > getInitialCredits()) {
-      throw new Error(
-        "You cannot join another organization while your current organization holds credits beyond the signup grant. Contact support to transfer them first.",
-      );
+    if (organization) {
+      // Fail closed on a corrupt `credit_balance` (#13415). This guard exists to
+      // stop an owner vacating (and thereby auto-deleting) a solo org that still
+      // holds credits beyond the signup grant. `credit_balance` is a Postgres
+      // NUMERIC (string at read); the previous bare `Number(...)` failed OPEN on
+      // an unreadable value (`'NaN'::numeric` migration artifact / manual edit
+      // reads back `"NaN"`): `NaN > getInitialCredits()` is FALSE, so the guard
+      // was bypassed and the org — with whatever real credits it held — was
+      // vacated and deleted downstream (`cleanUpVacatedSoloOrganization` ->
+      // `organizationsService.delete`), silently destroying the balance. Parsing
+      // fail-closed makes a corrupt balance BLOCK the vacate (surfaced as the
+      // same "contact support" boundary) instead of silently losing credits.
+      let creditBalance: number;
+      try {
+        creditBalance = parseOrganizationCreditBalance(
+          organization.credit_balance,
+          "credit_balance",
+        );
+      } catch (error) {
+        // error-policy:J4 corrupt balance data blocks the user-visible invite
+        // vacate path instead of falling through as a generic storage failure.
+        throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE, { cause: error });
+      }
+      if (creditBalance > getInitialCredits()) {
+        throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE);
+      }
     }
   }
 
@@ -304,6 +330,8 @@ export class InvitesService {
       await this.assertOwnerCanVacateSoloOrganization(userId, previousOrganizationId);
       await organizationsService.delete(previousOrganizationId);
     } catch (error) {
+      // error-policy:J6 the invite accept already moved the user; cleanup is
+      // best-effort and must leave a warn breadcrumb for manual recovery.
       logger.warn("[InvitesService] Failed to clean up vacated solo organization", {
         previousOrganizationId,
         userId,

@@ -211,6 +211,18 @@ export interface ShellController {
    *  showing the "Waking …" boot indicator and to explain the real cause instead.
    *  The controller also auto-navigates to Settings on its rising edge. */
   noProviderConfigured?: boolean;
+  /**
+   * A monotonically-changing token that advances whenever fresh boot progress
+   * is observed while the agent is still waking (#14040 sub-defect 3) — e.g. a
+   * cloud resume `202` reporting a live `jobId`. The boot banner keys its
+   * "taking longer than usual" escalation off ABSENCE of progress: it restarts
+   * its slow-boot timer on every change of this token, so a slow-but-
+   * progressing boot never wrongly reads as stuck, while a truly stalled boot
+   * (token never changes) still escalates. `undefined` when there is no boot
+   * progress channel (older controllers / non-cloud), in which case the banner
+   * falls back to raw-elapsed escalation.
+   */
+  bootProgressSignal?: string;
 }
 
 /**
@@ -1068,6 +1080,24 @@ export function useShellController(): ShellController {
           ? "idle"
           : "summoned";
 
+  // Boot-progress token for the slow-boot escalation (#14040 sub-defect 3). It
+  // advances whenever the readiness poll observes fresh progress while still
+  // waking: the agent process advancing its lifecycle (`state`) / opening its
+  // `port`, OR a cloud resume `202` observation (each stamped with a fresh
+  // `observedAt`, so a single long-running resume that keeps the same
+  // status/jobId STILL advances the token on every successful probe). The
+  // banner restarts its slow-boot timer on each change, so a slow-but-
+  // progressing boot never trips "taking longer than usual"; a genuinely
+  // stalled boot (no fresh observation → token stable) still escalates.
+  // `undefined` while ready so the banner (unmounted anyway) never keys off a
+  // stale token.
+  const bootProgressSignal: string | undefined = ready
+    ? undefined
+    : `${agentStatus?.state ?? ""}|${agentStatus?.port ?? ""}|` +
+      `${agentStatus?.resumeProgress?.status ?? ""}:` +
+      `${agentStatus?.resumeProgress?.jobId ?? ""}:` +
+      `${agentStatus?.resumeProgress?.observedAt ?? ""}`;
+
   // History half of the "no LLM/model provider configured" signal. The server
   // stamps an assistant turn with `failureKind: "no_provider"` when it tried to
   // answer but no provider plugin is wired. Derived from the LATEST assistant
@@ -1388,6 +1418,7 @@ export function useShellController(): ShellController {
 
   return {
     phase,
+    bootProgressSignal,
     responding,
     turnStatus,
     messages,

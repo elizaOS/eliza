@@ -17,6 +17,14 @@ export interface TargetInfo {
 	serverId?: string;
 	threadId?: string;
 	/**
+	 * Platform id of the channel this target hangs under — a thread's parent
+	 * channel, or a channel's category. Connectors whose inbound gate drops
+	 * messages on the [room, parent] mute chain (a muted parent silences its
+	 * threads) set this so muted-state reporting inherits the parent's mute
+	 * and matches the actual drop behavior.
+	 */
+	parentChannelId?: string;
+	/**
 	 * Connector account identifier for multi-account sources.
 	 * Omitted/undefined targets use the legacy source-only route.
 	 */

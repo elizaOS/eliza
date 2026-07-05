@@ -21,8 +21,7 @@ const TOOL_NAMES = ["FILE", "SHELL", "WORKTREE"] as const;
  */
 export const availableToolsProvider: Provider = {
   name: "AVAILABLE_CODING_TOOLS",
-  description:
-    "Lists native Claude-Code-style coding tools registered by @elizaos/plugin-coding-tools.",
+  description: "Lists FILE, SHELL, and WORKTREE coding tools.",
   position: -10,
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
@@ -36,8 +35,8 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "These actions read/write files, search the workspace, run shell commands, and manage git worktrees. The task-list umbrella action is provided by @elizaos/plugin-todos when that plugin is enabled.",
-      "All file paths must be absolute. Anything is reachable except paths under the configured blocklist (defaults: ~/pvt, ~/Library, ~/.ssh, ~/.aws, ~/.gnupg, ~/.docker, ~/.kube, ~/.netrc, plus per-OS system paths).",
+      "FILE reads/writes/searches, SHELL runs commands, and WORKTREE manages git worktrees.",
+      "Use absolute workspace paths unless a tool says it defaults to session cwd. Configured private/system paths are blocked.",
       "",
       ...TOOL_NAMES.map((n) => `- ${n}`),
     ];

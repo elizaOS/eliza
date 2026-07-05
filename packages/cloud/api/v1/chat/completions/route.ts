@@ -776,12 +776,45 @@ function unwrapProviderError(error: unknown): unknown {
   return error;
 }
 
+function getGatewayCallerFaultStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const statusCode = getObjectValue(error, "statusCode");
+  const status = getObjectValue(error, "status");
+  const candidate =
+    typeof statusCode === "number"
+      ? statusCode
+      : typeof status === "number"
+        ? status
+        : null;
+  if (candidate === 400 || candidate === 404 || candidate === 429) {
+    return candidate;
+  }
+  if (
+    error.name === "GatewayInvalidRequestError" ||
+    error.name === "GatewayModelNotFoundError" ||
+    error.name === "GatewayRateLimitError"
+  ) {
+    return error.name === "GatewayInvalidRequestError"
+      ? 400
+      : error.name === "GatewayModelNotFoundError"
+        ? 404
+        : 429;
+  }
+  return null;
+}
+
 function getRecoverableProviderErrorStatus(error: unknown): number | null {
   const providerError = unwrapProviderError(error);
   const message =
     error instanceof Error
       ? error.message.toLowerCase()
       : String(error).toLowerCase();
+  const gatewayCallerFaultStatus = getGatewayCallerFaultStatus(providerError);
+  if (gatewayCallerFaultStatus !== null) {
+    return gatewayCallerFaultStatus;
+  }
 
   if (APICallError.isInstance(providerError)) {
     const providerCode =
@@ -1600,7 +1633,7 @@ function openAiErrorTypeForStatus(status: number): string {
   if (status === 402) return "insufficient_quota";
   if (status === 429) return "rate_limit_error";
   if (status === 503) return "service_unavailable";
-  if (status === 400) return "invalid_request_error";
+  if (status === 400 || status === 404) return "invalid_request_error";
   return "api_error";
 }
 
@@ -2559,6 +2592,7 @@ export const __nativeToolingTestHooks = {
  */
 export const __streamingCreditTestHooks = {
   handleStreamingRequest,
+  getRecoverableProviderErrorStatus,
 } as const;
 
 export const __billingBranchTestHooks = {

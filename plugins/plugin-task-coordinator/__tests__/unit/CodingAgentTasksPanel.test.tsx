@@ -90,27 +90,6 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-  // Empty-state recommendations stub — render the title + each recommendation
-  // as a button so tests can assert the chat-seeding empty state.
-  ChatEmptyStateWithRecommendations: ({
-    title,
-    recommendations = [],
-  }: {
-    title?: string;
-    recommendations?: Array<string | { label: string }>;
-  }) => (
-    <div data-testid="task-empty-state">
-      {title ? <p>{title}</p> : null}
-      {recommendations.map((rec) => {
-        const label = typeof rec === "string" ? rec : rec.label;
-        return (
-          <button type="button" key={label}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  ),
 }));
 
 import { CodingAgentTasksPanel } from "../../src/CodingAgentTasksPanel";
@@ -387,13 +366,56 @@ describe("CodingAgentTasksPanel — list", () => {
     });
   });
 
-  it("renders the empty state when the list is empty", async () => {
+  it("renders a designed empty state with no suggestion chips when the list is empty", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);
-    expect(await screen.findByTestId("task-empty-state")).toBeTruthy();
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(screen.getByText("No coding tasks yet.")).toBeTruthy();
+    // #13588: no chat-prefill recommendation chips in the empty state.
+    expect(within(empty).queryAllByRole("button")).toHaveLength(0);
     expect(
-      screen.getByText("Dispatch a coding agent to fix a failing test"),
-    ).toBeTruthy();
+      screen.queryByText("Dispatch a coding agent to fix a failing test"),
+    ).toBeNull();
+  });
+});
+
+// #13565: in `fullPage` mode the Tasks nav view hosts this panel UNDER the
+// shared, uniform `ViewHeader` (icon-only back + centered "Tasks"). The panel
+// therefore drops its own internal title row (no duplicate heading). #13588: the
+// empty state carries NO suggestion/create CTAs in either mode — the
+// proactive-greeting child offers to start a task in chat instead.
+describe("CodingAgentTasksPanel — fullPage (uniform header host)", () => {
+  it("renders NO internal <h1> title row (the shell ViewHeader owns the title)", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD, DONE_THREAD]);
+    const { container } = render(<CodingAgentTasksPanel fullPage />);
+    await screen.findByText("Fix the broken CI build");
+    expect(container.querySelector("h1")).toBeNull();
+    // The counts survive as a lightweight secondary meta strip instead.
+    expect(screen.getByTestId("task-count-strip")).toBeTruthy();
+  });
+
+  it("the default (embedded) mode STILL renders its own <h1> header", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([ACTIVE_THREAD, DONE_THREAD]);
+    const { container } = render(<CodingAgentTasksPanel />);
+    await screen.findByText("Fix the broken CI build");
+    const heading = container.querySelector("h1");
+    expect(heading?.textContent).toBe("Coding Tasks");
+  });
+
+  it("the fullPage empty state has NO suggestion/create CTA buttons", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([]);
+    render(<CodingAgentTasksPanel fullPage />);
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(within(empty).queryAllByRole("button")).toHaveLength(0);
+    // The quiet designed-empty title still names the state.
+    expect(screen.getByText("No coding tasks yet.")).toBeTruthy();
+  });
+
+  it("the default (embedded) empty state also carries NO recommendation chips (#13588)", async () => {
+    listCodingAgentTaskThreads.mockResolvedValue([]);
+    render(<CodingAgentTasksPanel />);
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(within(empty).queryAllByRole("button")).toHaveLength(0);
   });
 });
 

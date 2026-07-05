@@ -10,6 +10,7 @@ import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleto
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
+  canMutateLegacyStewardCookies,
   LEGACY_STEWARD_COOKIES,
   stewardCookieNames,
 } from "@/lib/auth/steward-cookies";
@@ -28,9 +29,10 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
+  const canMutateLegacy = canMutateLegacyStewardCookies(c.env.ENVIRONMENT);
   const stewardToken =
     getCookie(c, cookieNames.token) ??
-    getCookie(c, LEGACY_STEWARD_COOKIES.token);
+    (canMutateLegacy ? getCookie(c, LEGACY_STEWARD_COOKIES.token) : undefined);
 
   // Clear cookies FIRST. Clearing them is what actually logs the user out, and
   // it must happen even if the server-side teardown below fails (a transient DB
@@ -40,45 +42,54 @@ app.post("/", async (c) => {
   // hygiene (caches expire on their own TTL).
   const domain = cookieDomainForHost(c.req.header("host"));
   const stewardOpts = domain ? { path: "/", domain } : { path: "/" };
-  // Clear the env-scoped pair AND the legacy unsuffixed pair — logout must
-  // always win regardless of which naming era set the cookies. (#13728)
+  // Non-production clears only its suffixed pair. The unsuffixed legacy names
+  // are production's live cookies on the shared parent domain; deleting them
+  // from staging/dev signs the user out of production.
   deleteCookie(c, cookieNames.token, stewardOpts);
   deleteCookie(c, cookieNames.refreshToken, stewardOpts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.token, stewardOpts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, stewardOpts);
   deleteCookie(c, cookieNames.authed, stewardOpts);
-  deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, stewardOpts);
+  if (canMutateLegacy) {
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, stewardOpts);
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, stewardOpts);
+    deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, stewardOpts);
+  }
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   try {
+    // Non-production may still read legacy access cookies elsewhere during the
+    // migration window, but logout must not use that fallback to mutate
+    // production-side sessions unless this environment-owned token was present.
     if (stewardToken) {
       await invalidateSessionCaches(stewardToken);
       logger.debug("[Logout] Invalidated session caches for token");
     }
 
-    const user = await getCurrentUser(c);
-    if (user) {
-      await userSessionsService.endAllUserSessions(user.id);
-      await getAuditDispatcher()
-        .emit({
-          actor: { type: "user", id: user.id },
-          action: "auth.logout",
-          result: "success",
-          resource: null,
-          org_id: user.organization_id ?? undefined,
-          ip:
-            c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
-          user_agent: c.req.header("user-agent") ?? undefined,
-          request_id: c.get("requestId"),
-          metadata: { method: "steward_cookie" },
-        })
-        // error-policy:J7 audit write is diagnostic; logout already succeeded via
-        // the cookie clear above, so a dropped audit event is logged, not fatal.
-        .catch((err: unknown) => {
-          logger.warn("[Logout] audit emit failed", {
-            error: err instanceof Error ? err.message : String(err),
+    if (stewardToken) {
+      const user = await getCurrentUser(c);
+      if (user) {
+        await userSessionsService.endAllUserSessions(user.id);
+        await getAuditDispatcher()
+          .emit({
+            actor: { type: "user", id: user.id },
+            action: "auth.logout",
+            result: "success",
+            resource: null,
+            org_id: user.organization_id ?? undefined,
+            ip:
+              c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+              undefined,
+            user_agent: c.req.header("user-agent") ?? undefined,
+            request_id: c.get("requestId"),
+            metadata: { method: "steward_cookie" },
+          })
+          // error-policy:J7 audit write is diagnostic; logout already succeeded via
+          // the cookie clear above, so a dropped audit event is logged, not fatal.
+          .catch((err: unknown) => {
+            logger.warn("[Logout] audit emit failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
+      }
     }
   } catch (error) {
     // error-policy:J6 best-effort teardown — cookies are already cleared, so the

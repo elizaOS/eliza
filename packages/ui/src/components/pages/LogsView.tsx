@@ -18,7 +18,6 @@ import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
@@ -414,32 +413,24 @@ function LogsViewBody() {
             rowClassName={LOG_INITIAL_SKELETON_ROW_CLASS}
           />
         ) : filteredLogs.length === 0 ? (
-          <ChatEmptyStateWithRecommendations
-            icon={ScrollText}
+          <PagePanel.Empty
+            className="flex-1"
+            icon={<ScrollText className="h-6 w-6" aria-hidden />}
             title={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")
                 : t("logsview.NoLogEntriesYetDescription")
             }
-            recommendations={
-              hasActiveFilters
-                ? [
-                    "Show me only error-level logs",
-                    "What do the recent agent logs say?",
-                  ]
-                : [
-                    "Why isn't the agent emitting any logs?",
-                    "Summarize what the system has done so far",
-                    "Show me recent errors and warnings",
-                  ]
-            }
-            primaryAction={
-              hasActiveFilters
-                ? {
-                    label: t("logsview.ClearFilters"),
-                    onClick: handleClearFilters,
-                  }
-                : undefined
+            action={
+              hasActiveFilters ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearFilters}
+                >
+                  {t("logsview.ClearFilters")}
+                </Button>
+              ) : undefined
             }
           />
         ) : (

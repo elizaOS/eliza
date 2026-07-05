@@ -4,6 +4,7 @@
  */
 import type { FineTuningViewProps } from "../../config/boot-config";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
+import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /**
  * Renders the fine-tuning dashboard the host injects through
@@ -21,5 +22,9 @@ export function FineTuningView(props: FineTuningViewProps) {
       </div>
     );
   }
-  return <FineTuningViewComponent {...props} />;
+  return (
+    <ShellViewAgentSurface viewId="fine-tuning">
+      <FineTuningViewComponent {...props} />
+    </ShellViewAgentSurface>
+  );
 }

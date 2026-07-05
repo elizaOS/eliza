@@ -29,9 +29,17 @@ on:
     paths:
       - "packages/ui/src/**"
 
+# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
+# github.run_id on push, so every develop push got a unique group and
+# nothing ever superseded. A 37-merge wave queued thousands of push runs
+# and starved the self-hosted fleet. Fall back to github.ref (all develop
+# pushes share a group) and cancel superseded runs on push too. PR behavior
+# is unchanged (pull_request.number still wins the key); merge_group and
+# schedule events are not in the cancel set, so the merge queue and nightly
+# runs always complete.
 concurrency:
-  group: ui-fixture-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ui-fixture-e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -65,6 +73,12 @@ jobs:
 
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
+
+      # The permission-priming fixture pulls @elizaos/shared, whose i18n module
+      # loads generated keyword data that is gitignored. Generate it so the
+      # esbuild bundle resolves (mirrors ui-e2e-gate.yml / chat-shell-gestures.yml).
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       # Agent capability bridge: synthetic fixture + REAL plugin-task-coordinator
       # components driven purely through window.__agentSurface.
@@ -103,6 +117,24 @@ jobs:
       - name: FTU home widget e2e
         run: bun run --cwd packages/ui test:ftu-home-e2e
 
+      # Agent-activity surfaces (#13535): the REAL TurnStatus working indicator +
+      # ToolCallEventLog inline row across thinking / tool-running / settled, after
+      # the 900ms grace, desktop + mobile.
+      - name: Activity feedback e2e
+        run: bun run --cwd packages/ui test:activity-feedback-e2e
+
+      # Inline task-activity pipeline (#13536): the grouped task → sub-agent →
+      # step tree (nested sub-agents, in-place tool steps, live plan checklist,
+      # workflow pipeline) renders on real store shapes with a clean console.
+      - name: Task pipeline widget e2e
+        run: bun run --cwd packages/ui test:task-pipeline-e2e
+
+      # Onboarding permission-priming modal: the soft-ask gesture flow end to end
+      # (Enable → OS request → advance, scripted denial → recovery callout →
+      # Continue, final grant → primed), desktop + mobile.
+      - name: Permission priming e2e
+        run: bun run --cwd packages/ui test:permission-priming-e2e
+
       # Full-chain fused wake (#10351): self-skips with ::notice:: unless
       # libwakeword + hey-eliza models are staged on the runner.
       - name: Fused-wake integration e2e (self-skipping)
@@ -123,5 +155,7 @@ jobs:
             packages/ui/src/components/views/__e2e__/output-view-lifecycle
             packages/ui/src/components/chat/widgets/__e2e__/output
             packages/ui/src/components/chat/widgets/__e2e__/output-ftu
+            packages/ui/src/components/chat/__e2e__/output-activity-feedback
+            packages/ui/src/components/permissions/__e2e__/output-permission-priming
           retention-days: 14
           if-no-files-found: ignore

@@ -17,6 +17,7 @@ import {
   Layers,
   Lock,
   Shield,
+  Upload,
   User,
 } from "lucide-react";
 import {
@@ -47,7 +48,6 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
@@ -1254,36 +1254,12 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <ChatEmptyStateWithRecommendations
-              icon={FileText}
+            <PagePanel.Empty
+              className="flex-1"
+              icon={<FileText className="h-6 w-6" aria-hidden />}
               title={t("documentsview.NoDocumentsYet", {
                 defaultValue: "No documents yet",
               })}
-              recommendations={[
-                {
-                  label: t("documentsview.RecImportUrl", {
-                    defaultValue: "Import a document from a URL",
-                  }),
-                  prompt: t("documentsview.RecImportUrlPrompt", {
-                    defaultValue:
-                      "Import a document into my knowledge base from this URL: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecCreateNote", {
-                    defaultValue: "Create a text note",
-                  }),
-                  prompt: t("documentsview.RecCreateNotePrompt", {
-                    defaultValue:
-                      "Create a text knowledge document for me to remember: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecWhatToAdd", {
-                    defaultValue: "What should I add to Knowledge?",
-                  }),
-                },
-              ]}
             />
           )}
 
@@ -1348,20 +1324,19 @@ export function DocumentsView({
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-end">
         {fileInputId ? (
+          // The only upload affordance when the selector rail is unmounted, so
+          // it stays — but as a quiet neutral control (#13588), not an accent
+          // "Add Knowledge" marketing chip.
           <label
             htmlFor={fileInputId}
-            // Borderless accent action (#10710); text-accent (not accent-fg,
-            // which is near-white and illegible on a 10% wash).
-            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm bg-accent/10 px-3 text-xs font-semibold text-accent transition hover:bg-accent/20 ${
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm border border-border px-3 text-xs font-medium text-muted transition hover:text-txt ${
               uploading ? "pointer-events-none opacity-60" : ""
             }`}
           >
-            <FileText className="h-3.5 w-3.5" aria-hidden />
+            <Upload className="h-3.5 w-3.5" aria-hidden />
             {uploading
               ? t("documentsview.Uploading", { defaultValue: "Uploading" })
-              : t("documentsview.AddKnowledge", {
-                  defaultValue: "Add Knowledge",
-                })}
+              : t("documentsview.Upload", { defaultValue: "Upload" })}
           </label>
         ) : null}
       </div>
@@ -1389,7 +1364,7 @@ export function DocumentsView({
   ) : null;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the "Add Knowledge" file input rendered below.
+    // biome-ignore lint/a11y/noStaticElementInteractions: file-drop target only; the keyboard-accessible upload path is the Upload file input rendered below.
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="documents-view"

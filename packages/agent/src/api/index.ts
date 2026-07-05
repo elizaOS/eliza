@@ -60,6 +60,7 @@ export * from "./parse-action-block.ts";
 export * from "./permission-request-prompt.ts";
 export * from "./permissions-routes.ts";
 export * from "./plugin-validation.ts";
+export * from "./project-routes.ts";
 export * from "./provider-switch-config.ts";
 export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";

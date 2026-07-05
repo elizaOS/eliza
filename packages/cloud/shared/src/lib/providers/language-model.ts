@@ -38,27 +38,46 @@ export class ProviderConfigurationError extends Error {
 }
 
 /**
- * True when an error means "this deployment has no working provider for the
- * requested model": our own resolution throws, plus the Vercel AI Gateway
- * SDK's request-time auth failure — its message embeds env-var setup guidance
- * ("... set the AI_GATEWAY_API_KEY environment variable ...") that must never
- * reach a client. Unwraps the AI SDK's RetryError to the last real error.
+ * The `@ai-sdk/gateway` error `name`s that mean "the gateway itself could not
+ * serve this model on this deployment" — a stale/invalid key, an unreachable or
+ * garbled gateway, an upstream 5xx, or a timeout. These are deployment-side
+ * infrastructure failures, not the caller's fault, so an API boundary must
+ * translate them to a clean model-not-available client error instead of leaking
+ * the raw SDK message (the auth variant embeds "... set the AI_GATEWAY_API_KEY
+ * environment variable ..." — #13406/#13960).
  *
- * The gateway auth failure arrives in two shapes: streamText surfaces the raw
- * GatewayAuthenticationError (marker symbol intact), while generateText
- * re-wraps it (ai/src/prompt/wrap-gateway-error.ts) into a marker-less error
- * whose `name` is "GatewayAuthenticationError" (dev) or "GatewayError" with a
- * "Configure AI_GATEWAY_API_KEY" message (NODE_ENV=production) — so the
- * wrapped forms are matched by name.
+ * Deliberately EXCLUDED: `GatewayInvalidRequestError` (400 — caller's bad
+ * request), `GatewayModelNotFoundError` (404), and `GatewayRateLimitError`
+ * (429). Those carry the caller-facing truth and are mapped to their real
+ * status by getRecoverableProviderErrorStatus, so folding them in here would
+ * mislabel a rate limit or a bad request as "model not available".
+ */
+const GATEWAY_INFRA_ERROR_NAMES = new Set([
+  "GatewayError",
+  "GatewayAuthenticationError",
+  "GatewayResponseError",
+  "GatewayInternalServerError",
+  "GatewayTimeoutError",
+]);
+
+/**
+ * True when an error means "this deployment has no working provider for the
+ * requested model": our own resolution throws, plus the Vercel AI Gateway SDK's
+ * infrastructure failures (stale key, unreachable/garbled gateway, upstream
+ * 5xx, timeout). Unwraps the AI SDK's RetryError to the last real error.
+ *
+ * Match is by `name`, not by the SDK's `isInstance` marker symbol: the marker
+ * is a module-local Symbol, so a duplicate `@ai-sdk/gateway` copy in the graph
+ * (or `generateText`'s re-wrap into a marker-less Error via
+ * ai/src/prompt/wrap-gateway-error.ts) defeats `isInstance` while the `name`
+ * survives. Name-matching is the only classification that holds across module
+ * boundaries and both the raw and wrapped error shapes.
  */
 export function isProviderConfigurationError(error: unknown): boolean {
   const unwrapped = RetryError.isInstance(error) ? error.lastError : error;
   if (unwrapped instanceof ProviderConfigurationError) return true;
   if (GatewayAuthenticationError.isInstance(unwrapped)) return true;
-  return (
-    unwrapped instanceof Error &&
-    (unwrapped.name === "GatewayAuthenticationError" || unwrapped.name === "GatewayError")
-  );
+  return unwrapped instanceof Error && GATEWAY_INFRA_ERROR_NAMES.has(unwrapped.name);
 }
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;

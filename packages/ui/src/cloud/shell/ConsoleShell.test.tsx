@@ -6,7 +6,7 @@
  * calls `useSetPageHeader` gets its title surfaced in the top bar.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,11 @@ const sessionState = {
     email: string;
   } | null,
 };
+let storedToken = false;
+vi.mock("../lib/steward-session", () => ({
+  hasHydratableStewardToken: () => storedToken,
+}));
+
 vi.mock("../lib/use-session-auth", () => ({
   useSessionAuth: () => sessionState,
 }));
@@ -80,6 +85,7 @@ describe("ConsoleShell", () => {
     cleanup();
     sessionState.ready = true;
     sessionState.authenticated = true;
+    storedToken = false;
   });
 
   it("renders the sidebar directory, the page body, and the captured page title", () => {
@@ -166,6 +172,57 @@ describe("ConsoleShell", () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId("login-page")).toBeTruthy();
+    expect(screen.queryByTestId("page-body")).toBeNull();
+  });
+
+  it("holds a signing-in fallback (no login bounce) while a stored token awaits hydration", () => {
+    sessionState.authenticated = false;
+    storedToken = true;
+    render(
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route
+            path="*"
+            element={
+              <ConsoleShell>
+                <TitledPage />
+              </ConsoleShell>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("login-page")).toBeNull();
+    expect(screen.queryByTestId("page-body")).toBeNull();
+    expect(screen.getByText("Signing you in…")).toBeTruthy();
+  });
+
+  it("redirects once the hydratable token is cleared during the signing-in hold", async () => {
+    sessionState.authenticated = false;
+    storedToken = true;
+    render(
+      <MemoryRouter initialEntries={["/dashboard/agents"]}>
+        <Routes>
+          <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route
+            path="*"
+            element={
+              <ConsoleShell>
+                <TitledPage />
+              </ConsoleShell>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Signing you in…")).toBeTruthy();
+
+    storedToken = false;
+    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+
+    await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
+    expect(screen.queryByText("Signing you in…")).toBeNull();
     expect(screen.queryByTestId("page-body")).toBeNull();
   });
 });

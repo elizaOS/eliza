@@ -1,4 +1,9 @@
-import type { AppShellBackgroundPolicy } from "@elizaos/core";
+import {
+  type AppShellBackgroundPolicy,
+  IMMERSIVE_WALLPAPER_SURFACE,
+  resolveSurfaceBackgroundPolicy,
+  type SurfaceManifest,
+} from "@elizaos/core";
 
 /**
  * Declarative registry for the app's builtin (host-owned) tab surfaces.
@@ -29,22 +34,25 @@ import type { AppShellBackgroundPolicy } from "@elizaos/core";
  */
 
 /**
- * How a builtin tab declares its screen background policy.
+ * How a builtin tab declares its surface manifest across its routes.
  *
- *  - `"shared"` / `"opaque"` — an unconditional policy for every route under
- *    the tab.
- *  - `{ shared: (path) => boolean }` — the tab is `"shared"` only when the
- *    live navigation path satisfies the predicate (e.g. the launcher root of a
- *    tab that owns sub-routes), otherwise it falls through to the caller's
- *    default resolution. This mirrors the two path-conditional branches the
- *    legacy `builtinRouteBackgroundPolicy` encoded for `views` and `apps`.
+ *  - A single {@link SurfaceManifest} — one manifest for every route under the
+ *    tab (e.g. chat/background always paint the shared wallpaper).
+ *  - `{ shared: (path) => boolean }` — the tab paints the shared wallpaper only
+ *    when the live navigation path satisfies the predicate (e.g. the launcher
+ *    root of a tab that owns opaque sub-routes), otherwise it falls through to
+ *    the caller's downstream resolution. Matches the two path-conditional
+ *    surfaces (`views`, `apps`) whose launcher root is immersive but whose
+ *    sub-routes are opaque.
  *
- * A tab with no `backgroundPolicy` field declares no builtin-level policy and
- * falls through to the caller's downstream resolution (registered views etc.),
- * exactly as the legacy `return null` did.
+ * Either form is resolved through the grant-gated {@link resolveSurfaceManifest}
+ * so a builtin tab paints the wallpaper only when its manifest explicitly grants
+ * `wallpaper` — the same accidental-opt-in guard the per-view manifest enforces
+ * (#13452). A tab with no `surface` field declares no builtin-level policy and
+ * falls through to the caller's downstream resolution (registered views etc.).
  */
-export type BuiltinTabBackgroundPolicyDecl =
-  | AppShellBackgroundPolicy
+export type BuiltinTabSurfaceDecl =
+  | SurfaceManifest
   | { readonly shared: (trimmedNavigationPath: string) => boolean };
 
 export interface BuiltinTabMetadata {
@@ -57,32 +65,36 @@ export interface BuiltinTabMetadata {
    */
   readonly aliases?: readonly string[];
   /**
-   * Builtin-level background policy declaration. Omitted = no builtin policy
-   * (fall through to downstream resolution).
+   * Builtin-level surface manifest (or path predicate for tabs whose launcher
+   * root differs from their sub-routes). Omitted = no builtin policy (fall
+   * through to downstream resolution).
    */
-  readonly backgroundPolicy?: BuiltinTabBackgroundPolicyDecl;
+  readonly surface?: BuiltinTabSurfaceDecl;
 }
 
 /**
  * The canonical builtin-tab table. IDs here are the keys the `App.tsx` render
- * map uses; aliases and background policy are consumed by the resolvers below.
+ * map uses; aliases and surface manifests are consumed by the resolvers below.
  *
- * Only tabs that need an alias or a non-default (`shared` / path-conditional)
- * background policy carry those fields; the rest declare id-only, which is the
- * common case and keeps drift surface minimal.
+ * Only tabs that need an alias or a non-default surface manifest carry those
+ * fields; the rest declare id-only, which is the common case and keeps drift
+ * surface minimal. The wallpaper-painting tabs reuse
+ * {@link IMMERSIVE_WALLPAPER_SURFACE}, the one manifest that pairs
+ * `background: "shared"` with the `wallpaper` grant — so the wallpaper opt-in
+ * lives in exactly one place, not re-spelled per tab.
  */
 export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
-  // ── Background policy: unconditionally "shared" (wallpaper shows through) ──
-  { id: "chat", backgroundPolicy: "shared" },
-  { id: "background", backgroundPolicy: "shared" },
-  // ── Background policy: "shared" only at the tab's launcher root ──
+  // ── Immersive wallpaper surfaces (grant-backed shared background) ──
+  { id: "chat", surface: IMMERSIVE_WALLPAPER_SURFACE },
+  { id: "background", surface: IMMERSIVE_WALLPAPER_SURFACE },
+  // ── Wallpaper only at the tab's launcher root; opaque on sub-routes ──
   {
     id: "views",
-    backgroundPolicy: { shared: (path) => path === "/views" },
+    surface: { shared: (path) => path === "/views" },
   },
   {
     id: "apps",
-    backgroundPolicy: { shared: (path) => path === "/apps" },
+    surface: { shared: (path) => path === "/apps" },
   },
   // ── Aliases (canonical id + legacy id that routes onto it) ──
   { id: "automations", aliases: ["triggers"] },
@@ -122,15 +134,20 @@ export function resolveBuiltinTabId(tab: string): string {
 
 /**
  * The builtin-level background policy for a tab/route, or `null` to fall
- * through to downstream resolution. Direct data-driven replacement for the
- * legacy `builtinRouteBackgroundPolicy` if-chain — same inputs, same outputs.
+ * through to downstream resolution. Data-driven over the surface-manifest table:
+ * a full manifest resolves through the grant-gated {@link resolveSurfaceManifest}
+ * (so `shared` only paints the wallpaper with the `wallpaper` grant), and a path
+ * predicate resolves to `shared` at the launcher root and `null` (fall-through)
+ * elsewhere.
  */
 export function resolveBuiltinBackgroundPolicy(
   tab: string,
   trimmedNavigationPath: string,
 ): AppShellBackgroundPolicy | null {
-  const decl = BUILTIN_TAB_BY_ID.get(tab)?.backgroundPolicy;
+  const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
   if (decl === undefined) return null;
-  if (decl === "shared" || decl === "opaque") return decl;
-  return decl.shared(trimmedNavigationPath) ? "shared" : null;
+  if ("shared" in decl) {
+    return decl.shared(trimmedNavigationPath) ? "shared" : null;
+  }
+  return resolveSurfaceBackgroundPolicy({ surface: decl });
 }

@@ -941,6 +941,20 @@ async function dispatchOrchestratorRoutes(
       return true;
     }
 
+    // GET /tasks/:taskId/trace-usage — per-trace roll-up over the ingested
+    // sub-agent trajectory files (#13775 item 5). Distinct from /usage (ACP
+    // session frames); this attributes the sub-agents' inner model-call spend
+    // to the shared traceId so a task shows its whole logical-run cost.
+    if (method === "GET" && sub === "trace-usage" && segments.length === 2) {
+      const traceUsage = await service.getTraceUsage(taskId);
+      if (!traceUsage) {
+        sendError(res, "Task not found", 404);
+        return true;
+      }
+      sendJson(res, traceUsage);
+      return true;
+    }
+
     // /tasks/:taskId/agents
     if (sub === "agents") {
       // POST /tasks/:taskId/agents  — add a sub-agent

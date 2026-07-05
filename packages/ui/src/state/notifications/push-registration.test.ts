@@ -22,9 +22,9 @@ import {
 } from "./push-registration";
 
 type ListenerMap = {
-  registration?: (token: PushRegistrationToken) => void;
-  registrationError?: (error: PushRegistrationError) => void;
-  pushNotificationActionPerformed?: (action: PushActionPerformed) => void;
+  registration: Array<(token: PushRegistrationToken) => void>;
+  registrationError: Array<(error: PushRegistrationError) => void>;
+  pushNotificationActionPerformed: Array<(action: PushActionPerformed) => void>;
 };
 
 interface FakePlugin extends PushNotificationsPluginLike {
@@ -35,7 +35,11 @@ interface FakePlugin extends PushNotificationsPluginLike {
 function makePlugin(
   permission: "granted" | "denied" | "prompt" = "granted",
 ): FakePlugin {
-  const listeners: ListenerMap = {};
+  const listeners: ListenerMap = {
+    registration: [],
+    registrationError: [],
+    pushNotificationActionPerformed: [],
+  };
   const handle: PluginListenerHandle = { remove: async () => {} };
   return {
     __listeners: listeners,
@@ -46,7 +50,7 @@ function makePlugin(
     },
     unregister: async () => {},
     addListener: (async (event: keyof ListenerMap, fn: never) => {
-      listeners[event] = fn as never;
+      listeners[event].push(fn as never);
       return handle;
     }) as PushNotificationsPluginLike["addListener"],
     removeAllListeners: async () => {},
@@ -68,6 +72,21 @@ function makeDeps(
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+function emitRegistration(plugin: FakePlugin, token: string): void {
+  for (const listener of plugin.__listeners.registration) {
+    listener({ value: token });
+  }
+}
+
+function emitPushTap(plugin: FakePlugin, data: Record<string, unknown>): void {
+  for (const listener of plugin.__listeners.pushNotificationActionPerformed) {
+    listener({
+      actionId: "tap",
+      notification: { data },
+    });
+  }
+}
+
 describe("initPushRegistration", () => {
   beforeEach(() => __resetPushRegistrationForTests());
   afterEach(() => __resetPushRegistrationForTests());
@@ -80,7 +99,7 @@ describe("initPushRegistration", () => {
     expect(plugin.__registerCalls).toBe(1);
 
     // OS mints the token and fires `registration` asynchronously.
-    plugin.__listeners.registration?.({ value: "apns-device-token" });
+    emitRegistration(plugin, "apns-device-token");
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledWith("ios", "apns-device-token");
@@ -91,7 +110,7 @@ describe("initPushRegistration", () => {
     const deps = makeDeps(plugin, "android");
 
     await initPushRegistration(deps);
-    plugin.__listeners.registration?.({ value: "fcm-token" });
+    emitRegistration(plugin, "fcm-token");
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledWith("android", "fcm-token");
@@ -102,9 +121,9 @@ describe("initPushRegistration", () => {
     const deps = makeDeps(plugin, "ios");
 
     await initPushRegistration(deps);
-    plugin.__listeners.registration?.({ value: "same-token" });
+    emitRegistration(plugin, "same-token");
     await flush();
-    plugin.__listeners.registration?.({ value: "same-token" });
+    emitRegistration(plugin, "same-token");
     await flush();
 
     expect(deps.registerToken).toHaveBeenCalledTimes(1);
@@ -118,6 +137,47 @@ describe("initPushRegistration", () => {
 
     expect(plugin.__registerCalls).toBe(0);
     expect(deps.registerToken).not.toHaveBeenCalled();
+  });
+
+  it("retries after permission is granted later", async () => {
+    let permission: "granted" | "denied" = "denied";
+    const plugin = makePlugin(permission);
+    plugin.checkPermissions = async () => ({ receive: permission });
+    const deps = makeDeps(plugin, "ios");
+
+    await initPushRegistration(deps);
+    permission = "granted";
+    await initPushRegistration(deps);
+
+    expect(plugin.__registerCalls).toBe(1);
+  });
+
+  it("retries when native register() fails before the OS accepts the request", async () => {
+    const plugin = makePlugin("granted");
+    plugin.register = async function (this: FakePlugin) {
+      this.__registerCalls++;
+      if (this.__registerCalls === 1) {
+        throw new Error("native bridge unavailable");
+      }
+    };
+    const deps = makeDeps(plugin, "ios");
+
+    await expect(initPushRegistration(deps)).rejects.toThrow(
+      "native bridge unavailable",
+    );
+    await initPushRegistration(deps);
+
+    expect(plugin.__registerCalls).toBe(2);
+    expect(plugin.__listeners.registration).toHaveLength(1);
+    expect(plugin.__listeners.registrationError).toHaveLength(1);
+    expect(plugin.__listeners.pushNotificationActionPerformed).toHaveLength(1);
+
+    emitRegistration(plugin, "retry-token");
+    await flush();
+    expect(deps.registerToken).toHaveBeenCalledTimes(1);
+
+    emitPushTap(plugin, { deepLink: "/tasks", notificationId: "abc" });
+    expect(deps.navigate).toHaveBeenCalledTimes(1);
   });
 
   it("no-ops on non-native platforms (web/desktop)", async () => {
@@ -145,10 +205,7 @@ describe("initPushRegistration", () => {
     const deps = makeDeps(plugin, "ios");
 
     await initPushRegistration(deps);
-    plugin.__listeners.pushNotificationActionPerformed?.({
-      actionId: "tap",
-      notification: { data: { deepLink: "/tasks", notificationId: "abc" } },
-    });
+    emitPushTap(plugin, { deepLink: "/tasks", notificationId: "abc" });
 
     expect(deps.navigate).toHaveBeenCalledWith("/tasks");
   });
@@ -158,10 +215,7 @@ describe("initPushRegistration", () => {
     const deps = makeDeps(plugin, "ios");
 
     await initPushRegistration(deps);
-    plugin.__listeners.pushNotificationActionPerformed?.({
-      actionId: "tap",
-      notification: { data: { notificationId: "abc" } },
-    });
+    emitPushTap(plugin, { notificationId: "abc" });
 
     expect(deps.navigate).not.toHaveBeenCalled();
   });
@@ -171,7 +225,7 @@ describe("initPushRegistration", () => {
     const deps = makeDeps(plugin, "ios");
 
     await initPushRegistration(deps);
-    plugin.__listeners.registration?.({ value: "tok-to-drop" });
+    emitRegistration(plugin, "tok-to-drop");
     await flush();
 
     await unregisterPushToken(deps);

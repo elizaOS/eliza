@@ -26,6 +26,7 @@ const MAX_BACKUP_BODY_BYTES = 128 * 1024 * 1024; // 128 MB
 import path from "node:path";
 import {
   type AgentRuntime,
+  EventType,
   type IAgentRuntime,
   type IScreenCaptureService,
   isStreamingDestinationConfigured,
@@ -445,6 +446,7 @@ import {
   handleModelsRoutes,
   handlePermissionRoutes,
   handlePermissionsExtraRoutes,
+  handleProjectRoutes,
   handleProviderSwitchRoutes,
   handleRegistryRoutes,
   handleRelationshipsRoutes,
@@ -2730,6 +2732,24 @@ async function handleRequest(
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Project registry routes (#13776 item 5): list + switch the active project
+  // that backs the UI project switcher.
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleProjectRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
   // Prefer the local wallet implementation during desktop startup. The
   // wallet route owner must not pull browser/UI-only dependencies into the
@@ -3991,6 +4011,7 @@ export async function startApiServer(opts?: {
         onRestart,
         onRuntimeSwapped: () => {
           bindRuntimeStreams(state.runtime);
+          wireModelRegistrationBroadcast(state.runtime);
           void wireCoordinatorBridgesWhenReady(state, {
             wireChatBridge: wireCodingAgentChatBridge,
             wireWsBridge: wireCodingAgentWsBridge,
@@ -5060,6 +5081,28 @@ export async function startApiServer(opts?: {
   // Make broadcastStatus accessible to route handlers via state
   state.broadcastStatus = broadcastStatus;
 
+  // Flip the WS status lane the moment a model handler registers instead of
+  // waiting for the next 5s statusInterval tick: `canRespond` turns true when a
+  // late-registering provider (deferred wave, first-run configure, runtime
+  // plugin install) adds its TEXT_GENERATION handler, and the launcher clears
+  // its "Waking…" banner on that signal. A provider registers one handler per
+  // model type, so coalesce the burst into a single broadcast per tick.
+  const modelBroadcastWiredRuntimes = new WeakSet<AgentRuntime>();
+  let modelBroadcastScheduled = false;
+  const wireModelRegistrationBroadcast = (rt: AgentRuntime | null): void => {
+    if (!rt || modelBroadcastWiredRuntimes.has(rt)) return;
+    modelBroadcastWiredRuntimes.add(rt);
+    rt.registerEvent(EventType.MODEL_REGISTERED, async () => {
+      if (modelBroadcastScheduled) return;
+      modelBroadcastScheduled = true;
+      setTimeout(() => {
+        modelBroadcastScheduled = false;
+        broadcastStatus();
+      }, 0);
+    });
+  };
+  wireModelRegistrationBroadcast(state.runtime);
+
   // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
   state.broadcastWs = (data: object) => {
     const message = JSON.stringify(data);
@@ -5283,6 +5326,7 @@ export async function startApiServer(opts?: {
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
+    wireModelRegistrationBroadcast(rt);
     // Wake any chat turns held through the warming window — first-turn
     // capability is now online, so they stream their response instead of 503.
     runtimeReadyGate.markReady(rt);

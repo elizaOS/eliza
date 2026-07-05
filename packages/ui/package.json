@@ -379,6 +379,7 @@
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/import-conversations": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/tui": "workspace:*",

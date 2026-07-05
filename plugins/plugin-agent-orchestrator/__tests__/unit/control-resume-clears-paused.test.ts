@@ -155,6 +155,8 @@ async function harness(): Promise<{
       type === OrchestratorTaskService.serviceType ? taskService : acp,
     ),
     hasService: vi.fn(() => true),
+    getRoom: vi.fn(async () => null),
+    reportError: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as never as IAgentRuntime;
   const store = new OrchestratorTaskStore({ backend: "memory" });

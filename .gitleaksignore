@@ -31,3 +31,8 @@ f9184d51cc60210ad6be388f3b1f1eae529a9904:packages/research/chip/scripts/test_rel
 # infra columns (deployment_log_key is a storage path, not a credential).
 # The test exists precisely to prove this field never reaches API responses.
 69e4235edffd5a526c7ff4b920d1c6b3d9a429f9:packages/cloud/api/v1/containers/route.test.ts:generic-api-key:148
+
+# Env-var NAMES (not values) in a test's env-cleanup list: the string literals
+# "ELIZA_APP_DISCORD_BOT_TOKEN" and "ELIZA_APP_DISCORD_APPLICATION_ID" match the
+# discord-client-secret regex by identifier shape alone. No secret material here.
+8177acbf458c2c7ae164584e79408aac048bb17b:packages/cloud/shared/src/lib/services/eliza-app/config.error-policy.test.ts:discord-client-secret:13

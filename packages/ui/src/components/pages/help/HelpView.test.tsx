@@ -30,10 +30,6 @@ vi.mock("../../views/ShellViewAgentSurface", () => ({
     children,
 }));
 
-vi.mock("../../composites/chat", () => ({
-  ChatEmptyStateWithRecommendations: () => null,
-}));
-
 const startTutorial = vi.hoisted(() => vi.fn());
 vi.mock("../tutorial/tutorial-controller", () => ({
   startTutorial,

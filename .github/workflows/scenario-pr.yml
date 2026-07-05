@@ -8,9 +8,17 @@ name: Scenario PR E2E
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+  # Heavy family moved off per-PR push (#14051 Tier A): PR runs are opt-in via
+  # the `ci:full` label (job-level gate on `changes` below). Unlabeled PRs
+  # skip every job instantly and consume zero runners.
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
+  push:
+    branches: [develop]
+  schedule:
+    # Nightly heavy lane (#14051): 07:00 UTC.
+    - cron: "0 7 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -41,6 +49,10 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
+    # #14051: PRs only run this heavy family when explicitly opted in with the
+    # `ci:full` label. Every downstream job needs this one, so an unlabeled PR
+    # skips the whole workflow without touching a runner.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
     # Path classifier is a git-diff + node script: no self-hosted resources.
     # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
     # queued indefinitely and pile up runs (#13617/#8501).
@@ -843,6 +855,12 @@ jobs:
       # invokes them explicitly (the dir is not a workspace member).
       - name: Test-runner pool + shard unit tests
         run: bun test packages/scripts/__tests__/test-task-pool.test.ts
+
+      # #13620/#12342: spawned real-runner guards for vacuous-green failures.
+      # packages/scripts/__tests__ is outside workspace test discovery, so keep
+      # this explicit or zero-task / no-tests-skip regressions can ship green.
+      - name: Test-runner vacuous-green guard
+        run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
 
       # Contract-tests the cloud agent image workflow's Turbo build step.
       # packages/scripts/__tests__ is outside workspace test discovery, so keep

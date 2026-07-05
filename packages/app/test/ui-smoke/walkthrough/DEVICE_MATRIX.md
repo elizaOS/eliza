@@ -51,9 +51,11 @@ bun run --cwd packages/app test:e2e:walkthrough:ios
   DerivedData. The runner refuses to capture a stale install (per the
   rebuild-before-capture rule).
 - **Produces:** `.github/issue-evidence/10198-walkthrough-ios-sim-*.png/.mov`
-  (single-shot `simctl io` capture of the running app). Drive the in-app journey
-  with `ios-onboarding-smoke.mjs` (onboarding) + `mobile-local-chat-smoke.mjs`
-  (chat round-trip) against a host agent.
+  (single-shot `simctl io` capture of the running app) plus
+  `reports/walkthrough/<runId>/device-matrix.json` with per-phase status for
+  `ios-onboarding-smoke.mjs` (onboarding), `mobile-local-chat-smoke.mjs` (chat
+  round-trip with `--ios-select-local --ios-full-bun-smoke`), and
+  `capture-ios-sim.mjs`.
 - **Skip reason (recorded automatically):** "not macOS", "no booted iOS
   simulator", or "no iOS simulator app build found in DerivedData".
 

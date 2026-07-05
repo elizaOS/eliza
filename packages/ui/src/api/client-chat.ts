@@ -99,6 +99,7 @@ type DocumentUploadRequest = {
   entityId?: string;
   scope?: DocumentScope;
   scopedToEntityId?: string;
+  addedFrom?: string;
 };
 
 type DocumentUrlUploadOptions = {

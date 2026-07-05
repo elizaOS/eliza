@@ -82,6 +82,10 @@ export const healthPlugin: Plugin = {
       path: "/health",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "HealthView",
       tags: ["health", "sleep", "screen-time", "activity"],
       relatedActions: ["OWNER_HEALTH", "OWNER_SCREENTIME"],

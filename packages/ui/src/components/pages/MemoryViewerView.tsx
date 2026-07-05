@@ -8,13 +8,29 @@
  */
 
 import {
+  BROWSER_CONVERSATION_IMPORT_SOURCES,
+  type BrowserConversationImportPreview,
+  type BrowserConversationImportSource,
+  enumerateBatchDocumentIds,
+  type ImportManifest,
+  previewConversationImportText,
+  runConversationImportText,
+  uninstallBatch,
+} from "@elizaos/import-conversations/browser";
+import {
+  AlertTriangle,
   Brain,
+  CheckCircle2,
   FileText,
   MessageSquareText,
   Search,
+  ShieldCheck,
   Sparkles,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import {
+  type ChangeEvent,
   memo,
   type ReactNode,
   useCallback,
@@ -59,6 +75,7 @@ import { Button } from "../ui/button";
 import { SegmentedControl } from "../ui/segmented-control";
 import { ListSkeleton } from "../ui/skeleton-layouts";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
+import { createConversationImportDocumentSink } from "./conversation-import-documents";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -90,7 +107,7 @@ function memoryTypeKey(type: string): MemoryTypeKey {
     : "unknown";
 }
 
-type ViewMode = "feed" | "browse";
+type ViewMode = "feed" | "browse" | "import";
 
 const MEMORY_FEED_EMPTY_FEATURES = [
   {
@@ -653,6 +670,442 @@ const PersonItem = memo(function PersonItem({
   );
 });
 
+// ── Conversation Import ──────────────────────────────────────────────────
+
+type ImportJobStatus = "running" | "complete" | "partial" | "deleted";
+
+interface ImportJobRecord {
+  id: string;
+  source: BrowserConversationImportSource;
+  total: number;
+  imported: number;
+  deleted: number;
+  documentIds: string[];
+  manifest: ImportManifest;
+  failed: Array<{ error: string }>;
+  readback: "verified" | "unverified";
+  status: ImportJobStatus;
+}
+
+function createImportBatchId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `batch-${Date.now().toString(36)}`;
+}
+
+export function ConversationImportPanel({
+  onImported,
+}: {
+  onImported: () => void;
+}) {
+  const { t } = useTranslation();
+  const [source, setSource] =
+    useState<BrowserConversationImportSource>("chatgpt");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [rawText, setRawText] = useState("");
+  const [preview, setPreview] =
+    useState<BrowserConversationImportPreview | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [retainRawSession, setRetainRawSession] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [jobs, setJobs] = useState<ImportJobRecord[]>([]);
+
+  const parseRawText = useCallback(
+    async (
+      text: string,
+      selectedSource = source,
+      selectedFileName = fileName ?? undefined,
+    ) => {
+      try {
+        const nextPreview = await previewConversationImportText(
+          selectedSource,
+          text,
+          { filename: selectedFileName },
+        );
+        setPreview(nextPreview);
+        setParseError(
+          nextPreview.counts.messages === 0
+            ? t("memoryviewer.import.noTurns", {
+                defaultValue: "No importable conversation messages found.",
+              })
+            : null,
+        );
+      } catch (err) {
+        setPreview(null);
+        setParseError(
+          err instanceof Error
+            ? err.message
+            : t("memoryviewer.import.parseFailed", {
+                defaultValue: "Could not parse this export.",
+              }),
+        );
+      }
+    },
+    [fileName, source, t],
+  );
+
+  const handleSourceChange = (nextSource: BrowserConversationImportSource) => {
+    setSource(nextSource);
+    if (rawText) void parseRawText(rawText, nextSource);
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    setConsent(false);
+    setFileName(file?.name ?? null);
+    if (!file) {
+      setRawText("");
+      setPreview(null);
+      setParseError(null);
+      return;
+    }
+    const text = await file.text();
+    setRawText(text);
+    await parseRawText(text, source, file.name);
+  };
+
+  const handleImport = async () => {
+    if (!preview || preview.counts.messages === 0 || !consent || busy) {
+      return;
+    }
+    setBusy(true);
+    const batchId = createImportBatchId();
+    setProgress({ done: 0, total: preview.counts.conversations });
+    try {
+      const result = await runConversationImportText({
+        source,
+        rawText,
+        filename: fileName ?? undefined,
+        batchId,
+        sink: createConversationImportDocumentSink(client),
+        onProgress: (event) => setProgress(event),
+      });
+      const documentIds = enumerateBatchDocumentIds(result.manifest);
+      let readback: ImportJobRecord["readback"] = "unverified";
+      if (documentIds[0]) {
+        try {
+          await client.getDocument(documentIds[0]);
+          readback = "verified";
+        } catch {
+          readback = "unverified";
+        }
+      }
+      const failed =
+        result.report.summary.errors > 0
+          ? result.report.items
+              .filter((item) => item.outcome === "error")
+              .map((item) => ({ error: item.reason ?? "Import failed" }))
+          : [];
+      const status: ImportJobStatus =
+        failed.length > 0 ? "partial" : "complete";
+      setJobs((current) =>
+        [
+          {
+            id: batchId,
+            source,
+            total: result.report.summary.total,
+            imported: result.report.summary.documentsStored,
+            deleted: 0,
+            documentIds,
+            manifest: result.manifest,
+            failed,
+            readback,
+            status,
+          },
+          ...current,
+        ].slice(0, 6),
+      );
+      setConsent(false);
+      if (!retainRawSession) {
+        setRawText("");
+        setFileName(null);
+        setPreview(null);
+      }
+      onImported();
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteBatch = async (job: ImportJobRecord) => {
+    if (busy || job.documentIds.length === 0) return;
+    setBusy(true);
+    const failed: ImportJobRecord["failed"] = [];
+    let deleted = 0;
+    try {
+      deleted = await uninstallBatch(
+        createConversationImportDocumentSink(client),
+        job.manifest,
+      );
+    } catch (err) {
+      failed.push({
+        error: err instanceof Error ? err.message : "Delete failed",
+      });
+    }
+    setJobs((current) =>
+      current.map((candidate) =>
+        candidate.id === job.id
+          ? {
+              ...candidate,
+              deleted,
+              failed: [...candidate.failed, ...failed],
+              status:
+                failed.length > 0 || deleted < job.documentIds.length
+                  ? "partial"
+                  : "deleted",
+            }
+          : candidate,
+      ),
+    );
+    setBusy(false);
+    onImported();
+  };
+
+  return (
+    <div className="space-y-4" data-testid="conversation-importer">
+      <PagePanel.Frame className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold text-txt">
+              {t("memoryviewer.import.title", {
+                defaultValue: "Conversation import",
+              })}
+            </div>
+            <div className="mt-1 text-sm text-muted">
+              {t("memoryviewer.import.subtitle", {
+                defaultValue: "Preview, scrub, consent, then write documents.",
+              })}
+            </div>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-accent" aria-hidden="true" />
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[12rem_minmax(0,1fr)]">
+          <label className="space-y-1.5 text-sm">
+            <span className="text-xs-tight font-semibold text-muted">
+              {t("memoryviewer.import.source", { defaultValue: "Source" })}
+            </span>
+            <select
+              className="h-10 w-full rounded-sm border border-border/35 bg-bg px-3 text-sm text-txt"
+              value={source}
+              onChange={(event) =>
+                handleSourceChange(
+                  event.target.value as BrowserConversationImportSource,
+                )
+              }
+              disabled={busy}
+            >
+              {BROWSER_CONVERSATION_IMPORT_SOURCES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-1.5 text-sm">
+            <span className="text-xs-tight font-semibold text-muted">
+              {t("memoryviewer.import.file", { defaultValue: "Export file" })}
+            </span>
+            <span className="flex min-h-10 items-center gap-2 rounded-sm border border-dashed border-border/40 bg-bg px-3 text-sm text-muted">
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">
+                {fileName ??
+                  t("memoryviewer.import.noFile", {
+                    defaultValue: "Choose JSON or text export",
+                  })}
+              </span>
+              <input
+                className="sr-only"
+                type="file"
+                accept=".json,.txt,.md,application/json,text/plain"
+                onChange={handleFileChange}
+                disabled={busy}
+              />
+            </span>
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-3 text-sm text-muted">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked
+              readOnly
+              className="h-4 w-4 accent-current"
+            />
+            {t("memoryviewer.import.scrubDefault", {
+              defaultValue: "Scrub secrets by default",
+            })}
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={retainRawSession}
+              onChange={(event) => setRetainRawSession(event.target.checked)}
+              className="h-4 w-4 accent-current"
+              disabled={busy}
+            />
+            {t("memoryviewer.import.retainRaw", {
+              defaultValue: "Keep raw source this session",
+            })}
+          </label>
+        </div>
+      </PagePanel.Frame>
+
+      {parseError ? (
+        <PagePanel.Notice tone="danger">{parseError}</PagePanel.Notice>
+      ) : null}
+
+      {preview ? (
+        <PagePanel.Frame className="space-y-4 p-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <PagePanel.SummaryCard compact>
+              <div className="text-xs-tight text-muted">
+                {t("memoryviewer.import.conversations", {
+                  defaultValue: "Conversations",
+                })}
+              </div>
+              <div className="mt-1 text-lg font-semibold text-txt">
+                {preview.counts.conversations}
+              </div>
+            </PagePanel.SummaryCard>
+            <PagePanel.SummaryCard compact>
+              <div className="text-xs-tight text-muted">
+                {t("memoryviewer.import.messages", {
+                  defaultValue: "Messages",
+                })}
+              </div>
+              <div className="mt-1 text-lg font-semibold text-txt">
+                {preview.counts.messages}
+              </div>
+            </PagePanel.SummaryCard>
+            <PagePanel.SummaryCard compact>
+              <div className="text-xs-tight text-muted">
+                {t("memoryviewer.import.redactions", {
+                  defaultValue: "Redactions",
+                })}
+              </div>
+              <div className="mt-1 text-lg font-semibold text-txt">
+                {preview.counts.redactions}
+              </div>
+            </PagePanel.SummaryCard>
+          </div>
+
+          {preview.warnings.length > 0 ? (
+            <div className="space-y-1 rounded-sm border border-border/25 bg-bg-hover/35 p-3 text-sm text-muted">
+              {preview.warnings.map((warning) => (
+                <div key={warning} className="flex gap-2">
+                  <AlertTriangle
+                    className="mt-0.5 h-4 w-4 text-accent"
+                    aria-hidden="true"
+                  />
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            {preview.examples.map((turn) => (
+              <div
+                key={`${turn.title}-${turn.role}-${turn.createdAt ?? turn.text.slice(0, 24)}`}
+                className="rounded-sm border border-border/20 bg-bg-hover/40 p-3"
+              >
+                <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
+                  <MetaPill compact>{turn.title}</MetaPill>
+                  <span>{turn.role}</span>
+                </div>
+                <div className="mt-2 line-clamp-3 text-sm leading-6 text-txt">
+                  {turn.text}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+                className="h-4 w-4 accent-current"
+                disabled={busy || preview.counts.messages === 0}
+              />
+              {t("memoryviewer.import.consent", {
+                defaultValue: "Import the scrubbed preview",
+              })}
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleImport}
+              disabled={!consent || busy || preview.counts.messages === 0}
+            >
+              {busy
+                ? t("memoryviewer.import.progress", {
+                    done: progress.done,
+                    total: progress.total,
+                    defaultValue: "{{done}}/{{total}}",
+                  })
+                : t("memoryviewer.import.importButton", {
+                    defaultValue: "Import",
+                  })}
+            </Button>
+          </div>
+        </PagePanel.Frame>
+      ) : null}
+
+      {jobs.length > 0 ? (
+        <PagePanel.Frame className="space-y-3 p-4">
+          <div className="text-sm font-semibold text-txt">
+            {t("memoryviewer.import.jobs", { defaultValue: "Import jobs" })}
+          </div>
+          {jobs.map((job) => (
+            <div
+              key={job.id}
+              className="flex flex-wrap items-center gap-3 rounded-sm border border-border/20 bg-bg-hover/35 p-3"
+            >
+              <CheckCircle2
+                className="h-4 w-4 text-accent"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-txt">
+                  {job.source} · {job.imported}/{job.total}
+                </div>
+                <div className="text-xs-tight text-muted">
+                  {job.status}
+                  {job.deleted ? ` · ${job.deleted} deleted` : ""}
+                  {job.failed.length ? ` · ${job.failed.length} failed` : ""}
+                  {job.readback === "verified" ? " · read back" : ""}
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleDeleteBatch(job)}
+                disabled={busy || job.status === "deleted"}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                {t("memoryviewer.import.deleteBatch", {
+                  defaultValue: "Delete batch",
+                })}
+              </Button>
+            </div>
+          ))}
+        </PagePanel.Frame>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Main View ────────────────────────────────────────────────────────────
 
 export function MemoryViewerView({
@@ -669,6 +1122,7 @@ export function MemoryViewerView({
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [stats, setStats] = useState<MemoryStatsResponse | null>(null);
   const [statsError, setStatsError] = useState(false);
+  const [importRefreshToken, setImportRefreshToken] = useState(0);
 
   // People list for person-centric view. `peopleError` keeps a failed load
   // visually distinct from the designed "No people yet." empty state — a
@@ -739,6 +1193,11 @@ export function MemoryViewerView({
       value: "browse" as const,
       label: t("memoryviewer.browse", { defaultValue: "Browse" }),
       testId: "memory-view-browse",
+    },
+    {
+      value: "import" as const,
+      label: t("memoryviewer.import.tab", { defaultValue: "Import" }),
+      testId: "memory-view-import",
     },
   ];
 
@@ -952,12 +1411,22 @@ export function MemoryViewerView({
 
                 {/* Content */}
                 {viewMode === "feed" ? (
-                  <MemoryFeedPanel typeFilter={typeFilter} />
-                ) : (
+                  <MemoryFeedPanel
+                    key={importRefreshToken}
+                    typeFilter={typeFilter}
+                  />
+                ) : viewMode === "browse" ? (
                   <MemoryBrowserPanel
                     typeFilter={typeFilter}
                     entityId={selectedPersonId}
                     entityIds={selectedEntityIds}
+                  />
+                ) : (
+                  <ConversationImportPanel
+                    onImported={() => {
+                      setImportRefreshToken((value) => value + 1);
+                      setViewMode("feed");
+                    }}
                   />
                 )}
               </div>

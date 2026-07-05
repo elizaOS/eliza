@@ -8,7 +8,6 @@
 import { SearchX } from "lucide-react";
 import type { QueryResult } from "../../api";
 import { useAppSelector } from "../../state";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -115,21 +114,11 @@ export function SqlEditorPanel({
       ) : null}
 
       {queryResult && queryResult.rows.length === 0 ? (
-        <ChatEmptyStateWithRecommendations
+        <PagePanel.Empty
+          variant="inset"
           className="mt-4 min-h-[12rem]"
-          icon={SearchX}
+          icon={<SearchX className="h-6 w-6" aria-hidden />}
           title={t("databaseview.QueryReturnedNoRo")}
-          recommendations={[
-            t("databaseview.TrySelectCountRec", {
-              defaultValue: "Try SELECT COUNT(*)",
-            }),
-            t("databaseview.CheckLimitRec", {
-              defaultValue: "Check your LIMIT clause",
-            }),
-            t("databaseview.RunOnDifferentTableRec", {
-              defaultValue: "Run on a different table",
-            }),
-          ]}
         />
       ) : null}
     </>

@@ -52,6 +52,16 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(out).toContain("…");
 	});
 
+	it("masks a Cerebras inference key (csk-) without leaking it or eating the sk- variant", () => {
+		// csk- is a distinct prefix from OpenAI's sk-; sub-agent stdout echoes it as
+		// the model key in use (#13775 review). The word boundary must not let the
+		// sk- pattern partial-match inside csk-.
+		const csk = "csk-0123456789abcdefghij";
+		const out = redactSensitiveText(`model key ${csk} end`);
+		expect(out).not.toContain(csk);
+		expect(out).toContain("…");
+	});
+
 	it("masks a GitHub PAT and a Bearer token", () => {
 		const ghp = `ghp_${"a".repeat(30)}`;
 		expect(redactSensitiveText(`use ${ghp}`)).not.toContain(ghp);

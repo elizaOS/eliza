@@ -8458,13 +8458,26 @@ export class DefaultMessageService implements IMessageService {
 				? message.content.source
 				: "messageService";
 
-		// Mint the root-turn traceId once here (#13775) — inherited from a spawning
-		// parent's env when this runtime is itself a sub-agent, else a fresh id.
-		// Stamped on message.metadata BEFORE MESSAGE_RECEIVED is emitted so the DB
-		// trajectory handler (features/trajectories) records the SAME traceId as
-		// the file recorder, and placed on the turn's trajectory context below so
-		// sub-agent spawns read it too. Both stores then join on one traceId.
-		const traceId = resolveTraceCorrelationFromEnv().traceId ?? asUUID(v4());
+		// Root-turn traceId (#13775). On emit-first paths (agent API chat route,
+		// connectors) the trajectories MESSAGE_RECEIVED handler already minted and
+		// stamped one on message.metadata before we ran — reuse it, or the DB row
+		// and the file trajectory would carry different ids. Otherwise mint here
+		// (inherited from a spawning parent's env when this runtime is itself a
+		// sub-agent, else fresh) and stamp it BEFORE MESSAGE_RECEIVED is emitted
+		// below so the DB trajectory handler records the SAME traceId as the file
+		// recorder. Placed on the turn's trajectory context below so sub-agent
+		// spawns read it too. All stores then join on one traceId.
+		const preStampedTraceId =
+			typeof message.metadata === "object" &&
+			message.metadata !== null &&
+			typeof (message.metadata as { traceId?: unknown }).traceId === "string" &&
+			(message.metadata as { traceId: string }).traceId.trim() !== ""
+				? (message.metadata as { traceId: string }).traceId
+				: undefined;
+		const traceId =
+			preStampedTraceId ??
+			resolveTraceCorrelationFromEnv().traceId ??
+			asUUID(v4());
 		if (!message.metadata) {
 			message.metadata = { type: "message" };
 		}

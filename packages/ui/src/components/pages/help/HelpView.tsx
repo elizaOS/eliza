@@ -12,7 +12,7 @@ import { useAgentElement } from "../../../agent-surface";
 import { dispatchNavigateViewEvent } from "../../../events";
 import { useAppSelector } from "../../../state";
 import { useRegisterViewChatBinding } from "../../../state/view-chat-binding";
-import { ChatEmptyStateWithRecommendations } from "../../composites/chat";
+import { PagePanel } from "../../composites/page-panel";
 import { ViewHeader } from "../../shared/ViewHeader";
 import { Button } from "../../ui/button";
 import { ShellViewAgentSurface } from "../../views/ShellViewAgentSurface";
@@ -210,14 +210,10 @@ function HelpViewBody(): React.ReactElement {
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-8 pt-3">
         {results.length === 0 ? (
-          <ChatEmptyStateWithRecommendations
-            icon={LifeBuoy}
+          <PagePanel.Empty
+            className="flex-1"
+            icon={<LifeBuoy className="h-6 w-6" aria-hidden />}
             title="No matches."
-            recommendations={[
-              "How do I change the AI model?",
-              "How do I connect Discord or Telegram?",
-              "Is my data private and stored locally?",
-            ]}
           />
         ) : (
           <ul className="flex flex-col gap-2">

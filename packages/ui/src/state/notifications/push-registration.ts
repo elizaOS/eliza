@@ -63,7 +63,8 @@ const defaultDeps: PushRegistrationDeps = {
   navigate: navigateDeepLink,
 };
 
-let started = false;
+let startPromise: Promise<void> | null = null;
+let listenerPromise: Promise<void> | null = null;
 /** The most recent token we POSTed, so a re-fired `registration` is a no-op. */
 let registeredToken: string | null = null;
 
@@ -106,10 +107,22 @@ async function onRegistration(
 export async function initPushRegistration(
   deps: PushRegistrationDeps = defaultDeps,
 ): Promise<void> {
-  if (started) return;
+  startPromise ??= startPushRegistration(deps)
+    .then((didStart) => {
+      if (!didStart) startPromise = null;
+    })
+    .catch((error: unknown) => {
+      startPromise = null;
+      throw error;
+    });
+  await startPromise;
+}
 
+async function startPushRegistration(
+  deps: PushRegistrationDeps,
+): Promise<boolean> {
   const platform = pushPlatform(deps.getPlatform());
-  if (!platform) return;
+  if (!platform) return false;
 
   const plugin = deps.getPlugin();
   if (
@@ -117,18 +130,45 @@ export async function initPushRegistration(
     typeof plugin.addListener !== "function"
   ) {
     // Native build without the push plugin — nothing to register against.
-    return;
+    return false;
   }
 
   // Gate on an already-granted permission; never prompt from here.
   if (typeof plugin.checkPermissions === "function") {
     const status = await plugin.checkPermissions();
-    if (status.receive !== "granted") return;
+    if (status.receive !== "granted") return false;
   }
 
-  started = true;
+  await ensurePushListeners(deps, plugin, platform);
 
-  await plugin.addListener("registration", (token: PushRegistrationToken) => {
+  await plugin.register();
+  return true;
+}
+
+function ensurePushListeners(
+  deps: PushRegistrationDeps,
+  plugin: PushNotificationsPluginLike,
+  platform: "ios" | "android",
+): Promise<void> {
+  listenerPromise ??= addPushListeners(deps, plugin, platform).catch(
+    (error: unknown) => {
+      listenerPromise = null;
+      throw error;
+    },
+  );
+  return listenerPromise;
+}
+
+async function addPushListeners(
+  deps: PushRegistrationDeps,
+  plugin: PushNotificationsPluginLike,
+  platform: "ios" | "android",
+): Promise<void> {
+  const addListener = plugin.addListener;
+  if (typeof addListener !== "function") {
+    throw new Error("PushNotifications.addListener is unavailable");
+  }
+  await addListener("registration", (token: PushRegistrationToken) => {
     void onRegistration(deps, platform, token).catch((error: unknown) => {
       // error-policy:J1 transport boundary — a failed token POST leaves
       // registeredToken null so the next `registration` retries; surface it.
@@ -139,25 +179,20 @@ export async function initPushRegistration(
     });
   });
 
-  await plugin.addListener(
-    "registrationError",
-    (error: PushRegistrationError) => {
-      logger.error(
-        { src: "push-registration", platform, error: error.error },
-        "[push-registration] OS push registration failed",
-      );
-    },
-  );
+  await addListener("registrationError", (error: PushRegistrationError) => {
+    logger.error(
+      { src: "push-registration", platform, error: error.error },
+      "[push-registration] OS push registration failed",
+    );
+  });
 
-  await plugin.addListener(
+  await addListener(
     "pushNotificationActionPerformed",
     (action: PushActionPerformed) => {
       const deepLink = deepLinkFromAction(action);
       if (deepLink) deps.navigate(deepLink);
     },
   );
-
-  await plugin.register();
 }
 
 /** Drop this device's token server-side and locally (logout / revoke). */
@@ -172,6 +207,7 @@ export async function unregisterPushToken(
 
 /** Test-only reset of the module-level registration guards. */
 export function __resetPushRegistrationForTests(): void {
-  started = false;
+  startPromise = null;
+  listenerPromise = null;
   registeredToken = null;
 }

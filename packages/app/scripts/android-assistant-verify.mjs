@@ -210,7 +210,7 @@ async function verifyOnDevice(adb, serial) {
     DEEP_LINK_SOURCES.assistantSession,
   );
   checks.visInvoked = visInvoked;
-  checks.assistLanded = assistLanded;
+  checks.voiceinteractionLanded = assistLanded;
 
   // (3b) Hardware assist key: input keyevent KEYCODE_ASSIST → should reach the
   // VIS session (role held) or the ACTION_ASSIST fallback activity.
@@ -226,11 +226,20 @@ async function verifyOnDevice(adb, serial) {
     "activity",
     "activities",
   ]);
-  const keyLanded =
-    assertDeepLinkLanded(keyDump, keyLog, DEEP_LINK_SOURCES.assistantSession)
-      .landed ||
-    assertDeepLinkLanded(keyDump, keyLog, DEEP_LINK_SOURCES.assist).landed;
+  const keySessionLanded = assertDeepLinkLanded(
+    keyDump,
+    keyLog,
+    DEEP_LINK_SOURCES.assistantSession,
+  );
+  const keyAssistLanded = assertDeepLinkLanded(
+    keyDump,
+    keyLog,
+    DEEP_LINK_SOURCES.assist,
+  );
+  const keyLanded = keySessionLanded.landed || keyAssistLanded.landed;
   checks.assistKeyLanded = keyLanded;
+  checks.assistKeySessionLanded = keySessionLanded;
+  checks.assistKeyActivityLanded = keyAssistLanded;
   log(`assist key (KEYCODE_ASSIST) reached Eliza: ${keyLanded}`);
 
   // (3c) IME invocation → open-app deep link. Fire the IME's open-Eliza intent
@@ -246,7 +255,7 @@ async function verifyOnDevice(adb, serial) {
     "-a",
     "android.intent.action.VIEW",
     "-d",
-    `'elizaos://voice?source=${DEEP_LINK_SOURCES.ime}&action=voice&voice=1'`,
+    `elizaos://voice?source=${DEEP_LINK_SOURCES.ime}&action=voice&voice=1`,
     `${APP_PACKAGE}/.MainActivity`,
   ]);
   await sleep(2_500);
@@ -277,7 +286,8 @@ async function verifyOnDevice(adb, serial) {
       surfacesRegistered: surfaces.allPresent,
       roleHeld: role.heldByExpected,
       imeSelected: imeSetting.isEliza && imeEnabled.elizaEnabled,
-      assistLanded: assistLanded.landed || keyLanded,
+      voiceinteractionLanded: assistLanded.landed,
+      assistKeyLanded: keyLanded,
       imeLanded: imeLanded.landed,
       asrOutcome,
     },

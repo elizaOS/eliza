@@ -71,5 +71,5 @@ export function shouldBlockLiveStripeKeyOutsideProduction(env: EnvLike = process
  */
 export function shouldWarnTestStripeKeyInProduction(env: EnvLike = process.env): boolean {
   const key = env.STRIPE_SECRET_KEY?.trim() ?? "";
-  return key.startsWith("sk_test_") && isProductionDeployment(env);
+  return (key.startsWith("sk_test_") || key.startsWith("rk_test_")) && isProductionDeployment(env);
 }

@@ -178,6 +178,11 @@ export interface Bindings {
   CONTAINERS_BOOTSTRAP_SECRET?: string;
   CONTAINERS_HCLOUD_LOCATION?: string;
   NODE_ENV?: string;
+  /**
+   * Git commit stamped at deploy time so `/api/health` can prove which Worker
+   * revision is currently served before CI allows another deploy to overwrite it.
+   */
+  ELIZA_DEPLOY_COMMIT?: string;
 
   // ---- Feature flags ----
   REDIS_RATE_LIMITING?: string;

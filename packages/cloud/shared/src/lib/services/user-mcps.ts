@@ -5,6 +5,7 @@
  * Handles CRUD, revenue distribution, and discovery.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { mcpUsageRepository, type UserMcp, userMcpsRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
@@ -114,6 +115,85 @@ export type PublicUserMcp = Omit<UserMcp, "external_endpoint" | "created_by_user
 };
 
 // ============================================================================
+// Money-path NUMERIC fail-closed boundary (#13415)
+// ============================================================================
+
+/**
+ * Raised when a monetization NUMERIC column read from the DB is corrupt.
+ *
+ * Postgres NUMERIC columns are returned by the driver as strings, and
+ * `'NaN'::numeric` is a VALID stored value that reads back as the literal
+ * `"NaN"`. A bare `Number("NaN")` yields `NaN`, and every downstream money
+ * gate in `recordUsage` (`totalCreditsToDeduct > 0`, `creatorEarnings > 0`,
+ * `affiliateFeeCredits > 0`) is FALSE for `NaN`, so a corrupt price/share row
+ * silently: (a) skips charging the consumer while still executing the tool
+ * call = free MCP usage, and (b) writes `"NaN"` into the usage/earnings ledger.
+ * We fail closed at read time so the whole MCP call is refused before any
+ * charge/credit/earnings side-effect runs.
+ */
+export class CorruptMcpBillingNumberError extends ElizaError {
+  override readonly name = "CorruptMcpBillingNumberError";
+
+  constructor(field: string, rawValue: unknown, bounds: { min?: number; max?: number } = {}) {
+    super(`[UserMcps] corrupt MCP billing value for ${field}: ${JSON.stringify(rawValue)}`, {
+      code: "CORRUPT_MCP_BILLING_NUMBER",
+      context: { field, rawValue, ...bounds },
+      severity: "fatal",
+    });
+  }
+}
+
+/**
+ * Parse a monetization NUMERIC value fail-closed.
+ *
+ * - `null`/`undefined` are treated as the DB default absence and resolve to
+ *   `fallback` (the nullable price columns `credits_per_request` /
+ *   `x402_price_usd` default via the caller; `Number(null)` used to be `0`).
+ * - Any present-but-non-finite value (`"NaN"`, `"Infinity"`, `""`, garbage)
+ *   THROWS, it must never become `NaN` in the money math.
+ * - Money values are bounded at this boundary so a negative stored price/share
+ *   cannot skip charge gates and write negative ledger rows.
+ *
+ * `Number()` (not `parseFloat`) so a mangled `"1.0garbage"` rejects instead of
+ * being silently truncated to `1`.
+ */
+function parseMcpBillingNumber(
+  value: string | number | null | undefined,
+  field: string,
+  fallback: number,
+  options: { min?: number; max?: number } = {},
+): number {
+  if (value === null || value === undefined) {
+    return parseMcpBillingNumber(fallback, field, fallback, options);
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (
+    !Number.isFinite(parsed) ||
+    (options.min !== undefined && parsed < options.min) ||
+    (options.max !== undefined && parsed > options.max)
+  ) {
+    throw new CorruptMcpBillingNumberError(field, value, options);
+  }
+  return parsed;
+}
+
+function parseNonNegativeMcpBillingNumber(
+  value: string | number | null | undefined,
+  field: string,
+  fallback: number,
+): number {
+  return parseMcpBillingNumber(value, field, fallback, { min: 0 });
+}
+
+function parseMcpSharePercentage(
+  value: string | number | null | undefined,
+  field: string,
+  fallback: number,
+): number {
+  return parseMcpBillingNumber(value, field, fallback, { min: 0, max: 100 });
+}
+
+// ============================================================================
 // Service
 // ============================================================================
 
@@ -158,6 +238,12 @@ class UserMcpsService {
       throw new Error(`MCP with slug "${params.slug}" already exists`);
     }
 
+    const creatorSharePercentage = parseMcpSharePercentage(
+      params.creatorSharePercentage,
+      "creatorSharePercentage",
+      80,
+    );
+
     const mcp = await userMcpsRepository.create({
       name: params.name,
       slug: params.slug,
@@ -172,11 +258,19 @@ class UserMcpsService {
       transport_type: params.transportType ?? "streamable-http",
       tools: params.tools ?? [],
       pricing_type: params.pricingType ?? "credits",
-      credits_per_request: params.creditsPerRequest?.toString() ?? "1.0000",
-      x402_price_usd: params.x402PriceUsd?.toString() ?? "0.000100",
+      credits_per_request: parseNonNegativeMcpBillingNumber(
+        params.creditsPerRequest,
+        "creditsPerRequest",
+        1,
+      ).toString(),
+      x402_price_usd: parseNonNegativeMcpBillingNumber(
+        params.x402PriceUsd,
+        "x402PriceUsd",
+        0.0001,
+      ).toString(),
       x402_enabled: params.x402Enabled ?? false,
-      creator_share_percentage: params.creatorSharePercentage?.toString() ?? "80.00",
-      platform_share_percentage: (100 - (params.creatorSharePercentage ?? 80)).toString(),
+      creator_share_percentage: creatorSharePercentage.toString(),
+      platform_share_percentage: (100 - creatorSharePercentage).toString(),
       documentation_url: params.documentationUrl,
       source_code_url: params.sourceCodeUrl,
       support_email: params.supportEmail,
@@ -274,14 +368,29 @@ class UserMcpsService {
     if (params.transportType !== undefined) updateData.transport_type = params.transportType;
     if (params.tools !== undefined) updateData.tools = params.tools;
     if (params.pricingType !== undefined) updateData.pricing_type = params.pricingType;
-    if (params.creditsPerRequest !== undefined)
-      updateData.credits_per_request = params.creditsPerRequest.toString();
-    if (params.x402PriceUsd !== undefined)
-      updateData.x402_price_usd = params.x402PriceUsd.toString();
+    if (params.creditsPerRequest !== undefined) {
+      updateData.credits_per_request = parseNonNegativeMcpBillingNumber(
+        params.creditsPerRequest,
+        "creditsPerRequest",
+        1,
+      ).toString();
+    }
+    if (params.x402PriceUsd !== undefined) {
+      updateData.x402_price_usd = parseNonNegativeMcpBillingNumber(
+        params.x402PriceUsd,
+        "x402PriceUsd",
+        0.0001,
+      ).toString();
+    }
     if (params.x402Enabled !== undefined) updateData.x402_enabled = params.x402Enabled;
     if (params.creatorSharePercentage !== undefined) {
-      updateData.creator_share_percentage = params.creatorSharePercentage.toString();
-      updateData.platform_share_percentage = (100 - params.creatorSharePercentage).toString();
+      const creatorSharePercentage = parseMcpSharePercentage(
+        params.creatorSharePercentage,
+        "creatorSharePercentage",
+        80,
+      );
+      updateData.creator_share_percentage = creatorSharePercentage.toString();
+      updateData.platform_share_percentage = (100 - creatorSharePercentage).toString();
     }
     if (params.documentationUrl !== undefined)
       updateData.documentation_url = params.documentationUrl;
@@ -330,7 +439,7 @@ class UserMcpsService {
       throw new Error("External MCP must have an endpoint URL");
     }
     if (mcp.endpoint_type === "external" && mcp.external_endpoint) {
-      // Synchronous-only guard (no DNS) — see create(). DNS SSRF runs at fetch.
+      // Synchronous-only guard (no DNS), see create(). DNS SSRF runs at fetch.
       assertSafeOutboundUrlSync(mcp.external_endpoint);
     }
 
@@ -406,16 +515,24 @@ class UserMcpsService {
 
     const CREDITS_PER_DOLLAR = 100; // 1 cent = 1 credit
 
+    // Fail closed on corrupt price rows BEFORE any charge/credit/earnings runs:
+    // a NaN price would slip past the `totalCreditsToDeduct > 0` charge gate
+    // (NaN > 0 === false) yet still execute the tool call for free and write
+    // "NaN" into the ledger.
     if (params.paymentType === "credits") {
-      creditsCharged = Number(mcp.credits_per_request);
+      creditsCharged = parseNonNegativeMcpBillingNumber(
+        mcp.credits_per_request,
+        "credits_per_request",
+        0,
+      );
     } else {
-      x402AmountUsd = Number(mcp.x402_price_usd);
+      x402AmountUsd = parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0);
       // Convert to credits using configured rate
       creditsCharged = x402AmountUsd * CREDITS_PER_DOLLAR;
     }
 
     // WHY affiliate fee on top of creditsCharged: Customer pays base + affiliate% + platform%;
-    // we pay affiliate from that. Referral splits are not used for MCP — keeps one payout
+    // we pay affiliate from that. Referral splits are not used for MCP, keeps one payout
     // type per transaction so we never over-allocate.
     let affiliateFeeCredits = 0;
     let platformFeeCredits = 0;
@@ -430,7 +547,11 @@ class UserMcpsService {
       if (referrer) {
         affiliateOwnerId = referrer.user_id;
         affiliateCodeId = referrer.id;
-        const affiliatePercent = Number(referrer.markup_percent);
+        const affiliatePercent = parseMcpSharePercentage(
+          referrer.markup_percent,
+          "markup_percent",
+          0,
+        );
         const platformPercent = 20.0;
 
         affiliateFeeCredits = creditsCharged * (affiliatePercent / 100);
@@ -440,8 +561,10 @@ class UserMcpsService {
 
     const totalCreditsToDeduct = creditsCharged + affiliateFeeCredits + platformFeeCredits;
 
-    const creatorSharePct = Number(mcp.creator_share_percentage) / 100;
-    const platformSharePct = Number(mcp.platform_share_percentage) / 100;
+    const creatorSharePct =
+      parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
+    const platformSharePct =
+      parseMcpSharePercentage(mcp.platform_share_percentage, "platform_share_percentage", 0) / 100;
 
     const creatorEarnings = creditsCharged * creatorSharePct;
     const platformEarnings = creditsCharged * platformSharePct + platformFeeCredits;
@@ -574,11 +697,25 @@ class UserMcpsService {
       throw new Error("MCP not found");
     }
 
-    const creditsCharged = params.creditsCharged;
-    const affiliateFeeCredits = params.affiliateFeeCredits ?? 0;
-    const platformFeeCredits = params.platformFeeCredits ?? 0;
-    const creatorSharePct = Number(mcp.creator_share_percentage) / 100;
-    const platformSharePct = Number(mcp.platform_share_percentage) / 100;
+    const creditsCharged = parseNonNegativeMcpBillingNumber(
+      params.creditsCharged,
+      "creditsCharged",
+      0,
+    );
+    const affiliateFeeCredits = parseNonNegativeMcpBillingNumber(
+      params.affiliateFeeCredits,
+      "affiliateFeeCredits",
+      0,
+    );
+    const platformFeeCredits = parseNonNegativeMcpBillingNumber(
+      params.platformFeeCredits,
+      "platformFeeCredits",
+      0,
+    );
+    const creatorSharePct =
+      parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
+    const platformSharePct =
+      parseMcpSharePercentage(mcp.platform_share_percentage, "platform_share_percentage", 0) / 100;
 
     const creatorEarnings = creditsCharged * creatorSharePct;
     const platformEarnings = creditsCharged * platformSharePct + platformFeeCredits;
@@ -722,7 +859,7 @@ class UserMcpsService {
 
   /**
    * Get the full endpoint URL for an MCP. Returns the RAW external backend URL
-   * for external MCPs, so this is owner-only — never call it on a public/registry
+   * for external MCPs, so this is owner-only, never call it on a public/registry
    * surface (that leaks the raw URL and bypasses the metered proxy). Use
    * {@link getPublicProxyUrl} for anything a non-owner can see (#10917).
    */
@@ -742,7 +879,7 @@ class UserMcpsService {
 
   /**
    * Public-safe endpoint URL: always the metered proxy for external/container
-   * MCPs — never the raw `external_endpoint`, which would let a caller hit the
+   * MCPs, never the raw `external_endpoint`, which would let a caller hit the
    * backend directly and bypass metering/charging. Use this everywhere a
    * non-owner can see the MCP (the registry, `?scope=public`). (#10917)
    */
@@ -810,7 +947,7 @@ class UserMcpsService {
       >;
     };
   } {
-    // The registry is a public discovery surface — advertise the metered proxy,
+    // The registry is a public discovery surface, advertise the metered proxy,
     // never the raw external backend URL (that would bypass metering). (#10917)
     const endpoint = this.getPublicProxyUrl(mcp, baseUrl);
 

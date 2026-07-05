@@ -9,6 +9,15 @@
  * so the result is actually hosted and a verified URL is reported.
  *
  * Default target is **Eliza Cloud** (the productized path for every user).
+ * Cloud register + deploy are BROKER-FIRST (#14118): the guidance tells the
+ * child to run `cloud-command apps.create` / `containers.create` through the
+ * parent-agent broker (spend-capped, confirmation-gated) rather than curling the
+ * Cloud API with a raw owner key it no longer receives by default. The only
+ * genuine value a self-serving monetized container still needs — the owner's
+ * cloud key as its own runtime bearer (`environmentVars.ELIZA_CLOUD_API_KEY`,
+ * since `ELIZAOS_CLOUD_API_KEY` is a platform-reserved container key #9853) —
+ * comes from the owner-approved credential bridge, not a raw env leak.
+ *
  * An operator can point the agent at their own **custom static host** entirely
  * through config (a per-user apps dir + public base URL); the framework carries
  * NO knowledge of any specific host — the operator's private character/env
@@ -132,13 +141,27 @@ function elizaCloudGuidance(task?: string, monetized?: boolean): string {
       "START FROM THE TEMPLATE — do NOT build the Cloud SDK / registration / OAuth-proxy / Dockerfile from scratch. A complete, working, already-deployed monetized chat app is in THIS checkout at `packages/examples/cloud/edad`. Copy it as your starting point: `cp -r packages/examples/cloud/edad <your-app-dir>`, then ADAPT only the app-specific bits.",
       "- CHANGE only: `public/index.html` (the SYSTEM_PROMPT constant, the MODEL constant, the <title>/brand/meta text, the input placeholder, the TOKEN_KEY/STATE_KEY localStorage prefixes), the art in `public/` (SVGs, favicon, og-image), and the markup % you set at registration.",
       "- KEEP byte-for-byte: `server.ts`, `db.ts`, the Dockerfile, and the OAuth + same-origin proxy + `/health` plumbing — that IS the canonical correct monetized wiring (it forwards to `/api/v1/messages` with `x-app-id` + `x-affiliate-code`, the org-balance billing path).",
-      "- Register the app via `POST /api/v1/apps` (monetization enabled + an inference markup) to get the `appId` — use the owner's `ELIZAOS_CLOUD_API_KEY` from the env. Deploy per `packages/examples/cloud/edad/README.md` (it uses `POST /api/v1/containers`, the ungated path — do NOT use the gated `/apps/<id>/deploy`).",
+      // Broker-first (#14118): Cloud register + deploy go through the parent
+      // agent, NOT a raw owner key in this child's env. The broker commands map
+      // 1:1 onto the edad README's API calls (apps.create → POST /api/v1/apps,
+      // containers.create → POST /api/v1/containers) and keep the spend cap +
+      // human confirmation gates. Do NOT curl the Cloud API directly with a raw
+      // key — you don't have it by default and shouldn't.",
+      '- Register the app through the PARENT AGENT (you have no raw Cloud key): print one stdout line `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{"name":"<app name>","app_url":"<your app url>","skipGitHubRepo":true}}`. Then enable monetization + an inference markup with `cloud-command apps.monetization.update` (params `{"id":"<appId>","...":...}`). The parent runs these with the owner\'s key server-side and relays the `appId` back; a mutating command needs the owner\'s explicit yes on a follow-up turn.',
+      '- Deploy through the PARENT AGENT with `cloud-command containers.create` (this is the edad README\'s `POST /api/v1/containers`, the ungated container path — do NOT use the gated `/apps/<id>/deploy`). Body keys are camelCase (CreateContainerSchema strips unknown keys, so a snake_case body deploys with NO env vars → dead sign-in + billing): `USE_SKILL parent-agent {"mode":"cloud-command","command":"containers.create","params":{"name":"<app>","projectName":"<app>","port":3000,"cpu":256,"memoryMb":512,"image":"ghcr.io/<owner>/<app>:latest","healthCheckPath":"/health","environmentVars":{"ELIZA_APP_ID":"<appId>","ELIZA_AFFILIATE_CODE":"<code>","ELIZA_CLOUD_URL":"https://www.elizacloud.ai"}}}`. containers.create is a fixed-cost self-spend the parent may auto-authorize within its spend cap.',
+      // The one step the broker cannot fully serve: the container's OWN runtime
+      // needs the owner's cloud key as its upstream bearer, and `ELIZAOS_CLOUD_API_KEY`
+      // is a platform-reserved container env key the deploy route REJECTS (#9853) —
+      // edad's server.ts reads the non-reserved `ELIZA_CLOUD_API_KEY` instead. That
+      // secret is a real value the child must place in environmentVars, so it comes
+      // from the owner-approved credential bridge (single-use), never a raw env leak.
+      '- The container needs the owner\'s Cloud key at RUNTIME as `environmentVars.ELIZA_CLOUD_API_KEY` (NOT `ELIZAOS_CLOUD_API_KEY` — that key is platform-reserved and the deploy route rejects it). You do NOT have this key in your env by default. Request it via the owner-approved credential bridge — `POST /api/coding-agents/<PARALLAX_SESSION_ID>/credentials/request` with `{"credentialKeys":["ELIZAOS_CLOUD_API_KEY"]}` (see "Requesting a missing credential" in your AGENTS.md/CLAUDE.md for the full request+poll flow), then pass the value as `environmentVars.ELIZA_CLOUD_API_KEY` in the containers.create params. If the owner declines or the bridge is unwired, STOP and report that the container cannot self-bill without the owner\'s Cloud key (the operator can also set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to forward it). Never hardcode the key in image/frontend code.',
     );
   } else {
     lines.push(
       "This task builds an app/site, so it must end up actually HOSTED with a verified live URL — not just local files.",
       "- Build a real, working app and load it to confirm it works before reporting done.",
-      "- Host it on Eliza Cloud: use `@elizaos/cloud-sdk` when available, register the app to get an `appId`, and deploy via the Cloud container flow.",
+      '- Host it on Eliza Cloud through the PARENT AGENT (you have no raw Cloud key): register the app with `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{...}}` to get an `appId`, then deploy with `cloud-command containers.create` (the parent runs both with the owner\'s key server-side, under its spend cap + confirmation gates). Use `mode:"list-cloud-commands"` to discover the full Cloud surface.',
       "- For auth, use Eliza Cloud OAuth via a same-origin proxy that forwards to `/api/v1/messages` with the user's bearer token + `x-app-id` (add `x-affiliate-code` when monetizing). Use Cloud DB / hosted APIs for persistence.",
       "- Do NOT hardcode owner API keys in frontend code, use mock replies, or hand-roll legacy `/messages` routes. Follow the `build-monetized-app` skill for the canonical registration + deploy + domain flow.",
     );

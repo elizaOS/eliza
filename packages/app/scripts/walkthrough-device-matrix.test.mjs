@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  captureIos,
   captureIosDevice,
   computeExitCode,
   erroredLanes,
@@ -309,5 +310,109 @@ describe("iOS device lane (captureIosDevice)", () => {
     assert.equal(result.status, "error");
     // An attempted-and-errored lane is always fatal, independent of --require.
     assert.equal(computeExitCode({ "ios-device": result }, new Set()), 1);
+  });
+});
+
+describe("iOS simulator lane (captureIos)", () => {
+  it("records honest n/a without running phases when no simulator is booted", () => {
+    let ran = false;
+    const result = captureIos({
+      duration: 1,
+      deps: {
+        bootedSim: () => null,
+        appBuilt: () => "/DerivedData/App.app",
+        run: () => {
+          ran = true;
+          return 0;
+        },
+      },
+    });
+    assert.equal(result.status, "n/a");
+    assert.match(result.reason, /no booted iOS simulator/);
+    assert.equal(ran, false);
+  });
+
+  it("records honest n/a without running phases when no fresh simulator build exists", () => {
+    let ran = false;
+    const result = captureIos({
+      duration: 1,
+      deps: {
+        bootedSim: () => "SIM-UDID",
+        appBuilt: () => null,
+        run: () => {
+          ran = true;
+          return 0;
+        },
+      },
+    });
+    assert.equal(result.status, "n/a");
+    assert.match(result.reason, /build:ios:local:sim/);
+    assert.equal(ran, false);
+  });
+
+  it("runs onboarding, local chat, then capture for an available simulator", () => {
+    const invocations = [];
+    const result = captureIos({
+      duration: 7,
+      deps: {
+        bootedSim: () => "SIM-UDID",
+        appBuilt: () => "/DerivedData/App.app",
+        run: (rel, argv) => {
+          invocations.push({ rel, argv });
+          return 0;
+        },
+      },
+    });
+    assert.equal(result.status, "captured");
+    assert.deepEqual(
+      invocations.map((entry) => entry.rel),
+      [
+        "ios-onboarding-smoke.mjs",
+        "mobile-local-chat-smoke.mjs",
+        "capture-ios-sim.mjs",
+      ],
+    );
+    assert.deepEqual(invocations[0].argv, [
+      "--app-path",
+      "/DerivedData/App.app",
+    ]);
+    assert.deepEqual(invocations[1].argv, [
+      "--platform",
+      "ios",
+      "--require-installed",
+      "--ios-select-local",
+      "--ios-full-bun-smoke",
+    ]);
+    assert.equal(
+      invocations[2].argv[invocations[2].argv.indexOf("--duration") + 1],
+      "7",
+    );
+    assert.deepEqual(
+      result.phases.map((phase) => phase.status),
+      ["ok", "ok", "ok"],
+    );
+  });
+
+  it("records error and makes the lane fatal when any attempted simulator phase fails", () => {
+    const invocations = [];
+    const result = captureIos({
+      duration: 1,
+      deps: {
+        bootedSim: () => "SIM-UDID",
+        appBuilt: () => "/DerivedData/App.app",
+        run: (rel) => {
+          invocations.push(rel);
+          return rel === "mobile-local-chat-smoke.mjs" ? 23 : 0;
+        },
+      },
+    });
+    assert.equal(result.status, "error");
+    assert.equal(result.reason, "mobile-local-chat-smoke.mjs");
+    assert.equal(result.phases[1].exitCode, 23);
+    assert.deepEqual(invocations, [
+      "ios-onboarding-smoke.mjs",
+      "mobile-local-chat-smoke.mjs",
+    ]);
+    assert.equal(computeExitCode({ "ios-simulator": result }, new Set()), 1);
   });
 });

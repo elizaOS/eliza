@@ -67,6 +67,13 @@ function post(headers: HeadersInit = {}) {
   );
 }
 
+function deletedCookieNames(res: Response): string[] {
+  return res.headers
+    .getSetCookie()
+    .filter((cookie) => /Max-Age=0/i.test(cookie))
+    .map((cookie) => cookie.split("=")[0]);
+}
+
 describe("steward-refresh bearer rotation", () => {
   beforeEach(() => {
     verifyStewardTokenCached.mockClear();
@@ -129,5 +136,83 @@ describe("steward-refresh bearer rotation", () => {
     expect(response.status).toBe(403);
     expect(verifyStewardTokenCached).not.toHaveBeenCalled();
     expect(mintStewardTokenFromClaims).not.toHaveBeenCalled();
+  });
+});
+
+describe("steward-refresh browser cookie cleanup", () => {
+  test("staging legacy-only refresh cookie is not read or forwarded", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock = mock(async () => {
+      throw new Error("legacy refresh cookie must not reach Steward");
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie: "steward-refresh-token=prod-refresh; steward-authed=1",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        error: "Refresh token required",
+        code: "missing_token",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(deletedCookieNames(response)).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("staging invalid refresh clears only staging cookies", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => {
+      return new Response(
+        JSON.stringify({ ok: false, error: "refresh rejected" }),
+        { status: 401, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await app.fetch(
+        new Request("https://api-staging.elizacloud.ai/", {
+          method: "POST",
+          headers: {
+            host: "api-staging.elizacloud.ai",
+            origin: "https://staging.elizacloud.ai",
+            cookie:
+              "steward-refresh-token=prod-refresh; steward-authed=1; steward-refresh-token-staging=staging-refresh; steward-authed-staging=1",
+          },
+        }),
+        {
+          ...ENV,
+          ENVIRONMENT: "staging",
+          STEWARD_API_URL: "https://steward.example.test",
+        },
+      );
+
+      expect(response.status).toBe(401);
+      const cleared = deletedCookieNames(response);
+      expect(cleared).toContain("steward-token-staging");
+      expect(cleared).toContain("steward-refresh-token-staging");
+      expect(cleared).toContain("steward-authed-staging");
+      expect(cleared).not.toContain("steward-token");
+      expect(cleared).not.toContain("steward-refresh-token");
+      expect(cleared).not.toContain("steward-authed");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

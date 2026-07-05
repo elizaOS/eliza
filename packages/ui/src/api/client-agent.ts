@@ -90,6 +90,8 @@ import type {
   OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
+  ProjectListResponse,
+  ProjectSummary,
   ProviderModelRecord,
   RawAcpSession,
   RelationshipsActivityResponse,
@@ -1021,12 +1023,16 @@ declare module "./client-base" {
       status?: string;
       search?: string;
       limit?: number;
+      /** Restrict to tasks bound to this project (#13776 item 5). */
+      projectId?: string;
     }): Promise<CodingAgentTaskThread[]>;
     getCodingAgentTaskThread(
       threadId: string,
     ): Promise<CodingAgentTaskThreadDetail | null>;
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
+    listProjects(): Promise<ProjectListResponse>;
+    activateProject(projectId: string): Promise<ProjectSummary>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
     getOrchestratorAccountReadiness(opts?: {
@@ -1224,6 +1230,89 @@ declare module "./client-base" {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud resume-progress (#14040 sub-defect 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map the cloud dedicated-agent-proxy's `202` resume body
+ * (`{success:true,data:{status:"starting",jobId,retryAfterMs,alreadyInProgress}}`)
+ * to an {@link AgentStatus.resumeProgress}. Returns `undefined` when the body
+ * doesn't look like a resume payload (so callers can fall back to their normal
+ * parse), never throws.
+ */
+function parseResumeProgress(
+  body: unknown,
+): AgentStatus["resumeProgress"] | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const data = (body as { data?: unknown }).data;
+  const src = (data && typeof data === "object" ? data : body) as Record<
+    string,
+    unknown
+  >;
+  const status = typeof src.status === "string" ? src.status : undefined;
+  if (!status) return undefined;
+  const jobId = typeof src.jobId === "string" ? src.jobId : undefined;
+  const retryAfterMs =
+    typeof src.retryAfterMs === "number" && Number.isFinite(src.retryAfterMs)
+      ? src.retryAfterMs
+      : undefined;
+  const alreadyInProgress =
+    typeof src.alreadyInProgress === "boolean"
+      ? src.alreadyInProgress
+      : undefined;
+  return { status, jobId, retryAfterMs, alreadyInProgress };
+}
+
+/**
+ * Fetch `/api/status` as a readiness poll, surfacing an in-flight cloud resume
+ * (`202`) as an explicit progress {@link AgentStatus} instead of blocking on
+ * the resume-retry loop and throwing `agent_resuming` (#14040 sub-defect 2).
+ *
+ * On a `202` the returned status is `state:"starting"` + `resumeProgress`, so
+ * the launcher can render "resuming…" and reset its slow-boot escalation on
+ * fresh progress. On a normal (non-202) response it returns the parsed status
+ * verbatim, so the running/stopped path is byte-for-byte unchanged.
+ */
+function map202ToResumeProgressStatus(body: unknown): AgentStatus {
+  const parsed = parseResumeProgress(body) ?? { status: "starting" };
+  // Stamp THIS observation so a single long-running resume (same status/jobId
+  // across polls) still advances the launcher's progress signal on every
+  // successful probe — otherwise a slow-but-live resume would look stalled and
+  // wrongly trip the slow-boot escalation (#14040 sub-defect 3).
+  const resumeProgress = { ...parsed, observedAt: Date.now() };
+  // An in-flight resume is honest progress, not "unreachable": report a
+  // starting state carrying the proxy's progress so `deriveAgentReady` stays
+  // false (correct — not ready yet) while the UI can distinguish it. Leave
+  // `canRespond` unknown here; `false` is reserved for the authoritative
+  // no-provider signal and would make a transient cloud wake look misconfigured.
+  return {
+    state: "starting",
+    agentName: "Eliza",
+    model: undefined,
+    uptime: undefined,
+    startedAt: undefined,
+    resumeProgress,
+  };
+}
+
+async function fetchStatusWithResumeProgress(
+  client: ElizaClient,
+): Promise<AgentStatus> {
+  // Reuse `fetch`'s shared, bounded body-read + strict-parse (a stalled status
+  // body must TIME OUT, never wedge the 1.5s readiness poll — codex review),
+  // and its throw-on-error semantics: a non-202 non-OK status (500/503) or a
+  // malformed 200 body still throws, so a broken status endpoint reads as an
+  // error, not a silent not-ready spinner. `skipResume` returns the FIRST 202
+  // untouched so `on202` can map the cloud resume-progress body ourselves
+  // instead of blocking on the resume loop + throwing `agent_resuming`
+  // (#14040 sub-defect 2).
+  return client.fetch<AgentStatus>("/api/status", undefined, {
+    skipResume: true,
+    on202: map202ToResumeProgressStatus,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
 
@@ -1250,7 +1339,29 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
       this.getBaseUrl(),
       "getAgentStatus",
     );
-    if (viaRpc) return viaRpc;
+    if (viaRpc) {
+      // The desktop electrobun RPC snapshot (`AgentStatusSnapshot`) carries the
+      // bun *process* lifecycle but NOT the agent's first-turn readiness
+      // (`canRespond`) or loaded `model` — those exist only in the HTTP
+      // `/api/status` the running agent serves. Without them `deriveAgentReady`
+      // (`canRespond ?? (running && model)`) never flips for a cloud-routed /
+      // model-less agent, so the readiness poll wedges on "Waking…" forever.
+      // Mirror the Android lifecycle branch below: when the process is running
+      // but the snapshot doesn't confirm `canRespond`, fill the readiness fields
+      // from `/api/status`. Behavior-preserving when the RPC already reports
+      // ready.
+      if (viaRpc.state === "running" && viaRpc.canRespond !== true) {
+        try {
+          const http = (await this.fetch("/api/status")) as AgentStatus | null;
+          if (http && typeof http === "object") {
+            return { ...viaRpc, ...http };
+          }
+        } catch {
+          /* /api/status unreachable — fall back to the RPC snapshot */
+        }
+      }
+      return viaRpc;
+    }
   } catch {
     /* fall through */
   }
@@ -1278,7 +1389,11 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
     }
     return native;
   }
-  return this.fetch("/api/status");
+  // Plain HTTP status path (cloud dedicated agent / web): surface an in-flight
+  // resume `202` as explicit progress instead of blocking on the resume-retry
+  // loop and throwing `agent_resuming` that the readiness poll swallows
+  // (#14040 sub-defect 2).
+  return fetchStatusWithResumeProgress(this);
 };
 
 ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
@@ -3728,6 +3843,7 @@ ElizaClient.prototype.listCodingAgentTaskThreads = async function (
   if (options?.includeArchived) params.set("includeArchived", "true");
   if (options?.status) params.set("status", options.status);
   if (options?.search) params.set("search", options.search);
+  if (options?.projectId) params.set("projectId", options.projectId);
   if (typeof options?.limit === "number") {
     params.set("limit", String(options.limit));
   }
@@ -3777,6 +3893,32 @@ ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
     { method: "POST" },
   );
   return true;
+};
+
+// --- Project registry (#13776 item 5): list + switch the active project ----
+// The switcher reads the merged core registry through these; an absent registry
+// (mobile/web where the surface isn't hosted) resolves to an empty list so the
+// switcher renders its no-projects empty state instead of erroring.
+
+ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
+  try {
+    return await this.fetch<ProjectListResponse>("/api/projects");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return { projects: [], activeProjectId: null };
+    }
+    throw error;
+  }
+};
+
+ElizaClient.prototype.activateProject = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch<ProjectSummary>(
+    `/api/projects/${encodeURIComponent(projectId)}/activate`,
+    { method: "POST" },
+  );
 };
 
 // --- Orchestrator-native task operations (/api/orchestrator/*) -------------

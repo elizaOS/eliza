@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "Mga tab",
   "browserworkspace.UnsupportedProtocol": "Suportado lamang ang http at https URLs.",
   "browserworkspace.UserTabs": "Mga User Tab",
+  "browserworkspace.ViewTitle": "Browser",
   "browserworkspace.Visible": "Nakikita",
   "browserworkspace.WebWorkspace": "Lugar ng trabaho sa web iframe",
   "browserworkspace.Working": "Ginagawa: {{action}}",

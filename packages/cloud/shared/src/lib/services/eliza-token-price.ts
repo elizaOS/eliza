@@ -58,6 +58,48 @@ const MAX_PRICE_DEVIATION = 0.05;
 // Minimum price threshold to prevent dust attacks
 const MIN_ELIZA_PRICE_USD = 0.000001;
 
+/**
+ * Raised when a persisted `eliza_token_prices.price_usd` NUMERIC value cannot be
+ * read back as a usable price.
+ *
+ * Postgres NUMERIC accepts `'NaN'::numeric`, which the driver returns as
+ * `"NaN"`. Cached token prices feed {@link ElizaTokenPriceService.getQuote};
+ * an unreadable value must become an observable cache miss rather than a
+ * fabricated payout quote.
+ */
+export class CorruptCachedElizaPriceError extends Error {
+  constructor(public readonly rawValue: unknown) {
+    super(
+      `eliza_token_prices.price_usd is not a usable positive price: ${JSON.stringify(rawValue)}`,
+    );
+    this.name = "CorruptCachedElizaPriceError";
+  }
+}
+
+/**
+ * Fail-closed boundary for a persisted `eliza_token_prices.price_usd` NUMERIC.
+ *
+ * Throws {@link CorruptCachedElizaPriceError} for `null`/`undefined`, an empty or
+ * whitespace-only string, anything that does not coerce to a finite number, or a
+ * non-positive value (a zero/negative price would drive division-by-zero /
+ * negative payout math and mirrors the fresh-fetch {@link MIN_ELIZA_PRICE_USD}
+ * dust-attack floor). Never returns `NaN` and never silently substitutes a
+ * default price.
+ */
+export function parseCachedPriceUsd(raw: unknown): number {
+  if (raw === null || raw === undefined) {
+    throw new CorruptCachedElizaPriceError(raw);
+  }
+  if (typeof raw === "string" && raw.trim() === "") {
+    throw new CorruptCachedElizaPriceError(raw);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < MIN_ELIZA_PRICE_USD) {
+    throw new CorruptCachedElizaPriceError(raw);
+  }
+  return value;
+}
+
 interface PriceQuote {
   priceUsd: number;
   source: string;
@@ -350,7 +392,30 @@ export class ElizaTokenPriceService {
    * Throws if prices deviate too much or all sources fail.
    */
   private validatePrices(prices: PriceFetchResult[], network: SupportedNetwork): PriceQuote {
-    const successfulPrices = prices.filter((p) => p.success && p.priceUsd !== undefined);
+    const successfulSources = prices.filter((p) => p.success);
+    const invalidSuccessfulPrices = successfulSources.filter(
+      (p) =>
+        p.priceUsd === undefined ||
+        !Number.isFinite(p.priceUsd) ||
+        p.priceUsd < MIN_ELIZA_PRICE_USD,
+    );
+    if (invalidSuccessfulPrices.length > 0) {
+      logger.error(`[ElizaPrice] Price source returned an unusable price for ${network}`, {
+        prices: invalidSuccessfulPrices.map((p) => ({
+          source: p.source,
+          price: p.priceUsd,
+        })),
+        minAllowed: MIN_ELIZA_PRICE_USD,
+      });
+      throw new Error("Price source returned an unusable elizaOS price");
+    }
+
+    const successfulPrices = successfulSources.filter(
+      (p) =>
+        p.priceUsd !== undefined &&
+        Number.isFinite(p.priceUsd) &&
+        p.priceUsd >= MIN_ELIZA_PRICE_USD,
+    );
 
     if (successfulPrices.length === 0) {
       const errors = prices.map((p) => `${p.source}: ${p.error}`).join("; ");
@@ -387,7 +452,7 @@ export class ElizaTokenPriceService {
     const selectedPrice = successfulPrices[0];
 
     // Validate minimum price
-    if (selectedPrice.priceUsd! < MIN_ELIZA_PRICE_USD) {
+    if (!Number.isFinite(selectedPrice.priceUsd) || selectedPrice.priceUsd! < MIN_ELIZA_PRICE_USD) {
       throw new Error(`elizaOS price too low: $${selectedPrice.priceUsd}`);
     }
 
@@ -421,8 +486,29 @@ export class ElizaTokenPriceService {
       return null;
     }
 
+    // Treat an unreadable cached row as a cache miss so getPrice re-fetches and
+    // re-validates through the live-source boundary instead of serving a
+    // garbage quote.
+    let priceUsd: number;
+    try {
+      priceUsd = parseCachedPriceUsd(cached.price_usd);
+    } catch (error) {
+      // error-policy:J4 corrupt cached price can degrade to a cache miss because
+      // the next boundary performs a fresh fetch, validation, and re-cache.
+      logger.error(
+        `[ElizaPrice] Ignoring corrupt cached price for ${network}; re-fetching from sources`,
+        {
+          network,
+          rawPriceUsd: cached.price_usd,
+          fetchedAt: cached.fetched_at,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return null;
+    }
+
     return {
-      priceUsd: Number(cached.price_usd),
+      priceUsd,
       source: cached.source,
       timestamp: cached.fetched_at,
       expiresAt: new Date(now.getTime() + QUOTE_VALIDITY_MS),

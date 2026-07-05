@@ -1,0 +1,70 @@
+{
+  "defer": "1",
+  "firstHttp": 8748,
+  "chatRepliedAt": 15847,
+  "statusRunningAt": 15992,
+  "statusCanRespondAt": 15992,
+  "healthReadyAt": 15627,
+  "events": [
+    {
+      "t": 8,
+      "name": "SPAWNED",
+      "detail": "pid=991461 defer=1"
+    },
+    {
+      "t": 8748,
+      "name": "HTTP_ACCEPTING",
+      "detail": "health HTTP 200"
+    },
+    {
+      "t": 8748,
+      "name": "HEALTH_CHANGE",
+      "detail": "{\"s\":200,\"ready\":false,\"canRespond\":false,\"st\":\"starting\"}"
+    },
+    {
+      "t": 9262,
+      "name": "CONV_CREATED",
+      "detail": "id=3851e4a5-2953-4bd0-b352-5e0425fd0fa6"
+    },
+    {
+      "t": 9309,
+      "name": "STATUS_CHANGE",
+      "detail": "{\"s\":200,\"state\":\"starting\",\"canRespond\":false,\"model\":null}"
+    },
+    {
+      "t": 15626,
+      "name": "HEALTH_CHANGE",
+      "detail": "{\"s\":200,\"ready\":true,\"canRespond\":true,\"st\":\"running\"}"
+    },
+    {
+      "t": 15627,
+      "name": "HEALTH_READY_TRUE",
+      "detail": ""
+    },
+    {
+      "t": 15844,
+      "name": "CHAT_REPLIED_ANY",
+      "detail": "HTTP 200 text=\"<response><action>RESPOND</action><reasoning>probe</reasoning></response>\""
+    },
+    {
+      "t": 15847,
+      "name": "CHAT_REPLIED_MODEL",
+      "detail": "HTTP 200 text=\"<response><action>RESPOND</action><reasoning>probe</reasoning></response>\""
+    },
+    {
+      "t": 15991,
+      "name": "STATUS_CHANGE",
+      "detail": "{\"s\":200,\"state\":\"running\",\"canRespond\":true,\"model\":\"openai\"}"
+    },
+    {
+      "t": 15992,
+      "name": "STATUS_STATE_RUNNING",
+      "detail": ""
+    },
+    {
+      "t": 15992,
+      "name": "STATUS_CANRESPOND_TRUE",
+      "detail": ""
+    }
+  ]
+}

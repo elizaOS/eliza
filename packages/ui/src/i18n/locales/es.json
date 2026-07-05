@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "Pestañas",
   "browserworkspace.UnsupportedProtocol": "Solo se admiten URLs http y https.",
   "browserworkspace.UserTabs": "Pestañas del usuario",
+  "browserworkspace.ViewTitle": "Navegador",
   "browserworkspace.Visible": "Visible",
   "browserworkspace.WebWorkspace": "Espacio de trabajo web (iframe)",
   "browserworkspace.Working": "Trabajando: {{action}}",

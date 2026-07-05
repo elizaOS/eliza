@@ -163,6 +163,30 @@ const FALLBACK_RATE_ENV_BY_CHARGE_TYPE: Record<"input" | "output", string> = {
   output: "AI_PRICING_FALLBACK_OUTPUT_USD_PER_M",
 };
 
+function assertBillableQuantity(params: {
+  quantity: number;
+  scope: string;
+  provider: string;
+  model: string;
+  productFamily: PricingProductFamily;
+  chargeType: string;
+}) {
+  if (Number.isFinite(params.quantity) && params.quantity >= 0) {
+    return;
+  }
+  logger.error("ai-pricing: refusing to bill an invalid quantity", {
+    provider: params.provider,
+    model: params.model,
+    productFamily: params.productFamily,
+    chargeType: params.chargeType,
+    scope: params.scope,
+    quantity: params.quantity,
+  });
+  throw new Error(
+    `Corrupt billing quantity for ${params.productFamily}:${params.chargeType} ${params.provider}/${params.model}; refusing to bill an invalid quantity`,
+  );
+}
+
 /** Env-configured default rate (USD per million tokens) → per-token unit price. */
 function envFallbackTokenUnitPrice(chargeType: "input" | "output"): number | null {
   const envName = FALLBACK_RATE_ENV_BY_CHARGE_TYPE[chargeType];
@@ -277,6 +301,36 @@ async function resolveFallbackTokenRate(params: {
 }
 
 function computeCostFromEntry(entry: PreparedPricingEntry, quantity: number): FlatOperationCost {
+  // Defense-in-depth money-boundary guard. Candidate selection already drops
+  // non-finite/non-positive prices (see `chooseBestCandidatePricingEntry`), so a resolved
+  // entry reaching here should always carry a real price. Re-assert it anyway:
+  // `asDecimal(NaN).mul(quantity)` silently yields a `NaN` charge; a negative
+  // price creates a negative debit. Either poisons the credit debit / earnings
+  // ledger with no error. If a corrupt
+  // price ever reaches this sink via any future path, fail closed with an
+  // explicit error the caller surfaces (5xx / refuse) rather than billing NaN.
+  if (!Number.isFinite(entry.unitPrice) || entry.unitPrice <= 0) {
+    logger.error("ai-pricing: refusing to bill an invalid catalog price", {
+      provider: entry.provider,
+      model: entry.model,
+      productFamily: entry.productFamily,
+      chargeType: entry.chargeType,
+      unit: entry.unit,
+      unitPrice: entry.unitPrice,
+    });
+    throw new Error(
+      `Corrupt catalog price for ${entry.productFamily}:${entry.chargeType} ${entry.provider}/${entry.model}; refusing to bill an invalid rate`,
+    );
+  }
+  assertBillableQuantity({
+    quantity,
+    scope: "flat",
+    provider: entry.provider,
+    model: entry.model,
+    productFamily: entry.productFamily,
+    chargeType: entry.chargeType,
+  });
+
   const baseCost = asDecimal(entry.unitPrice).mul(quantity);
   const markedUp = applyPlatformMarkup(baseCost);
 
@@ -342,6 +396,22 @@ export async function calculateTextCostFromCatalog(params: {
   const productFamily: PricingProductFamily = params.model.includes("embedding")
     ? "embedding"
     : "language";
+  assertBillableQuantity({
+    quantity: params.inputTokens,
+    scope: "inputTokens",
+    provider: params.provider,
+    model: canonicalModel,
+    productFamily,
+    chargeType: "input",
+  });
+  assertBillableQuantity({
+    quantity: params.outputTokens,
+    scope: "outputTokens",
+    provider: params.provider,
+    model: canonicalModel,
+    productFamily,
+    chargeType: "output",
+  });
   // Both lookups degrade to null on a catalog miss. A missing INPUT price used
   // to throw uncaught here (the OUTPUT lookup was already guarded), and the
   // throw propagated through calculateCost → the chat-completions reserve →
@@ -412,12 +482,47 @@ export async function calculateTextCostFromCatalog(params: {
     ? null
     : await resolveMissingSide("output", params.outputTokens);
 
-  const inputUnitPrice = inputEntry
-    ? asDecimal(inputEntry.unitPrice)
-    : asDecimal(inputFallback?.unitPrice ?? 0);
-  const outputUnitPrice = outputEntry
-    ? asDecimal(outputEntry.unitPrice)
-    : asDecimal(outputFallback?.unitPrice ?? 0);
+  // Defense-in-depth money-boundary guard mirroring `computeCostFromEntry`.
+  // Candidate selection already drops non-finite/non-positive catalog prices, but the token
+  // path builds the Decimal directly rather than going through that sink, so
+  // re-assert finiteness before `asDecimal(...).mul(tokens)` — a `NaN` unit
+  // price would otherwise bill `NaN` inference silently, and a negative price
+  // would credit the caller. A zero-token side costs $0 at any rate, so only a
+  // side that actually bills tokens fails closed on a corrupt resolved price.
+  const resolveTokenUnitPrice = (
+    chargeType: "input" | "output",
+    entry: PreparedPricingEntry | null,
+    fallback: FallbackTokenRate | null,
+    tokens: number,
+  ) => {
+    const unitPrice = entry ? entry.unitPrice : (fallback?.unitPrice ?? 0);
+    if (tokens > 0 && (!Number.isFinite(unitPrice) || unitPrice <= 0)) {
+      logger.error("ai-pricing: refusing to bill an invalid token price", {
+        canonicalModel,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        chargeType,
+        unitPrice,
+      });
+      throw new Error(
+        `Corrupt catalog price for ${productFamily}:${chargeType} ${canonicalModel}; refusing to bill an invalid rate`,
+      );
+    }
+    return asDecimal(unitPrice);
+  };
+
+  const inputUnitPrice = resolveTokenUnitPrice(
+    "input",
+    inputEntry,
+    inputFallback,
+    params.inputTokens,
+  );
+  const outputUnitPrice = resolveTokenUnitPrice(
+    "output",
+    outputEntry,
+    outputFallback,
+    params.outputTokens,
+  );
 
   const baseInputCost = inputUnitPrice.mul(params.inputTokens);
   const baseOutputCost = outputUnitPrice.mul(params.outputTokens);

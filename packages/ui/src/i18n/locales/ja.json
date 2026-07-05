@@ -381,6 +381,7 @@
   "browserworkspace.Tabs": "タブ",
   "browserworkspace.UnsupportedProtocol": "httpとhttpsのURLのみ対応しています。",
   "browserworkspace.UserTabs": "ユーザータブ",
+  "browserworkspace.ViewTitle": "ブラウザ",
   "browserworkspace.Visible": "表示中",
   "browserworkspace.WebWorkspace": "Web iframeワークスペース",
   "browserworkspace.Working": "実行中: {{action}}",

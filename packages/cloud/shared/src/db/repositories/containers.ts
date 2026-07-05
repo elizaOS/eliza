@@ -19,6 +19,7 @@ import { creditTransactions } from "../schemas/credit-transactions";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizationConfig } from "../schemas/organization-config";
 import { organizations } from "../schemas/organizations";
+import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric";
 
 export type Container = InferSelectModel<typeof containers>;
 export type NewContainer = InferInsertModel<typeof containers>;
@@ -334,8 +335,26 @@ export class ContainersRepository {
         ),
       );
 
+    // error-policy:J4 — a corrupt `credit_balance` NUMERIC (`'NaN'::numeric`
+    // migration artifact / manual DB edit) read through a bare `Number(...)`
+    // would become NaN and silently drop the org into the FREE tier via
+    // getMaxContainersForOrg, mislabelling a paying org's quota. Fail closed:
+    // an unreadable balance denies the pre-flight check with a diagnostic
+    // error rather than fabricating a free-tier max.
+    let creditBalance: number;
+    try {
+      creditBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
+    } catch (error) {
+      return {
+        allowed: false,
+        current: count,
+        max: 0,
+        error:
+          error instanceof Error ? error.message : "Unable to read organization credit_balance",
+      };
+    }
     const maxContainers = getMaxContainersForOrg(
-      Number(org.credit_balance),
+      creditBalance,
       config?.settings as Record<string, unknown> | undefined,
     );
 
@@ -572,9 +591,14 @@ export class ContainersRepository {
           ),
         );
 
-      // 3. Get max allowed containers for this org
+      // 3. Get max allowed containers for this org.
+      // error-policy:J4 — fail closed on a corrupt `credit_balance` NUMERIC so a
+      // migration artifact / manual DB edit cannot silently drop a paying org
+      // into the FREE quota tier. The throw propagates out of the FOR UPDATE
+      // transaction, rolling back atomically (no container row is created).
+      const creditBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
       const maxContainers = getMaxContainersForOrg(
-        Number(org.credit_balance),
+        creditBalance,
         config?.settings as Record<string, unknown> | undefined,
       );
 
@@ -645,7 +669,15 @@ export class ContainersRepository {
         throw new Error("Organization not found");
       }
 
-      const currentBalance = Number(org.credit_balance);
+      // error-policy:J1 — money-out spend gate. Read the balance fail-closed:
+      // a corrupt `credit_balance` NUMERIC (`'NaN'::numeric`) through a bare
+      // `Number(...)` becomes NaN, and `NaN < deploymentCost` is FALSE, so the
+      // insufficient-balance guard is BYPASSED — the container deploys FREE and
+      // `String(NaN - cost)` = "NaN" is written back, permanently poisoning the
+      // balance column. Throwing here (still inside the dbWrite.transaction)
+      // rolls the whole deploy+debit back atomically instead of authorizing an
+      // unbacked deployment against an unreadable balance.
+      const currentBalance = parseOrganizationCreditBalance(org.credit_balance, "credit_balance");
 
       if (currentBalance < deploymentCost) {
         throw new Error(

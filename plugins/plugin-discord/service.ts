@@ -1898,6 +1898,11 @@ export class DiscordService extends Service implements IDiscordService {
 				channelId: channel.id,
 				serverId: guild?.id,
 				threadId: isThread ? channel.id : undefined,
+				// The inbound gate drops messages on the [room, parent] mute chain
+				// (discord-events), so listings carry the same parent linkage for
+				// muted-state inheritance — a thread of a muted parent must never
+				// list as unmuted while its messages are being dropped.
+				parentChannelId: parentId,
 			} as TargetInfo,
 			label,
 			kind: isThread ? "thread" : "channel",

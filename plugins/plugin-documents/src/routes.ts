@@ -30,6 +30,7 @@ import {
 } from "./document-presenter.js";
 import {
   type DocumentAddedByRole,
+  type DocumentAddedFrom,
   type DocumentSearchMode,
   type DocumentsServiceLike,
   type DocumentVisibilityScope,
@@ -102,6 +103,7 @@ type DocumentUploadBody = {
   entityId?: string;
   scope?: string;
   scopedToEntityId?: string;
+  addedFrom?: string;
 };
 
 type RouteActorRole = "OWNER" | "USER" | "AGENT" | "RUNTIME";
@@ -1162,6 +1164,16 @@ export async function handleDocumentsRoutes(
         ? (scopedToEntityId ?? actor.entityId)
         : actor.entityId;
     const metadata = asRecord(document.metadata);
+    const requestedAddedFrom =
+      typeof document.addedFrom === "string" && document.addedFrom.trim()
+        ? document.addedFrom.trim()
+        : typeof metadata?.addedFrom === "string" && metadata.addedFrom.trim()
+          ? metadata.addedFrom.trim()
+          : "upload";
+    const addedFrom = (
+      requestedAddedFrom === "import" ? "import" : "upload"
+    ) as DocumentAddedFrom;
+    const source = addedFrom;
 
     // Persist the ORIGINAL uploaded bytes (content-addressed) and link them on
     // the document record so it stays downloadable/previewable. Best-effort: a
@@ -1212,10 +1224,10 @@ export async function handleDocumentsRoutes(
       scopedToEntityId,
       addedBy: actor.entityId,
       addedByRole: routeActorAddedByRole(actor),
-      addedFrom: "upload",
+      addedFrom,
       metadata: {
         ...metadata,
-        source: "upload",
+        source,
         filename: document.filename,
         originalFilename: document.filename,
         fileType: originalContentType,
@@ -1225,6 +1237,7 @@ export async function handleDocumentsRoutes(
         ...(scopedToEntityId ? { scopedToEntityId } : {}),
         addedBy: actor.entityId,
         addedByRole: routeActorAddedByRole(actor),
+        addedFrom,
         ...(mediaLink ?? {}),
       },
     });

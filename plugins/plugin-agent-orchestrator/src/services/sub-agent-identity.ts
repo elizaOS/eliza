@@ -181,13 +181,23 @@ own capabilities, and streams the reply back into your session. Examples:
 - List the parent's actions: \`USE_SKILL parent-agent {"mode":"list-actions","query":"github"}\`
 - List Cloud commands: \`USE_SKILL parent-agent {"mode":"list-cloud-commands"}\`
 - Run a read Cloud command: \`USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}\`
+- Register a Cloud app: \`USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.create","params":{"name":"<app>","app_url":"<url>","skipGitHubRepo":true}}\`
+- Deploy a Cloud container: \`USE_SKILL parent-agent {"mode":"cloud-command","command":"containers.create","params":{"name":"<app>","projectName":"<app>","port":3000,"image":"ghcr.io/<owner>/<app>:latest","healthCheckPath":"/health","environmentVars":{}}}\`
 - Spawn a helper sub-agent on this task: \`USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction>","label":"<optional name>"}\`
 
-Discovery is free, but mutating/paid/destructive Cloud commands stay gated: they
-require an explicit human "yes" on a follow-up turn, and paid self-spend is
-capped by the parent's spend allowance. You cannot bypass either gate by
-declaring a price — the parent verifies server-side. Use this only when the task
-genuinely needs a parent capability; a self-contained coding task never should.
+Cloud is BROKER-FIRST: you do NOT hold the owner's Cloud key — register and
+deploy apps through the parent with \`apps.create\` / \`containers.create\` (they map
+1:1 onto Cloud's \`POST /api/v1/apps\` and \`POST /api/v1/containers\`) instead of
+curling the Cloud API yourself. Discovery is free, but
+mutating/paid/destructive Cloud commands stay gated: they require an explicit
+human "yes" on a follow-up turn, and paid self-spend is capped by the spend allowance
+(\`containers.create\` is fixed-cost and may auto-authorize within that cap). You
+cannot bypass either gate by declaring a price — the parent verifies
+server-side. If a container needs the owner's Cloud key at RUNTIME (its own
+upstream bearer, passed as \`environmentVars.ELIZA_CLOUD_API_KEY\`), request it via
+the owner-approved credential bridge below — never expect it in your env. Use
+this only when the task genuinely needs a parent capability; a self-contained
+coding task never should.
 `;
 
 /** Options controlling which optional sections the rendered manual includes. */

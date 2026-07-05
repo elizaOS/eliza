@@ -402,6 +402,138 @@ describe("admission queue integration (#13772)", () => {
     });
   });
 
+  it("clears the parked state when a queued task is spawned directly (no duplicate dispatch)", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    const parked = await service.spawnAgentForTask(b);
+    expect(parked?.admission?.state).toBe("queued");
+
+    // A's slot frees SILENTLY (no terminal event — e.g. a swept-stale session),
+    // so the queue doesn't drain; then the user spawns B directly before the
+    // reconcile tick.
+    const s1 = acp.listSessions().find((s) => s.status === "running");
+    expect(s1).toBeDefined();
+    if (s1) s1.status = "completed";
+    const direct = await service.spawnAgentForTask(b);
+    expect(direct?.admission).toBeUndefined();
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
+    const record = (await store.getTask(b))?.task.metadata?.admission;
+    expect(record).toBeUndefined();
+
+    // B's session completing must NOT replay the stale admission record and
+    // spawn a duplicate agent for B.
+    const s2 = acp.listSessions().find((s) => s.status === "running");
+    expect(s2).toBeDefined();
+    if (s2) acp.complete(s2.id);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(acp.listSessions().length).toBe(2);
+  });
+
+  it("keeps a paused parked task's admission record across restart + drain, so resume replays it", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    await service.spawnAgentForTask(b);
+    await service.pauseTask(b);
+    // Pause keeps the durable record but removes B from the dispatch order.
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
+    expect((await store.getTask(b))?.task.metadata?.admission).toBeDefined();
+
+    // Restart mid-queue: the rebuild must NOT re-seed the paused task, and the
+    // drain after A completes must NOT clear its retained record.
+    await service.stop();
+    const restarted = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await restarted.start();
+    expect((await restarted.getAdmissionSnapshot()).queueDepth).toBe(0);
+    const running = acp.listSessions().find((s) => s.status === "running");
+    expect(running).toBeDefined();
+    if (running) acp.complete(running.id);
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await store.getTask(b))?.task.metadata?.admission).toBeDefined();
+
+    // Resume re-seeds the retained record and the drain dispatches B into the
+    // freed slot.
+    await restarted.resumeTask(b);
+    await waitUntil(async () => {
+      const snapshot = await restarted.getAdmissionSnapshot();
+      return (
+        snapshot.queueDepth === 0 &&
+        acp.listSessions().some((s) => s.status === "running")
+      );
+    });
+    expect((await store.getTask(b))?.task.metadata?.admission).toBeUndefined();
+    await restarted.stop();
+  });
+
+  it("re-parks the head with its ORIGINAL record when a concurrent spawn steals the slot mid-drain", async () => {
+    /** Reports a free slot but throws SessionCapError on the next spawn —
+     * models a direct spawn winning the slot between the drain's capacity
+     * check and its dispatch. */
+    class StealingAcp extends FakeAcp {
+      stealNext = false;
+      override async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
+        if (this.stealNext) {
+          this.stealNext = false;
+          throw new SessionCapError("worker", 1, 1);
+        }
+        return super.spawnSession(opts);
+      }
+    }
+    const acp = new StealingAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    await service.spawnAgentForTask(b);
+    const original = (await store.getTask(b))?.task.metadata?.admission as
+      | { enqueuedAt: string }
+      | undefined;
+    expect(original?.enqueuedAt).toBeTruthy();
+
+    // Ensure a re-minted record would carry a measurably later enqueuedAt.
+    await new Promise((r) => setTimeout(r, 15));
+
+    // A completes, freeing the slot — but the drain's dispatch loses the race.
+    acp.stealNext = true;
+    const running = acp.listSessions().find((s) => s.status === "running");
+    expect(running).toBeDefined();
+    if (running) acp.complete(running.id);
+    // Wait for the drain to actually attempt (and lose) the dispatch, then let
+    // the pass settle — polling for record-presence alone would race ahead of
+    // the drain and vacuously see the original record.
+    await waitUntil(() => !acp.stealNext);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // B is re-parked with its original seniority, not a fresh enqueue time.
+    const reparked = (await store.getTask(b))?.task.metadata?.admission as
+      | { enqueuedAt: string }
+      | undefined;
+    expect(reparked?.enqueuedAt).toBe(original?.enqueuedAt);
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(1);
+  });
+
   it("surfaces the capacity line + data.capacity through the provider", async () => {
     const acp = new FakeAcp(2);
     const store = new OrchestratorTaskStore({ backend: "memory" });

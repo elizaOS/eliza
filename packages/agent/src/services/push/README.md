@@ -72,6 +72,7 @@ mints an FCM token (see that module's `build.gradle`).
 - Integration: `push-registration-flow.test.ts` drives the full loop — a token
   POSTed through the real HTTP route reaches the provider `send()` on an emitted
   notification.
-- Live: `push-delivery.real.test.ts` sends against Apple's / Google's real
-  servers when creds are set (post-merge lane), asserting a bogus token is
-  rejected end to end. Delivery to a real **enrolled device** is pending-hardware.
+- Live: `bunx vitest run --config packages/agent/vitest.push-real.config.ts`
+  sends against Apple's / Google's real servers when creds are set, asserting a
+  bogus token is rejected end to end. Delivery to a real **enrolled device** is
+  pending-hardware.

@@ -31,7 +31,7 @@ import { AudioLines } from "lucide-react";
 import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
+import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { LiveMeetingPane } from "./LiveMeetingPane";
@@ -423,14 +423,10 @@ export function TranscriptsView({
         >
           {joinBar}
           <div data-testid="transcripts-empty" className="flex flex-1">
-            <ChatEmptyStateWithRecommendations
-              icon={AudioLines}
+            <PagePanel.Empty
+              className="flex-1"
+              icon={<AudioLines className="h-6 w-6" aria-hidden />}
               title="No transcripts yet."
-              recommendations={[
-                "Record and transcribe my next meeting",
-                "Start a voice transcription now",
-                "Summarize my most recent recording",
-              ]}
             />
           </div>
         </div>

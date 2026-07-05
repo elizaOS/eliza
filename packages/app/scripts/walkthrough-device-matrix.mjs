@@ -342,37 +342,74 @@ export function captureIosDevice({ iosDevice, deps = {} } = {}) {
   });
 }
 
-function captureIos({ duration }) {
-  const sim = bootedIosSim();
+function runPhase(run, rel, args, env = {}) {
+  const exitCode = run(rel, args, env);
+  return {
+    script: rel,
+    args,
+    status: exitCode === 0 ? "ok" : "error",
+    exitCode,
+  };
+}
+
+export function captureIos({ duration, deps = {} }) {
+  const {
+    bootedSim = bootedIosSim,
+    appBuilt = iosSimAppBuilt,
+    run = runScript,
+  } = deps;
+  const sim = bootedSim();
   if (!sim)
     return lane(
       "n/a",
       "no booted iOS simulator (boot one with `xcrun simctl boot 'iPhone 16 Pro'`)",
     );
-  const app = iosSimAppBuilt();
+  const app = appBuilt();
   if (!app)
     return lane(
       "n/a",
       "no iOS simulator app build found in DerivedData (run `bun run --cwd packages/app build:ios:local:sim` first; capturing a stale install would violate the rebuild-before-capture rule)",
     );
-  // TODO(#13573 Part 2): compose real journey legs when host can run them —
-  // drive ios-onboarding-smoke.mjs + mobile-local-chat-smoke.mjs (the in-app
-  // WKWebView handshake, since it has no CDP) before this single-shot capture so
-  // the iOS lane records the full onboarding/chat/gesture narrative, not just a
-  // frame of the running app. Device-gated: needs a live simulator.
-  const code = runScript("capture-ios-sim.mjs", [
-    "--issue",
-    "10198",
-    "--slug",
-    "walkthrough-ios-sim",
-    "--duration",
-    String(duration),
-  ]);
-  return lane(code === 0 ? "captured" : "error", null, {
+
+  const phaseSpecs = [
+    ["ios-onboarding-smoke.mjs", ["--app-path", app]],
+    [
+      "mobile-local-chat-smoke.mjs",
+      [
+        "--platform",
+        "ios",
+        "--require-installed",
+        "--ios-select-local",
+        "--ios-full-bun-smoke",
+      ],
+    ],
+    [
+      "capture-ios-sim.mjs",
+      [
+        "--issue",
+        "10198",
+        "--slug",
+        "walkthrough-ios-sim",
+        "--duration",
+        String(duration),
+      ],
+    ],
+  ];
+  const phases = [];
+  for (const [rel, argv] of phaseSpecs) {
+    const phase = runPhase(run, rel, argv);
+    phases.push(phase);
+    if (phase.status === "error") break;
+  }
+  const failed = phases.find((phase) => phase.status === "error");
+  return lane(failed ? "error" : "captured", failed?.script ?? null, {
     outputDir: ".github/issue-evidence/ (10198-walkthrough-ios-sim-*.png/.mov)",
-    note: "Single-shot simctl capture of the running iOS app. WKWebView has no CDP, so the full DOM-driven narrative parity runs in-app via the onboarding/chat handshake legs (ios-onboarding-smoke.mjs / mobile-local-chat-smoke.mjs); see DEVICE_MATRIX.md.",
+    note: failed
+      ? `iOS simulator walkthrough stopped after ${failed.script} failed; see phases for exit codes.`
+      : "iOS WKWebView has no CDP, so the walkthrough is driven in-app via ios-onboarding-smoke.mjs and mobile-local-chat-smoke.mjs before simctl capture. See DEVICE_MATRIX.md.",
     simUdid: sim,
     appPath: app,
+    phases,
   });
 }
 

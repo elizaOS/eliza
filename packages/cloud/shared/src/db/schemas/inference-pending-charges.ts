@@ -32,6 +32,9 @@ import { users } from "./users";
  *                     negative; the DB `CHECK(credit_balance >= 0)` forbids it).
  *                     Bounded over-spend, recorded for alerting/audit, never a
  *                     free-forever loop (the org drops to the safe path).
+ *   - `corrupt`     — sweep found an invalid persisted estimate; the row is
+ *                     terminal and auditable instead of being fabricated into a
+ *                     debit amount.
  *
  * See `packages/cloud/api/docs/inference-hot-path.md` and
  * `lib/services/inference-billing-ledger.ts`.
