@@ -1,42 +1,27 @@
 /**
- * Profile form for updating user profile information: name, avatar upload with
- * preview, email add, and read-only org role.
+ * Profile form for updating user profile information: name, email add, and
+ * read-only org role.
  *
  * Talks directly to the canonical profile routes via the typed cloud client:
- *   PATCH /api/v1/user        (name + avatar URL)
+ *   PATCH /api/v1/user        (name)
  *   PATCH /api/v1/user/email  (add email)
- *   POST  /api/v1/user/avatar (multipart upload)
  *
  * Follow-up: this still uses `window.location.reload()` after a successful
  * mutation rather than react-query invalidation — ported as-is to preserve
  * behavior; convert when the page is reshaped into a settings section.
  */
 
-import {
-  Check,
-  ImagePlus,
-  Loader2,
-  Mail,
-  Shield,
-  Upload,
-  User,
-  X,
-} from "lucide-react";
-import { useCallback, useRef, useState, useTransition } from "react";
+import { Loader2, Mail, Shield, User } from "lucide-react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Alert,
   AlertDescription,
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
   BrandButton,
   BrandCard,
   CornerBrackets,
-  Image,
   Input,
 } from "../../../cloud-ui";
-import { Button } from "../../../components/ui/button";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import type { UserProfile } from "../data/user";
 
@@ -51,26 +36,20 @@ interface ProfileActionResult {
   message?: string;
 }
 
-interface AvatarUploadResult extends ProfileActionResult {
-  avatarUrl?: string;
-}
-
 interface ProfileMutationBody {
   success?: boolean;
   error?: string;
   reason?: string;
   message?: string;
-  avatarUrl?: string;
 }
 
 async function updateProfile(formData: FormData): Promise<ProfileActionResult> {
   const name = String(formData.get("name") ?? "");
-  const avatar = String(formData.get("avatar") ?? "");
 
   try {
     const res = await apiFetch("/api/v1/user", {
       method: "PATCH",
-      json: { name, avatar: avatar || undefined },
+      json: { name },
     });
     // error-policy:J3 an unparseable body maps to the explicit failure
     // result below, never a fake success.
@@ -126,45 +105,6 @@ async function updateEmail(formData: FormData): Promise<ProfileActionResult> {
   }
 }
 
-async function uploadAvatar(formData: FormData): Promise<AvatarUploadResult> {
-  try {
-    const res = await apiFetch("/api/v1/user/avatar", {
-      method: "POST",
-      body: formData,
-    });
-    // error-policy:J3 unparseable body maps to the explicit failure below.
-    const body = (await res
-      .json()
-      // error-policy:J3 a non-JSON/empty body is an explicit "invalid" signal;
-      // the `!body?.success` check below turns it into a user-facing error.
-      .catch(() => null)) as ProfileMutationBody | null;
-    if (body?.success && typeof body.avatarUrl === "string") {
-      return {
-        success: true,
-        avatarUrl: body.avatarUrl,
-        message: body.message ?? "Avatar uploaded successfully",
-      };
-    }
-    return {
-      success: false,
-      error: body?.error ?? body?.reason ?? "Failed to upload avatar",
-    };
-  } catch (err) {
-    return {
-      success: false,
-      error: mutationError(err, "Failed to upload avatar"),
-    };
-  }
-}
-
-const VALID_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
 interface ProfileFormProps {
   user: UserProfile;
 }
@@ -173,114 +113,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [emailAdded, setEmailAdded] = useState(false);
-
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const getInitials = (
-    name: string | null,
-    email: string | null,
-    walletAddress: string | null,
-  ) => {
-    if (name) {
-      return name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
-    }
-    if (email) return email.slice(0, 2).toUpperCase();
-    if (walletAddress) return walletAddress.slice(0, 2).toUpperCase();
-    return "U";
-  };
-
-  const handleFileSelect = useCallback(
-    (file: File) => {
-      if (!VALID_IMAGE_TYPES.includes(file.type)) {
-        toast.error("Invalid file type. Only JPEG, PNG, and WebP are allowed.");
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        toast.error("File too large. Maximum size is 5MB.");
-        return;
-      }
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      const objectUrl = URL.createObjectURL(file);
-      setPreviewUrl(objectUrl);
-      setPendingFile(file);
-      setError(null);
-    },
-    [previewUrl],
-  );
-
-  const handleAvatarSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) handleFileSelect(file);
-      if (e.target) e.target.value = "";
-    },
-    [handleFileSelect],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-      const files = e.dataTransfer.files;
-      if (files.length > 0) handleFileSelect(files[0]);
-    },
-    [handleFileSelect],
-  );
-
-  const handleCancelPreview = useCallback(() => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    setPendingFile(null);
-  }, [previewUrl]);
-
-  const handleSaveAvatar = async () => {
-    if (!pendingFile) return;
-
-    setIsUploadingAvatar(true);
-    setError(null);
-
-    const formData = new FormData();
-    formData.append("file", pendingFile);
-
-    const result = await uploadAvatar(formData);
-
-    if (result.success) {
-      toast.success(result.message || "Avatar uploaded successfully");
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-      setPendingFile(null);
-      window.dispatchEvent(new CustomEvent("user-avatar-updated"));
-      window.location.reload();
-    } else {
-      setError(result.error || "Failed to upload avatar");
-      toast.error(result.error || "Failed to upload avatar");
-    }
-    setIsUploadingAvatar(false);
-  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -427,145 +261,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex flex-col sm:flex-row items-start gap-4 pb-6 border-b border-border">
-            <div className="relative group">
-              {previewUrl ? (
-                <div className="relative">
-                  <div className="h-24 w-24 rounded-full overflow-hidden">
-                    <Image
-                      src={previewUrl}
-                      alt="Preview"
-                      width={96}
-                      height={96}
-                      className="h-full w-full object-cover"
-                      unoptimized
-                    />
-                  </div>
-                  <div className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-2xs font-bold px-2 py-0.5 rounded-full animate-pulse motion-reduce:animate-none">
-                    PREVIEW
-                  </div>
-                </div>
-              ) : (
-                <Avatar className="h-24 w-24">
-                  <AvatarImage
-                    src={user.avatar || undefined}
-                    alt={
-                      user.name ||
-                      user.email ||
-                      (user.wallet_address
-                        ? `${user.wallet_address.substring(0, 6)}...${user.wallet_address.substring(user.wallet_address.length - 4)}`
-                        : "User")
-                    }
-                  />
-                  <AvatarFallback className="text-xl bg-accent-subtle">
-                    {getInitials(user.name, user.email, user.wallet_address)}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </div>
-
-            <div className="flex-1 space-y-3">
-              <div>
-                <label
-                  htmlFor="avatar-upload"
-                  className="text-xs font-medium text-muted uppercase tracking-wide"
-                >
-                  Profile Picture
-                </label>
-                <p className="text-xs text-muted mt-1">
-                  PNG, JPG or WEBP. Max 5MB. Drag & drop or click to upload.
-                </p>
-              </div>
-
-              <Input
-                ref={fileInputRef}
-                id="avatar-upload"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp"
-                onChange={handleAvatarSelect}
-                disabled={isUploadingAvatar}
-                className="hidden"
-              />
-
-              {previewUrl && pendingFile ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 rounded-sm border border-accent-muted bg-accent-subtle">
-                    <div className="flex-1">
-                      <p className="text-sm text-txt font-medium truncate">
-                        {pendingFile.name}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {(pendingFile.size / 1024).toFixed(1)} KB
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <BrandButton
-                      type="button"
-                      variant="primary"
-                      size="sm"
-                      disabled={isUploadingAvatar}
-                      onClick={handleSaveAvatar}
-                      className="flex-1"
-                    >
-                      {isUploadingAvatar ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
-                          Uploading...
-                        </>
-                      ) : (
-                        <>
-                          <Check className="h-4 w-4 mr-2" />
-                          Save Avatar
-                        </>
-                      )}
-                    </BrandButton>
-                    <BrandButton
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isUploadingAvatar}
-                      onClick={handleCancelPreview}
-                    >
-                      <X className="h-4 w-4 mr-2" />
-                      Cancel
-                    </BrandButton>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  className={`flex min-h-touch items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-colors cursor-pointer w-full bg-transparent ${
-                    isDragging
-                      ? "border-accent bg-accent-subtle"
-                      : "border-border-strong hover:border-border-hover hover:bg-bg-hover"
-                  }`}
-                >
-                  {isDragging ? (
-                    <>
-                      <ImagePlus className="h-5 w-5 text-accent" />
-                      <span className="text-sm font-medium text-accent">
-                        Drop your image here
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-5 w-5 text-muted" />
-                      <span className="text-sm text-muted">
-                        Click or drag image to upload
-                      </span>
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-          </div>
-
           <div className="space-y-4">
             <div className="space-y-2">
               <label
@@ -610,27 +305,6 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 )}
               </div>
             )}
-
-            <div className="space-y-2">
-              <label
-                htmlFor="avatar"
-                className="text-xs font-medium text-muted uppercase tracking-wide"
-              >
-                Avatar URL (Optional)
-              </label>
-              <Input
-                id="avatar"
-                name="avatar"
-                type="url"
-                defaultValue={user.avatar || ""}
-                placeholder="https://example.com/avatar.jpg"
-                disabled={isPending}
-                className="min-h-touch rounded-sm border-input bg-bg-elevated text-txt placeholder:text-muted disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-              <p className="text-xs text-muted">
-                Or use the upload button above to add a profile picture.
-              </p>
-            </div>
 
             <div className="space-y-2">
               <label
