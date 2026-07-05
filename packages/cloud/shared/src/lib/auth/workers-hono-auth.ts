@@ -28,11 +28,15 @@ import { stewardCookieNames } from "./steward-cookies";
 
 function readStewardCookie(c: AppContext): string | null {
   const names = stewardCookieNames(c.env?.ENVIRONMENT);
-  // Legacy fallback keeps pre-rename non-prod sessions alive for one refresh
-  // cycle; on production the two names are identical. (#13728)
+  // Read this environment's own access-token cookie, then fall back to the
+  // legacy unsuffixed name. This fallback is READ-ONLY: it only verifies a JWT
+  // locally (jose), never rotating or invalidating the shared legacy refresh
+  // token, so a non-prod read of prod's legacy cookie cannot sign prod out
+  // (#13728). On production the two names are identical. Legacy cookies expire
+  // naturally; nothing here deletes them.
   return (
     readCookie(c, names.token) ??
-    (names.token === "steward-token" ? undefined : readCookie(c, "steward-token"))
+    (names.token === "steward-token" ? null : readCookie(c, "steward-token"))
   );
 }
 

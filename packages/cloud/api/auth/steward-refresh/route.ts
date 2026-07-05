@@ -37,10 +37,7 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import {
-  LEGACY_STEWARD_COOKIES,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -327,14 +324,14 @@ app.post("/", async (c) => {
   }
 
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
-  // Legacy fallback: pre-rename sessions on non-production still carry the
-  // unsuffixed cookie; honoring it once lets them migrate on this refresh
-  // instead of being dumped to login. (#13728)
-  const refreshToken =
-    getCookie(c, cookieNames.refreshToken) ??
-    (cookieNames.refreshToken !== LEGACY_STEWARD_COOKIES.refreshToken
-      ? getCookie(c, LEGACY_STEWARD_COOKIES.refreshToken)
-      : undefined);
+  // Read only THIS environment's own refresh cookie. The legacy unsuffixed slot
+  // lives on the shared parent zone (Domain=elizacloud.ai) where it is
+  // production's LIVE refresh token. A non-prod refresh must never read-and-send
+  // it to Steward (refresh rotates the token, invalidating prod's copy) nor
+  // delete it — that is exactly the deterministic cross-env sign-out of #13728.
+  // Pre-rename non-prod sessions simply re-login once as their legacy cookie
+  // expires naturally; prod is unaffected (names are identical there).
+  const refreshToken = getCookie(c, cookieNames.refreshToken);
   if (!refreshToken) {
     logRefresh("missing-refresh-cookie");
     return c.json(errorBody("Refresh token required", "missing_token"), 401);
@@ -442,15 +439,6 @@ app.post("/", async (c) => {
     ...(domain ? { domain } : {}),
     maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
   });
-
-  // Rename-window hygiene: after a successful suffixed write on non-prod,
-  // drop the legacy pair so a later prod session in the same browser can't be
-  // misread here (and vice versa). No-op on production (names are identical).
-  if (cookieNames.refreshToken !== LEGACY_STEWARD_COOKIES.refreshToken) {
-    const opts = { path: "/", ...(domain ? { domain } : {}) };
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
-  }
 
   logRefresh("ok");
   return c.json({
