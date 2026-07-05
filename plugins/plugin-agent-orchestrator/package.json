@@ -68,6 +68,7 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "git-workspace-service": "0.4.5"
   },
   "dependencies": {

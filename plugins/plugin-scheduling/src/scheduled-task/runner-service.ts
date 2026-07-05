@@ -28,6 +28,7 @@ import {
   Service,
   ServiceType,
 } from "@elizaos/core";
+import { resolvePlatform } from "@elizaos/shared/runtime-env";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
   type CompletionCheckRegistry,
@@ -160,7 +161,7 @@ const MOBILE_PROFILES: ReadonlySet<TaskExecutionProfile> =
  * `hostCapabilities` via the deps provider.
  */
 function platformHostCapabilities(): ReadonlySet<TaskExecutionProfile> {
-  const platform = (process.env.ELIZA_PLATFORM ?? "").toLowerCase();
+  const platform = resolvePlatform() ?? "";
   if (platform === "android" || platform === "ios") return MOBILE_PROFILES;
   return ALL_PROFILES;
 }

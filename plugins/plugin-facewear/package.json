@@ -53,6 +53,7 @@
 	"dependencies": {
 		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
+		"@elizaos/shared": "workspace:*",
 		"@elizaos/ui": "workspace:*",
 		"lucide-react": "^1.0.0",
 		"ws": "^8.18.0",

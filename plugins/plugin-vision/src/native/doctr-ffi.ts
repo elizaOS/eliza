@@ -11,7 +11,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger } from "@elizaos/core";
+import { logger, resolveAliasedEnvValue } from "@elizaos/core";
 
 const MODULE_TAG = "[doctr-ffi]";
 
@@ -43,7 +43,8 @@ function defaultLibraryPath(): string {
 /** Where the runtime expects GGUF weights. */
 export function defaultDetWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+    resolveAliasedEnvValue("ELIZA_STATE_DIR") ??
+    path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_DET_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-det.gguf")
@@ -52,7 +53,8 @@ export function defaultDetWeightsPath(): string {
 
 export function defaultRecWeightsPath(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+    resolveAliasedEnvValue("ELIZA_STATE_DIR") ??
+    path.join(os.homedir(), ".eliza");
   return (
     process.env.ELIZA_DOCTR_REC_GGUF ??
     path.join(stateDir, "models", "vision", "doctr-rec.gguf")

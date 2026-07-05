@@ -16,6 +16,7 @@ import {
 	renderMessageHandlerStablePrefix,
 	type UUID,
 } from "@elizaos/core";
+import { isAndroidMobile, isIosMobile } from "@elizaos/shared";
 import {
 	ActiveModelCoordinator,
 	type LocalInferenceLoadOverrides,
@@ -640,10 +641,8 @@ export class LocalInferenceService {
 			requiredAccelerator: parseImageGenRequiredAccelerator(
 				process.env.ELIZA_IMAGEGEN_ACCELERATOR,
 			),
-			isIos: process.env.ELIZA_PLATFORM === "ios",
-			isAndroid:
-				process.env.ELIZA_PLATFORM === "android" ||
-				process.env.ELIZA_LOCAL_LLAMA === "1",
+			isIos: isIosMobile(),
+			isAndroid: isAndroidMobile() || process.env.ELIZA_LOCAL_LLAMA === "1",
 		} satisfies ImageGenRuntimeProfile;
 		const errors: string[] = [];
 		for (const choice of selectImageGenBackends(profile)) {

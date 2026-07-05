@@ -18,6 +18,7 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
@@ -514,7 +515,7 @@ function extractOauthAccessToken(value: unknown): string | undefined {
 }
 
 function resolveElizaConfigPath(): string {
-  const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
+  const explicit = readAliasedEnv("ELIZA_CONFIG_PATH");
   if (explicit) return resolveUserPath(explicit);
 
   const namespace = getElizaNamespace();

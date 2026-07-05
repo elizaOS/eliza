@@ -25,6 +25,7 @@ import {
   PostSkillCreateRequestSchema,
   PutSkillSourceRequestSchema,
   parseClampedInteger,
+  readAliasedEnv,
 } from "@elizaos/shared";
 import {
   installMarketplaceSkill,
@@ -76,10 +77,7 @@ function resolveDefaultAgentWorkspaceDir(): string {
     // Fall through to cwd / state-dir defaults.
   }
 
-  if (
-    !process.env.ELIZA_STATE_DIR?.trim() &&
-    !process.env.ELIZA_STATE_DIR?.trim()
-  ) {
+  if (!readAliasedEnv("ELIZA_STATE_DIR")) {
     const cwd = process.cwd();
     if (cwd.trim() && shouldUseRuntimeCwdWorkspace(cwd)) {
       return resolveUserPath(cwd);
@@ -87,9 +85,7 @@ function resolveDefaultAgentWorkspaceDir(): string {
   }
 
   const stateDir = resolveUserPath(
-    process.env.ELIZA_STATE_DIR?.trim() ??
-      process.env.ELIZA_STATE_DIR?.trim() ??
-      path.join(os.homedir(), ".eliza"),
+    readAliasedEnv("ELIZA_STATE_DIR") ?? path.join(os.homedir(), ".eliza"),
   );
   const profile = process.env.ELIZA_PROFILE?.trim();
   if (profile && profile.toLowerCase() !== "default") {

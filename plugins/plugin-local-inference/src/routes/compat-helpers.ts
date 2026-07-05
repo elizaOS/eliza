@@ -13,7 +13,11 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import type { AgentRuntime } from "@elizaos/core";
-import { isLoopbackBindHost, resolveApiToken } from "@elizaos/shared";
+import {
+	isLoopbackBindHost,
+	readAliasedEnv,
+	resolveApiToken,
+} from "@elizaos/shared";
 
 const MAX_BODY_BYTES = 1_048_576;
 
@@ -113,7 +117,7 @@ function proxyClientHeaderBlocksLocalTrust(
 }
 
 function isCloudProvisionedByEnv(): boolean {
-	return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+	return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
 }
 
 function isLocalAuthRequiredByEnv(): boolean {

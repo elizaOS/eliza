@@ -41,6 +41,7 @@ import {
 	type TranscriptionParams,
 	type UUID,
 } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import { LocalInferenceUnavailableError } from "../provider";
 import {
 	type LocalInferenceLoader,
@@ -189,7 +190,7 @@ function getRuntimeMode(runtime: IAgentRuntime): string {
 		if (fromEnv) return fromEnv;
 	}
 	if (
-		process.env.ELIZA_CLOUD_PROVISIONED === "1" ||
+		readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1" ||
 		process.env.ELIZAOS_CLOUD_ENABLED === "1"
 	) {
 		return "cloud";

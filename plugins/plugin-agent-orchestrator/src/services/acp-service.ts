@@ -25,6 +25,7 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
+import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -3239,7 +3240,7 @@ export class AcpService extends Service {
   }
 
   private assertTransportAvailable(sessionId: string): void {
-    if (process.env.ELIZA_PLATFORM !== "android") return;
+    if (!isAndroidMobile()) return;
     const message = this.missingCliMessage();
     if (!message) return;
     this.emitMissingCli(sessionId, message);

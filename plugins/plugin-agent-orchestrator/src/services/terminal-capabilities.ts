@@ -7,6 +7,7 @@
  */
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
+import { resolvePlatform } from "@elizaos/shared";
 
 export const ORCHESTRATOR_TOOL_NAMES = [
   "sh",
@@ -85,7 +86,7 @@ function envRuntimeMode(env: TerminalSupportEnv): string {
 /** Snapshot the live process env into a {@link TerminalSupportEnv}. */
 function readTerminalSupportEnv(): TerminalSupportEnv {
   return {
-    platform: process.env.ELIZA_PLATFORM,
+    platform: resolvePlatform(),
     buildVariant: process.env.ELIZA_BUILD_VARIANT,
     runtimeMode:
       process.env.ELIZA_RUNTIME_MODE ??
