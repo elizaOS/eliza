@@ -128,10 +128,14 @@ Contributions welcome. Open an issue before sending a non-trivial PR. Before
 opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) and the evidence standard
 in [PR_EVIDENCE.md](PR_EVIDENCE.md); frontend-testable changes need screenshots,
 video, logs, and any relevant real-LLM trajectories attached under
-[`.github/issue-evidence/`](.github/issue-evidence/).
+[`.github/issue-evidence/`](.github/issue-evidence/). Agents and maintainers
+working from a GitHub Project board should also read the coordination workflow
+in [docs/AGENT_COORDINATION.md](docs/AGENT_COORDINATION.md) before claiming
+kanban work.
 
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
+- [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security Policy](SECURITY.md)
 - [Windows Setup](WINDOWS.md)

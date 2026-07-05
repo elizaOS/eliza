@@ -2,7 +2,10 @@
 
 # Relates to
 
-<!-- LINK TO ISSUE OR TICKET -->
+<!--
+Link the issue, ticket, or Project card. For agent/kanban work, follow
+docs/AGENT_COORDINATION.md and keep the Project item status current.
+-->
 
 Definition of Done: full standard in [`PR_EVIDENCE.md`](../PR_EVIDENCE.md).
 

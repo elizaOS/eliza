@@ -173,6 +173,29 @@ To build on the runtime from your own TypeScript with no CLI/UI, import
 - Keep weak types (`any` / `unknown` / unsafe casts) out; validate at runtime
   boundaries and type the validated result.
 
+## GitHub project coordination
+
+For agent/human work coordinated through GitHub Projects, read
+[`docs/AGENT_COORDINATION.md`](docs/AGENT_COORDINATION.md) before claiming work.
+Permanent process lives in that doc, not in a long issue-comment thread.
+
+- Issues are scoped work cards with acceptance criteria and evidence.
+- GitHub Projects are the live kanban state: `Todo` -> `Claimed` ->
+  `In progress` -> `Needs-agent-verify` -> `needs-human-verify` -> `Done`.
+- Set the Project `Claimed by` field to your lane/agent tag when you claim a
+  card, and keep `Status` accurate.
+- Discussions are for coordination, handoffs, and noisy multi-card chat; roll
+  durable decisions back into docs, issue bodies, or Project readmes.
+- PRs carry the code and the proof required by `PR_EVIDENCE.md`; link the issue
+  or Project card they resolve.
+- Do not move cards to `Done` unless the board explicitly grants that authority
+  to your role. Human verification owns final done for launch/QA boards.
+
+Current Launch QA routing: Project
+<https://github.com/orgs/elizaOS/projects/12>, Discussion
+<https://github.com/orgs/elizaOS/discussions/14292>, tracker/history
+<https://github.com/elizaOS/eliza/issues/13406>.
+
 ## Error-Handling Simplification
 
 Binding policy for all error handling (parent #12182, foundation #12263). The
