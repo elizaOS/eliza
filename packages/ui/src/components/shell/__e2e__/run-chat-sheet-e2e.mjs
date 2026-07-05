@@ -9,6 +9,9 @@
  *       slow drag (distance threshold) · flick (velocity threshold) ·
  *       sub-threshold nudge (snaps back) · drag-and-hold at an arbitrary mid
  *       height (live 1:1 tracking) · drag BEYOND full (rubber-band overscroll).
+ *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
+ *       streamed growth remains pinned, reading-scrollback is not yanked, and
+ *       jump-to-latest re-pins the transcript.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -23,8 +26,8 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PNG } from "pngjs";
 import { chromium } from "playwright";
+import { PNG } from "pngjs";
 import {
   renameRecordedVideo,
   stubElizaCore,
@@ -102,6 +105,19 @@ const sheetHeight = (p) =>
         .querySelector('[data-testid="chat-thread"]')
         ?.getBoundingClientRect().height ?? 0,
   );
+const threadScrollState = (p) =>
+  p.evaluate(() => {
+    const el = document.querySelector('[data-testid="chat-thread-scroll"]');
+    if (!el) return null;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      maxScrollTop,
+      bottomDelta: maxScrollTop - el.scrollTop,
+    };
+  });
 async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
   await p
     .waitForFunction(
@@ -113,6 +129,20 @@ async function waitForSheetHeightNear(p, expected, tolerance, timeout = 1500) {
         return Math.abs(h - expected) <= tolerance;
       },
       { expected, tolerance },
+      { timeout },
+    )
+    .catch(() => {});
+}
+async function waitForThreadBottom(p, timeout = 1800) {
+  await p
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('[data-testid="chat-thread-scroll"]');
+        if (!el) return false;
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        return maxScrollTop - el.scrollTop <= 18;
+      },
+      undefined,
       { timeout },
     )
     .catch(() => {});
@@ -414,6 +444,122 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-nudge-snapback`);
 }
 
+const BIG_STREAM_GROWTH = `\n\n${Array.from(
+  { length: 18 },
+  (_, i) =>
+    `streamed burst ${i + 1}: this deliberately wraps across the chat bubble so one committed growth is taller than the 80px at-bottom threshold.`,
+).join(" ")}`;
+
+async function mutateAssistant(p, hook, text) {
+  const ok = await p.evaluate(
+    ({ hook, text }) => {
+      const fn = window[hook];
+      if (typeof fn !== "function") return false;
+      fn(text);
+      return true;
+    },
+    { hook, text },
+  );
+  assert(ok, `fixture exposes ${hook}`);
+}
+
+async function openSheetToFull(p, pointer) {
+  await p.waitForSelector('[data-testid="chat-sheet"]');
+  await gesture(p, 160, { pointer, slow: false, steps: 2 });
+  await p.waitForTimeout(SETTLE);
+  if ((await detent(p)) !== "full") {
+    await gesture(p, 220, { pointer, slow: false, steps: 2 });
+    await p.waitForTimeout(SETTLE);
+  }
+  assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);
+  await waitForThreadBottom(p);
+  const state = await threadScrollState(p);
+  assert(
+    !!state && state.scrollHeight > state.clientHeight + 120,
+    `[${pointer}] AUTOSCROLL fixture has real overflow (scrollHeight=${Math.round(state?.scrollHeight ?? 0)}, clientHeight=${Math.round(state?.clientHeight ?? 0)})`,
+  );
+  assert(
+    !!state && state.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL starts pinned to bottom (delta=${Math.round(state?.bottomDelta ?? -1)})`,
+  );
+}
+
+async function scrollReaderUp(p, pointer) {
+  const selector = testIdSelector("chat-thread-scroll");
+  const before = await threadScrollState(p);
+  if (pointer === "mouse") {
+    await p.getByTestId("chat-thread-scroll").hover();
+    await p.mouse.wheel(0, -420);
+  } else {
+    await touchSwipe(p, selector, 0, 280, { steps: 16, stepDelayMs: 16 });
+  }
+  await p.waitForTimeout(360);
+  const after = await threadScrollState(p);
+  assert(
+    !!before && !!after && after.scrollTop < before.scrollTop - 80,
+    `[${pointer}] AUTOSCROLL real ${pointer === "mouse" ? "wheel" : "touch"} scroll moves reader into history (${Math.round(before?.scrollTop ?? 0)} → ${Math.round(after?.scrollTop ?? 0)})`,
+  );
+  return after;
+}
+
+async function runAutoScrollSuite(p, pointer, tag) {
+  await openSheetToFull(p, pointer);
+  const beforeLargeGrowth = await threadScrollState(p);
+  await mutateAssistant(p, "__growLastAssistant", BIG_STREAM_GROWTH);
+  await p.waitForTimeout(260);
+  const afterLargeGrowth = await threadScrollState(p);
+  const largeGrowthPx =
+    (afterLargeGrowth?.scrollHeight ?? 0) -
+    (beforeLargeGrowth?.scrollHeight ?? 0);
+  assert(
+    largeGrowthPx > 80,
+    `[${pointer}] AUTOSCROLL single streamed growth exceeds 80px (${Math.round(largeGrowthPx)}px)`,
+  );
+  assert(
+    !!afterLargeGrowth && afterLargeGrowth.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL stays pinned after >80px growth (delta=${Math.round(afterLargeGrowth?.bottomDelta ?? -1)})`,
+  );
+
+  await mutateAssistant(
+    p,
+    "__appendAssistant",
+    "A fresh assistant line lands while the reader is already at the bottom.",
+  );
+  await waitForThreadBottom(p);
+  const afterAppend = await threadScrollState(p);
+  assert(
+    !!afterAppend && afterAppend.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
+  );
+
+  const readerPosition = await scrollReaderUp(p, pointer);
+  await mutateAssistant(
+    p,
+    "__growLastAssistant",
+    "\n\nNew streamed text arrived below while the reader was reviewing older transcript content. It must not pull the viewport away from the reading position.",
+  );
+  await p.waitForTimeout(300);
+  const afterScrollbackGrowth = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!afterScrollbackGrowth &&
+      Math.abs(afterScrollbackGrowth.scrollTop - readerPosition.scrollTop) <= 32,
+    `[${pointer}] AUTOSCROLL preserves reading scrollback on growth (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(afterScrollbackGrowth?.scrollTop ?? 0)})`,
+  );
+  assert(
+    await p.getByTestId("chat-jump-to-latest").isVisible(),
+    `[${pointer}] AUTOSCROLL shows jump-to-latest while reader is above bottom`,
+  );
+  await p.getByTestId("chat-jump-to-latest").click();
+  await waitForThreadBottom(p);
+  const afterJump = await threadScrollState(p);
+  assert(
+    !!afterJump && afterJump.bottomDelta <= 18,
+    `[${pointer}] AUTOSCROLL jump-to-latest re-pins to bottom (delta=${Math.round(afterJump?.bottomDelta ?? -1)})`,
+  );
+  await snap(p, `${tag}-autoscroll-jump-repinned`);
+}
+
 const browser = await chromium.launch();
 const sink = { logs: [], errors: [] };
 try {
@@ -446,6 +592,37 @@ try {
     outDir,
     name: "chat-sheet-drag-suite.webm",
   });
+
+  // ===== AUTOSCROLL + JUMP-TO-LATEST (mouse + real touch, #13690) =====
+  {
+    const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many&streaming`);
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "mouse", "desktop");
+    await p.close();
+  }
+  {
+    const autoCtx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      recordVideo: { dir: videoDir, size: { width: 402, height: 874 } },
+    });
+    const p = await autoCtx.newPage();
+    attachConsole(p, sink);
+    await gotoFixture(p, `${url}?many&streaming`);
+    await p.waitForTimeout(700);
+    await runAutoScrollSuite(p, "touch", "mobile");
+    await p.close();
+    await autoCtx.close();
+    await renameRecordedVideo({
+      videoDir,
+      outDir,
+      name: "chat-sheet-autoscroll-suite.webm",
+    });
+  }
 
   // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
   // The collapsed grabber's horizontal swipe pages home → launcher through the
