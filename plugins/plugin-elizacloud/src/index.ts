@@ -34,7 +34,16 @@ import { CloudContainerService } from "./services/cloud-container";
 import { CloudCredentialProvider } from "./services/cloud-credential-provider";
 import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gateway-relay";
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
-import { getSetting } from "./utils/config";
+import {
+  getActionPlannerModel,
+  getLargeModel,
+  getMediumModel,
+  getMegaModel,
+  getNanoModel,
+  getResponseHandlerModel,
+  getSetting,
+  getSmallModel,
+} from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 import { createWaifuMeteringHandler } from "./utils/waifu-metering";
 
@@ -88,6 +97,25 @@ const textInferenceModels: NonNullable<Plugin["models"]> = {
   [ACTION_PLANNER_MODEL_TYPE]: handleActionPlanner,
 };
 
+// Per-slot resolvers for the concrete model id each chat-brain handler will
+// call — the same getters `getModelNameForType` (models/text.ts) uses per
+// request. The cloud tier resolution (`ELIZAOS_CLOUD_*_MODEL` → bare `*_MODEL`
+// → code default) lives entirely in this plugin, so the runtime's model
+// self-report (RUNTIME_MODEL_CONTEXT) can only name the concrete model when
+// registration declares it as `metadata.displayModel`; without it a
+// cloud-brained agent asked "what model are you?" can name its provider
+// adapter but not its model. Resolved once at registration — a post-boot tier
+// setting change shows up on the next registration, not live.
+const textInferenceDisplayModels: Record<string, (runtime: IAgentRuntime) => string> = {
+  [TEXT_NANO_MODEL_TYPE]: getNanoModel,
+  [TEXT_MEDIUM_MODEL_TYPE]: getMediumModel,
+  [ModelType.TEXT_SMALL]: getSmallModel,
+  [ModelType.TEXT_LARGE]: getLargeModel,
+  [TEXT_MEGA_MODEL_TYPE]: getMegaModel,
+  [RESPONSE_HANDLER_MODEL_TYPE]: getResponseHandlerModel,
+  [ACTION_PLANNER_MODEL_TYPE]: getActionPlannerModel,
+};
+
 function isExplicitFalseFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "false";
 }
@@ -105,7 +133,8 @@ export function registerTextInferenceModels(runtime: IAgentRuntime): void {
       modelType,
       handler as Parameters<IAgentRuntime["registerModel"]>[1],
       elizaOSCloudPlugin.name,
-      elizaOSCloudPlugin.priority
+      elizaOSCloudPlugin.priority,
+      { displayModel: textInferenceDisplayModels[modelType](runtime) }
     );
   }
 }
