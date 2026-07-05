@@ -62,8 +62,7 @@ export const SURFACE_ISOLATION_LEVELS = [
 ] as const;
 
 /** A view's isolation level. See {@link SURFACE_ISOLATION_LEVELS}. */
-export type SurfaceIsolationLevel =
-	(typeof SURFACE_ISOLATION_LEVELS)[number];
+export type SurfaceIsolationLevel = (typeof SURFACE_ISOLATION_LEVELS)[number];
 
 /**
  * The discrete capabilities a view can be granted. A capability the manifest

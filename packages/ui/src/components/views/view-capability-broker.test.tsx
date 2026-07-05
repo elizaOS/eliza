@@ -22,7 +22,9 @@ import {
   viewManifestAllowsCapability,
 } from "./view-capability-broker";
 
-const AGENT_SURFACE_GRANT: SurfaceManifest = { capabilities: ["agent-surface"] };
+const AGENT_SURFACE_GRANT: SurfaceManifest = {
+  capabilities: ["agent-surface"],
+};
 
 describe("isReadOnlyViewCapability", () => {
   it("classifies every read capability read-only", () => {
@@ -94,9 +96,11 @@ describe("brokerViewInteract", () => {
       resolveSurfaceManifest({ surface: AGENT_SURFACE_GRANT }),
       inner,
     );
-    await expect(gated("agent-fill", { id: "x", value: "y" })).resolves.toEqual({
-      ok: true,
-    });
+    await expect(gated("agent-fill", { id: "x", value: "y" })).resolves.toEqual(
+      {
+        ok: true,
+      },
+    );
     expect(inner).toHaveBeenCalledWith("agent-fill", { id: "x", value: "y" });
   });
 

@@ -99,13 +99,13 @@ import { Button } from "../ui/button.tsx";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input.tsx";
 import { Spinner } from "../ui/spinner.tsx";
-import { brokerViewInteract } from "./view-capability-broker";
 import {
   navigateToViews,
   ViewErrorState,
   ViewLoadingSkeleton,
   ViewRestrictedState,
 } from "./ViewStatusStates";
+import { brokerViewInteract } from "./view-capability-broker";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
@@ -1226,42 +1226,46 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     const unregister = registerViewInteractHandler(
       viewId,
       viewType,
-      brokerViewInteract(viewId, resolvedManifest, async (capability, params) => {
-        const registry = getViewRegistry(viewId, viewType);
-        // Generic agent-surface capabilities (list-elements, agent-fill, …)
-        // operate on the view's element registry.
-        if (isAgentSurfaceCapability(capability)) {
-          if (registry && registry.size() > 0) {
-            return handleAgentSurfaceCapability(registry, capability, params);
+      brokerViewInteract(
+        viewId,
+        resolvedManifest,
+        async (capability, params) => {
+          const registry = getViewRegistry(viewId, viewType);
+          // Generic agent-surface capabilities (list-elements, agent-fill, …)
+          // operate on the view's element registry.
+          if (isAgentSurfaceCapability(capability)) {
+            if (registry && registry.size() > 0) {
+              return handleAgentSurfaceCapability(registry, capability, params);
+            }
+            return handleDomAgentSurfaceCapability(
+              viewId,
+              viewType,
+              capability,
+              params,
+              containerRef.current,
+            );
           }
-          return handleDomAgentSurfaceCapability(
-            viewId,
-            viewType,
-            capability,
-            params,
-            containerRef.current,
+          // Standard capabilities are handled here regardless of whether the
+          // module exports interact — they operate on the registry or the DOM.
+          if (STANDARD_CAPABILITIES.has(capability)) {
+            return handleStandardCapability(
+              capability,
+              params,
+              containerRef.current,
+              setReloadKey,
+              `${bundleUrl}::${componentExport}`,
+              registry,
+            );
+          }
+          // Delegate to the module's interact export if present.
+          if (bundle.interact) {
+            return bundle.interact(capability, params);
+          }
+          throw new Error(
+            `View "${viewId}" does not support capability "${capability}"`,
           );
-        }
-        // Standard capabilities are handled here regardless of whether the
-        // module exports interact — they operate on the registry or the DOM.
-        if (STANDARD_CAPABILITIES.has(capability)) {
-          return handleStandardCapability(
-            capability,
-            params,
-            containerRef.current,
-            setReloadKey,
-            `${bundleUrl}::${componentExport}`,
-            registry,
-          );
-        }
-        // Delegate to the module's interact export if present.
-        if (bundle.interact) {
-          return bundle.interact(capability, params);
-        }
-        throw new Error(
-          `View "${viewId}" does not support capability "${capability}"`,
-        );
-      }),
+        },
+      ),
     );
 
     return unregister;

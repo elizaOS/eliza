@@ -18,7 +18,11 @@ import {
 
 describe("resolveSurfaceManifest — defaults", () => {
 	it("fills the safe default for a null/empty declaration", () => {
-		for (const decl of [null, undefined, {}] as (SurfaceManifestBearer | null)[]) {
+		for (const decl of [
+			null,
+			undefined,
+			{},
+		] as (SurfaceManifestBearer | null)[]) {
 			const m = resolveSurfaceManifest(decl);
 			expect(m.background).toBe("opaque");
 			expect(m.header).toBe("normal");

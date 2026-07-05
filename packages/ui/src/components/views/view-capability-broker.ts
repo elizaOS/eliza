@@ -93,10 +93,7 @@ export function brokerViewInteract(
     capability: string,
     params?: Record<string, unknown>,
   ) => Promise<unknown>,
-): (
-  capability: string,
-  params?: Record<string, unknown>,
-) => Promise<unknown> {
+): (capability: string, params?: Record<string, unknown>) => Promise<unknown> {
   return async (capability, params) => {
     if (!viewManifestAllowsCapability(manifest, capability)) {
       throw new ViewCapabilityDeniedError(viewId, capability);
