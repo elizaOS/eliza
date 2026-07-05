@@ -16,7 +16,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   findProjectByWorkdir,
   resolveBoundProjectWorkdir,
+  resolveSpawnWorkdirPrecedence,
   resolveTaskProjectId,
+  WorkdirBindingConflictError,
 } from "../services/project-binding.ts";
 
 describe("project-binding", () => {
@@ -98,5 +100,73 @@ describe("project-binding", () => {
     } finally {
       rmSync(legacyDir, { recursive: true, force: true });
     }
+  });
+
+  // The single precedence resolver both entry points (SPAWN_AGENT action and
+  // OrchestratorTaskService.spawnAgentForTask) share, so identical operator
+  // input lands identically regardless of path (#14108).
+  describe("resolveSpawnWorkdirPrecedence", () => {
+    it("prefers project localPath over explicit and bound workdir", () => {
+      const projectDir = realpathSync(os.tmpdir());
+      expect(
+        resolveSpawnWorkdirPrecedence({
+          projectWorkdir: projectDir,
+          explicitWorkdir: undefined,
+          boundWorkdir: "/tmp/bound",
+        }),
+      ).toBe(projectDir);
+    });
+
+    it("rejects loudly when an explicit workdir conflicts with the project binding", () => {
+      expect(() =>
+        resolveSpawnWorkdirPrecedence({
+          projectWorkdir: "/tmp/project-a",
+          explicitWorkdir: "/tmp/somewhere-else",
+          boundWorkdir: undefined,
+        }),
+      ).toThrow(WorkdirBindingConflictError);
+    });
+
+    it("accepts an explicit workdir equal to the project path (realpath-normalized)", () => {
+      // A symlink pointing at the project dir must not read as a conflict.
+      const realDir = mkdtempSync(join(os.tmpdir(), "precedence-real-"));
+      const link = join(stateDir, "precedence-link");
+      symlinkSync(realDir, link);
+      try {
+        expect(
+          resolveSpawnWorkdirPrecedence({
+            projectWorkdir: realDir,
+            explicitWorkdir: link,
+            boundWorkdir: undefined,
+          }),
+        ).toBe(realDir);
+      } finally {
+        rmSync(realDir, { recursive: true, force: true });
+      }
+    });
+
+    it("falls through to explicit, then boundWorkdir, for an unbound task", () => {
+      expect(
+        resolveSpawnWorkdirPrecedence({
+          projectWorkdir: null,
+          explicitWorkdir: "/tmp/explicit",
+          boundWorkdir: "/tmp/bound",
+        }),
+      ).toBe("/tmp/explicit");
+      expect(
+        resolveSpawnWorkdirPrecedence({
+          projectWorkdir: null,
+          explicitWorkdir: undefined,
+          boundWorkdir: "/tmp/bound",
+        }),
+      ).toBe("/tmp/bound");
+      expect(
+        resolveSpawnWorkdirPrecedence({
+          projectWorkdir: undefined,
+          explicitWorkdir: undefined,
+          boundWorkdir: undefined,
+        }),
+      ).toBeUndefined();
+    });
   });
 });

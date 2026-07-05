@@ -53,7 +53,10 @@ import { resolveCodingBackendLogged } from "../services/coding-backend-routing.j
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
-import { resolveBoundProjectWorkdir } from "../services/project-binding.js";
+import {
+  resolveBoundProjectWorkdir,
+  resolveSpawnWorkdirPrecedence,
+} from "../services/project-binding.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   runDurableTask,
@@ -1128,12 +1131,22 @@ async function runSpawnAgent(
     // localPath: resolve it up-front and pass it as an explicit, LOCKED workdir
     // so route/convention resolution is skipped and every session of the task
     // targets the same repo (the #13776 per-session drift fix). Unbound tasks
-    // fall through to the normal explicit/route/convention resolution.
+    // fall through to the normal explicit/route/convention resolution. Both
+    // entry points (this action and OrchestratorTaskService.spawnAgentForTask)
+    // resolve precedence through the shared resolver so the same operator input
+    // lands identically — project localPath > explicit workdir > boundWorkdir —
+    // and a conflicting explicit workdir is rejected loudly, never silently
+    // substituted by the project path (#14108).
     const boundProjectWorkdir = await resolveBoundTaskWorkdir(
       runtime,
       pickString(params, content, "taskId") ??
         pickString(params, content, "threadId"),
     );
+    const effectiveExplicitWorkdir = resolveSpawnWorkdirPrecedence({
+      projectWorkdir: boundProjectWorkdir,
+      explicitWorkdir: pickString(params, content, "workdir"),
+      boundWorkdir: undefined,
+    });
     const {
       workdir,
       route,
@@ -1142,7 +1155,7 @@ async function runSpawnAgent(
       runtime,
       task,
       routingRequest,
-      boundProjectWorkdir ?? pickString(params, content, "workdir"),
+      effectiveExplicitWorkdir,
       {
         lockWorkdir:
           boundProjectWorkdir != null ||

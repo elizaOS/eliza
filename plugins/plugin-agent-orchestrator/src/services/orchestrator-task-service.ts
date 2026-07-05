@@ -142,7 +142,11 @@ import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
-import { resolveTaskProjectId } from "./project-binding.js";
+import {
+  resolveBoundProjectWorkdir,
+  resolveSpawnWorkdirPrecedence,
+  resolveTaskProjectId,
+} from "./project-binding.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
@@ -3275,15 +3279,26 @@ export class OrchestratorTaskService extends Service {
     }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
-    // An explicit caller workdir wins and re-pins the binding; otherwise a
-    // follow-up spawn reuses the workdir pinned at the task's first spawn so it
-    // can't silently migrate repos when routing env changes between sessions
-    // (#13776). `boundWorkdir` was validated when first pinned, so reuse skips
-    // the allow-list probe — it may point at a configured project root the
-    // probe would otherwise reject once env drifts.
-    const workdir = opts.workdir
-      ? await resolveAllowedWorkdir(opts.workdir)
-      : doc.task.boundWorkdir;
+    // Spawn workdir precedence — resolved through the SAME shared resolver the
+    // SPAWN_AGENT action uses, so the same operator input lands identically
+    // regardless of entry point (#14108): project localPath > explicit caller
+    // workdir > boundWorkdir. A project-bound task always spawns in its
+    // project's localPath (#13776); a conflicting explicit `opts.workdir`
+    // rejects loudly (WorkdirBindingConflictError) instead of being silently
+    // overridden. Project localPath and `boundWorkdir` are already-validated
+    // registered project roots, so they skip the allow-list probe (which could
+    // reject a configured root once routing env drifts); only a fresh explicit
+    // caller workdir goes through `resolveAllowedWorkdir`.
+    const projectWorkdir = resolveBoundProjectWorkdir(doc.task.projectId);
+    const resolvedWorkdir = resolveSpawnWorkdirPrecedence({
+      projectWorkdir,
+      explicitWorkdir: opts.workdir,
+      boundWorkdir: doc.task.boundWorkdir,
+    });
+    const workdir =
+      resolvedWorkdir && resolvedWorkdir === opts.workdir && !projectWorkdir
+        ? await resolveAllowedWorkdir(resolvedWorkdir)
+        : resolvedWorkdir;
 
     const policy = doc.task.providerPolicy ?? {};
     // Give every sub-agent a distinct person-name. An explicit caller label

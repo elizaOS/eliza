@@ -75,3 +75,57 @@ export function resolveBoundProjectWorkdir(
   if (!id) return null;
   return getProjectById(id, env)?.localPath ?? null;
 }
+
+/**
+ * Raised when a caller passes an explicit spawn workdir that conflicts with the
+ * task's project binding. A project-bound task always spawns in its project's
+ * localPath; rather than silently substituting the project path for the
+ * operator's explicit request (which produced divergent, unobservable behavior
+ * at the action vs service entry points — #14108), the conflict is surfaced so
+ * the caller can retract the workdir or rebind the task.
+ */
+export class WorkdirBindingConflictError extends Error {
+  constructor(
+    readonly explicitWorkdir: string,
+    readonly projectWorkdir: string,
+  ) {
+    super(
+      `explicit workdir "${explicitWorkdir}" conflicts with the task's project binding "${projectWorkdir}"; ` +
+        "a project-bound task always spawns in its project's localPath — omit the explicit workdir, or rebind the task's project",
+    );
+    this.name = "WorkdirBindingConflictError";
+  }
+}
+
+/**
+ * The single source of truth for spawn-workdir precedence, shared by the action
+ * layer (`SPAWN_AGENT`) and the service layer (`spawnAgentForTask`) so the same
+ * operator input resolves identically regardless of entry point (#14108).
+ *
+ * Precedence: **project localPath > explicit caller workdir > boundWorkdir**.
+ * A project binding is authoritative — every session of a project-bound task
+ * targets the same repo (#13776). But rather than *silently* discarding an
+ * explicit caller workdir, a project-bound task rejects a conflicting explicit
+ * workdir loudly (`WorkdirBindingConflictError`); an explicit workdir equal to
+ * the project path, or absent, is accepted. Unbound tasks fall through to the
+ * explicit workdir, then the older per-first-spawn `boundWorkdir` pin.
+ *
+ * Paths are compared by realpath so symlinked / non-canonical forms of the same
+ * directory do not read as a conflict.
+ */
+export function resolveSpawnWorkdirPrecedence(input: {
+  projectWorkdir: string | null | undefined;
+  explicitWorkdir: string | null | undefined;
+  boundWorkdir: string | null | undefined;
+}): string | undefined {
+  const project = input.projectWorkdir?.trim() || undefined;
+  const explicit = input.explicitWorkdir?.trim() || undefined;
+  const bound = input.boundWorkdir?.trim() || undefined;
+  if (project) {
+    if (explicit && canonical(explicit) !== canonical(project)) {
+      throw new WorkdirBindingConflictError(explicit, project);
+    }
+    return project;
+  }
+  return explicit ?? bound;
+}

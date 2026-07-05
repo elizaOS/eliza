@@ -10,11 +10,12 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, upsertProject } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
+import { WorkdirBindingConflictError } from "../services/project-binding.js";
 import type { SpawnOptions, SpawnResult } from "../services/types.js";
 
 /** ACP stand-in that records the workdir each spawn was handed and echoes it
@@ -399,6 +400,103 @@ describe("durable task→workdir binding (#13776)", () => {
       // A follow-up spawn with no workdir reuses the attach-pinned binding.
       await service.spawnAgentForTask(taskId, { task: "continue" });
       expect(acp.spawns.at(0)?.workdir).toBe(firstDir);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+});
+
+// The service entry point (spawnAgentForTask) resolves workdir precedence
+// through the SAME shared resolver the SPAWN_AGENT action uses, so a
+// project-bound task lands in its project's localPath and a conflicting
+// explicit workdir rejects loudly instead of silently diverging by entry
+// point (#14108). Drives the REAL service over an in-memory store + a real
+// on-disk project registry under a temp ELIZA_STATE_DIR (no mocks).
+describe("spawnAgentForTask project-binding precedence (#14108)", () => {
+  let stateDir: string;
+  let projectDir: string;
+  let savedStateDir: string | undefined;
+  let projectId: string;
+
+  beforeEach(() => {
+    stateDir = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "task-project-binding-")),
+    );
+    projectDir = path.join(tmpRoot, "bound-project");
+    mkdirSync(projectDir, { recursive: true });
+    // resolveBoundProjectWorkdir reads the project registry from process.env;
+    // register the project under a temp state dir so the service resolves it.
+    savedStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    projectId = upsertProject({ name: "bound", localPath: projectDir }).id;
+  });
+
+  afterEach(() => {
+    if (savedStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = savedStateDir;
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  async function seedProjectTask(
+    store: OrchestratorTaskStore,
+  ): Promise<string> {
+    const detail = await store.createTask({
+      title: "Project-bound task",
+      goal: "spawn in the bound project",
+      acceptanceCriteria: [],
+      roomId: "binding-room",
+      worldId: "binding-world",
+      projectId,
+    });
+    return detail.task.id;
+  }
+
+  it("spawns a project-bound task in its project localPath even with no explicit workdir", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedProjectTask(store);
+      await service.spawnAgentForTask(taskId, { task: "go" });
+      expect(acp.spawns.at(0)?.workdir).toBe(projectDir);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
+  it("rejects loudly when an explicit workdir conflicts with the project binding", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedProjectTask(store);
+      await expect(
+        service.spawnAgentForTask(taskId, { workdir: firstDir }),
+      ).rejects.toBeInstanceOf(WorkdirBindingConflictError);
+      // The conflict is surfaced before any ACP spawn — no session leaked.
+      expect(acp.spawns.length).toBe(0);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
+  it("accepts an explicit workdir equal to the project localPath", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedProjectTask(store);
+      await service.spawnAgentForTask(taskId, { workdir: projectDir });
+      expect(acp.spawns.at(0)?.workdir).toBe(projectDir);
     } finally {
       await service.stop().catch(() => undefined);
     }
