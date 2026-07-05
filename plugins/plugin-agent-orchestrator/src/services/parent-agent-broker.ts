@@ -63,9 +63,9 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
 export function isParentAgentBrokerWired(runtime: IAgentRuntime): boolean {
   const getService = (runtime as { getService?: unknown }).getService;
   if (typeof getService !== "function") return false;
-  const router = getService.call(runtime, "ACPX_SUB_AGENT_ROUTER") as
-    | { isActive?: () => boolean }
-    | null;
+  const router = getService.call(runtime, "ACPX_SUB_AGENT_ROUTER") as {
+    isActive?: () => boolean;
+  } | null;
   return typeof router?.isActive === "function" && router.isActive();
 }
 

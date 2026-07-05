@@ -6,14 +6,13 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   existsSync,
-  mkdtempSync,
   promises as fs,
+  mkdtempSync,
   readFileSync,
   rmSync,
 } from "node:fs";
 import os, { tmpdir } from "node:os";
-import path from "node:path";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

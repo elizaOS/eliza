@@ -254,9 +254,7 @@ describe("parent-context originatingTask", () => {
       `/api/coding-agents/${SESSION}/parent-context`,
       ctx,
     );
-    expect(
-      (body as { originatingTask: unknown }).originatingTask,
-    ).toBeNull();
+    expect((body as { originatingTask: unknown }).originatingTask).toBeNull();
   });
 
   it("is null when the task store is absent", async () => {
@@ -268,9 +266,7 @@ describe("parent-context originatingTask", () => {
       `/api/coding-agents/${SESSION}/parent-context`,
       ctx,
     );
-    expect(
-      (body as { originatingTask: unknown }).originatingTask,
-    ).toBeNull();
+    expect((body as { originatingTask: unknown }).originatingTask).toBeNull();
   });
 });
 

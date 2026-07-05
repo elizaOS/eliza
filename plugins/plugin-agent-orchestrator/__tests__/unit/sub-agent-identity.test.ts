@@ -50,7 +50,9 @@ describe("writeWorkspaceIdentity", () => {
     expect(manual).toMatch(/Asking the parent Eliza agent to act \(broker\)/);
     expect(manual).toMatch(/USE_SKILL parent-agent/);
     // Discovery is advertised, but the spend/mutation gate is stated too.
-    expect(manual).toMatch(/mutating\/paid\/destructive Cloud commands stay gated/);
+    expect(manual).toMatch(
+      /mutating\/paid\/destructive Cloud commands stay gated/,
+    );
     expect(manual).not.toContain("{{BROKER_SECTION}}");
   });
 

@@ -130,7 +130,9 @@ export class SessionCapError extends Error {
     maxSessions: number,
     activeCount: number,
   ) {
-    super(`acp ${slotClass} session cap reached (${activeCount}/${maxSessions})`);
+    super(
+      `acp ${slotClass} session cap reached (${activeCount}/${maxSessions})`,
+    );
     this.name = "SessionCapError";
     this.slotClass = slotClass;
     this.maxSessions = maxSessions;
