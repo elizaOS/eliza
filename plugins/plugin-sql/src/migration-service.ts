@@ -13,10 +13,35 @@ import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } f
 import { RuntimeMigrator } from "./runtime-migrator";
 import type { DrizzleDatabase } from "./types";
 
+const MESSAGE_SEARCH_OBJECTS_ENV = "ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS";
+
+export type DatabaseBackend = "postgres" | "pglite" | "unknown";
+
+interface DatabaseMigrationServiceOptions {
+  databaseBackend?: DatabaseBackend;
+}
+
+function shouldApplyMessageSearchObjects(databaseBackend: DatabaseBackend): boolean {
+  const setting = process.env[MESSAGE_SEARCH_OBJECTS_ENV]?.toLowerCase();
+  if (setting === "false" || setting === "0") {
+    return false;
+  }
+  if (setting === "true" || setting === "1") {
+    return true;
+  }
+
+  return !(process.env.NODE_ENV === "production" && databaseBackend === "postgres");
+}
+
 export class DatabaseMigrationService {
   private db: DrizzleDatabase | null = null;
   private registeredSchemas = new Map<string, Record<string, unknown>>();
   private migrator: RuntimeMigrator | null = null;
+  private readonly databaseBackend: DatabaseBackend;
+
+  constructor(options: DatabaseMigrationServiceOptions = {}) {
+    this.databaseBackend = options.databaseBackend ?? "unknown";
+  }
 
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
     this.db = db;
@@ -116,7 +141,18 @@ export class DatabaseMigrationService {
       // Install the message full-text/trigram search objects on the migrated
       // `memories` table (#13534). Idempotent; runs after the table exists so the
       // GIN expression indexes can be created.
-      await applyMessageSearchObjects(this.db);
+      if (shouldApplyMessageSearchObjects(this.databaseBackend)) {
+        await applyMessageSearchObjects(this.db);
+      } else {
+        logger.warn(
+          {
+            src: "plugin:sql",
+            env: MESSAGE_SEARCH_OBJECTS_ENV,
+            databaseBackend: this.databaseBackend,
+          },
+          "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
+        );
+      }
 
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 

@@ -25,6 +25,7 @@ import type { PostgresConnectionManager } from "./manager";
 
 export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected readonly databaseBackend = "postgres";
   private manager: PostgresConnectionManager;
 
   constructor(

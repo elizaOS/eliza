@@ -92,6 +92,7 @@ bun run --cwd plugins/plugin-sql test:e2e       # live smoke test (needs running
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
+| `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS` | No | auto | Controls automatic install of the `message_search_document` generated column and message-search GIN indexes. Production Postgres adapters skip this DDL by default; set `true` after scheduling the generated-column/index migration. |
 | `ELIZA_ELECTRIC_SYNC_URL` | No | — | URL for the Electric sync service; enables PGlite cloud sync read path. |
 | `ELIZA_CLOUD_WRITE_BASE_URL` | No | — | Base URL of the cloud API for WriteBackService (e.g. `https://api.elizacloud.ai`). If unset, write-back is a no-op. |
 | `ELIZA_CLOUD_SERVICE_KEY` | No | — | `X-Service-Key` header value sent by WriteBackService to the cloud API. |

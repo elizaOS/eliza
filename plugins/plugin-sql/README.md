@@ -70,6 +70,7 @@ The Caddyfile at `plugins/plugin-sql/caddy/electric-proxy.Caddyfile` forwards ev
 | `ENABLE_DATA_ISOLATION` | No | `false` | When `true`, enables PostgreSQL Row Level Security per-server isolation. |
 | `ELIZA_SERVER_ID` | Conditional | — | Required when `ENABLE_DATA_ISOLATION=true`; becomes the RLS server UUID. |
 | `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS` | No | `false` | Allow column drops and other destructive schema changes at startup. |
+| `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS` | No | auto | Controls automatic install of the `message_search_document` generated column and message-search GIN indexes. Production Postgres adapters skip this DDL by default; set `true` after scheduling the generated-column/index migration. |
 | `NODE_ENV` | No | `development` | `production` disables verbose migration logging and tightens safety checks. |
 
 Settings are read via `runtime.getSetting(key)` inside `plugin.init`.
@@ -103,6 +104,8 @@ export const plugin = {
 ```
 
 Destructive changes (column drops, type changes) are blocked by default. Set `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` to allow them.
+
+Message-search DDL is also guarded on production Postgres. The generated column and GIN indexes are still installed automatically for development/test and embedded PGlite. For production Postgres, schedule the table rewrite/index creation and run with `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true` once the deployment window is approved.
 
 ## Connection Management
 

@@ -30,6 +30,7 @@ import type { NeonConnectionManager } from "./manager";
  */
 export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected readonly databaseBackend = "postgres";
   private manager: NeonConnectionManager;
 
   constructor(agentId: UUID, manager: NeonConnectionManager, _schema?: Record<string, unknown>) {

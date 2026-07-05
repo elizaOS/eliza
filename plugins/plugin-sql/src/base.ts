@@ -172,6 +172,28 @@ function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
+function isMessageSearchObjectsMissing(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const layer = current as {
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    const message = typeof layer.message === "string" ? layer.message : "";
+    if (
+      (layer.code === "42703" || layer.code === "42883" || /does not exist/i.test(message)) &&
+      /message_search_document|eliza_search_fold|eliza_search_like_pattern/i.test(message)
+    ) {
+      return true;
+    }
+    current = layer.cause;
+  }
+  return false;
+}
+
 type CountMemoriesParams = {
   roomIds?: UUID[];
   unique?: boolean;
@@ -225,7 +247,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
-import type { DatabaseMigrationService } from "./migration-service";
+import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
   agentTable,
@@ -313,6 +335,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly maxDelay: number = 10000;
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected readonly databaseBackend: DatabaseBackend = "unknown";
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private _connectorAccountStore?: ConnectorAccountStore;
@@ -359,7 +382,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<void> {
     if (!this.migrationService) {
       const { DatabaseMigrationService } = await import("./migration-service");
-      this.migrationService = new DatabaseMigrationService();
+      this.migrationService = new DatabaseMigrationService({
+        databaseBackend: this.databaseBackend,
+      });
       await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
     }
 
@@ -1739,30 +1764,88 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         sql`(${tsvector} @@ ${tsquery} OR ${document} LIKE eliza_search_like_pattern(${params.query}) OR ${trigramMatch})`,
       ];
 
-      const rows = await this.db
-        .select({
-          id: memoryTable.id,
-          createdAt: memoryTable.createdAt,
-          content: memoryTable.content,
-          entityId: memoryTable.entityId,
-          agentId: memoryTable.agentId,
-          roomId: memoryTable.roomId,
-          worldId: memoryTable.worldId,
-          unique: memoryTable.unique,
-          metadata: memoryTable.metadata,
-          ftsRank: ftsRankExpr.as("fts_rank"),
-          trigramSimilarity: trigramExpr.as("trgm_sim"),
-        })
-        .from(memoryTable)
-        .where(and(...conditions))
-        .orderBy(
-          sql`fts_rank DESC`,
-          sql`trgm_sim DESC`,
-          desc(memoryTable.createdAt),
-          asc(memoryTable.id)
-        )
-        .limit(limit)
-        .offset(offset);
+      let rows: Array<{
+        id: string;
+        createdAt: Date;
+        content: unknown;
+        entityId: string;
+        agentId: string;
+        roomId: string;
+        worldId: string | null;
+        unique: boolean;
+        metadata: unknown;
+        ftsRank: unknown;
+        trigramSimilarity: unknown;
+      }>;
+      try {
+        rows = await this.db
+          .select({
+            id: memoryTable.id,
+            createdAt: memoryTable.createdAt,
+            content: memoryTable.content,
+            entityId: memoryTable.entityId,
+            agentId: memoryTable.agentId,
+            roomId: memoryTable.roomId,
+            worldId: memoryTable.worldId,
+            unique: memoryTable.unique,
+            metadata: memoryTable.metadata,
+            ftsRank: ftsRankExpr.as("fts_rank"),
+            trigramSimilarity: trigramExpr.as("trgm_sim"),
+          })
+          .from(memoryTable)
+          .where(and(...conditions))
+          .orderBy(
+            sql`fts_rank DESC`,
+            sql`trgm_sim DESC`,
+            desc(memoryTable.createdAt),
+            asc(memoryTable.id)
+          )
+          .limit(limit)
+          .offset(offset);
+      } catch (error) {
+        if (!isMessageSearchObjectsMissing(error)) {
+          throw error;
+        }
+        // error-policy:J4 production Postgres can deliberately skip the heavy
+        // generated-column/index DDL at startup; until an operator applies it,
+        // keep search functional with the older sequential text/attachment scan.
+        logger.warn(
+          {
+            src: "plugin:sql",
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[MessageSearch] search objects are missing; falling back to sequential message search"
+        );
+        rows = await this.db
+          .select({
+            id: memoryTable.id,
+            createdAt: memoryTable.createdAt,
+            content: memoryTable.content,
+            entityId: memoryTable.entityId,
+            agentId: memoryTable.agentId,
+            roomId: memoryTable.roomId,
+            worldId: memoryTable.worldId,
+            unique: memoryTable.unique,
+            metadata: memoryTable.metadata,
+            ftsRank: sql<number>`0`.as("fts_rank"),
+            trigramSimilarity: sql<number>`0`.as("trgm_sim"),
+          })
+          .from(memoryTable)
+          .where(
+            and(
+              eq(memoryTable.type, tableName),
+              eq(memoryTable.agentId, this.agentId),
+              inArray(memoryTable.roomId, params.roomIds),
+              or(
+                sql`(${memoryTable.content}->>'text') ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`,
+                sql`${memoryTable.content}::text ILIKE ${`%${escapeIlikeLiteral(params.query)}%`} ESCAPE '\\'`
+              )
+            )
+          )
+          .orderBy(desc(memoryTable.createdAt), asc(memoryTable.id))
+          .limit(limit)
+          .offset(offset);
+      }
 
       return rows.map((row) => ({
         memory: {

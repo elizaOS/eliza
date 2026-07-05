@@ -27,6 +27,7 @@ import type { PGliteClientManager } from "./manager";
 export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   private manager: PGliteClientManager;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected readonly databaseBackend = "pglite";
 
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
