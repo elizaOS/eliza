@@ -464,12 +464,12 @@ export function ElizaAgentsTable({
     [],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reconcileTick is a
-  // deliberate re-run trigger, not a read value — handleDelete's post-grace timer
-  // bumps it so this effect fires to expire a tombstone even when react-query
-  // returns a byte-identical payload (no re-render otherwise). Removing it
-  // reintroduces the render-gated-expiry starvation bug.
   useEffect(() => {
+    // reconcileTick is a deliberate re-run trigger, not a data value:
+    // handleDelete's post-grace timer bumps it so this effect fires to expire a
+    // tombstone even when react-query returns a byte-identical payload.
+    void reconcileTick;
+
     // Retire by time (the single retirement clock — no path retires by absence).
     // This reconciles against react-query's list, which lags the faster status
     // poll; absence-retiring here would lift a tombstone before the laggier view
