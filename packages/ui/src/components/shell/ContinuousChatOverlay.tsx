@@ -1274,6 +1274,23 @@ export function ContinuousChatOverlay({
   const delayedNavigationTimerRef = React.useRef<number | null>(null);
   const prefillFocusFrameRef = React.useRef<number | null>(null);
   const prefillFocusTimerRef = React.useRef<number | null>(null);
+  // A GPU-compositing hint scoped to an ACTIVE drag/settle only. While the
+  // finger drives the panel (`scale`/`flexBasis` change every frame) and while
+  // the release spring runs, we set `will-change: transform` on the panel (and
+  // suppress the thread's edge mask) so iOS Safari/WebKit promotes the morph to
+  // its own compositor layer up front — it then composites without a per-frame
+  // repaint of the frosted glass + content (the visible micro-stutter on the
+  // installed PWA). Deliberately NOT permanent: `will-change` keeps a promoted
+  // layer (and its memory) resident, so we drop it the instant the release
+  // spring settles. A ref mirrors it for the guarded setter so per-frame drag
+  // updates never cause a redundant re-render.
+  const [isDragging, setDragging] = React.useState(false);
+  const isDraggingRef = React.useRef(false);
+  const setDraggingState = React.useCallback((dragging: boolean) => {
+    if (isDraggingRef.current === dragging) return;
+    isDraggingRef.current = dragging;
+    setDragging(dragging);
+  }, []);
   const stopThreadAnimation = React.useCallback(() => {
     threadAnimationRef.current?.stop();
     threadAnimationRef.current = null;
@@ -1285,9 +1302,24 @@ export function ContinuousChatOverlay({
   const animateThreadHeight = React.useCallback(
     (target: number) => {
       stopThreadAnimation();
-      threadAnimationRef.current = animate(threadHeight, target, SHEET_SPRING);
+      const controls = animate(threadHeight, target, SHEET_SPRING);
+      threadAnimationRef.current = controls;
+      // Drop the drag-scoped GPU promotion only once the RELEASE spring has come
+      // to rest — clearing it on release itself would strip `will-change` mid
+      // settle-spring and repaint exactly when the panel is still moving. A stop
+      // (a new gesture interrupting) rejects `.finished`, so keep the layer for
+      // the incoming drag; only a clean finish drops it.
+      controls.finished
+        .then(() => {
+          if (!isDraggingRef.current) return;
+          if (draggingRef.current) return; // a new drag started meanwhile
+          setDraggingState(false);
+        })
+        .catch(() => {
+          // Interrupted by a fresh gesture (stop) — keep the promotion resident.
+        });
     },
-    [stopThreadAnimation, threadHeight],
+    [stopThreadAnimation, threadHeight, setDraggingState],
   );
   const animateOpenProgress = React.useCallback(
     (target: number) => {
@@ -3387,6 +3419,12 @@ export function ContinuousChatOverlay({
         maxPullRawRef.current = 0;
       }
       draggingRef.current = true;
+      // Promote the panel + thread to their own GPU layer for the duration of
+      // the drag (dropped on settle) so the live morph composites instead of
+      // repainting per frame on iOS Safari. Skipped under reduced-motion: there
+      // is no settle spring to composite, and the async clear below only runs on
+      // the animated release path.
+      if (!reduce) setDraggingState(true);
       // PILL drag: map the upward travel to the pill→input morph (openProgress).
       // The thread stays at 0 until the input is fully formed; only the EXCESS
       // past PILL_OPEN_DISTANCE flows into the thread height, so a single
@@ -3442,6 +3480,8 @@ export function ContinuousChatOverlay({
       clampHeight,
       threadHeight,
       openProgress,
+      reduce,
+      setDraggingState,
       stopThreadAnimation,
       stopOpenProgressAnimation,
       setDragPreviewMounted,
@@ -3978,6 +4018,16 @@ export function ContinuousChatOverlay({
             scale: fullBleed ? 1 : panelScale,
             // Grow UP out of the pill at the bottom.
             transformOrigin: "bottom center",
+            // GPU-promote the panel ONLY while a drag/settle is live (#swipe-
+            // smoothness). The morph animates `scale` (a transform) here and the
+            // thread animates its `flexBasis` below; hinting `will-change:
+            // transform` for the duration of the gesture lets WebKit/iOS Safari
+            // rasterize the panel onto its own compositor layer up front, so the
+            // finger-tracked morph and the release spring composite without
+            // repainting the frosted glass each frame (the installed-PWA
+            // micro-stutter). Dropped on settle — a permanent hint keeps the
+            // layer (and its memory) resident for no benefit at rest.
+            willChange: isDragging ? "transform" : undefined,
             // Pilled: span the (invisible) input area but pass taps through to the
             // home screen — only the pill-capsule child re-enables pointer events.
             pointerEvents: pilled ? "none" : "auto",
@@ -4256,8 +4306,16 @@ export function ContinuousChatOverlay({
                   "relative z-10 flex min-h-0 w-full shrink grow-0 flex-col overflow-hidden",
                   // When open, fade the top edge into the glass so the topmost
                   // message dissolves under the drag handle instead of butting
-                  // against it.
+                  // against it. SUPPRESSED during an active drag (#swipe-
+                  // smoothness): a CSS mask on the thread forces its scrolling
+                  // subtree off WebKit's fast compositing path, so while the
+                  // flex-basis is changing every frame the masked layer
+                  // re-rasterizes per frame (the visible edge stutter on the
+                  // installed iOS PWA). The grabber floats over the moving top
+                  // edge during the pull anyway; the fade only reads at rest, so
+                  // restore it the moment the gesture settles.
                   threadPresented &&
+                    !isDragging &&
                     "[mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0,#000_34px)]",
                 )}
                 // Flex-basis IS the motion value (px string) — set 1:1 during a drag,
