@@ -303,14 +303,15 @@ test.beforeEach(async ({ page }) => {
 test("a turn queued while the view switches away and back lands in the conversation it was sent in (#10700)", async ({
   page,
 }, testInfo) => {
-  // Post-#13531 the single infinite thread removed the overlay's new-chat
-  // trigger (chat-full-clear), so the original "start a new chat mid-flight"
-  // perturbation is no longer reachable on this surface. The #10700 routing
-  // invariant it protected — a queued turn is delivered ONLY to the conversation
-  // it was enqueued in, never rerouted when the active conversation context
-  // changes under it — is exercised here by switching the view away and back
-  // while a turn is still queued (a real, overlay-supported perturbation). The
-  // exact per-turn ordering is pinned deterministically by the component fuzz
+  // The single infinite thread (#13531) never resets, so the "start a new chat
+  // mid-flight" perturbation the original #10700 repro used is gone (the header
+  // new-chat control clears the active thread, it does not spawn a competing
+  // conversation). The #10700 routing invariant it protected — a queued turn is
+  // delivered ONLY to the conversation it was enqueued in, never rerouted when
+  // the active conversation context changes under it — is exercised here by
+  // switching the view away and back while a turn is still queued (a real,
+  // overlay-supported perturbation). The exact per-turn ordering is pinned
+  // deterministically by the component fuzz
   // (useChatSend.send-voice-newchat.race.test.tsx).
   await installConversationStore(page, store, 1600);
   await openAppPath(page, "/chat");

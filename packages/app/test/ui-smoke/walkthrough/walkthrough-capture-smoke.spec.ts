@@ -178,6 +178,40 @@ async function captureState(
   await testInfo.attach(filename, { path, contentType: "image/png" });
 }
 
+/**
+ * Flick the open chat sheet's grabber up to the FULL detent — the pull gesture
+ * that replaced the removed `chat-full-maximize` button (#13531/#14332). A
+ * few-step, large-travel `page.mouse` drag clears the flick velocity threshold
+ * so the sheet snaps up a detent; retried since a single flick can land at HALF
+ * first.
+ */
+async function flickSheetToFull(page: Page): Promise<void> {
+  const sheet = page.getByTestId("chat-sheet");
+  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    "data-open",
+    "true",
+    { timeout: 15_000 },
+  );
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if ((await sheet.getAttribute("data-detent")) === "full") return;
+    const box = await page.getByTestId("chat-sheet-grabber").boundingBox();
+    if (!box) throw new Error("no bounding box for chat-sheet-grabber");
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const travel = Math.min(cy - 4, 560);
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    for (let i = 1; i <= 3; i += 1) {
+      await page.mouse.move(cx, cy - (travel * i) / 3);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+  }
+  await expect(sheet).toHaveAttribute("data-detent", "full", {
+    timeout: 5_000,
+  });
+}
+
 test.describe("walkthrough capture smoke", () => {
   test("captures the first stable walkthrough states", async ({
     page,
@@ -239,15 +273,10 @@ test.describe("walkthrough capture smoke", () => {
     ).toBeVisible({ timeout: 30_000 });
     await captureState(page, testInfo, "walkthrough-03-chat-round-trip.png");
 
-    await page.getByTestId("chat-full-maximize").click();
+    await flickSheetToFull(page);
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "full",
-      { timeout: 10_000 },
-    );
-    await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
-      "data-maximized",
-      "true",
       { timeout: 10_000 },
     );
     await captureState(page, testInfo, "walkthrough-04-chat-full-detent.png");
