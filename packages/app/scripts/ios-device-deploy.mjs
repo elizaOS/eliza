@@ -43,6 +43,15 @@ import {
   readDevicectlDeviceLockState,
 } from "./ios-device-devicectl.mjs";
 import {
+  appendDeployRecord,
+  buildDeployRecord,
+  evaluateStagedRendererFreshness,
+  freshRendererManifestPath,
+  readRendererManifest,
+  resolveDeployLedgerPath,
+  stagedRendererManifestPath,
+} from "./lib/ios-deploy-ledger.mjs";
+import {
   assertDeviceUnlocked,
   buildCodesignPlan,
   buildPlistXml,
@@ -358,11 +367,17 @@ function signApp({
 
 async function main() {
   const args = parseCliArgs(process.argv.slice(2), {
-    booleans: ["skip-build", "no-launch", "skip-appexes", "help"],
+    booleans: [
+      "skip-build",
+      "no-launch",
+      "skip-appexes",
+      "allow-stale-renderer",
+      "help",
+    ],
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-deploy.mjs [--device <id>] [--skip-build] [--no-launch] [--skip-appexes] [--staging <dir>] [--identity <sha1>] [--derived-data <dir>] [--bundle-id <id>] [--configuration Debug|Release]",
+      "Usage: node scripts/ios-device-deploy.mjs [--device <id>] [--skip-build] [--no-launch] [--skip-appexes] [--allow-stale-renderer] [--staging <dir>] [--identity <sha1>] [--derived-data <dir>] [--bundle-id <id>] [--configuration Debug|Release]",
     );
     return;
   }
@@ -464,6 +479,37 @@ async function main() {
     }
   }
 
+  // Renderer-freshness assert: the staged bundle carries a renderer build stamp
+  // (public/eliza-renderer-build.json). Refuse to install one whose buildId does
+  // not match the freshly built dist — a device booting a stale UI is the #9309
+  // footgun (a cached dist grafted over a fresh one). --allow-stale-renderer is
+  // the explicit escape hatch for an operator staging a deliberately older
+  // bundle. Read the staged stamp now (also feeds the deploy-ledger row below).
+  const stagedManifestPath = stagedRendererManifestPath(stagedApp);
+  const stagedManifest = readRendererManifest(stagedManifestPath, "staged App.app");
+  const freshManifestPath = freshRendererManifestPath(
+    repoRoot,
+    process.env.ELIZA_SMOKE_RENDERER_DIST,
+  );
+  if (!args["allow-stale-renderer"]) {
+    const freshManifest = readRendererManifest(freshManifestPath, "freshly built");
+    const freshness = evaluateStagedRendererFreshness(
+      stagedManifest,
+      freshManifest,
+    );
+    if (!freshness.fresh) {
+      fail(
+        `renderer-freshness assert failed: ${freshness.reason}\n` +
+          "Pass --allow-stale-renderer to deploy an intentionally older bundle.",
+      );
+    }
+    log(`renderer freshness OK: ${freshness.reason}`);
+  } else {
+    log(
+      `--allow-stale-renderer: skipping the renderer-freshness assert (staged buildId ${String(stagedManifest.buildId).slice(0, 12)})`,
+    );
+  }
+
   // 3–4. Profile graft + explicit nested signing + verify.
   signApp({
     stagedApp,
@@ -500,6 +546,26 @@ async function main() {
     deployedAt: new Date().toISOString(),
   });
   log(`deploy ledger: ${ledgerPath}`);
+
+  // Record the deploy: one JSONL row keyed by device UDID with the renderer
+  // buildId/commit just installed, so `devices:status` (#14338) can report this
+  // phone's build without reading its sandboxed container. Written only after a
+  // successful install — a failed install must not leave a false FRESH row.
+  const ledgerPath = resolveDeployLedgerPath();
+  const record = buildDeployRecord({
+    udid: device.udid,
+    buildId: stagedManifest.buildId,
+    name: device.name,
+    identifier: device.identifier,
+    commit: stagedManifest.commit,
+    variant: stagedManifest.variant,
+    runtimeMode: stagedManifest.runtimeMode,
+    skippedAppexes: Boolean(args["skip-appexes"]),
+  });
+  appendDeployRecord(ledgerPath, record);
+  log(
+    `ledger: recorded buildId ${String(record.buildId).slice(0, 12)} (commit ${record.commit ? record.commit.slice(0, 12) : "unknown"}) for ${device.name} → ${ledgerPath}`,
+  );
 
   // 6. Launch (default on; --no-launch to skip). Console capture is
   //    ios-device-logs.mjs's job — this launch does not hold the terminal.

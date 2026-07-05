@@ -44,5 +44,6 @@ test/ui-smoke/output/
 # Local platform capture output; PR evidence is attached inline from generated files.
 capture-output/
 
-# Device-e2e bundles are regenerated per run and posted inline to PRs/issues.
+# Run-scoped device-e2e triage bundles (ios-device-e2e.mjs / android runners):
+# MP4/JPG + logs + summary.json posted inline to PRs, never committed.
 device-e2e-output/
