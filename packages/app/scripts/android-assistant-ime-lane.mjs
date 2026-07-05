@@ -135,7 +135,7 @@ export async function runLane({
     "-a",
     "android.intent.action.VIEW",
     "-d",
-    `'${IME_SESSION_DEEPLINK}&action=voice&voice=1'`,
+    `${IME_SESSION_DEEPLINK}&action=voice&voice=1`,
     `${pkg}/.MainActivity`,
   ]);
   const imeCaptured =

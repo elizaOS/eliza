@@ -255,7 +255,7 @@ async function verifyOnDevice(adb, serial) {
     "-a",
     "android.intent.action.VIEW",
     "-d",
-    `'elizaos://voice?source=${DEEP_LINK_SOURCES.ime}&action=voice&voice=1'`,
+    `elizaos://voice?source=${DEEP_LINK_SOURCES.ime}&action=voice&voice=1`,
     `${APP_PACKAGE}/.MainActivity`,
   ]);
   await sleep(2_500);

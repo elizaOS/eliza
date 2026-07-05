@@ -175,7 +175,7 @@ describe("runLane", () => {
     expect(cmds).toContain("shell cmd voiceinteraction show");
     expect(cmds).toContain("shell input keyevent KEYCODE_ASSIST");
     expect(cmds).toContain(
-      `shell am start -a android.intent.action.VIEW -d '${IME_SESSION_DEEPLINK}&action=voice&voice=1' ${DEFAULT_PACKAGE}/.MainActivity`,
+      `shell am start -a android.intent.action.VIEW -d ${IME_SESSION_DEEPLINK}&action=voice&voice=1 ${DEFAULT_PACKAGE}/.MainActivity`,
     );
   });
 
