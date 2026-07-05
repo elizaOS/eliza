@@ -1,7 +1,8 @@
 /**
- * Account page banner tests for generated and manually named organizations.
- * Lower panels are mocked so the assertions stay focused on welcome-card copy
- * and shell-header publication.
+ * Account page tests: the welcome card is account-first and no longer surfaces
+ * promoted Organization language, even when the user still belongs to an
+ * organization (the backend tenancy model is preserved, just not promoted).
+ * Lower panels are mocked so assertions stay focused on the account surface.
  */
 
 // @vitest-environment jsdom
@@ -27,10 +28,6 @@ vi.mock("../../../cloud-ui", () => ({
 
 vi.mock("./account-details", () => ({
   AccountDetails: () => <div>account details</div>,
-}));
-
-vi.mock("./organization-info", () => ({
-  OrganizationInfo: () => <div>organization info</div>,
 }));
 
 vi.mock("./profile-form", () => ({
@@ -93,25 +90,27 @@ describe("AccountPageClient", () => {
     setPageHeaderMock.mockReset();
   });
 
-  it("does not append a second organization noun to generated org names", () => {
+  it("renders an account-first welcome without promoted organization language", () => {
     const { container } = render(
       <AccountPageClient user={makeUser("0x1234's Organization")} />,
     );
     const text = container.textContent ?? "";
 
-    expect(text).toContain("You're part of 0x1234's Organization");
-    expect(text).not.toMatch(/Organization organization/i);
+    expect(text).toContain("Welcome back");
+    expect(text).not.toContain("You're part of");
+    expect(text).not.toContain("0x1234's Organization");
     expect(setPageHeaderMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Account" }),
     );
   });
 
-  it("does not append an organization noun to custom org names", () => {
+  it("does not surface the organization even when the user belongs to one", () => {
     const { container } = render(
       <AccountPageClient user={makeUser("Team Sol")} />,
     );
+    const text = container.textContent ?? "";
 
-    expect(container.textContent).toContain("You're part of Team Sol");
-    expect(container.textContent).not.toMatch(/Team Sol organization/i);
+    expect(text).not.toContain("Team Sol");
+    expect(text).toContain("account details");
   });
 });

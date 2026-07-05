@@ -1,6 +1,6 @@
 /**
- * Account page body: profile form, organization info, account details. The
- * live MFA / privacy / delete controls live in the Security section instead.
+ * Account page body: profile form and account details. The live MFA / privacy /
+ * delete controls live in the Security section instead.
  */
 
 import {
@@ -11,7 +11,6 @@ import {
 } from "../../../cloud-ui";
 import type { UserProfile } from "../data/user";
 import { AccountDetails } from "./account-details";
-import { OrganizationInfo } from "./organization-info";
 import { ProfileForm } from "./profile-form";
 
 interface AccountPageClientProps {
@@ -41,12 +40,6 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
               Welcome back, <span className="font-semibold">{displayName}</span>
               !
             </p>
-            {user.organization?.name && (
-              <p className="text-xs text-muted mt-1">
-                You&apos;re part of{" "}
-                <span className="font-medium">{user.organization.name}</span>
-              </p>
-            )}
           </div>
         </div>
       </BrandCard>
@@ -57,9 +50,6 @@ export function AccountPageClient({ user }: AccountPageClientProps) {
         </div>
 
         <div className="space-y-6">
-          {user.organization && (
-            <OrganizationInfo organization={user.organization} />
-          )}
           <AccountDetails user={user} />
         </div>
       </div>
