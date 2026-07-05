@@ -1,3 +1,9 @@
+/**
+ * Shared read-only SQL guard for prompt-reachable database access. The action
+ * and API database paths both sanitize comments/literals before scanning, so
+ * model-generated SQL cannot hide mutation keywords in split tokens or make the
+ * guard spend unbounded time in comment/string handling.
+ */
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,

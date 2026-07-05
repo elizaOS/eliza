@@ -1,3 +1,8 @@
+/**
+ * Regression coverage for the prompt-reachable DATABASE action read-only guard.
+ * These tests keep model-shaped SQL inputs on the same linear sanitizer path as
+ * the dashboard API guard without importing the full action runtime graph.
+ */
 import { describe, expect, it } from "vitest";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 

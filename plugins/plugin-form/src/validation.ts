@@ -46,7 +46,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
-import { basicEmailValid } from "./email";
+import { strictEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
 /**
@@ -263,7 +263,7 @@ function validateEmail(
   const rawValue = String(value);
   const strValue = rawValue.length > 320 ? rawValue.slice(0, 320) : rawValue;
 
-  if (!basicEmailValid(strValue)) {
+  if (!strictEmailValid(strValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid email address`,

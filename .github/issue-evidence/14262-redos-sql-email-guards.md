@@ -11,7 +11,8 @@
 
 ## Verification
 
-Run from `/tmp/eliza-14262-redos` on 2026-07-05:
+Run from `/private/tmp/codex-14276-rebase` on 2026-07-05 after rebasing onto
+`origin/develop` at `b44d59ad62`:
 
 ```bash
 bun test \
@@ -21,13 +22,14 @@ bun test \
   packages/cloud/shared/src/lib/utils/email-validation.test.ts
 ```
 
-Result: 21 pass, 0 fail after rebasing onto the latest `origin/develop`.
+Result: 24 pass, 0 fail.
 
 ```bash
 bunx @biomejs/biome check \
   packages/agent/src/security/sql-readonly-guard.ts \
   packages/agent/src/actions/database.ts \
   packages/agent/src/actions/database-readonly.test.ts \
+  packages/agent/src/api/database.strip-comments.test.ts \
   packages/cloud/shared/src/lib/utils/email-validation.ts \
   packages/cloud/shared/src/lib/utils/email-validation.test.ts \
   packages/cloud/shared/src/lib/utils/phone-normalization.ts \
@@ -64,8 +66,9 @@ touched pure guard/helper files.
 
 - Reviewed the SQL tests for the exact legacy semantics: block comments remove
   with empty replacement, `DE/* */LETE` collapses to `DELETE`, closed
-  dollar-quoted strings are ignored, and unterminated dollar quotes remain
-  visible to the guard.
+  dollar-quoted strings are ignored, unterminated dollar quotes remain visible
+  to the guard, and PostgreSQL unicode-escaped identifiers (`U&"..."`) are
+  still rejected after extracting the guard into the helper.
 - Reviewed the email tests for equivalence against the previous simple regex on
   safe cases and linear-time rejection on adversarial dotted-domain inputs.
 - Attempted broader `plugins/plugin-form/src/service-hardening.test.ts` and

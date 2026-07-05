@@ -1,4 +1,9 @@
-// Deterministic coverage for the cloud-shared structural email validator.
+/**
+ * Deterministic coverage for the cloud-shared structural email validator.
+ * Auto-provisioning wants the same practical shape as the previous simple
+ * regex, with adversarial dotted domains handled by scans instead of regex
+ * backtracking.
+ */
 import { describe, expect, test } from "vitest";
 import { basicEmailValid, isValidEmail } from "./email-validation";
 
