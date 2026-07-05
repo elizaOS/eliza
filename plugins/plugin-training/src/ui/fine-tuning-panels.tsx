@@ -458,7 +458,7 @@ export function TrajectoriesSection({
                     {t("finetuningview.NoTrajectoriesFoun")}
                   </div>
                 ) : (
-                  trajectoryList.trajectories.map((trajectory) => (
+                  trajectoryList.trajectories.map((trajectory: TrajectorySummary) => (
                     <TrajectoryListItem
                       key={trajectory.trajectoryId}
                       trajectory={trajectory}
