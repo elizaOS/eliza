@@ -9,6 +9,7 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 /**
  * Full cloud-agent provisioning lifecycle through the REAL Settings UI:
@@ -238,12 +239,12 @@ async function seedCloudActiveAgent(
     "eliza:mobile-runtime-mode": "cloud",
   });
   await page.addInitScript(
-    ({ token, voiceKey }) => {
+    ({ voiceKey }) => {
       localStorage.setItem(voiceKey, "1");
-      localStorage.setItem("steward_session_token", token);
     },
-    { token: CLOUD_AUTH_TOKEN, voiceKey: VOICE_PREFIX_DONE_STORAGE_KEY },
+    { voiceKey: VOICE_PREFIX_DONE_STORAGE_KEY },
   );
+  await seedStewardSession(page, { token: CLOUD_AUTH_TOKEN });
 }
 
 function agentRow(page: Page, name: string) {

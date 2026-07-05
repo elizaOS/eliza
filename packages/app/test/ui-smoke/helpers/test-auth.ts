@@ -1,3 +1,9 @@
+/**
+ * Shared Playwright auth seed helpers for UI smoke tests. Keeping the Steward
+ * session key and token shape here prevents cloud/onboarding/mobile specs from
+ * each inventing their own localStorage contract, which is how the Android
+ * auth summary drift escaped review.
+ */
 import type { Page } from "@playwright/test";
 
 export const STEWARD_SESSION_TOKEN_KEY = "steward_session_token";
