@@ -1,11 +1,11 @@
-// Pins the Vertex tuning transport layer: an internal API failure PROPAGATES as a
-// thrown error, while a legitimately-empty job list stays a distinct empty result —
-// neither is masked into a fabricated success. Deterministic (global fetch mocked).
+/**
+ * Pins the Vertex tuning transport layer: an internal API failure PROPAGATES as
+ * a thrown error, while a legitimately-empty job list stays a distinct empty
+ * result — neither is masked into a fabricated success. Deterministic harness:
+ * global fetch is mocked and restored per test.
+ */
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  getTuningJobStatus,
-  listTuningJobs,
-} from "./vertex-tuning";
+import { getTuningJobStatus, listTuningJobs } from "./vertex-tuning";
 
 const realFetch = globalThis.fetch;
 
