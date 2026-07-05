@@ -40,7 +40,9 @@ export function navigateBackToLauncher(): void {
  * affordance is icon-only, with no border/background/circle at rest). Fixing
  * the primitive fixes every consumer at once. A subtle neutral `bg-hover` chip
  * (square-cornered `rounded-md`, NOT the old `rounded-full` disc) only appears
- * on hover/focus for affordance, never in the resting state.
+ * on hover for affordance, never in the resting state. Focus styling is NOT
+ * sprinkled here: it is centralized in CSS (`--focus`) per the no-focus-ring
+ * gate, so this primitive carries no `focus`/`ring` utilities.
  */
 export function ViewBackButton({
   onBack,
@@ -68,7 +70,7 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "inline-flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-txt transition-colors hover:bg-bg-hover focus-visible:bg-bg-hover",
+        "inline-flex h-9 w-9 items-center justify-center rounded-md bg-transparent text-txt transition-colors hover:bg-bg-hover",
         className,
       )}
       {...agentProps}

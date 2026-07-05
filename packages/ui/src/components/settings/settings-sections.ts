@@ -34,6 +34,7 @@ import { type ComponentType, type LazyExoticComponent, lazy } from "react";
 import { registerCloudConnectorsSettingsSection } from "../../cloud/connectors";
 import {
   CLOUD_SETTINGS_GROUP_ID,
+  listExtraSettingsGroups,
   registerSettingsGroup,
 } from "../../cloud/settings/cloud-settings-group";
 import {
@@ -643,6 +644,56 @@ export function settingsSectionLabel(
   t: (key: string, vars?: Record<string, unknown>) => string,
 ): string {
   return t(section.label, { defaultValue: section.defaultLabel });
+}
+
+/** One display group: a labelled bucket of sections in display order. */
+export type GroupedSettingsSections = {
+  group: string;
+  label: string;
+  items: SettingsSectionDef[];
+}[];
+
+/**
+ * Group sections for display (shared by the Settings view header/nav and the
+ * folded section-nav strip). Built-in groups keep their pinned order + labels;
+ * any extra group a section declares (e.g. the `cloud` group) is interleaved by
+ * its registered order with a registered label. A section whose group is
+ * neither built-in nor registered falls into an "Other" bucket so it is never
+ * dropped.
+ */
+export function groupSettingsSections(
+  sections: SettingsSectionDef[],
+): GroupedSettingsSections {
+  const extra = listExtraSettingsGroups();
+  const orderOf = new Map<string, number>();
+  const labels = new Map<string, string>();
+  SETTINGS_GROUP_ORDER.forEach((group, index) => {
+    orderOf.set(group, index);
+    labels.set(group, SETTINGS_GROUP_LABEL[group]);
+  });
+  for (const group of extra) {
+    orderOf.set(group.id, group.order);
+    labels.set(group.id, group.label);
+  }
+
+  const buckets = new Map<string, SettingsSectionDef[]>();
+  for (const section of sections) {
+    const bucket = buckets.get(section.group);
+    if (bucket) bucket.push(section);
+    else buckets.set(section.group, [section]);
+  }
+
+  const FALLBACK_ORDER = Number.MAX_SAFE_INTEGER;
+  return [...buckets.entries()]
+    .map(([group, items]) => ({
+      group,
+      label: labels.get(group) ?? "Other",
+      items,
+      order: orderOf.get(group) ?? FALLBACK_ORDER,
+    }))
+    .filter((entry) => entry.items.length > 0)
+    .sort((a, b) => a.order - b.order)
+    .map(({ group, label, items }) => ({ group, label, items }));
 }
 
 export function settingsSectionTitle(

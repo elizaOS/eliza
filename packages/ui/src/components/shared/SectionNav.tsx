@@ -135,6 +135,91 @@ function navigate(path: string): void {
 }
 
 /**
+ * A single ghost tab within a {@link SectionTabStrip}. Shared so the doctrine
+ * tab styling (active `bg-accent/15 text-accent`, inactive neutral → neutral/
+ * opacity hover) lives in exactly one place across every section-nav consumer.
+ */
+export function SectionNavTab({
+  label,
+  isActive,
+  onSelect,
+}: {
+  label: React.ReactNode;
+  isActive: boolean;
+  onSelect: () => void;
+}): React.JSX.Element {
+  return (
+    <Button
+      aria-current={isActive ? "page" : undefined}
+      onClick={() => {
+        if (!isActive) onSelect();
+      }}
+      variant="ghost"
+      size="sm"
+      className={cn(
+        "h-auto shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        isActive
+          ? "bg-accent/15 text-accent"
+          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+      )}
+    >
+      {label}
+    </Button>
+  );
+}
+
+/**
+ * The presentational section-tab strip: a horizontal `nav` of ghost tabs, one
+ * per entry, marked active by `activeId`. Purely presentational — it does not
+ * know where the tabs come from (app-shell pages, the settings registry, …) or
+ * how selection navigates; callers own that. Both the registry-driven
+ * {@link SectionNav} and the Settings section-nav render through THIS strip so
+ * the doctrine geometry + ghost-tab styling stay identical everywhere.
+ *
+ * Renders `null` for a section with fewer than two entries (one tab is not a
+ * nav; the header alone suffices).
+ */
+export function SectionTabStrip({
+  entries,
+  activeId,
+  onSelect,
+  testId,
+  ariaLabel,
+  className,
+}: {
+  entries: readonly { id: string; label: React.ReactNode }[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  /** `data-testid` for the nav landmark (e.g. `section-nav-wallet`). */
+  testId?: string;
+  /** Accessible name for the nav landmark. */
+  ariaLabel: string;
+  className?: string;
+}): React.JSX.Element | null {
+  // A single-entry section is just its header; no secondary nav to render.
+  if (entries.length < 2) return null;
+  return (
+    <nav
+      aria-label={ariaLabel}
+      data-testid={testId}
+      className={cn(
+        "flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto px-3 py-2",
+        className,
+      )}
+    >
+      {entries.map((entry) => (
+        <SectionNavTab
+          key={entry.id}
+          label={entry.label}
+          isActive={entry.id === activeId}
+          onSelect={() => onSelect(entry.id)}
+        />
+      ))}
+    </nav>
+  );
+}
+
+/**
  * The secondary section-nav strip. Renders one ghost tab per registered page in
  * `group`, sorted and marked active from `activePath`. Renders `null` when the
  * section has fewer than two members (a single tab is not a nav).
@@ -160,37 +245,18 @@ export function SectionNav({
     getAppShellPageRegistrySnapshot,
   );
   const tabs = sectionTabs(group, rewrite);
-  // A single-member section is just its header; no secondary nav to render.
-  if (tabs.length < 2) return null;
   const active = activeTabId(activePath, tabs);
   return (
-    <nav
-      aria-label={ariaLabel ?? `${group} sections`}
-      data-testid={`section-nav-${group}`}
-      className={cn("flex shrink-0 items-center gap-1 px-3 py-2", className)}
-    >
-      {tabs.map((tab) => {
-        const isActive = tab.id === active;
-        return (
-          <Button
-            key={tab.id}
-            aria-current={isActive ? "page" : undefined}
-            onClick={() => {
-              if (!isActive) navigate(tab.path);
-            }}
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-auto rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              isActive
-                ? "bg-accent/15 text-accent"
-                : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-            )}
-          >
-            {tab.label}
-          </Button>
-        );
-      })}
-    </nav>
+    <SectionTabStrip
+      entries={tabs}
+      activeId={active}
+      onSelect={(id) => {
+        const tab = tabs.find((candidate) => candidate.id === id);
+        if (tab) navigate(tab.path);
+      }}
+      testId={`section-nav-${group}`}
+      ariaLabel={ariaLabel ?? `${group} sections`}
+      className={className}
+    />
   );
 }
