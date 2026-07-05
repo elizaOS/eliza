@@ -72,9 +72,9 @@ import { writeSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
+  type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
-  type AcpCapacity,
   type AcpToolCall,
   type AgentType,
   type ApprovalPreset,
