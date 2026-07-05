@@ -6,12 +6,15 @@
 
 import { describe, expect, mock, test } from "bun:test";
 
+const getCurrentUserMock = mock(async () => null);
+const endAllUserSessionsMock = mock(async () => undefined);
+
 mock.module("@/lib/auth", () => ({
   invalidateSessionCaches: mock(async () => undefined),
 }));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  getCurrentUser: mock(async () => null),
+  getCurrentUser: getCurrentUserMock,
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
@@ -21,7 +24,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 
 mock.module("@/lib/services/user-sessions", () => ({
   userSessionsService: {
-    endAllUserSessions: mock(async () => undefined),
+    endAllUserSessions: endAllUserSessionsMock,
   },
 }));
 
@@ -48,7 +51,39 @@ function deletedCookieNames(res: Response): string[] {
 }
 
 describe("POST /api/auth/logout cookie clearing", () => {
+  test("staging legacy-only logout does not end production user sessions", async () => {
+    getCurrentUserMock.mockClear();
+    endAllUserSessionsMock.mockClear();
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api-staging.elizacloud.ai",
+          cookie:
+            "steward-token=prod-token; steward-refresh-token=prod-refresh",
+        },
+      },
+      { ENVIRONMENT: "staging", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(200);
+    const cleared = deletedCookieNames(res);
+    expect(cleared).toContain("steward-token-staging");
+    expect(cleared).toContain("steward-refresh-token-staging");
+    expect(cleared).toContain("steward-authed-staging");
+    expect(cleared).not.toContain("steward-token");
+    expect(cleared).not.toContain("steward-refresh-token");
+    expect(cleared).not.toContain("steward-authed");
+    expect(getCurrentUserMock).not.toHaveBeenCalled();
+    expect(endAllUserSessionsMock).not.toHaveBeenCalled();
+  });
+
   test("staging logout does not delete production's unsuffixed steward cookies", async () => {
+    getCurrentUserMock.mockClear();
+    endAllUserSessionsMock.mockClear();
+
     const res = await app.request(
       "/",
       {

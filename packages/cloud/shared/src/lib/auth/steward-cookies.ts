@@ -25,8 +25,9 @@ const BASE_AUTHED = "steward-authed";
 
 /**
  * The historical unsuffixed names. Production owns them; non-production may use
- * them only as a bounded read fallback so pre-rename staging sessions migrate
- * on their first refresh instead of being dumped to login.
+ * the legacy access cookie only as a bounded read fallback. Legacy refresh
+ * cookies are not read in non-production, so pre-rename refresh-only sessions
+ * re-authenticate instead of mutating production's cookie namespace.
  */
 export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
   token: BASE_TOKEN,
