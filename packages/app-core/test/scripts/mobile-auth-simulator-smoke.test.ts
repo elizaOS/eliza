@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  assertAuthCallbackResult,
   buildCallbackUrl,
   expectedAuthCallbackFromUrl,
   parseArgs,
@@ -126,6 +127,68 @@ describe("mobile-auth-simulator-smoke: callback URL + args", () => {
     const opts = parseArgs(["--platform", "android", "--app-dir", "/some/app"]);
     expect(opts.platform).toBe("android");
     expect(opts.appDir).toBe("/some/app");
+  });
+});
+
+// #13693: the auth-OUTCOME assertion. These prove the smoke is NON-VACUOUS:
+// the delivery echo alone no longer passes; the handler must have read its real
+// session state back and reported that the OS-delivered callback did not
+// establish a session.
+describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
+  const expected = expectedAuthCallbackFromUrl(
+    "elizaos://auth/callback?state=simulator-oauth-state&code=simulator-oauth-code",
+  );
+  const okResult = {
+    ok: true,
+    phase: "handled",
+    sessionEstablished: false,
+    path: expected.path,
+    state: expected.state,
+    code: expected.code,
+  };
+
+  it("accepts a handled callback that did NOT establish a session", () => {
+    expect(assertAuthCallbackResult(okResult, expected, "iOS")).toBe(okResult);
+  });
+
+  it("RED: throws when the handler never surfaced an outcome (deliver-only)", () => {
+    // The pre-#13693 vacuous payload: URL echoed back, no session readback.
+    // This is exactly the silent pass the issue calls out — it must now throw.
+    const deliverOnly = {
+      ok: true,
+      phase: "handled",
+      path: expected.path,
+      state: expected.state,
+      code: expected.code,
+    };
+    expect(() =>
+      assertAuthCallbackResult(deliverOnly, expected, "iOS"),
+    ).toThrow(/no auth outcome surfaced/);
+  });
+
+  it("RED: throws when the deep link established a session (token accepted)", () => {
+    // The security regression: a callback authenticating the app off an
+    // OS-delivered deep link. Must fail loudly.
+    expect(() =>
+      assertAuthCallbackResult(
+        { ...okResult, sessionEstablished: true },
+        expected,
+        "iOS",
+      ),
+    ).toThrow(/established a session/);
+  });
+
+  it("still enforces the delivery echo (path/state/code)", () => {
+    expect(() =>
+      assertAuthCallbackResult(
+        { ...okResult, state: "tampered" },
+        expected,
+        "iOS",
+      ),
+    ).toThrow(/query mismatch/);
+    expect(() =>
+      assertAuthCallbackResult({ ...okResult, ok: false }, expected, "iOS"),
+    ).toThrow(/did not report ok=true/);
   });
 });
 

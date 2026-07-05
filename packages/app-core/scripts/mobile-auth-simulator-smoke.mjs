@@ -377,6 +377,70 @@ export function expectedAuthCallbackFromUrl(url) {
   };
 }
 
+// #13693: validate the auth-callback END STATE, not just that a result payload
+// arrived. Factored out (and exported) so both the iOS poll and its unit tests
+// share ONE contract, and so the Android leg can reuse it if/when it gains an
+// in-app readback.
+//
+// Pre-#13693 the harness only checked `ok === true` + path/state/code echo,
+// which a handler that merely reflected the URL back (never running the real
+// auth logic) would pass — the vacuous check the issue calls out.
+//
+// The real security invariant this handler enforces is that an OS-delivered
+// deep link NEVER establishes an authenticated session (no bearer token is
+// accepted from a deep link; a crafted callback must not authenticate the app).
+// The in-app handler reads its real `elizaos:active-server` session storage
+// back and reports `sessionEstablished`. This assertion requires that field to
+// be present AND `false`: a handler that skipped the readback writes no
+// `sessionEstablished` (throws — the red the issue asks for), and a regression
+// that started accepting the deep-link token would report `true` (also red).
+//
+// Returns the parsed payload on success; throws a descriptive Error otherwise.
+export function assertAuthCallbackResult(parsed, expected, platformLabel) {
+  const label = platformLabel ?? "auth callback";
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`${label}: result payload was not an object`);
+  }
+  if (parsed.ok !== true) {
+    throw new Error(
+      `${label}: handler did not report ok=true (got ${JSON.stringify(parsed.ok)})`,
+    );
+  }
+  if (parsed.path !== expected.path) {
+    throw new Error(
+      `${label} path mismatch: expected ${expected.path}, got ${parsed.path}`,
+    );
+  }
+  if (parsed.state !== expected.state || parsed.code !== expected.code) {
+    throw new Error(
+      `${label} query mismatch: expected state/code ${expected.state}/${expected.code}, got ${parsed.state}/${parsed.code}`,
+    );
+  }
+  // THE auth-outcome assertion (#13693): the handler must have read its real
+  // session state back. Absent/non-boolean `sessionEstablished` => the handler
+  // never ran the end-state readback => this is the silent-pass regression the
+  // smoke now catches.
+  if (typeof parsed.sessionEstablished !== "boolean") {
+    throw new Error(
+      `${label}: no auth outcome surfaced. The callback handler must read its ` +
+        `session state back after handling the callback (deliver-only is not ` +
+        `enough); got sessionEstablished=${JSON.stringify(parsed.sessionEstablished)}.`,
+    );
+  }
+  // The OS-delivered callback must NOT have established a session — the app
+  // never accepts a bearer token from a deep link. A `true` here means a
+  // regression started authenticating off the deep link (the MITM footgun the
+  // in-app security comments warn about); fail loudly.
+  if (parsed.sessionEstablished === true) {
+    throw new Error(
+      `${label}: the OS-delivered auth callback established a session ` +
+        `(sessionEstablished=true). A deep link must never authenticate the ` +
+        `app; only the trusted in-app session exchange may.`,
+    );
+  }
+  return parsed;
+}
+
 function armIosAuthCallbackSmoke(device, app, url) {
   const expected = expectedAuthCallbackFromUrl(url);
   deleteIosPreference(device, app.appId, IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY);
@@ -420,21 +484,11 @@ async function pollIosAuthCallbackSmoke(device, app, expected) {
       } catch {
         parsed = null;
       }
-      if (parsed?.ok === true) {
-        if (parsed.path !== expected.path) {
-          throw new Error(
-            `iOS auth callback path mismatch: expected ${expected.path}, got ${parsed.path}`,
-          );
-        }
-        if (parsed.state !== expected.state || parsed.code !== expected.code) {
-          throw new Error(
-            `iOS auth callback query mismatch: expected state/code ${expected.state}/${expected.code}, got ${parsed.state}/${parsed.code}`,
-          );
-        }
-        return parsed;
-      }
       if (parsed?.phase === "failed" || parsed?.error) {
         throw new Error(`iOS auth callback smoke failed: ${lastRaw}`);
+      }
+      if (parsed?.ok === true) {
+        return assertAuthCallbackResult(parsed, expected, "iOS auth callback");
       }
     }
     await sleep(IOS_AUTH_CALLBACK_DELAY_MS);

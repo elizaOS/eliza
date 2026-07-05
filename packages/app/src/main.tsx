@@ -2039,7 +2039,14 @@ async function recordIosAuthCallbackSmoke(
   path: string,
   url: string,
 ): Promise<void> {
-  if (!isIOS) return;
+  // Record the auth-callback end state on ANY native platform. Pre-#13693 this
+  // was iOS-only, so the Android smoke leg had no in-app readback at all (pure
+  // `am start` fire-and-forget). Broadening to `isNative` lets the Android
+  // smoke read the same Capacitor-Preferences handshake (backed by
+  // SharedPreferences) and assert the same end state instead of trusting intent
+  // resolution alone. This is a smoke seam: the body no-ops unless the harness
+  // has armed the request key, so real users' deep-link handling is unchanged.
+  if (!isNative) return;
   let rawRequest: string | null = null;
   try {
     rawRequest = window.localStorage.getItem(
@@ -2063,9 +2070,35 @@ async function recordIosAuthCallbackSmoke(
     request = { malformedRequest: rawRequest };
   }
 
+  // #13693: assert the AUTH OUTCOME, not just delivery. The security invariant
+  // for this handler (see the `connect`/first-run-remote cases above) is that
+  // an OS-delivered deep link NEVER establishes an authenticated session — no
+  // bearer token is accepted, no active server is selected from the callback.
+  // So the truthful end state is that after handling the callback there is
+  // still no active-server session that the callback itself created. Read the
+  // real `elizaos:active-server` storage key back so the smoke can assert this
+  // (`sessionEstablished: false`) rather than the vacuous "a result arrived".
+  // A regression that started accepting the deep-link token (the exact MITM
+  // footgun the security comments warn about) would flip this to true and the
+  // smoke would go red.
+  let sessionEstablished = false;
+  try {
+    const activeServer = window.localStorage.getItem("elizaos:active-server");
+    sessionEstablished =
+      typeof activeServer === "string" && activeServer.length > 0;
+  } catch {
+    // error-policy:J7 diagnostics readback — an unreadable key reports the
+    // safe/expected end state (no session established by the callback).
+    sessionEstablished = false;
+  }
+
   await writeIosAuthCallbackSmokeResult({
     ok: true,
     phase: "handled",
+    // #13693: the auth OUTCOME. The OS-delivered callback must not have
+    // established a session; the smoke asserts this instead of only proving the
+    // URL was echoed back.
+    sessionEstablished,
     path,
     url,
     state: parsed.searchParams.get("state") ?? "",
