@@ -4,6 +4,7 @@
  */
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
+  ArrowDown,
   FileText,
   Film,
   LayoutGrid,
@@ -1377,7 +1378,11 @@ export function ContinuousChatOverlay({
   // (pre-paint — the thread never flashes at the top), a NEW line re-pins with
   // a smooth glide while the reader rests at the bottom, streaming growth
   // follows in a single rAF, and a reader who scrolled up is never yanked.
-  const { scrollRef: threadRef } = useThreadAutoScroll<HTMLDivElement>({
+  const {
+    scrollRef: threadRef,
+    atBottom: threadAtBottom,
+    jumpToLatest,
+  } = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${visibleMessages.length}:${lastId ?? ""}:${lastContent.length}`,
     lineKey: lastId ?? "",
     enabled: threadPresented,
@@ -3991,6 +3996,7 @@ export function ContinuousChatOverlay({
               >
                 <motion.div
                   id="continuous-thread"
+                  data-testid="chat-thread-scroll"
                   ref={threadRef}
                   role="log"
                   aria-label="conversation history"
@@ -4112,6 +4118,20 @@ export function ContinuousChatOverlay({
                     </AnimatePresence>
                   </div>
                 </motion.div>
+                {sheetOpen && hasThread && !threadAtBottom ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={jumpToLatest}
+                    aria-label="jump to latest message"
+                    data-testid="chat-jump-to-latest"
+                    className="absolute bottom-3 left-1/2 z-[3] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-surface/95 px-3 text-xs font-medium text-txt shadow-lg transition-colors hover:bg-bg-hover"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                    <span>Jump to latest</span>
+                  </Button>
+                ) : null}
               </motion.div>
             ) : null}
             {/* Pending image attachments + any read error, just above the input. */}
