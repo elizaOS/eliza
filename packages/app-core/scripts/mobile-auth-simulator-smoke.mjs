@@ -411,18 +411,19 @@ export function readAndroidPreferenceFromXml(xml, key) {
 function writeAndroidPreferenceMap(adb, serial, appId, entries) {
   const xml = buildAndroidPreferenceXml(entries);
   const encoded = Buffer.from(xml, "utf8").toString("base64");
-  const command = [
-    "run-as",
-    appId,
-    "sh",
-    "-c",
-    shellSingleQuote(
-      `mkdir -p shared_prefs && printf %s ${encoded} | base64 -d > shared_prefs/CapacitorStorage.xml`,
-    ),
-  ];
+  const script = [
+    "mkdir -p shared_prefs",
+    `(printf %s ${encoded} | base64 -d > shared_prefs/CapacitorStorage.xml) || (printf %s ${encoded} | toybox base64 -d > shared_prefs/CapacitorStorage.xml)`,
+    "chmod 660 shared_prefs/CapacitorStorage.xml",
+  ].join(" && ");
   runCommand(
     adb,
-    ["-s", serial, "shell", command.join(" ")],
+    [
+      "-s",
+      serial,
+      "shell",
+      `run-as ${shellSingleQuote(appId)} sh -c ${shellSingleQuote(script)}`,
+    ],
     `Android preference seed for ${appId}`,
   );
 }
@@ -432,7 +433,7 @@ function readAndroidPreference(adb, serial, appId, key) {
     "-s",
     serial,
     "shell",
-    ["run-as", appId, "cat", "shared_prefs/CapacitorStorage.xml"].join(" "),
+    `run-as ${shellSingleQuote(appId)} cat shared_prefs/CapacitorStorage.xml`,
   ]);
   if (!xml) return null;
   return readAndroidPreferenceFromXml(xml, key);
