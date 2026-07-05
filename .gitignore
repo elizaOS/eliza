@@ -1527,3 +1527,6 @@ railway.json
 .railwayignore
 .dockerignore
 packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
+
+# widget scroll + tap-target certification evidence (#14380)
+packages/ui/src/testing/__e2e__/output-widget-cert/

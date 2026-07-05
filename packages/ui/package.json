@@ -34,6 +34,7 @@
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
     "test:chat-scroll-web-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-scroll-web-e2e.mjs",
+    "test:widget-cert-e2e": "bun run --cwd ../.. packages/ui/src/testing/__e2e__/run-widget-cert-e2e.mjs",
     "test:bottombar-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-bottombar-e2e.mjs",
     "test:fused-wake-integration-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-fused-wake-integration-e2e.mjs",
     "test:chat-sheet-frame-glitch-e2e": "node src/components/shell/__e2e__/run-chat-sheet-frame-glitch-e2e.mjs",
