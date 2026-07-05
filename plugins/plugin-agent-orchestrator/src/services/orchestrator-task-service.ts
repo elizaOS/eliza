@@ -2517,6 +2517,12 @@ export class OrchestratorTaskService extends Service {
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    const projectId = overrides.projectId ?? doc.task.projectId ?? undefined;
+    const worldId =
+      overrides.worldId ??
+      (overrides.projectId && overrides.projectId !== doc.task.projectId
+        ? undefined
+        : doc.task.worldId);
     return this.createTask({
       title: overrides.title ?? `${doc.task.title} (fork)`,
       goal: overrides.goal ?? doc.task.goal,
@@ -2527,7 +2533,9 @@ export class OrchestratorTaskService extends Service {
         ...doc.task.acceptanceCriteria,
       ],
       ownerUserId: overrides.ownerUserId ?? doc.task.ownerUserId,
-      worldId: overrides.worldId ?? doc.task.worldId,
+      worldId,
+      projectId,
+      workdir: overrides.workdir,
       providerPolicy: overrides.providerPolicy ?? doc.task.providerPolicy,
       currentPlan: overrides.currentPlan ?? doc.task.currentPlan,
       parentTaskId: taskId,

@@ -269,6 +269,36 @@ describe("orchestrator routes — task CRUD", () => {
     expect(result.json.acceptanceCriteria).toEqual(["ci green"]);
   });
 
+  it("forwards project binding fields when creating a task", async () => {
+    const createTask = vi.fn(async (input: Record<string, unknown>) => ({
+      id: "created-task",
+      ...input,
+    }));
+    const result = await call(
+      { createTask } as unknown as OrchestratorTaskService,
+      "POST",
+      "/api/orchestrator/tasks",
+      {
+        title: "Project work",
+        goal: "Stay in the registered project",
+        projectId: "project-123",
+        workdir: "/repo/project",
+        worldId: "caller-world",
+      },
+    );
+
+    expect(result.status).toBe(201);
+    expect(createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Project work",
+        goal: "Stay in the registered project",
+        projectId: "project-123",
+        workdir: "/repo/project",
+        worldId: "caller-world",
+      }),
+    );
+  });
+
   it("rejects a task with no title", async () => {
     const result = await call(
       makeService(),
@@ -412,6 +442,35 @@ describe("orchestrator routes — lifecycle", () => {
         )
       ).status,
     ).toBe(400);
+  });
+
+  it("forwards project binding overrides when forking a task", async () => {
+    const forkTask = vi.fn(async () => ({
+      id: "forked-task",
+      parentTaskId: "origin-task",
+    }));
+    const result = await call(
+      { forkTask } as unknown as OrchestratorTaskService,
+      "POST",
+      "/api/orchestrator/tasks/origin-task/fork",
+      {
+        title: "Project fork",
+        projectId: "project-456",
+        workdir: "/repo/project-b",
+        worldId: "project-world",
+      },
+    );
+
+    expect(result.status).toBe(201);
+    expect(forkTask).toHaveBeenCalledWith(
+      "origin-task",
+      expect.objectContaining({
+        title: "Project fork",
+        projectId: "project-456",
+        workdir: "/repo/project-b",
+        worldId: "project-world",
+      }),
+    );
   });
 
   it("requires a boolean `passed` to validate", async () => {

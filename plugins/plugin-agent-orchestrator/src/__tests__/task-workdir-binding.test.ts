@@ -524,6 +524,35 @@ describe("project memory-world stamping at bind time (#13776 D3)", () => {
     }
   });
 
+  it("preserves a task's project memory world when forking", async () => {
+    const project = upsertProject({ name: "repo-a", localPath: firstDir });
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const parent = await service.createTask({
+        title: "bound parent",
+        goal: "work in project A",
+        acceptanceCriteria: [],
+        workdir: firstDir,
+      });
+      const fork = await service.forkTask(parent.id);
+      const expectedWorld = projectWorldId(BINDER_AGENT_ID, project.id);
+
+      expect(fork?.parentTaskId).toBe(parent.id);
+      expect(fork?.projectId).toBe(project.id);
+      expect(fork?.worldId).toBe(expectedWorld);
+      const record = fork ? await store.getTask(fork.id) : null;
+      expect(record?.task.projectId).toBe(project.id);
+      expect(record?.task.worldId).toBe(expectedWorld);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   it("leaves an unbound task's worldId untouched and lets an explicit worldId win", async () => {
     const project = upsertProject({ name: "repo-a", localPath: firstDir });
     const store = new OrchestratorTaskStore({ backend: "memory" });

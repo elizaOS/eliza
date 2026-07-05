@@ -321,6 +321,8 @@ async function dispatchOrchestratorRoutes(
       acceptanceCriteria: asStringArray(body.acceptanceCriteria),
       ownerUserId: asString(body.ownerUserId),
       worldId: asString(body.worldId),
+      projectId: asString(body.projectId),
+      workdir: asString(body.workdir),
       roomId: asString(body.roomId),
       taskRoomId: asString(body.taskRoomId),
       providerPolicy: asProviderPolicy(body.providerPolicy),
@@ -518,6 +520,9 @@ async function dispatchOrchestratorRoutes(
         goal: asString(body.goal),
         priority: asPriority(body.priority),
         acceptanceCriteria: asStringArray(body.acceptanceCriteria),
+        worldId: asString(body.worldId),
+        projectId: asString(body.projectId),
+        workdir: asString(body.workdir),
       });
       if (!forked) {
         sendError(res, "Task not found", 404);
