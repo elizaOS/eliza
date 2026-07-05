@@ -15,6 +15,7 @@ import {
   ANDROID_FULL_TURN_FAILURE_RE,
   IOS_FULL_BUN_SMOKE_FAILURE_RE,
 } from "./lib/chat-failure-strings.mjs";
+import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
 import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
@@ -24,6 +25,10 @@ const repoRoot = path.resolve(
   "../../..",
 );
 const appConfigPath = path.join(repoRoot, "packages/app/app.config.ts");
+const iosLocalChatResultDir = path.join(
+  repoRoot,
+  "packages/app/test-results/ios-local-chat",
+);
 
 function argValue(name) {
   const index = process.argv.indexOf(name);
@@ -31,10 +36,13 @@ function argValue(name) {
 }
 
 const platform = argValue("--platform") ?? "ios";
-const apiBase = argValue("--api-base");
+let apiBase = argValue("--api-base");
 const authTokenArg = argValue("--auth-token");
+const startHostAgent = process.argv.includes("--start-host-agent");
+const hostAgentPort = argValue("--host-agent-port");
 const requireInstalled = process.argv.includes("--require-installed");
-const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
+const exerciseAppCoreApi =
+  process.argv.includes("--live") || Boolean(apiBase) || startHostAgent;
 const iosSelectLocal = process.argv.includes("--ios-select-local");
 const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
@@ -180,6 +188,8 @@ Options:
   --require-installed              Fail when the selected app/simulator is unavailable
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
+  --start-host-agent               Start the deterministic host app-core API when --api-base is omitted
+  --host-agent-port PORT           Port for --start-host-agent (default: 31338, or a free port if busy)
   --auth-token TOKEN               Bearer token for protected app-core API routes
   --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
@@ -2427,7 +2437,23 @@ async function runLocalInferenceApiSmoke(
 async function main() {
   let androidContext = null;
   let iosContext = null;
+  let hostAgent = null;
   try {
+    if (startHostAgent) {
+      if (apiBase) {
+        throw new Error(
+          "--start-host-agent cannot be combined with --api-base.",
+        );
+      }
+      hostAgent = await startDeviceE2eHostAgent({
+        repoRoot,
+        artifactDir: iosLocalChatResultDir,
+        requestedPort: hostAgentPort,
+        log: (message) => console.log(`[local-chat-smoke] ${message}`),
+      });
+      apiBase = hostAgent.apiBase;
+    }
+
     if (platform === "ios" || platform === "both") {
       iosContext = launchIosSimulatorApp();
       if (iosContext?.installed) {
@@ -2502,6 +2528,7 @@ async function main() {
       );
     }
   } finally {
+    await hostAgent?.stop();
     if (iosContext?.udid) {
       clearIosSmokeDefaults({
         udid: iosContext.udid,

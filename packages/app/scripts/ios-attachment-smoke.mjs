@@ -11,6 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  DEFAULT_HOST_AGENT_PORT,
+  startDeviceE2eHostAgent,
+} from "./lib/host-agent.mjs";
+import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
@@ -29,7 +33,7 @@ const ONBOARDING_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const ONBOARDING_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
-const DEFAULT_API_BASE = "http://127.0.0.1:31338";
+const DEFAULT_HOST_AGENT_PORT_STRING = String(DEFAULT_HOST_AGENT_PORT);
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 
@@ -394,59 +398,72 @@ async function pollResult(udid, appId) {
 
 async function main() {
   const { appId, urlScheme } = readAppIdentity();
-  const apiBase = val("--api-base", DEFAULT_API_BASE);
+  let apiBase = val("--api-base");
   const filename = val("--filename", "eliza-ios-attachment-smoke.png");
   const udid = ensureSimulatorBooted();
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
+  const hostAgent = apiBase
+    ? null
+    : await startDeviceE2eHostAgent({
+        repoRoot,
+        artifactDir: resultDir,
+        requestedPort: val("--host-agent-port"),
+        preferredPort:
+          process.env.ELIZA_IOS_HOST_AGENT_PORT ??
+          DEFAULT_HOST_AGENT_PORT_STRING,
+        log,
+      });
+  apiBase = apiBase ?? hostAgent.apiBase;
+  let recording = null;
 
-  deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
-  flushPreferences(udid);
-  installLatestApp(udid, appId);
-  tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-  clearState(udid, appId);
-  defaultsWriteString(
-    udid,
-    appId,
-    ONBOARDING_REQUEST_KEY,
-    JSON.stringify({ apiBase }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ONBOARDING_RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ATTACHMENT_REQUEST_KEY,
-    JSON.stringify({
-      apiBase,
-      filename,
-      dataUrl: `data:image/png;base64,${PNG_BASE64}`,
-    }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    ATTACHMENT_RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  flushPreferences(udid);
-
-  const recording = startVideo(udid);
   try {
+    deleteSimulatorPreferenceDomainKeys(udid, appId, FIRST_RUN_STATE_KEYS);
+    flushPreferences(udid);
+    installLatestApp(udid, appId);
+    tryRun("xcrun", ["simctl", "terminate", udid, appId]);
+    clearState(udid, appId);
+    defaultsWriteString(
+      udid,
+      appId,
+      ONBOARDING_REQUEST_KEY,
+      JSON.stringify({ apiBase }),
+    );
+    defaultsWriteString(
+      udid,
+      appId,
+      ONBOARDING_RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    defaultsWriteString(
+      udid,
+      appId,
+      ATTACHMENT_REQUEST_KEY,
+      JSON.stringify({
+        apiBase,
+        filename,
+        dataUrl: `data:image/png;base64,${PNG_BASE64}`,
+      }),
+    );
+    defaultsWriteString(
+      udid,
+      appId,
+      ATTACHMENT_RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    flushPreferences(udid);
+
+    recording = startVideo(udid);
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
@@ -472,6 +489,8 @@ async function main() {
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
     );
+  } finally {
+    await hostAgent?.stop();
   }
 }
 

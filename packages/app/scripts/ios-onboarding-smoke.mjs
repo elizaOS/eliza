@@ -11,6 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  DEFAULT_HOST_AGENT_PORT,
+  startDeviceE2eHostAgent,
+} from "./lib/host-agent.mjs";
+import {
   assertCandidateIosAppRendererFresh,
   assertInstalledIosAppRendererFresh,
 } from "./lib/ios-renderer-stamp.mjs";
@@ -37,7 +41,7 @@ const MIXED_CONTENT_REQUEST_KEY = "eliza:ios-mixed-content-smoke:request";
 const MIXED_CONTENT_RESULT_KEY = "eliza:ios-mixed-content-smoke:result";
 const ATTACHMENT_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
 const ATTACHMENT_RESULT_KEY = "eliza:ios-attachment-smoke:result";
-const DEFAULT_API_BASE = "http://127.0.0.1:31338";
+const DEFAULT_HOST_AGENT_PORT_STRING = String(DEFAULT_HOST_AGENT_PORT);
 
 const has = (flag) => process.argv.includes(flag);
 const val = (flag, fallback = null) => {
@@ -461,59 +465,72 @@ async function pollMixedContentResult(udid, appId) {
 
 async function main() {
   const { appId, urlScheme } = readAppIdentity();
-  const apiBase = val("--api-base", DEFAULT_API_BASE);
+  let apiBase = val("--api-base");
   const udid = ensureSimulatorBooted();
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
+  const hostAgent = apiBase
+    ? null
+    : await startDeviceE2eHostAgent({
+        repoRoot,
+        artifactDir: resultDir,
+        requestedPort: val("--host-agent-port"),
+        preferredPort:
+          process.env.ELIZA_IOS_HOST_AGENT_PORT ??
+          DEFAULT_HOST_AGENT_PORT_STRING,
+        log,
+      });
+  apiBase = apiBase ?? hostAgent.apiBase;
+  let recording = null;
 
-  clearIosSmokeDefaults({
-    udid,
-    bundleId: appId,
-    extraKeys: FIRST_RUN_STATE_KEYS,
-    log,
-  });
-  installLatestApp(udid, appId);
-  tryRun("xcrun", ["simctl", "terminate", udid, appId]);
-  clearIosSmokeDefaults({
-    udid,
-    bundleId: appId,
-    extraKeys: FIRST_RUN_STATE_KEYS,
-    log,
-  });
-  defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ apiBase }));
-  defaultsWriteString(
-    udid,
-    appId,
-    RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  flushPreferences(udid);
-  defaultsWriteString(
-    udid,
-    appId,
-    MIXED_CONTENT_REQUEST_KEY,
-    JSON.stringify({ apiBase }),
-  );
-  defaultsWriteString(
-    udid,
-    appId,
-    MIXED_CONTENT_RESULT_KEY,
-    JSON.stringify({
-      ok: false,
-      phase: "requested",
-      apiBase,
-      updatedAt: new Date().toISOString(),
-    }),
-  );
-  flushPreferences(udid);
-
-  const recording = startVideo(udid);
   try {
+    clearIosSmokeDefaults({
+      udid,
+      bundleId: appId,
+      extraKeys: FIRST_RUN_STATE_KEYS,
+      log,
+    });
+    installLatestApp(udid, appId);
+    tryRun("xcrun", ["simctl", "terminate", udid, appId]);
+    clearIosSmokeDefaults({
+      udid,
+      bundleId: appId,
+      extraKeys: FIRST_RUN_STATE_KEYS,
+      log,
+    });
+    defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ apiBase }));
+    defaultsWriteString(
+      udid,
+      appId,
+      RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    flushPreferences(udid);
+    defaultsWriteString(
+      udid,
+      appId,
+      MIXED_CONTENT_REQUEST_KEY,
+      JSON.stringify({ apiBase }),
+    );
+    defaultsWriteString(
+      udid,
+      appId,
+      MIXED_CONTENT_RESULT_KEY,
+      JSON.stringify({
+        ok: false,
+        phase: "requested",
+        apiBase,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+    flushPreferences(udid);
+
+    recording = startVideo(udid);
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
@@ -654,6 +671,8 @@ async function main() {
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}${screenshot ? ` (screenshot: ${screenshot})` : ""}`,
     );
+  } finally {
+    await hostAgent?.stop();
   }
 }
 

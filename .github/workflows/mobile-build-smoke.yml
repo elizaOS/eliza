@@ -160,29 +160,7 @@ jobs:
       - name: Run iOS onboarding -> home simulator smoke
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-onboarding-to-home
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-onboarding-to-home/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-onboarding-to-home/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
-          node packages/app/scripts/ios-onboarding-smoke.mjs --api-base http://127.0.0.1:31338
+          node packages/app/scripts/ios-onboarding-smoke.mjs
 
       - name: Upload iOS onboarding evidence
         if: always()
@@ -200,29 +178,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-attachment-smoke
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-attachment-smoke/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-attachment-smoke/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
-          node packages/app/scripts/ios-attachment-smoke.mjs --api-base http://127.0.0.1:31338
+          node packages/app/scripts/ios-attachment-smoke.mjs
 
       - name: Upload iOS native attachment evidence
         if: always()
@@ -243,30 +199,8 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-local-chat
-          ELIZA_API_PORT=31338 ELIZA_PAIRING_DISABLED=1 \
-            node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/scripts/serve-real-local-agent.ts \
-            > packages/app/test-results/ios-local-chat/host-agent.log 2>&1 &
-          HOST_AGENT_PID=$!
-          cleanup() {
-            kill "$HOST_AGENT_PID" 2>/dev/null || true
-            wait "$HOST_AGENT_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-          for attempt in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:31338/api/health >/dev/null; then
-              break
-            fi
-            if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-              echo "Host agent exited before /api/health became ready"
-              cat packages/app/test-results/ios-local-chat/host-agent.log
-              exit 1
-            fi
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:31338/api/health >/dev/null
           node packages/app/scripts/mobile-local-chat-smoke.mjs \
-            --platform ios --require-installed --api-base http://127.0.0.1:31338
+            --platform ios --require-installed --start-host-agent
 
       - name: Upload iOS local-chat evidence
         if: always()
