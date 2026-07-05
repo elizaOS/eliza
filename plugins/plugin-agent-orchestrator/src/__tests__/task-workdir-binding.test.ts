@@ -519,7 +519,9 @@ describe("spawnAgentForTask explicit workdir validation", () => {
 
       await expect(
         service.spawnAgentForTask(taskId, { workdir: ` ${outsideDir} ` }),
-      ).rejects.toThrow(/workdir must be within workspace base directory or cwd/);
+      ).rejects.toThrow(
+        /workdir must be within workspace base directory or cwd/,
+      );
       expect(acp.spawns.length).toBe(0);
     } finally {
       await service.stop().catch(() => undefined);
