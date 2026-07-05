@@ -194,11 +194,22 @@ export function useBootRecoveryConductor(
   // (with its controls) returns — an in-flight "Reconnecting…" must never be
   // a dead end.
   const overrideRef = React.useRef<RecoveryCard | null>(null);
+  const retryHandoffReleaseTimerRef = React.useRef<number | null>(null);
   const [cardVersion, setCardVersion] = React.useState(0);
   // One control action at a time (re-login/restart are async).
   const busyRef = React.useRef(false);
   const troubleRef = React.useRef<Trouble>(trouble);
   troubleRef.current = trouble;
+
+  React.useEffect(
+    () => () => {
+      if (retryHandoffReleaseTimerRef.current !== null) {
+        window.clearTimeout(retryHandoffReleaseTimerRef.current);
+        retryHandoffReleaseTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const pinOverride = React.useCallback(
     (card: RecoveryCard) => {
@@ -208,6 +219,10 @@ export function useBootRecoveryConductor(
     [upsertTurn],
   );
   const releaseOverride = React.useCallback(() => {
+    if (retryHandoffReleaseTimerRef.current !== null) {
+      window.clearTimeout(retryHandoffReleaseTimerRef.current);
+      retryHandoffReleaseTimerRef.current = null;
+    }
     overrideRef.current = null;
     setCardVersion((v) => v + 1);
   }, []);
@@ -221,6 +236,10 @@ export function useBootRecoveryConductor(
   // biome-ignore lint/correctness/useExhaustiveDependencies: `cardVersion` is a re-render nonce — releaseOverride bumps it so the live card reseeds after an action settles on an unchanged trouble kind.
   React.useEffect(() => {
     if (troubleKind === null) {
+      if (retryHandoffReleaseTimerRef.current !== null) {
+        window.clearTimeout(retryHandoffReleaseTimerRef.current);
+        retryHandoffReleaseTimerRef.current = null;
+      }
       overrideRef.current = null;
       spokeRef.current = false;
       removeTurn();
@@ -307,6 +326,13 @@ export function useBootRecoveryConductor(
             choices: [],
           });
           dispatchCloudHandoffRetry({ agentId: current.agentId });
+          if (retryHandoffReleaseTimerRef.current !== null) {
+            window.clearTimeout(retryHandoffReleaseTimerRef.current);
+          }
+          retryHandoffReleaseTimerRef.current = window.setTimeout(() => {
+            retryHandoffReleaseTimerRef.current = null;
+            releaseOverride();
+          }, 1_500);
         }
         return true;
       }

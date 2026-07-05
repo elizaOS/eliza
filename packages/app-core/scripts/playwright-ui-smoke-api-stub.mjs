@@ -5033,19 +5033,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && url.pathname === "/api/suggestions") {
-    // Mirror the real prompt-suggestion route
-    // (packages/agent/src/api/suggestions-routes.ts). The continuous-chat
-    // overlay's resting composer strip POSTs here to upgrade its static
-    // suggestions to a model-backed set; with no model the real route returns
-    // an empty set and the overlay keeps its deterministic offline fallback.
-    // Returning the same empty set keeps the strip's static pills and avoids
-    // the catch-all 501 the diagnostics guard would otherwise flag.
-    await drainRequest(req);
-    sendJson(req, res, 200, { suggestions: [] });
-    return;
-  }
-
   if (
     req.method === "GET" &&
     url.pathname === "/api/social-alpha/leaderboard"

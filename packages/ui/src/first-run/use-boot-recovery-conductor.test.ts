@@ -247,6 +247,10 @@ describe("useBootRecoveryConductor", () => {
       agentId: "agent-9",
     });
     expect(card()?.text).toContain("Retrying your dedicated agent setup");
+    act(() => {
+      vi.advanceTimersByTime(1_501);
+    });
+    expect(card()?.text).toContain("__boot_recovery__:retry-handoff=");
     unmount();
   });
 
