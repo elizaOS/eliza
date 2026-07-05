@@ -58,6 +58,15 @@ Worker doesn't poison subsequent runs.
 | `PLAYWRIGHT_TEST_AUTH_SECRET` *(on both)* | HS256 secret for the test session JWT. | `playwright-local-auth-secret` |
 | `CRON_SECRET` | For cron-route tests. | `test-cron-secret` |
 
+## Launch QA fixtures
+
+Fixture-dependent launch QA uses the non-secret contract in
+[`../../../docs/launchdocs/integration-test-fixtures.md`](../../../docs/launchdocs/integration-test-fixtures.md).
+The e2e harness can exercise cloud routes, connector contracts, and
+direct-crypto boundaries, but live Codex/Gmail accounts, Eliza Cloud orgs, and
+funded wallets must be provided through the approved secret store and evidenced
+on the issue or PR.
+
 ## Why a separate preload from `packages/tests/e2e/preload.ts`?
 
 The packaged preload (`cloud/packages/tests/e2e/preload.ts`) imports

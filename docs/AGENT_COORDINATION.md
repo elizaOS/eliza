@@ -167,6 +167,8 @@ As of 2026-07-05:
 - Coordination Discussion: https://github.com/orgs/elizaOS/discussions/14292
 - Tracker/history: https://github.com/elizaOS/eliza/issues/13406
 - Evidence standard: `PR_EVIDENCE.md`
+- Fixture/account contract:
+  `packages/docs/launchdocs/integration-test-fixtures.md`
 
 For this push, use the Project board as state, the Discussion as the active
 coordination room, focused issues as work cards, and PRs as code plus evidence.
