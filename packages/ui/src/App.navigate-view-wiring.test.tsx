@@ -53,15 +53,18 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(
     ({
       bundleUrl,
+      surface,
       viewId,
       viewType,
     }: {
       bundleUrl: string;
+      surface?: { capabilities?: string[] };
       viewId: string;
       viewType?: string;
     }) => (
       <div
         data-bundle-url={bundleUrl}
+        data-surface-capabilities={surface?.capabilities?.join(",") ?? ""}
         data-testid="dynamic-view-loader"
         data-view-id={viewId}
         data-view-type={viewType ?? ""}
@@ -104,6 +107,7 @@ const shopifyView = {
   path: "/shopify",
   bundleUrl: "/api/views/shopify/bundle.js",
   viewType: "gui" as const,
+  surface: { capabilities: ["agent-surface"] },
 };
 
 const calendarView = {
@@ -614,6 +618,10 @@ describe("App navigate-view event wiring", () => {
     expect(
       loaders.map((loader) => loader.getAttribute("data-view-id")),
     ).toEqual(["shopify", "calendar"]);
+    expect(loaders[0]?.getAttribute("data-surface-capabilities")).toBe(
+      "agent-surface",
+    );
+    expect(loaders[1]?.getAttribute("data-surface-capabilities")).toBe("");
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(shopifyView, {
       pinned: false,
     });
