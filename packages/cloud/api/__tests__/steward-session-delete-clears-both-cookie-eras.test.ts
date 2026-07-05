@@ -34,8 +34,10 @@ describe("DELETE /api/auth/steward-session cookie clearing", () => {
     const cleared = deletedCookieNames(res);
     expect(cleared).toContain("steward-token-staging");
     expect(cleared).toContain("steward-refresh-token-staging");
+    expect(cleared).toContain("steward-authed-staging");
     expect(cleared).toContain("steward-token");
     expect(cleared).toContain("steward-refresh-token");
+    expect(cleared).toContain("steward-authed");
   });
 
   it("production clears the historical pair (both eras resolve to the same names)", async () => {
@@ -54,5 +56,6 @@ describe("DELETE /api/auth/steward-session cookie clearing", () => {
     const cleared = deletedCookieNames(res);
     expect(cleared).toContain("steward-token");
     expect(cleared).toContain("steward-refresh-token");
+    expect(cleared).toContain("steward-authed");
   });
 });

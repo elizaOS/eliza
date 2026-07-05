@@ -12,7 +12,8 @@
  *  3. Verifies the new access token (same path as
  *     `/api/auth/steward-session`).
  *  4. Sets new HttpOnly cookies (`steward-token`, `steward-refresh-token`)
- *     and the non-HttpOnly `steward-authed=1` marker.
+ *     and the non-HttpOnly `steward-authed=1` marker, using environment-
+ *     scoped names outside production.
  *  5. Returns `{ ok, expiresAt }`. Trusted first-party browser origins also
  *     receive the short-lived access token so the SPA can hydrate its
  *     localStorage mirror while route auth remains synchronous.
@@ -24,10 +25,7 @@
  * to `/api/auth/steward-session` continue to work during the rollout window.
  */
 
-import {
-  STEWARD_AUTHED_COOKIE,
-  type StewardSessionErrorCode,
-} from "@elizaos/shared/steward-session-client";
+import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
@@ -37,7 +35,10 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import { stewardCookieNames } from "@/lib/auth/steward-cookies";
+import {
+  LEGACY_STEWARD_COOKIES,
+  stewardCookieNames,
+} from "@/lib/auth/steward-cookies";
 import { signStewardMutatingRequest } from "@/lib/steward/sign";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -388,7 +389,8 @@ app.post("/", async (c) => {
       const opts = domain ? { path: "/", domain } : { path: "/" };
       deleteCookie(c, cookieNames.token, opts);
       deleteCookie(c, cookieNames.refreshToken, opts);
-      deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
+      deleteCookie(c, cookieNames.authed, opts);
+      deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
       return c.json(errorBody("Refresh token rejected", "invalid_token"), 401);
     }
     return c.json(
@@ -431,7 +433,7 @@ app.post("/", async (c) => {
     });
   }
 
-  setCookie(c, STEWARD_AUTHED_COOKIE, "1", {
+  setCookie(c, cookieNames.authed, "1", {
     httpOnly: false,
     secure,
     sameSite: "Lax",

@@ -23,10 +23,7 @@
  * localhost in non-production).
  */
 
-import {
-  STEWARD_AUTHED_COOKIE,
-  type StewardSessionErrorCode,
-} from "@elizaos/shared/steward-session-client";
+import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
@@ -449,7 +446,9 @@ app.post("/", async (c) => {
   const secure = c.env.NODE_ENV === "production";
   const domain = cookieDomainForHost(c.req.header("host"));
 
-  setCookie(c, stewardCookieNames(c.env.ENVIRONMENT).token, token, {
+  const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
+
+  setCookie(c, cookieNames.token, token, {
     httpOnly: true,
     secure,
     sameSite: "Lax",
@@ -459,22 +458,17 @@ app.post("/", async (c) => {
   });
 
   if (typeof refreshToken === "string" && refreshToken.length > 0) {
-    setCookie(
-      c,
-      stewardCookieNames(c.env.ENVIRONMENT).refreshToken,
-      refreshToken,
-      {
-        httpOnly: true,
-        secure,
-        sameSite: "Lax",
-        path: "/",
-        ...(domain ? { domain } : {}),
-        maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
-      },
-    );
+    setCookie(c, cookieNames.refreshToken, refreshToken, {
+      httpOnly: true,
+      secure,
+      sameSite: "Lax",
+      path: "/",
+      ...(domain ? { domain } : {}),
+      maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
+    });
   }
 
-  setCookie(c, STEWARD_AUTHED_COOKIE, "1", {
+  setCookie(c, cookieNames.authed, "1", {
     httpOnly: false,
     secure,
     sameSite: "Lax",

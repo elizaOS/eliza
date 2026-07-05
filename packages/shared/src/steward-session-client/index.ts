@@ -175,11 +175,40 @@ export function clearStoredStewardToken(): void {
  * present. The JWT cookie itself is HttpOnly, so JS uses this hint to know
  * "there is a server session" without ever touching the token.
  */
-export function hasStewardAuthedCookie(): boolean {
+export function stewardAuthedCookieName(environment?: string | null): string {
+  const env = environment?.trim();
+  if (!env || env === "production") return STEWARD_AUTHED_COOKIE;
+  return `${STEWARD_AUTHED_COOKIE}-${env}`;
+}
+
+function inferStewardCookieEnvironment(): string | null {
+  if (typeof window === "undefined") return null;
+  const hostname = window.location.hostname.toLowerCase();
+  if (
+    hostname === "staging.elizacloud.ai" ||
+    hostname === "app-staging.elizacloud.ai" ||
+    hostname === "api-staging.elizacloud.ai"
+  ) {
+    return "staging";
+  }
+  if (
+    hostname === "dev.elizacloud.ai" ||
+    hostname === "app-dev.elizacloud.ai" ||
+    hostname === "api-dev.elizacloud.ai"
+  ) {
+    return "dev";
+  }
+  return null;
+}
+
+export function hasStewardAuthedCookie(environment?: string | null): boolean {
   if (typeof document === "undefined") return false;
+  const cookieName = stewardAuthedCookieName(
+    environment ?? inferStewardCookieEnvironment(),
+  );
   return document.cookie
     .split(";")
-    .some((part) => part.trim().startsWith(`${STEWARD_AUTHED_COOKIE}=1`));
+    .some((part) => part.trim().startsWith(`${cookieName}=1`));
 }
 
 // ---------------------------------------------------------------------------

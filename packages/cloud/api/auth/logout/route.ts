@@ -46,7 +46,8 @@ app.post("/", async (c) => {
   deleteCookie(c, cookieNames.refreshToken, stewardOpts);
   deleteCookie(c, LEGACY_STEWARD_COOKIES.token, stewardOpts);
   deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, stewardOpts);
-  deleteCookie(c, "steward-authed", stewardOpts);
+  deleteCookie(c, cookieNames.authed, stewardOpts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, stewardOpts);
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   try {

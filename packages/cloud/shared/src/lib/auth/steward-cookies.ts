@@ -16,10 +16,12 @@
 export interface StewardCookieNames {
   token: string;
   refreshToken: string;
+  authed: string;
 }
 
 const BASE_TOKEN = "steward-token";
 const BASE_REFRESH = "steward-refresh-token";
+const BASE_AUTHED = "steward-authed";
 
 /**
  * The historical unsuffixed names: production's live names, and on
@@ -30,6 +32,7 @@ const BASE_REFRESH = "steward-refresh-token";
 export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
   token: BASE_TOKEN,
   refreshToken: BASE_REFRESH,
+  authed: BASE_AUTHED,
 };
 
 /** Resolve the cookie names for a Worker environment (`c.env.ENVIRONMENT`).
@@ -42,5 +45,6 @@ export function stewardCookieNames(environment: string | undefined): StewardCook
   return {
     token: `${BASE_TOKEN}-${environment}`,
     refreshToken: `${BASE_REFRESH}-${environment}`,
+    authed: `${BASE_AUTHED}-${environment}`,
   };
 }

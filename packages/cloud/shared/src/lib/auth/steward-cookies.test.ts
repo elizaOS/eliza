@@ -18,8 +18,10 @@ describe("stewardCookieNames", () => {
     expect(staging).toEqual({
       token: "steward-token-staging",
       refreshToken: "steward-refresh-token-staging",
+      authed: "steward-authed-staging",
     });
     expect(staging.token).not.toBe(LEGACY_STEWARD_COOKIES.token);
     expect(staging.refreshToken).not.toBe(LEGACY_STEWARD_COOKIES.refreshToken);
+    expect(staging.authed).not.toBe(LEGACY_STEWARD_COOKIES.authed);
   });
 });

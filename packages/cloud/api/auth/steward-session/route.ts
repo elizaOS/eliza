@@ -3,11 +3,10 @@
  * DELETE /api/auth/steward-session — clear steward cookies (logout).
  */
 
-import {
-  STEWARD_AUTHED_COOKIE,
-  type StewardSessionErrorCode,
-  type StewardSessionRequest,
-  type StewardSessionResponse,
+import type {
+  StewardSessionErrorCode,
+  StewardSessionRequest,
+  StewardSessionResponse,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -254,7 +253,9 @@ app.post("/", async (c) => {
     const secure = c.env.NODE_ENV === "production";
     const domain = cookieDomainForHost(c.req.header("host"));
 
-    setCookie(c, stewardCookieNames(c.env.ENVIRONMENT).token, token, {
+    const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
+
+    setCookie(c, cookieNames.token, token, {
       httpOnly: true,
       secure,
       sameSite: "Lax",
@@ -264,22 +265,17 @@ app.post("/", async (c) => {
     });
 
     if (typeof refreshToken === "string" && refreshToken.length > 0) {
-      setCookie(
-        c,
-        stewardCookieNames(c.env.ENVIRONMENT).refreshToken,
-        refreshToken,
-        {
-          httpOnly: true,
-          secure,
-          sameSite: "Lax",
-          path: "/",
-          ...(domain ? { domain } : {}),
-          maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
-        },
-      );
+      setCookie(c, cookieNames.refreshToken, refreshToken, {
+        httpOnly: true,
+        secure,
+        sameSite: "Lax",
+        path: "/",
+        ...(domain ? { domain } : {}),
+        maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
+      });
     }
 
-    setCookie(c, STEWARD_AUTHED_COOKIE, "1", {
+    setCookie(c, cookieNames.authed, "1", {
       httpOnly: false,
       secure,
       sameSite: "Lax",
@@ -340,13 +336,15 @@ app.delete("/", (c) => {
   // Sign-out must clear BOTH naming eras, exactly like /logout: this DELETE is
   // the clear path clearStaleStewardSession uses, and a pre-rename session
   // whose legacy pair survives here gets resurrected by the legacy read
-  // fallback + 30-day legacy refresh cookie (ghost session). (#13728)
+  // fallback + 30-day legacy refresh cookie (ghost session). The legacy read
+  // fallback itself shuts off after 2026-08-04. (#13728)
   const names = stewardCookieNames(c.env.ENVIRONMENT);
   deleteCookie(c, names.token, opts);
   deleteCookie(c, names.refreshToken, opts);
   deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
   deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
-  deleteCookie(c, STEWARD_AUTHED_COOKIE, opts);
+  deleteCookie(c, names.authed, opts);
+  deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });
