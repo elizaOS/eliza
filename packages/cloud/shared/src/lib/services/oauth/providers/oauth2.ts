@@ -598,8 +598,16 @@ function extractUserInfo(mapping: UserInfoMapping | undefined, data: unknown): E
   if (!mapping) {
     // Default mapping for standard OAuth2 claims
     const obj = data as Record<string, unknown>;
+    // Fail closed on a missing identity: a provider response with no id/sub is a
+    // broken identity pipeline, not a user named "unknown". Fabricating a marker
+    // here would store a bogus platform_user_id that collides across every such
+    // account. The mapped branch below throws for the same reason.
+    const rawId = obj.id ?? obj.sub;
+    if (rawId === undefined || rawId === null || rawId === "") {
+      throw new Error("[OAuth2] Could not extract user ID from provider response");
+    }
     return {
-      id: String(obj.id || obj.sub || "unknown"),
+      id: String(rawId),
       email: obj.email as string | undefined,
       username: obj.username as string | undefined,
       displayName: (obj.name || obj.display_name) as string | undefined,
@@ -610,7 +618,7 @@ function extractUserInfo(mapping: UserInfoMapping | undefined, data: unknown): E
 
   const id = getNestedValue(data, mapping.id);
   if (!id) {
-    throw new Error("Could not extract user ID from provider response");
+    throw new Error("[OAuth2] Could not extract user ID from provider response");
   }
 
   return {
@@ -709,6 +717,10 @@ async function storeConnection(
       try {
         await secretsService.delete(secretId, organizationId, audit);
       } catch (cleanupError) {
+        // error-policy:J6 best-effort teardown — this loop already runs because
+        // the primary connection flow failed; a single failed secret delete must
+        // not abort cleanup of the remaining orphaned secrets. Logged so the leak
+        // is observable; the original failure still propagates to the caller.
         logger.error(`[OAuth2] Failed to cleanup secret ${secretId}`, {
           error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
         });
