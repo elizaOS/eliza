@@ -40,9 +40,9 @@ import {
   filenameForMime,
   shareAttachment,
 } from "../../utils/download-share";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { ViewEmptyState } from "../ui/view-empty-state";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 /* ── mime → kind facets ───────────────────────────────────────────────── */
@@ -552,22 +552,11 @@ function FilesViewBody() {
           </div>
         ) : files.length === 0 ? (
           <div className="flex flex-1 flex-col" data-testid="files-empty">
-            <ChatEmptyStateWithRecommendations
+            <ViewEmptyState
               icon={FolderOpen}
               title={t("filesview.emptyTitle", {
                 defaultValue: "No files yet",
               })}
-              recommendations={[
-                t("filesview.recGenerate", {
-                  defaultValue: "Generate a file and save it to my files",
-                }),
-                t("filesview.recSaveChat", {
-                  defaultValue: "Save our conversation as a text document",
-                }),
-                t("filesview.recSample", {
-                  defaultValue: "Create a sample markdown note",
-                }),
-              ]}
             />
           </div>
         ) : filtered.length === 0 ? (

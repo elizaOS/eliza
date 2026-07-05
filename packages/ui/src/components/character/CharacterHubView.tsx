@@ -352,14 +352,13 @@ export function CharacterHubView({
       exampleCount > 0;
 
     /**
-     * Empty-state CTA shown inside a tile. The tile itself is the button that
-     * navigates to the section where the real action lives, so this reads as the
-     * concrete next step rather than a dead placeholder line.
+     * Quiet factual label for an empty tile: it states what is absent in muted
+     * text, not an accent suggestion to "do X". The tile itself remains the
+     * navigable control; the agent, not the tile, offers next steps in chat
+     * (#13588).
      */
-    function EmptyCta({ children }: { children: ReactNode }) {
-      return (
-        <span className="text-xs font-medium text-accent">{children}</span>
-      );
+    function EmptyLabel({ children }: { children: ReactNode }) {
+      return <span className="text-xs font-medium text-muted">{children}</span>;
     }
 
     const personalityStats = [
@@ -377,7 +376,7 @@ export function CharacterHubView({
         {personalityStats.join(" · ")}
       </span>
     ) : (
-      <EmptyCta>Define your voice</EmptyCta>
+      <EmptyLabel>No voice set yet</EmptyLabel>
     );
 
     const relationshipsBody: ReactNode =
@@ -387,7 +386,7 @@ export function CharacterHubView({
           {peopleNames.length > 4 ? ` · +${peopleNames.length - 4}` : ""}
         </span>
       ) : (
-        <EmptyCta>Introduce someone in chat</EmptyCta>
+        <EmptyLabel>No relationships yet</EmptyLabel>
       );
 
     const skillsBody: ReactNode =
@@ -400,7 +399,7 @@ export function CharacterHubView({
           {activeSkills.length > 4 ? ` · +${activeSkills.length - 4}` : ""}
         </span>
       ) : (
-        <EmptyCta>Browse skills</EmptyCta>
+        <EmptyLabel>No skills yet</EmptyLabel>
       );
 
     return [
@@ -428,7 +427,7 @@ export function CharacterHubView({
               {customDocumentRecords.length === 1 ? "" : "s"}
             </span>
           ) : (
-            <EmptyCta>Upload your first document</EmptyCta>
+            <EmptyLabel>No documents yet</EmptyLabel>
           ),
         isLoading: documentsLoading && documentRecords.length === 0,
         isEmpty: customDocumentRecords.length === 0,
@@ -449,7 +448,7 @@ export function CharacterHubView({
             {experienceRecords.length === 1 ? "" : "s"}
           </span>
         ) : (
-          <EmptyCta>Teach Eliza in chat</EmptyCta>
+          <EmptyLabel>No experience yet</EmptyLabel>
         ),
         isLoading: experienceLoading && experienceRecords.length === 0,
         isEmpty: experienceRecords.length === 0,

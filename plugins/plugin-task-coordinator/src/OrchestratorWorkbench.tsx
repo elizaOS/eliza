@@ -12,7 +12,6 @@ import {
   AlertDialogTrigger,
   Button,
   type ChangeSetData,
-  ChatEmptyStateWithRecommendations,
   type CodingAgentAddAgentInput,
   type CodingAgentOrchestratorStatus,
   type CodingAgentRerunFromEventInput,
@@ -28,6 +27,7 @@ import {
   client,
   DiffReviewPanel,
   useAppSelectorShallow,
+  ViewEmptyState,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Input } from "@elizaos/ui/components/ui/input";
@@ -3112,7 +3112,7 @@ export function OrchestratorWorkbench() {
                   })}
                 </p>
               ) : (
-                <ChatEmptyStateWithRecommendations
+                <ViewEmptyState
                   icon={Layers}
                   testId="task-empty-state"
                   title={
@@ -3126,17 +3126,6 @@ export function OrchestratorWorkbench() {
                             "Describe a task in the chat below and it will appear here.",
                         })
                   }
-                  recommendations={[
-                    t("orchestrator.empty.rec.fixBug", {
-                      defaultValue: "Ask Eliza to fix a bug",
-                    }),
-                    t("orchestrator.empty.rec.tests", {
-                      defaultValue: "Ask Eliza to write tests for a module",
-                    }),
-                    t("orchestrator.empty.rec.feature", {
-                      defaultValue: "Ask Eliza to build a small feature",
-                    }),
-                  ]}
                 />
               )
             ) : (

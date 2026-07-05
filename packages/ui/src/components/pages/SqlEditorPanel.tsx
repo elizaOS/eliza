@@ -8,10 +8,10 @@
 import { SearchX } from "lucide-react";
 import type { QueryResult } from "../../api";
 import { useAppSelector } from "../../state";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { ViewEmptyState } from "../ui/view-empty-state";
 import { ResultsGrid } from "./database-utils";
 
 export function SqlEditorPanel({
@@ -115,21 +115,10 @@ export function SqlEditorPanel({
       ) : null}
 
       {queryResult && queryResult.rows.length === 0 ? (
-        <ChatEmptyStateWithRecommendations
+        <ViewEmptyState
           className="mt-4 min-h-[12rem]"
           icon={SearchX}
           title={t("databaseview.QueryReturnedNoRo")}
-          recommendations={[
-            t("databaseview.TrySelectCountRec", {
-              defaultValue: "Try SELECT COUNT(*)",
-            }),
-            t("databaseview.CheckLimitRec", {
-              defaultValue: "Check your LIMIT clause",
-            }),
-            t("databaseview.RunOnDifferentTableRec", {
-              defaultValue: "Run on a different table",
-            }),
-          ]}
         />
       ) : null}
     </>

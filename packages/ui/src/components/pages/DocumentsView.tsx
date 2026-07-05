@@ -47,12 +47,12 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ViewEmptyState } from "../ui/view-empty-state";
 import { DocumentViewer } from "./documents-detail";
 import {
   getDocumentSummary,
@@ -1254,36 +1254,11 @@ export function DocumentsView({
           )}
 
           {!loading && !isShowingSearchResults && documents.length === 0 && (
-            <ChatEmptyStateWithRecommendations
+            <ViewEmptyState
               icon={FileText}
               title={t("documentsview.NoDocumentsYet", {
                 defaultValue: "No documents yet",
               })}
-              recommendations={[
-                {
-                  label: t("documentsview.RecImportUrl", {
-                    defaultValue: "Import a document from a URL",
-                  }),
-                  prompt: t("documentsview.RecImportUrlPrompt", {
-                    defaultValue:
-                      "Import a document into my knowledge base from this URL: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecCreateNote", {
-                    defaultValue: "Create a text note",
-                  }),
-                  prompt: t("documentsview.RecCreateNotePrompt", {
-                    defaultValue:
-                      "Create a text knowledge document for me to remember: ",
-                  }),
-                },
-                {
-                  label: t("documentsview.RecWhatToAdd", {
-                    defaultValue: "What should I add to Knowledge?",
-                  }),
-                },
-              ]}
             />
           )}
 

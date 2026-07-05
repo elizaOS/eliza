@@ -211,13 +211,6 @@ export {
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
 } from "./components/cockpit/index";
-// Surfaced directly on the root barrel (also reachable via the composites/hooks
-// chains) so dist-mapped consumers resolve them by name.
-export {
-  ChatEmptyStateWithRecommendations,
-  type ChatEmptyStateWithRecommendationsProps,
-  type ChatRecommendation,
-} from "./components/composites/chat/ChatEmptyStateWithRecommendations";
 export { ChatSearchHint } from "./components/composites/chat-search-hint";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
@@ -322,6 +315,12 @@ export {
 } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
+// Surfaced directly on the root barrel (also reachable via the composites/hooks
+// chains) so dist-mapped consumers resolve them by name.
+export {
+  ViewEmptyState,
+  type ViewEmptyStateProps,
+} from "./components/ui/view-empty-state";
 export { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
 export { TerminalPluginView } from "./components/views/TerminalPluginView";
 export { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
@@ -478,7 +477,6 @@ export {
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
 export { useActivityEvents } from "./hooks/useActivityEvents";
-export { useChatPrefill } from "./hooks/useChatPrefill";
 export { useIntervalWhenDocumentVisible } from "./hooks/useDocumentVisibility";
 export {
   type FrameBudgetMonitorOptions,

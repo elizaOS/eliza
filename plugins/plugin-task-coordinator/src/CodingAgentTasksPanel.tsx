@@ -3,11 +3,11 @@
 import {
   ApiError,
   Button,
-  ChatEmptyStateWithRecommendations,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
   client,
   useAppSelectorShallow,
+  ViewEmptyState,
 } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { ViewBackButton } from "@elizaos/ui/components";
@@ -960,7 +960,7 @@ export function CodingAgentTasksPanel({
           })}
         </div>
       ) : (
-        <ChatEmptyStateWithRecommendations
+        <ViewEmptyState
           icon={Bot}
           testId="task-empty-state"
           title={
@@ -972,21 +972,6 @@ export function CodingAgentTasksPanel({
                   defaultValue: "No coding tasks yet.",
                 })
           }
-          recommendations={[
-            t("codingagenttaskspanel.empty.rec.fixBug", {
-              defaultValue: "Dispatch a coding agent to fix a failing test",
-            }),
-            t("codingagenttaskspanel.empty.rec.addFeature", {
-              defaultValue: "Have a coding agent add a small feature",
-            }),
-            backendAbsent
-              ? t("codingagenttaskspanel.empty.rec.setup", {
-                  defaultValue: "Help me set up coding agents",
-                })
-              : t("codingagenttaskspanel.empty.rec.refactor", {
-                  defaultValue: "Ask a coding agent to refactor a file",
-                }),
-          ]}
         />
       )}
     </div>

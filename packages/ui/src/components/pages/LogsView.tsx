@@ -18,7 +18,6 @@ import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useAppSelectorShallow } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { formatTime } from "../../utils/format";
-import { ChatEmptyStateWithRecommendations } from "../composites/chat";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import {
@@ -29,6 +28,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { ListSkeleton } from "../ui/skeleton-layouts";
+import { ViewEmptyState } from "../ui/view-empty-state";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 
 const LOG_HYDRATION_SETTLE_MS = 1200;
@@ -414,32 +414,12 @@ function LogsViewBody() {
             rowClassName={LOG_INITIAL_SKELETON_ROW_CLASS}
           />
         ) : filteredLogs.length === 0 ? (
-          <ChatEmptyStateWithRecommendations
+          <ViewEmptyState
             icon={ScrollText}
             title={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")
                 : t("logsview.NoLogEntriesYetDescription")
-            }
-            recommendations={
-              hasActiveFilters
-                ? [
-                    "Show me only error-level logs",
-                    "What do the recent agent logs say?",
-                  ]
-                : [
-                    "Why isn't the agent emitting any logs?",
-                    "Summarize what the system has done so far",
-                    "Show me recent errors and warnings",
-                  ]
-            }
-            primaryAction={
-              hasActiveFilters
-                ? {
-                    label: t("logsview.ClearFilters"),
-                    onClick: handleClearFilters,
-                  }
-                : undefined
             }
           />
         ) : (

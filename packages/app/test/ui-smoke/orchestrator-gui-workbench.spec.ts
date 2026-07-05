@@ -930,20 +930,19 @@ test.describe("orchestrator GUI workbench", () => {
     await expect(page.getByTestId("orchestrator-resume-all")).toHaveCount(0);
 
     // The rail stays on its single-pane landing — no task is selected — and the
-    // empty state points the operator at the conversational create path. The
-    // "+ New Task" GUI affordance was removed with the overlay-only redesign;
-    // tasks are started in chat via the `orchestrator-create-task` capability
-    // (covered by the plugin's unit suite). The consolidated workbench renders
-    // the shared `ChatEmptyStateWithRecommendations` (testId task-empty-state)
-    // with a "describe a task in chat" prompt plus seed recommendations.
+    // empty state is a quiet designed-empty render: a glyph plus one terse line,
+    // no suggestion chips and no create-CTA (#13588). Tasks are started in chat
+    // via the `orchestrator-create-task` capability (covered by the plugin's
+    // unit suite); the agent, not the view, suggests next steps.
     const rail = page.getByTestId("orchestrator-rail");
     await expect(rail).toBeVisible();
     await expect(rail.getByTestId("task-empty-state")).toContainText(
       "Describe a task in the chat below",
     );
-    await expect(rail.getByTestId("task-empty-state")).toContainText(
-      "Ask Eliza to fix a bug",
-    );
+    // No recommendation chips / create buttons in the designed-empty state.
+    await expect(
+      rail.getByTestId("task-empty-state").locator("button"),
+    ).toHaveCount(0);
 
     await expect
       .poll(async () =>

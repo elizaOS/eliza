@@ -1,7 +1,6 @@
 /**
  * Bare "no messages yet" placeholder for a chat pane: an agent glyph, a hint,
- * and an optional call-to-action. The recommendation-chip variant lives in
- * ChatEmptyStateWithRecommendations; this is the minimal form.
+ * and an optional call-to-action.
  */
 import type * as React from "react";
 import { cn } from "../../../lib/utils";

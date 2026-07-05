@@ -50,11 +50,6 @@ export {
 // the root index.ts too; keep both in sync. Missing here breaks
 // `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
-export {
-  ChatEmptyStateWithRecommendations,
-  type ChatEmptyStateWithRecommendationsProps,
-  type ChatRecommendation,
-} from "./components/composites/chat/ChatEmptyStateWithRecommendations.tsx";
 export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
@@ -129,6 +124,10 @@ export { Textarea } from "./components/ui/textarea.tsx";
 export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
+export {
+  ViewEmptyState,
+  type ViewEmptyStateProps,
+} from "./components/ui/view-empty-state.tsx";
 export { TerminalPluginView } from "./components/views/TerminalPluginView.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 // === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===

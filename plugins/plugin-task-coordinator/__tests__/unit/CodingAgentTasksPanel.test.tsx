@@ -90,26 +90,10 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-  // Empty-state recommendations stub — render the title + each recommendation
-  // as a button so tests can assert the chat-seeding empty state.
-  ChatEmptyStateWithRecommendations: ({
-    title,
-    recommendations = [],
-  }: {
-    title?: string;
-    recommendations?: Array<string | { label: string }>;
-  }) => (
-    <div data-testid="task-empty-state">
-      {title ? <p>{title}</p> : null}
-      {recommendations.map((rec) => {
-        const label = typeof rec === "string" ? rec : rec.label;
-        return (
-          <button type="button" key={label}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
+  // Designed-empty stub — the view renders only a glyph + one terse line; the
+  // agent suggests next steps in chat, not the view (#13588).
+  ViewEmptyState: ({ title, testId }: { title?: string; testId?: string }) => (
+    <div data-testid={testId}>{title ? <p>{title}</p> : null}</div>
   ),
 }));
 
@@ -387,13 +371,14 @@ describe("CodingAgentTasksPanel — list", () => {
     });
   });
 
-  it("renders the empty state when the list is empty", async () => {
+  it("renders the designed-empty state (no suggestion chips) when the list is empty", async () => {
     listCodingAgentTaskThreads.mockResolvedValue([]);
     render(<CodingAgentTasksPanel />);
-    expect(await screen.findByTestId("task-empty-state")).toBeTruthy();
-    expect(
-      screen.getByText("Dispatch a coding agent to fix a failing test"),
-    ).toBeTruthy();
+    const empty = await screen.findByTestId("task-empty-state");
+    expect(empty).toBeTruthy();
+    expect(empty.textContent).toContain("No coding tasks yet.");
+    // No recommendation chips / CTA buttons in the empty state (#13588).
+    expect(empty.querySelector("button")).toBeNull();
   });
 });
 
