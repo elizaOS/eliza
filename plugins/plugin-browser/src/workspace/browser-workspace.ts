@@ -492,6 +492,66 @@ export async function openBrowserWorkspaceTab(
   return payload.tab;
 }
 
+/**
+ * Canonical startup search page. The default tab must render real HTML from a
+ * real search site (never `about:blank`) — DuckDuckGo's html endpoint is chosen
+ * because it is iframe-/embed-tolerant and does not trip the bot-walls that
+ * block Google/Bing inside an embedded webview (#13596).
+ */
+export const BROWSER_WORKSPACE_DEFAULT_SEARCH_URL =
+  "https://duckduckgo.com/html/";
+
+/**
+ * Resolve the startup search URL, honoring the `ELIZA_BROWSER_DEFAULT_SEARCH_URL`
+ * override. The result is validated (http/https only) so a misconfigured
+ * override fails loudly at startup rather than silently seeding a broken tab.
+ */
+export function resolveBrowserWorkspaceDefaultSearchUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env.ELIZA_BROWSER_DEFAULT_SEARCH_URL?.trim();
+  const resolved = assertBrowserWorkspaceUrl(
+    override || BROWSER_WORKSPACE_DEFAULT_SEARCH_URL,
+  );
+  // The default tab exists to avoid the empty-and-sad about:blank start, so an
+  // about:blank override defeats the whole feature — reject it rather than seed
+  // a blank default.
+  if (resolved === "about:blank") {
+    throw new Error(
+      "ELIZA_BROWSER_DEFAULT_SEARCH_URL must be a real http/https search page, not about:blank.",
+    );
+  }
+  return resolved;
+}
+
+/**
+ * Ensure the workspace opens with exactly one default search tab at startup.
+ *
+ * Idempotent by tab presence: if any tab already exists the workspace is left
+ * untouched, so a restart or a repeated call never spawns duplicate tabs. The
+ * seeded tab points at a real search site and is loaded lazily/non-blocking —
+ * the agent can open or navigate tabs immediately while the default tab is
+ * still loading, and an offline start degrades to the designed in-tab error
+ * render (the search URL is not `about:blank`, so the web backend loads real
+ * HTML on demand). Returns the default tab, whether pre-existing or newly
+ * seeded. Callers must not assume the tab finished loading.
+ */
+export async function ensureBrowserWorkspaceDefaultTab(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<BrowserWorkspaceTab> {
+  const existing = await listBrowserWorkspaceTabs(env);
+  if (existing.length > 0) {
+    return existing.find((tab) => tab.visible) ?? existing[0];
+  }
+  return openBrowserWorkspaceTab(
+    {
+      show: true,
+      url: resolveBrowserWorkspaceDefaultSearchUrl(env),
+    },
+    env,
+  );
+}
+
 export async function navigateBrowserWorkspaceTab(
   request: NavigateBrowserWorkspaceTabRequest,
   env: NodeJS.ProcessEnv = process.env,
