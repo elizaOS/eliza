@@ -81,7 +81,10 @@ beforeEach(() => {
     view("browser", "Browser", "/browser"),
     view("settings", "Settings", "/settings", { visibleInManager: false }),
     view("shopify", "Shopify", "/shopify"),
-    view("hyperliquid", "Hyperliquid", "/hyperliquid"),
+    // Mirrors the real plugin-hyperliquid registration (`group: "wallet"`,
+    // plugins/plugin-hyperliquid/src/register.ts) — the launcher collapses
+    // wallet-group sub-pages, so no standalone Hyperliquid tile.
+    view("hyperliquid", "Hyperliquid", "/hyperliquid", { group: "wallet" }),
     view("phone", "Phone", "/phone", { visibleInManager: false }),
     view("trajectories", "Trajectories", "/apps/trajectories", {
       viewKind: "developer",
