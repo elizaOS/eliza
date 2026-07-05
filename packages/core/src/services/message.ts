@@ -5958,6 +5958,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		? recorder.startTrajectory({
 				agentId: String(args.runtime.agentId ?? "unknown-agent"),
 				roomId: args.message.roomId ? String(args.message.roomId) : undefined,
+				// Run/scenario correlation the aggregator joins on. The scenario CLI
+				// sets these env vars before each scenario (packages/scenario-runner/
+				// src/cli.ts); passing them here makes this call site the source of
+				// truth so file-recorder trajectories carry the join keys without the
+				// recorder inferring them from env buried in its persistence layer.
+				runId: process.env.ELIZA_LIFEOPS_RUN_ID || undefined,
+				scenarioId: process.env.ELIZA_LIFEOPS_SCENARIO_ID || undefined,
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",

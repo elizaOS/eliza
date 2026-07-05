@@ -67,6 +67,10 @@ import {
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import {
+  appendSubagentStdout,
+  subagentStdoutLogPath,
+} from "./subagent-stdout-log.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
@@ -338,6 +342,11 @@ export class AcpService extends Service {
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
+  // Sessions whose raw stdout has been teed to disk at least once. Drives the
+  // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
+  // file get the path attached, so the task document never points at a
+  // never-created log. Populated by appendOutput; gated by trajectory recording.
+  private readonly persistedStdoutSessions = new Set<string>();
   // Per-session model-gateway lease (#11536 E2 residual). Minted at spawn when
   // gateway mode + a lease broker are configured; the leased token (not the
   // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
@@ -809,6 +818,7 @@ export class AcpService extends Service {
       this.outputBuffers.delete(id);
       this.changedPathsBySession.delete(id);
       this.nativeClients.delete(id);
+      this.persistedStdoutSessions.delete(id);
     }
     if (swept.length > 0) {
       this.log("debug", "health-check reclaimed terminal sessions", {
@@ -1309,6 +1319,7 @@ export class AcpService extends Service {
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
+    this.persistedStdoutSessions.delete(sessionId);
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -2201,6 +2212,7 @@ export class AcpService extends Service {
               durationMs: Date.now() - startedAt,
               stopReason: stopReason ?? "exit",
               exitCode: code,
+              ...this.stdoutLogRef(opts.sessionId),
             });
           } else {
             this.emitSessionEvent(opts.sessionId, "stopped", {
@@ -2558,6 +2570,7 @@ export class AcpService extends Service {
             response: finalText,
             durationMs: Date.now() - startedAt,
             stopReason,
+            ...this.stdoutLogRef(sessionId),
           });
         }
       }
@@ -3049,11 +3062,40 @@ export class AcpService extends Service {
     return (this.outputBuffers.get(sessionId) ?? []).join("");
   }
 
+  // Path of the persisted raw-stdout log for a session, or undefined if nothing
+  // was teed to disk (recording off, or no output). Merged into the
+  // `task_complete` event data so the task document references the ground-truth
+  // stdout file — the join key downstream tooling follows to the full stream.
+  private stdoutLogRef(
+    sessionId: string,
+  ): { stdoutLogPath: string } | Record<string, never> {
+    return this.persistedStdoutSessions.has(sessionId)
+      ? { stdoutLogPath: subagentStdoutLogPath(sessionId) }
+      : {};
+  }
+
   private appendOutput(sessionId: string, text: string): void {
     const buffer = this.outputBuffers.get(sessionId) ?? [];
     buffer.push(text);
     if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
+    // Tee the raw chunk to the append-only per-session file so the ground-truth
+    // stdout survives session close (the in-memory tail above is capped at 2k
+    // lines and deleted on close). Fire-and-forget: this sync emitter is called
+    // from deep transport paths, and a disk hiccup must not stall the ACP stream
+    // or truncate the live UI tail. The helper no-ops when recording is off.
+    void appendSubagentStdout(sessionId, text)
+      .then((path) => {
+        if (path) this.persistedStdoutSessions.add(sessionId);
+      })
+      .catch((err: unknown) => {
+        // error-policy:J7 stdout persistence is diagnostics and must not kill the
+        // transport loop; surface it observably instead of swallowing.
+        this.runtime.reportError("AcpService.appendOutput", err, {
+          sessionId,
+          phase: "persist-stdout",
+        });
+      });
   }
 
   // Tool-call arg keys that carry a target file path / signal a write.
