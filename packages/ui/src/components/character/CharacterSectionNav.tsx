@@ -19,8 +19,8 @@
  */
 
 import {
-  normalizeSectionPath,
   navigateToSectionPath,
+  normalizeSectionPath,
   type SectionTab,
   SectionTabStrip,
 } from "../shared/SectionNav";
