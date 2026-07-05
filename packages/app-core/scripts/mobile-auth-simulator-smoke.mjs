@@ -255,6 +255,24 @@ function preferenceNativeKeys(key) {
   return [`CapacitorStorage.${key}`, key];
 }
 
+function xmlEscape(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function xmlUnescape(value) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function tryRunCommand(command, args) {
   try {
     return execFileSync(command, args, {
@@ -366,6 +384,60 @@ function flushIosPreferences(device) {
   tryRunCommand("xcrun", ["simctl", "spawn", device, "killall", "cfprefsd"]);
 }
 
+export function buildAndroidPreferenceXml(entries) {
+  const strings = Object.entries(entries)
+    .map(
+      ([key, value]) =>
+        `  <string name="${xmlEscape(key)}">${xmlEscape(value)}</string>`,
+    )
+    .join("\n");
+  return `<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n${strings}\n</map>\n`;
+}
+
+export function readAndroidPreferenceFromXml(xml, key) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    const escapedKey = xmlEscape(nativeKey).replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+    const match = xml.match(
+      new RegExp(`<string\\s+name=["']${escapedKey}["']>([\\s\\S]*?)</string>`),
+    );
+    if (match) return xmlUnescape(match[1]);
+  }
+  return null;
+}
+
+function writeAndroidPreferenceMap(adb, serial, appId, entries) {
+  const xml = buildAndroidPreferenceXml(entries);
+  const encoded = Buffer.from(xml, "utf8").toString("base64");
+  const command = [
+    "run-as",
+    appId,
+    "sh",
+    "-c",
+    shellSingleQuote(
+      `mkdir -p shared_prefs && printf %s ${encoded} | base64 -d > shared_prefs/CapacitorStorage.xml`,
+    ),
+  ];
+  runCommand(
+    adb,
+    ["-s", serial, "shell", command.join(" ")],
+    `Android preference seed for ${appId}`,
+  );
+}
+
+function readAndroidPreference(adb, serial, appId, key) {
+  const xml = tryRunCommand(adb, [
+    "-s",
+    serial,
+    "shell",
+    ["run-as", appId, "cat", "shared_prefs/CapacitorStorage.xml"].join(" "),
+  ]);
+  if (!xml) return null;
+  return readAndroidPreferenceFromXml(xml, key);
+}
+
 export function expectedAuthCallbackFromUrl(url) {
   const parsed = new URL(url);
   return {
@@ -376,6 +448,8 @@ export function expectedAuthCallbackFromUrl(url) {
     code: parsed.searchParams.get("code") ?? "",
   };
 }
+
+const EXPECTED_AUTH_CALLBACK_CLASSIFICATION = "synthetic_callback_rejected";
 
 // #13693: validate the auth-callback END STATE, not just that a result payload
 // arrived. Factored out (and exported) so both the iOS poll and its unit tests
@@ -389,11 +463,10 @@ export function expectedAuthCallbackFromUrl(url) {
 // The real security invariant this handler enforces is that an OS-delivered
 // deep link NEVER establishes an authenticated session (no bearer token is
 // accepted from a deep link; a crafted callback must not authenticate the app).
-// The in-app handler reads its real `elizaos:active-server` session storage
-// back and reports `sessionEstablished`. This assertion requires that field to
-// be present AND `false`: a handler that skipped the readback writes no
-// `sessionEstablished` (throws — the red the issue asks for), and a regression
-// that started accepting the deep-link token would report `true` (also red).
+// The in-app handler classifies the synthetic callback as rejected and reads its
+// real `elizaos:active-server` session storage back. Both fields are required:
+// a deliver-only echo never classifies the callback, and a regression that
+// accepts the deep-link token would report `sessionEstablished=true`.
 //
 // Returns the parsed payload on success; throws a descriptive Error otherwise.
 export function assertAuthCallbackResult(parsed, expected, platformLabel) {
@@ -414,6 +487,11 @@ export function assertAuthCallbackResult(parsed, expected, platformLabel) {
   if (parsed.state !== expected.state || parsed.code !== expected.code) {
     throw new Error(
       `${label} query mismatch: expected state/code ${expected.state}/${expected.code}, got ${parsed.state}/${parsed.code}`,
+    );
+  }
+  if (parsed.classification !== EXPECTED_AUTH_CALLBACK_CLASSIFICATION) {
+    throw new Error(
+      `${label}: callback was not classified as ${EXPECTED_AUTH_CALLBACK_CLASSIFICATION}; got ${JSON.stringify(parsed.classification)}.`,
     );
   }
   // THE auth-outcome assertion (#13693): the handler must have read its real
@@ -468,6 +546,23 @@ function armIosAuthCallbackSmoke(device, app, url) {
   return expected;
 }
 
+function armAndroidAuthCallbackSmoke(adb, serial, app, url) {
+  const expected = expectedAuthCallbackFromUrl(url);
+  writeAndroidPreferenceMap(adb, serial, app.appId, {
+    [IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY]: JSON.stringify({
+      expected,
+      armedAt: new Date().toISOString(),
+    }),
+    [IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY]: JSON.stringify({
+      ok: false,
+      phase: "requested",
+      expected,
+      updatedAt: new Date().toISOString(),
+    }),
+  });
+  return expected;
+}
+
 async function pollIosAuthCallbackSmoke(device, app, expected) {
   let lastRaw = "";
   for (let attempt = 1; attempt <= IOS_AUTH_CALLBACK_ATTEMPTS; attempt += 1) {
@@ -495,6 +590,41 @@ async function pollIosAuthCallbackSmoke(device, app, expected) {
   }
   throw new Error(
     `iOS auth callback smoke timed out after ${IOS_AUTH_CALLBACK_ATTEMPTS} attempts. Last result: ${lastRaw || "<none>"}`,
+  );
+}
+
+async function pollAndroidAuthCallbackSmoke(adb, serial, app, expected) {
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= IOS_AUTH_CALLBACK_ATTEMPTS; attempt += 1) {
+    lastRaw =
+      readAndroidPreference(
+        adb,
+        serial,
+        app.appId,
+        IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+      ) ?? "";
+    if (lastRaw) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(lastRaw);
+      } catch {
+        parsed = null;
+      }
+      if (parsed?.phase === "failed" || parsed?.error) {
+        throw new Error(`Android auth callback smoke failed: ${lastRaw}`);
+      }
+      if (parsed?.ok === true) {
+        return assertAuthCallbackResult(
+          parsed,
+          expected,
+          "Android auth callback",
+        );
+      }
+    }
+    await sleep(IOS_AUTH_CALLBACK_DELAY_MS);
+  }
+  throw new Error(
+    `Android auth callback smoke timed out after ${IOS_AUTH_CALLBACK_ATTEMPTS} attempts. Last result: ${lastRaw || "<none>"}`,
   );
 }
 
@@ -659,7 +789,7 @@ function assertAndroidResolvesToPackage(adb, serial, app, url) {
   return resolvedName;
 }
 
-function runAndroidSimulator(app, url, options) {
+async function runAndroidSimulator(app, url, options) {
   const adb = resolveAdb();
   const serial = resolveAndroidSerial(adb, options.serial);
   // Preflight: the scheme must resolve to OUR package, not a consumer app
@@ -670,6 +800,7 @@ function runAndroidSimulator(app, url, options) {
     app,
     url,
   );
+  const expected = armAndroidAuthCallbackSmoke(adb, serial, app, url);
   runCommand(
     adb,
     [
@@ -708,11 +839,18 @@ function runAndroidSimulator(app, url, options) {
       `Android callback did not resolve to ${app.appId}. am start output:\n${output}`,
     );
   }
+  const handled = await pollAndroidAuthCallbackSmoke(
+    adb,
+    serial,
+    app,
+    expected,
+  );
   return {
     platform: "android",
     serial,
     openedUrl: url,
     resolvedActivity,
+    handled,
   };
 }
 
@@ -755,7 +893,7 @@ async function main() {
     simulatorResults.push(
       platform === "ios"
         ? await runIosSimulator(app, url, options)
-        : runAndroidSimulator(app, url, options),
+        : await runAndroidSimulator(app, url, options),
     );
   }
 

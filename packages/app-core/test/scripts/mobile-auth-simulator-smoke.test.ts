@@ -12,10 +12,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertAuthCallbackResult,
+  buildAndroidPreferenceXml,
   buildCallbackUrl,
   expectedAuthCallbackFromUrl,
   parseArgs,
   parseResolvedActivity,
+  readAndroidPreferenceFromXml,
   resolvedActivityMatchesApp,
   resolveTargetAppDir,
 } from "../../scripts/mobile-auth-simulator-smoke.mjs";
@@ -141,6 +143,7 @@ describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
   const okResult = {
     ok: true,
     phase: "handled",
+    classification: "synthetic_callback_rejected",
     sessionEstablished: false,
     path: expected.path,
     state: expected.state,
@@ -151,9 +154,9 @@ describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
     expect(assertAuthCallbackResult(okResult, expected, "iOS")).toBe(okResult);
   });
 
-  it("RED: throws when the handler never surfaced an outcome (deliver-only)", () => {
-    // The pre-#13693 vacuous payload: URL echoed back, no session readback.
-    // This is exactly the silent pass the issue calls out — it must now throw.
+  it("RED: throws when the handler only echoes delivery", () => {
+    // The pre-#13693 vacuous payload: URL echoed back, no classification and no
+    // session readback. This is the silent pass the issue calls out.
     const deliverOnly = {
       ok: true,
       phase: "handled",
@@ -163,7 +166,17 @@ describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
     };
     expect(() =>
       assertAuthCallbackResult(deliverOnly, expected, "iOS"),
-    ).toThrow(/no auth outcome surfaced/);
+    ).toThrow(/callback was not classified/);
+  });
+
+  it("RED: throws when the handler surfaces a session readback but no classification", () => {
+    expect(() =>
+      assertAuthCallbackResult(
+        { ...okResult, classification: undefined },
+        expected,
+        "iOS",
+      ),
+    ).toThrow(/callback was not classified/);
   });
 
   it("RED: throws when the deep link established a session (token accepted)", () => {
@@ -189,6 +202,25 @@ describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
     expect(() =>
       assertAuthCallbackResult({ ...okResult, ok: false }, expected, "iOS"),
     ).toThrow(/did not report ok=true/);
+  });
+
+  it("round-trips Android Capacitor Preferences XML keys", () => {
+    const request = JSON.stringify({ expected });
+    const result = JSON.stringify(okResult);
+    const xml = buildAndroidPreferenceXml({
+      "eliza:auth-callback-smoke:request": request,
+      "eliza:auth-callback-smoke:result": result,
+      "quote<&": "value<&",
+    });
+
+    expect(
+      readAndroidPreferenceFromXml(xml, "eliza:auth-callback-smoke:request"),
+    ).toBe(request);
+    expect(
+      readAndroidPreferenceFromXml(xml, "eliza:auth-callback-smoke:result"),
+    ).toBe(result);
+    expect(readAndroidPreferenceFromXml(xml, "quote<&")).toBe("value<&");
+    expect(readAndroidPreferenceFromXml(xml, "missing")).toBeNull();
   });
 });
 

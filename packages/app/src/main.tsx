@@ -2095,6 +2095,7 @@ async function recordIosAuthCallbackSmoke(
   await writeIosAuthCallbackSmokeResult({
     ok: true,
     phase: "handled",
+    classification: "synthetic_callback_rejected",
     // #13693: the auth OUTCOME. The OS-delivered callback must not have
     // established a session; the smoke asserts this instead of only proving the
     // URL was echoed back.
