@@ -324,16 +324,24 @@ async function main() {
         buildDestination,
         "-derivedDataPath",
         derivedData,
-        // Sim: signing is irrelevant, skip it. Device: the test RUNNER must be
-        // properly signed or installd rejects it (0xe8008018 "identity no
-        // longer valid" — the exact first-device-run failure). The project
-        // carries CODE_SIGN_STYLE=Automatic + the team id, so let xcodebuild
-        // sign and mint the ai.elizaos.app.xctrunner wildcard team profile
-        // (-allowProvisioningUpdates needs the Xcode account session that
-        // minted the app profile in the first place).
+        // Sim: build with ad-hoc signing, not CODE_SIGNING_ALLOWED=NO.
+        // WidgetKit can enumerate static widgets from an unsigned simulator
+        // build, but iOS 18 Control Center controls launch the appex during
+        // enumeration and unsigned appexes fault in XPC peer attribution. The
+        // assert-level DeviceExtensionSurfaceUITests shard depends on the same
+        // signed-appex path users exercise, so keep simulator builds ad-hoc
+        // signed. Device: the test RUNNER must be properly signed or installd
+        // rejects it (0xe8008018 "identity no longer valid" — the exact
+        // first-device-run failure). The project carries CODE_SIGN_STYLE=
+        // Automatic + the team id, so let xcodebuild sign and mint the
+        // ai.elizaos.app.xctrunner wildcard team profile (-allowProvisioningUpdates
+        // needs the Xcode account session that minted the app profile in the
+        // first place).
         ...(platform === "sim"
           ? [
-              "CODE_SIGNING_ALLOWED=NO",
+              "CODE_SIGNING_ALLOWED=YES",
+              "CODE_SIGN_STYLE=Manual",
+              "CODE_SIGN_IDENTITY=-",
               "ARCHS=arm64",
               "ONLY_ACTIVE_ARCH=YES",
               "EXCLUDED_ARCHS=x86_64",

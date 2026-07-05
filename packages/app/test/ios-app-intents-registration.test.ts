@@ -66,6 +66,18 @@ const keyboardBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaKeyboardBridge.swift"),
   "utf8",
 );
+const deviceExtensionSurfaceUITestsSwift = readFileSync(
+  path.join(iosAppRoot, "AppUITests/DeviceExtensionSurfaceUITests.swift"),
+  "utf8",
+);
+const iosDeviceLib = readFileSync(
+  path.join(repoRoot, "packages/app/scripts/ios-device-lib.mjs"),
+  "utf8",
+);
+const iosDeviceCapture = readFileSync(
+  path.join(repoRoot, "packages/app/scripts/ios-device-capture.mjs"),
+  "utf8",
+);
 const mobileBuildScript = readFileSync(
   path.join(repoRoot, "packages/app-core/scripts/run-mobile-build.mjs"),
   "utf8",
@@ -319,6 +331,46 @@ describe("native assistant entry contracts", () => {
         new RegExp(`isa = PBXBuildFile; fileRef = ${attributesFileRef} `, "g"),
       )?.length,
     ).toBe(2);
+  });
+
+  it("adds an assert-level XCUITest shard for iOS widget/control surfaces (#13695)", () => {
+    expect(pbxproj).toContain("DeviceExtensionSurfaceUITests.swift in Sources");
+    expect(iosDeviceLib).toContain(
+      '"AppUITests/DeviceExtensionSurfaceUITests"',
+    );
+    expect(iosDeviceCapture).toContain('"CODE_SIGNING_ALLOWED=YES"');
+    expect(iosDeviceCapture).toContain('"CODE_SIGN_IDENTITY=-"');
+
+    // This is the assert-level counterpart to WidgetGalleryCaptureUITests.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "continueAfterFailure = false",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testControlCenterGalleryListsElizaControls",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testHomeScreenWidgetTapForegroundsApp",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "Ask Eliza",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "Eliza Voice",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "elizaos://assistant?source=ios-widget&action=ask",
+    );
+    // The custom keyboard and hardware Action Button pieces are documented as
+    // device-lane only instead of being faked in simulator evidence.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testKeyboardDictationSurfaceNeedsProvisionedDeviceLane",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "Action Button physical press",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "Full Access/App Group round-trip",
+    );
   });
 
   it("aligns the iOS audio background mode and Live Activities plist keys", () => {

@@ -754,6 +754,7 @@ export const DEFAULT_IOS_XCUITEST_SHARDS = [
   "AppUITests/LauncherGestureLoopUITests",
   "AppUITests/ViewWalkthroughUITests",
   "AppUITests/WidgetGalleryCaptureUITests",
+  "AppUITests/DeviceExtensionSurfaceUITests",
   "AppUITests/DeviceLifecycleUITests",
 ];
 

@@ -16,9 +16,10 @@ import XCTest
 ///
 /// Scope: rail navigation + probe stability + app-alive — the [L]/[I] subset
 /// that survives in the AX tree. Tile launches (which navigate away from the
-/// launcher) and the notification pull are covered by the scripted
-/// GestureSemanticsUITests and the web/android loops, not by this
-/// page-stability loop.
+/// launcher) are covered by the scripted GestureSemanticsUITests and the
+/// web/android loops, not by this page-stability loop. The old notification
+/// pull-down sheet was removed on develop by #13414, so it is no longer listed
+/// as a covered surface here.
 ///
 /// Runs in the AppUITests target / lane as the boot + gesture-semantics suites:
 ///   node scripts/ios-device-capture.mjs --platform sim   (packages/app)
