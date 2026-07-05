@@ -21,11 +21,6 @@ vi.mock("../lib/use-session-auth", () => ({
     authenticated: true,
     user: { id: "u1", email: "qa@e.test" },
   }),
-  useSessionAuth: () => ({
-    ready: true,
-    authenticated: true,
-    user: { id: "u1", email: "qa@e.test" },
-  }),
 }));
 
 import { MonetizationPage } from "./MonetizationPage";
