@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  androidApkNeedsBuild,
   androidDistNeedsBuild,
   androidInstallDecision,
 } from "../scripts/lib/android-device.mjs";
@@ -98,6 +99,42 @@ describe("Android renderer stamp decisions", () => {
     ).toEqual({
       install: false,
       reason: "installed buildId matches fresh fresh",
+    });
+  });
+
+  it("requires an APK rebuild when the packaged stamp is missing", () => {
+    expect(
+      androidApkNeedsBuild({
+        freshStamp: { buildId: "fresh" },
+        apkStamp: null,
+      }),
+    ).toMatchObject({
+      build: true,
+      reason: expect.stringContaining("APK has no readable"),
+    });
+  });
+
+  it("requires an APK rebuild when the packaged buildId differs from fresh dist", () => {
+    expect(
+      androidApkNeedsBuild({
+        freshStamp: { buildId: "fresh" },
+        apkStamp: { buildId: "old" },
+      }),
+    ).toEqual({
+      build: true,
+      reason: "APK old != fresh fresh",
+    });
+  });
+
+  it("accepts an APK whose packaged buildId matches fresh dist", () => {
+    expect(
+      androidApkNeedsBuild({
+        freshStamp: { buildId: "fresh" },
+        apkStamp: { buildId: "fresh" },
+      }),
+    ).toEqual({
+      build: false,
+      reason: "APK buildId matches fresh fresh",
     });
   });
 

@@ -21,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  androidApkNeedsBuild,
   androidDistNeedsBuild,
   androidInstallDecision,
   ensureEmulatorBooted,
@@ -28,6 +29,7 @@ import {
   installApk,
   readFreshAndroidRendererStamp,
   readInstalledRendererStamp,
+  readRendererStampFromApk,
   resolveAdb,
   resolveApk,
   resolveSerial,
@@ -205,6 +207,17 @@ function stampLabel(stamp) {
   return `${buildId}${commit}`;
 }
 
+function readApkRendererStamp(apk) {
+  try {
+    return readRendererStampFromApk(apk);
+  } catch (error) {
+    log(
+      `APK renderer stamp unavailable from ${apk}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
+
 function ensureFreshApkInstalled(adb, serial) {
   const forceBuild = has("--force-build") || has("--build");
   const skipBuild = has("--skip-build");
@@ -233,7 +246,36 @@ function ensureFreshApkInstalled(adb, serial) {
     );
   }
 
-  const apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+  let apkStamp = readApkRendererStamp(apk);
+  let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+  if (apkDecision.build) {
+    if (skipBuild) {
+      throw new Error(
+        `--skip-build requested, but Android APK is not usable: ${apkDecision.reason}`,
+      );
+    }
+    if (!forceBuild) {
+      log(`${apkDecision.reason} — rebuilding APK before install.`);
+      buildAndroidApk();
+      freshStamp = readFreshAndroidRendererStamp();
+      if (!freshStamp) {
+        throw new Error(
+          "Android build did not produce dist/eliza-renderer-build.json; refusing to install an unverifiable APK.",
+        );
+      }
+      apk = resolveApk(process.env.ELIZA_ANDROID_APK);
+      apkStamp = readApkRendererStamp(apk);
+      apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+    }
+  }
+  if (apkDecision.build) {
+    throw new Error(
+      `Android build did not produce an APK with the fresh renderer stamp: ${apkDecision.reason}`,
+    );
+  }
+  log(`${apkDecision.reason} in ${apk}`);
+
   const installedStamp = readInstalledRendererStamp(adb, serial, { log });
   const installDecision = forceBuild
     ? { install: true, reason: "--force-build/--build requested" }

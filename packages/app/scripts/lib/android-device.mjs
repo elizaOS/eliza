@@ -522,6 +522,30 @@ export function androidInstallDecision({ freshStamp, installedStamp } = {}) {
   };
 }
 
+export function androidApkNeedsBuild({ freshStamp, apkStamp } = {}) {
+  if (!freshStamp) {
+    throw new Error(
+      "fresh Android renderer stamp is required before APK check.",
+    );
+  }
+  if (!apkStamp) {
+    return {
+      build: true,
+      reason: `APK has no readable ${RENDERER_BUILD_MANIFEST_FILENAME}`,
+    };
+  }
+  if (apkStamp.buildId !== freshStamp.buildId) {
+    return {
+      build: true,
+      reason: `APK ${apkStamp.buildId} != fresh ${freshStamp.buildId}`,
+    };
+  }
+  return {
+    build: false,
+    reason: `APK buildId matches fresh ${freshStamp.buildId}`,
+  };
+}
+
 export function clearAppData(adbBin, serial) {
   adbDevice(adbBin, serial, ["shell", "pm", "clear", APP_ID], {
     stdio: "inherit",
