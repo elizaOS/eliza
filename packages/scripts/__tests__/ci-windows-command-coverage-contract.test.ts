@@ -1,8 +1,10 @@
-// Pins the Windows command-coverage contract (#13402) against synthetic
-// workflow + inventory trees: dropping an inventoried command from the matrix
-// throws (RED), keeping all present passes (GREEN), adding a new command is
-// allowed, and the shipped repo satisfies its own inventory. Static only: no
-// workflow is executed.
+/**
+ * Pins the Windows command-coverage contract (#13402) against synthetic
+ * workflow and inventory trees. Dropping an inventoried command from the matrix
+ * throws (RED), keeping all present passes (GREEN), adding a new command is
+ * allowed, and the shipped repo satisfies its own inventory. Static only: no
+ * workflow is executed.
+ */
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
