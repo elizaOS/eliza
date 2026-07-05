@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Covers AdvancedSection's reset-confirmation modal (no reset until confirmed;
- * runs exactly once) and the encrypted local-backup flow (list/create/restore).
- * jsdom render with the app store and API client mocked.
+ * Covers AdvancedSection's normal settings surface: reset controls must stay
+ * absent, while the encrypted local-backup flow (list/create/restore) remains
+ * available. jsdom render with the app store and API client mocked.
  */
 
 import {
@@ -15,24 +15,21 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { handleReset, setActionNotice, appValue, clientMock, devMode } =
-  vi.hoisted(() => ({
-    handleReset: vi.fn(),
-    setActionNotice: vi.fn(),
-    appValue: {} as Record<string, unknown>,
-    clientMock: {
-      listLocalAgentBackups: vi.fn(),
-      createLocalAgentBackup: vi.fn(),
-      restoreLocalAgentBackup: vi.fn(),
-      seedDevNotifications: vi.fn(),
-    },
-    devMode: { value: false },
-  }));
+const { setActionNotice, appValue, clientMock, devMode } = vi.hoisted(() => ({
+  setActionNotice: vi.fn(),
+  appValue: {} as Record<string, unknown>,
+  clientMock: {
+    listLocalAgentBackups: vi.fn(),
+    createLocalAgentBackup: vi.fn(),
+    restoreLocalAgentBackup: vi.fn(),
+    seedDevNotifications: vi.fn(),
+  },
+  devMode: { value: false },
+}));
 
 vi.mock("../../state", () => {
   Object.assign(appValue, {
     t: (key: string) => key,
-    handleReset,
     setActionNotice,
     exportBusy: false,
     exportPassword: "",
@@ -68,7 +65,6 @@ vi.mock("../../api", () => ({
 import { AdvancedSection } from "./AdvancedSection";
 
 beforeEach(() => {
-  handleReset.mockClear();
   setActionNotice.mockClear();
   devMode.value = false;
   clientMock.seedDevNotifications.mockReset();
@@ -88,50 +84,16 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
-function openResetModal() {
-  fireEvent.click(
-    screen.getByRole("button", { name: "settings.resetEverything" }),
-  );
-}
-
-describe("AdvancedSection reset confirmation", () => {
-  it("does not reset until the user confirms in the modal", () => {
+describe("AdvancedSection reset controls", () => {
+  it("does not render reset or danger-zone controls in the normal settings path", () => {
     render(<AdvancedSection />);
 
-    // Modal warning is not mounted before the danger-zone button is pressed.
+    expect(
+      screen.queryByRole("button", { name: "settings.resetEverything" }),
+    ).toBeNull();
+    expect(screen.queryByText("settings.dangerZone")).toBeNull();
+    expect(screen.queryByText("settings.resetAgent")).toBeNull();
     expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
-    expect(handleReset).not.toHaveBeenCalled();
-  });
-
-  it("opens a warning modal when Reset Everything is pressed", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    expect(screen.getByText("settings.resetConfirmTitle")).toBeTruthy();
-    expect(screen.getByText("settings.resetConfirmBody")).toBeTruthy();
-    // Opening the warning must never trigger the destructive action by itself.
-    expect(handleReset).not.toHaveBeenCalled();
-  }, 15_000);
-
-  it("cancels without resetting", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
-
-    expect(handleReset).not.toHaveBeenCalled();
-    expect(screen.queryByText("settings.resetConfirmBody")).toBeNull();
-  });
-
-  it("runs the reset exactly once when confirmed", () => {
-    render(<AdvancedSection />);
-    openResetModal();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "settings.resetConfirmAction" }),
-    );
-
-    expect(handleReset).toHaveBeenCalledTimes(1);
   });
 });
 

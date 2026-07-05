@@ -1,11 +1,11 @@
 /**
- * Settings → "Backup & Reset" section body (the `advanced` section registered
- * in settings-sections.ts). Drives local-agent backup export/import — create,
+ * Settings → "Backups" section body (the `advanced` section registered in
+ * settings-sections.ts). Drives local-agent backup export/import — create,
  * list, and restore via the typed API client — alongside developer- and
- * preview-mode toggles and a confirmed reset-to-defaults action.
+ * preview-mode toggles.
  */
 
-import { AlertTriangle, Bell, Download, Trash2, Upload } from "lucide-react";
+import { Bell, Download, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client, type LocalAgentBackupMetadata } from "../../api";
@@ -95,16 +95,14 @@ function BackupOptionList({
 }
 
 export function AdvancedSection() {
-  const { t, handleReset, setActionNotice } = useAppSelectorShallow((s) => ({
+  const { t, setActionNotice } = useAppSelectorShallow((s) => ({
     t: s.t,
-    handleReset: s.handleReset,
     setActionNotice: s.setActionNotice,
   }));
   const developerMode = useIsDeveloperMode();
   const previewMode = useIsPreviewMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [backupList, setBackupList] = useState<LocalAgentBackupMetadata[]>([]);
   const [selectedBackupFileName, setSelectedBackupFileName] = useState("");
   const [backupListBusy, setBackupListBusy] = useState(false);
@@ -253,14 +251,6 @@ export function AdvancedSection() {
       group: "advanced",
       onActivate: openImportModal,
     });
-  const { ref: resetOpenRef, agentProps: resetOpenAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "advanced-reset-open",
-      role: "button",
-      label: t("settings.resetEverything"),
-      group: "advanced",
-      onActivate: () => setResetConfirmOpen(true),
-    });
   const { ref: exportSubmitRef, agentProps: exportSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "advanced-export-submit",
@@ -280,18 +270,6 @@ export function AdvancedSection() {
         restoreBackupBusy || !selectedBackupFileName ? "inactive" : "active",
       onActivate: () => void handleRestoreBackup(),
     });
-  const { ref: resetConfirmRef, agentProps: resetConfirmAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "advanced-reset-confirm",
-      role: "button",
-      label: t("settings.resetConfirmAction"),
-      group: "advanced-reset",
-      onActivate: () => {
-        setResetConfirmOpen(false);
-        void handleReset();
-      },
-    });
-
   return (
     <>
       <SettingsStack>
@@ -362,37 +340,6 @@ export function AdvancedSection() {
             </SettingsRow>
           </SettingsGroup>
         ) : null}
-
-        <SettingsGroup
-          title={
-            <span className="flex items-center gap-1.5 text-danger">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {t("settings.dangerZone")}
-            </span>
-          }
-        >
-          <SettingsRow
-            icon={Trash2}
-            tone="danger"
-            label={t("settings.resetAgent")}
-            description={t("settings.resetAgentHint")}
-            stacked
-          >
-            <div className="flex sm:justify-end">
-              <Button
-                ref={resetOpenRef}
-                variant="destructive"
-                size="sm"
-                className="w-full rounded-sm whitespace-nowrap sm:w-auto"
-                aria-haspopup="dialog"
-                onClick={() => setResetConfirmOpen(true)}
-                {...resetOpenAgentProps}
-              >
-                {t("settings.resetEverything")}
-              </Button>
-            </div>
-          </SettingsRow>
-        </SettingsGroup>
       </SettingsStack>
 
       <Dialog
@@ -533,55 +480,6 @@ export function AdvancedSection() {
               >
                 {restoreBackupBusy && <Spinner size={16} />}
                 Restore Backup
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={resetConfirmOpen}
-        onOpenChange={(open: boolean) => setResetConfirmOpen(open)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-danger">
-              <AlertTriangle className="h-5 w-5 shrink-0" />
-              {t("settings.resetConfirmTitle")}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p
-              className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
-              role="alert"
-              aria-live="assertive"
-            >
-              {t("settings.resetConfirmBody")}
-            </p>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <SettingsActionButton
-                agentId="backup-reset-cancel"
-                agentGroup="advanced-reset"
-                agentLabel={t("common.cancel")}
-                variant="outline"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
-                onClick={() => setResetConfirmOpen(false)}
-              >
-                {t("common.cancel")}
-              </SettingsActionButton>
-              <Button
-                ref={resetConfirmRef}
-                variant="destructive"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
-                onClick={() => {
-                  setResetConfirmOpen(false);
-                  void handleReset();
-                }}
-                {...resetConfirmAgentProps}
-              >
-                {t("settings.resetConfirmAction")}
               </Button>
             </div>
           </div>

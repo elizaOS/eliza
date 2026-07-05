@@ -1,5 +1,5 @@
 /**
- * Storybook stories for the Settings → Backup & Reset section, covering the
+ * Storybook stories for the Settings → Backups section, covering the
  * export/import dialogs across resting, primed, busy, error, and success states
  * with a mock App context (no backend).
  */
@@ -19,7 +19,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Default resting state: export / import cards, developer-mode toggle, danger zone. */
+/** Default resting state: export / import cards and developer-mode toggle. */
 export const Default: Story = {};
 
 /** Export flow primed with a password and "include logs" enabled. */

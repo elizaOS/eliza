@@ -397,7 +397,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
   },
   {
     id: "advanced",
-    defaultLabel: "Backup & Reset",
+    defaultLabel: "Backups",
     group: "system",
     aliases: ["fine-tuning"],
     icon: Archive,

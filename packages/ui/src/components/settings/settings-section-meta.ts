@@ -105,7 +105,7 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   },
   {
     id: "advanced",
-    defaultLabel: "Backup & Reset",
+    defaultLabel: "Backups",
     group: "system",
     aliases: ["fine-tuning"],
   },
