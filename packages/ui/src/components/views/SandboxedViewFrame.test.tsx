@@ -16,8 +16,9 @@ import { NAVIGATE_VIEW_EVENT } from "@elizaos/shared/events";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  SANDBOX_STORAGE_PREFIX,
+  createSandboxHostFacilities,
   SandboxedViewFrame,
+  sandboxStorageKey,
 } from "./SandboxedViewFrame";
 import { SANDBOXED_VIEW_CHANNEL } from "./sandboxed-view-broker";
 
@@ -173,11 +174,27 @@ describe("SandboxedViewFrame — real isolation path (#14180)", () => {
 
     await waitFor(() => expect(postSpy).toHaveBeenCalled());
     expect(lastResponse(postSpy).ok).toBe(true);
-    const namespaced = `${SANDBOX_STORAGE_PREFIX}${VIEW_ID}:draft`;
+    const namespaced = sandboxStorageKey(VIEW_ID, "draft");
     expect(window.localStorage.getItem(namespaced)).toBe("hello");
     // The only key written is the namespaced one — no bare "draft" shell key.
     expect(window.localStorage.getItem("draft")).toBeNull();
     expect(window.localStorage.length).toBe(1);
+  });
+
+  it("keeps colon-bearing view IDs and storage keys in distinct namespaces", async () => {
+    const firstView = createSandboxHostFacilities("alpha:beta");
+    const secondView = createSandboxHostFacilities("alpha");
+
+    await firstView.storage({ op: "set", key: "draft", value: "one" });
+    await secondView.storage({ op: "set", key: "beta:draft", value: "two" });
+
+    expect(
+      window.localStorage.getItem(sandboxStorageKey("alpha:beta", "draft")),
+    ).toBe("one");
+    expect(
+      window.localStorage.getItem(sandboxStorageKey("alpha", "beta:draft")),
+    ).toBe("two");
+    expect(window.localStorage.length).toBe(2);
   });
 
   it("IGNORES a message that is not from this frame's window (identity gate)", async () => {

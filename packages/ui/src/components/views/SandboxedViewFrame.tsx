@@ -37,6 +37,11 @@ import {
 /** localStorage prefix that confines a framed view to its own key namespace. */
 export const SANDBOX_STORAGE_PREFIX = "eliza:sbxview:" as const;
 
+/** Build the storage key without letting view IDs and frame keys collapse into the same path. */
+export function sandboxStorageKey(viewId: string, key: string): string {
+  return `${SANDBOX_STORAGE_PREFIX}${encodeURIComponent(viewId)}:${encodeURIComponent(key)}`;
+}
+
 /**
  * The concrete host facilities the broker calls for a view. Split out (and
  * exported) so tests exercise the real navigate/storage behaviour directly, and
@@ -57,7 +62,7 @@ export function createSandboxHostFacilities(
     },
     async storage(payload: unknown): Promise<unknown> {
       const request = readStoragePayload(payload);
-      const namespaced = `${SANDBOX_STORAGE_PREFIX}${viewId}:${request.key}`;
+      const namespaced = sandboxStorageKey(viewId, request.key);
       if (request.op === "get") {
         return { value: window.localStorage.getItem(namespaced) };
       }
