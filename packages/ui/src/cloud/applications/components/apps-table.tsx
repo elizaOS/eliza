@@ -11,7 +11,6 @@
  */
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -21,7 +20,6 @@ import {
   runBulkDelete,
 } from "../../../cloud-ui/components/bulk/bulk-select";
 import { AppsListView } from "../../../cloud-ui/components/data-list";
-import { Button } from "../../../components/ui/button";
 import { copyTextToClipboard } from "../../../utils/clipboard";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { APPS_QUERY_KEY, type App, deleteApp } from "../lib/apps";

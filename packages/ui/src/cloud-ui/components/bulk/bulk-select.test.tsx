@@ -66,4 +66,14 @@ describe("runBulkDelete", () => {
     expect(outcome.deleted).toEqual([]);
     expect(outcome.failed).toEqual([1, 2]);
   });
+
+  it("treats synchronous delete failures as rejected items", async () => {
+    const outcome = await runBulkDelete(["a", "b"], (id) => {
+      if (id === "b") throw new Error("sync down");
+      return Promise.resolve(id);
+    });
+    expect(outcome.deleted).toEqual(["a"]);
+    expect(outcome.failed).toEqual(["b"]);
+    expect(outcome.firstError).toBeInstanceOf(Error);
+  });
 });

@@ -136,7 +136,9 @@ export async function runBulkDelete<T>(
   items: readonly T[],
   deleteOne: (item: T) => Promise<unknown>,
 ): Promise<BulkDeleteOutcome<T>> {
-  const results = await Promise.allSettled(items.map((it) => deleteOne(it)));
+  const results = await Promise.allSettled(
+    items.map((it) => Promise.resolve().then(() => deleteOne(it))),
+  );
   const deleted = items.filter((_, i) => results[i].status === "fulfilled");
   const failed = items.filter((_, i) => results[i].status === "rejected");
   const firstError = results.find(
