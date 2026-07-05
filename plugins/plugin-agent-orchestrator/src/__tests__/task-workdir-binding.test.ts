@@ -553,6 +553,54 @@ describe("project memory-world stamping at bind time (#13776 D3)", () => {
     }
   });
 
+  it("derives the target project world when a fork changes projects", async () => {
+    const sourceProject = upsertProject({
+      name: "repo-a",
+      localPath: firstDir,
+    });
+    const targetProject = upsertProject({
+      name: "repo-b",
+      localPath: overrideDir,
+    });
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const parent = await service.createTask({
+        title: "bound parent",
+        goal: "work in project A",
+        acceptanceCriteria: [],
+        projectId: sourceProject.id,
+      });
+      const sourceWorld = projectWorldId(BINDER_AGENT_ID, sourceProject.id);
+      const targetWorld = projectWorldId(BINDER_AGENT_ID, targetProject.id);
+
+      const fork = await service.forkTask(parent.id, {
+        projectId: targetProject.id,
+        worldId: sourceWorld,
+      });
+
+      expect(fork).not.toBeNull();
+      expect(fork?.parentTaskId).toBe(parent.id);
+      expect(fork?.projectId).toBe(targetProject.id);
+      expect(fork?.worldId).toBe(targetWorld);
+      expect(fork?.worldId).not.toBe(sourceWorld);
+      const record = fork ? await store.getTask(fork.id) : null;
+      expect(record?.task.projectId).toBe(targetProject.id);
+      expect(record?.task.worldId).toBe(targetWorld);
+
+      await service.spawnAgentForTask(fork?.id as string, {
+        task: "continue",
+      });
+      expect(acp.spawns.at(0)?.workdir).toBe(overrideDir);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   it("leaves an unbound task's worldId untouched and lets an explicit worldId win", async () => {
     const project = upsertProject({ name: "repo-a", localPath: firstDir });
     const store = new OrchestratorTaskStore({ backend: "memory" });

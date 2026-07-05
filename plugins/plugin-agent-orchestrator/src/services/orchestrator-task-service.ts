@@ -2518,11 +2518,12 @@ export class OrchestratorTaskService extends Service {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     const projectId = overrides.projectId ?? doc.task.projectId ?? undefined;
-    const worldId =
-      overrides.worldId ??
-      (overrides.projectId && overrides.projectId !== doc.task.projectId
-        ? undefined
-        : doc.task.worldId);
+    const projectChanged =
+      overrides.projectId !== undefined &&
+      overrides.projectId !== doc.task.projectId;
+    const worldId = projectChanged
+      ? undefined
+      : (overrides.worldId ?? doc.task.worldId);
     return this.createTask({
       title: overrides.title ?? `${doc.task.title} (fork)`,
       goal: overrides.goal ?? doc.task.goal,
