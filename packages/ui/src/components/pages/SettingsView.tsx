@@ -142,10 +142,13 @@ function SettingsSectionFallback({
 function SettingsSectionSurfaceAnchor({
   section,
   label,
+  active,
   onSelect,
 }: {
   section: SettingsSectionDef;
   label: string;
+  /** Whether this is the currently-shown section. */
+  active: boolean;
   onSelect: (id: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -165,6 +168,12 @@ function SettingsSectionSurfaceAnchor({
       className="hidden"
       onClick={() => onSelect(section.id)}
       {...agentProps}
+      /* #13889/#13590: the agent-addressable anchor carries `data-agent-id`; the
+         "which section is current" signal must live on the SAME element so the
+         `[data-agent-id^="section-"][aria-current="page"]` contract (agent
+         surface + packaged regression lane) resolves. #13590's SectionNav
+         refactor split these apart. Set after the spread so it always wins. */
+      aria-current={active ? "page" : undefined}
     />
   );
 }
@@ -283,6 +292,7 @@ export function SettingsView({
                 key={section.id}
                 section={section}
                 label={settingsSectionLabel(section, t)}
+                active={section.id === activeSection}
                 onSelect={openSection}
               />
             ))}
