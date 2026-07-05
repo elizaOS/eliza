@@ -10,15 +10,21 @@
 //   4. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
 //   5. (optional) Cloud route: real provisioning probe.
 //
-// Flags: --device <name|udid>  --skip-build  --skip-local-chat  --skip-auth
-//        --cloud
+// Flags: --device <name|udid>  --app-path <App.app>  --skip-build
+//        --skip-local-chat  --skip-auth  --cloud
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertCandidateIosAppRendererFresh,
+  assertInstalledIosAppRendererFresh,
+} from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
+import { findLatestBuiltIosSimulatorApp } from "./lib/ios-simulator-app-product.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
+const repoRoot = path.resolve(appDir, "..", "..");
 const has = (f) => process.argv.includes(f);
 const val = (f, fb) => {
   const i = process.argv.indexOf(f);
@@ -45,6 +51,14 @@ function run(cmd, args, env = {}) {
 
 function simctl(args) {
   return execFileSync("xcrun", ["simctl", ...args], { encoding: "utf8" });
+}
+
+function trySimctl(args) {
+  try {
+    return simctl(args).trim();
+  } catch {
+    return null;
+  }
 }
 
 function bootedUdid() {
@@ -84,6 +98,36 @@ function ensureSimulatorBooted(deviceName) {
   return udid;
 }
 
+function installBuiltSimulatorApp(udid, appId) {
+  const appPath = val("--app-path") ?? findLatestBuiltIosSimulatorApp();
+  if (!appPath) {
+    throw new Error(
+      "Could not find a Debug-iphonesimulator App.app after build. Pass --app-path or inspect Xcode DerivedData.",
+    );
+  }
+
+  assertCandidateIosAppRendererFresh({
+    appPath,
+    bundleId: appId,
+    repoRoot,
+    log,
+  });
+  trySimctl(["terminate", udid, appId]);
+  trySimctl(["uninstall", udid, appId]);
+  log(`installing built simulator app ${appPath}`);
+  simctl(["install", udid, appPath]);
+  const installed = trySimctl(["get_app_container", udid, appId, "app"]);
+  if (!installed) {
+    throw new Error(`${appId} was not installed after simctl install.`);
+  }
+  assertInstalledIosAppRendererFresh({
+    udid,
+    bundleId: appId,
+    repoRoot,
+    log,
+  });
+}
+
 async function main() {
   const appId = readAppId();
   const udid = ensureSimulatorBooted(val("--device"));
@@ -93,8 +137,9 @@ async function main() {
     if (has("--skip-build")) {
       log("skipping build (--skip-build)");
     } else {
-      log("building + installing the iOS Simulator app…");
+      log("building the iOS Simulator app…");
       run("bun", ["run", "build:ios:local:sim"]);
+      installBuiltSimulatorApp(udid, appId);
     }
 
     if (!has("--skip-auth")) {
