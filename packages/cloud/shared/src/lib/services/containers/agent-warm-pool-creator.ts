@@ -50,6 +50,8 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
       });
       return { id: row.id, nodeId: ready?.node_id ?? result.sandboxRecord.node_id ?? null };
     } catch (err) {
+      // error-policy:J7 diagnostic warn adding poolId context; rethrows the
+      // original error so the provision failure still surfaces to replenish().
       logger.warn("[warm-pool/creator] pool entry creation failed", {
         poolId: row.id,
         error: err instanceof Error ? err.message : String(err),
@@ -72,7 +74,10 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
     }
     // deleteAgent already removes the row, but if it short-circuited (e.g.
     // because the container was never started) the pool row may still exist.
-    await agentSandboxesRepository.deletePoolEntry(poolId).catch(() => undefined);
+    // deletePoolEntry is a no-op (returns false) when the row is already gone,
+    // so a genuine throw here is a real DB failure that must surface as a
+    // destroy failure — never swallowed into a phantom leaked pool row.
+    await agentSandboxesRepository.deletePoolEntry(poolId);
   }
 
   async healthProbe(poolId: string): Promise<boolean> {
@@ -84,6 +89,10 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
       });
       return r.ok;
     } catch {
+      // error-policy:J4 unreachable/timeout ⇒ unhealthy. This is a boolean
+      // liveness probe whose contract is "true when alive, false when
+      // unreachable"; a network/abort error is a distinguishable "dead" signal
+      // that drives the caller to reap the entry — not a fabricated success.
       return false;
     }
   }

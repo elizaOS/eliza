@@ -240,6 +240,10 @@ export class WarmPoolManager {
         const result = await this.creator.createPoolContainer(image);
         created.push(result);
       } catch (err) {
+        // error-policy:J1 batch boundary — a per-container provision failure is
+        // recorded in the structured `failed[]` result and logged, then the
+        // burst stops. The failure surfaces to the caller; it never reads as a
+        // successful create.
         failed.push({ error: err instanceof Error ? err.message : String(err) });
         logger.warn("[warm-pool] replenish create failed", {
           error: err instanceof Error ? err.message : String(err),
@@ -278,6 +282,9 @@ export class WarmPoolManager {
         await this.creator.destroyPoolContainer(id);
         drained.push(id);
       } catch (err) {
+        // error-policy:J1 batch boundary — a per-row destroy failure is recorded
+        // in the structured `failed[]` result; the row stays in the pool and is
+        // retried next pass. The failure surfaces; it never reads as drained.
         failed.push({ id, error: err instanceof Error ? err.message : String(err) });
       }
     }
@@ -300,7 +307,12 @@ export class WarmPoolManager {
     let alive = 0;
 
     for (const row of rows) {
-      const ok = await this.creator.healthProbe(row.id).catch(() => false);
+      // `healthProbe` is contracted to return false for an unreachable
+      // container and only throws on an internal failure (its lookup/DB read).
+      // We must NOT swallow that throw into `false` — doing so would treat a DB
+      // blip as "container dead" and destroy the whole pool. Let it propagate so
+      // the failure surfaces to the cron; only a designed `false` reaps a row.
+      const ok = await this.creator.healthProbe(row.id);
       if (ok) {
         alive++;
         continue;
@@ -309,6 +321,8 @@ export class WarmPoolManager {
         await this.creator.destroyPoolContainer(row.id);
         removed.push({ id: row.id, reason: "health probe failed" });
       } catch (err) {
+        // error-policy:J6 best-effort teardown — destroy is idempotent and the
+        // next health-check pass retries; record the failure in the reason.
         removed.push({
           id: row.id,
           reason: `probe failed; destroy errored: ${err instanceof Error ? err.message : String(err)}`,
@@ -325,6 +339,8 @@ export class WarmPoolManager {
         await this.creator.destroyPoolContainer(row.id);
         removed.push({ id: row.id, reason: "stuck in provisioning past threshold" });
       } catch (err) {
+        // error-policy:J6 best-effort teardown — destroy is idempotent and the
+        // next pass retries; record the failure in the reason.
         removed.push({
           id: row.id,
           reason: `stuck; destroy errored: ${err instanceof Error ? err.message : String(err)}`,
@@ -360,6 +376,9 @@ export class WarmPoolManager {
         await this.creator.destroyPoolContainer(id);
         replaced.push(id);
       } catch (err) {
+        // error-policy:J1 batch boundary — a per-row replace failure is recorded
+        // in the structured `failed[]` result; the stale row stays and is retried
+        // next pass. The failure surfaces; it never reads as replaced.
         failed.push({ id, error: err instanceof Error ? err.message : String(err) });
       }
     }

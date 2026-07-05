@@ -372,6 +372,10 @@ export class NodeAutoscaler {
     try {
       await client.deleteServer(hcloudServerId);
     } catch (err) {
+      // error-policy:J6 idempotent teardown — a not_found means the server is
+      // already deprovisioned (the desired end state), so the DB row is safe to
+      // delete below. Every other outbound-API failure (auth/rate-limit/5xx)
+      // rethrows so a live server is never orphaned by a silently-dropped delete.
       if (err instanceof HetznerCloudError && err.code === "not_found") {
         logger.info("[autoscaler] Hetzner server already gone", {
           nodeId,

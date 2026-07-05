@@ -33,9 +33,14 @@ function readRegistryToken(): string | undefined {
     const token = fs.readFileSync(tokenFile, "utf8").trim();
     return token || undefined;
   } catch (error) {
+    // error-policy:J2 translate a configured-but-unreadable token file into a
+    // typed invalid_input failure (with cause) so a misconfigured registry
+    // credential surfaces to the route layer instead of silently falling back
+    // to an anonymous pull that would 401 on a private image.
     throw new HetznerClientError(
       "invalid_input",
       `Failed to read Docker registry token file '${tokenFile.split("/").pop() ?? "unknown"}': ${error instanceof Error ? error.message : String(error)}`,
+      error,
     );
   }
 }
@@ -85,6 +90,9 @@ export async function ensureRegistryAccess(ssh: DockerSSHClient, image: string):
   if (!registryHost) return;
 
   if (containersEnv.registryToken() || containersEnv.registryTokenFile()) {
+    // error-policy:J6 best-effort registry priming — a login hiccup must not
+    // block the `docker pull` that follows (which is the real gate and will
+    // fail loudly if the cred was actually required). Surfaced via warn.
     await loginToImageRegistry(ssh, image).catch((error) => {
       logger.warn(`[ensureRegistryAccess] docker login to ${registryHost} failed; continuing`, {
         error: error instanceof Error ? error.message : String(error),
@@ -95,6 +103,8 @@ export async function ensureRegistryAccess(ssh: DockerSSHClient, image: string):
 
   // No token configured: proactively drop any stale stored credential so the
   // public-image pull uses anonymous access deterministically.
+  // error-policy:J6 best-effort stale-cred clearing — a logout hiccup must not
+  // block the anonymous pull that follows; the pull is the real gate.
   await ssh
     .exec(`docker logout ${shellQuote(registryHost)} >/dev/null 2>&1 || true`, 30_000)
     .catch((error) => {
@@ -105,22 +115,56 @@ export async function ensureRegistryAccess(ssh: DockerSSHClient, image: string):
     });
 }
 
+/**
+ * Read the repo digest Docker resolved for `image` after a successful pull.
+ *
+ * Best-effort informational metadata: the digest is captured post-pull and
+ * stored for later blue/green digest-mismatch checks (see `eliza-sandbox`). The
+ * container is already pulled and about to start, so a failed inspect must not
+ * abort provisioning — but it must not read as "no digest" *silently* either.
+ * A transport/SSH failure and an unparseable payload are both surfaced via
+ * `logger.warn`, keeping them distinguishable from the designed-empty case (an
+ * image that genuinely has no `RepoDigests`), which returns `undefined` quietly.
+ */
 export async function readPulledImageDigest(
   ssh: DockerSSHClient,
   image: string,
 ): Promise<string | undefined> {
-  const output = await ssh
-    .exec(`docker image inspect --format '{{json .RepoDigests}}' ${shellQuote(image)}`, 30_000)
-    .catch(() => "");
+  let output: string;
+  try {
+    output = await ssh.exec(
+      `docker image inspect --format '{{json .RepoDigests}}' ${shellQuote(image)}`,
+      30_000,
+    );
+  } catch (error) {
+    // error-policy:J6 best-effort post-pull metadata read; surface the transport
+    // failure rather than conflating it with an image that has no digest.
+    logger.warn(
+      `[readPulledImageDigest] docker image inspect failed for ${image}; digest unknown`,
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return undefined;
+  }
+
   const trimmed = output.trim();
   if (!trimmed || trimmed === "null") return undefined;
+
   try {
     const repoDigests = JSON.parse(trimmed) as unknown;
     if (!Array.isArray(repoDigests)) return undefined;
     return repoDigests.find((value): value is string => {
       return typeof value === "string" && value.includes("@sha256:");
     });
-  } catch {
+  } catch (error) {
+    // error-policy:J3 untrusted docker output — a non-JSON RepoDigests payload
+    // is malformed, not a fatal provisioning failure; surface it and treat the
+    // digest as absent.
+    logger.warn(`[readPulledImageDigest] unparseable RepoDigests output for ${image}`, {
+      output: trimmed,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return undefined;
   }
 }

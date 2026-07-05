@@ -265,6 +265,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
       const data = await this.request<{ droplet: DODroplet }>("GET", `/droplets/${id}`);
       return mapDroplet(data.droplet);
     } catch (err) {
+      // error-policy:J4 only the expected not_found shape degrades to a designed
+      // "absent" (null); every other provider error surfaces to the caller.
       if (err instanceof DigitalOceanComputeError && err.code === "not_found") return null;
       throw err;
     }
@@ -319,7 +321,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
       await this.request<unknown>("DELETE", `/droplets/${id}`);
       logger.info("[do] Deleted droplet", { serverId: id });
     } catch (err) {
-      // 404 on delete is success (already gone).
+      // error-policy:J4 idempotent delete — a 404 (droplet already gone) is the
+      // designed success shape; any other provider error surfaces.
       if (err instanceof DigitalOceanComputeError && err.code === "not_found") return;
       throw err;
     }
@@ -368,6 +371,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
       const data = await this.request<{ volume: DOVolume }>("GET", `/volumes/${id}`);
       return mapVolume(data.volume);
     } catch (err) {
+      // error-policy:J4 only the expected not_found shape degrades to a designed
+      // "absent" (null); every other provider error surfaces to the caller.
       if (err instanceof DigitalOceanComputeError && err.code === "not_found") return null;
       throw err;
     }
@@ -425,6 +430,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
       await this.request<unknown>("DELETE", `/volumes/${id}`);
       logger.info("[do] Deleted volume", { volumeId: id });
     } catch (err) {
+      // error-policy:J4 idempotent delete — a 404 (volume already gone) is the
+      // designed success shape; any other provider error surfaces.
       if (err instanceof DigitalOceanComputeError && err.code === "not_found") return;
       throw err;
     }
@@ -520,6 +527,9 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
         signal: ac.signal,
       });
     } catch (err) {
+      // error-policy:J1 transport boundary — translate a network/abort failure
+      // into a typed provisioning error (carrying `cause`) so a failed cloud-API
+      // call surfaces as transport_error, never as an empty/"no servers" result.
       throw new DigitalOceanComputeError(
         "transport_error",
         `DigitalOcean API ${method} ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -539,6 +549,8 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
     try {
       parsed = text ? JSON.parse(text) : undefined;
     } catch {
+      // error-policy:J3 untrusted response body — a non-JSON payload is an
+      // explicit typed failure, never a fabricated-valid default.
       throw new DigitalOceanComputeError(
         "server_error",
         `DigitalOcean API ${method} ${path} returned non-JSON: ${text.slice(0, 200)}`,

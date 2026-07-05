@@ -52,8 +52,20 @@ const SIZE_UNITS: Record<string, number> = {
 
 function parseSize(raw: string): number {
   const match = raw.match(/^([\d.]+)\s*([a-zA-Z]+)?$/);
-  if (!match) return 0;
+  if (!match) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats size field: ${JSON.stringify(raw)}`,
+    );
+  }
   const [, n, unit] = match;
-  const multiplier = unit ? (SIZE_UNITS[unit.toLowerCase()] ?? 1) : 1;
+  if (!unit) return Math.round(parseFloat(n));
+  const multiplier = SIZE_UNITS[unit.toLowerCase()];
+  if (multiplier === undefined) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Unknown size unit in docker stats output: ${JSON.stringify(unit)}`,
+    );
+  }
   return Math.round(parseFloat(n) * multiplier);
 }
