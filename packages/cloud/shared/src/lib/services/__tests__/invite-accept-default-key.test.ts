@@ -347,6 +347,59 @@ describe("invite accept provisions the personal default API key", () => {
   );
 
   test(
+    "invite accept rejects when the required default-key mint fails",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const seeded = await seedInviteScenario();
+      const originalProvision = apiKeysService.provisionDefaultApiKey;
+      apiKeysService.provisionDefaultApiKey = mock(async () => {
+        throw new Error("kms unavailable");
+      }) as typeof apiKeysService.provisionDefaultApiKey;
+
+      try {
+        await expect(
+          invitesService.acceptInvite(seeded.token, seeded.inviteeUserId),
+        ).rejects.toThrow("kms unavailable");
+      } finally {
+        apiKeysService.provisionDefaultApiKey = originalProvision;
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent default-key provisioning mints one active default key",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const organizationId = uid();
+      const userId = uid();
+
+      await dbWrite.insert(schemas.organizations).values({
+        id: organizationId,
+        name: "Team Org",
+        slug: `team-${organizationId}`,
+      });
+      await dbWrite.insert(schemas.users).values({
+        id: userId,
+        steward_user_id: `steward-${userId}`,
+        email: `user-${userId}@example.com`,
+        organization_id: organizationId,
+        role: "member",
+      });
+
+      await Promise.all([
+        apiKeysService.provisionDefaultApiKey(userId, organizationId),
+        apiKeysService.provisionDefaultApiKey(userId, organizationId),
+      ]);
+
+      const keys = await readActiveKeys(userId, organizationId);
+      expect(keys.length).toBe(1);
+      expect(keys[0].name).toBe("Default API Key");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "brand-new invited signup (steward-sync pending-invite branch) has the default key when sync resolves",
     async () => {
       expect(pgliteReady).toBe(true);

@@ -194,6 +194,9 @@ export class InvitesService {
       role: invite.invited_role,
       updated_at: new Date(),
     });
+    if (!movedUser) {
+      throw new Error("Failed to move user into invited organization");
+    }
 
     const updatedInvite = await organizationInvitesRepository.markAsAccepted(invite.id, userId);
 
@@ -212,15 +215,12 @@ export class InvitesService {
       previousOrganizationId !== vacatedSoloOrgId
     ) {
       await apiKeysService.deactivateByUserAndOrganization(userId, previousOrganizationId);
+      await apiKeysService.invalidateInferenceContextForUser(userId);
     }
 
-    // The user's personal default key belongs to the org they left (a vacated
-    // solo org's cascade even deletes it), so without the same mint a direct
-    // signup gets they would join the team unable to use inference. Awaited:
-    // on Cloudflare Workers a floating promise is cancelled when the response
-    // returns. Idempotent and swallows its own errors — the accept has already
-    // committed.
-    await apiKeysService.ensureUserHasApiKey(userId, invite.organization_id);
+    // The old key is scoped to the org they left; invite accept must not return
+    // success until the new org has a usable personal default key.
+    await apiKeysService.provisionDefaultApiKey(userId, invite.organization_id);
 
     return updatedInvite;
   }

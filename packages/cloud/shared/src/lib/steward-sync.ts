@@ -371,7 +371,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       // without it an invited user cannot use inference until manually keyed.
       // Awaited for the same Workers-cancellation reason (see the note above
       // the branch-5 provisioning).
-      await apiKeysService.ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
+      await apiKeysService.provisionDefaultApiKey(
+        userWithOrg.id,
+        userWithOrg.organization?.id || "",
+      );
 
       return userWithOrg;
     }
@@ -709,9 +712,9 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // executionCtx.waitUntil, which this shared-lib function cannot reach — and a
   // cancelled create leaves the new user permanently without a default
   // character/API key (later logins return at the existing-user branch). Both
-  // helpers are idempotent and swallow their own errors, so awaiting cannot
-  // fail the signup.
-  await apiKeysService.ensureUserHasApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
+  // default-key provisioning is required for signup to be usable; the default
+  // character helper keeps its own retry-on-next-session behavior.
+  await apiKeysService.provisionDefaultApiKey(userWithOrg.id, userWithOrg.organization?.id || "");
   await ensureDefaultCharacter(userWithOrg.id, userWithOrg.organization?.id || "");
 
   return {
