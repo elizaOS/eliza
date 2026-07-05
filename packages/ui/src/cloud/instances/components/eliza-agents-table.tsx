@@ -160,6 +160,7 @@ function mergeSandboxRow(
  * that a delete that never took only hides the billed agent for ~a minute.
  */
 const TOMBSTONE_GRACE_MS = 60_000;
+const ELIZA_APP_AGENT_CREATE_URL = "https://app.elizacloud.ai";
 
 /**
  * Retire delete-tombstones by TIME only — the single retirement clock for both
@@ -898,6 +899,20 @@ export function ElizaAgentsTable({
           defaultValue: "Create and manage agents from the Eliza app.",
         })}
         icon={Boxes}
+        action={
+          <Button asChild size="sm">
+            <a
+              href={ELIZA_APP_AGENT_CREATE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {t("cloud.elizaAgentsTable.openElizaApp", {
+                defaultValue: "Open Eliza app",
+              })}
+            </a>
+          </Button>
+        }
       />
     );
   }
@@ -1001,6 +1016,18 @@ export function ElizaAgentsTable({
               </SelectItem>
             </SelectContent>
           </Select>
+          <Button asChild size="sm" className="h-9">
+            <a
+              href={ELIZA_APP_AGENT_CREATE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="h-4 w-4" />
+              {t("cloud.elizaAgentsTable.openElizaApp", {
+                defaultValue: "Open Eliza app",
+              })}
+            </a>
+          </Button>
         </div>
 
         {(searchQuery || statusFilter !== "all") && (

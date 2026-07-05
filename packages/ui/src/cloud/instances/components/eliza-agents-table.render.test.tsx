@@ -1,11 +1,24 @@
+// @vitest-environment jsdom
+
 /**
  * ElizaAgentsTable per-row view model (#13916): the desktop table and mobile
  * card render one derived row, so the shared derivation owns runtime labels,
  * action availability, and Web UI reachability.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { deriveAgentRow, type ElizaAgentRow } from "./eliza-agents-table";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  deriveAgentRow,
+  type ElizaAgentRow,
+  ElizaAgentsTable,
+} from "./eliza-agents-table";
+
+vi.mock("../lib/i18n", () => ({
+  useT: () => (_key: string, options?: { defaultValue?: string }) =>
+    options?.defaultValue ?? _key,
+}));
 
 function row(overrides: Partial<ElizaAgentRow>): ElizaAgentRow {
   return {
@@ -58,6 +71,10 @@ function derive(
 }
 
 describe("ElizaAgentsTable per-row view model", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("marks a running cloud sandbox as stoppable with standalone Web UI access", () => {
     const vm = derive({ status: "running" });
 
@@ -116,5 +133,28 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(vm.busy).toBe(true);
     expect(vm.canStart).toBe(false);
     expect(vm.canStop).toBe(false);
+  });
+
+  it("keeps the empty Agents page connected to the Eliza app create flow", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable sandboxes={[]} />
+      </QueryClientProvider>,
+    );
+
+    const links = screen.getAllByRole("link", { name: "Open Eliza app" });
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    for (const link of links) {
+      expect(link.getAttribute("href")).toBe("https://app.elizacloud.ai");
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toBe("noreferrer");
+    }
   });
 });

@@ -1,0 +1,24 @@
+Issue: #14234 follow-up
+PR: pending at capture time
+
+Scope reviewed:
+- packages/ui/src/cloud/instances/components/eliza-agents-table.tsx
+- packages/ui/src/cloud/instances/components/eliza-agents-table.render.test.tsx
+
+Manual review:
+- Confirmed the merged Agents page empty state removed the create/open action and left TODO comments.
+- Restored a visible "Open Eliza app" action in the zero-agent empty state.
+- Added the same action to the non-empty toolbar so the create path remains available after agents exist.
+- Confirmed no TODO comments remain in the touched table component for this create-path handoff.
+
+Verification:
+- node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+- bunx @biomejs/biome check packages/ui/src/cloud/instances/components/eliza-agents-table.tsx packages/ui/src/cloud/instances/components/eliza-agents-table.render.test.tsx --write --no-errors-on-unmatched
+- bun run --cwd packages/ui test src/cloud/instances/components/eliza-agents-table.render.test.tsx
+
+Focused test result:
+- Test Files: 1 passed
+- Tests: 6 passed
+
+Evidence gaps:
+- Full rendered app audit/screenshot/video evidence is still required before merge because this is a UI change in a shared UI package.
