@@ -1,0 +1,14 @@
+{
+  "name": "svs-elizaos-verified-action-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reviewable ElizaOS example that routes Solana actions through SVS human approval and proof verification.",
+  "scripts": {
+    "validate": "node ./validate.mjs"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.7.2",
+    "@svsprotocol/solana": "^0.2.0"
+  }
+}
