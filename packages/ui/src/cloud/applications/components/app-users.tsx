@@ -128,7 +128,7 @@ export function AppUsers({ appId }: AppUsersProps) {
             {users.map((appUser) => (
               <div
                 key={appUser.id}
-                className="flex items-center justify-between rounded-sm bg-bg-accent p-3 transition-all hover:bg-surface"
+                className="flex items-center justify-between rounded-sm bg-bg-accent p-3 transition-all hover:bg-bg-hover"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <Avatar className="h-8 w-8">
@@ -231,7 +231,7 @@ export function AppUsers({ appId }: AppUsersProps) {
                 {visitors.map((visitor, index) => (
                   <tr
                     key={visitor.ip}
-                    className="border-b border-border/60 hover:bg-surface"
+                    className="border-b border-border/60 hover:bg-bg-hover"
                   >
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2">

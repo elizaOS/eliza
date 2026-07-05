@@ -192,7 +192,7 @@ export function AppSettings({ app }: AppSettingsProps) {
   return (
     <div className="space-y-4">
       {/* Basic Settings */}
-      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+      <div className="bg-card rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
           {t("cloud.appSettings.basicSettings", {
@@ -318,7 +318,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       </div>
 
       {/* Allowed Origins */}
-      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+      <div className="bg-card rounded-sm p-4 space-y-4">
         <div>
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Shield className="h-4 w-4 text-muted" />
@@ -351,7 +351,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             onClick={addOrigin}
             variant="outline"
             size="icon"
-            className="shrink-0 border-border hover:bg-surface"
+            className="shrink-0 border-border hover:bg-bg-hover"
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -369,7 +369,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   variant="ghost"
                   type="button"
                   onClick={() => removeOrigin(origin)}
-                  className="ml-1 p-0.5 hover:bg-surface rounded-sm transition-colors"
+                  className="ml-1 p-0.5 hover:bg-bg-hover rounded-sm transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -427,7 +427,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
                   disabled={isRegenerating}
                 >
                   {isRegenerating ? (
@@ -442,7 +442,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   )}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-neutral-900 border-border">
+              <AlertDialogContent className="bg-card border-border">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-txt">
                     {t("cloud.appSettings.regenerateDialogTitle", {
@@ -457,12 +457,12 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel className="border-border text-txt hover:bg-surface">
+                  <AlertDialogCancel className="border-border text-txt hover:bg-bg-hover">
                     {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-red-600 hover:bg-red-700 text-txt"
+                    className="bg-red-600 hover:bg-red-700 text-white"
                   >
                     {t("cloud.appSettings.regenerateApiKey", {
                       defaultValue: "Regenerate API Key",
@@ -490,7 +490,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogTrigger asChild>
                 <Button
                   size="sm"
-                  className="bg-red-600 hover:bg-red-700 text-txt shrink-0"
+                  className="bg-red-600 hover:bg-red-700 text-white shrink-0"
                   disabled={isDeleting}
                 >
                   {isDeleting ? (
@@ -505,7 +505,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   )}
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent className="bg-neutral-900 border-border">
+              <AlertDialogContent className="bg-card border-border">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-txt">
                     {t("cloud.appSettings.deleteDialogTitle", {
@@ -525,12 +525,12 @@ export function AppSettings({ app }: AppSettingsProps) {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel className="border-border text-txt hover:bg-surface">
+                  <AlertDialogCancel className="border-border text-txt hover:bg-bg-hover">
                     {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-red-600 hover:bg-red-700 text-txt"
+                    className="bg-red-600 hover:bg-red-700 text-white"
                   >
                     {t("cloud.appSettings.deleteApp", {
                       defaultValue: "Delete App",

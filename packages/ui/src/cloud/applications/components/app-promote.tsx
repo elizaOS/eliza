@@ -125,7 +125,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             onClick={handleGenerateAssets}
             disabled={isGeneratingAssets}
-            className="border-border hover:bg-surface rounded-sm"
+            className="border-border hover:bg-bg-hover rounded-sm"
           >
             {isGeneratingAssets ? (
               <>
@@ -161,7 +161,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
       {/* Suggestions */}
       {suggestions && (
-        <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+        <div className="bg-card rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.tipsTitle", {
               defaultValue: "Promotion Tips",
@@ -197,7 +197,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       )}
 
       {/* Connected Ad Accounts */}
-      <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+      <div className="bg-card rounded-sm p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt">
             {t("cloud.appPromote.connectedAccounts", {
@@ -208,7 +208,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             variant="outline"
             size="sm"
             asChild
-            className="border-border hover:bg-surface rounded-sm"
+            className="border-border hover:bg-bg-hover rounded-sm"
           >
             <Link
               to="/dashboard/settings?tab=connections"

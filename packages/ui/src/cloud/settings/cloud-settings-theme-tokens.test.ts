@@ -26,11 +26,13 @@ const ROOT = join(fileURLToPath(new URL("..", import.meta.url)));
 
 const SCANNED_PATHS = [
   "account-security",
+  "applications/components",
   "organization",
   "billing/components",
   "connectors/discord-gateway-connection.tsx",
   "connectors/telegram-connection.tsx",
   "api-keys/ApiKeysView.tsx",
+  "mcps/McpEditorDialog.tsx",
 ];
 
 const STATUS_TOKEN_FILES = [
@@ -48,6 +50,7 @@ const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
   /\bborder-white\/[\w.[\]%]+/,
   /\bdivide-white\/[\w.[\]%]+/,
   /\bbg-black(?:\/[\w.[\]%]+)?/, // opaque / translucent black surfaces
+  /\bbg-neutral-900\b/,
   /\bbg-\[rgba\(10,10,10/, // bespoke near-black panels
   /\bbg-\[rgba\(29,29,29/,
   /\bbg-\[#(?:1a1a1a|0b0d11)\]/,
@@ -60,7 +63,7 @@ const FORBIDDEN_TOKEN_PATTERNS: RegExp[] = [
 // A `text-white`-family token is permitted when the same className also paints a
 // solid saturated background (white-on-color reads in both themes).
 const SOLID_COLOR_BG =
-  /\bbg-(?:accent|primary|destructive)\b|\bbg-\[#(?:eb4335|ff5800|e54f00)\]|\bbg-\[(?:rgba\()?var\(--accent/i;
+  /\bbg-(?:accent|primary|destructive|red-(?:5|6|7|8|9)00)\b|\bbg-\[#(?:eb4335|ff5800|e54f00)\]|\bbg-\[(?:rgba\()?var\(--accent/i;
 const isWhiteTextToken = (pattern: RegExp) =>
   pattern.source.includes("text-white");
 

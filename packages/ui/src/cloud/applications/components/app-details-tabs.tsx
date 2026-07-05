@@ -128,7 +128,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
                 "flex min-w-0 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm",
                 activeTab === tab.value
                   ? "bg-card text-txt"
-                  : "text-muted hover:bg-surface hover:text-txt",
+                  : "text-muted hover:bg-bg-hover hover:text-txt",
               )}
             >
               <Icon className="h-4 w-4 hidden sm:block" />
