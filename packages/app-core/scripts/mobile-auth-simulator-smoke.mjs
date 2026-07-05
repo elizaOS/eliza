@@ -462,12 +462,13 @@ const EXPECTED_AUTH_CALLBACK_CLASSIFICATION = "synthetic_callback_rejected";
 // auth logic) would pass — the vacuous check the issue calls out.
 //
 // The real security invariant this handler enforces is that an OS-delivered
-// deep link NEVER establishes an authenticated session (no bearer token is
-// accepted from a deep link; a crafted callback must not authenticate the app).
-// The in-app handler classifies the synthetic callback as rejected and reads its
-// real `elizaos:active-server` session storage back. Both fields are required:
-// a deliver-only echo never classifies the callback, and a regression that
-// accepts the deep-link token would report `sessionEstablished=true`.
+// deep link NEVER establishes or swaps an authenticated session (no bearer token
+// is accepted from a deep link; a crafted callback must not authenticate the
+// app). The in-app handler classifies the synthetic callback as rejected and
+// compares its real `elizaos:active-server` session storage before/after
+// handling. Both fields are required: a deliver-only echo never classifies the
+// callback, and a regression that accepts the deep-link token reports
+// `sessionChanged=true`.
 //
 // Returns the parsed payload on success; throws a descriptive Error otherwise.
 export function assertAuthCallbackResult(parsed, expected, platformLabel) {
@@ -495,26 +496,33 @@ export function assertAuthCallbackResult(parsed, expected, platformLabel) {
       `${label}: callback was not classified as ${EXPECTED_AUTH_CALLBACK_CLASSIFICATION}; got ${JSON.stringify(parsed.classification)}.`,
     );
   }
-  // THE auth-outcome assertion (#13693): the handler must have read its real
-  // session state back. Absent/non-boolean `sessionEstablished` => the handler
-  // never ran the end-state readback => this is the silent-pass regression the
-  // smoke now catches.
-  if (typeof parsed.sessionEstablished !== "boolean") {
+  if (parsed.accepted !== false) {
     throw new Error(
-      `${label}: no auth outcome surfaced. The callback handler must read its ` +
-        `session state back after handling the callback (deliver-only is not ` +
-        `enough); got sessionEstablished=${JSON.stringify(parsed.sessionEstablished)}.`,
+      `${label}: OS-delivered callback was not explicitly rejected (accepted=${JSON.stringify(parsed.accepted)}).`,
     );
   }
-  // The OS-delivered callback must NOT have established a session — the app
-  // never accepts a bearer token from a deep link. A `true` here means a
-  // regression started authenticating off the deep link (the MITM footgun the
-  // in-app security comments warn about); fail loudly.
-  if (parsed.sessionEstablished === true) {
+  // THE auth-outcome assertion (#13693): the handler must have read its real
+  // session state before/after handling the callback. Absent/non-boolean
+  // `sessionChanged` => the handler never ran the callback-specific readback =>
+  // this is the silent-pass regression the smoke now catches.
+  if (typeof parsed.sessionChanged !== "boolean") {
     throw new Error(
-      `${label}: the OS-delivered auth callback established a session ` +
-        `(sessionEstablished=true). A deep link must never authenticate the ` +
-        `app; only the trusted in-app session exchange may.`,
+      `${label}: no auth outcome surfaced. The callback handler must read its ` +
+        `session state before/after handling the callback (deliver-only is not ` +
+        `enough); got sessionChanged=${JSON.stringify(parsed.sessionChanged)}.`,
+    );
+  }
+  // The OS-delivered callback must NOT change the active session — the app never
+  // accepts a bearer token from a deep link. A `true` here means a regression
+  // started authenticating or swapping the session from the deep link (the MITM
+  // footgun the in-app security comments warn about); fail loudly. A simulator
+  // that was already authenticated can still pass if the callback leaves that
+  // session untouched.
+  if (parsed.sessionChanged === true) {
+    throw new Error(
+      `${label}: the OS-delivered auth callback changed the active session ` +
+        `(sessionChanged=true). A deep link must never authenticate or swap ` +
+        `the app session; only the trusted in-app session exchange may.`,
     );
   }
   return parsed;

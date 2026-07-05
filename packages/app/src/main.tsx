@@ -714,6 +714,24 @@ async function writeIosAuthCallbackSmokeResult(
   );
 }
 
+interface AuthCallbackDeepLinkOutcome {
+  accepted: boolean;
+  classification: "synthetic_callback_rejected";
+  reason: string;
+}
+
+function rejectOsDeliveredAuthCallback(): AuthCallbackDeepLinkOutcome {
+  return {
+    accepted: false,
+    classification: "synthetic_callback_rejected",
+    reason: "os_delivered_auth_callback_rejected",
+  };
+}
+
+function readActiveServerSessionSnapshot(): string {
+  return window.localStorage.getItem("elizaos:active-server") ?? "";
+}
+
 async function writeIosPreferenceSmokeResult(
   key: string,
   result: Record<string, unknown>,
@@ -2038,6 +2056,8 @@ async function recordIosAuthCallbackSmoke(
   parsed: URL,
   path: string,
   url: string,
+  outcome: AuthCallbackDeepLinkOutcome,
+  activeServerBefore: string,
 ): Promise<void> {
   // Record the auth-callback end state on ANY native platform. Pre-#13693 this
   // was iOS-only, so the Android smoke leg had no in-app readback at all (pure
@@ -2072,27 +2092,23 @@ async function recordIosAuthCallbackSmoke(
 
   // #13693: assert the AUTH OUTCOME, not just delivery. The security invariant
   // for this handler (see the `connect`/first-run-remote cases above) is that
-  // an OS-delivered deep link NEVER establishes an authenticated session — no
-  // bearer token is accepted, no active server is selected from the callback.
-  // So the truthful end state is that after handling the callback there is
-  // still no active-server session that the callback itself created. Read the
-  // real `elizaos:active-server` storage key back so the smoke can assert this
-  // (`sessionEstablished: false`) rather than the vacuous "a result arrived".
-  // A regression that started accepting the deep-link token (the exact MITM
-  // footgun the security comments warn about) would flip this to true and the
-  // smoke would go red.
-  let sessionEstablished = false;
+  // an OS-delivered deep link NEVER establishes or swaps an authenticated
+  // session. Compare the real active-server key before/after handling the
+  // callback so a pre-authenticated simulator passes when the callback leaves
+  // the session untouched, while a regression that authenticates from the deep
+  // link flips `sessionChanged=true`.
+  let activeServerAfter = "";
   try {
-    const activeServer = window.localStorage.getItem("elizaos:active-server");
-    sessionEstablished =
-      typeof activeServer === "string" && activeServer.length > 0;
+    activeServerAfter = readActiveServerSessionSnapshot();
   } catch (error) {
     // error-policy:J7 diagnostics readback — the smoke must fail closed when it
     // cannot observe the auth outcome it is supposed to prove.
     await writeIosAuthCallbackSmokeResult({
       ok: false,
       phase: "failed",
-      classification: "synthetic_callback_rejected",
+      classification: outcome.classification,
+      accepted: outcome.accepted,
+      reason: outcome.reason,
       error:
         error instanceof Error
           ? error.message
@@ -2110,11 +2126,13 @@ async function recordIosAuthCallbackSmoke(
   await writeIosAuthCallbackSmokeResult({
     ok: true,
     phase: "handled",
-    classification: "synthetic_callback_rejected",
-    // #13693: the auth OUTCOME. The OS-delivered callback must not have
-    // established a session; the smoke asserts this instead of only proving the
-    // URL was echoed back.
-    sessionEstablished,
+    classification: outcome.classification,
+    accepted: outcome.accepted,
+    reason: outcome.reason,
+    sessionEstablished: activeServerAfter.length > 0,
+    sessionChanged: activeServerAfter !== activeServerBefore,
+    activeServerBeforePresent: activeServerBefore.length > 0,
+    activeServerAfterPresent: activeServerAfter.length > 0,
     path,
     url,
     state: parsed.searchParams.get("state") ?? "",
@@ -2122,6 +2140,44 @@ async function recordIosAuthCallbackSmoke(
     query: Object.fromEntries(parsed.searchParams.entries()),
     request,
   });
+}
+
+async function handleAuthCallbackDeepLink(
+  parsed: URL,
+  path: string,
+  url: string,
+): Promise<void> {
+  const outcome = rejectOsDeliveredAuthCallback();
+  let activeServerBefore = "";
+  try {
+    activeServerBefore = readActiveServerSessionSnapshot();
+  } catch (error) {
+    await writeIosAuthCallbackSmokeResult({
+      ok: false,
+      phase: "failed",
+      classification: outcome.classification,
+      accepted: outcome.accepted,
+      reason: outcome.reason,
+      error:
+        error instanceof Error
+          ? error.message
+          : `active-server pre-readback failed: ${String(error)}`,
+      path,
+      url,
+      state: parsed.searchParams.get("state") ?? "",
+      code: parsed.searchParams.get("code") ?? "",
+      query: Object.fromEntries(parsed.searchParams.entries()),
+    });
+    return;
+  }
+
+  await recordIosAuthCallbackSmoke(
+    parsed,
+    path,
+    url,
+    outcome,
+    activeServerBefore,
+  );
 }
 
 function handleDeepLink(url: string): void {
@@ -2156,7 +2212,7 @@ function handleDeepLink(url: string): void {
     ? parsed.pathname.replace(/^\/+|\/+$/g, "")
     : getDeepLinkPath(parsed);
   if (path === "auth/callback") {
-    void recordIosAuthCallbackSmoke(parsed, path, url);
+    void handleAuthCallbackDeepLink(parsed, path, url);
     return;
   }
 
