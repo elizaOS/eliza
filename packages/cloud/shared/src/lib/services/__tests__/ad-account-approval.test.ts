@@ -21,6 +21,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { adAccountsRepository, adCampaignsRepository } from "../../../db/repositories";
 import type { AdAccount, AdAccountStatus } from "../../../db/schemas/ad-accounts";
 import { advertisingService } from "../advertising";
+import { contentSafetyService } from "../content-safety";
 import { creditsService } from "../credits";
 
 const ORG_ID = "org-1";
@@ -243,6 +244,72 @@ describe("spend caps (#11364)", () => {
     ).rejects.toThrow(/Ad account spend cap would be exceeded/);
 
     expect(debit).not.toHaveBeenCalled();
+  });
+
+  test("createCampaign rejects a corrupt account cap before safety review, credit debit, or provider create", async () => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue({
+        ...makeAccount("active"),
+        spend_cap_credits: "NaN",
+      }),
+    );
+    track(spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockResolvedValue(0));
+    const safety = track(spyOn(contentSafetyService, "assertSafeForPublicUse"));
+    const debit = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({ success: true } as never),
+    );
+    const provider = track(spyOn(advertisingService, "getProvider"));
+
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: ACCOUNT_ID,
+        name: "Campaign",
+        objective: "traffic",
+        budgetType: "lifetime",
+        budgetAmount: 100,
+      }),
+    ).rejects.toThrow(/spend_cap_credits/);
+
+    expect(safety).not.toHaveBeenCalled();
+    expect(debit).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  test("createCampaign rejects a corrupt allocated-total precheck before safety review, credit debit, or provider create", async () => {
+    track(
+      spyOn(adAccountsRepository, "findById").mockResolvedValue({
+        ...makeAccount("active"),
+        spend_cap_credits: "120.00",
+      }),
+    );
+    track(
+      spyOn(adCampaignsRepository, "sumCreditsAllocatedByAdAccount").mockRejectedValue(
+        new Error(
+          "Unable to read ad-campaigns credits_allocated total: value is not a valid NUMERIC",
+        ) as never,
+      ),
+    );
+    const safety = track(spyOn(contentSafetyService, "assertSafeForPublicUse"));
+    const debit = track(
+      spyOn(creditsService, "deductCredits").mockResolvedValue({ success: true } as never),
+    );
+    const provider = track(spyOn(advertisingService, "getProvider"));
+
+    await expect(
+      advertisingService.createCampaign({
+        organizationId: ORG_ID,
+        adAccountId: ACCOUNT_ID,
+        name: "Campaign",
+        objective: "traffic",
+        budgetType: "lifetime",
+        budgetAmount: 100,
+      }),
+    ).rejects.toThrow(/credits_allocated total/);
+
+    expect(safety).not.toHaveBeenCalled();
+    expect(debit).not.toHaveBeenCalled();
+    expect(provider).not.toHaveBeenCalled();
   });
 
   test("updateCampaign persists a cap-only update on an unsynced campaign", async () => {

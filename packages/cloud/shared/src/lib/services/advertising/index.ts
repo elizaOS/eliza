@@ -12,6 +12,10 @@ import {
   adReportSharesRepository,
   adTransactionsRepository,
 } from "../../../db/repositories";
+import {
+  parseAdAccountSpendCapCredits,
+  parseAdCampaignSpendCapCredits,
+} from "../../../db/repositories/ad-campaigns-spend-cap-numeric";
 import { NotFoundError, ValidationError } from "../../api/cloud-worker-errors";
 import { logger } from "../../utils/logger";
 import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
@@ -243,7 +247,7 @@ class AdvertisingService {
       input.account.id,
       { excludeCampaignId: input.excludeCampaignId },
     );
-    const cap = Number(input.account.spend_cap_credits);
+    const cap = parseAdAccountSpendCapCredits(input.account.spend_cap_credits);
     if (existingAllocated + input.newCampaignCredits > cap + 1e-9) {
       throw ValidationError(
         `Ad account spend cap would be exceeded: ${(
@@ -258,7 +262,7 @@ class AdvertisingService {
     newCampaignCredits: number;
   }): void {
     if (!input.spendCapCredits) return;
-    const cap = Number(input.spendCapCredits);
+    const cap = parseAdCampaignSpendCapCredits(input.spendCapCredits);
     if (input.newCampaignCredits > cap + 1e-9) {
       throw ValidationError(
         `Campaign spend cap would be exceeded: ${input.newCampaignCredits.toFixed(

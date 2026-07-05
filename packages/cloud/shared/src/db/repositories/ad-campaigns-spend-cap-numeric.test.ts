@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   parseAdAccountSpendCapCredits,
+  parseAdCampaignSpendCapCredits,
   parseAdCampaignsAllocatedTotal,
 } from "./ad-campaigns-spend-cap-numeric";
 
@@ -65,6 +66,13 @@ describe("parseAdCampaignsAllocatedTotal", () => {
   test("throws on a present-but-corrupt SUM instead of poisoning the total", () => {
     expect(() => parseAdCampaignsAllocatedTotal("NaN")).toThrow(/credits_allocated total/);
     expect(() => parseAdCampaignsAllocatedTotal(Number.NaN)).toThrow(/not a finite number/);
+  });
+});
+
+describe("parseAdCampaignSpendCapCredits", () => {
+  test("parses a campaign-level cap with a campaign-specific error boundary", () => {
+    expect(parseAdCampaignSpendCapCredits("75.00")).toBe(75);
+    expect(() => parseAdCampaignSpendCapCredits("NaN")).toThrow(/campaign spend_cap_credits/);
   });
 });
 

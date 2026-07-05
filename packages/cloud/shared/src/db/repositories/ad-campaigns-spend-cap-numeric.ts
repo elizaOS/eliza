@@ -57,6 +57,17 @@ export function parseAdAccountSpendCapCredits(value: string | number | null | un
 }
 
 /**
+ * Parse a campaign-level `spend_cap_credits` NUMERIC read. Kept separate from
+ * the account parser so corruption reports name the boundary that failed.
+ */
+export function parseAdCampaignSpendCapCredits(value: string | number | null | undefined): number {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    throw new Error("Unable to read ad-campaign spend_cap_credits: value is empty or missing");
+  }
+  return parseAdCampaignsNumeric(value, "campaign spend_cap_credits");
+}
+
+/**
  * Parse the `SUM(credits_allocated)` already-allocated total for an ad account.
  * A genuinely-absent total (no campaigns yet) is the legitimate value 0; a
  * present-but-corrupt total fails closed.

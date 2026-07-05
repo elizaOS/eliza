@@ -121,6 +121,7 @@ export class AdCampaignsRepository {
           allocated = parseAdCampaignsAllocatedTotal(result?.total) + allocationCredits;
           cap = parseAdAccountSpendCapCredits(account.spendCapCredits);
         } catch (error) {
+          // error-policy:J1 boundary translation - callers need a returned status so provider/credit compensation still runs.
           // Fail closed: a corrupt spend cap or allocated total must DENY the
           // allocation (never bypass the gate), but return a status the caller
           // can compensate for rather than throwing past its refund/revert path.
@@ -193,7 +194,7 @@ export class AdCampaignsRepository {
       .select({ total: sum(adCampaigns.credits_allocated) })
       .from(adCampaigns)
       .where(and(...conditions));
-    return Number(result?.total ?? 0);
+    return parseAdCampaignsAllocatedTotal(result?.total);
   }
 
   async delete(id: string): Promise<void> {
@@ -258,6 +259,7 @@ export class AdCampaignsRepository {
           allocated = parseAdCampaignsAllocatedTotal(result?.total) + newAllocatedCredits;
           cap = parseAdAccountSpendCapCredits(account.spendCapCredits);
         } catch (error) {
+          // error-policy:J1 boundary translation - callers need a returned status so provider/credit compensation still runs.
           // Fail closed: a corrupt spend cap or allocated total must DENY the
           // allocation (never bypass the gate), but return a status the caller
           // can compensate for rather than throwing past its refund/revert path.
