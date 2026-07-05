@@ -37,8 +37,8 @@ const fallbackTranslate = (
 ): string => String(vars?.defaultValue ?? key);
 
 export interface ProjectSwitcherProps {
-  /** Fired with the newly-active project id (or null when cleared) after a
-   *  successful switch, so the host can re-filter its task list. */
+  /** Fired with the active project id after initial registry load and after a
+   *  successful switch, so the host can re-filter its task list before it fetches. */
   onActiveProjectChange?: (projectId: string | null) => void;
 }
 
@@ -65,28 +65,33 @@ export function ProjectSwitcher({
   const t = appT ?? fallbackTranslate;
   const [state, setState] = useState<ProjectSwitcherState>(INITIAL_STATE);
 
-  const loadProjects = useCallback(async (signal: { cancelled: boolean }) => {
-    try {
-      const { projects, activeProjectId } = await client.listProjects();
-      if (signal.cancelled) return;
-      setState((prev) => ({
-        ...prev,
-        projects,
-        activeProjectId,
-        loading: false,
-        error: null,
-      }));
-    } catch (error) {
-      if (signal.cancelled) return;
-      // A registry read failure is non-fatal: the switcher simply hides. Keep
-      // the message for debugging but don't surface a red banner in a header.
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : "Unknown",
-      }));
-    }
-  }, []);
+  const loadProjects = useCallback(
+    async (signal: { cancelled: boolean }) => {
+      try {
+        const { projects, activeProjectId } = await client.listProjects();
+        if (signal.cancelled) return;
+        setState((prev) => ({
+          ...prev,
+          projects,
+          activeProjectId,
+          loading: false,
+          error: null,
+        }));
+        onActiveProjectChange?.(activeProjectId);
+      } catch (error) {
+        if (signal.cancelled) return;
+        setState((prev) => ({
+          ...prev,
+          projects: [],
+          activeProjectId: null,
+          loading: false,
+          error: error instanceof Error ? error.message : "Unknown",
+        }));
+        onActiveProjectChange?.(null);
+      }
+    },
+    [onActiveProjectChange],
+  );
 
   useEffect(() => {
     const signal = { cancelled: false };
@@ -135,17 +140,44 @@ export function ProjectSwitcher({
       description: "Open the project switcher to change the active project",
     });
 
+  if (state.loading) {
+    return null;
+  }
+
+  if (state.error && state.projects.length === 0) {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled
+        data-testid="project-switcher-error"
+        title={state.error}
+        className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-danger/40 bg-danger/10 px-2.5 text-xs font-medium text-danger"
+      >
+        <FolderGit2 className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">
+          {t("projectswitcher.unavailable", {
+            defaultValue: "Projects unavailable",
+          })}
+        </span>
+      </Button>
+    );
+  }
+
   // Hide entirely when there are no registered projects — a switcher with
   // nothing to switch to is dead chrome (mobile/web, or a fresh install).
-  if (state.loading || state.projects.length === 0) {
+  if (state.projects.length === 0) {
     return null;
   }
 
   const active =
     state.projects.find((p) => p.id === state.activeProjectId) ?? null;
   const activeName =
-    active?.name ??
-    t("projectswitcher.none", { defaultValue: "All projects" });
+    active?.name ?? t("projectswitcher.none", { defaultValue: "All projects" });
+  const switchFailedLabel = t("projectswitcher.switchFailed", {
+    defaultValue: "Project switch failed",
+  });
 
   return (
     <DropdownMenu>
@@ -199,6 +231,15 @@ export function ProjectSwitcher({
             </DropdownMenuItem>
           );
         })}
+        {state.error ? (
+          <div
+            className="px-2 py-1.5 text-2xs text-danger"
+            data-testid="project-switcher-error"
+            role="alert"
+          >
+            {switchFailedLabel}: {state.error}
+          </div>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

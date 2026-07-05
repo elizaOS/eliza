@@ -3,9 +3,10 @@
 // ProjectSwitcher (#13776 item 5) — drives the switcher through the REAL
 // client boundary (mocked) and the dropdown primitives (rendered inline so
 // items are always in the DOM for assertions). Proves: it renders one row per
-// registered project with the active one marked, selecting a row calls
-// client.activateProject and fires onActiveProjectChange with the new id, and
-// an empty registry self-hides (renders nothing).
+// registered project with the active one marked, initial load reports the
+// active project to the host, selecting a row calls client.activateProject and
+// fires onActiveProjectChange with the new id, empty registry self-hides, and
+// registry/switch failures render visible error states.
 
 import {
   cleanup,
@@ -41,7 +42,9 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 // Render the dropdown inline: trigger + content are always mounted so items are
 // queryable without simulating the Radix portal open sequence.
 vi.mock("@elizaos/ui/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DropdownMenu: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
   DropdownMenuTrigger: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -135,6 +138,16 @@ describe("ProjectSwitcher", () => {
     ).toBeNull();
   });
 
+  it("fires the initial active project after registry load", async () => {
+    calls.listProjects.mockResolvedValue({
+      projects: [PROJECT_A, PROJECT_B],
+      activeProjectId: "proj-a",
+    });
+    const onChange = vi.fn();
+    render(<ProjectSwitcher onActiveProjectChange={onChange} />);
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith("proj-a"));
+  });
+
   it("switching a project calls activateProject + fires the change callback", async () => {
     calls.listProjects.mockResolvedValue({
       projects: [PROJECT_A, PROJECT_B],
@@ -170,5 +183,41 @@ describe("ProjectSwitcher", () => {
     expect(screen.queryByTestId("project-switcher-menu")).toBeNull();
     expect(screen.queryByTestId("project-switcher-trigger")).toBeNull();
     expect(container.textContent).toBe("");
+  });
+
+  it("renders a visible unavailable state when the registry load fails", async () => {
+    calls.listProjects.mockRejectedValue(new Error("registry down"));
+    const onChange = vi.fn();
+    render(<ProjectSwitcher onActiveProjectChange={onChange} />);
+
+    await screen.findByTestId("project-switcher-error");
+
+    expect(screen.getByText("Projects unavailable")).toBeTruthy();
+    expect(
+      screen.getByTestId("project-switcher-error").getAttribute("title"),
+    ).toBe("registry down");
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("renders a visible error when activation fails", async () => {
+    calls.listProjects.mockResolvedValue({
+      projects: [PROJECT_A, PROJECT_B],
+      activeProjectId: "proj-a",
+    });
+    calls.activateProject.mockRejectedValue(new Error("switch failed"));
+    const onChange = vi.fn();
+    render(<ProjectSwitcher onActiveProjectChange={onChange} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("project-switcher-item-proj-b")).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByTestId("project-switcher-item-proj-b"));
+
+    await screen.findByTestId("project-switcher-error");
+    expect(
+      screen.getByText("Project switch failed: switch failed"),
+    ).toBeTruthy();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith("proj-a");
   });
 });
