@@ -3427,7 +3427,7 @@ export class OrchestratorTaskService extends Service {
       ) ?? Promise.resolve();
     const canSetRepo = (latest: OrchestratorTaskRecord) =>
       !latest.boundWorkdir ||
-      latest.boundWorkdir === workdir ||
+      (latest.boundWorkdir === workdir && current.boundWorkdir === workdir) ||
       opts.allowRebind === true;
     const next = previous.then(async () => {
       const latest = (await this.store.getTask(taskId))?.task ?? current;

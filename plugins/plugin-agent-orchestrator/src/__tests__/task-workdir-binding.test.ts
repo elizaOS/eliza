@@ -176,6 +176,50 @@ describe("durable task→workdir binding (#13776)", () => {
     }
   });
 
+  it("does not let a stale same-workdir bind overwrite the first repo binding", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedTask(store);
+      const stale = (await store.getTask(taskId))?.task;
+      expect(stale).toBeTruthy();
+      if (!stale) throw new Error("seeded task was not persisted");
+      const bindTaskWorkdir = (
+        service as unknown as {
+          bindTaskWorkdir: (
+            taskId: string,
+            current: typeof stale,
+            workdir: string,
+            repo: string | undefined,
+          ) => Promise<void>;
+        }
+      ).bindTaskWorkdir.bind(service);
+
+      await bindTaskWorkdir(
+        taskId,
+        stale,
+        firstDir,
+        "https://example.com/repo-a.git",
+      );
+      await bindTaskWorkdir(
+        taskId,
+        stale,
+        firstDir,
+        "https://example.com/repo-b.git",
+      );
+
+      const record = await store.getTask(taskId);
+      expect(record?.task.boundWorkdir).toBe(firstDir);
+      expect(record?.task.boundRepo).toBe("https://example.com/repo-a.git");
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
   it("lets an explicit override win and re-pins the binding (surfaced on the task DTO)", async () => {
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const acp = makeWorkdirCapturingAcp();
