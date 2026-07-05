@@ -5,7 +5,11 @@
  * activate success (200 + record), unknown id (404), invalid id (400), and
  * pass-through (returns false) for unrelated paths.
  */
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
+import os from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   handleProjectRoutes,
@@ -161,5 +165,56 @@ describe("handleProjectRoutes", () => {
       "Failed to read project registry",
       500,
     );
+  });
+
+  it("uses a stable legacy workspace-folder project id across list and activation", async () => {
+    const stateDir = mkdtempSync(join(os.tmpdir(), "project-routes-legacy-"));
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      writeFileSync(
+        join(stateDir, "workspace-folder.json"),
+        `${JSON.stringify(
+          {
+            path: "/tmp/legacy-folder",
+            bookmark: null,
+            updatedAt: "2026-07-05T00:00:00.000Z",
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+
+      const first = makeHelpers();
+      await handleProjectRoutes(ctx("GET", "/api/projects", first));
+      const firstBody = first.json.mock.calls[0]?.[1] as ProjectListDTO;
+      const projectId = firstBody.projects[0]?.id;
+      expect(projectId).toMatch(/^legacy-[a-f0-9]{16}$/);
+      expect(firstBody.activeProjectId).toBe(projectId);
+
+      const second = makeHelpers();
+      await handleProjectRoutes(ctx("GET", "/api/projects", second));
+      const secondBody = second.json.mock.calls[0]?.[1] as ProjectListDTO;
+      expect(secondBody.projects[0]?.id).toBe(projectId);
+      expect(secondBody.activeProjectId).toBe(projectId);
+
+      const activate = makeHelpers();
+      await handleProjectRoutes(
+        ctx("POST", `/api/projects/${projectId}/activate`, activate),
+      );
+      expect(activate.error).not.toHaveBeenCalled();
+      expect(activate.json.mock.calls[0]?.[1]).toMatchObject({
+        id: projectId,
+        localPath: "/tmp/legacy-folder",
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });

@@ -109,10 +109,18 @@ describe("project-registry", () => {
 		expect(reg?.projects[0]?.localPath).toBe("/tmp/legacy-folder");
 		expect(reg?.projects[0]?.bookmark).toBe("bm");
 		expect(reg?.activeProjectId).toBe(reg?.projects[0]?.id);
+		const projectId = reg?.projects[0]?.id;
+		expect(readProjectRegistry(env)?.projects[0]?.id).toBe(projectId);
+		expect(readProjectRegistry(env)?.activeProjectId).toBe(projectId);
 		expect(getActiveProject(env)?.localPath).toBe("/tmp/legacy-folder");
+		expect(getActiveProject(env)?.id).toBe(projectId);
 
 		// No projects.json was written by the read.
 		expect(() => readFileSync(projectRegistryPath(env), "utf8")).toThrow();
+
+		const activated = setActiveProject(projectId ?? "", env);
+		expect(activated?.id).toBe(projectId);
+		expect(readProjectRegistry(env)?.activeProjectId).toBe(projectId);
 	});
 
 	it("synthesized legacy project keeps a stable id across reads and across the first real upsert", () => {
