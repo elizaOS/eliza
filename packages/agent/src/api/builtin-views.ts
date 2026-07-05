@@ -85,6 +85,12 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["identity", "personality", "character"],
     anticipatoryIntent:
       "Offer to refine the agent's identity, personality, or style from the current character state, and point out the highest-leverage next edit.",
+    // The scoped actions below expand into mutating `agent-fill`/`agent-click`
+    // interactions, which the route/dispatch gate denies unless the view opts
+    // into agent control via the `agent-surface` grant (read-only introspection
+    // stays open without it). This is the only built-in view driving the agent
+    // surface, so it is the only one that declares the grant.
+    surface: { capabilities: ["agent-surface"] },
     // Named actions the agent can invoke ONLY while the Character view is the
     // foreground view (#14155, deferred step 8 of #13591/#14123). Each targets
     // a `useAgentElement` id in the Character editor (`CharacterEditor` /
@@ -146,9 +152,7 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
           "add conversation example",
           "create a new example conversation",
         ],
-        steps: [
-          { kind: "agent-click", target: "example-add-conversation" },
-        ],
+        steps: [{ kind: "agent-click", target: "example-add-conversation" }],
       },
     ],
     visibleInManager: true,

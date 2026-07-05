@@ -783,7 +783,6 @@ export interface ViewCapability {
 	>;
 }
 
-
 /**
  * One agent-surface interaction step a {@link ViewScopedAction} expands into.
  * The `kind` maps to the exact interact capability the view already dispatches

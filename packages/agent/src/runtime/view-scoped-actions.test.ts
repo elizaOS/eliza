@@ -11,11 +11,7 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type {
-  Action,
-  IAgentRuntime,
-  ViewScopedAction,
-} from "@elizaos/core";
+import type { Action, IAgentRuntime, ViewScopedAction } from "@elizaos/core";
 import { type ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
@@ -446,6 +442,9 @@ function characterView() {
       path: "/character",
       relatedActions: [] as string[],
       scopedActions: source.scopedActions,
+      // Preserve the real view's agent-surface grant so the mutating
+      // agent-fill/agent-click steps clear the route/dispatch surface gate.
+      surface: source.surface,
       serverInteract: async (
         capability: string,
         params?: Record<string, unknown>,
@@ -495,14 +494,15 @@ describe("character view scoped actions (#14155)", () => {
 
     // FILL_BIO / ADD_STYLE_RULE take their text from a param; ADD_MESSAGE_EXAMPLE
     // is a pure click with no params.
-    expect(findAction(scopedActions, "VIEW_CHARACTER_FILL_BIO").parameters).toEqual([
-      "bio",
-    ]);
+    expect(
+      findAction(scopedActions, "VIEW_CHARACTER_FILL_BIO").parameters,
+    ).toEqual(["bio"]);
     expect(
       findAction(scopedActions, "VIEW_CHARACTER_ADD_STYLE_RULE").parameters,
     ).toEqual(["rule"]);
     expect(
-      findAction(scopedActions, "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE").parameters,
+      findAction(scopedActions, "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE")
+        .parameters,
     ).toBeUndefined();
   });
 
@@ -642,7 +642,13 @@ describe("character view scoped actions (#14155)", () => {
       path: "/character",
       relatedActions: [] as string[],
       scopedActions: source?.scopedActions,
-      serverInteract: async (_cap: string, params?: Record<string, unknown>) => ({
+      // Grant agent-surface (as the real view does) so the step clears the
+      // surface gate and reaches the mounted-element check under test.
+      surface: source?.surface,
+      serverInteract: async (
+        _cap: string,
+        params?: Record<string, unknown>,
+      ) => ({
         ok: false,
         id: typeof params?.id === "string" ? params.id : "",
         reason: "element not found",
