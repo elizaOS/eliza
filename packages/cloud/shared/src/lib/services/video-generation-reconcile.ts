@@ -212,8 +212,13 @@ export async function reconcilePendingVideoGenerations(params: {
         apiKeys: params.apiKeys,
       });
     } catch (error) {
-      // Upstream state unknown — never refund blind. The hold stays for the
-      // next tick; the stranded-reservation sweep is the eventual backstop.
+      // error-policy:J1 provider status-probe transport boundary — a probe
+      // failure means the upstream state is UNKNOWN, which must stay distinct
+      // from a verified failed/succeeded terminal state. Translate it into a
+      // per-item "skipped" outcome so one unreachable probe never aborts the
+      // batch and, critically, never refunds blind. The failure surfaces via
+      // the warn below; the hold is retained for the next tick, with the
+      // stranded-reservation sweep (#11493) as the eventual backstop.
       stats.skipped++;
       logger.warn("[VideoReconcile] Upstream status probe failed; keeping hold", {
         generationId: generation.id,
