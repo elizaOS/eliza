@@ -1934,6 +1934,73 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
       "local",
     ]);
   });
+
+  it("fails a hung probe fast and retries+connects instead of one hang eating the whole budget (#13737)", async () => {
+    // The on-device Android boot: the first probe issued while the detached
+    // agent is still cold-booting HANGS on the not-yet-listening UDS socket.
+    // Old behavior bounded that probe by the ENTIRE remaining budget, so one
+    // hang wedged the loop on "Booting up…" for the full window even after the
+    // agent became ready. The fix caps each probe at PROBE_REQUEST_TIMEOUT_MS
+    // (12s) so it fails fast and the loop retries; the next probe — after the
+    // socket is up — connects.
+    vi.useFakeTimers();
+    try {
+      const deps = createDeps();
+      const dispatch = vi.fn();
+      // First auth probe never settles (hung UDS); the rest resolve (socket up).
+      clientMock.getAuthStatus.mockReset();
+      let authCalls = 0;
+      clientMock.getAuthStatus.mockImplementation(() => {
+        authCalls += 1;
+        if (authCalls === 1) return new Promise(() => {}); // never resolves
+        return Promise.resolve({
+          required: false,
+          pairingEnabled: false,
+          expiresAt: null,
+        });
+      });
+
+      const run = runPollingBackend(
+        deps,
+        dispatch,
+        {
+          // Budget well above the 12s per-request cap so the cap — not the
+          // deadline — is what bounds the hung probe.
+          supportsLocalRuntime: true,
+          backendTimeoutMs: 60_000,
+          agentReadyTimeoutMs: 60_000,
+          probeForExistingInstall: true,
+          defaultTarget: "embedded-local",
+        },
+        {
+          persistedActiveServer: null,
+          restoredActiveServer: null,
+          shouldPreserveCompletedFirstRun: false,
+          hadPriorFirstRun: false,
+        },
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+      );
+
+      // Advance past the 12s per-request cap (hung probe rejects) + the retry
+      // backoff, so the loop reaches the second, resolving probe.
+      await vi.advanceTimersByTimeAsync(14_000);
+      await run;
+
+      // Retried after the hang (not stuck on the single hung await)…
+      expect(authCalls).toBeGreaterThanOrEqual(2);
+      // …and connected instead of dead-ending on the timeout card.
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "BACKEND_REACHED",
+        firstRunComplete: false,
+      });
+      expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("iOS native agent boot progress (transport unit)", () => {
