@@ -34,6 +34,7 @@ import type {
 	LogBody,
 	Memory,
 	MemoryMetadata,
+	MessageSearchHit,
 	Metadata,
 	OAuthFlowRecord,
 	PairingAllowlistEntry,
@@ -264,6 +265,19 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		includeEmbedding?: boolean;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
+
+	/**
+	 * Corpus-wide full-text + trigram message search across a set of rooms,
+	 * ranked in the store rather than after a recency-truncated window (#13534).
+	 */
+	abstract searchMessages(params: {
+		roomIds: UUID[];
+		query: string;
+		tableName?: string;
+		limit?: number;
+		offset?: number;
+		accessContext?: AccessContext;
+	}): Promise<MessageSearchHit[]>;
 
 	/**
 	 * Retrieves multiple memories by their IDs

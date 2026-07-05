@@ -7,6 +7,7 @@
  * Security across all tables once every migration succeeds.
  */
 import { type IDatabaseAdapter, logger, type Plugin } from "@elizaos/core";
+import { applyMessageSearchObjects } from "./message-search";
 import { migrateToEntityRLS } from "./migrations";
 import { applyEntityRLSToAllTables, applyRLSToNewTables, installRLSFunctions } from "./rls";
 import { RuntimeMigrator } from "./runtime-migrator";
@@ -111,6 +112,11 @@ export class DatabaseMigrationService {
 
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
+
+      // Install the message full-text/trigram search objects on the migrated
+      // `memories` table (#13534). Idempotent; runs after the table exists so the
+      // GIN expression indexes can be created.
+      await applyMessageSearchObjects(this.db);
 
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 

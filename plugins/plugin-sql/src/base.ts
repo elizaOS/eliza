@@ -39,6 +39,7 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
+  type MessageSearchHit,
   type Metadata,
   type OAuthFlowRecord,
   type PairingAllowlistEntry,
@@ -315,6 +316,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected migrationService?: DatabaseMigrationService;
   private migrationRunPromise: Promise<void> | null = null;
   private _connectorAccountStore?: ConnectorAccountStore;
+  private messageSearchTrigramAvailable: boolean | null = null;
 
   protected getConnectorAccountStore(): ConnectorAccountStore {
     if (!this._connectorAccountStore) {
@@ -1675,6 +1677,114 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         metadata: row.metadata,
       })) as Memory[];
     });
+  }
+
+  /**
+   * Corpus-wide full-text + trigram message search (#13534). Ranks in the store
+   * with Postgres `ts_rank_cd` over a `websearch_to_tsquery` match (multi-word,
+   * quoted phrases, `-negation`) plus a `pg_trgm`-accelerated `LIKE` fallback for
+   * partial-word/typo/code/URL/emoji/CJK tokens the FTS lexer misses — both over
+   * the GIN-indexed `eliza_message_search_document(content)` expression so the
+   * plan is index-backed, not an O(n) `ILIKE` scan. The query and the stored
+   * document are folded identically (`eliza_search_fold`: lowercase, strip
+   * accents/apostrophes) so "café"/"cafe" and "don't"/"dont" agree. Room-scoping,
+   * `agentId`, and LIMIT/OFFSET are all applied in SQL, after ranking, so a
+   * relevant hit older than any recency window is still found and ordered.
+   */
+  async searchMessages(params: {
+    roomIds: UUID[];
+    query: string;
+    tableName?: string;
+    limit?: number;
+    offset?: number;
+    accessContext?: AccessContext;
+  }): Promise<MessageSearchHit[]> {
+    return this.withDatabase(async () => {
+      if (params.roomIds.length === 0) return [];
+      const tableName = params.tableName ?? "messages";
+      const limit = params.limit ?? 20;
+      const offset = params.offset ?? 0;
+      const trigramAvailable = await this.isTrigramAvailable();
+
+      // Fold the query in SQL with the same function the document is folded with.
+      const foldedQuery = sql`eliza_search_fold(${params.query})`;
+      // Read the pre-folded document from the STORED generated column rather than
+      // recomputing the fold+attachment function per row — that materialization
+      // is what keeps the trigram/LIKE fallback off the O(n)-recompute hot path.
+      const document = sql`message_search_document`;
+      const tsvector = sql`to_tsvector('english', ${document})`;
+      const tsquery = sql`websearch_to_tsquery('english', ${foldedQuery})`;
+      const ftsRankExpr = sql<number>`ts_rank_cd(${tsvector}, ${tsquery})`;
+      // `similarity()` only exists when pg_trgm is installed; degrade to 0 so the
+      // ORDER BY and DTO carry a real (extension-absent) signal, not a fake rank.
+      const trigramExpr = trigramAvailable
+        ? sql<number>`similarity(${document}, ${foldedQuery})`
+        : sql<number>`0`;
+
+      const conditions = [
+        eq(memoryTable.type, tableName),
+        eq(memoryTable.agentId, this.agentId),
+        inArray(memoryTable.roomId, params.roomIds),
+        sql`(${tsvector} @@ ${tsquery} OR ${document} LIKE eliza_search_like_pattern(${params.query}))`,
+      ];
+
+      const rows = await this.db
+        .select({
+          id: memoryTable.id,
+          createdAt: memoryTable.createdAt,
+          content: memoryTable.content,
+          entityId: memoryTable.entityId,
+          agentId: memoryTable.agentId,
+          roomId: memoryTable.roomId,
+          worldId: memoryTable.worldId,
+          unique: memoryTable.unique,
+          metadata: memoryTable.metadata,
+          ftsRank: ftsRankExpr.as("fts_rank"),
+          trigramSimilarity: trigramExpr.as("trgm_sim"),
+        })
+        .from(memoryTable)
+        .where(and(...conditions))
+        .orderBy(
+          sql`fts_rank DESC`,
+          sql`trgm_sim DESC`,
+          desc(memoryTable.createdAt),
+          asc(memoryTable.id)
+        )
+        .limit(limit)
+        .offset(offset);
+
+      return rows.map((row) => ({
+        memory: {
+          id: row.id as UUID,
+          createdAt: row.createdAt.getTime(),
+          content: typeof row.content === "string" ? JSON.parse(row.content) : row.content,
+          entityId: row.entityId as UUID,
+          agentId: row.agentId as UUID,
+          roomId: row.roomId as UUID,
+          worldId: (row.worldId ?? undefined) as UUID | undefined,
+          unique: row.unique,
+          metadata: row.metadata,
+        } as Memory,
+        ftsRank: Number(row.ftsRank),
+        trigramSimilarity: Number(row.trigramSimilarity),
+      }));
+    });
+  }
+
+  /**
+   * Whether `pg_trgm` is installed, memoized per adapter. Gates the `similarity`
+   * ranking + gin_trgm_ops `LIKE` acceleration in {@link searchMessages}.
+   */
+  private async isTrigramAvailable(): Promise<boolean> {
+    if (this.messageSearchTrigramAvailable !== null) {
+      return this.messageSearchTrigramAvailable;
+    }
+    const result = await this.db.execute(
+      sql`SELECT 1 AS ok FROM pg_extension WHERE extname = 'pg_trgm'`
+    );
+    const rows = (result as { rows?: unknown[] }).rows ?? result;
+    this.messageSearchTrigramAvailable = Array.isArray(rows) && rows.length > 0;
+    return this.messageSearchTrigramAvailable;
   }
 
   /**

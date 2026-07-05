@@ -1,0 +1,223 @@
+{
+  "kpi": "searchbench",
+  "recordedAt": "2026-07-05T02:48:43.080Z",
+  "git": {
+    "branch": "feat/13534-message-search-fts",
+    "commit": "c4c9c01ebd0",
+    "dirty": true
+  },
+  "measured": true,
+  "summary": {
+    "corpus": 10000,
+    "gold": 10,
+    "corpusSize": 10000,
+    "trigramAvailable": false,
+    "insertMs": 13918,
+    "indexBuildMs": 1207,
+    "precisionAt10": 1,
+    "recallAt10": 1,
+    "mrr": 1,
+    "ndcgAt10": 1,
+    "p50LatencyMs": 458.867,
+    "p95LatencyMs": 1674.57,
+    "maxLatencyMs": 2108.639,
+    "latencySamples": 50
+  },
+  "aggregate": {
+    "corpusSize": 10000,
+    "trigramAvailable": false,
+    "insertMs": 13918,
+    "indexBuildMs": 1207,
+    "precisionAt10": 1,
+    "recallAt10": 1,
+    "mrr": 1,
+    "ndcgAt10": 1,
+    "p50LatencyMs": 458.867,
+    "p95LatencyMs": 1674.57,
+    "maxLatencyMs": 2108.639,
+    "latencySamples": 50
+  },
+  "gold": [
+    {
+      "id": "multiword-nonadjacent",
+      "query": "deployq agentq",
+      "kind": "multiword",
+      "relevant": 2,
+      "returned": 2,
+      "hitsAt10": 2,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 632.589
+    },
+    {
+      "id": "partial-word-trigram",
+      "query": "zephyrconfig",
+      "kind": "partial",
+      "relevant": 2,
+      "returned": 2,
+      "hitsAt10": 2,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 156.257
+    },
+    {
+      "id": "accent-fold",
+      "query": "cafeq",
+      "kind": "accent",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 345.699
+    },
+    {
+      "id": "quoted-phrase",
+      "query": "\"alphaq betaq\"",
+      "kind": "phrase",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 706.293
+    },
+    {
+      "id": "url-substring",
+      "query": "exampleq.com/pathq",
+      "kind": "url",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 387.667
+    },
+    {
+      "id": "emoji",
+      "query": "🛰️queryemoji",
+      "kind": "emoji",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 1330.125
+    },
+    {
+      "id": "cjk",
+      "query": "北京q",
+      "kind": "cjk",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 2108.639
+    },
+    {
+      "id": "attachment-filename",
+      "query": "reportq-2026",
+      "kind": "attachment",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 1616.84
+    },
+    {
+      "id": "near-duplicate",
+      "query": "dupqmarker",
+      "kind": "duplicate",
+      "relevant": 3,
+      "returned": 3,
+      "hitsAt10": 3,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 556.219
+    },
+    {
+      "id": "older-than-window",
+      "query": "xyzzyneedleq",
+      "kind": "older-hit",
+      "relevant": 1,
+      "returned": 1,
+      "hitsAt10": 1,
+      "recallAt10": 1,
+      "precisionAt10": 1,
+      "reciprocalRank": 1,
+      "ndcgAt10": 1,
+      "latencyMs": 264.686
+    }
+  ],
+  "checks": [
+    {
+      "name": "corpusSize",
+      "value": 10000,
+      "budget": 10000,
+      "cmp": "min",
+      "pass": true
+    },
+    {
+      "name": "recallAt10",
+      "value": 1,
+      "budget": 0.99,
+      "cmp": "min",
+      "pass": true
+    },
+    {
+      "name": "precisionAt10",
+      "value": 1,
+      "budget": 0.9,
+      "cmp": "min",
+      "pass": true
+    },
+    {
+      "name": "mrr",
+      "value": 1,
+      "budget": 0.9,
+      "cmp": "min",
+      "pass": true
+    },
+    {
+      "name": "ndcgAt10",
+      "value": 1,
+      "budget": 0.9,
+      "cmp": "min",
+      "pass": true
+    },
+    {
+      "name": "p95LatencyMs (no-trigram)",
+      "value": 1674.57,
+      "budget": 2500,
+      "cmp": "max",
+      "pass": true
+    },
+    {
+      "name": "indexBuildMs",
+      "value": 1207,
+      "budget": 60000,
+      "cmp": "max",
+      "pass": true
+    }
+  ]
+}

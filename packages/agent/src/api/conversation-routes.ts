@@ -75,7 +75,6 @@ import {
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
-import { rankByKeyword } from "./memory-routes.ts";
 import {
   buildUserMessages,
   getErrorMessage,
@@ -1575,17 +1574,21 @@ export async function handleConversationRoutes(
       return true;
     }
     try {
-      const memories = await runtime.getMemoriesByRoomIds({
-        tableName: "messages",
+      // Corpus-wide FTS + trigram ranking in the store (#13534): the DB ranks
+      // by `ts_rank_cd` over a `websearch_to_tsquery` match (multi-word,
+      // non-adjacent, quoted phrases) plus a `pg_trgm` partial-word fallback,
+      // applying access-scoping and LIMIT/OFFSET *after* ranking. A relevant hit
+      // older than any recency window is therefore found and ordered — unlike
+      // the retired `ILIKE '%whole query%'` gate that ranked only a recency-
+      // truncated slice of exact-substring rows.
+      const hits = await runtime.searchMessages({
         roomIds: accessibleRoomIds,
-        textContains: query,
-        includeEmbedding: false,
+        query,
+        tableName: "messages",
         limit,
         offset,
       });
-      // Collect valid candidates, then BM25-rank them together (corpus-aware IDF
-      // ranks real hits above messages that merely share a common word).
-      const candidates = memories.flatMap((memory) => {
+      const results = hits.flatMap(({ memory, ftsRank, trigramSimilarity }) => {
         const roomId = memory.roomId;
         const conversation = roomId
           ? conversationsByRoomId.get(roomId)
@@ -1598,6 +1601,10 @@ export async function handleConversationRoutes(
         // A messages memory always carries a numeric createdAt; if it somehow
         // does not, drop the row rather than inject epoch-0 into the DTO.
         if (typeof memory.createdAt !== "number") return [];
+        // Rows matched only by the trigram/partial branch have ftsRank 0; expose
+        // the trigram similarity as the score so the client still orders them
+        // meaningfully. Both are real measured signals from the store.
+        const score = ftsRank > 0 ? ftsRank : trigramSimilarity;
         return [
           {
             messageId: memory.id,
@@ -1610,25 +1617,19 @@ export async function handleConversationRoutes(
             text: rawText,
             snippet: buildMessageSearchSnippet(rawText, query),
             createdAt: memory.createdAt,
+            score,
           },
         ];
       });
-      const results = rankByKeyword(query, candidates, (c) => c.text)
-        .filter(({ score }) => score > 0)
-        .map(({ item, score }) => ({ ...item, score }))
-        .sort((a, b) =>
-          b.score !== a.score ? b.score - a.score : b.createdAt - a.createdAt,
-        )
-        .slice(0, limit);
       logger.info(
         {
           queryLength: query.length,
           limit,
           offset,
-          rawHits: memories.length,
+          rawHits: hits.length,
           results: results.length,
         },
-        "[ConversationSearch] keyword message search completed",
+        "[ConversationSearch] FTS message search completed",
       );
       json(res, { results, count: results.length });
       return true;
