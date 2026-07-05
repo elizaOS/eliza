@@ -39,6 +39,7 @@ mock.module("../../../db/repositories/credit-transactions", () => ({
 
 mock.module("../credits", () => ({
   creditsService: { addCredits },
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
 }));
 
 const createAgentSpy = spyOn(elizaSandboxService, "createAgent").mockImplementation(

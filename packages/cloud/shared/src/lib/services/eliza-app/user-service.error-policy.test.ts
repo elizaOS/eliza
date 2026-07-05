@@ -41,7 +41,10 @@ mock.module("../../utils/phone-normalization", () => ({
 }));
 
 mock.module("../api-keys", () => ({ apiKeysService: { create: mock() } }));
-mock.module("../credits", () => ({ creditsService: { addCredits: mock() } }));
+mock.module("../credits", () => ({
+  creditsService: { addCredits: mock() },
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+}));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 
 const { elizaAppUserService } = await import("./user-service");

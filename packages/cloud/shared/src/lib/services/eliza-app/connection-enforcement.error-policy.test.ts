@@ -25,6 +25,7 @@ mock.module("../oauth", () => ({
 
 mock.module("../../providers/language-model", () => ({
   getLanguageModel: mock(() => "mock-model"),
+  hasLanguageModelProviderConfigured: mock(() => true),
 }));
 
 mock.module("../../utils/logger", () => ({
