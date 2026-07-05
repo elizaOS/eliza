@@ -7,9 +7,12 @@ import { describe, it } from "node:test";
 import {
   computeExitCode,
   erroredLanes,
+  formatDevicectlDeviceList,
+  isDevicectlDeviceUsable,
   isLaneRequired,
   parseArgs,
   requiredLaneFailures,
+  selectIosDeviceForMatrix,
 } from "./walkthrough-device-matrix.mjs";
 
 describe("walkthrough device matrix required lanes", () => {
@@ -61,9 +64,11 @@ describe("walkthrough device matrix required lanes", () => {
   it("preserves explicit serials and allows disabling Android drive", () => {
     const args = parseArgs(["--serial", "device-1", "--skip-android-drive"], {
       ANDROID_SERIAL: "env-device",
+      ELIZA_IOS_DEVICE_ID: "env-ios",
     });
 
     assert.equal(args.serial, "device-1");
+    assert.equal(args.iosDevice, "env-ios");
     assert.equal(args.driveAndroid, false);
   });
 });
@@ -125,6 +130,83 @@ describe("walkthrough device matrix exit code", () => {
     assert.equal(
       computeExitCode(matrix, parseArgs(["--require", "android"], {}).require),
       1,
+    );
+  });
+});
+
+describe("walkthrough device matrix iOS physical-device planning (#13568)", () => {
+  const payload = {
+    result: {
+      devices: [
+        {
+          identifier: "DISCONNECTED-ID",
+          hardwareProperties: { udid: "DISCONNECTED-UDID" },
+          deviceProperties: { name: "Old Phone" },
+          state: "disconnected",
+        },
+        {
+          identifier: "CONNECTED-ID",
+          hardwareProperties: { udid: "CONNECTED-UDID" },
+          deviceProperties: { name: "Lane iPhone" },
+          state: "connected",
+        },
+      ],
+    },
+  };
+
+  it("selects a connected iOS device instead of returning hardcoded n/a", () => {
+    const selected = selectIosDeviceForMatrix(payload);
+
+    assert.equal(selected.reason, null);
+    assert.equal(selected.record.identifier, "CONNECTED-ID");
+    assert.equal(selected.record.udid, "CONNECTED-UDID");
+    assert.equal(selected.record.name, "Lane iPhone");
+  });
+
+  it("honors --ios-device by identifier, UDID, or name", () => {
+    for (const requested of ["CONNECTED-ID", "CONNECTED-UDID", "Lane iPhone"]) {
+      const selected = selectIosDeviceForMatrix(payload, requested);
+      assert.equal(selected.record.identifier, "CONNECTED-ID");
+      assert.equal(selected.reason, null);
+    }
+  });
+
+  it("returns an honest devicectl-derived n/a reason for absent or unavailable devices", () => {
+    assert.match(
+      selectIosDeviceForMatrix(payload, "missing-phone").reason,
+      /requested iOS device "missing-phone" was not found/,
+    );
+    assert.match(
+      selectIosDeviceForMatrix(payload, "Old Phone").reason,
+      /not connected\/available/,
+    );
+    assert.match(
+      selectIosDeviceForMatrix({ result: { devices: [] } }).reason,
+      /devicectl returned zero devices/,
+    );
+  });
+
+  it("formats devicectl listings for matrix evidence", () => {
+    const listing = formatDevicectlDeviceList(payload);
+
+    assert.match(listing, /Old Phone id=DISCONNECTED-ID/);
+    assert.match(listing, /Lane iPhone id=CONNECTED-ID/);
+  });
+
+  it("accepts older devicectl records without explicit state when identifier and UDID are present", () => {
+    assert.equal(
+      isDevicectlDeviceUsable({
+        identifier: "LEGACY-ID",
+        hardwareProperties: { udid: "LEGACY-UDID" },
+      }),
+      true,
+    );
+    assert.equal(
+      isDevicectlDeviceUsable({
+        identifier: "NO-UDID",
+        state: "connected",
+      }),
+      false,
     );
   });
 });

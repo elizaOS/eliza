@@ -31,9 +31,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import {
   ensureEmulatorBooted,
   listDevices,
@@ -43,13 +44,20 @@ import {
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
+const IOS_DEVICE_STAGED_APP = join(
+  APP_DIR,
+  "ios",
+  "build",
+  "device-deploy-stage",
+  "App.app",
+);
 
 export function parseArgs(argv, env = process.env) {
   const a = {
     platform: "all",
     serial: env.ANDROID_SERIAL || null,
     avd: null,
-    iosDevice: null,
+    iosDevice: env.ELIZA_IOS_DEVICE_ID || null,
     duration: 30,
     require: parseRequiredPlatforms(env.WALKTHROUGH_REQUIRE),
     driveAndroid: env.WALKTHROUGH_ANDROID_DRIVE !== "0",
@@ -156,6 +164,115 @@ function runScript(rel, args, env = {}) {
 
 function lane(status, reason, extra = {}) {
   return { status, reason, ...extra };
+}
+
+function devicectlDevices(payload) {
+  return Array.isArray(payload?.result?.devices) ? payload.result.devices : [];
+}
+
+function fieldString(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizedDeviceRecord(device) {
+  return {
+    identifier: fieldString(device?.identifier),
+    udid: fieldString(device?.hardwareProperties?.udid),
+    name: fieldString(device?.deviceProperties?.name),
+    state:
+      fieldString(device?.state) ??
+      fieldString(device?.status) ??
+      fieldString(device?.availability) ??
+      fieldString(device?.connectionProperties?.state) ??
+      fieldString(device?.connectionProperties?.status) ??
+      fieldString(device?.connectionProperties?.pairingState) ??
+      fieldString(device?.connectionProperties?.tunnelState) ??
+      fieldString(device?.visibilityClass),
+    raw: device,
+  };
+}
+
+export function formatDevicectlDeviceList(payload) {
+  const devices = devicectlDevices(payload).map(normalizedDeviceRecord);
+  if (devices.length === 0) return "devicectl returned zero devices";
+  return devices
+    .map((device) => {
+      const name = device.name ?? "(unnamed)";
+      const id = device.identifier ?? "(no identifier)";
+      const udid = device.udid ?? "(no udid)";
+      const state = device.state ?? "state unavailable";
+      return `${name} id=${id} udid=${udid} state=${state}`;
+    })
+    .join("; ");
+}
+
+function deviceMatches(record, wanted) {
+  if (!wanted) return false;
+  const normalized = wanted.toLowerCase();
+  return [record.identifier, record.udid, record.name]
+    .filter(Boolean)
+    .some((value) => value.toLowerCase() === normalized);
+}
+
+export function isDevicectlDeviceUsable(device) {
+  const record = normalizedDeviceRecord(device);
+  if (!record.identifier || !record.udid) return false;
+  const statusValues = [
+    device?.state,
+    device?.status,
+    device?.availability,
+    device?.connectionProperties?.state,
+    device?.connectionProperties?.status,
+    device?.connectionProperties?.pairingState,
+    device?.connectionProperties?.tunnelState,
+    device?.visibilityClass,
+  ]
+    .map((value) => (typeof value === "string" ? value.toLowerCase() : ""))
+    .filter(Boolean);
+  if (statusValues.length === 0) {
+    // Older devicectl JSON shapes list only attached devices and do not expose a
+    // state field. Treat a record with identifier+UDID as usable, but include
+    // the raw listing in any later failure output.
+    return true;
+  }
+  const negative = ["disconnected", "unavailable", "unpaired", "offline"];
+  if (statusValues.some((value) => negative.some((bad) => value.includes(bad))))
+    return false;
+  const positive = ["connected", "available", "paired", "trusted", "enabled"];
+  return statusValues.some((value) =>
+    positive.some((good) => value.includes(good)),
+  );
+}
+
+export function selectIosDeviceForMatrix(payload, requestedDevice = null) {
+  const devices = devicectlDevices(payload);
+  const records = devices.map(normalizedDeviceRecord);
+  const requested = requestedDevice?.trim() || null;
+  if (requested) {
+    const index = records.findIndex((record) =>
+      deviceMatches(record, requested),
+    );
+    if (index < 0) {
+      return {
+        record: null,
+        reason: `requested iOS device "${requested}" was not found in devicectl list: ${formatDevicectlDeviceList(payload)}`,
+      };
+    }
+    if (!isDevicectlDeviceUsable(devices[index])) {
+      return {
+        record: null,
+        reason: `requested iOS device "${requested}" is not connected/available: ${formatDevicectlDeviceList(payload)}`,
+      };
+    }
+    return { record: records[index], reason: null };
+  }
+
+  const index = devices.findIndex((device) => isDevicectlDeviceUsable(device));
+  if (index >= 0) return { record: records[index], reason: null };
+  return {
+    record: null,
+    reason: `no connected/available iOS physical device found in devicectl list: ${formatDevicectlDeviceList(payload)}`,
+  };
 }
 
 function captureIos({ duration }) {
@@ -295,6 +412,55 @@ async function captureAndroid({
   });
 }
 
+function captureIosDevice({ iosDevice, runDir }) {
+  if (process.platform !== "darwin") {
+    return lane("n/a", "iOS physical-device capture requires macOS/devicectl");
+  }
+
+  let payload;
+  try {
+    payload = readDevicectlDeviceList();
+  } catch (error) {
+    return lane(
+      "n/a",
+      `unable to read devicectl device list: ${error?.message ?? String(error)}`,
+    );
+  }
+
+  const selected = selectIosDeviceForMatrix(payload, iosDevice);
+  if (!selected.record) return lane("n/a", selected.reason);
+
+  if (!existsSync(IOS_DEVICE_STAGED_APP)) {
+    return lane(
+      "n/a",
+      `signed iOS device app is missing at ${IOS_DEVICE_STAGED_APP}; run \`bun run --cwd packages/app install:ios:sideload -- --device ${selected.record.identifier}\` before capture`,
+      {
+        device: selected.record,
+        stagedAppPath: IOS_DEVICE_STAGED_APP,
+      },
+    );
+  }
+
+  const outputDir = join(runDir, "ios-device");
+  const code = runScript("ios-device-capture.mjs", [
+    "--platform",
+    "device",
+    "--device",
+    selected.record.identifier,
+    "--skip-build",
+    "--app-path",
+    IOS_DEVICE_STAGED_APP,
+    "--output",
+    outputDir,
+  ]);
+  return lane(code === 0 ? "captured" : "error", null, {
+    outputDir,
+    note: "Physical iOS device capture via ios-device-capture.mjs --platform device --skip-build using the staged signed App.app from install:ios:sideload.",
+    device: selected.record,
+    stagedAppPath: IOS_DEVICE_STAGED_APP,
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const runId = new Date()
@@ -312,10 +478,10 @@ async function main() {
   if (want("ios") || args.platform === "all")
     matrix["ios-simulator"] = captureIos({ duration: args.duration });
   if (args.platform === "device")
-    matrix["ios-device"] = lane(
-      "n/a",
-      "iOS physical-device capture requires a tethered, provisioned device + `bun run --cwd packages/app install:ios:sideload`; none detected on this host",
-    );
+    matrix["ios-device"] = captureIosDevice({
+      iosDevice: args.iosDevice,
+      runDir,
+    });
   if (want("android") || args.platform === "all")
     matrix["android-emulator"] = await captureAndroid({
       serial: args.serial,

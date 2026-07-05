@@ -65,10 +65,19 @@ bun run --cwd packages/app install:ios:sideload
 bun run --cwd packages/app test:e2e:walkthrough:device
 ```
 
-- **Prereqs (macOS only):** a tethered, provisioned iPhone + the sideload
-  toolchain (`preflight:ios:sideload`).
-- **Skip reason (recorded automatically):** "iOS physical-device capture
-  requires a tethered, provisioned device; none detected on this host".
+- **Prereqs (macOS only):** a tethered, provisioned iPhone visible to
+  `xcrun devicectl list devices`, plus a freshly staged signed app at
+  `packages/app/ios/build/device-deploy-stage/App.app` from
+  `install:ios:sideload`. Pass `--ios-device <devicectl-id|udid|name>` or set
+  `ELIZA_IOS_DEVICE_ID` when more than one phone is attached.
+- **Produces:** `reports/walkthrough/<runId>/ios-device/test-summary.json` and
+  per-shard XCUITest artifacts from
+  `ios-device-capture.mjs --platform device --skip-build --app-path
+  ios/build/device-deploy-stage/App.app`.
+- **Skip reason (recorded automatically):** not macOS, `devicectl` unavailable,
+  no connected/available iOS device in the actual `devicectl` listing, requested
+  device not found/unavailable, or missing staged signed app with the exact
+  sideload command to run first.
 
 ### Android emulator
 
