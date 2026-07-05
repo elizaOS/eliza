@@ -283,6 +283,9 @@ const forbiddenElectrobunPrWorkflowSnippets = [
 ];
 const requiredRootPackageScriptSnippets: Record<string, readonly string[]> = {
   "release:check": ["scripts/run-release-check.mjs"],
+  "test:desktop:packaged:windows": [
+    "bun run --cwd packages/app test:desktop:packaged:windows",
+  ],
   "test:release:contract": ["scripts/run-release-contract-suite.mjs"],
   "test:regression-matrix:release": [
     "scripts/run-eliza-app-core-script.mjs validate-regression-matrix.mjs --workflow release",
