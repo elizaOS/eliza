@@ -301,6 +301,12 @@ function textToBase64(text: string): string {
 // Muted-speaker glyph for the autoplay-blocked "tap to enable sound" prompt.
 const SPEAKER_MUTED_GLYPH =
   "M7 15H12L18 10V26L12 21H7Z M21 12.4L22.4 11L31 19.6L29.6 21Z";
+// One optically-balanced glyph size for every composer control. Lucide icons
+// (stroked, 24-unit viewBox) and the hand-drawn glyphs (filled, 36-unit viewBox)
+// previously rendered at 26px vs 30px, so the filled '+' read heavier than the
+// mic/send strokes; a single 28px converges their visual weight while the 44×44
+// SoftButton hit target (WCAG 2.5.5) is unchanged.
+const COMPOSER_GLYPH_SIZE = "h-[28px] w-[28px]";
 function Glyph({
   d,
   className,
@@ -331,6 +337,7 @@ function SoftButton({
   onPointerLeave,
   disabled,
   active,
+  pulse,
   testId,
 }: {
   /** A hand-drawn SVG path glyph (legacy), OR pass `icon` for a lucide icon. */
@@ -344,6 +351,9 @@ function SoftButton({
   onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
+  /** When true, breathe the accent glyph (same pulse the hot-mic grabber/pill
+   *  use) so the primary-surface control's motion agrees with its accent color. */
+  pulse?: boolean;
   testId?: string;
 }): React.JSX.Element {
   return (
@@ -370,13 +380,18 @@ function SoftButton({
         // blue.
         "grid h-11 w-11 shrink-0 place-items-center bg-transparent p-0 transition-colors hover:bg-transparent",
         active ? "text-accent" : "text-muted-strong hover:text-txt",
+        // Breathe the accent glyph while the mic is hot — the same
+        // `animate-pulse` + `motion-reduce:animate-none` the grabber bar and
+        // collapsed pill use, so every surface's motion agrees. Reduced motion
+        // keeps the static accent, no pulse.
+        pulse && "animate-pulse motion-reduce:animate-none",
         disabled && "opacity-40",
       )}
     >
       {Icon ? (
-        <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
+        <Icon className={COMPOSER_GLYPH_SIZE} aria-hidden={true} />
       ) : glyph ? (
-        <Glyph d={glyph} className="h-[30px] w-[30px]" />
+        <Glyph d={glyph} className={COMPOSER_GLYPH_SIZE} />
       ) : null}
     </Button>
   );
@@ -4735,6 +4750,7 @@ export function ContinuousChatOverlay({
                       // the composer while onboarding is choice-driven.
                       disabled={firstRunOpen}
                       active={recording || handsFree || transcriptionMode}
+                      pulse={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={micHoldHandlers.onPointerDown}
                       onPointerUp={micHoldHandlers.onPointerUp}

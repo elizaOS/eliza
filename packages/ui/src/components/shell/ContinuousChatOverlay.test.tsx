@@ -836,6 +836,113 @@ describe("ContinuousChatOverlay", () => {
     expect(mic.className).not.toMatch(/\bborder\b/);
   });
 
+  // #14331: color and motion must agree. At rest the mic is neutral and still;
+  // once the mic is hot it breathes the accent — the SAME predicate that flips
+  // `active`/`text-accent` — so it matches the grabber bar and collapsed pill
+  // (which already pulse) instead of only changing color.
+  it("pulses the mic button exactly when the recording predicate is true, static at rest (#14331)", () => {
+    const { unmount } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    // Rest: neutral, no pulse.
+    const resting = screen.getByTestId("chat-composer-mic");
+    expect(resting.getAttribute("aria-pressed")).toBe("false");
+    expect(resting.className).not.toContain("animate-pulse");
+    unmount();
+
+    // Each arm of `recording || handsFree || transcriptionMode` must pulse.
+    for (const arm of [
+      { recording: true },
+      { handsFree: true },
+      { transcriptionMode: true },
+    ] as const) {
+      const view = render(
+        <ContinuousChatOverlay controller={makeController(arm)} />,
+      );
+      const mic = screen.getByTestId("chat-composer-mic");
+      expect(mic.getAttribute("aria-pressed")).toBe("true");
+      expect(mic.className).toContain("text-accent");
+      expect(mic.className).toContain("animate-pulse");
+      view.unmount();
+    }
+  });
+
+  it("keeps the hot-mic pulse OFF under reduced motion — static accent, no breathing (#14331)", () => {
+    render(
+      <ContinuousChatOverlay controller={makeController({ recording: true })} />,
+    );
+    const mic = screen.getByTestId("chat-composer-mic");
+    // The animate-pulse ships paired with motion-reduce:animate-none so an OS
+    // reduce-motion preference cancels the animation while the accent stays.
+    expect(mic.className).toContain("animate-pulse");
+    expect(mic.className).toContain("motion-reduce:animate-none");
+    expect(mic.className).toContain("text-accent");
+  });
+
+  // The collapsed-pill pulse (glow={listening || responding}) shipped without a
+  // regression test; #14331 adds one so the sibling behavior the mic now matches
+  // can't silently regress.
+  it("pulses the collapsed pill while audio is hot and stays static otherwise (#14331)", () => {
+    const { unmount } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    const restingPill = screen
+      .getByTestId("chat-pill")
+      .querySelector("span[aria-hidden='true']");
+    expect(restingPill?.className).not.toContain("animate-pulse");
+    expect(restingPill?.className).toContain("bg-muted-strong");
+    unmount();
+
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({ phase: "listening", recording: true })}
+      />,
+    );
+    const hotPill = screen
+      .getByTestId("chat-pill")
+      .querySelector("span[aria-hidden='true']");
+    expect(hotPill?.className).toContain("animate-pulse");
+    expect(hotPill?.className).toContain("bg-accent");
+    expect(hotPill?.className).toContain("motion-reduce:animate-none");
+  });
+
+  // #14331 optics: the '+' (filled glyph) and mic/send (lucide strokes) must
+  // read at one visual weight — a single glyph size, not the old 30px vs 26px
+  // split — while the 44×44 hit target (WCAG 2.5.5) is untouched.
+  it("renders the +, mic, and send glyphs at one shared size with the hit target intact (#14331)", () => {
+    const { unmount } = render(
+      <ContinuousChatOverlay controller={makeController()} />,
+    );
+    const attachGlyph = screen
+      .getByTestId("chat-composer-attach")
+      .querySelector("svg");
+    const micGlyph = screen
+      .getByTestId("chat-composer-mic")
+      .querySelector("svg");
+    expect(attachGlyph?.getAttribute("class")).toContain("h-[28px]");
+    expect(attachGlyph?.getAttribute("class")).toContain("w-[28px]");
+    expect(micGlyph?.getAttribute("class")).toContain("h-[28px]");
+    expect(micGlyph?.getAttribute("class")).toContain("w-[28px]");
+    // The old asymmetric sizes are gone.
+    expect(attachGlyph?.getAttribute("class")).not.toContain("h-[30px]");
+    expect(micGlyph?.getAttribute("class")).not.toContain("h-[26px]");
+    // Hit target unchanged.
+    expect(screen.getByTestId("chat-composer-mic").className).toContain("h-11");
+    expect(screen.getByTestId("chat-composer-attach").className).toContain(
+      "w-11",
+    );
+    unmount();
+
+    // Send swaps in on a draft — it too rides the shared glyph size.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "hi" },
+    });
+    const sendGlyph = screen.getByLabelText("send").querySelector("svg");
+    expect(sendGlyph?.getAttribute("class")).toContain("h-[28px]");
+    expect(sendGlyph?.getAttribute("class")).toContain("w-[28px]");
+  });
+
   it("does not render the resting suggestion strip (feature-flagged off)", () => {
     render(
       <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
