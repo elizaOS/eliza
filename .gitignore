@@ -25,6 +25,8 @@ packages/ui/src/components/pages/__e2e__/output-connectors/
 packages/ui/src/components/composites/__e2e__/output-resize-handles/
 # Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e; committed evidence lives in .github/issue-evidence/12179-web-loop/)
 packages/ui/src/components/shell/__e2e__/output-launcher-loop/
+# Activity-feedback e2e output (screenshots + esbuild html bundle — regenerate via test:activity-feedback-e2e; committed evidence lives in .github/issue-evidence/13535-agent-activity-feedback/)
+packages/ui/src/components/chat/__e2e__/output-activity-feedback/
 
 .next/
 **/.next/**
