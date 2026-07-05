@@ -45,8 +45,11 @@ import {
   classifyIsolatedReruns,
   DEFAULT_APP_BUNDLE_ID,
   evaluateRunnerStaleness,
+  extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
   findDeviceRecord,
+  findUncoveredIosXcuitestEntries,
+  isBenignIosAppAbsence,
   parseCliArgs,
   parseFailedTestIdentifiers,
   parsePlist,
@@ -76,9 +79,27 @@ function runInherit(command, args, options = {}) {
   }
 }
 
-function tryRun(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: "ignore", ...options });
-  return result.status === 0;
+function runResetCommand(command, args, { label, allowAbsentApp = false }) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+  if (result.status === 0) {
+    return { ok: true, benignAbsent: false, output: output.trim() };
+  }
+  if (allowAbsentApp && isBenignIosAppAbsence(output)) {
+    log(`${label}: already absent (${output.trim() || "no output"})`);
+    return { ok: false, benignAbsent: true, output: output.trim() };
+  }
+  fail(
+    `${label} failed with exit ${result.status}.\n${output.trim() || "(no output)"}`,
+  );
+}
+
+function runCaptureCommand(command, args, { label, required = true } = {}) {
+  const result = spawnSync(command, args, { encoding: "utf8" });
+  const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+  if (result.status === 0) return result.stdout.trim();
+  if (!required) return null;
+  fail(`${label} failed with exit ${result.status}.\n${output.trim()}`);
 }
 
 /**
@@ -208,7 +229,11 @@ function collectAppUITestsSources(sourceDir = APPUITESTS_SOURCE_DIR) {
     .filter((name) => name.endsWith(".swift"))
     .map((name) => {
       const full = path.join(sourceDir, name);
-      return { path: full, mtimeMs: fs.statSync(full).mtimeMs };
+      return {
+        path: full,
+        mtimeMs: fs.statSync(full).mtimeMs,
+        text: fs.readFileSync(full, "utf8"),
+      };
     });
 }
 
@@ -510,11 +535,56 @@ async function main() {
   }
   log(`destination: ${destination}`);
 
+  const captureSimulatorContainerProof = (label) => {
+    const appContainer = runCaptureCommand(
+      "xcrun",
+      ["simctl", "get_app_container", simUdid, bundleId, "app"],
+      { label: `reset ${label}: get app container` },
+    );
+    const dataContainer = runCaptureCommand(
+      "xcrun",
+      ["simctl", "get_app_container", simUdid, bundleId, "data"],
+      { label: `reset ${label}: get data container`, required: false },
+    );
+    const listappsRaw = runCaptureCommand(
+      "xcrun",
+      ["simctl", "listapps", "-j", simUdid],
+      { label: `reset ${label}: listapps proof` },
+    );
+    let listappsEntry = null;
+    try {
+      const parsed = JSON.parse(listappsRaw);
+      listappsEntry = parsed?.[bundleId] ?? null;
+    } catch (error) {
+      fail(
+        `reset ${label}: could not parse simctl listapps proof (${error?.message ?? error})`,
+      );
+    }
+    if (!listappsEntry) {
+      fail(`reset ${label}: ${bundleId} missing from simctl listapps proof`);
+    }
+    return {
+      appContainer,
+      dataContainer,
+      listappsEntry,
+    };
+  };
+
   const resetAppContainer = (label) => {
     if (platform === "sim") {
       log(`reset ${label}: terminate/uninstall ${bundleId} on simulator`);
-      tryRun("xcrun", ["simctl", "terminate", simUdid, bundleId]);
-      tryRun("xcrun", ["simctl", "uninstall", simUdid, bundleId]);
+      runResetCommand("xcrun", ["simctl", "terminate", simUdid, bundleId], {
+        label: `reset ${label}: simctl terminate`,
+        allowAbsentApp: true,
+      });
+      const uninstall = runResetCommand(
+        "xcrun",
+        ["simctl", "uninstall", simUdid, bundleId],
+        {
+          label: `reset ${label}: simctl uninstall`,
+          allowAbsentApp: true,
+        },
+      );
       for (const bundle of installableBundles) {
         log(`reset ${label}: simctl install ${path.basename(bundle)}`);
         runInherit("xcrun", ["simctl", "install", simUdid, bundle]);
@@ -522,20 +592,29 @@ async function main() {
       return {
         platform,
         bundleId,
+        uninstall,
         action: "simctl terminate/uninstall + install xctestrun bundles",
+        containerProof: captureSimulatorContainerProof(label),
       };
     }
 
     log(`reset ${label}: uninstall ${bundleId} on device`);
-    tryRun("xcrun", [
-      "devicectl",
-      "device",
-      "uninstall",
-      "app",
-      "--device",
-      deviceControlId,
-      bundleId,
-    ]);
+    const uninstall = runResetCommand(
+      "xcrun",
+      [
+        "devicectl",
+        "device",
+        "uninstall",
+        "app",
+        "--device",
+        deviceControlId,
+        bundleId,
+      ],
+      {
+        label: `reset ${label}: devicectl uninstall`,
+        allowAbsentApp: true,
+      },
+    );
     if (args["app-path"]) {
       const signedApp = path.resolve(args["app-path"]);
       log(`reset ${label}: devicectl install ${path.basename(signedApp)}`);
@@ -552,6 +631,7 @@ async function main() {
     return {
       platform,
       bundleId,
+      uninstall,
       action: args["app-path"]
         ? "devicectl uninstall + install signed app"
         : "devicectl uninstall; xcodebuild installs the target app",
@@ -566,6 +646,19 @@ async function main() {
   const shardPlan = buildIosXcuitestShardPlan({
     onlyTesting: args["only-testing"] || "AppUITests",
   });
+  if (!args["only-testing"]) {
+    const uncovered = findUncoveredIosXcuitestEntries({
+      entries: extractSwiftXcuitestEntries(collectAppUITestsSources()),
+      shards: shardPlan.map((shard) => shard.identifier),
+    });
+    if (uncovered.length > 0) {
+      fail(
+        "default AppUITests shard plan is missing committed XCTest coverage:\n" +
+          uncovered.map((identifier) => `  - ${identifier}`).join("\n") +
+          "\nAdd a class shard or per-test shard before this lane can run.",
+      );
+    }
+  }
   const harnessEnv = {
     ...process.env,
     TEST_RUNNER_ELIZA_BOOT_TIMEOUT_SECONDS:

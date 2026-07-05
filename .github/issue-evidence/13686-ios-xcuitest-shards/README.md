@@ -63,3 +63,29 @@ Reviewed the changed code paths by hand:
 - Both onboarding tests are separate shards, so cloud and local first-run paths start from clean containers.
 - `DeviceLifecycleUITests` remains one class shard, preserving its intentional within-test persistence assertions.
 - `--only-testing AppUITests/<Class>[/test]` remains a single-shard override for narrow/manual runs.
+
+## Follow-Up After PR #13806 Review
+
+Reviewer blockers addressed in follow-up branch `fix/13686-xcuitest-reset-proof`:
+
+- Reset/uninstall is no longer best-effort. Simulator/device uninstall failures now fail the run unless the command output explicitly says the app was already absent.
+- Simulator shard summaries now include fresh-container proof from `simctl get_app_container` and `simctl listapps -j` after reinstall.
+- Default full-run shard planning now validates the committed Swift `AppUITests` sources. A new test method is either covered by a class shard or must be added as a per-test shard, otherwise the capture script fails before running.
+
+Follow-up verification:
+
+```bash
+bun run --cwd packages/app test scripts/ios-device-lib.test.mjs
+bunx biome check packages/app/scripts/ios-device-capture.mjs packages/app/scripts/ios-device-lib.mjs packages/app/scripts/ios-device-lib.test.mjs
+node --check packages/app/scripts/ios-device-capture.mjs
+node --check packages/app/scripts/ios-device-lib.mjs
+node --check packages/app/scripts/ios-device-lib.test.mjs
+git diff --check
+```
+
+Results:
+
+- Package Vitest: `1 passed (1)`, `76 passed (76)`.
+- Biome focused check: `Checked 3 files in 89ms. No fixes applied.`
+- Node syntax checks: passed.
+- Diff whitespace check: passed.

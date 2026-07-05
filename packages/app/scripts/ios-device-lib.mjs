@@ -783,6 +783,49 @@ export function buildIosXcuitestShardPlan({
   }));
 }
 
+export function extractSwiftXcuitestEntries(sources) {
+  const entries = [];
+  for (const source of sources ?? []) {
+    const text = source?.text;
+    if (typeof text !== "string") continue;
+    const classMatch = text.match(
+      /\b(?:final\s+)?class\s+(\w+)\s*:\s*XCTestCase\b/,
+    );
+    if (!classMatch) continue;
+    const className = classMatch[1];
+    const methods = [...text.matchAll(/\bfunc\s+(test\w+)\s*\(/g)].map(
+      (match) => match[1],
+    );
+    entries.push({
+      className,
+      methods,
+      path: typeof source.path === "string" ? source.path : null,
+    });
+  }
+  return entries;
+}
+
+export function findUncoveredIosXcuitestEntries({ entries, shards }) {
+  const shardSet = new Set(shards ?? []);
+  const uncovered = [];
+  for (const entry of entries ?? []) {
+    if (!entry?.className) continue;
+    const classShard = `AppUITests/${entry.className}`;
+    if (shardSet.has(classShard)) continue;
+    for (const method of entry.methods ?? []) {
+      const methodShard = `${classShard}/${method}`;
+      if (!shardSet.has(methodShard)) uncovered.push(methodShard);
+    }
+  }
+  return uncovered;
+}
+
+export function isBenignIosAppAbsence(output) {
+  return /not installed|not found|no such app|unknown application|does not exist|could not find/i.test(
+    String(output ?? ""),
+  );
+}
+
 /**
  * Boot-trace files inside the app data container, pulled by
  * `ios-device-logs.mjs --pull-boot-trace`.

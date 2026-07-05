@@ -18,8 +18,11 @@ import {
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
   evaluateRunnerStaleness,
+  extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
   findDeviceRecord,
+  findUncoveredIosXcuitestEntries,
+  isBenignIosAppAbsence,
   normalizeProvisioningProfile,
   PlistData,
   parseCliArgs,
@@ -1090,6 +1093,60 @@ describe("buildIosXcuitestShardPlan (#13686)", () => {
   it("sanitizes shard names for filesystem-safe result paths", () => {
     expect(safeShardName("AppUITests/Foo Bar/testThing()")).toBe(
       "Foo_Bar_testThing",
+    );
+  });
+
+  it("finds committed XCTest methods not covered by the default shard plan", () => {
+    const entries = extractSwiftXcuitestEntries([
+      {
+        path: "BootCaptureUITests.swift",
+        text: `
+          import XCTest
+          final class BootCaptureUITests: XCTestCase {
+            func testCloudOnboardingChatAndVoice() throws {}
+            func testNewCoverageMustBeListed() throws {}
+          }
+        `,
+      },
+      {
+        path: "GestureSemanticsUITests.swift",
+        text: `
+          final class GestureSemanticsUITests: XCTestCase {
+            func testAnyFutureMethodIsCoveredByClassShard() throws {}
+          }
+        `,
+      },
+    ]);
+    expect(entries).toEqual([
+      {
+        className: "BootCaptureUITests",
+        methods: [
+          "testCloudOnboardingChatAndVoice",
+          "testNewCoverageMustBeListed",
+        ],
+        path: "BootCaptureUITests.swift",
+      },
+      {
+        className: "GestureSemanticsUITests",
+        methods: ["testAnyFutureMethodIsCoveredByClassShard"],
+        path: "GestureSemanticsUITests.swift",
+      },
+    ]);
+    expect(
+      findUncoveredIosXcuitestEntries({
+        entries,
+        shards: DEFAULT_IOS_XCUITEST_SHARDS,
+      }),
+    ).toEqual(["AppUITests/BootCaptureUITests/testNewCoverageMustBeListed"]);
+  });
+
+  it("classifies only absent-app uninstall failures as benign", () => {
+    expect(isBenignIosAppAbsence("Application is not installed")).toBe(true);
+    expect(
+      isBenignIosAppAbsence("Unknown application display identifier"),
+    ).toBe(true);
+    expect(isBenignIosAppAbsence("simctl failed: service unavailable")).toBe(
+      false,
     );
   });
 });
