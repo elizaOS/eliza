@@ -262,6 +262,13 @@ export function curateLauncherPages(
   { isAosp, enabledKinds, cloudActive }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
+  // Each winner's score is frozen at insert time. Re-scoring the STORED entry
+  // on later comparisons would hand an alias-winning tile the canonical-id
+  // bonus it never earned (its id is rewritten to the canonical id below),
+  // making the winner order-dependent: an alias arriving first could then never
+  // be displaced by the genuine canonical registration — which is how a stale
+  // alias label ("Fin Tuning") could beat the real Fine-Tuning tile.
+  const scoreByCanonical = new Map<string, number>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
     if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
@@ -285,8 +292,10 @@ export function curateLauncherPages(
       continue;
     }
 
-    const existing = byCanonical.get(canonicalId);
-    if (!existing || preferenceScore(entry) > preferenceScore(existing)) {
+    const existingScore = scoreByCanonical.get(canonicalId);
+    const score = preferenceScore(entry);
+    if (existingScore === undefined || score > existingScore) {
+      scoreByCanonical.set(canonicalId, score);
       // Preserve the canonical id so navigation + telemetry stay stable even
       // when an aliased registration (e.g. `wallet.inventory`) wins the tile.
       // When the id is REWRITTEN (an alias won), re-point `path` at the canonical
