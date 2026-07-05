@@ -1,6 +1,6 @@
 /**
  * Profile form for updating user profile information: name, email add, and
- * read-only org role.
+ * read-only account role.
  *
  * Talks directly to the canonical profile routes via the typed cloud client:
  *   PATCH /api/v1/user        (name)
@@ -321,7 +321,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 className="min-h-touch rounded-sm border-border bg-bg-muted text-muted capitalize disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <p className="text-xs text-muted">
-                Your role in the organization. Contact an admin to change this.
+                Your account role. Contact an admin to change this.
               </p>
             </div>
           </div>

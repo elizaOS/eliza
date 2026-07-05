@@ -31,7 +31,9 @@ vi.mock("./account-details", () => ({
 }));
 
 vi.mock("./profile-form", () => ({
-  ProfileForm: () => <div>profile form</div>,
+  ProfileForm: () => (
+    <div>Your account role. Contact an admin to change this.</div>
+  ),
 }));
 
 function makeUser(organizationName: string): UserProfile {
@@ -99,6 +101,7 @@ describe("AccountPageClient", () => {
     expect(text).toContain("Welcome back");
     expect(text).not.toContain("You're part of");
     expect(text).not.toContain("0x1234's Organization");
+    expect(text).not.toContain("organization");
     expect(setPageHeaderMock).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Account" }),
     );
@@ -111,6 +114,7 @@ describe("AccountPageClient", () => {
     const text = container.textContent ?? "";
 
     expect(text).not.toContain("Team Sol");
+    expect(text).not.toContain("organization");
     expect(text).toContain("account details");
   });
 });
