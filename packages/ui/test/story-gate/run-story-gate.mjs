@@ -30,6 +30,7 @@
  *     [--out test/story-gate/output] [--concurrency 6] [--shard i/n]
  *     [--section Primitives] [--grep <substr>] [--limit N]
  *     [--update-baseline] [--no-screenshots] [--no-a11y]
+ *     [--backend-api-base http://127.0.0.1:31337] [--no-backend-logs]
  *
  * Build the static catalog first: `bun run build-storybook --output-dir storybook-static`.
  */
@@ -42,7 +43,9 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { captureBackendLogs } from "./backend-log-capture.mjs";
 import { determinismShim, FROZEN_EPOCH_MS } from "./determinism-shim.mjs";
+import { attachLogCapture } from "./log-capture.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(here, "../..");
@@ -63,6 +66,8 @@ function parseArgs(argv) {
     updateBaseline: false,
     screenshots: true,
     a11y: true,
+    backendApiBase: null,
+    backendLogs: true,
     viewport: { width: 1280, height: 800 },
   };
   for (let i = 0; i < argv.length; i++) {
@@ -78,6 +83,8 @@ function parseArgs(argv) {
     else if (arg === "--update-baseline") a.updateBaseline = true;
     else if (arg === "--no-screenshots") a.screenshots = false;
     else if (arg === "--no-a11y") a.a11y = false;
+    else if (arg === "--backend-api-base") a.backendApiBase = next();
+    else if (arg === "--no-backend-logs") a.backendLogs = false;
   }
   return a;
 }
@@ -352,6 +359,7 @@ export function classifyStoryGateFailures({
 // ---------------------------------------------------------------------------
 async function renderStory(context, baseUrl, story, axeSource, opts) {
   const page = await context.newPage();
+  const logCapture = attachLogCapture(page, { label: story.id });
   const consoleErrors = [];
   const pageErrors = [];
   const onConsole = (m) => {
@@ -360,8 +368,6 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
   const onPageError = (e) => pageErrors.push(e.message ?? String(e));
   page.on("console", onConsole);
   page.on("pageerror", onPageError);
-
-  await page.addInitScript(determinismShim, FROZEN_EPOCH_MS);
 
   const result = {
     id: story.id,
@@ -379,6 +385,7 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
   };
 
   try {
+    await page.addInitScript(determinismShim, FROZEN_EPOCH_MS);
     const url = `${baseUrl}/iframe.html?id=${encodeURIComponent(story.id)}&viewMode=story`;
     await page.goto(url, { waitUntil: "load", timeout: 20000 });
 
@@ -557,11 +564,35 @@ async function renderStory(context, baseUrl, story, axeSource, opts) {
       `runner-error: ${(err?.message ?? String(err)).slice(0, 300)}`,
     );
   } finally {
+    const logPath = join(
+      outDir,
+      "logs",
+      "frontend",
+      `${safeArtifactName(story.id)}.json`,
+    );
+    await logCapture.write(logPath);
+    result.frontendLog = {
+      artifact: relativeArtifactPath(logPath),
+      summary: logCapture.snapshot().summary,
+    };
+    logCapture.detach();
     page.off("console", onConsole);
     page.off("pageerror", onPageError);
     await page.close();
   }
   return result;
+}
+
+function safeArtifactName(value) {
+  return String(value)
+    .replace(/[^a-z0-9._-]+/gi, "_")
+    .slice(0, 180);
+}
+
+function relativeArtifactPath(filePath) {
+  return filePath.startsWith(`${outDir}/`)
+    ? filePath.slice(outDir.length + 1)
+    : filePath;
 }
 
 async function detectBlank(pngBuffer, sharp) {
@@ -698,10 +729,22 @@ async function main() {
     failures,
     results,
   };
-  await writeFile(join(outDir, "report.json"), JSON.stringify(report, null, 2));
   await writeContactSheet(outDir, results);
-  await writeFrontendLogs(outDir, results);
+  const frontendLogSummary = await writeFrontendLogs(outDir, results);
+  const backendLogStatus = await writeBackendLogs(outDir);
   await writeManualReview(outDir, results, failures);
+  report.artifacts = {
+    frontendLogSummary: relativeArtifactPath(frontendLogSummary),
+    frontendLogDirectory: "logs/frontend",
+    backendLogStatus: relativeArtifactPath(
+      join(outDir, "backend-log-status.json"),
+    ),
+    backendLogs:
+      backendLogStatus.ok && backendLogStatus.out
+        ? relativeArtifactPath(backendLogStatus.out)
+        : null,
+  };
+  await writeFile(join(outDir, "report.json"), JSON.stringify(report, null, 2));
 
   if (args.updateBaseline) {
     await mkdir(baselineDir, { recursive: true });
@@ -834,15 +877,15 @@ async function writeContactSheet(dir, results) {
  * and page error captured across the catalog, keyed by story.
  */
 async function writeFrontendLogs(dir, results) {
-  const withLogs = results
-    .filter((r) => r.consoleErrors.length || r.issues.length)
-    .map((r) => ({
-      id: r.id,
-      title: `${r.title}/${r.name}`,
-      verdict: r.verdict,
-      consoleErrors: r.consoleErrors,
-      issues: r.issues,
-    }));
+  const withLogs = results.map((r) => ({
+    id: r.id,
+    title: `${r.title}/${r.name}`,
+    verdict: r.verdict,
+    consoleErrors: r.consoleErrors,
+    issues: r.issues,
+    artifact: r.frontendLog?.artifact ?? null,
+    summary: r.frontendLog?.summary ?? null,
+  }));
   const artifact = {
     schema: "eliza_story_gate_frontend_logs_v1",
     capturedAt: new Date().toISOString(),
@@ -850,13 +893,61 @@ async function writeFrontendLogs(dir, results) {
       stories: results.length,
       withConsoleErrors: results.filter((r) => r.consoleErrors.length).length,
       broken: results.filter((r) => r.verdict === "broken").length,
+      withLogArtifacts: results.filter((r) => r.frontendLog?.artifact).length,
     },
     stories: withLogs,
   };
+  const out = join(dir, "frontend-logs.json");
+  await writeFile(out, JSON.stringify(artifact, null, 2));
+  return out;
+}
+
+function configuredBackendApiBase() {
+  return (
+    args.backendApiBase ||
+    process.env.STORY_GATE_BACKEND_API_BASE ||
+    process.env.ELIZA_API_BASE ||
+    process.env.ELIZA_API_URL ||
+    ""
+  );
+}
+
+function backendLogGrep() {
+  const pattern = process.env.STORY_GATE_BACKEND_LOG_GREP;
+  if (!pattern) return undefined;
+  try {
+    return new RegExp(pattern);
+  } catch (err) {
+    console.warn(
+      `story-gate: ignoring invalid STORY_GATE_BACKEND_LOG_GREP (${err?.message ?? err})`,
+    );
+    return undefined;
+  }
+}
+
+async function writeBackendLogs(dir) {
+  const apiBase = configuredBackendApiBase();
+  const out = join(dir, "backend-logs.txt");
+  const status = args.backendLogs
+    ? await captureBackendLogs({
+        apiBase,
+        token: process.env.ELIZA_API_TOKEN,
+        out: apiBase ? out : undefined,
+        grep: backendLogGrep(),
+      })
+    : { ok: false, reason: "disabled" };
+  const artifact = {
+    schema: "eliza_story_gate_backend_logs_v1",
+    capturedAt: new Date().toISOString(),
+    configured: Boolean(apiBase),
+    ...status,
+    out: status.out ? relativeArtifactPath(status.out) : undefined,
+  };
   await writeFile(
-    join(dir, "frontend-logs.json"),
+    join(dir, "backend-log-status.json"),
     JSON.stringify(artifact, null, 2),
   );
+  return artifact;
 }
 
 /**
