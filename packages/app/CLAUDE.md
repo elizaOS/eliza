@@ -217,6 +217,10 @@ bun run --cwd packages/app test:e2e
 - **Plugin module caching.** `main.tsx` resolves each plugin module exactly once via the `initializeAppModules()` Promise.all; `React.lazy()` consumers share the same promise via `lazyNamedComponent()`.
 - **`@elizaos/app-core` must be evaluated before the boot config is assembled** — it owns the `AppBootConfig` singleton. `main.tsx` statically imports its desktop bindings, so the package loads with the entry chunk; never re-add a dynamic `import("@elizaos/app-core")` on the boot path — its escaping namespace anchors the whole `@elizaos/ui/browser` barrel into the entry chunk (#13187).
 - **Desktop API base injection.** Electrobun injects `window.__ELIZA_APP_API_BASE__` before React boots via its static server; Vite dev uses a `<script>` tag injected by `appDevWsBasePlugin()`.
+- **Test auth contract.** Use `docs/TEST_AUTH.md` for the canonical automated
+  auth path per surface. Renderer specs seed Steward sessions through
+  `test/ui-smoke/helpers/test-auth.ts`; do not hand-roll
+  `steward_session_token` values in individual specs.
 - **iOS store CSP.** When `ELIZA_BUILD_VARIANT=store` + `ELIZA_RELEASE_AUTHORITY=apple-app-store`, the build strips all `localhost`/`127.0.0.1` CSP sources and Capacitor allowNavigation entries. Do not hardcode local origins.
 - **Capacitor `ios/` and `android/` dirs are generated.** Run `bun run --cwd packages/app cap:sync` after any `capacitor.config.ts` change. Do not hand-edit the native project settings that Capacitor generates.
 - **Vite config aliases.** `vite.config.ts` builds workspace package aliases dynamically from `packages/` and `plugins/` directories. Native Capacitor plugins (`@elizaos/capacitor-*`) are aliased from `plugins/plugin-native-*/src/index.ts`. Plugins with `elizaos.app` in their `package.json` are included; others are excluded from the browser bundle.
