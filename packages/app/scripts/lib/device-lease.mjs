@@ -17,16 +17,19 @@ function sleep(ms) {
 }
 
 export function deviceLeaseStateDir(env = process.env) {
+  const explicitDir = env.ELIZA_DEVICE_LEASE_DIR?.trim();
+  if (explicitDir) return path.resolve(explicitDir);
+
   return path.resolve(
-    env.ELIZA_DEVICE_LEASE_DIR?.trim() ||
-      env.ELIZA_STATE_DIR?.trim() ||
-      path.join(os.homedir(), ".local", "state", "eliza", "device-leases"),
+    env.ELIZA_STATE_DIR?.trim() ||
+      path.join(os.homedir(), ".local", "state", "eliza"),
+    "device-leases",
   );
 }
 
 export function deviceLeaseKey(value) {
   return String(value)
-    .replace(/[^A-Za-z0-9_.:-]+/g, "_")
+    .replace(/[^A-Za-z0-9_.-]+/g, "_")
     .slice(0, 180);
 }
 
@@ -107,17 +110,17 @@ export async function acquireDeviceLease(
   fs.mkdirSync(stateDir, { recursive: true });
   const leasePath = deviceLeasePath(deviceKey, stateDir);
   const startedAt = now();
-  const lease = {
-    deviceKey,
-    pid,
-    sessionId,
-    acquiredAt: new Date(now()).toISOString(),
-    ttlMs,
-    hostname: os.hostname(),
-  };
 
   while (true) {
     try {
+      const lease = {
+        deviceKey,
+        pid,
+        sessionId,
+        acquiredAt: new Date(now()).toISOString(),
+        ttlMs,
+        hostname: os.hostname(),
+      };
       createLeaseFile(leasePath, lease);
       log(`device lease acquired: ${deviceKey}`);
       return {

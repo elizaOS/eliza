@@ -10,6 +10,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   acquireDeviceLease,
   activeLeaseStatus,
+  deviceLeaseKey,
+  deviceLeasePath,
+  deviceLeaseStateDir,
   isDeviceLeased,
   readDeviceLease,
 } from "./lib/device-lease.mjs";
@@ -29,6 +32,32 @@ afterEach(() => {
 });
 
 describe("device leases", () => {
+  it("stores leases under a device-leases child of ELIZA_STATE_DIR", () => {
+    const stateRoot = tempDir();
+    const explicitLeaseDir = tempDir();
+
+    expect(deviceLeaseStateDir({ ELIZA_STATE_DIR: stateRoot })).toBe(
+      path.join(stateRoot, "device-leases"),
+    );
+    expect(
+      deviceLeaseStateDir({
+        ELIZA_STATE_DIR: stateRoot,
+        ELIZA_DEVICE_LEASE_DIR: explicitLeaseDir,
+      }),
+    ).toBe(explicitLeaseDir);
+  });
+
+  it("sanitizes device keys for portable lease filenames", () => {
+    const stateDir = tempDir();
+
+    expect(deviceLeaseKey("android:emulator-5554")).toBe(
+      "android_emulator-5554",
+    );
+    expect(deviceLeasePath("ios:Booted Simulator", stateDir)).toBe(
+      path.join(stateDir, "ios_Booted_Simulator.json"),
+    );
+  });
+
   it("acquires and releases a lease", async () => {
     const stateDir = tempDir();
     const handle = await acquireDeviceLease("android:emulator-5554", {
