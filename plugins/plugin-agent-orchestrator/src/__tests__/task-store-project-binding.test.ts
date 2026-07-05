@@ -44,7 +44,9 @@ describe("task store project binding (real PGlite)", () => {
     await db.close();
   });
 
-  it("adds project_id via idempotent migration and keeps old rows readable", { timeout: PGLITE_TIMEOUT }, async () => {
+  it("adds project_id via idempotent migration and keeps old rows readable", {
+    timeout: PGLITE_TIMEOUT,
+  }, async () => {
     // Pre-create the table in its PRE-project_id shape and insert a legacy row,
     // exactly as an installed runtime that predates this change would have it.
     await db.query(`CREATE TABLE orchestrator_tasks (
@@ -119,7 +121,9 @@ describe("task store project binding (real PGlite)", () => {
     await expect(store2.getTask("legacy-1")).resolves.not.toBeNull();
   });
 
-  it("persists project_id and filters listTasks by projectId", { timeout: PGLITE_TIMEOUT }, async () => {
+  it("persists project_id and filters listTasks by projectId", {
+    timeout: PGLITE_TIMEOUT,
+  }, async () => {
     const store = new RuntimeDbTaskStore(pgliteAdapter(db));
     await store.createTask({
       title: "task in project A",
@@ -136,6 +140,9 @@ describe("task store project binding (real PGlite)", () => {
     const inA = await store.listTasks({ projectId: "proj-A" });
     expect(inA.map((t) => t.title)).toEqual(["task in project A"]);
     expect(inA[0]?.projectId).toBe("proj-A");
+
+    const trimmedA = await store.listTasks({ projectId: "  proj-A  " });
+    expect(trimmedA.map((t) => t.title)).toEqual(["task in project A"]);
 
     const inB = await store.listTasks({ projectId: "proj-B" });
     expect(inB.map((t) => t.title)).toEqual(["task in project B"]);
