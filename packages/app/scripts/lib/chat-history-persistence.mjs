@@ -37,6 +37,13 @@ function markerSegment(value, fallback) {
   return sanitized || fallback;
 }
 
+function markerRandomSegment(value, fallback) {
+  const sanitized = String(value ?? "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .trim();
+  return sanitized.length >= 8 ? sanitized : fallback;
+}
+
 /**
  * A per-run unique marker string. The timestamp + random suffix guarantee that
  * a message left over from a previous run can never satisfy the survival check,
@@ -48,10 +55,8 @@ export function buildRelaunchMarker({
   now = Date.now(),
   random,
 } = {}) {
-  const rand =
-    typeof random === "string" && random
-      ? random
-      : Math.random().toString(36).slice(2, 10);
+  const generatedRand = Math.random().toString(36).slice(2, 10);
+  const rand = markerRandomSegment(random, generatedRand);
   const platformSegment = markerSegment(platform, "app");
   const run = markerSegment(runId, rand);
   return `${RELAUNCH_MARKER_PREFIX}-${platformSegment}-${run}-${now}-${rand}`;

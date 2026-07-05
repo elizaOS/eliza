@@ -65,6 +65,18 @@ test("buildRelaunchMarker sanitizes marker segments so generated markers validat
     `${RELAUNCH_MARKER_PREFIX}-androidlocal-conversation123-1783280000000-abcd1234`,
   );
   assert.ok(isRelaunchMarker(marker));
+
+  const markerWithNoisyRandom = buildRelaunchMarker({
+    platform: "android",
+    runId: "conversation",
+    now: 1783280000000,
+    random: "abcd-1234",
+  });
+  assert.equal(
+    markerWithNoisyRandom,
+    `${RELAUNCH_MARKER_PREFIX}-android-conversation-1783280000000-abcd1234`,
+  );
+  assert.ok(isRelaunchMarker(markerWithNoisyRandom));
 });
 
 test("isRelaunchMarker rejects arbitrary user text", () => {
