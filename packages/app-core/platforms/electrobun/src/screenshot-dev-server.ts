@@ -72,7 +72,10 @@ export function startScreenshotDevServer(): (() => void) | undefined {
           "Content-Type": "application/json; charset=utf-8",
         });
         res.end(
-          JSON.stringify({ error: "screen capture failed or unavailable" }),
+          JSON.stringify({
+            error: "screen capture failed or unavailable",
+            reason: shot.reason ?? "screen capture backend returned no image",
+          }),
         );
         return;
       }
