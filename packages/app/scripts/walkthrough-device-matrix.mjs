@@ -104,6 +104,27 @@ export function requiredLaneFailures(matrix, required) {
   );
 }
 
+/** Lanes that were actually attempted on an available device/sim and then
+ * failed (`status: "error"`). Unlike an honest `n/a` (the host simply lacks the
+ * device), an `error` means the journey we *could* run broke — so it is always
+ * fatal, independent of `--require`. This closes the vacuous-green hole where an
+ * available-and-erroring lane merged silently (#13573). */
+export function erroredLanes(matrix) {
+  return Object.entries(matrix).filter(
+    ([, result]) => result.status === "error",
+  );
+}
+
+/** The process exit code for a completed matrix: non-zero when any attempted
+ * lane errored, or when a `--require`d lane is unavailable/failed; zero when
+ * every lane is `ok`/`captured` or an honestly-`n/a` unavailable host. */
+export function computeExitCode(matrix, required) {
+  const fatal =
+    erroredLanes(matrix).length ||
+    requiredLaneFailures(matrix, required).length;
+  return fatal ? 1 : 0;
+}
+
 function bootedIosSim() {
   if (process.platform !== "darwin") return null;
   const r = sh("xcrun", ["simctl", "list", "devices", "booted"]);
@@ -150,6 +171,11 @@ function captureIos({ duration }) {
       "n/a",
       "no iOS simulator app build found in DerivedData (run `bun run --cwd packages/app build:ios:local:sim` first; capturing a stale install would violate the rebuild-before-capture rule)",
     );
+  // TODO(#13573 Part 2): compose real journey legs when host can run them —
+  // drive ios-onboarding-smoke.mjs + mobile-local-chat-smoke.mjs (the in-app
+  // WKWebView handshake, since it has no CDP) before this single-shot capture so
+  // the iOS lane records the full onboarding/chat/gesture narrative, not just a
+  // frame of the running app. Device-gated: needs a live simulator.
   const code = runScript("capture-ios-sim.mjs", [
     "--issue",
     "10198",
@@ -325,15 +351,23 @@ async function main() {
     );
   }
   console.log(`\n  summary → ${join(runDir, "device-matrix.json")}\n`);
-  const failures = requiredLaneFailures(matrix, args.require);
-  if (failures.length) {
+  const errored = erroredLanes(matrix);
+  if (errored.length) {
     console.error(
-      `[walkthrough] required lane unavailable/failed: ${failures
+      `[walkthrough] lane errored during an attempted run: ${errored
         .map(([name]) => name)
         .join(", ")}`,
     );
   }
-  process.exit(failures.length ? 1 : 0);
+  const requiredFailures = requiredLaneFailures(matrix, args.require);
+  if (requiredFailures.length) {
+    console.error(
+      `[walkthrough] required lane unavailable/failed: ${requiredFailures
+        .map(([name]) => name)
+        .join(", ")}`,
+    );
+  }
+  process.exit(computeExitCode(matrix, args.require));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
