@@ -206,7 +206,8 @@ export class CharactersService {
   async create(data: NewUserCharacter): Promise<UserCharacter> {
     // Generate username if not provided
     let username = data.username;
-    if (username === undefined || username === null) {
+    if (username === undefined || username === null || username === "") {
+      // Blank is provided-but-unset (empty-is-unset contract), same as omitting the field.
       username = await this.generateUniqueUsername(data.name);
       logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
     } else if (typeof username !== "string") {
@@ -219,7 +220,9 @@ export class CharactersService {
       // Validate provided username
       const validation = validateUsername(username);
       if (!validation.valid) {
-        throw new Error(`Invalid username: ${validation.error}`);
+        // A genuinely-invalid provided username is caller error, not a server
+        // fault (#13637 class) — matches the non-string branch above.
+        throw ValidationError(`Invalid username: ${validation.error}`);
       }
 
       // Use normalized (lowercased) username from validation
