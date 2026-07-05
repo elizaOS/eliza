@@ -12,6 +12,7 @@ import {
   Mic,
   Music,
   RotateCcw,
+  Search,
   SendHorizontal,
 } from "lucide-react";
 import {
@@ -29,6 +30,7 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type {
   ChatTurnStatus,
+  ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { useComposerKeydown, useComposerPaste } from "../../chat/composer-core";
@@ -57,6 +59,7 @@ import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
+import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
@@ -68,6 +71,7 @@ import {
   useChatComposerOrLocal,
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
+import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
@@ -83,9 +87,13 @@ import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import { SensitiveRequestBlock } from "../chat/MessageContent";
 import { findChoiceRegions } from "../chat/message-choice-parser";
+import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { withTranscriptMarker } from "../chat/TranscriptViewerOverlay";
-import { ChatMessage } from "../composites/chat/chat-message";
+import {
+  ChatMessage,
+  getChatMessageAnchorId,
+} from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
   ChatMessageRenderContext,
@@ -977,6 +985,7 @@ export function ContinuousChatOverlay({
     unlockAudio,
     openSettings,
     navigateHome,
+    clearConversation,
     currentTab,
     stop,
     speak,
@@ -996,14 +1005,22 @@ export function ContinuousChatOverlay({
   // it reaches the in-chat conductor (and never the server); post-onboarding it
   // is unused here (the composer sends via `controller.send`). In stories/tests
   // with no AppContext the store returns an inert no-op.
-  const { sendActionMessage, handleChatDelete } = useAppSelectorShallow(
-    (s) => ({
-      sendActionMessage: s.sendActionMessage,
-      // Persistent per-message delete (#13533): server DELETE + optimistic
-      // removal with rollback. Inert no-op in stories/tests with no AppContext.
-      handleChatDelete: s.handleChatDelete,
-    }),
-  );
+  const {
+    sendActionMessage,
+    handleChatDelete,
+    handleSelectConversation,
+    loadConversationMessagesAround,
+  } = useAppSelectorShallow((s) => ({
+    sendActionMessage: s.sendActionMessage,
+    // Persistent per-message delete (#13533): server DELETE + optimistic
+    // removal with rollback. Inert no-op in stories/tests with no AppContext.
+    handleChatDelete: s.handleChatDelete,
+    // Search-jump (#14279): select the hit's conversation, then (if the hit is
+    // older than the loaded recent window) load a window centered on it before
+    // scrolling. Inert no-ops in stories/tests with no AppContext.
+    handleSelectConversation: s.handleSelectConversation,
+    loadConversationMessagesAround: s.loadConversationMessagesAround,
+  }));
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -1108,7 +1125,11 @@ export function ContinuousChatOverlay({
   // per-surface cooldown keeps the same offer from immediately re-appearing);
   // accept ("Do it") sends the implied action as a real turn through the SAME
   // send() path an edit-resend uses, then clears the bubble.
-  const { removeConversationMessage } = useConversationMessages();
+  const {
+    removeConversationMessage,
+    conversationMessages,
+    prependConversationMessages,
+  } = useConversationMessages();
   const handleDismissSuggestion = React.useCallback(
     (messageId: string) => {
       removeConversationMessage(messageId);
@@ -1477,6 +1498,150 @@ export function ContinuousChatOverlay({
     () => deriveChannelTopics(visibleMessages),
     [visibleMessages],
   );
+
+  // ── Infinite upward scroll (#13532), wired into the overlay per #14279 ────
+  // The overlay is the primary mobile/PWA chat surface, but until now only the
+  // desktop ChatView wired load-older. Share the SAME scroller (`threadRef`,
+  // owned by useThreadAutoScroll for bottom-follow) plus a top sentinel so a
+  // scroll toward the oldest line seamlessly prepends an older page — with the
+  // reader's viewport anchored (no jump) by useLoadOlderOnScroll.
+  const topSentinelRef = React.useRef<HTMLDivElement>(null);
+  const [hasMoreOlder, setHasMoreOlder] = React.useState(true);
+  // The active id captured for the async load-older result, so a page fetched
+  // for the previous conversation can't prepend into (or re-arm paging for) the
+  // newly active one after a mid-flight switch.
+  const loadOlderConversationIdRef = React.useRef(activeConversationId);
+  loadOlderConversationIdRef.current = activeConversationId;
+  const loadOlderMessages = React.useCallback(async () => {
+    const conversationId = activeConversationId;
+    if (!conversationId) return;
+    const result = await loadOlderConversationMessages({
+      client,
+      conversationId,
+      currentMessages: conversationMessages,
+      prependMessages: (older) => {
+        if (loadOlderConversationIdRef.current === conversationId) {
+          prependConversationMessages(older);
+        }
+      },
+    });
+    if (loadOlderConversationIdRef.current === conversationId) {
+      setHasMoreOlder(result.hasMore);
+    }
+  }, [activeConversationId, conversationMessages, prependConversationMessages]);
+  // A fresh/switched conversation may have older history — re-arm the loader.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId is the intentional re-arm trigger; the body only calls the stable setter.
+  React.useEffect(() => {
+    setHasMoreOlder(true);
+  }, [activeConversationId]);
+  useLoadOlderOnScroll<HTMLDivElement>({
+    scrollRef: threadRef,
+    sentinelRef: topSentinelRef,
+    onLoadOlder: loadOlderMessages,
+    // Topic grouping wraps rows in collapsible segments, which breaks the
+    // sentinel's flat-prepend anchor math; restrict load-older to the flat
+    // transcript (the common case). A topic-grouped thread still shows its
+    // recent window; scroll-up paging there is a follow-up.
+    hasMore: hasMoreOlder && !hasTopics,
+    topItemKey: visibleMessages[0]?.id ?? "",
+    enabled: threadPresented && !hasTopics,
+  });
+
+  // ── Message search across previous chats (#9955, wired into the overlay per
+  //    #14279) ─────────────────────────────────────────────────────────
+  // A quiet search entry point in the sheet header opens the shared
+  // MessageSearchPanel. Search runs against the server keyword endpoint (ranked
+  // by relevance then recency — already smarter than a naive substring scan);
+  // a hit jumps to its conversation + message, loading a centered window if the
+  // hit predates the loaded recent window, then scroll-flashes the anchor.
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const openSearch = React.useCallback(() => setSearchOpen(true), []);
+  const closeSearch = React.useCallback(() => setSearchOpen(false), []);
+  // Collapse search when the sheet closes so a re-open lands on the transcript.
+  React.useEffect(() => {
+    if (!sheetOpen) setSearchOpen(false);
+  }, [sheetOpen]);
+  const runMessageSearch = React.useCallback(
+    async (query: string, signal: AbortSignal) => {
+      const { results } = await client.searchConversationMessages(query, {
+        signal,
+      });
+      return results;
+    },
+    [],
+  );
+  // Poll a bounded number of frames for the anchor to mount (the thread
+  // re-renders asynchronously after a selection / window load), then resolve it
+  // or null once the frame budget is spent.
+  const waitForSearchAnchor = React.useCallback(
+    (anchorId: string, maxFrames: number): Promise<HTMLElement | null> =>
+      new Promise((resolve) => {
+        if (typeof requestAnimationFrame === "undefined") {
+          resolve(document.getElementById(anchorId));
+          return;
+        }
+        let frames = 0;
+        const step = () => {
+          const el = document.getElementById(anchorId);
+          if (el) {
+            resolve(el);
+            return;
+          }
+          if (frames++ < maxFrames) {
+            requestAnimationFrame(step);
+            return;
+          }
+          resolve(null);
+        };
+        requestAnimationFrame(step);
+      }),
+    [],
+  );
+  const scrollAndFlashSearchAnchor = React.useCallback((el: HTMLElement) => {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.style.transition = "outline-color 0.5s ease-out";
+    el.style.outline = "2px solid var(--primary)";
+    el.style.outlineOffset = "2px";
+    el.style.borderRadius = "8px";
+    window.setTimeout(() => {
+      el.style.outline = "2px solid transparent";
+    }, 1200);
+    window.setTimeout(() => {
+      el.style.removeProperty("outline");
+      el.style.removeProperty("outline-offset");
+      el.style.removeProperty("transition");
+    }, 1800);
+  }, []);
+  const handleSearchJump = React.useCallback(
+    (result: ConversationMessageSearchResult) => {
+      const anchorId = getChatMessageAnchorId(result.messageId);
+      void (async () => {
+        // Select the hit's conversation and let its recent window load first, so
+        // the in-window case (the common one) scrolls without a second fetch.
+        await handleSelectConversation(result.conversationId);
+        let el = await waitForSearchAnchor(anchorId, 20);
+        if (!el) {
+          // The hit predates the loaded recent window: load a window CENTERED on
+          // it, let the thread re-render, then scroll.
+          const loaded = await loadConversationMessagesAround(
+            result.conversationId,
+            result.messageId,
+          );
+          if (loaded) {
+            el = await waitForSearchAnchor(anchorId, 20);
+          }
+        }
+        if (el) scrollAndFlashSearchAnchor(el);
+      })();
+    },
+    [
+      handleSelectConversation,
+      loadConversationMessagesAround,
+      waitForSearchAnchor,
+      scrollAndFlashSearchAnchor,
+    ],
+  );
+
   const [collapsedTopics, setCollapsedTopics] = React.useState<
     ReadonlySet<string>
   >(() => new Set<string>());
@@ -4007,9 +4172,33 @@ export function ContinuousChatOverlay({
                   "relative z-20 flex shrink-0 items-center justify-between gap-1.5 overflow-hidden px-3",
                 )}
               >
-                {/* Empty left slot: keeps the launcher pinned to the right now
-                    that maximize/clear were removed (#13531). */}
-                <div className="flex items-center gap-1.5" />
+                {/* Left cluster (#14279): a quiet search entry point + a
+                    non-destructive “fresh chat” control. Search opens the shared
+                    MessageSearchPanel over the transcript; clear starts a new
+                    greeted thread WITHOUT discarding the current one (it stays
+                    reachable — selecting it re-loads its history, and scroll-up
+                    pages older turns). Both are locked while onboarding pins the
+                    sheet so the chat stays front and center. */}
+                <div className="flex items-center gap-1.5">
+                  <HeaderButton
+                    icon={Search}
+                    label="search messages"
+                    active={searchOpen}
+                    disabled={firstRunOpen}
+                    onClick={() => (searchOpen ? closeSearch() : openSearch())}
+                    testId="chat-full-search"
+                  />
+                  <HeaderButton
+                    icon={RotateCcw}
+                    label="new chat"
+                    disabled={firstRunOpen}
+                    onClick={() => {
+                      closeSearch();
+                      clearConversation?.();
+                    }}
+                    testId="chat-full-clear"
+                  />
+                </div>
                 {transcriptionMode ? (
                   <div
                     data-testid="chat-transcribing-badge"
@@ -4071,6 +4260,23 @@ export function ContinuousChatOverlay({
                   paddingTop: threadGrabberClearance,
                 }}
               >
+                {/* Message search (#14279): an in-sheet panel that covers the
+                    transcript while open. Selecting a hit closes it and jumps
+                    (handleSearchJump). Only reachable via the header control,
+                    which itself only exists at half+; gate on sheetOpen so the
+                    panel never intrudes on the resting composer. */}
+                {searchOpen && sheetOpen ? (
+                  <div
+                    data-testid="chat-message-search"
+                    className="absolute inset-0 z-30 flex flex-col overflow-y-auto overscroll-contain bg-scrim px-4 pb-4 pt-2 backdrop-blur-xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    <MessageSearchPanel
+                      search={runMessageSearch}
+                      onJump={handleSearchJump}
+                      onClose={closeSearch}
+                    />
+                  </div>
+                ) : null}
                 <motion.div
                   id="continuous-thread"
                   data-testid="chat-thread-scroll"
@@ -4139,6 +4345,30 @@ export function ContinuousChatOverlay({
                     ref={threadContentRef}
                     className="mt-auto flex flex-col pb-3 pt-1"
                   >
+                    {/* Top sentinel for infinite upward scroll (#13532, #14279):
+                        a zero-height marker just above the oldest turn. When it
+                        nears the top of the scroller, useLoadOlderOnScroll
+                        prefetches + prepends an older page a viewport early and
+                        preserves the reader's anchor so the thread never jumps.
+                        Only meaningful in the flat (non-topic) transcript. */}
+                    {!hasTopics &&
+                    hasMoreOlder &&
+                    visibleMessages.length > 0 ? (
+                      <div
+                        ref={topSentinelRef}
+                        data-testid="chat-transcript-top-sentinel"
+                        aria-hidden="true"
+                        className="pointer-events-none flex h-5 shrink-0 items-center justify-center"
+                      >
+                        <Loader2
+                          className={cn(
+                            "h-4 w-4 text-muted-strong opacity-60",
+                            reduce ? "" : "animate-spin",
+                          )}
+                          aria-hidden="true"
+                        />
+                      </div>
+                    ) : null}
                     {hasTopics
                       ? // Topic-grouped transcript: each cluster collapses via a
                         // gesture on its header (no visible buttons).

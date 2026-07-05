@@ -2423,15 +2423,63 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("conversation-swipe-hint-left")).toBeNull();
   });
 
-  it("exposes no maximize / minimize / clear (new-chat) header buttons", () => {
+  it("exposes no maximize / minimize button (maximize is a pull now)", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
+    // Maximize/minimize became a vertical pull in #13531 — still no button.
     expect(screen.queryByTestId("chat-full-maximize")).toBeNull();
-    expect(screen.queryByTestId("chat-full-clear")).toBeNull();
-    // The launcher (the sole remaining header control) still renders.
+    // The launcher header control still renders.
     expect(screen.getByTestId("chat-full-launcher")).toBeTruthy();
+  });
+
+  it("exposes search + new-chat header controls (#14279)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    // Chat history UX (#14279): a quiet search entry point and a
+    // non-destructive new-chat control live in the header's left cluster.
+    expect(screen.getByTestId("chat-full-search")).toBeTruthy();
+    expect(screen.getByTestId("chat-full-clear")).toBeTruthy();
+  });
+
+  it("opens the message-search panel from the header search control (#14279)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    // Panel is closed at rest.
+    expect(screen.queryByTestId("chat-message-search")).toBeNull();
+    // Tapping the search control reveals the search panel over the transcript.
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    expect(screen.getByTestId("chat-message-search")).toBeTruthy();
+    expect(screen.getByTestId("message-search-panel")).toBeTruthy();
+    // Tapping again toggles it closed.
+    fireEvent.click(screen.getByTestId("chat-full-search"));
+    expect(screen.queryByTestId("chat-message-search")).toBeNull();
+  });
+
+  it("starts a fresh thread from the header new-chat control (#14279)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    fireEvent.click(screen.getByTestId("chat-full-clear"));
+    // Non-destructive: delegates to the controller's clearConversation, which
+    // starts a fresh greeted thread while the prior one stays reachable.
+    expect(controller.clearConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
+    const { controller } = makeSwipeController();
+    render(<ContinuousChatOverlay controller={controller} />);
+    openSheet();
+
+    // The load-older prefetch sentinel mounts above the oldest turn so
+    // useLoadOlderOnScroll can page older history in as the reader scrolls up.
+    expect(screen.getByTestId("chat-transcript-top-sentinel")).toBeTruthy();
   });
 
   // Maximize is a PULL now, not a button (#13531). A big upward over-pull of the
