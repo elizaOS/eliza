@@ -1,9 +1,9 @@
-# #13580 Android scheduled failure signal
+# #14212 Android scheduled failure signal
 
 ## Scope
 
-This follow-up covers only the visible failure-signal gap from #13580 after the
-weekly host-backed Android emulator cadence landed.
+This draft-PR follow-up covers only the visible failure-signal gap from #13580
+after the weekly host-backed Android emulator cadence landed.
 
 ## Change
 
@@ -11,7 +11,8 @@ weekly host-backed Android emulator cadence landed.
   a hosted Ubuntu notifier job.
 - Scheduled failures run an `actions/github-script` step in
   `notify-scheduled-failure`, which depends on `android-e2e` and uses
-  `always()` so timeout/cancelled/runner-loss results still trigger the signal.
+  `always()` plus the `schedule` event guard so timeout/cancelled/runner-loss
+  results still trigger the signal outside the timed Android job.
 - The step creates or updates one open issue titled
   `Scheduled Android device e2e is failing (#13580)` with the failed run URL,
   artifact link, workflow name, Android job result, backend, timestamp, and the
@@ -23,14 +24,13 @@ weekly host-backed Android emulator cadence landed.
 
 - `actionlint .github/workflows/android-device-e2e.yml`
   - Result: pass
+- `ruby -e 'require "psych"; Psych.parse_file(ARGV.fetch(0)); puts "YAML parse: ok"' .github/workflows/android-device-e2e.yml`
+  - Result: pass (`YAML parse: ok`)
+- `rg -n "notify-scheduled-failure|needs: android-e2e|always\\(\\).*github.event_name == 'schedule'.*needs.android-e2e.result != 'success'|runs-on: ubuntu-24.04|issues: write|actions/github-script" .github/workflows/android-device-e2e.yml`
+  - Result: pass; matched the notifier job, `needs: android-e2e`, scheduled
+    `always()` guard, hosted runner, `issues: write`, and `github-script` step.
 - `git diff --check`
   - Result: pass
-- `GOBIN=/tmp/codex-go-bin go install github.com/rhysd/actionlint/cmd/actionlint@latest && /tmp/codex-go-bin/actionlint .github/workflows/android-device-e2e.yml`
-  - Result: pass
-- `bun install`
-  - Result: blocked by host storage while expanding this isolated sparse
-    worktree: `No space left on device` creating files under
-    `packages/research/robot/examples/robot-mujoco-demo/evidence/...`
 
 ## N/A
 
