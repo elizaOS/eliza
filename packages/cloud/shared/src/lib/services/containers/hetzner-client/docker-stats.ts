@@ -20,11 +20,11 @@ export function parseDockerStats(raw: string): ContainerMetricsSnapshot {
   }
 
   const cpuPercent = parseCpuPercent(cpuPerc);
-  const [memUsedRaw, memLimitRaw] = memUsage.split("/").map((s) => s.trim());
+  const [memUsedRaw, memLimitRaw] = parseSizePair(memUsage, "memory usage");
   const memoryBytes = parseSize(memUsedRaw);
   const memoryLimitBytes = parseSize(memLimitRaw);
-  const [netRxRaw, netTxRaw] = netIo.split("/").map((s) => s.trim());
-  const [blockReadRaw, blockWriteRaw] = blockIo.split("/").map((s) => s.trim());
+  const [netRxRaw, netTxRaw] = parseSizePair(netIo, "network I/O");
+  const [blockReadRaw, blockWriteRaw] = parseSizePair(blockIo, "block I/O");
 
   return {
     cpuPercent,
@@ -88,4 +88,15 @@ function parseSize(raw: string): number {
     );
   }
   return Math.round(Number(n) * multiplier);
+}
+
+function parseSizePair(raw: string, field: string): readonly [string, string] {
+  const parts = raw.split("/").map((s) => s.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to parse docker stats ${field}: ${JSON.stringify(raw)}`,
+    );
+  }
+  return [parts[0], parts[1]];
 }

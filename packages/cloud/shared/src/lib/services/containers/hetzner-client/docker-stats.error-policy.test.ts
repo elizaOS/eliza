@@ -84,6 +84,26 @@ describe("parseDockerStats — internal failure propagates (fail closed)", () =>
     expect((err as HetznerClientError).code).toBe("invalid_input");
   });
 
+  it("throws invalid_input on malformed size-pair fields instead of leaking TypeError", () => {
+    const malformed = [
+      line("12.50%", "128MiB", "0B / 0B", "0B / 0B"),
+      line("12.50%", "128MiB /", "0B / 0B", "0B / 0B"),
+      line("12.50%", "128MiB / 512MiB / 1GiB", "0B / 0B", "0B / 0B"),
+      line("12.50%", "128MiB / 512MiB", "1B", "0B / 0B"),
+      line("12.50%", "128MiB / 512MiB", "0B / 0B", "1B / 2B / 3B"),
+    ];
+    for (const bad of malformed) {
+      let err: unknown;
+      try {
+        parseDockerStats(bad);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(HetznerClientError);
+      expect((err as HetznerClientError).code).toBe("invalid_input");
+    }
+  });
+
   it("throws invalid_input on empty output rather than fabricating a zero snapshot", () => {
     expect(() => parseDockerStats("")).toThrow(HetznerClientError);
   });
