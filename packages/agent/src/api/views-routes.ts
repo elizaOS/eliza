@@ -837,6 +837,12 @@ export async function handleViewsRoutes(
             viewLabel,
             viewPath,
             viewType: resolvedViewType,
+            // Carry the view's declared anticipatory intent (#13587) so the
+            // proactive-interaction judge greets from what the view is FOR,
+            // not just its label. Absent for views that declare none.
+            ...(entry?.anticipatoryIntent
+              ? { anticipatoryIntent: entry.anticipatoryIntent }
+              : {}),
             previousViewId,
             initiatedBy: source,
           })

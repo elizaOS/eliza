@@ -67,6 +67,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/chat",
     order: 1,
     tags: ["messaging", "conversation", "agent"],
+    anticipatoryIntent:
+      "Offer to pick up the most recent unfinished thread or summarize new inbound messages across connectors.",
     visibleInManager: true,
     desktopTabEnabled: true,
     platforms: ["web", "desktop", "ios", "android"],
@@ -81,6 +83,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/character",
     order: 50,
     tags: ["identity", "personality", "character"],
+    anticipatoryIntent:
+      "Offer the single highest-value identity or personality improvement from the current character state (bio, style, examples, or knowledge gaps).",
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -95,6 +99,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 51,
     tags: ["documents", "knowledge", "files", "uploads", "retrieval"],
     relatedActions: ["OWNER_DOCUMENTS"],
+    anticipatoryIntent:
+      "Offer to triage recently ingested attachments — tag, rescope, or clean up new knowledge items from the last few days.",
     visibleInManager: true,
     desktopTabEnabled: true,
   },
@@ -108,6 +114,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/automations",
     order: 55,
     tags: ["automation", "tasks", "scheduling"],
+    anticipatoryIntent:
+      "Offer to draft a new workflow/trigger for a routine the user does by hand, or surface any failed automation runs that need attention.",
     visibleInManager: true,
   },
   {
@@ -119,6 +127,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     heroImagePath: "assets/view-heroes/plugins-page.png",
     path: "/apps/plugins",
     order: 60,
+    anticipatoryIntent:
+      "Offer the smallest concrete plugin setup or fix — configure credentials for an installed-but-unready plugin, or close a runtime capability gap.",
     tags: [
       "plugins",
       "plugin-browser",
@@ -155,6 +165,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/apps/transcripts",
     order: 71,
     tags: ["transcript", "voice", "recording", "audio"],
+    anticipatoryIntent:
+      "Offer to summarize or extract action items from the most recent voice transcript.",
     visibleInManager: true,
   },
   {
@@ -207,6 +219,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 90,
     tags: ["configuration", "preferences", "plugins"],
     relatedActions: ["RUNTIME"],
+    anticipatoryIntent:
+      "Offer to finish first-run setup — pick the model and provider, connect the wallet/cloud account, or set the voice — starting with whatever is still unconfigured.",
     visibleInManager: true,
     desktopTabEnabled: true,
   },

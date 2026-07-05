@@ -833,6 +833,19 @@ export interface ViewDeclaration {
 	 * Optional free-form planner hints for this view.
 	 */
 	contextHints?: string[];
+	/**
+	 * What the agent should proactively offer the moment the user switches INTO
+	 * this view (#13587). One short, imperative sentence naming the single most
+	 * useful anticipatory action for the surface — e.g. wallet → "Offer a
+	 * portfolio summary and a fund/swap next step", settings → "Offer to set up
+	 * the model, provider, and voice". The proactive-interaction decider reads
+	 * this declared intent instead of guessing from the label: a view WITH an
+	 * intent is expected to produce a scoped greeting on a user-initiated switch;
+	 * a view WITHOUT one falls back to label-only judging and may stay silent.
+	 * The `ProactiveInteractionGate` (cooldown/cap/dedup/debounce) remains the
+	 * rate-limit backstop regardless.
+	 */
+	anticipatoryIntent?: string;
 	/** Relative path from the plugin's package root to its hero image. */
 	heroImagePath?: string;
 	/** Screen background policy for this view. Defaults to `"opaque"`. */

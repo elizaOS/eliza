@@ -6,6 +6,13 @@
  * existing `routeAutonomyTextToUser` → `proactive-message` pipeline with
  * `source: "proactive-interaction"` or the low-priority notification rail.
  *
+ * On a USER-initiated view switch the judge is driven by the view's declared
+ * anticipatory intent (#13587): a view that declares one is expected to produce
+ * a scoped greeting; a view without one is judged from its label only and may
+ * stay silent. The `ProactiveInteractionGate` (cooldown/cap/dedup/debounce) is
+ * the rate-limit backstop in every case, and agent-initiated switches are always
+ * skipped (the agent already acknowledged the move, #8788).
+ *
  * Two layers, both testable in isolation:
  *  - {@link decideProactiveComment} — the pure policy + governance decision
  *    (injected judge / gate / clock), no runtime, no model, no network.
@@ -202,14 +209,21 @@ export async function decideProactiveComment(
 }
 
 const JUDGE_INSTRUCTION = [
-  "The user just took an action in the app. Decide if there is ONE specific, helpful thing you can proactively offer right now.",
-  'Examples: switched to wallet → "Want me to pull your latest balances?"; opened task-coordinator → "Want me to summarize your open tasks?".',
-  'Use delivery "chat" only when the current view benefits from a visible suggestion. Use delivery "notify" for useful but low-urgency offers that should land quietly outside chat.',
-  "Stay silent (return null) for ambiguous or low-value interactions, settings/config screens, or anything where an offer would be noise.",
+  "The user just switched into a view. Anticipate what they came here to do and offer ONE specific, scoped, immediately useful thing.",
+  "When an anticipatory intent is declared for the view, fulfill it: propose that action in a single short sentence, grounded in the view — do NOT stay silent just because it is a settings/config screen.",
+  'Examples: wallet → "Want your latest balances and today\'s P&L?"; settings → "Want me to finish setup — pick your model and voice?"; knowledge → "You have new attachments to triage — want me to file them?".',
+  "A user-initiated switch is itself a signal they want help here, so prefer offering over silence whenever the view declares an intent.",
+  'Use delivery "chat" for a visible in-view suggestion. Use delivery "notify" for useful but low-urgency offers that should land quietly outside chat.',
+  "Return null only when there is genuinely nothing scoped and useful to offer — typically a view with no declared intent and no live signal — never merely because the screen looks like configuration.",
   'Respond as JSON: {"comment": <a short offer, or null>, "delivery": "chat" | "notify", "confidence": 0..1, "urgency": "low" | "medium" | "high", "title": <optional notification title>}.',
 ].join("\n");
 
-/** Describe the interaction for the judge prompt. */
+/**
+ * Describe the interaction for the judge prompt. A view switch that carries a
+ * declared {@link ViewSwitchedPayload.anticipatoryIntent} (#13587) hands that
+ * intent to the judge so the greeting anticipates the view's purpose; without
+ * one the judge only knows the label and may legitimately stay silent.
+ */
 function describeInteraction(payload: InteractionPayload): string {
   if ("command" in payload) {
     return `The user just ran the /${payload.command} command.`;
@@ -218,7 +232,12 @@ function describeInteraction(payload: InteractionPayload): string {
     return `The user just used the "${payload.shortcutId}" shortcut.`;
   }
   const where = payload.viewLabel ?? payload.viewId;
-  return `The user just opened the ${where} view.`;
+  const lines = [`The user just opened the ${where} view.`];
+  const intent = payload.anticipatoryIntent?.trim();
+  if (intent) {
+    lines.push(`Declared anticipatory intent for this view: ${intent}`);
+  }
+  return lines.join("\n");
 }
 
 /** Build the small-model judge prompt for an interaction. */

@@ -375,6 +375,13 @@ export interface ViewSwitchedPayload extends EventPayload {
 	viewLabel?: string;
 	viewPath?: string | null;
 	viewType?: string;
+	/**
+	 * The switched-to view's declared anticipatory intent (#13587), copied from
+	 * its {@link ViewDeclaration.anticipatoryIntent}. Present only when the view
+	 * declares one; drives the proactive-interaction judge toward a scoped
+	 * greeting instead of guessing from the label.
+	 */
+	anticipatoryIntent?: string;
 	/** Where the user was before this switch, when known. */
 	previousViewId?: string | null;
 	initiatedBy: InteractionInitiator;

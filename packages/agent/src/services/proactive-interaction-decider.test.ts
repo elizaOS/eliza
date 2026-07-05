@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildProactiveJudgePrompt,
   decideProactiveComment,
+  type InteractionPayload,
   interactionSurface,
   parseProactiveJudgeDecisionOutput,
   parseProactiveJudgeOutput,
@@ -224,6 +225,69 @@ describe("buildProactiveJudgePrompt", () => {
       initiatedBy: "user",
     };
     expect(buildProactiveJudgePrompt(shortcut)).toContain("open-wallet");
+  });
+
+  it("hands the declared anticipatory intent to the judge (#13587)", () => {
+    const p = buildProactiveJudgePrompt(
+      payload({
+        viewLabel: "Settings",
+        anticipatoryIntent: "Offer to finish first-run model and voice setup.",
+      }),
+    );
+    expect(p).toContain("Declared anticipatory intent for this view:");
+    expect(p).toContain("Offer to finish first-run model and voice setup.");
+  });
+
+  it("falls back to label-only when the view declares no intent (#13587)", () => {
+    const p = buildProactiveJudgePrompt(
+      payload({ viewLabel: "Settings", anticipatoryIntent: undefined }),
+    );
+    expect(p).toContain("The user just opened the Settings view.");
+    expect(p).not.toContain("Declared anticipatory intent");
+  });
+
+  it("no longer instructs the judge to stay silent on settings/config (#13587)", () => {
+    const p = buildProactiveJudgePrompt(payload({ viewLabel: "Settings" }));
+    // The old doctrine-violating imperative ("Stay silent (return null) for
+    // ... settings/config screens") is gone: configuration surfaces are now
+    // greet-eligible, and the copy says so explicitly.
+    expect(p).not.toMatch(/Stay silent \(return null\)[^\n]*settings\/config/);
+    expect(p).toMatch(/do NOT stay silent just because it is a settings/i);
+  });
+});
+
+describe("intent-driven greeting end to end (#13587)", () => {
+  it("admits a scoped settings greeting driven by the declared intent", async () => {
+    const gate = new ProactiveInteractionGate(configForChattiness("subtle"));
+    // The judge sees the intent in the prompt and returns a high-confidence,
+    // scoped offer — the exact case the old 0.65-floor + silent-on-settings
+    // guidance used to suppress.
+    const judge = async (p: InteractionPayload) => {
+      expect(buildProactiveJudgePrompt(p)).toContain(
+        "finish first-run model and voice setup",
+      );
+      return parseProactiveJudgeDecisionOutput(
+        JSON.stringify({
+          comment: "Want me to finish setup — pick your model and voice?",
+          delivery: "chat",
+          confidence: 0.9,
+        }),
+      );
+    };
+    const res = await decideProactiveComment({
+      payload: payload({
+        viewId: "settings",
+        viewLabel: "Settings",
+        anticipatoryIntent: "Offer to finish first-run model and voice setup.",
+      }),
+      gate,
+      judge,
+      now: 0,
+    });
+    expect(res.text).toBe(
+      "Want me to finish setup — pick your model and voice?",
+    );
+    expect(res.delivery).toBe("chat");
   });
 });
 

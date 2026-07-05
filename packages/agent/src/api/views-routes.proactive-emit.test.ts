@@ -89,6 +89,27 @@ describe("POST /api/views/:id/navigate — VIEW_SWITCHED emission (#8792)", () =
     );
   });
 
+  it("carries the view's declared anticipatoryIntent when it has one (#13587)", async () => {
+    const { ctx, emitEvent } = makeCtx("settings", { source: "user" });
+    await handleViewsRoutes(ctx);
+
+    const calls = viewSwitchedCalls(emitEvent);
+    expect(calls).toHaveLength(1);
+    const emitted = calls[0][1] as { anticipatoryIntent?: string };
+    expect(typeof emitted.anticipatoryIntent).toBe("string");
+    expect(emitted.anticipatoryIntent).toMatch(/setup|model|provider|voice/i);
+  });
+
+  it("omits anticipatoryIntent for a view that declares none (#13587)", async () => {
+    // "calendar" is not a builtin view, so no declaration and no intent.
+    const { ctx, emitEvent } = makeCtx("calendar", { source: "user" });
+    await handleViewsRoutes(ctx);
+
+    const calls = viewSwitchedCalls(emitEvent);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).not.toHaveProperty("anticipatoryIntent");
+  });
+
   it("does NOT re-emit when re-navigating to the same view", async () => {
     const first = makeCtx("wallet", { source: "user" });
     await handleViewsRoutes(first.ctx);
