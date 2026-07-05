@@ -5,22 +5,27 @@
  * pixel-diff summarizer/comparator, and the declarative expectation evaluator.
  * All deterministic — no image decode, no tesseract, no browser.
  */
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { bucket as auditBucket } from "../ui-smoke/aesthetic-audit-rules";
 import {
   bucket,
   bucketRgb,
   parseRgb,
 } from "../../scripts/mvp-visual-verify/color-bucket.mjs";
-import { quantizePalette } from "../../scripts/mvp-visual-verify/dominant-color.mjs";
 import {
   comparePixels,
   summarizeDiff,
 } from "../../scripts/mvp-visual-verify/diff.mjs";
+import { quantizePalette } from "../../scripts/mvp-visual-verify/dominant-color.mjs";
 import {
   evaluateExpectations,
   resolveSpec,
 } from "../../scripts/mvp-visual-verify/expectation-eval.mjs";
+import { bucket as auditBucket } from "../ui-smoke/aesthetic-audit-rules";
 
 describe("color-bucket", () => {
   it("parses rgb and rgba", () => {
@@ -46,8 +51,14 @@ describe("color-bucket", () => {
     const samples: string[] = [];
     for (let r = 0; r <= 255; r += 51)
       for (let g = 0; g <= 255; g += 51)
-        for (let b = 0; b <= 255; b += 51) samples.push(`rgb(${r}, ${g}, ${b})`);
-    samples.push("rgba(255,88,0,1)", "rgba(10,10,40,1)", "rgba(10,10,12,0.5)", "rgba(0,0,0,0)");
+        for (let b = 0; b <= 255; b += 51)
+          samples.push(`rgb(${r}, ${g}, ${b})`);
+    samples.push(
+      "rgba(255,88,0,1)",
+      "rgba(10,10,40,1)",
+      "rgba(10,10,12,0.5)",
+      "rgba(0,0,0,0)",
+    );
     for (const s of samples) expect(bucket(s), s).toBe(auditBucket(s));
   });
 
@@ -60,7 +71,11 @@ describe("color-bucket", () => {
 
 describe("quantizePalette", () => {
   /** Build a WxH RGBA buffer from a flat [r,g,b,a] fill or a per-pixel fn. */
-  function makeBuffer(w: number, h: number, fill: (i: number) => [number, number, number, number]) {
+  function makeBuffer(
+    w: number,
+    h: number,
+    fill: (i: number) => [number, number, number, number],
+  ) {
     const buf = Buffer.alloc(w * h * 4);
     for (let p = 0; p < w * h; p += 1) {
       const [r, g, b, a] = fill(p);
@@ -74,8 +89,13 @@ describe("quantizePalette", () => {
 
   it("ranks dominant colors by coverage and labels buckets", () => {
     // 75% orange, 25% blue.
-    const buf = makeBuffer(4, 4, (i) => (i < 12 ? [255, 88, 0, 255] : [10, 10, 200, 255]));
-    const { swatches, buckets, totalOpaque } = quantizePalette(buf, { step: 16, topK: 4 });
+    const buf = makeBuffer(4, 4, (i) =>
+      i < 12 ? [255, 88, 0, 255] : [10, 10, 200, 255],
+    );
+    const { swatches, buckets, totalOpaque } = quantizePalette(buf, {
+      step: 16,
+      topK: 4,
+    });
     expect(totalOpaque).toBe(16);
     expect(swatches[0].bucket).toBe("orange");
     expect(swatches[0].ratio).toBeCloseTo(0.75, 5);
@@ -85,7 +105,9 @@ describe("quantizePalette", () => {
   });
 
   it("skips fully transparent pixels", () => {
-    const buf = makeBuffer(2, 2, (i) => (i === 0 ? [255, 88, 0, 255] : [0, 0, 0, 0]));
+    const buf = makeBuffer(2, 2, (i) =>
+      i === 0 ? [255, 88, 0, 255] : [0, 0, 0, 0],
+    );
     const { totalOpaque, swatches } = quantizePalette(buf);
     expect(totalOpaque).toBe(1);
     expect(swatches[0].ratio).toBe(1);
@@ -98,7 +120,11 @@ describe("quantizePalette", () => {
 
 describe("diff", () => {
   it("summarizeDiff computes percent + per-channel mean delta", () => {
-    const s = summarizeDiff({ changedPixels: 25, totalPixels: 100, sumAbsDelta: 3000 });
+    const s = summarizeDiff({
+      changedPixels: 25,
+      totalPixels: 100,
+      sumAbsDelta: 3000,
+    });
     expect(s.changedRatio).toBe(0.25);
     expect(s.changedPercent).toBe(25);
     expect(s.meanAbsDelta).toBe(10); // 3000 / (100*3)
@@ -106,7 +132,9 @@ describe("diff", () => {
   });
 
   it("summarizeDiff rejects a zero-pixel image (no false 0% pass)", () => {
-    expect(() => summarizeDiff({ changedPixels: 0, totalPixels: 0, sumAbsDelta: 0 })).toThrow();
+    expect(() =>
+      summarizeDiff({ changedPixels: 0, totalPixels: 0, sumAbsDelta: 0 }),
+    ).toThrow();
   });
 
   it("comparePixels counts pixels above the threshold and builds a highlight", () => {
@@ -114,10 +142,11 @@ describe("diff", () => {
     const h = 1;
     const a = Buffer.from([0, 0, 0, 255, 0, 0, 0, 255]);
     const b = Buffer.from([0, 0, 0, 255, 200, 0, 0, 255]); // pixel 1 differs by 200
-    const { changedPixels, totalPixels, sumAbsDelta, highlight } = comparePixels(a, b, w, h, {
-      threshold: 30,
-      buildHighlight: true,
-    });
+    const { changedPixels, totalPixels, sumAbsDelta, highlight } =
+      comparePixels(a, b, w, h, {
+        threshold: 30,
+        buildHighlight: true,
+      });
     expect(totalPixels).toBe(2);
     expect(changedPixels).toBe(1);
     expect(sumAbsDelta).toBe(200);
@@ -128,12 +157,17 @@ describe("diff", () => {
   });
 
   it("comparePixels throws when a buffer is too small", () => {
-    expect(() => comparePixels(Buffer.alloc(4), Buffer.alloc(2), 2, 1)).toThrow(/too small/);
+    expect(() => comparePixels(Buffer.alloc(4), Buffer.alloc(2), 2, 1)).toThrow(
+      /too small/,
+    );
   });
 });
 
 describe("expectation-eval", () => {
-  const palette = (buckets: Record<string, number>, swatches: { bucket: string }[] = []) => ({
+  const palette = (
+    buckets: Record<string, number>,
+    swatches: { bucket: string }[] = [],
+  ) => ({
     buckets,
     swatches,
   });
@@ -141,13 +175,21 @@ describe("expectation-eval", () => {
 
   it("no-blue fails on DOM blue, passes when clean", () => {
     const fail = evaluateExpectations(
-      { ocr: okOcr(""), palette: palette({ neutral: 1 }), finding: { blueColors: ["rgb(0,0,255)"] } },
+      {
+        ocr: okOcr(""),
+        palette: palette({ neutral: 1 }),
+        finding: { blueColors: ["rgb(0,0,255)"] },
+      },
       { noBlue: true },
     );
     expect(fail.pass).toBe(false);
     expect(fail.reasons[0]).toMatch(/no-blue/);
     const pass = evaluateExpectations(
-      { ocr: okOcr(""), palette: palette({ orange: 0.9 }), finding: { blueColors: [] } },
+      {
+        ocr: okOcr(""),
+        palette: palette({ orange: 0.9 }),
+        finding: { blueColors: [] },
+      },
       { noBlue: true },
     );
     expect(pass.pass).toBe(true);
@@ -155,7 +197,11 @@ describe("expectation-eval", () => {
 
   it("no-blue fails when palette blue coverage exceeds the limit", () => {
     const r = evaluateExpectations(
-      { ocr: okOcr(""), palette: palette({ blue: 0.2 }), finding: { blueColors: [] } },
+      {
+        ocr: okOcr(""),
+        palette: palette({ blue: 0.2 }),
+        finding: { blueColors: [] },
+      },
       { noBlue: true, blueCoverageLimit: 0.05 },
     );
     expect(r.pass).toBe(false);
@@ -183,14 +229,22 @@ describe("expectation-eval", () => {
     expect(skip.pass).toBe(true); // a skip is not a fail
 
     const fail = evaluateExpectations(
-      { ocr: okOcr(""), palette: palette({}), finding: { horizontalOverflowPx: 40 } },
+      {
+        ocr: okOcr(""),
+        palette: palette({}),
+        finding: { horizontalOverflowPx: 40 },
+      },
       { noHorizontalOverflow: true },
     );
     expect(fail.pass).toBe(false);
     expect(fail.reasons[0]).toMatch(/horizontal overflow 40px/);
 
     const pass = evaluateExpectations(
-      { ocr: okOcr(""), palette: palette({}), finding: { horizontalOverflowPx: 1 } },
+      {
+        ocr: okOcr(""),
+        palette: palette({}),
+        finding: { horizontalOverflowPx: 1 },
+      },
       { noHorizontalOverflow: true },
     );
     expect(pass.pass).toBe(true);
@@ -199,7 +253,11 @@ describe("expectation-eval", () => {
   it("OCR absent junk is whole-word: 'nan' inside 'finances' does not fire", () => {
     const spec = { ocr: { absent: ["NaN"] } };
     const clean = evaluateExpectations(
-      { ocr: okOcr("Finances Focus Goals"), palette: palette({}), finding: null },
+      {
+        ocr: okOcr("Finances Focus Goals"),
+        palette: palette({}),
+        finding: null,
+      },
       spec,
     );
     expect(clean.pass).toBe(true);
@@ -213,7 +271,11 @@ describe("expectation-eval", () => {
 
   it("OCR punctuation junk uses substring match", () => {
     const r = evaluateExpectations(
-      { ocr: okOcr("caption [object Object] tail"), palette: palette({}), finding: null },
+      {
+        ocr: okOcr("caption [object Object] tail"),
+        palette: palette({}),
+        finding: null,
+      },
       { ocr: { absent: ["[object Object]"] } },
     );
     expect(r.pass).toBe(false);
@@ -228,13 +290,23 @@ describe("expectation-eval", () => {
     };
     // Desktop requires both; mobile requires only the universal token.
     const desktopFail = evaluateExpectations(
-      { viewport: "desktop", ocr: okOcr("Automations Workflows"), palette: palette({}), finding: null },
+      {
+        viewport: "desktop",
+        ocr: okOcr("Automations Workflows"),
+        palette: palette({}),
+        finding: null,
+      },
       spec,
     );
     expect(desktopFail.pass).toBe(false);
     expect(desktopFail.reasons[0]).toMatch(/Tasks/);
     const mobilePass = evaluateExpectations(
-      { viewport: "mobile-portrait", ocr: okOcr("Automations Workflows"), palette: palette({}), finding: null },
+      {
+        viewport: "mobile-portrait",
+        ocr: okOcr("Automations Workflows"),
+        palette: palette({}),
+        finding: null,
+      },
       spec,
     );
     expect(mobilePass.pass).toBe(true);
@@ -242,7 +314,11 @@ describe("expectation-eval", () => {
 
   it("OCR check skips honestly when the engine is unavailable", () => {
     const r = evaluateExpectations(
-      { ocr: { available: false, reason: "tesseract not found" }, palette: palette({}), finding: null },
+      {
+        ocr: { available: false, reason: "tesseract not found" },
+        palette: palette({}),
+        finding: null,
+      },
       { ocr: { present: ["Anything"] } },
     );
     expect(r.checks[0].status).toBe("skip");
@@ -262,5 +338,53 @@ describe("expectation-eval", () => {
     // An unlisted slug still gets the universal invariants.
     const dflt = resolveSpec(specs, "builtin-unknown");
     expect(dflt.noBlue).toBe(true);
+  });
+});
+
+describe("mvp-visual-verify CLI", () => {
+  it("strict mode fails when the run has skipped checks or first-run baselines", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "eliza-mvp-visual-verify-"));
+    const viewportDir = path.join(dir, "mobile-portrait");
+    mkdirSync(viewportDir);
+    await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 4,
+        background: { r: 255, g: 88, b: 0, alpha: 1 },
+      },
+    })
+      .png()
+      .toFile(path.join(viewportDir, "builtin-chat.png"));
+
+    let failed = false;
+    try {
+      execFileSync(
+        process.execPath,
+        [
+          path.resolve("scripts/mvp-visual-verify.mjs"),
+          "--input",
+          dir,
+          "--strict",
+        ],
+        {
+          cwd: path.resolve(__dirname, "../.."),
+          encoding: "utf8",
+          stdio: "pipe",
+        },
+      );
+    } catch (error) {
+      failed = true;
+      expect(error.status).toBe(1);
+      expect(String(error.stdout)).toContain("new baselines: 1");
+      expect(String(error.stdout)).toContain("skipped checks:");
+    }
+
+    expect(failed).toBe(true);
+    const report = JSON.parse(
+      readFileSync(path.join(dir, "mvp-verify", "report.json"), "utf8"),
+    );
+    expect(report.summary.newBaselines).toBe(1);
+    expect(report.summary.skippedChecks).toBeGreaterThan(0);
   });
 });

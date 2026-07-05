@@ -152,7 +152,10 @@ async function main() {
       const finding = reportIndex.get(`${slug}::${vp.name}`) ?? null;
 
       const palette = await dominantColorsFromPng(currentPath);
-      const ocr = await ocrImage(currentPath);
+      const ocr = await ocrImage(currentPath).catch((error) => ({
+        available: false,
+        reason: `OCR failed: ${error?.message ?? String(error)}`,
+      }));
       const baselinePath = path.join(baselineRoot, vp.name, png);
       const diffOutPath = path.join(diffRoot, vp.name, png);
       // --update-baseline: overwrite the baseline with the current shot BEFORE
@@ -237,6 +240,11 @@ async function main() {
     ocrEngine: tesseract ?? "N/A (tesseract not found)",
     auditReportPresent: reportPresent,
     expectationFailures: results.filter((r) => !r.expectation.pass).length,
+    skippedChecks: results.reduce(
+      (count, r) =>
+        count + r.expectation.checks.filter((c) => c.status === "skip").length,
+      0,
+    ),
     newBaselines: results.filter((r) => r.diff.status === "new").length,
     overflowStates: results.filter((r) => (r.horizontalOverflowPx ?? 0) > 2)
       .length,
@@ -257,7 +265,7 @@ async function main() {
     `wrote ${results.length} states → ${path.join(outDir, "report.json")} + contact-sheet.html`,
   );
   log(
-    `expectation failures: ${summary.expectationFailures} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines}`,
+    `expectation failures: ${summary.expectationFailures} | skipped checks: ${summary.skippedChecks} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines}`,
   );
   if (summary.expectationFailures > 0) {
     for (const r of results.filter((r) => !r.expectation.pass)) {
@@ -267,11 +275,21 @@ async function main() {
     }
   }
 
-  if (args.strict && summary.expectationFailures > 0) {
-    log("--strict: exiting non-zero due to expectation failures");
+  if (args.strict && hasStrictFailure(summary)) {
+    log(
+      "--strict: exiting non-zero due to failures, skipped checks, or missing baselines",
+    );
     return 1;
   }
   return 0;
+}
+
+function hasStrictFailure(summary) {
+  return (
+    summary.expectationFailures > 0 ||
+    summary.skippedChecks > 0 ||
+    summary.newBaselines > 0
+  );
 }
 
 function esc(s) {
@@ -305,10 +323,10 @@ function renderContactSheet(summary, results) {
       const diffCell =
         r.diff.status === "new"
           ? '<span class="new">NEW baseline</span>'
-          : `${r.diff.changedPercent}% changed${r.diff.resized ? " (resized)" : ""}${r.diff.diffPng ? `<br><img class="thumb" src="${esc(r.diff.diffPng)}">` : ""}`;
+          : `${r.diff.changedPercent}% changed${r.diff.resized ? " (resized)" : ""}${r.diff.diffPng ? `<br><a href="${esc(r.diff.diffPng)}"><img class="thumb" src="${esc(r.diff.diffPng)}"></a>` : ""}`;
       return `<tr class="${r.expectation.pass ? "" : "row-fail"}">
         <td class="slug">${esc(r.slug)}<br><span class="meta">${esc(r.viewport)}</span></td>
-        <td><img class="thumb" src="${esc(r.screenshot)}" loading="lazy"></td>
+        <td><a href="${esc(r.screenshot)}"><img class="thumb" src="${esc(r.screenshot)}" loading="lazy"></a></td>
         <td>${ocrCell}</td>
         <td class="pal">${swatches}<div class="meta">${Object.entries(
           r.palette.buckets,
@@ -338,7 +356,7 @@ function renderContactSheet(summary, results) {
 <h1>mvp visual verify</h1>
 <div class="summary">
   ${esc(summary.states)} states · OCR: ${esc(summary.ocrEngine)} · expectation failures: <b>${summary.expectationFailures}</b> ·
-  overflow states: <b>${summary.overflowStates}</b> · new baselines: ${summary.newBaselines} ·
+  skipped checks: <b>${summary.skippedChecks}</b> · overflow states: <b>${summary.overflowStates}</b> · new baselines: ${summary.newBaselines} ·
   audit report: ${summary.auditReportPresent ? "loaded" : "ABSENT"} · ${esc(summary.generatedAt)}
 </div>
 <table>
