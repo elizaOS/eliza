@@ -322,6 +322,29 @@ describe("estimateBundleUsage", () => {
     expect(estimate.embeddingUnits).toBe(1);
   });
 
+  it("charges chunk-sized embedding units for a single huge attachment", () => {
+    const b = bundle([
+      conv({
+        sourceConversationId: "c1",
+        messages: [
+          {
+            role: "user",
+            text: "",
+            attachments: [
+              {
+                name: "export.txt",
+                kind: "extracted-text",
+                text: "attachment text ".repeat(4_500),
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const estimate = estimateBundleUsage(b, 100);
+    expect(estimate.embeddingUnits).toBeGreaterThan(1);
+  });
+
   it("counts the rendered transcript bytes that storage writes", () => {
     const b = bundle([
       conv({

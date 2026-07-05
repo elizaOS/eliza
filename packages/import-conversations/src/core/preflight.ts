@@ -17,11 +17,14 @@
  * over-quota condition returns an explicit typed rejection rather than throwing.
  */
 
-import { renderConversation } from "./render.ts";
+import { DEFAULT_MAX_PART_TOKENS, renderConversation } from "./render.ts";
 import type { ConversationBundle } from "./types.ts";
 
 /** Bytes in one mebibyte — ceilings below read in MiB for legibility. */
 const MiB = 1024 * 1024;
+const ESTIMATED_BYTES_PER_TOKEN = 4;
+const ESTIMATED_EMBEDDING_UNIT_BYTES =
+  DEFAULT_MAX_PART_TOKENS * ESTIMATED_BYTES_PER_TOKEN;
 const UTF8_ENCODER = new TextEncoder();
 
 /** Configurable size ceilings for an import upload. */
@@ -249,10 +252,11 @@ export function preflightImport(
 /**
  * Derive a usage estimate from an already-parsed bundle for the post-parse cost
  * gate (the dry-run plan re-checks quota once real counts are known). Storage
- * is the byte length of the rendered transcript parts that the importer writes;
- * one embedding unit is charged per non-empty message as a conservative chunk
- * proxy. `uploadBytes` still comes from the transport and is passed through
- * unchanged.
+ * is the byte length of the rendered transcript parts that the importer writes.
+ * Embedding units are the larger of non-empty message count and rendered
+ * chunk-sized transcript units, so a single huge extracted attachment cannot
+ * undercharge the post-parse quota gate. `uploadBytes` still comes from the
+ * transport and is passed through unchanged.
  */
 export function estimateBundleUsage(
   bundle: ConversationBundle,
@@ -280,6 +284,11 @@ export function estimateBundleUsage(
       }
     }
   }
+  const renderedChunkUnits =
+    storageBytes > 0
+      ? Math.ceil(storageBytes / ESTIMATED_EMBEDDING_UNIT_BYTES)
+      : 0;
+  embeddingUnits = Math.max(embeddingUnits, renderedChunkUnits);
   return {
     uploadBytes,
     conversationCount: bundle.conversations.length,
