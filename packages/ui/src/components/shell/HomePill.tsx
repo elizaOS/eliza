@@ -51,7 +51,6 @@ export function HomePill({
         "pointer-events-auto relative mb-3",
         // Generous tap target
         "flex h-8 w-32 items-center justify-center",
-        "    ",
         phase === "booting" && "cursor-not-allowed opacity-60",
       )}
     >

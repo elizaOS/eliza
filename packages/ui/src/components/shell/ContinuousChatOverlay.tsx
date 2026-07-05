@@ -511,7 +511,6 @@ function SheetGrabber({
         // caught) and STOPS at the handle's own bottom, so it never overlaps the
         // interactive composer row beneath — taps fall through to the input.
         "before:absolute before:-inset-x-2 before:-top-6 before:bottom-0 before:content-['']",
-        "   ",
       )}
     >
       <span
@@ -587,7 +586,6 @@ function PillHandle({
         // let taps fall through to the composer textarea below it — otherwise its
         // tall hit zone steals the tap and the keyboard never opens.
         pilled ? "pointer-events-auto" : "pointer-events-none",
-        "   ",
       )}
     >
       <span
@@ -3840,7 +3838,6 @@ export function ContinuousChatOverlay({
             className={cn(
               "pointer-events-auto h-auto gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
               "border-warn/40 bg-warn/15 text-warn hover:bg-warn/25",
-              "  ",
               FLOAT_SHADOW,
             )}
           >
@@ -3898,7 +3895,6 @@ export function ContinuousChatOverlay({
                 "h-auto max-w-full truncate rounded-full border border-white/15 bg-black/40 px-3 py-1.5",
                 "text-[12px] text-white/80 transition-colors",
                 "hover:border-white/30 hover:bg-white/15 hover:text-white",
-                "  ",
               )}
             >
               {s}
