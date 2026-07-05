@@ -168,6 +168,32 @@ describe("SEARCH_KNOWLEDGE", () => {
     expect((res.data as { count: number }).count).toBeGreaterThan(0);
   });
 
+  it("free-text search composes with the help tag on fragment metadata", async () => {
+    const helpFragment = doc(DOC_GLOBAL, "global", {
+      documentId: DOC_GLOBAL,
+      title: "Getting started",
+      tags: ["help"],
+    });
+    helpFragment.content.text = "The chat pill opens Eliza from every view.";
+    const runtime = makeRuntime({ service: makeService([helpFragment]) });
+
+    const res = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      {
+        query: "chat pill",
+        tags: ["help"],
+      },
+    );
+
+    expect(res.success).toBe(true);
+    expect((res.data as { count: number }).count).toBe(1);
+    expect(
+      (res.data as { items: Array<{ title: string }> }).items[0]?.title,
+    ).toBe("Getting started");
+  });
+
   it("rejects a request with neither query nor any filter", async () => {
     const runtime = makeRuntime({ service: makeService() });
     const res = await call(
