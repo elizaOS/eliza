@@ -106,7 +106,15 @@ export function ChatSurface({
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
       <div className="relative flex-1 overflow-hidden">
-        <div ref={scrollRef} className="h-full overflow-y-auto py-2">
+        {/* `overflow-x-hidden`: `overflow-y-auto` coerces the cross axis to
+            `auto` too, so a single over-wide message child (a long code line,
+            an unaudited inline widget) would turn this transcript into a
+            two-axis scroller. This message list only ever scrolls vertically —
+            pin the horizontal axis closed (#14328). */}
+        <div
+          ref={scrollRef}
+          className="h-full overflow-y-auto overflow-x-hidden py-2"
+        >
           {messages.length === 0 ? (
             <p className="text-sm text-muted">
               {greeting ??

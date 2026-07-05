@@ -43,6 +43,20 @@ describe("ChatSurface composer (shared core)", () => {
     expect(input.value).toBe("");
   });
 
+  it("pins the transcript scroller to vertical-only scroll (#14328)", () => {
+    // `overflow-y-auto` coerces the cross axis to `auto`, so without an explicit
+    // `overflow-x-hidden` a single over-wide message child turns the transcript
+    // into a two-axis scroller a diagonal wheel can pan sideways. Lock it here.
+    const { container } = render(
+      surface({
+        messages: [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }],
+      }),
+    );
+    const scroller = container.querySelector(".overflow-y-auto");
+    expect(scroller).not.toBeNull();
+    expect(scroller?.className).toContain("overflow-x-hidden");
+  });
+
   it("never sends on the Enter that commits an IME composition (#9148)", () => {
     const onSend = vi.fn();
     render(surface({ onSend }));

@@ -1263,6 +1263,9 @@ describe("ContinuousChatOverlay", () => {
     const log = document.getElementById("continuous-thread");
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(3);
     expect(log?.className).toContain("overflow-y-auto");
+    // Vertical-only invariant (#14328): the horizontal axis is pinned closed so
+    // an over-wide child can never turn the transcript into a two-axis scroller.
+    expect(log?.className).toContain("overflow-x-hidden");
     expect(log?.textContent).toContain("one");
   });
 
