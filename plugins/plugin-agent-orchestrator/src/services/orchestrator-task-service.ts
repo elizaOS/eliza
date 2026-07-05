@@ -2711,9 +2711,15 @@ export class OrchestratorTaskService extends Service {
     }
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
+    // An explicit caller workdir wins and re-pins the binding; otherwise a
+    // follow-up spawn reuses the workdir pinned at the task's first spawn so it
+    // can't silently migrate repos when routing env changes between sessions
+    // (#13776). `boundWorkdir` was validated when first pinned, so reuse skips
+    // the allow-list probe — it may point at a configured project root the
+    // probe would otherwise reject once env drifts.
     const workdir = opts.workdir
       ? await resolveAllowedWorkdir(opts.workdir)
-      : undefined;
+      : doc.task.boundWorkdir;
 
     const policy = doc.task.providerPolicy ?? {};
     // Give every sub-agent a distinct person-name. An explicit caller label
@@ -2862,6 +2868,10 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(result.sessionId, taskId);
     try {
       await this.store.addSession(session);
+      // Pin (or re-pin, on explicit override) the durable workdir/repo binding
+      // from the workdir the session actually landed in, so subsequent
+      // follow-up spawns of this task reuse it deterministically (#13776).
+      await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo);
       await this.advanceTaskStatus(taskId, "active");
       return this.getTask(taskId);
     } catch (err) {
@@ -2888,6 +2898,35 @@ export class OrchestratorTaskService extends Service {
         sessions: [...doc.sessions, session],
       });
     }
+  }
+
+  /**
+   * Pin the task's durable workdir/repo binding. Idempotent for a stable
+   * workdir: the FIRST spawn sets `boundWorkdir`; later spawns only re-pin when
+   * the caller lands the session in a DIFFERENT directory (an explicit user
+   * override), which is the intended "override wins and updates the binding"
+   * behavior. `spawnAgentForTask` reads `boundWorkdir` back as its default so a
+   * follow-up with no explicit workdir deterministically reuses the first
+   * session's directory instead of re-resolving from mutable routing env.
+   *
+   * `current` is the caller's already-loaded task record (attachSession /
+   * spawnAgentForTask both hold a fresh doc); passing it avoids a redundant
+   * read. Stopgap for #13776 item 3 — a future `task.projectId` supersedes this.
+   */
+  private async bindTaskWorkdir(
+    taskId: string,
+    current: OrchestratorTaskRecord,
+    workdir: string | undefined,
+    repo: string | undefined,
+  ): Promise<void> {
+    if (!workdir) return;
+    const patch: Partial<OrchestratorTaskRecord> = {};
+    const workdirChanged = current.boundWorkdir !== workdir;
+    if (workdirChanged) patch.boundWorkdir = workdir;
+    if (repo && current.boundRepo !== repo) patch.boundRepo = repo;
+    else if (workdirChanged && current.boundRepo) patch.boundRepo = null;
+    if (Object.keys(patch).length === 0) return;
+    await this.store.updateTask(taskId, patch);
   }
 
   /**
@@ -2970,6 +3009,9 @@ export class OrchestratorTaskService extends Service {
     };
     await this.store.addSession(session);
     this.sessionTaskIndex.set(input.sessionId, taskId);
+    // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
+    // this task reuse it instead of re-resolving from routing env (#13776).
+    await this.bindTaskWorkdir(taskId, doc.task, input.workdir, input.repo);
     // Only claim liveness if the session actually is live — a terminal-on-
     // arrival session (chat action's runPromptAndClose already stopped it) gets
     // indexed for history + future token attribution without falsely promoting

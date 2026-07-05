@@ -39,6 +39,13 @@ export interface TaskThreadDto {
   activeSessionCount: number;
   latestSessionId: string | null;
   latestSessionLabel: string | null;
+  /**
+   * The task's stable workdir/repo. Prefers the durable binding pinned at first
+   * spawn (`task.boundWorkdir`/`boundRepo`) over the most-recent session's
+   * workdir so the UI shows where follow-up spawns will actually land, not just
+   * where the last one happened to run. Falls back to the latest session for
+   * pre-binding tasks. See #13776 item 3.
+   */
   latestWorkdir: string | null;
   latestRepo: string | null;
   latestActivityAt: number | null;
@@ -375,6 +382,9 @@ export function summarizeUsage(
 
 export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
   const latest = latestSession(doc);
+  const latestRepo = Object.hasOwn(doc.task, "boundRepo")
+    ? (doc.task.boundRepo ?? null)
+    : (latest?.repo ?? null);
   const activeSessionCount = doc.sessions.filter(
     (session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status),
   ).length;
@@ -391,8 +401,8 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     activeSessionCount,
     latestSessionId: latest?.sessionId ?? null,
     latestSessionLabel: latest?.label ?? null,
-    latestWorkdir: latest?.workdir ?? null,
-    latestRepo: latest?.repo ?? null,
+    latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
+    latestRepo,
     latestActivityAt: doc.task.lastActivityAt,
     decisionCount: doc.decisions.length,
     usage: summarizeUsage(doc),

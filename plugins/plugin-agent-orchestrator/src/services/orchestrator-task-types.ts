@@ -74,6 +74,19 @@ export interface OrchestratorTaskRecord {
   /** Lineage: the task this one was forked from, if any. */
   parentTaskId?: string;
   forkSource?: string;
+  /**
+   * Durable workdir/repo binding, pinned at the task's FIRST successful spawn
+   * and reused for every follow-up spawn of the same task. Without it,
+   * `resolveSpawnWorkdir` re-resolves per spawn from mutable routing env, so a
+   * task could silently migrate repos between sessions. An explicit
+   * caller-supplied workdir still wins and re-pins the binding.
+   *
+   * Stopgap for the first-class Project entity (#13776 item 3): a future
+   * `projectId` on this record supersedes it, at which point the workdir is
+   * derived from the bound project rather than snapshotted here.
+   */
+  boundWorkdir?: string;
+  boundRepo?: string | null;
   /** Provider/model/subscription policy applied to spawned sub-agents. */
   providerPolicy?: TaskProviderPolicy;
   paused: boolean;
