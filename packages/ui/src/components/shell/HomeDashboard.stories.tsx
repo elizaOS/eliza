@@ -99,7 +99,10 @@ function HomeDashboard({
             initialPage={initialPage}
             home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
             launcher={
-              <Launcher zones={allAppsZone(LAUNCHER_TILES)} onLaunch={() => {}} />
+              <Launcher
+                zones={allAppsZone(LAUNCHER_TILES)}
+                onLaunch={() => {}}
+              />
             }
           />
         </div>

@@ -594,7 +594,10 @@ describe("normalizeLauncherLabel", () => {
 
   it("is applied to curated tile labels so a spaced registration renders normalized", () => {
     const page = curateLauncherPages(
-      [entry("chat", { label: "  Chat  " }), entry("wallet", { label: "Wallet" })],
+      [
+        entry("chat", { label: "  Chat  " }),
+        entry("wallet", { label: "Wallet" }),
+      ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
     const chat = page.find((e) => e.id === "chat");

@@ -127,7 +127,9 @@ describe("Launcher", () => {
   });
 
   it("drops a tile when its entry is removed on re-render", () => {
-    const { rerender } = render(<Launcher zones={zones(FEW)} onLaunch={() => {}} />);
+    const { rerender } = render(
+      <Launcher zones={zones(FEW)} onLaunch={() => {}} />,
+    );
     expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
     rerender(
       <Launcher zones={zones([entry("chat", "Chat")])} onLaunch={() => {}} />,
