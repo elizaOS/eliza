@@ -36,6 +36,7 @@ import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
   getBrowserWorkspaceSnapshot,
+  isBrowserWorkspaceBridgeConfigured,
 } from "./workspace/browser-workspace.js";
 import type {
   BrowserWorkspaceCommand,
@@ -129,18 +130,7 @@ export class BrowserService extends Service {
         `[BrowserService] stagehand target not registered at start: ${message}`,
       );
     }
-    // Seed the Safari-style default search tab so the browser never opens
-    // empty-and-sad (#13596). Best-effort with a bounded desktop bridge
-    // readiness window: failure must not prevent the service from starting.
-    try {
-      await ensureBrowserWorkspaceDefaultTabWithRetry();
-    } catch (err) {
-      // error-policy:J4 startup should expose the browser even when the optional default tab cannot be seeded.
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn(
-        `[BrowserService] default search tab not seeded at start: ${message}`,
-      );
-    }
+    await seedDefaultSearchTabAtStartup();
     return service;
   }
 
@@ -302,6 +292,31 @@ export class BrowserService extends Service {
       ? lastError
       : new Error("Browser target execution failed.");
   }
+}
+
+async function seedDefaultSearchTabAtStartup(): Promise<void> {
+  const seed = async () => {
+    try {
+      await ensureBrowserWorkspaceDefaultTabWithRetry();
+    } catch (err) {
+      // error-policy:J4 startup exposes the browser even when the optional default tab cannot be seeded.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        `[BrowserService] default search tab not seeded at start: ${message}`,
+      );
+    }
+  };
+
+  // Desktop bridge startup is allowed a short readiness window, but BrowserService
+  // itself must be returned immediately so agent browser actions are not held by
+  // an optional default-tab seed. Web mode stays awaited so bad local
+  // configuration fails crisply in tests/dev.
+  if (isBrowserWorkspaceBridgeConfigured()) {
+    void seed();
+    return;
+  }
+
+  await seed();
 }
 
 function createWorkspaceTarget(): BrowserTarget {

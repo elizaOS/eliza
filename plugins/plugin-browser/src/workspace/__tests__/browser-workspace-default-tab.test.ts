@@ -188,4 +188,34 @@ describe("BrowserService seeds the default tab at start", () => {
       }
     }
   });
+
+  it("does not await a pending desktop bridge seed before returning the service", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.ELIZA_BROWSER_WORKSPACE_URL = "http://workspace-bridge.test";
+    globalThis.fetch = vi.fn(
+      () => new Promise<Response>(() => undefined),
+    ) as typeof fetch;
+    const runtime = {
+      getService: () => null,
+    } as unknown as IAgentRuntime;
+
+    try {
+      const result = await Promise.race([
+        BrowserService.start(runtime).then((service) => service),
+        new Promise<"blocked">((resolve) =>
+          setTimeout(() => resolve("blocked"), 25),
+        ),
+      ]);
+
+      expect(result).not.toBe("blocked");
+      if (result !== "blocked") await result.stop();
+      expect(globalThis.fetch).toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const key of bridgeKeys) {
+        if (savedBridge[key] === undefined) delete process.env[key];
+        else process.env[key] = savedBridge[key];
+      }
+    }
+  });
 });
