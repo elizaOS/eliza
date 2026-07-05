@@ -94,7 +94,8 @@ async function getAccessToken(providedToken?: string): Promise<string> {
     const token = stdout.trim();
     if (token) return token;
   } catch {
-    // Fall through to the explicit error below.
+    // error-policy:J1 gcloud unavailable/unauthed is an expected optional-source miss;
+    // no token is fabricated — the auth boundary surfaces a structured error below.
   }
 
   throw new Error(
