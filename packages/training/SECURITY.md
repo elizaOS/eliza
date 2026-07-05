@@ -29,9 +29,13 @@ customer-data. The current ``consent_proof_uri`` points back to this
 document because the production opt-in flow is still in design (see
 "open items" below). The provisional control is:
 
-  - Local-only ``~/.eliza/training/datasets/`` writes happen ONLY when
-    ``ELIZA_DISABLE_TRAJECTORY_LOGGING`` is unset (default opt-in for
-    dogfooders, will flip to opt-out once the consent UI ships).
+  - Runtime trajectory writes are gated by
+    ``ELIZA_TRAJECTORY_LOGGING``: local/dev and unset ``NODE_ENV`` default
+    on, while ``NODE_ENV=test`` and ``NODE_ENV=production`` default off unless
+    explicitly opted in with a truthy value. Blank values are treated as unset,
+    ``ELIZA_TRAJECTORY_RECORDING`` is the legacy alias, and
+    ``ELIZA_DISABLE_TRAJECTORY_LOGGING=1`` is the hard opt-out. Scenario
+    evidence runs opt in explicitly through ``eliza-scenarios run``.
   - The privacy filter runs ``--strict`` by default
     ([``scripts/privacy_filter_trajectories.py``](scripts/privacy_filter_trajectories.py)).
   - Nubilio data is internal-dogfood collected from a self-hosted bot the

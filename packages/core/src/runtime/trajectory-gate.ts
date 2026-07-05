@@ -17,13 +17,15 @@
 const TRUTHY = new Set(["1", "true", "yes", "on"]);
 
 /**
- * Coerce a raw env value to a boolean. Returns undefined when the var is unset
- * (so the caller can fall through to the next precedence tier); a set-but-not-
- * truthy value coerces to false (an explicit opt-out).
+ * Coerce a raw env value to a boolean. Returns undefined when the var is
+ * unset or blank (so the caller can fall through to the next precedence tier);
+ * a non-empty set-but-not-truthy value coerces to false (an explicit opt-out).
  */
 function coerceFlag(raw: string | undefined): boolean | undefined {
 	if (raw === undefined) return undefined;
-	return TRUTHY.has(raw.trim().toLowerCase());
+	const normalized = raw.trim().toLowerCase();
+	if (normalized.length === 0) return undefined;
+	return TRUTHY.has(normalized);
 }
 
 export interface TrajectoryGateDecision {

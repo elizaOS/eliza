@@ -111,6 +111,7 @@ Read by the runtime (see README for the full WHY of each):
 - `ELIZA_STAGE1_GROUP_TRIAGE` (`services/message/stage1-prompt-tier.ts`) — set `0` to disable the compact Stage 1 instruction tier for unaddressed group messages and always render the full rule block (default on).
 - Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `runtime.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
 - `ELIZA_STATE_DIR` — state-dir resolution (`utils/state-dir.ts`); `ELIZA_WORKSPACE_DIR` — workspace folder (`utils/workspace-folder-config.ts`).
+- `ELIZA_TRAJECTORY_LOGGING` — canonical trajectory persistence gate for both file and DB recorders (`runtime/trajectory-gate.ts`): truthy enables; non-empty falsey disables; blank is unset. Defaults are on for dev/unset `NODE_ENV`, off for `NODE_ENV=test|production`. `ELIZA_TRAJECTORY_RECORDING` is the legacy alias, and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` is the hard opt-out.
 
 Prefer the canonical env reader in `utils/read-env.ts` over raw `process.env` (it handles legacy aliases).
 

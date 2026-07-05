@@ -43,9 +43,40 @@ describe("resolveTrajectoryGate precedence", () => {
 		for (const v of ["1", "true", "yes", "on", "TRUE", " On "]) {
 			expect(gate({ ELIZA_TRAJECTORY_LOGGING: v })).toBe(true);
 		}
-		for (const v of ["0", "false", "no", "off", "nonsense", ""]) {
+		for (const v of ["0", "false", "no", "off", "nonsense"]) {
 			expect(gate({ ELIZA_TRAJECTORY_LOGGING: v })).toBe(false);
 		}
+	});
+
+	it("treats blank explicit knobs as unset", () => {
+		expect(
+			resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_LOGGING: "",
+				NODE_ENV: "development",
+			} as NodeJS.ProcessEnv),
+		).toEqual({ enabled: true, reason: "dev-default-on" });
+
+		expect(
+			resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_LOGGING: "   ",
+				NODE_ENV: "test",
+			} as NodeJS.ProcessEnv),
+		).toEqual({ enabled: false, reason: "test-default-off" });
+
+		expect(
+			resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_LOGGING: "",
+				ELIZA_TRAJECTORY_RECORDING: "1",
+				NODE_ENV: "production",
+			} as NodeJS.ProcessEnv),
+		).toEqual({ enabled: true, reason: "explicit-recording-legacy" });
+
+		expect(
+			resolveTrajectoryGate({
+				ELIZA_TRAJECTORY_RECORDING: "",
+				NODE_ENV: "development",
+			} as NodeJS.ProcessEnv),
+		).toEqual({ enabled: true, reason: "dev-default-on" });
 	});
 
 	it("honors the legacy ELIZA_TRAJECTORY_RECORDING alias when the canonical knob is unset", () => {
