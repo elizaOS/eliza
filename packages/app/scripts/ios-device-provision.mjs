@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * ios:device:provision (#13567) — mint iOS **development** provisioning profiles
  * for the app + every appex non-interactively via the App Store Connect API, so
@@ -34,8 +35,8 @@
  * live run against real ASC creds + a device is the Needs-agent-verify step.
  */
 
-import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -65,9 +66,7 @@ export function profilesDir() {
  * inline PEM contents OR a path to the `.p8` file.
  */
 export function resolveAscCredentials(env = process.env) {
-  const missing = REQUIRED_ENV.filter(
-    (k) => !env[k] || !String(env[k]).trim(),
-  );
+  const missing = REQUIRED_ENV.filter((k) => !env[k] || !String(env[k]).trim());
   if (missing.length > 0) {
     throw new Error(
       `Missing App Store Connect API credentials: ${missing.join(", ")}. ` +
@@ -150,7 +149,9 @@ export function makeAscClient({ jwt, fetchImpl = fetch, base = ASC_API_BASE }) {
         (json.errors || [])
           .map((e) => e.detail || e.title || e.code)
           .filter(Boolean)
-          .join("; ") || text || `HTTP ${res.status}`;
+          .join("; ") ||
+        text ||
+        `HTTP ${res.status}`;
       throw new Error(`ASC ${method} ${endpoint} → ${res.status}: ${detail}`);
     }
     return json;
@@ -296,7 +297,10 @@ export function discoverAppBundleIds(productAppDir, { runPlutil } = {}) {
       if (!appex.endsWith(".appex")) continue;
       const plist = path.join(plugIns, appex, "Info.plist");
       if (fs.existsSync(plist)) {
-        out.push({ identifier: read(plist), name: appex.replace(/\.appex$/, "") });
+        out.push({
+          identifier: read(plist),
+          name: appex.replace(/\.appex$/, ""),
+        });
       }
     }
   }
@@ -414,7 +418,8 @@ async function main() {
 // Only run when invoked directly, not when imported by the test.
 if (
   process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
+  path.resolve(process.argv[1]) ===
+    path.resolve(new URL(import.meta.url).pathname)
 ) {
   main().catch((err) => {
     console.error(`[provision] ${err instanceof Error ? err.message : err}`);

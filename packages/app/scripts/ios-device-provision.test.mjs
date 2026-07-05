@@ -48,7 +48,12 @@ function mockFetch(routes) {
       route = route(method, u, init.body ? JSON.parse(init.body) : undefined);
     }
     if (!route) {
-      return { ok: false, status: 404, text: async () => JSON.stringify({ errors: [{ detail: `no route ${key}` }] }) };
+      return {
+        ok: false,
+        status: 404,
+        text: async () =>
+          JSON.stringify({ errors: [{ detail: `no route ${key}` }] }),
+      };
     }
     const status = route.status ?? 200;
     return {
@@ -68,7 +73,8 @@ function tmpDir() {
   return d;
 }
 afterEach(() => {
-  for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of tmpDirs.splice(0))
+    fs.rmSync(d, { recursive: true, force: true });
 });
 
 describe("resolveAscCredentials", () => {
@@ -149,7 +155,10 @@ describe("createAscJwt", () => {
 describe("makeAscClient", () => {
   it("surfaces ASC error bodies verbatim (fail fast, no swallow)", async () => {
     const fetchImpl = mockFetch({
-      "GET /v1/devices": { status: 409, body: { errors: [{ detail: "boom" }] } },
+      "GET /v1/devices": {
+        status: 409,
+        body: { errors: [{ detail: "boom" }] },
+      },
     });
     const asc = makeAscClient({ jwt: "t", fetchImpl });
     await expect(asc("GET", "/v1/devices")).rejects.toThrow(/409: boom/);
@@ -176,7 +185,10 @@ describe("ensureDeviceRegistered / ensureBundleId — idempotent", () => {
     const r = await ensureDeviceRegistered(asc, { udid: "UDID", name: "lane" });
     expect(r).toEqual({ id: "DEV2", created: true });
     const post = fetchImpl.calls.find((c) => c.method === "POST");
-    expect(post.body.data.attributes).toMatchObject({ udid: "UDID", name: "lane" });
+    expect(post.body.data.attributes).toMatchObject({
+      udid: "UDID",
+      name: "lane",
+    });
   });
 
   it("reuses an existing bundle id", async () => {
@@ -196,7 +208,12 @@ describe("mintDevelopmentProfile", () => {
       "DELETE /v1/profiles/OLD": { body: {} },
       "POST /v1/profiles": {
         status: 201,
-        body: { data: { id: "NEW", attributes: { name: "n", uuid: "U", profileContent: "AA==" } } },
+        body: {
+          data: {
+            id: "NEW",
+            attributes: { name: "n", uuid: "U", profileContent: "AA==" },
+          },
+        },
       },
     });
     const asc = makeAscClient({ jwt: "t", fetchImpl });
@@ -224,7 +241,13 @@ describe("writeProfile", () => {
   it("decodes profileContent to <uuid>.mobileprovision", () => {
     const dir = tmpDir();
     const file = writeProfile(
-      { id: "P", attributes: { uuid: "ABC", profileContent: Buffer.from("hello").toString("base64") } },
+      {
+        id: "P",
+        attributes: {
+          uuid: "ABC",
+          profileContent: Buffer.from("hello").toString("base64"),
+        },
+      },
       dir,
     );
     expect(file).toBe(path.join(dir, "ABC.mobileprovision"));
@@ -232,9 +255,9 @@ describe("writeProfile", () => {
   });
 
   it("throws when the profile has no content", () => {
-    expect(() => writeProfile({ id: "P", attributes: { name: "n" } }, tmpDir())).toThrow(
-      /no profileContent/,
-    );
+    expect(() =>
+      writeProfile({ id: "P", attributes: { name: "n" } }, tmpDir()),
+    ).toThrow(/no profileContent/);
   });
 });
 
@@ -242,12 +265,18 @@ describe("discoverAppBundleIds", () => {
   it("reads the app + each appex CFBundleIdentifier, de-duped", () => {
     const dir = tmpDir();
     const app = path.join(dir, "App.app");
-    fs.mkdirSync(path.join(app, "PlugIns", "Widgets.appex"), { recursive: true });
+    fs.mkdirSync(path.join(app, "PlugIns", "Widgets.appex"), {
+      recursive: true,
+    });
     fs.writeFileSync(path.join(app, "Info.plist"), "x");
-    fs.writeFileSync(path.join(app, "PlugIns", "Widgets.appex", "Info.plist"), "x");
+    fs.writeFileSync(
+      path.join(app, "PlugIns", "Widgets.appex", "Info.plist"),
+      "x",
+    );
     const ids = {
       [path.join(app, "Info.plist")]: "ai.elizaos.app",
-      [path.join(app, "PlugIns", "Widgets.appex", "Info.plist")]: "ai.elizaos.app.widgets",
+      [path.join(app, "PlugIns", "Widgets.appex", "Info.plist")]:
+        "ai.elizaos.app.widgets",
     };
     const out = discoverAppBundleIds(app, { runPlutil: (p) => ids[p] });
     expect(out).toEqual([
@@ -270,7 +299,16 @@ describe("provision — full idempotent flow", () => {
       "GET /v1/profiles": { body: { data: [] } },
       "POST /v1/profiles": {
         status: 201,
-        body: { data: { id: "PROF", attributes: { name: "Eliza Dev - ai.elizaos.app", uuid: "UUID", profileContent: content } } },
+        body: {
+          data: {
+            id: "PROF",
+            attributes: {
+              name: "Eliza Dev - ai.elizaos.app",
+              uuid: "UUID",
+              profileContent: content,
+            },
+          },
+        },
       },
     });
     const result = await provision({
@@ -291,11 +329,13 @@ describe("provision — full idempotent flow", () => {
         file: path.join(dir, "UUID.mobileprovision"),
       },
     ]);
-    expect(fs.readFileSync(path.join(dir, "UUID.mobileprovision"), "utf8")).toBe(
-      "profile-bytes",
-    );
+    expect(
+      fs.readFileSync(path.join(dir, "UUID.mobileprovision"), "utf8"),
+    ).toBe("profile-bytes");
     // Every request carried the bearer JWT.
-    expect(fetchImpl.calls.every((c) => c.auth?.startsWith("Bearer "))).toBe(true);
+    expect(fetchImpl.calls.every((c) => c.auth?.startsWith("Bearer "))).toBe(
+      true,
+    );
   });
 
   it("throws when no development certificate exists", async () => {
