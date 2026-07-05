@@ -74,6 +74,9 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs
 
+      - name: Validate brand-env alias-read guard self-test
+        run: node packages/scripts/alias-read-guard.mjs --self-test
+
       - name: Determine affected test lanes
         id: filter
         shell: bash

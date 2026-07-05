@@ -114,6 +114,7 @@ const ALLOWED_EXACT = new Set([
   "audit:scripts:inventory",
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
+  "audit:alias-read-guard:self-test",
 ]);
 
 /**
