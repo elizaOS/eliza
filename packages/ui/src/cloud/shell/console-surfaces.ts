@@ -1,0 +1,103 @@
+/**
+ * The console's launch-core surface catalog (nubs's 2026-07-04 cut): agents,
+ * apps, money, keys, account plumbing. Single source for BOTH the ConsoleShell
+ * sidebar and the /dashboard overview cards — the two previously maintained
+ * parallel constants that could only drift (#13916). De-navved surfaces
+ * (my-agents, analytics, api-explorer, mcps, monetization, connectors,
+ * security) stay routable but aren't advertised by either consumer.
+ */
+
+import {
+  Bot,
+  Building2,
+  CreditCard,
+  Grid3x3,
+  Home,
+  KeyRound,
+  type LucideIcon,
+  User,
+} from "lucide-react";
+
+export interface ConsoleSurface {
+  id: string;
+  href: string;
+  icon: LucideIcon;
+  /** Sidebar label (the nav renders plain labels). */
+  label: string;
+  /** Overview-card copy (i18n key + fallback). */
+  titleKey: string;
+  titleDefault: string;
+  descKey: string;
+  descDefault: string;
+}
+
+/** Overview is nav-only: it IS the page the cards live on. */
+export const CONSOLE_OVERVIEW_NAV_ITEM = {
+  id: "overview",
+  label: "Overview",
+  href: "/dashboard",
+  icon: Home,
+} as const;
+
+export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
+  {
+    id: "agents",
+    href: "/dashboard/agents",
+    icon: Bot,
+    label: "Agents",
+    titleKey: "cloud.home.agents",
+    titleDefault: "Agents",
+    descKey: "cloud.home.agentsDesc",
+    descDefault: "Hosted agents: create, wake, sleep, logs.",
+  },
+  {
+    id: "apps",
+    href: "/dashboard/apps",
+    icon: Grid3x3,
+    label: "Apps",
+    titleKey: "cloud.home.apps",
+    titleDefault: "Apps",
+    descKey: "cloud.home.appsDesc",
+    descDefault: "Hosted apps: monetization, domains, users.",
+  },
+  {
+    id: "billing",
+    href: "/dashboard/billing",
+    icon: CreditCard,
+    label: "Billing",
+    titleKey: "cloud.home.billing",
+    titleDefault: "Billing",
+    descKey: "cloud.home.billingDesc",
+    descDefault: "Add funds, payment methods, invoices.",
+  },
+  {
+    id: "api-keys",
+    href: "/dashboard/api-keys",
+    icon: KeyRound,
+    label: "API Keys",
+    titleKey: "cloud.home.apiKeys",
+    titleDefault: "API Keys",
+    descKey: "cloud.home.apiKeysDesc",
+    descDefault: "Create and revoke inference API keys.",
+  },
+  {
+    id: "account",
+    href: "/dashboard/account",
+    icon: User,
+    label: "Account",
+    titleKey: "cloud.home.account",
+    titleDefault: "Account",
+    descKey: "cloud.home.accountDesc",
+    descDefault: "Profile, email, identity, and security.",
+  },
+  {
+    id: "organization",
+    href: "/dashboard/organization",
+    icon: Building2,
+    label: "Organization",
+    titleKey: "cloud.home.organization",
+    titleDefault: "Organization",
+    descKey: "cloud.home.organizationDesc",
+    descDefault: "Members, credentials, and invites.",
+  },
+];

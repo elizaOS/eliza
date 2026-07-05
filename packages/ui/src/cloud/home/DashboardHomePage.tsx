@@ -28,79 +28,17 @@ import { formatUsd } from "../lib/format-usd";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { useCloudT } from "../shell/CloudI18nProvider";
-
-interface ConsoleSurface {
-  to: string;
-  icon: LucideIcon;
-  titleKey: string;
-  titleDefault: string;
-  descKey: string;
-  descDefault: string;
-}
-
-/**
- * The launch-core surfaces (nubs's cut, 2026-07-04) — mirrors the console
- * sidebar exactly: agents, apps, money, keys, account plumbing. De-navved
- * surfaces (my-agents, analytics, api-explorer, mcps, monetization,
- * connectors, security) stay routable but aren't advertised here.
- */
-const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
-  {
-    to: "/dashboard/agents",
-    icon: Bot,
-    titleKey: "cloud.home.agents",
-    titleDefault: "Agents",
-    descKey: "cloud.home.agentsDesc",
-    descDefault: "Hosted agents: create, wake, sleep, logs.",
-  },
-  {
-    to: "/dashboard/apps",
-    icon: Grid3x3,
-    titleKey: "cloud.home.apps",
-    titleDefault: "Apps",
-    descKey: "cloud.home.appsDesc",
-    descDefault: "Hosted apps: monetization, domains, users.",
-  },
-  {
-    to: "/dashboard/billing",
-    icon: CreditCard,
-    titleKey: "cloud.home.billing",
-    titleDefault: "Billing",
-    descKey: "cloud.home.billingDesc",
-    descDefault: "Add funds, payment methods, invoices.",
-  },
-  {
-    to: "/dashboard/api-keys",
-    icon: KeyRound,
-    titleKey: "cloud.home.apiKeys",
-    titleDefault: "API Keys",
-    descKey: "cloud.home.apiKeysDesc",
-    descDefault: "Create and revoke inference API keys.",
-  },
-  {
-    to: "/dashboard/account",
-    icon: User,
-    titleKey: "cloud.home.account",
-    titleDefault: "Account",
-    descKey: "cloud.home.accountDesc",
-    descDefault: "Profile, email, identity, and security.",
-  },
-  {
-    to: "/dashboard/organization",
-    icon: Building2,
-    titleKey: "cloud.home.organization",
-    titleDefault: "Organization",
-    descKey: "cloud.home.organizationDesc",
-    descDefault: "Members, credentials, and invites.",
-  },
-];
+import {
+  CONSOLE_SURFACES,
+  type ConsoleSurface,
+} from "../shell/console-surfaces";
 
 function SurfaceCard({ surface }: { surface: ConsoleSurface }) {
   const t = useCloudT();
   const Icon = surface.icon;
   return (
     <Link
-      to={surface.to}
+      to={surface.href}
       className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 transition-colors hover:border-accent/40 hover:bg-surface"
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
@@ -187,7 +125,7 @@ export function DashboardHomePage() {
       <BalanceCard />
       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {CONSOLE_SURFACES.map((surface) => (
-          <SurfaceCard key={surface.to} surface={surface} />
+          <SurfaceCard key={surface.href} surface={surface} />
         ))}
       </div>
     </div>

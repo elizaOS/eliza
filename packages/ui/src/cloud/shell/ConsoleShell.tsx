@@ -34,6 +34,10 @@ import {
   usePageHeader,
 } from "../../cloud-ui/components/layout";
 import { useSessionAuth } from "../lib/use-session-auth";
+import {
+  CONSOLE_OVERVIEW_NAV_ITEM,
+  CONSOLE_SURFACES,
+} from "./console-surfaces";
 
 /**
  * The console nav: one flat list, launch-core surfaces only (nubs's cut,
@@ -46,33 +50,13 @@ import { useSessionAuth } from "../lib/use-session-auth";
 const CONSOLE_NAV_SECTIONS: DashboardSidebarSection[] = [
   {
     items: [
-      { id: "overview", label: "Overview", href: "/dashboard", icon: Home },
-      { id: "agents", label: "Agents", href: "/dashboard/agents", icon: Bot },
-      { id: "apps", label: "Apps", href: "/dashboard/apps", icon: Grid3x3 },
-      {
-        id: "billing",
-        label: "Billing",
-        href: "/dashboard/billing",
-        icon: CreditCard,
-      },
-      {
-        id: "api-keys",
-        label: "API Keys",
-        href: "/dashboard/api-keys",
-        icon: KeyRound,
-      },
-      {
-        id: "account",
-        label: "Account",
-        href: "/dashboard/account",
-        icon: User,
-      },
-      {
-        id: "organization",
-        label: "Organization",
-        href: "/dashboard/organization",
-        icon: Building2,
-      },
+      CONSOLE_OVERVIEW_NAV_ITEM,
+      ...CONSOLE_SURFACES.map(({ id, label, href, icon }) => ({
+        id,
+        label,
+        href,
+        icon,
+      })),
     ],
   },
 ];
