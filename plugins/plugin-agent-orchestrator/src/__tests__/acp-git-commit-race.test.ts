@@ -11,6 +11,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -167,4 +168,41 @@ exit 0
       expect(parentCount).toBeLessThanOrEqual(1);
     }
   }, 30_000);
+
+  it("reclaims a stale commit lock without leaving reclaim artifacts", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    const session = await prepare(repo, "sess-stale", baselineSha);
+    expect(session?.env.GIT_INDEX_FILE).toBeTruthy();
+
+    const lockPath = path.join(repo, ".git", "eliza-acp-commit.lock");
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: 99_999_999,
+        token: "dead-owner",
+        createdAt: Date.now() - 600_000,
+      }),
+    );
+
+    writeFileSync(path.join(repo, "stale.txt"), "after stale lock\n");
+    git(repo, ["add", "stale.txt"], session?.env);
+    git(repo, ["commit", "-m", "reclaim stale lock"], session?.env);
+
+    expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
+      ["README.md", "stale.txt"].join("\n"),
+    );
+    expect(existsSync(lockPath)).toBe(false);
+    expect(
+      readdirSync(path.join(repo, ".git")).filter((name) =>
+        name.startsWith("eliza-acp-commit.lock."),
+      ),
+    ).toEqual([]);
+  });
 });
