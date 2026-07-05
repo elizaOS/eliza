@@ -8,9 +8,10 @@
  * post-processor gathers the inputs and this decides, so the acceptance logic is
  * unit-tested against fixtures.
  *
- * Design choices that keep it honest: a check whose input is genuinely
- * unavailable (OCR engine absent, report lacks the overflow field) resolves to
- * `skip`, never a silent `pass` — an unknown must not read as green. The no-blue
+ * Design choices that keep it honest: a required OCR readout fails when the
+ * engine is unavailable because text verification is part of the MVP acceptance
+ * signal. Report-derived layout fields may still resolve to `skip` when an old
+ * audit report lacks the field; strict mode rejects those skips. The no-blue
  * signal prefers the audit's DOM-computed `blueColors[]` (authoritative) and
  * treats palette-derived blue as a secondary floor, because photographic or
  * gradient content can carry stray blue pixels the brand rule does not target.
@@ -67,8 +68,8 @@ export function evaluateExpectations(state, spec) {
     if (!state.ocr || state.ocr.available === false) {
       checks.push({
         name: "ocr-text",
-        status: "skip",
-        detail: "OCR unavailable (tesseract not found)",
+        status: "fail",
+        detail: `OCR unavailable: ${state.ocr?.reason ?? "engine not configured"}`,
       });
     } else {
       const haystack = normalize(state.ocr.text ?? "");

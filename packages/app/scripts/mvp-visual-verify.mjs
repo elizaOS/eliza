@@ -6,8 +6,9 @@
  * a pixel diff against a committed baseline, and a declarative pass/fail over
  * per-state expectations (expected OCR substrings, brand-orange accent, no blue,
  * no horizontal overflow). Output is a SEPARATE `mvp-verify/` tree (report.json +
- * contact-sheet.html + diff PNGs + baseline PNGs) so it never collides with the
- * audit's own report.json.
+ * contact-sheet.html + diff PNGs) so it never collides with the audit's own
+ * report.json. Baselines live under this script directory by default so a clean
+ * checkout can compare against reviewed, committed screenshots.
  *
  * This is evidence tooling, not a CI gate — it exits non-zero only when
  * `--strict` is passed (so `audit:app:verify` can chain it) and otherwise always
@@ -15,21 +16,27 @@
  * mutated; the audit stays the source of truth for what was captured.
  *
  * Usage:
- *   node scripts/mvp-visual-verify.mjs [--input <dir>] [--update-baseline]
- *                                      [--viewport <name>]... [--strict]
- * Env: ELIZA_AUDIT_APP_DIR overrides the input dir (matches the audit spec).
+ *   node scripts/mvp-visual-verify.mjs [--input <dir>] [--baseline <dir>]
+ *                                      [--update-baseline] [--viewport <name>]...
+ *                                      [--strict]
+ * Env: ELIZA_AUDIT_APP_DIR overrides the input dir (matches the audit spec);
+ * ELIZA_MVP_VISUAL_BASELINE_DIR overrides the committed baseline directory.
  */
 
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { diffAgainstBaseline } from "./mvp-visual-verify/diff.mjs";
 import { dominantColorsFromPng } from "./mvp-visual-verify/dominant-color.mjs";
 import {
   evaluateExpectations,
   resolveSpec,
 } from "./mvp-visual-verify/expectation-eval.mjs";
-import { ocrImage, resolveTesseract } from "./mvp-visual-verify/ocr.mjs";
+import {
+  closeOcrEngines,
+  ocrImage,
+  resolveOcrEngine,
+} from "./mvp-visual-verify/ocr.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");
@@ -38,11 +45,12 @@ function log(msg) {
   process.stdout.write(`[mvp-visual-verify] ${msg}\n`);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = { viewports: [], updateBaseline: false, strict: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--input") args.input = argv[++i];
+    else if (a === "--baseline") args.baseline = argv[++i];
     else if (a === "--viewport") args.viewports.push(argv[++i]);
     else if (a === "--update-baseline") args.updateBaseline = true;
     else if (a === "--strict") args.strict = true;
@@ -112,7 +120,11 @@ async function main() {
   }
 
   const outDir = path.join(inputDir, "mvp-verify");
-  const baselineRoot = path.join(outDir, "baseline");
+  const baselineRoot = path.resolve(
+    args.baseline ??
+      process.env.ELIZA_MVP_VISUAL_BASELINE_DIR ??
+      path.join(here, "mvp-visual-verify", "baseline"),
+  );
   const diffRoot = path.join(outDir, "diffs");
   await mkdir(outDir, { recursive: true });
 
@@ -127,17 +139,20 @@ async function main() {
     present: reportPresent,
     count: reportCount,
   } = await loadReportIndex(inputDir);
-  const tesseract = resolveTesseract();
+  const ocrEngine = await resolveOcrEngine();
 
   log(`input: ${inputDir}`);
+  log(`baseline: ${baselineRoot}`);
   log(
     `audit report.json: ${reportPresent ? `${reportCount} findings` : "ABSENT (overflow/DOM checks will skip)"}`,
   );
   log(
-    `OCR engine: ${tesseract ? tesseract : "N/A (tesseract binary not found — OCR column honest N/A)"}`,
+    `OCR engine: ${ocrEngine.available ? ocrEngine.label : `UNAVAILABLE (${ocrEngine.reason})`}`,
   );
   if (args.updateBaseline)
-    log("--update-baseline: recording current shots as the diff baseline");
+    log(
+      "--update-baseline: recording current shots into the baseline directory",
+    );
 
   const viewportDirs = await discoverViewportDirs(inputDir, args.viewports);
   log(
@@ -145,86 +160,91 @@ async function main() {
   );
 
   const results = [];
-  for (const vp of viewportDirs) {
-    for (const png of vp.pngs) {
-      const slug = png.replace(/\.png$/, "");
-      const currentPath = path.join(inputDir, vp.name, png);
-      const finding = reportIndex.get(`${slug}::${vp.name}`) ?? null;
+  try {
+    for (const vp of viewportDirs) {
+      for (const png of vp.pngs) {
+        const slug = png.replace(/\.png$/, "");
+        const currentPath = path.join(inputDir, vp.name, png);
+        const finding = reportIndex.get(`${slug}::${vp.name}`) ?? null;
 
-      const palette = await dominantColorsFromPng(currentPath);
-      const ocr = await ocrImage(currentPath).catch((error) => ({
-        available: false,
-        reason: `OCR failed: ${error?.message ?? String(error)}`,
-      }));
-      const baselinePath = path.join(baselineRoot, vp.name, png);
-      const diffOutPath = path.join(diffRoot, vp.name, png);
-      // --update-baseline: overwrite the baseline with the current shot BEFORE
-      // diffing, so the refresh is deliberate and the diff self-reports 0%.
-      if (args.updateBaseline) {
-        await mkdir(path.dirname(baselinePath), { recursive: true });
-        await (await import("sharp")).default(currentPath).toFile(baselinePath);
-      }
-      const diff = await diffAgainstBaseline({
-        currentPath,
-        baselinePath,
-        diffOutPath,
-        recordMissingBaseline: true,
-      });
+        const palette = await dominantColorsFromPng(currentPath);
+        const ocr = await ocrImage(currentPath);
+        const baselinePath = path.join(baselineRoot, vp.name, png);
+        const diffOutPath = path.join(diffRoot, vp.name, png);
+        // --update-baseline: overwrite the baseline with the current shot BEFORE
+        // diffing, so the refresh is deliberate and the diff self-reports 0%.
+        if (args.updateBaseline) {
+          await mkdir(path.dirname(baselinePath), { recursive: true });
+          await (await import("sharp"))
+            .default(currentPath)
+            .toFile(baselinePath);
+        }
+        const diff = await diffAgainstBaseline({
+          currentPath,
+          baselinePath,
+          diffOutPath,
+          recordMissingBaseline: args.updateBaseline,
+        });
 
-      const spec = resolveSpec(specs, slug);
-      const expectation = evaluateExpectations(
-        { viewport: vp.name, ocr, palette, finding },
-        spec,
-      );
+        const spec = resolveSpec(specs, slug);
+        const expectation = evaluateExpectations(
+          { viewport: vp.name, ocr, palette, finding },
+          spec,
+        );
 
-      results.push({
-        slug,
-        viewport: vp.name,
-        screenshot: path.relative(outDir, currentPath),
-        ocr: ocr.available
-          ? {
-              available: true,
-              words: ocr.words,
-              chars: ocr.chars,
-              text: ocr.text.slice(0, 4000),
-            }
-          : { available: false, reason: ocr.reason },
-        palette: {
-          buckets: Object.fromEntries(
-            Object.entries(palette.buckets).map(([k, v]) => [
-              k,
-              Number(v.toFixed(4)),
-            ]),
-          ),
-          swatches: palette.swatches.map((s) => ({
-            hex: s.hex,
-            bucket: s.bucket,
-            ratio: Number(s.ratio.toFixed(4)),
-          })),
-        },
-        diff:
-          diff.status === "new"
+        results.push({
+          slug,
+          viewport: vp.name,
+          screenshot: path.relative(outDir, currentPath),
+          ocr: ocr.available
             ? {
-                status: "new",
-                note: "baseline recorded; nothing to compare yet",
+                available: true,
+                words: ocr.words,
+                chars: ocr.chars,
+                text: ocr.text.slice(0, 4000),
               }
-            : {
-                status: "compared",
-                changedPercent: diff.summary.changedPercent,
-                meanAbsDelta: diff.summary.meanAbsDelta,
-                resized: diff.summary.resized,
-                diffPng: diff.diffPath
-                  ? path.relative(outDir, diff.diffPath)
-                  : null,
-              },
-        expectation: {
-          pass: expectation.pass,
-          reasons: expectation.reasons,
-          checks: expectation.checks,
-        },
-        horizontalOverflowPx: finding?.horizontalOverflowPx ?? null,
-      });
+            : { available: false, reason: ocr.reason },
+          palette: {
+            buckets: Object.fromEntries(
+              Object.entries(palette.buckets).map(([k, v]) => [
+                k,
+                Number(v.toFixed(4)),
+              ]),
+            ),
+            swatches: palette.swatches.map((s) => ({
+              hex: s.hex,
+              bucket: s.bucket,
+              ratio: Number(s.ratio.toFixed(4)),
+            })),
+          },
+          diff:
+            diff.status === "new"
+              ? {
+                  status: "new",
+                  note: args.updateBaseline
+                    ? "baseline recorded; nothing to compare yet"
+                    : "baseline missing; run with --update-baseline after manual review",
+                }
+              : {
+                  status: "compared",
+                  changedPercent: diff.summary.changedPercent,
+                  meanAbsDelta: diff.summary.meanAbsDelta,
+                  resized: diff.summary.resized,
+                  diffPng: diff.diffPath
+                    ? path.relative(outDir, diff.diffPath)
+                    : null,
+                },
+          expectation: {
+            pass: expectation.pass,
+            reasons: expectation.reasons,
+            checks: expectation.checks,
+          },
+          horizontalOverflowPx: finding?.horizontalOverflowPx ?? null,
+        });
+      }
     }
+  } finally {
+    await closeOcrEngines();
   }
 
   results.sort((a, b) =>
@@ -233,21 +253,28 @@ async function main() {
       : a.slug.localeCompare(b.slug),
   );
 
+  const expectationSkips = countExpectationChecks(results, "skip");
+  const expectationFailures = results.filter((r) => !r.expectation.pass).length;
+  const newBaselines = results.filter((r) => r.diff.status === "new").length;
+  const emptyRunFailures = results.length === 0 ? 1 : 0;
+  const strictFailures =
+    expectationFailures + expectationSkips + newBaselines + emptyRunFailures;
+
   const summary = {
     generatedAt: new Date().toISOString(),
     inputDir,
+    baselineDir: baselineRoot,
     states: results.length,
-    ocrEngine: tesseract ?? "N/A (tesseract not found)",
+    ocrEngine: ocrEngine.available
+      ? ocrEngine.label
+      : `UNAVAILABLE: ${ocrEngine.reason}`,
     auditReportPresent: reportPresent,
-    expectationFailures: results.filter((r) => !r.expectation.pass).length,
-    skippedChecks: results.reduce(
-      (count, r) =>
-        count + r.expectation.checks.filter((c) => c.status === "skip").length,
-      0,
-    ),
-    newBaselines: results.filter((r) => r.diff.status === "new").length,
+    expectationFailures,
+    expectationSkips,
+    newBaselines,
     overflowStates: results.filter((r) => (r.horizontalOverflowPx ?? 0) > 2)
       .length,
+    strictFailures,
   };
 
   await writeFile(
@@ -265,7 +292,7 @@ async function main() {
     `wrote ${results.length} states → ${path.join(outDir, "report.json")} + contact-sheet.html`,
   );
   log(
-    `expectation failures: ${summary.expectationFailures} | skipped checks: ${summary.skippedChecks} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines}`,
+    `expectation failures: ${summary.expectationFailures} | expectation skips: ${summary.expectationSkips} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines}`,
   );
   if (summary.expectationFailures > 0) {
     for (const r of results.filter((r) => !r.expectation.pass)) {
@@ -275,20 +302,30 @@ async function main() {
     }
   }
 
-  if (args.strict && hasStrictFailure(summary)) {
+  if (args.strict && summary.strictFailures > 0) {
     log(
-      "--strict: exiting non-zero due to failures, skipped checks, or missing baselines",
+      "--strict: exiting non-zero because every required signal must be present and compared",
     );
+    if (summary.states === 0) log("  FAIL no screenshots were processed");
+    if (summary.newBaselines > 0) {
+      log(
+        `  FAIL ${summary.newBaselines} screenshot(s) have no baseline comparison`,
+      );
+    }
+    if (summary.expectationSkips > 0) {
+      log(`  FAIL ${summary.expectationSkips} expectation check(s) skipped`);
+    }
     return 1;
   }
   return 0;
 }
 
-function hasStrictFailure(summary) {
-  return (
-    summary.expectationFailures > 0 ||
-    summary.skippedChecks > 0 ||
-    summary.newBaselines > 0
+export function countExpectationChecks(results, status) {
+  return results.reduce(
+    (count, r) =>
+      count +
+      r.expectation.checks.filter((check) => check.status === status).length,
+    0,
   );
 }
 
@@ -323,10 +360,10 @@ function renderContactSheet(summary, results) {
       const diffCell =
         r.diff.status === "new"
           ? '<span class="new">NEW baseline</span>'
-          : `${r.diff.changedPercent}% changed${r.diff.resized ? " (resized)" : ""}${r.diff.diffPng ? `<br><a href="${esc(r.diff.diffPng)}"><img class="thumb" src="${esc(r.diff.diffPng)}"></a>` : ""}`;
+          : `${r.diff.changedPercent}% changed${r.diff.resized ? " (resized)" : ""}${r.diff.diffPng ? `<br><img class="thumb" src="${esc(r.diff.diffPng)}">` : ""}`;
       return `<tr class="${r.expectation.pass ? "" : "row-fail"}">
         <td class="slug">${esc(r.slug)}<br><span class="meta">${esc(r.viewport)}</span></td>
-        <td><a href="${esc(r.screenshot)}"><img class="thumb" src="${esc(r.screenshot)}" loading="lazy"></a></td>
+        <td><img class="thumb" src="${esc(r.screenshot)}" loading="lazy"></td>
         <td>${ocrCell}</td>
         <td class="pal">${swatches}<div class="meta">${Object.entries(
           r.palette.buckets,
@@ -356,8 +393,9 @@ function renderContactSheet(summary, results) {
 <h1>mvp visual verify</h1>
 <div class="summary">
   ${esc(summary.states)} states · OCR: ${esc(summary.ocrEngine)} · expectation failures: <b>${summary.expectationFailures}</b> ·
-  skipped checks: <b>${summary.skippedChecks}</b> · overflow states: <b>${summary.overflowStates}</b> · new baselines: ${summary.newBaselines} ·
-  audit report: ${summary.auditReportPresent ? "loaded" : "ABSENT"} · ${esc(summary.generatedAt)}
+  skipped checks: <b>${summary.expectationSkips}</b> · overflow states: <b>${summary.overflowStates}</b> ·
+  new baselines: ${summary.newBaselines} · audit report: ${summary.auditReportPresent ? "loaded" : "ABSENT"} ·
+  baseline: ${esc(summary.baselineDir)} · ${esc(summary.generatedAt)}
 </div>
 <table>
   <tr><th>state</th><th>screenshot</th><th>OCR text</th><th>palette</th><th>diff vs baseline</th><th>expectations</th></tr>
@@ -365,10 +403,15 @@ function renderContactSheet(summary, results) {
 </table>`;
 }
 
-main().then(
-  (code) => process.exit(code ?? 0),
-  (err) => {
-    process.stderr.write(`[mvp-visual-verify] fatal: ${err?.stack || err}\n`);
-    process.exit(2);
-  },
-);
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().then(
+    (code) => process.exit(code ?? 0),
+    (err) => {
+      process.stderr.write(`[mvp-visual-verify] fatal: ${err?.stack || err}\n`);
+      process.exit(2);
+    },
+  );
+}

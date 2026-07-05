@@ -1,22 +1,26 @@
 /**
- * On-screen text readout for captured audit screenshots via the system
- * `tesseract` binary.
+ * On-screen text readout for captured audit screenshots.
  *
- * There is no bundled OCR engine; `tesseract.js` is only in the repo's native-
- * build allowlist, not an installed dependency. So this shells out to the
- * homebrew/apt `tesseract` binary when present and degrades HONESTLY to a
- * `{ available: false }` result when it is not — the caller renders that column
- * as an explicit "N/A (tesseract not found)" rather than fabricating text. Never
- * larp OCR: a missing engine is reported, not filled in.
+ * The verifier prefers the packaged `tesseract.js` dependency so CI and local
+ * evidence capture do not depend on a developer's Homebrew/apt state. A system
+ * `tesseract` binary remains available as an explicit fallback for debugging.
+ * Missing or failed OCR returns `{ available: false }`; the expectation layer
+ * treats that as a failed text check, never a skip or fabricated empty string.
  *
- * The binary probe is memoized because a run OCRs ~100 screenshots and `which`
- * on every call is wasteful.
+ * Engine probes and packaged workers are memoized because a run OCRs ~100
+ * screenshots. Call `closeOcrEngines` at the end of a verifier run so the worker
+ * process does not keep Node alive.
  */
 
 import { spawn, spawnSync } from "node:child_process";
 
 /** @type {{ path: string | null } | null} */
 let probe = null;
+/** @type {Promise<any> | null} */
+let packagedProbe = null;
+/** @type {Map<string, Promise<any>>} */
+let packagedWorkers = new Map();
+const TESSERACT_JS_PACKAGE = "tesseract.js";
 
 /**
  * Resolve the `tesseract` binary path once per process. Uses `which` (POSIX) —
@@ -39,27 +43,89 @@ export function resolveTesseract() {
   return probe.path;
 }
 
+/**
+ * Resolve the OCR engine the verifier will use. Packaged OCR is the default;
+ * set `ELIZA_MVP_OCR_ENGINE=system` to force a local binary, or `packaged` to
+ * fail closed when the dependency is not installed.
+ *
+ * @returns {Promise<{ available: true, kind: "packaged"|"system", label: string, bin?: string } | { available: false, reason: string }>}
+ */
+export async function resolveOcrEngine() {
+  const forced = process.env.ELIZA_MVP_OCR_ENGINE;
+  if (forced !== "system") {
+    const packaged = await loadPackagedTesseract();
+    if (packaged?.createWorker) {
+      return {
+        available: true,
+        kind: "packaged",
+        label: "tesseract.js package",
+      };
+    }
+    if (forced === "packaged") {
+      return {
+        available: false,
+        reason:
+          "tesseract.js package is unavailable; run `bun install` so packages/app installs its OCR dependency",
+      };
+    }
+  }
+
+  const bin = resolveTesseract();
+  if (bin) {
+    return {
+      available: true,
+      kind: "system",
+      label: `system tesseract (${bin})`,
+      bin,
+    };
+  }
+  return {
+    available: false,
+    reason:
+      "no OCR engine available; run `bun install` for packaged tesseract.js or set ELIZA_TESSERACT_BIN",
+  };
+}
+
 /** Test seam: reset the memoized probe so a test can force re-resolution. */
 export function resetTesseractProbe() {
   probe = null;
+  packagedProbe = null;
+  packagedWorkers = new Map();
 }
 
 /**
  * OCR a single PNG. Returns the recognized text plus a `words` count and the
- * engine label, or an honest unavailable result when tesseract is missing.
+ * engine label, or an honest unavailable result when tesseract is missing/fails.
  *
  * @param {string} pngPath
  * @param {{ lang?: string, timeoutMs?: number }} [opts]
  * @returns {Promise<{ available: true, text: string, words: number, chars: number, engine: string } | { available: false, reason: string }>}
  */
 export async function ocrImage(pngPath, opts = {}) {
-  const bin = resolveTesseract();
-  if (!bin) {
-    return { available: false, reason: "tesseract binary not found" };
+  const engine = await resolveOcrEngine();
+  if (!engine.available) {
+    return { available: false, reason: engine.reason };
   }
   const lang = opts.lang ?? "eng";
   const timeoutMs = opts.timeoutMs ?? 30_000;
-  const text = await runTesseract(bin, pngPath, lang, timeoutMs);
+  const text =
+    engine.kind === "packaged"
+      ? await runPackagedTesseract(pngPath, lang, timeoutMs).catch((err) => {
+          const detail = err instanceof Error ? err.message : String(err);
+          return { error: detail };
+        })
+      : await runSystemTesseract(engine.bin, pngPath, lang, timeoutMs).catch(
+          (err) => {
+            const detail = err instanceof Error ? err.message : String(err);
+            return { error: detail };
+          },
+        );
+  if (typeof text !== "string") {
+    return {
+      available: false,
+      reason: `${engine.label} failed: ${text.error.slice(0, 200)}`,
+    };
+  }
   const normalized = text
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
@@ -70,8 +136,53 @@ export async function ocrImage(pngPath, opts = {}) {
     text: normalized,
     words,
     chars: normalized.replace(/\s+/g, "").length,
-    engine: `tesseract (${bin})`,
+    engine: engine.label,
   };
+}
+
+/** Terminate packaged OCR workers after a verifier run. */
+export async function closeOcrEngines() {
+  const workers = [...packagedWorkers.values()];
+  packagedWorkers = new Map();
+  for (const workerPromise of workers) {
+    const worker = await workerPromise;
+    await worker.terminate();
+  }
+}
+
+async function loadPackagedTesseract() {
+  if (!packagedProbe) {
+    packagedProbe = import(TESSERACT_JS_PACKAGE).catch(() => null);
+  }
+  return packagedProbe;
+}
+
+async function runPackagedTesseract(pngPath, lang, timeoutMs) {
+  const worker = await getPackagedWorker(lang, timeoutMs);
+  const result = await withTimeout(
+    worker.recognize(pngPath),
+    timeoutMs,
+    `tesseract.js timed out after ${timeoutMs}ms on ${pngPath}`,
+  );
+  return result?.data?.text ?? "";
+}
+
+async function getPackagedWorker(lang, timeoutMs) {
+  const existing = packagedWorkers.get(lang);
+  if (existing) return existing;
+  const workerPromise = (async () => {
+    const tesseract = await loadPackagedTesseract();
+    if (!tesseract?.createWorker) {
+      throw new Error("tesseract.js createWorker export is unavailable");
+    }
+    return withTimeout(
+      tesseract.createWorker(lang),
+      timeoutMs,
+      `tesseract.js worker initialization timed out after ${timeoutMs}ms`,
+    );
+  })();
+  packagedWorkers.set(lang, workerPromise);
+  return workerPromise;
 }
 
 /**
@@ -80,7 +191,7 @@ export async function ocrImage(pngPath, opts = {}) {
  * into empty text (empty text is a legitimate "no readable glyphs" result and
  * must stay distinguishable from a crashed engine).
  */
-function runTesseract(bin, pngPath, lang, timeoutMs) {
+function runSystemTesseract(bin, pngPath, lang, timeoutMs) {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, [pngPath, "stdout", "-l", lang], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -116,4 +227,12 @@ function runTesseract(bin, pngPath, lang, timeoutMs) {
       resolve(stdout);
     });
   });
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

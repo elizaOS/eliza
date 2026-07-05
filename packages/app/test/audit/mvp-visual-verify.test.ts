@@ -312,7 +312,7 @@ describe("expectation-eval", () => {
     expect(mobilePass.pass).toBe(true);
   });
 
-  it("OCR check skips honestly when the engine is unavailable", () => {
+  it("OCR check fails when required text cannot be verified", () => {
     const r = evaluateExpectations(
       {
         ocr: { available: false, reason: "tesseract not found" },
@@ -321,8 +321,8 @@ describe("expectation-eval", () => {
       },
       { ocr: { present: ["Anything"] } },
     );
-    expect(r.checks[0].status).toBe("skip");
-    expect(r.pass).toBe(true);
+    expect(r.checks[0].status).toBe("fail");
+    expect(r.pass).toBe(false);
   });
 
   it("resolveSpec merges __default__ invariants with the per-slug entry", () => {
@@ -362,7 +362,7 @@ describe("mvp-visual-verify CLI", () => {
       execFileSync(
         process.execPath,
         [
-          path.resolve("scripts/mvp-visual-verify.mjs"),
+          path.resolve(__dirname, "../../scripts/mvp-visual-verify.mjs"),
           "--input",
           dir,
           "--strict",
@@ -376,8 +376,6 @@ describe("mvp-visual-verify CLI", () => {
     } catch (error) {
       failed = true;
       expect(error.status).toBe(1);
-      expect(String(error.stdout)).toContain("new baselines: 1");
-      expect(String(error.stdout)).toContain("skipped checks:");
     }
 
     expect(failed).toBe(true);
@@ -385,6 +383,6 @@ describe("mvp-visual-verify CLI", () => {
       readFileSync(path.join(dir, "mvp-verify", "report.json"), "utf8"),
     );
     expect(report.summary.newBaselines).toBe(1);
-    expect(report.summary.skippedChecks).toBeGreaterThan(0);
+    expect(report.summary.expectationSkips).toBeGreaterThan(0);
   });
 });
