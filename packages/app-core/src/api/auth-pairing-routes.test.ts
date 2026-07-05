@@ -383,6 +383,41 @@ describe("auth pairing pair-code route", () => {
     );
   });
 
+  it("fails closed with 503 (never the static API token) when the runtime DB is not yet up during the boot window (#13985)", async () => {
+    vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
+    sessionMocks.createMachineSession.mockClear();
+
+    // Prime the in-memory pair code via the loopback fetch.
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/pair-code",
+        ip: "127.0.0.1",
+        host: "localhost:2138",
+      }),
+      fakeRes().res,
+      STATE_WITH_DB,
+    );
+
+    const remote = fakeReq({
+      method: "POST",
+      pathname: "/api/auth/pair",
+      ip: "203.0.113.10",
+    });
+    (remote as unknown as { body: unknown }).body = { code: "AAAA-AAAA-AAAA" };
+
+    const res = fakeRes();
+    // `STATE` has `current: null`, so `getCompatDrizzleDb` returns null — the
+    // boot-window case. The handler must NOT fall open to the forever-valid
+    // static `ELIZA_API_TOKEN`; it fails closed so the client retries.
+    await handleAuthPairingCompatRoutes(remote, res.res, STATE);
+
+    expect(res.status()).toBe(503);
+    // The static connection key must never leave via this path.
+    expect(res.body()).not.toEqual({ token: "pairing-test-token" });
+    expect(sessionMocks.createMachineSession).not.toHaveBeenCalled();
+  });
+
   it("reuses an existing owner identity when one is configured", async () => {
     vi.spyOn(crypto, "randomInt").mockImplementation(() => 0);
     sessionMocks.createMachineSession.mockClear();
