@@ -18,17 +18,19 @@ Run from `/private/tmp/codex-14276-rebase` on 2026-07-05 after rebasing onto
 bun test \
   packages/agent/src/api/database.strip-comments.test.ts \
   packages/agent/src/actions/database-readonly.test.ts \
+  packages/agent/src/actions/database.readonly-redos.test.ts \
   plugins/plugin-form/src/email.test.ts \
   packages/cloud/shared/src/lib/utils/email-validation.test.ts
 ```
 
-Result: 24 pass, 0 fail.
+Result: 28 pass, 0 fail.
 
 ```bash
 bunx @biomejs/biome check \
   packages/agent/src/security/sql-readonly-guard.ts \
   packages/agent/src/actions/database.ts \
   packages/agent/src/actions/database-readonly.test.ts \
+  packages/agent/src/actions/database.readonly-redos.test.ts \
   packages/agent/src/api/database.strip-comments.test.ts \
   packages/cloud/shared/src/lib/utils/email-validation.ts \
   packages/cloud/shared/src/lib/utils/email-validation.test.ts \

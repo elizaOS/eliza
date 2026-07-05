@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { checkReadOnly } from "./database.ts";
+import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
 describe("DATABASE read-only SQL guard", () => {
   it("rejects mutation keywords split by block comments", () => {
