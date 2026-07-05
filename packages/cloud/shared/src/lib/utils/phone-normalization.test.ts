@@ -26,6 +26,16 @@ describe("isValidE164 / isValidEmail", () => {
     expect(isValidEmail("no-at-sign")).toBe(false);
     expect(isValidEmail("a@b")).toBe(false);
   });
+
+  test("email check is linear on dotted-domain ReDoS input", () => {
+    const evil = `x@${"a.".repeat(200_000)}@`;
+    const start = performance.now();
+    const result = isValidEmail(evil);
+    const elapsed = performance.now() - start;
+
+    expect(result).toBe(false);
+    expect(elapsed).toBeLessThan(1000);
+  });
 });
 
 describe("normalizeToE164", () => {

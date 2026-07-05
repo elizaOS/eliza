@@ -63,20 +63,12 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import { basicEmailValid } from "./email";
 import type { ControlType, FormControl, ValidationResult } from "./types";
 
 // ============================================================================
 // VALIDATION HELPERS
 // ============================================================================
-
-/**
- * Email regex pattern
- * WHY this pattern:
- * - Balances strictness with practicality
- * - Catches obvious errors (missing @, missing domain)
- * - Allows international characters in local part
- */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * ISO date regex pattern
@@ -223,7 +215,7 @@ const numberType: ControlType = {
 /**
  * Email control type
  *
- * Validates email format using a practical regex.
+ * Validates email format using a practical structural check.
  * Not RFC-compliant but catches common errors.
  *
  * WHY simple regex (not RFC 5322):
@@ -248,7 +240,7 @@ const emailType: ControlType = {
 
     const str = String(value).trim().toLowerCase();
 
-    if (!EMAIL_REGEX.test(str)) {
+    if (!basicEmailValid(str)) {
       return { valid: false, error: "Invalid email format" };
     }
 

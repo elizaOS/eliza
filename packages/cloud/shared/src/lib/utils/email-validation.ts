@@ -9,16 +9,21 @@
  * Basic email format validation.
  * Checks for: local@domain.tld pattern with reasonable constraints.
  */
+export function basicEmailValid(value: string): boolean {
+  const at = value.indexOf("@");
+  if (at <= 0 || at !== value.lastIndexOf("@")) return false;
+  if (/\s/.test(value)) return false;
+  const domain = value.slice(at + 1);
+  return domain.slice(1, -1).includes(".");
+}
+
 export function isValidEmail(email: string): boolean {
   if (!email || typeof email !== "string") return false;
 
   const trimmed = email.trim();
   if (trimmed.length < 5 || trimmed.length > 254) return false;
 
-  // Basic format: something@something.something
-  // Not overly strict to avoid rejecting valid but unusual emails
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(trimmed);
+  return basicEmailValid(trimmed);
 }
 
 /**

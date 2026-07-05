@@ -46,6 +46,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import { basicEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
 /**
@@ -250,7 +251,7 @@ function validateText(
 /**
  * Validate email field.
  *
- * WHY simple regex:
+ * WHY simple structural check:
  * - Complex RFC 5322 regex is overkill and often wrong
  * - This catches most typos (missing @, missing domain)
  * - Further validation via confirmation email
@@ -262,11 +263,7 @@ function validateEmail(
   const rawValue = String(value);
   const strValue = rawValue.length > 320 ? rawValue.slice(0, 320) : rawValue;
 
-  // Basic email regex - intentionally simple
-  // WHY: More complex patterns have edge cases; simple pattern catches most errors
-  // Use [^\s@.] in the domain parts to keep matching linear (no ReDoS).
-  const emailRegex = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
-  if (!emailRegex.test(strValue)) {
+  if (!basicEmailValid(strValue)) {
     return {
       valid: false,
       error: `${control.label || control.key} must be a valid email address`,

@@ -6,11 +6,11 @@
  */
 
 import { type CountryCode, parsePhoneNumberWithError } from "libphonenumber-js";
+import { basicEmailValid } from "./email-validation";
 import { logger } from "./logger";
 
 // Validation patterns
 const E164_REGEX = /^\+[1-9]\d{1,14}$/;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const US_10_DIGIT = /^\d{10}$/;
 const US_11_DIGIT = /^1\d{10}$/;
 
@@ -21,7 +21,7 @@ export function isValidE164(phoneNumber: string): boolean {
 
 /** Validate email format (simple check) */
 export function isValidEmail(email: string): boolean {
-  return EMAIL_REGEX.test(email);
+  return basicEmailValid(email);
 }
 
 /**

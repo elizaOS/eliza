@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
-} from "./database.ts";
+} from "../shared/sql-sanitizers.ts";
 
 describe("stripSqlBlockComments", () => {
   it("leaves comment-free SQL untouched", () => {
