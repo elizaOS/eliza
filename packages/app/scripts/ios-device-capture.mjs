@@ -370,6 +370,14 @@ async function main() {
     parsePlist(fs.readFileSync(xmlPath, "utf8")),
     testRoot,
   );
+  // Capture the original resolved bundle list before any --app-path rewrites.
+  // Once UITargetAppPath points at the signed staged app, the unsigned
+  // DerivedData App.app path is no longer discoverable from the parsed
+  // xctestrun, but the overwrite/preflight below still needs that original
+  // product path.
+  const originalBundles = extractXctestrunAppPaths(parsed, testRoot).filter(
+    (bundle) => bundle.endsWith(".app"),
+  );
 
   // Device lane: point the harness at the signed App.app graft.
   if (args["app-path"]) {
@@ -404,11 +412,8 @@ async function main() {
     const signedApp = args["app-path"] ? path.resolve(args["app-path"]) : null;
     // The DD build product is the App.app sitting NEXT TO the runner app in
     // Build/Products; derive it from the xctestrun's own resolved bundle list.
-    const bundles = extractXctestrunAppPaths(parsed, testRoot).filter(
-      (bundle) => bundle.endsWith(".app"),
-    );
     const derivedDataProductApp =
-      bundles.find(
+      originalBundles.find(
         (bundle) => path.basename(bundle) === "App.app" && bundle !== signedApp,
       ) ?? null;
     const overwritePlan = planSignedAppDdOverwrite({
@@ -435,7 +440,7 @@ async function main() {
     // signed, so an unsigned bundle fails fast with the 0xe800801c remediation
     // text instead of an opaque devicectl install error deep in the run.
     const runnerApp =
-      bundles.find((bundle) => bundle.endsWith("-Runner.app")) ?? null;
+      originalBundles.find((bundle) => bundle.endsWith("-Runner.app")) ?? null;
     const preflightChecks = [];
     if (runnerApp) {
       preflightChecks.push({
