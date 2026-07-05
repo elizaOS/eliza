@@ -949,7 +949,7 @@ jobs:
         run: |
           strict_context=false
           case "${EVENT_NAME}" in
-            push|merge_group|workflow_dispatch|schedule) strict_context=true ;;
+            workflow_dispatch|schedule) strict_context=true ;;
           esac
 
           if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
@@ -1093,7 +1093,7 @@ jobs:
         run: |
           strict_context=false
           case "${EVENT_NAME}" in
-            push|merge_group|workflow_dispatch|schedule) strict_context=true ;;
+            workflow_dispatch|schedule) strict_context=true ;;
           esac
 
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
