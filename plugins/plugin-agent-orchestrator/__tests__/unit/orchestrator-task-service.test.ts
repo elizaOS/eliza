@@ -56,6 +56,7 @@ class FakeAcp {
     | ((sessionId: string, event: string, data: unknown) => void)
     | null = null;
   private counter = 0;
+  private readonly sessionMeta = new Map<string, Record<string, unknown>>();
   readonly spawnArgs: Record<string, unknown>[] = [];
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
@@ -80,11 +81,41 @@ class FakeAcp {
     if (this.failSpawn) return Promise.reject(new Error("spawn failed"));
     this.spawnArgs.push(opts);
     this.counter += 1;
+    const sessionId = `session-${this.counter}`;
+    if (opts.metadata && typeof opts.metadata === "object") {
+      this.sessionMeta.set(sessionId, {
+        ...(opts.metadata as Record<string, unknown>),
+      });
+    }
     return Promise.resolve({
-      sessionId: `session-${this.counter}`,
+      sessionId,
       agentType: (opts.agentType as string | undefined) ?? "codex",
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
+    });
+  }
+
+  /** Set the live ACP-session metadata the orchestrator reads via getSession —
+   * used to seed `buildVerifyRetryCount` so tests drive the real retry-budget
+   * branch of the `failed` producer. */
+  setSessionMetadata(
+    sessionId: string,
+    metadata: Record<string, unknown>,
+  ): void {
+    this.sessionMeta.set(sessionId, metadata);
+  }
+
+  getSession(sessionId: string): Promise<{
+    id: string;
+    workdir: string;
+    status: string;
+    metadata: Record<string, unknown>;
+  } | null> {
+    return Promise.resolve({
+      id: sessionId,
+      workdir: "/repo",
+      status: "ready",
+      metadata: this.sessionMeta.get(sessionId) ?? {},
     });
   }
 
@@ -1115,6 +1146,52 @@ describe("OrchestratorTaskService — task status guards", () => {
     expect(must(await service.getTask(taskId), "detail").status).toBe(
       "validating",
     );
+  });
+
+  it("advances the task to `failed` on an unrecoverable error with no retry budget", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    // A crashed / non-zero-exit sub-agent: an `error` with no failureKind and
+    // no build-verify retry counter on the session — nothing will re-drive it.
+    await drive(acp, sessionId, "error", {
+      message: "process exited with code 1",
+    });
+    expect(must(await service.getTask(taskId), "detail").status).toBe("failed");
+    // The session itself is still marked errored (existing behavior preserved).
+    expect(must((await service.getTask(taskId))?.sessions[0], "s").status).toBe(
+      "errored",
+    );
+  });
+
+  it("does not fail the task on a `session_state_lost` error (router owns respawn)", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "error", {
+      message: "session state lost",
+      failureKind: "session_state_lost",
+    });
+    // The sub-agent router deterministically respawns this lineage and narrates
+    // its own terminal outcome; the durable task must NOT be flipped to failed.
+    expect(must(await service.getTask(taskId), "detail").status).not.toBe(
+      "failed",
+    );
+  });
+
+  it("defers failing while a build-verify retry lineage still has budget", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    // Live counter on the ACP session: one retry consumed, cap is 2 → budget
+    // remains, so the router's existing respawn machinery may re-drive it.
+    acp.setSessionMetadata(sessionId, { buildVerifyRetryCount: 1 });
+    await drive(acp, sessionId, "error", { message: "transient crash" });
+    expect(must(await service.getTask(taskId), "detail").status).not.toBe(
+      "failed",
+    );
+  });
+
+  it("fails the task once the build-verify retry budget is exhausted", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    // Cap is 2 and both retries are spent → no respawn coming → terminal.
+    acp.setSessionMetadata(sessionId, { buildVerifyRetryCount: 2 });
+    await drive(acp, sessionId, "error", { message: "still crashing" });
+    expect(must(await service.getTask(taskId), "detail").status).toBe("failed");
   });
 
   it("routes blocked and login_required to the right task status", async () => {

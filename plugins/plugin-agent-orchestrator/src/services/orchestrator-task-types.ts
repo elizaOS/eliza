@@ -394,3 +394,90 @@ export const TERMINAL_TASK_SESSION_STATUSES: ReadonlySet<string> = new Set([
 
 export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["done", "failed", "archived"]);
+
+/**
+ * Legal task-status transitions as a `from → allowed(to)` relation — the single
+ * source of truth for the durable-task state machine. Consulted only by
+ * `OrchestratorTaskService.advanceTaskStatus` (the one status writer on the
+ * ACP→task event bridge), so a target that isn't declared legal from the
+ * current state is a structural no-op rather than a silent stomp.
+ *
+ * Invariants encoded here, replacing the ad-hoc guards that used to live inline:
+ *  - Terminal states (`done`, `failed`, `archived`) have no outgoing edges: once
+ *    a task is terminal the bridge never re-opens it.
+ *  - `active` is the weakest signal and is entered only from `open`, so a late
+ *    `ready`/`reconnected` can't stomp `blocked`/`validating`/`waiting_on_user`.
+ *  - Every non-terminal working state can reach `failed`. That gives the
+ *    unrecoverable-error producer (a crashed / non-zero-exit sub-agent) a home,
+ *    so a task can never wedge non-terminal, and keeps "`failed` has no
+ *    producer" structurally impossible to reintroduce — the terminal is
+ *    declared reachable here and only `advanceTaskStatus` can write it.
+ */
+export const LEGAL_TASK_TRANSITIONS: Readonly<
+  Record<OrchestratorTaskStatus, ReadonlySet<OrchestratorTaskStatus>>
+> = {
+  open: new Set([
+    "active",
+    "blocked",
+    "waiting_on_user",
+    "validating",
+    "done",
+    "failed",
+    "interrupted",
+    "archived",
+  ]),
+  active: new Set([
+    "blocked",
+    "waiting_on_user",
+    "validating",
+    "done",
+    "failed",
+    "interrupted",
+    "archived",
+  ]),
+  waiting_on_user: new Set([
+    "blocked",
+    "validating",
+    "done",
+    "failed",
+    "interrupted",
+    "archived",
+  ]),
+  blocked: new Set([
+    "waiting_on_user",
+    "validating",
+    "done",
+    "failed",
+    "interrupted",
+    "archived",
+  ]),
+  validating: new Set([
+    "waiting_on_user",
+    "blocked",
+    "done",
+    "failed",
+    "interrupted",
+    "archived",
+  ]),
+  interrupted: new Set([
+    "blocked",
+    "waiting_on_user",
+    "validating",
+    "done",
+    "failed",
+    "archived",
+  ]),
+  done: new Set<OrchestratorTaskStatus>(),
+  failed: new Set<OrchestratorTaskStatus>(),
+  archived: new Set<OrchestratorTaskStatus>(),
+};
+
+/** Whether the durable task machine permits `from → to`. A self-transition
+ * (`from === to`) is a caller-side no-op and is intentionally not enumerated as
+ * a legal edge. */
+export function isLegalTaskTransition(
+  from: OrchestratorTaskStatus,
+  to: OrchestratorTaskStatus,
+): boolean {
+  return LEGAL_TASK_TRANSITIONS[from].has(to);
+}

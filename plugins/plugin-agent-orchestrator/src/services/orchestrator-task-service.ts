@@ -90,6 +90,7 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
+  isLegalTaskTransition,
   MAX_ATTEMPT_REFLECTIONS,
   type OrchestratorAccountAssignment,
   type OrchestratorAccountOverview,
@@ -178,6 +179,26 @@ function configuredDefaultAgentType(runtime: {
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
   }
   return undefined;
+}
+
+/**
+ * Cap on build-verify retries a sub-agent lineage may consume, read from
+ * `ELIZA_BUILD_VERIFY_MAX_RETRIES` (default 2) with the same env fallback the
+ * sub-agent router uses, so both sides of the retry decision agree on the
+ * budget. Values <= 0 disable retries entirely, so no lineage ever "has
+ * budget" and every unrecoverable crash is terminal.
+ */
+function buildVerifyMaxRetries(runtime: {
+  getSetting?: (key: string) => unknown;
+}): number {
+  const key = "ELIZA_BUILD_VERIFY_MAX_RETRIES";
+  const fromSetting = runtime.getSetting?.(key);
+  const raw =
+    typeof fromSetting === "string" && fromSetting.length > 0
+      ? fromSetting
+      : process.env[key];
+  const value = typeof raw === "string" ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(value) ? value : 2;
 }
 
 /** Provenance stamped on the `validateTask` verdict produced by the independent
@@ -912,6 +933,23 @@ export class OrchestratorTaskService extends Service {
             message,
           );
         }
+        // Wire the `failed` producer: an unrecoverable crash / non-zero exit
+        // must advance the TASK to a terminal state, not just mark the session
+        // `errored` — otherwise the task wedges in `active`/`validating` until
+        // the 3-min stall watchdog or a human clears it (the reported P0).
+        // `session_state_lost` is excluded: the sub-agent router owns that
+        // lineage's deterministic respawn and its own terminal narration. When
+        // an in-flight build-verify retry lineage still has budget the router's
+        // existing respawn machinery may re-drive the work, so defer; otherwise
+        // the crash is terminal. The `failed`-vs-`waiting_on_user` policy (epic
+        // D1) is deferred — this slice always parks an exhausted crash in
+        // `failed`.
+        if (
+          failureKind !== "session_state_lost" &&
+          !(await this.errorRetryBudgetRemains(sessionId))
+        ) {
+          await this.advanceTaskStatus(taskId, "failed");
+        }
         break;
       }
       case "stopped":
@@ -1366,12 +1404,38 @@ export class OrchestratorTaskService extends Service {
     const doc = await this.store.getTask(taskId);
     if (!doc) return;
     const current = doc.task.status;
-    if (TERMINAL_TASK_STATUSES.has(current)) return;
-    if (doc.task.paused) return;
     if (next === current) return;
-    // `active` is the weakest signal: only promote into it from `open`.
-    if (next === "active" && current !== "open") return;
+    // Paused is an orthogonal flag that freezes the status until an explicit
+    // resume, so no session event may advance a paused task.
+    if (doc.task.paused) return;
+    // Single gate: the legal-transition table (orchestrator-task-types) encodes
+    // terminal-no-exit and active-only-from-open, so an undeclared edge — a late
+    // `ready` trying to reactivate a terminal/validating task, or `error`
+    // failing an already-terminal one — is a no-op instead of a silent stomp.
+    if (!isLegalTaskTransition(current, next)) return;
     await this.store.updateTask(taskId, { status: next });
+  }
+
+  /**
+   * Whether an in-flight build-verify retry lineage still has budget, meaning
+   * the sub-agent router's existing respawn machinery may re-drive the crashed
+   * work and the durable task must NOT be flipped to `failed` yet.
+   *
+   * Reuses the single live counter the router stamps on ACP session metadata
+   * (`buildVerifyRetryCount`, see sub-agent-router `retryIncompleteBuild`); the
+   * typed-but-dead `OrchestratorTaskSession.retryCount` field is intentionally
+   * not consulted. Only a session that is ITSELF a retry (`count > 0`) and below
+   * the cap defers — a fresh session (no retry counter) has no in-flight retry,
+   * so its unrecoverable crash is terminal and the caller advances to `failed`.
+   */
+  private async errorRetryBudgetRemains(sessionId: string): Promise<boolean> {
+    const acp = this.acp();
+    const session = acp ? await acp.getSession(sessionId) : undefined;
+    const raw = (session?.metadata as Record<string, unknown> | undefined)
+      ?.buildVerifyRetryCount;
+    const count = typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    if (count <= 0) return false;
+    return count < buildVerifyMaxRetries(this.runtime);
   }
 
   private async markSessionAccountUnhealthy(
