@@ -391,7 +391,20 @@ async function importUiComponentsCompat(): Promise<Record<string, unknown>> {
 }
 
 async function importUiRootCompat(): Promise<Record<string, unknown>> {
-  return import("../../index.ts");
+  // The root barrel re-exports the RAW navigation/storage helpers (via
+  // `export * from "./app-navigate-view"` and `export * from "./bridge/index"`),
+  // which reach host `window.history` / `window.localStorage` directly. Exposing
+  // that unbrokered would let an in-process view bypass the manifest broker by
+  // importing from `@elizaos/ui` instead of the wrapped `@elizaos/ui/*` subpaths.
+  // Overlay the SAME wrapped versions the subpath compat modules expose so the
+  // sensitive nav/storage symbols route through the active surface-realm scope no
+  // matter which specifier the view imports; every other root export is untouched.
+  const [root, appNavigateView, bridge] = await Promise.all([
+    import("../../index.ts"),
+    importUiAppNavigateViewCompat(),
+    importUiBridgeCompat(),
+  ]);
+  return { ...root, ...appNavigateView, ...bridge };
 }
 
 async function importUiAppNavigateViewCompat(): Promise<

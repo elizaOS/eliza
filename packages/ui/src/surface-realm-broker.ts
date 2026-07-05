@@ -260,11 +260,20 @@ function readRootVarNames(el: HTMLElement): string[] {
   return names;
 }
 
-/** The tokens removed by a host-realm reset — returned so callers can log/inspect. */
+/**
+ * What a host-realm reset changed — returned so callers can log/inspect. The
+ * `removed*` fields are rogue tokens the view ADDED and the reset stripped; the
+ * `restored*` fields are shell-owned baseline tokens the view DELETED and the
+ * reset re-asserted (a view leaks just as much by deleting `dark`/`native`/
+ * `--accent` as by injecting a rogue token).
+ */
 export interface HostRealmResetResult {
   rootClasses: string[];
   bodyClasses: string[];
   rootVars: string[];
+  restoredRootClasses: string[];
+  restoredBodyClasses: string[];
+  restoredRootVars: string[];
 }
 
 // ── The per-view scope the shell publishes ───────────────────────────────────
@@ -275,6 +284,9 @@ export interface HostRealmResetResult {
  * tears it down on navigation. It captures the class/var tokens present at
  * activation so shell state that legitimately changes while the view is open is
  * preserved, while anything the view injected globally is reset on teardown.
+ * The reset is symmetric: it strips the rogue tokens a view ADDED and restores
+ * the shell-owned baseline tokens a view DELETED, so neither direction of
+ * mutation survives into the next view.
  */
 export class SurfaceRealmScope {
   readonly storage: ScopedStorage;
@@ -282,6 +294,13 @@ export class SurfaceRealmScope {
   private readonly rootClassBaseline: ReadonlySet<string>;
   private readonly bodyClassBaseline: ReadonlySet<string>;
   private readonly rootVarBaseline: ReadonlySet<string>;
+  // Baseline presence/values of the SHELL-OWNED tokens only, snapshotted at
+  // activation. Restored on teardown if the view deleted them — the shell owns
+  // these, so re-asserting its own theme/platform/accent state is safe, whereas
+  // a plugin/content-pack token the view deleted is not the shell's to restore.
+  private readonly shellRootClassBaseline: readonly string[];
+  private readonly shellBodyClassBaseline: readonly string[];
+  private readonly shellRootVarBaseline: ReadonlyMap<string, string>;
 
   constructor(
     readonly manifest: ResolvedSurfaceManifest,
@@ -295,25 +314,44 @@ export class SurfaceRealmScope {
       this.rootClassBaseline = new Set();
       this.bodyClassBaseline = new Set();
       this.rootVarBaseline = new Set();
+      this.shellRootClassBaseline = [];
+      this.shellBodyClassBaseline = [];
+      this.shellRootVarBaseline = new Map();
     } else {
-      this.rootClassBaseline = new Set(document.documentElement.classList);
-      this.bodyClassBaseline = new Set(document.body.classList);
-      this.rootVarBaseline = new Set(
-        readRootVarNames(document.documentElement),
+      const root = document.documentElement;
+      const rootClasses = [...root.classList];
+      const bodyClasses = [...document.body.classList];
+      const rootVars = readRootVarNames(root);
+      this.rootClassBaseline = new Set(rootClasses);
+      this.bodyClassBaseline = new Set(bodyClasses);
+      this.rootVarBaseline = new Set(rootVars);
+      this.shellRootClassBaseline = rootClasses.filter(isShellOwnedRootClass);
+      this.shellBodyClassBaseline = bodyClasses.filter(isShellOwnedBodyClass);
+      this.shellRootVarBaseline = new Map(
+        rootVars
+          .filter(isShellOwnedRootVar)
+          .map((name) => [name, root.style.getPropertyValue(name)]),
       );
     }
   }
 
   /**
-   * Remove the root/body classes and `:root` variables this view added to the
-   * host realm beyond the shell's own token set. Called on view teardown so a
-   * view's global class/CSS-var mutation cannot leak into the next view.
+   * Undo a view's global root/body-class + `:root`-var mutations on teardown so
+   * nothing it did to the host realm leaks into the next view. Two directions:
+   * (1) remove tokens the view ADDED beyond the shell's own set, and (2) restore
+   * shell-owned baseline tokens the view DELETED. A legitimate theme SWAP by the
+   * shell (removing `light` while adding `dark`) is not a deletion to restore —
+   * the family is still represented — so restoration skips a missing theme class
+   * whenever any theme class is present.
    */
   resetHostRealm(): HostRealmResetResult {
     const result: HostRealmResetResult = {
       rootClasses: [],
       bodyClasses: [],
       rootVars: [],
+      restoredRootClasses: [],
+      restoredBodyClasses: [],
+      restoredRootVars: [],
     };
     if (typeof document === "undefined") return result;
     const root = document.documentElement;
@@ -334,6 +372,32 @@ export class SurfaceRealmScope {
       if (isShellOwnedRootVar(name) || this.rootVarBaseline.has(name)) continue;
       root.style.removeProperty(name);
       result.rootVars.push(name);
+    }
+
+    // All shell-owned root classes are the mutually-exclusive theme family; if
+    // any is present, the theme is validly set and a missing baseline sibling is
+    // a legitimate swap, not a view deletion.
+    const themeRootClassPresent = [...SHELL_OWNED_ROOT_CLASSES].some((cls) =>
+      root.classList.contains(cls),
+    );
+    for (const cls of this.shellRootClassBaseline) {
+      if (root.classList.contains(cls)) continue;
+      if (themeRootClassPresent) continue;
+      root.classList.add(cls);
+      result.restoredRootClasses.push(cls);
+    }
+    for (const cls of this.shellBodyClassBaseline) {
+      if (body.classList.contains(cls)) continue;
+      body.classList.add(cls);
+      result.restoredBodyClasses.push(cls);
+    }
+    for (const [name, value] of this.shellRootVarBaseline) {
+      // Only a deletion (property absent → empty string) is unambiguously the
+      // view's doing; a changed non-empty value can be a legitimate shell accent
+      // update, so it is left alone.
+      if (root.style.getPropertyValue(name) !== "") continue;
+      root.style.setProperty(name, value);
+      result.restoredRootVars.push(name);
     }
     return result;
   }
