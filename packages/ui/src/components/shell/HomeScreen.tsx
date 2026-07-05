@@ -186,7 +186,11 @@ export function HomeScreen({
         // `overscroll-y-contain`: keep the browser's own pull-to-refresh /
         // scroll-chaining off the top overscroll so a drag past the top never
         // yanks the whole page.
-        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-y-auto overscroll-y-contain",
+        // `overflow-x-hidden`: `overflow-y-auto` alone coerces the cross axis to
+        // `auto`, so an over-wide child (a full-bleed widget, a long code line)
+        // would make the home dashboard pan sideways under a diagonal trackpad
+        // wheel. Pin X closed — this surface scrolls vertically only (#14328).
+        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain",
         // The shell root already reserves the status-bar safe area (its
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
         // the content and left a large empty band above the dashboard. Just a

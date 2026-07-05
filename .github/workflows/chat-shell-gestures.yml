@@ -101,8 +101,8 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Install Playwright chromium
-        run: bunx playwright install --with-deps chromium
+      - name: Install Playwright chromium + webkit
+        run: bunx playwright install --with-deps chromium webkit
 
       # Boot-free coverage gate: fails when a gesture-handler site in
       # packages/ui/src lacks a CHAT_GESTURE_COVERAGE matrix row (#12188).
@@ -136,6 +136,16 @@ jobs:
       # into the sheet pull. RED before the fix, GREEN after.
       - name: Chat-scroll web e2e
         run: bun run --cwd packages/ui test:chat-scroll-web-e2e
+
+      # Transcript is vertical-only (#14328): an over-wide child + diagonal wheel
+      # must not pan #continuous-thread sideways; a designed inner scroller still
+      # scrolls in its own row and does not chain. Both engines — the axis lock is
+      # a *desktop trackpad* deltaX bug and WebKit's scroll semantics differ, so
+      # the acceptance bar requires the assertion to hold on WebKit too.
+      - name: Chat transcript axis-lock e2e (chromium)
+        run: bun run --cwd packages/ui test:chat-scroll-axis-lock-e2e
+      - name: Chat transcript axis-lock e2e (webkit)
+        run: ENGINE=webkit bun run --cwd packages/ui test:chat-scroll-axis-lock-e2e
 
       # TopicGroup flick-collapse/expand gestures.
       - name: TopicGroup gesture e2e
