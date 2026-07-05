@@ -111,6 +111,27 @@ describe("checkIPRateLimits — per-IP daily USD cap (fail-closed)", () => {
     expect(result.error).toContain("Unable to verify");
   });
 
+  test("missing daily aggregate row is corrupt, not an implicit $0", async () => {
+    executeResults = [{ rows: [{ count: "0" }] }, { rows: [] }];
+    const result = await callCheckIPRateLimits(1000);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Unable to verify");
+  });
+
+  test("corrupt hourly count denies instead of becoming zero", async () => {
+    executeResults = [{ rows: [{ count: "NaN" }] }];
+    const result = await callCheckIPRateLimits(1000);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Unable to verify");
+  });
+
+  test("corrupt daily count denies instead of becoming zero", async () => {
+    executeResults = [{ rows: [{ count: "0" }] }, { rows: [{ count: "NaN", total_usd: "0" }] }];
+    const result = await callCheckIPRateLimits(1000);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Unable to verify");
+  });
+
   test("healthy aggregate under the cap still passes", async () => {
     executeResults = [{ rows: [{ count: "1" }] }, { rows: [{ count: "2", total_usd: "50.25" }] }];
     const result = await callCheckIPRateLimits(1000); // +$10

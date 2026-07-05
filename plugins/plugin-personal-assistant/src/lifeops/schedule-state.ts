@@ -225,8 +225,13 @@ function observationId(args: {
   windowStartAt: string;
   mealLabel: LifeOpsScheduleMealLabel | null;
 }): string {
+  // Content-addressed dedup key: identical (agent, origin, device, state,
+  // window, meal) tuples must collapse to one row via the upsert's
+  // ON CONFLICT(id) (repository.upsertScheduleObservation). SHA-256 (not a
+  // weak hash) gives a stable digest whose collision space is comfortable at
+  // the truncation below; this is deduplication, not a security signature.
   const digest = crypto
-    .createHash("sha1")
+    .createHash("sha256")
     .update(
       [
         args.agentId,
@@ -299,7 +304,7 @@ export function resolveScheduleDeviceIdentity(): ResolvedScheduleDeviceIdentity 
   const deviceId =
     envDeviceId && envDeviceId.length > 0
       ? envDeviceId
-      : `${process.platform}-${crypto.createHash("sha1").update(process.cwd()).digest("hex").slice(0, 8)}`;
+      : `${process.platform}-${crypto.createHash("sha256").update(process.cwd()).digest("hex").slice(0, 8)}`;
   const envDeviceKind =
     process.env.ELIZA_DEVICE_KIND?.trim().toLowerCase() ?? "";
   if (

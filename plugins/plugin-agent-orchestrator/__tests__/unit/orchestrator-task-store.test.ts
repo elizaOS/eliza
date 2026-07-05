@@ -12,6 +12,7 @@ import {
   InMemoryTaskStore,
   OrchestratorTaskStore,
   RuntimeDbTaskStore,
+  removeLockFileIfTokenMatches,
 } from "../../src/services/orchestrator-task-store.js";
 import type {
   CreateTaskInput,
@@ -513,6 +514,17 @@ describe("FileTaskStore", () => {
     const loaded = await reopened.getTask(task.id);
     expect(loaded?.task.title).toBe("durable");
     expect(loaded?.sessions[0]?.sessionId).toBe("session-1");
+  });
+
+  it("does not remove a lock whose ownership token changed before cleanup", async () => {
+    const file = await tempFile();
+    const lockFile = `${file}.lock`;
+    await writeFile(lockFile, "new-owner\n", "utf8");
+
+    const removed = await removeLockFileIfTokenMatches(lockFile, "old-owner\n");
+
+    expect(removed).toBe(false);
+    await expect(readFile(lockFile, "utf8")).resolves.toBe("new-owner\n");
   });
 
   it("discards malformed documents when loading from disk", async () => {

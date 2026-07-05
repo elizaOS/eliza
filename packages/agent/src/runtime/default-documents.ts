@@ -211,6 +211,7 @@ function buildFragmentMetadata(
   timestamp: number,
 ): Record<string, unknown> {
   return {
+    ...(document.metadata ?? {}),
     type: MemoryType.FRAGMENT,
     documentId,
     position: index,
@@ -264,6 +265,7 @@ function fragmentMatchesDefinition(
   index: number,
   text: string,
   embedding: readonly number[] | undefined,
+  expectedMetadata: Record<string, unknown>,
 ): boolean {
   if (!existing) return false;
 
@@ -279,6 +281,9 @@ function fragmentMatchesDefinition(
     metadata.position === index &&
     metadata.bundledDocumentKey === document.key &&
     metadata.bundledDocumentVersion === document.version &&
+    Object.entries(expectedMetadata).every(
+      ([key, value]) => JSON.stringify(metadata[key]) === JSON.stringify(value),
+    ) &&
     embeddingsEqual(existingEmbedding, embedding)
   );
 }
@@ -399,6 +404,14 @@ async function seedBundledDocument(
         ? existingFragment.createdAt
         : Date.now();
 
+    const fragmentMetadata = buildFragmentMetadata(
+      document,
+      documentId,
+      runtime.agentId as UUID,
+      index,
+      runtime.agentId,
+      fragmentTimestamp,
+    );
     const fragmentMemory: SeededMemory = {
       id: fragmentId,
       agentId: runtime.agentId,
@@ -406,14 +419,7 @@ async function seedBundledDocument(
       worldId: runtime.agentId,
       entityId: runtime.agentId,
       content: { text: fragment.text },
-      metadata: buildFragmentMetadata(
-        document,
-        documentId,
-        runtime.agentId as UUID,
-        index,
-        runtime.agentId,
-        fragmentTimestamp,
-      ),
+      metadata: fragmentMetadata,
       ...(fragmentEmbedding ? { embedding: fragmentEmbedding } : {}),
       createdAt: fragmentCreatedAt,
     };
@@ -430,6 +436,7 @@ async function seedBundledDocument(
         index,
         fragment.text,
         fragmentMemory.embedding,
+        fragmentMetadata,
       )
     ) {
       if (existingFragment) {

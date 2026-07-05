@@ -8,6 +8,7 @@
  * and atomic rename-based writes; the DB backend tolerates both a raw SQL
  * adapter shape and the drizzle-based `@elizaos/plugin-sql` adapter.
  */
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   open,
@@ -599,11 +600,13 @@ export class FileSessionStore extends InMemorySessionStore {
     await mkdir(dirname(this.lockFile), { recursive: true });
     const deadline = Date.now() + FILE_LOCK_ACQUIRE_TIMEOUT_MS;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let lockToken = "";
     while (!handle) {
       let pending: Awaited<ReturnType<typeof open>> | undefined;
       try {
         pending = await open(this.lockFile, "wx");
-        await pending.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
+        lockToken = `${process.pid}\n${Date.now()}\n${randomUUID()}\n`;
+        await pending.writeFile(lockToken, "utf8");
         handle = pending;
       } catch (error) {
         if (pending) {
@@ -625,15 +628,16 @@ export class FileSessionStore extends InMemorySessionStore {
       return await operation();
     } finally {
       await handle.close();
-      await rm(this.lockFile, { force: true });
+      await removeLockFileIfTokenMatches(this.lockFile, lockToken);
     }
   }
 
   private async removeStaleLock(): Promise<void> {
     try {
+      const lockToken = await readFile(this.lockFile, "utf8");
       const info = await stat(this.lockFile);
       if (Date.now() - info.mtimeMs < FILE_LOCK_STALE_MS) return;
-      await rm(this.lockFile, { force: true });
+      await removeLockFileIfTokenMatches(this.lockFile, lockToken);
       this.logger?.warn?.(
         "acpx SessionStore removed a stale lock file",
         this.lockFile,
@@ -646,6 +650,26 @@ export class FileSessionStore extends InMemorySessionStore {
           : undefined;
       if (code !== "ENOENT") throw error;
     }
+  }
+}
+
+/** Exported for unit tests only; callers should go through FileSessionStore. */
+export async function removeLockFileIfTokenMatches(
+  lockFile: string,
+  expectedToken: string,
+): Promise<boolean> {
+  try {
+    const currentToken = await readFile(lockFile, "utf8");
+    if (currentToken !== expectedToken) return false;
+    await rm(lockFile, { force: true });
+    return true;
+  } catch (error) {
+    const code =
+      isRecord(error) && typeof error.code === "string"
+        ? error.code
+        : undefined;
+    if (code === "ENOENT") return false;
+    throw error;
   }
 }
 

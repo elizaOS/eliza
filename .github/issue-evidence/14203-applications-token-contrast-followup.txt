@@ -1,0 +1,63 @@
+Evidence for #14203 / #14205 follow-up: Applications token contrast.
+
+Reviewed on 2026-07-05 from branch
+fix/14203-apps-token-contrast-followup.
+
+Commands run:
+
+node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+bun test packages/ui/src/cloud/settings/cloud-settings-theme-tokens.test.ts
+
+Result:
+2 pass
+0 fail
+2 expect() calls
+
+git diff --check
+
+bunx @biomejs/biome check \
+  packages/ui/src/cloud/settings/cloud-settings-theme-tokens.test.ts \
+  packages/ui/src/cloud/applications/components/BuyDomainCard.tsx \
+  packages/ui/src/cloud/applications/components/app-analytics.tsx \
+  packages/ui/src/cloud/applications/components/app-details-tabs.tsx \
+  packages/ui/src/cloud/applications/components/app-earnings-dashboard.tsx \
+  packages/ui/src/cloud/applications/components/app-monetization-settings.tsx \
+  packages/ui/src/cloud/applications/components/app-overview.tsx \
+  packages/ui/src/cloud/applications/components/app-promote.tsx \
+  packages/ui/src/cloud/applications/components/app-settings.tsx \
+  packages/ui/src/cloud/applications/components/app-users.tsx \
+  packages/ui/src/cloud/applications/components/withdraw-dialog.tsx \
+  --no-errors-on-unmatched
+
+Result:
+Checked 11 files. No fixes applied.
+
+Manual review:
+
+- Confirmed remaining Applications `bg-neutral-900` panels now use `bg-card`,
+  so `text-txt` and `text-txt-strong` resolve with the active theme instead of
+  becoming dark text on hard dark cards in the light settings surface.
+- Confirmed destructive red controls use `text-white`, matching the existing
+  settings token rule that white text is valid on solid saturated destructive
+  fills and avoids the low-contrast light-theme `text-txt` foreground.
+- Confirmed no `bg-surface hover:bg-surface` no-op hover classes remain in the
+  Applications components; changed rest/hover pairs use `hover:bg-bg-hover`.
+- Extended the settings token regression guard to scan Applications components
+  and `McpEditorDialog.tsx` for hard dark/light theme-locked utilities.
+
+Visual audit:
+
+bun run --cwd packages/app audit:app
+
+Result:
+Failed before screenshot capture during the shared plugin view prebuild, before
+this branch's Applications surfaces rendered. The unrelated build blockers were:
+
+- plugins/plugin-phone: unresolved `@elizaos/capacitor-phone`
+- plugins/plugin-messages: unresolved `@elizaos/capacitor-messages`
+- plugins/plugin-task-coordinator: unresolved `@xterm/addon-fit`
+
+No `aesthetic-audit-output` was produced in this worktree. Rendered light/dark
+proof still needs the GitHub app/cloud aesthetic audit environment or a checkout
+with those view-build dependencies materialized.

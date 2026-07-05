@@ -370,7 +370,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
     <div className="space-y-4">
       {/* Tab Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-sm w-fit overflow-x-auto">
+        <div className="flex items-center gap-1 p-1 bg-card rounded-sm w-fit overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -401,7 +401,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 setPeriod(v)
               }
             >
-              <SelectTrigger className="w-[130px] h-9 bg-neutral-900 border-border rounded-sm">
+              <SelectTrigger className="w-[130px] h-9 bg-card border-border rounded-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-neutral-800 border-border rounded-sm">
@@ -453,7 +453,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             </div>
           )}
 
-          <div className="bg-neutral-900 rounded-sm p-4">
+          <div className="bg-card rounded-sm p-4">
             <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-[var(--brand-orange)]" />
               Requests Over Time
@@ -499,7 +499,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             )}
           </div>
 
-          <div className="bg-neutral-900 rounded-sm p-4">
+          <div className="bg-card rounded-sm p-4">
             <h3 className="text-sm font-medium text-txt mb-4">User Growth</h3>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={250}>
@@ -590,7 +590,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="bg-neutral-900 rounded-sm p-4">
+                <div className="bg-card rounded-sm p-4">
                   <h3 className="text-sm font-medium text-txt mb-4">
                     By Source
                   </h3>
@@ -637,10 +637,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   )}
                 </div>
 
-                <div className="bg-neutral-900 rounded-sm p-4">
-                  <h3 className="text-sm font-medium text-txt mb-4">
-                    By Type
-                  </h3>
+                <div className="bg-card rounded-sm p-4">
+                  <h3 className="text-sm font-medium text-txt mb-4">By Type</h3>
                   {Object.keys(requestStats.byType).length > 0 ? (
                     <div className="space-y-2">
                       {Object.entries(requestStats.byType).map(
@@ -730,11 +728,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
               )}
 
-              <div className="bg-neutral-900 rounded-sm p-4">
+              <div className="bg-card rounded-sm p-4">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-txt">
-                    Top Visitors
-                  </h3>
+                  <h3 className="text-sm font-medium text-txt">Top Visitors</h3>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -767,7 +763,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         {visitors.map((visitor, index) => (
                           <tr
                             key={visitor.ip}
-                            className="border-b border-border hover:bg-surface"
+                            className="border-b border-border hover:bg-bg-hover"
                           >
                             <td className="py-2 px-3">
                               <div className="flex items-center gap-2">
@@ -847,7 +843,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                <div className="bg-neutral-900 rounded-sm p-4">
+                <div className="bg-card rounded-sm p-4">
                   <h3 className="text-sm font-medium text-txt mb-4 flex items-center gap-2">
                     <GitBranch className="h-4 w-4 text-[var(--brand-orange)]" />
                     Funnel
@@ -891,7 +887,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   )}
                 </div>
 
-                <div className="bg-neutral-900 rounded-sm p-4">
+                <div className="bg-card rounded-sm p-4">
                   <h3 className="text-sm font-medium text-txt mb-4">
                     Recent Sessions
                   </h3>
@@ -918,7 +914,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           {sessionAnalytics.sessions.slice(0, 10).map((s) => (
                             <tr
                               key={s.sessionId}
-                              className="border-b border-border hover:bg-surface"
+                              className="border-b border-border hover:bg-bg-hover"
                             >
                               <td className="py-2 px-3 text-txt text-xs max-w-[180px] truncate">
                                 {s.entryPath}
@@ -957,7 +953,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
       {/* Logs Tab */}
       {activeTab === "logs" && (
-        <div className="bg-neutral-900 rounded-sm p-4">
+        <div className="bg-card rounded-sm p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-txt">Request Logs</h3>
             <div className="flex items-center gap-2">
@@ -1012,7 +1008,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     {requestLogs.map((log) => (
                       <tr
                         key={log.id}
-                        className="border-b border-border hover:bg-surface"
+                        className="border-b border-border hover:bg-bg-hover"
                       >
                         <td className="py-2 px-2 text-neutral-500 whitespace-nowrap">
                           {formatDistanceToNow(new Date(log.created_at), {

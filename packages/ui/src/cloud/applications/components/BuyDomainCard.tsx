@@ -169,7 +169,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
   }
 
   return (
-    <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+    <div className="bg-card rounded-sm p-4 space-y-4">
       <div>
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <ShoppingCart className="h-4 w-4 text-[var(--accent)]" />
@@ -327,7 +327,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
               size="sm"
               variant="outline"
               onClick={openBilling}
-              className="self-start border-neutral-700 hover:bg-surface"
+              className="self-start border-neutral-700 hover:bg-bg-hover"
             >
               <CreditCard className="h-4 w-4 mr-1.5" />
               {t("cloud.appDomains.buyAddCredits", {

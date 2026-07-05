@@ -377,4 +377,66 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
       | undefined;
     expect(scopeArg?.roomId).toBe(ROOM_A);
   });
+
+  it("keeps help-tagged fragment results when free-text search also has tag=help", async () => {
+    const helpFragment = docMemory("help-fragment", {
+      documentId: "help-doc",
+      title: "Getting started",
+      tags: ["help"],
+      scope: "global",
+      addedBy: AGENT_ID,
+    });
+    helpFragment.content.text = "The chat pill opens Eliza from every view.";
+    helpFragment.similarity = 0.92;
+    const searchDocuments = vi.fn(async () => [helpFragment]);
+    const documentsService = {
+      getMemories: vi.fn(async () => []),
+      countMemories: vi.fn(async () => 0),
+      addDocument: vi.fn(),
+      searchDocuments,
+      updateDocument: vi.fn(),
+      deleteMemory: vi.fn(),
+    };
+    const runtime = {
+      agentId: AGENT_ID,
+      getService: vi.fn((name: string) =>
+        name === "documents" ? documentsService : null,
+      ),
+      getServiceLoadPromise: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ENTITY : undefined,
+      ),
+      getMemoryById: vi.fn(async () => null),
+    };
+    const url = new URL(
+      "http://local/api/documents/search?q=chat%20pill&tag=help",
+    );
+    let captured: unknown = null;
+    const ctx = {
+      req: { headers: { "x-eliza-entity-id": OWNER_ENTITY } },
+      res: { setHeader: vi.fn() },
+      method: "GET",
+      pathname: "/api/documents/search",
+      url,
+      runtime: runtime as never,
+      json: (_res: unknown, data: unknown) => {
+        captured = data;
+      },
+      error: vi.fn(),
+      readJsonBody: async () => null,
+    } as unknown as DocumentRouteContext;
+
+    const handled = await handleDocumentsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(captured).toMatchObject({
+      count: 1,
+      results: [
+        {
+          documentId: "help-doc",
+          documentTitle: "Getting started",
+        },
+      ],
+    });
+  });
 });

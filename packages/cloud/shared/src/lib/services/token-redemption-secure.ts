@@ -901,7 +901,22 @@ export class SecureTokenRedemptionService {
       AND status NOT IN ('rejected', 'expired')
     `);
 
-    const hourlyRedemptions = Number((hourlyCount.rows[0] as { count: string })?.count || 0);
+    let hourlyRedemptions: number;
+    try {
+      hourlyRedemptions = parseRedemptionLimitNumber(
+        (hourlyCount.rows[0] as { count: unknown } | undefined)?.count,
+        "ip_hourly_redemption_count",
+      );
+    } catch (error) {
+      logger.error("[SecureRedemption] Corrupt per-IP hourly count aggregate; denying redemption", {
+        ipAddress: ipAddress.split(".").slice(0, 2).join(".") + ".x.x",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        valid: false,
+        error: "Unable to verify redemption limits right now. Please try again later.",
+      };
+    }
 
     if (hourlyRedemptions >= IP_RATE_LIMITS.MAX_REDEMPTIONS_PER_IP_HOURLY) {
       return {
@@ -921,22 +936,25 @@ export class SecureTokenRedemptionService {
       AND status NOT IN ('rejected', 'expired')
     `);
 
-    const dailyRedemptions = Number((dailyStats.rows[0] as { count: string })?.count || 0);
-
     // Fail-closed: this is the per-IP daily USD anti-sybil money-out cap. The
     // SUM aggregates usd_value (NUMERIC) rows and the driver returns it as a
     // string; a single corrupt 'NaN'::numeric row poisons the whole SUM to
     // "NaN", and `NaN + usdValue > MAX_USD_PER_IP_DAILY` is false -> the cap
     // would fail OPEN and authorize unbounded per-IP redemptions. Deny instead.
     // error-policy:J4
+    let dailyRedemptions: number;
     let dailyUsd: number;
     try {
+      dailyRedemptions = parseRedemptionLimitNumber(
+        (dailyStats.rows[0] as { count: unknown } | undefined)?.count,
+        "ip_daily_redemption_count",
+      );
       dailyUsd = parseRedemptionLimitNumber(
-        (dailyStats.rows[0] as { total_usd: string })?.total_usd ?? 0,
+        (dailyStats.rows[0] as { total_usd: unknown } | undefined)?.total_usd,
         "ip_daily_usd_total",
       );
     } catch (error) {
-      logger.error("[SecureRedemption] Corrupt per-IP daily USD aggregate; denying redemption", {
+      logger.error("[SecureRedemption] Corrupt per-IP daily aggregate; denying redemption", {
         ipAddress: ipAddress.split(".").slice(0, 2).join(".") + ".x.x",
         reason: error instanceof Error ? error.message : String(error),
       });

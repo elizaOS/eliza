@@ -104,7 +104,7 @@ export function WithdrawDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md bg-neutral-900 border-border">
+      <DialogContent className="sm:max-w-md bg-card border-border">
         {state === "confirm" && (
           <>
             <DialogHeader>
@@ -270,7 +270,7 @@ export function WithdrawDialog({
               </Button>
               <Button
                 onClick={() => setState("confirm")}
-                className="bg-surface hover:bg-surface text-txt"
+                className="bg-surface hover:bg-bg-hover text-txt"
               >
                 Try Again
               </Button>

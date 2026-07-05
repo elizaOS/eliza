@@ -766,11 +766,13 @@ export class FileTaskStore extends InMemoryTaskStore {
     await mkdir(dirname(this.lockFile), { recursive: true });
     const deadline = Date.now() + FILE_LOCK_ACQUIRE_TIMEOUT_MS;
     let handle: Awaited<ReturnType<typeof open>> | undefined;
+    let lockToken = "";
     while (!handle) {
       let pending: Awaited<ReturnType<typeof open>> | undefined;
       try {
         pending = await open(this.lockFile, "wx");
-        await pending.writeFile(`${process.pid}\n${Date.now()}\n`, "utf8");
+        lockToken = `${process.pid}\n${Date.now()}\n${randomUUID()}\n`;
+        await pending.writeFile(lockToken, "utf8");
         handle = pending;
       } catch (error) {
         // error-policy:J3 lock-acquire: EEXIST (lock held) is retried until the
@@ -793,15 +795,16 @@ export class FileTaskStore extends InMemoryTaskStore {
       return await operation();
     } finally {
       await handle.close();
-      await rm(this.lockFile, { force: true });
+      await removeLockFileIfTokenMatches(this.lockFile, lockToken);
     }
   }
 
   private async removeStaleLock(): Promise<void> {
     try {
+      const lockToken = await readFile(this.lockFile, "utf8");
       const info = await stat(this.lockFile);
       if (Date.now() - info.mtimeMs < FILE_LOCK_STALE_MS) return;
-      await rm(this.lockFile, { force: true });
+      await removeLockFileIfTokenMatches(this.lockFile, lockToken);
     } catch (error) {
       // error-policy:J3 stale-lock stat: ENOENT = lock already gone (fine); any
       // other stat error is rethrown (fail-fast).
@@ -809,6 +812,24 @@ export class FileTaskStore extends InMemoryTaskStore {
         isRecord(error) && typeof error.code === "string" ? error.code : "";
       if (code !== "ENOENT") throw error;
     }
+  }
+}
+
+/** Exported for unit tests only; callers should go through FileTaskStore. */
+export async function removeLockFileIfTokenMatches(
+  lockFile: string,
+  expectedToken: string,
+): Promise<boolean> {
+  try {
+    const currentToken = await readFile(lockFile, "utf8");
+    if (currentToken !== expectedToken) return false;
+    await rm(lockFile, { force: true });
+    return true;
+  } catch (error) {
+    const code =
+      isRecord(error) && typeof error.code === "string" ? error.code : "";
+    if (code === "ENOENT") return false;
+    throw error;
   }
 }
 

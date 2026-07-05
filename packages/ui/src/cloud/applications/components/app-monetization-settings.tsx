@@ -292,7 +292,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <div className="border border-border bg-neutral-900 p-4">
+        <div className="border border-border bg-card p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <div
@@ -356,7 +356,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
             "rounded-sm p-4 border transition-colors",
             settings.monetizationEnabled
               ? "bg-green-500/5 border-green-500/20"
-              : "bg-neutral-900 border-border",
+              : "bg-card border-border",
           )}
         >
           <div className="flex items-start gap-3">
@@ -437,7 +437,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
         {/* Settings Grid */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Markup Controls */}
-          <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
+          <div className="bg-card rounded-sm p-4 space-y-4">
             <h3 className="text-sm font-medium text-txt">
               {t("cloud.monetization.revenueSettings", {
                 defaultValue: "Revenue Settings",
@@ -492,7 +492,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.inferenceMarkupPercentage === preset
                         ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
-                        : "bg-surface text-neutral-400 hover:bg-surface border border-transparent",
+                        : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
                     )}
                     onClick={() =>
                       updateSetting("inferenceMarkupPercentage", preset)
@@ -554,7 +554,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
                         ? "bg-orange-500/20 text-txt border border-orange-500/30"
-                        : "bg-surface text-neutral-400 hover:bg-surface border border-transparent",
+                        : "bg-surface text-neutral-400 hover:bg-bg-hover border border-transparent",
                     )}
                     onClick={() =>
                       updateSetting("purchaseSharePercentage", preset)
@@ -571,7 +571,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-txt disabled:bg-surface disabled:text-muted"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:bg-surface disabled:text-muted"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -603,7 +603,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
 
         {/* Enable Monetization Confirmation Dialog */}
         <AlertDialog open={showEnableDialog} onOpenChange={setShowEnableDialog}>
-          <AlertDialogContent className="bg-neutral-900 border-border">
+          <AlertDialogContent className="bg-card border-border">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-txt text-center sm:text-left">
                 {t("cloud.monetization.enableDialogTitle", {

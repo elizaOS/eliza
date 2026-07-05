@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FileSessionStore,
+  removeLockFileIfTokenMatches,
   type SessionInfo,
 } from "../../src/services/session-store.js";
 
@@ -238,5 +239,16 @@ describe("FileSessionStore cross-instance file-lock contention", () => {
     expect(onDisk.map((r) => r.id)).toContain("queued-behind-live-lock");
     // Writer cleaned up its own lock afterward.
     await expect(stat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not remove a lock whose ownership token changed before cleanup", async () => {
+    const file = await tempFile();
+    const lockFile = `${file}.lock`;
+    await writeFile(lockFile, "new-owner\n", "utf8");
+
+    const removed = await removeLockFileIfTokenMatches(lockFile, "old-owner\n");
+
+    expect(removed).toBe(false);
+    await expect(readFile(lockFile, "utf8")).resolves.toBe("new-owner\n");
   });
 });
