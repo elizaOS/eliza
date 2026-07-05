@@ -16,8 +16,29 @@ import { describe, expect, it } from "vitest";
 import {
   BUILTIN_TAB_METADATA,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinSurfaceManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
+
+describe("builtin-tab-registry: resolveBuiltinSurfaceManifest", () => {
+  it("resolves the Browser view to the native-webview isolation level", () => {
+    // The Browser view's tab renderer reads this to drive its native child
+    // web-content embedding (#14181); the level must stay native-webview.
+    expect(resolveBuiltinSurfaceManifest("browser").isolation).toBe(
+      "native-webview",
+    );
+    expect(resolveBuiltinSurfaceManifest("browser").background).toBe("opaque");
+  });
+
+  it("throws for a tab that declares no full surface manifest", () => {
+    // `views`/`apps` declare a path-predicate `shared` form, not a full
+    // manifest — asking for their resolved isolation is a misuse to surface,
+    // not a silent default.
+    expect(() => resolveBuiltinSurfaceManifest("views")).toThrow();
+    expect(() => resolveBuiltinSurfaceManifest("settings")).toThrow();
+    expect(() => resolveBuiltinSurfaceManifest("does-not-exist")).toThrow();
+  });
+});
 
 describe("builtin-tab-registry: table integrity", () => {
   it("has unique canonical ids and no id/alias collisions", () => {

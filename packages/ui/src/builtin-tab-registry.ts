@@ -1,7 +1,9 @@
 import {
   type AppShellBackgroundPolicy,
   IMMERSIVE_WALLPAPER_SURFACE,
+  type ResolvedSurfaceManifest,
   resolveSurfaceBackgroundPolicy,
+  resolveSurfaceManifest,
   type SurfaceManifest,
 } from "@elizaos/core";
 
@@ -165,4 +167,29 @@ export function resolveBuiltinBackgroundPolicy(
     return decl.shared(trimmedNavigationPath) ? "shared" : null;
   }
   return resolveSurfaceBackgroundPolicy({ surface: decl });
+}
+
+/**
+ * The fully-resolved surface manifest a builtin tab declares — the source the
+ * shell reads to enforce a tab's isolation level (not just its background). The
+ * Browser view reads this to drive its native-webview embedding selection so
+ * the declared isolation is authoritative rather than merely documented
+ * (#14181): `resolveBuiltinSurfaceManifest("browser").isolation` is what its tab
+ * renderer branches on.
+ *
+ * Throws for a tab that declares no full manifest (a path-predicate `shared`
+ * tab, or an id with no `surface`): a caller asking for a builtin tab's
+ * resolved isolation must be asking about a tab that actually declares one, so a
+ * miss is a registry misconfiguration to surface loudly, not a silent default.
+ */
+export function resolveBuiltinSurfaceManifest(
+  tab: string,
+): ResolvedSurfaceManifest {
+  const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
+  if (decl === undefined || "shared" in decl) {
+    throw new Error(
+      `Builtin tab "${tab}" declares no full surface manifest — cannot resolve its isolation level`,
+    );
+  }
+  return resolveSurfaceManifest({ surface: decl });
 }

@@ -25,12 +25,14 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
+import { resolveBuiltinSurfaceManifest } from "../../builtin-tab-registry";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { useAppSelectorShallow } from "../../state";
+import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
@@ -74,6 +76,16 @@ const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // Default URL when the user opens a fresh tab via "+". The docs site
 // respects prefers-color-scheme so the OS theme drives light/dark.
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
+// The Browser view's isolation level, read from its builtin surface manifest
+// rather than hardcoded, so the declared `native-webview` level is what
+// actually drives which embedding each tab renders into (#14181/#13452). This
+// is the enforcement seam: the native child web-content surface (its own
+// renderer process) is selected via `resolveBrowserTabRenderPath` only because
+// this resolves to `native-webview`. If the registry ever dropped the browser
+// manifest, `resolveBuiltinSurfaceManifest` throws at import — a loud failure,
+// not a silent fall-back to the host-realm DOM.
+const BROWSER_SURFACE_ISOLATION =
+  resolveBuiltinSurfaceManifest("browser").isolation;
 // Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
 // surface doesn't paint over (or capture clicks within) React overlays
 // stacked on the same rect. Covers Radix Dialog/AlertDialog content
@@ -546,6 +558,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       initialBrowseUrlRef.current = null;
     }
   }
+
+  // Which embedding each browser tab renders into, DRIVEN by the view's
+  // declared isolation level (not the raw mode string): `native-webview` on the
+  // desktop shell resolves to the native child web-content surface (a separate
+  // renderer process — the `<electrobun-webview renderer="cef">` OOPIF below);
+  // web resolves to a sandboxed iframe; cloud to a server snapshot. Reading the
+  // manifest here is what makes `isolation: "native-webview"` authoritative
+  // (#14181) — a view without that level could never reach the native surface.
+  const browserTabRenderPath = resolveBrowserTabRenderPath({
+    isolation: BROWSER_SURFACE_ISOLATION,
+    mode: workspace.mode,
+  });
 
   const selectedTab = useMemo(
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
@@ -2369,7 +2393,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             ) : null}
           </div>
         )
-      ) : workspace.mode === "desktop" ? (
+      ) : browserTabRenderPath === "native-child-webview" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
           const visibilityClass = active
@@ -2399,7 +2423,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             />
           );
         })
-      ) : workspace.mode === "web" ? (
+      ) : browserTabRenderPath === "sandboxed-iframe" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
           const highlighted = tab.visible;
