@@ -95,7 +95,10 @@ const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
 );
-const pluginBirdclawSrc = path.join(monorepoRoot, "plugins/plugin-birdclaw/src");
+const pluginBirdclawSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-birdclaw/src",
+);
 const pluginAppControlSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-control/src",
