@@ -241,6 +241,10 @@ export class SwarmCoordinatorService
     "Bridges the orchestrator's ACP session-event stream to the legacy swarm-coordinator surface (subscribe + chat / ws / agent-decision / swarm-complete callbacks) so the server's coordinator bridges and the verification-room-bridge wire on boot.";
 
   private readonly listeners = new Set<SwarmEventListener>();
+  // Monotonic counter stamped onto every dispatched event. The wire is not
+  // order-preserving (synchronous ACP fan-out + WS batching), so the inline
+  // chat pipeline reconstructs a session's step order from `seq`, not arrival.
+  private activitySeq = 0;
   private chatCallback: ChatMessageCallback | null = null;
   private wsBroadcast: WsBroadcastCallback | null = null;
   private agentDecisionCallback: AgentDecisionCallback | null = null;
@@ -1095,6 +1099,27 @@ export class SwarmCoordinatorService
   }
 
   private dispatchSwarmEvent(swarmEvent: SwarmEvent): void {
+    // Stamp the ordering + grouping projection the client can't derive from the
+    // raw stream: a monotonic `seq`, the owning `taskId` (the session's task
+    // thread, resolved from the legacy task context this same service maintains
+    // — carried even on streaming events, which are NOT metadata-enriched), and
+    // a `parentSessionId` when the payload names a nesting parent. `taskId` lets
+    // a flat WS stream regroup into the task→sub-agent→step tree the inline
+    // pipeline renders. Assigned here (not at every emit site) so escalation and
+    // custom-validator dispatches get the same projection.
+    this.activitySeq += 1;
+    swarmEvent.seq = this.activitySeq;
+    if (swarmEvent.taskId === undefined) {
+      const threadId = this.tasks.get(swarmEvent.sessionId)?.threadId;
+      if (threadId) swarmEvent.taskId = threadId;
+    }
+    if (swarmEvent.parentSessionId === undefined && isRecord(swarmEvent.data)) {
+      const parent =
+        readString(swarmEvent.data, "parentSessionId") ??
+        readString(swarmEvent.data, "parentSession");
+      if (parent) swarmEvent.parentSessionId = parent;
+    }
+
     // Fan out to in-process subscribers (verification-room-bridge et al).
     for (const listener of this.listeners) {
       try {
