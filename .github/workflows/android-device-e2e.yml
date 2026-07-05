@@ -49,6 +49,9 @@ jobs:
     # Full lane runs on manual dispatch and on the weekly scheduled host-backed
     # cadence. Never on PR; PRs use the label-gated minimal smoke below.
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     env:
@@ -177,6 +180,52 @@ jobs:
             packages/app/test-results/**
             packages/app/playwright-report/**
           if-no-files-found: ignore
+
+      - name: File scheduled failure issue
+        if: ${{ failure() && github.event_name == 'schedule' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        with:
+          script: |
+            const title = '[android-device-e2e] scheduled host-backed run is failing';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const query = `repo:${owner}/${repo} is:issue is:open in:title "${title}"`;
+            const existing = await github.rest.search.issuesAndPullRequests({
+              q: query,
+              per_page: 10,
+            });
+            const body = [
+              'The scheduled Android device e2e host-backed run failed.',
+              '',
+              `- Workflow: ${context.workflow}`,
+              `- Run: ${runUrl}`,
+              `- Commit: ${context.sha}`,
+              `- Ref: ${context.ref}`,
+              '',
+              'Artifacts are attached to the failed run under `android-e2e-artifacts`.',
+              '',
+              'This issue is maintained by `.github/workflows/android-device-e2e.yml`; subsequent scheduled failures update the same open issue.',
+            ].join('\n');
+
+            const match = existing.data.items.find((item) => item.title === title);
+            if (match) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: match.number,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title,
+              body,
+              labels: ['testing'],
+            });
 
   # Minimal, label-gated PR device smoke (issue #9943). Reachable on a PR only
   # when the `ci:device` label is applied, so it never burns an emulator runner
