@@ -21,12 +21,16 @@ const FIRST_RUN_REMOTE_DEEPLINK = `elizaos://first-run/runtime/remote?api=${enco
   API,
 )}`;
 const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "..",
-  "..",
-  ".github",
-  "issue-evidence",
-  "10196-views-state",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      process.cwd(),
+      "..",
+      "..",
+      ".github",
+      "issue-evidence",
+      "10196-views-state",
+    ),
+  "view-runtime-soak",
 );
 
 interface ViewCatalogEntry {

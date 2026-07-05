@@ -31,9 +31,9 @@ const FIRST_RUN_REMOTE_DEEPLINK = `${URL_SCHEME}://first-run/runtime/remote?api=
   HOST_AGENT_BASE,
 )}`;
 const ARTIFACT_DIR = path.join(
-  process.cwd(),
-  "test-results",
-  "android-onboarding-to-home",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(process.cwd(), "test-results", "android"),
+  "onboarding-to-home",
 );
 
 test.describe

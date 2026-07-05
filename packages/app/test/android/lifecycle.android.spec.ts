@@ -31,13 +31,17 @@ import {
 } from "./android-harness";
 
 const ARTIFACT_DIR = path.resolve(
-  process.cwd(),
-  "..",
-  "..",
-  ".github",
-  "issue-evidence",
-  "12185-device-lifecycle",
-  "android",
+  process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
+    path.join(
+      process.cwd(),
+      "..",
+      "..",
+      ".github",
+      "issue-evidence",
+      "12185-device-lifecycle",
+      "android",
+    ),
+  "lifecycle",
 );
 
 const SETTINGS_ACTIVITY = "com.android.settings/.Settings";

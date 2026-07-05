@@ -18,6 +18,22 @@ import { defineConfig } from "@playwright/test";
 //   3. The on-device local agent is up (mobile-local-chat-smoke bring-up) OR the
 //      app is pointed at a reachable cloud agent.
 const appDir = path.dirname(fileURLToPath(import.meta.url));
+const reporters = [["list"] as const];
+if (process.env.ELIZA_ANDROID_PLAYWRIGHT_JUNIT) {
+  reporters.push([
+    "junit",
+    { outputFile: process.env.ELIZA_ANDROID_PLAYWRIGHT_JUNIT },
+  ] as const);
+}
+if (process.env.ELIZA_ANDROID_PLAYWRIGHT_JSON) {
+  reporters.push([
+    "json",
+    { outputFile: process.env.ELIZA_ANDROID_PLAYWRIGHT_JSON },
+  ] as const);
+}
+if (!process.env.CI) {
+  reporters.push(["html", { open: "never" }] as const);
+}
 
 export default defineConfig({
   testDir: "./test/android",
@@ -32,7 +48,10 @@ export default defineConfig({
   // can run several minutes on the first pass.
   timeout: 420_000,
   expect: { timeout: 45_000 },
-  reporter: process.env.CI ? "list" : [["list"], ["html", { open: "never" }]],
+  reporter: reporters,
+  outputDir:
+    process.env.ELIZA_ANDROID_PLAYWRIGHT_OUTPUT_DIR ??
+    "./test-results/android-playwright",
   globalSetup: path.join(appDir, "test/android/global-setup.ts"),
   use: {
     // Screenshots/trace over the Android CDP socket are slow; capture only on

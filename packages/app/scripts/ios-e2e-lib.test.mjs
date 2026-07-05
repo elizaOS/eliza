@@ -33,6 +33,7 @@ describe("parseIosE2eArgs", () => {
     expect(f).toEqual({
       device: undefined,
       appPath: undefined,
+      output: undefined,
       skipBuild: false,
       skipAuth: false,
       skipLocalChat: false,
@@ -56,15 +57,18 @@ describe("parseIosE2eArgs", () => {
     expect(f.noWait).toBe(true);
   });
 
-  it("captures --device and --app-path values", () => {
+  it("captures --device, --app-path, and --output values", () => {
     const f = parseIosE2eArgs([
       "--device",
       "iPhone 15",
       "--app-path",
       "/tmp/App.app",
+      "--output",
+      "/tmp/evidence",
     ]);
     expect(f.device).toBe("iPhone 15");
     expect(f.appPath).toBe("/tmp/App.app");
+    expect(f.output).toBe("/tmp/evidence");
   });
 
   it("does not read past the end of argv for a trailing value flag", () => {
