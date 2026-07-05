@@ -16,7 +16,8 @@ exactly why a relaunch-persistence regression can ship unseen.
    restore logic lifted out of the `server.ts` boot closure into an exported,
    dependency-injected function (`restoreConversationsFromDb(rt, { conversations,
    deletedConversationIds, log })`). `server.ts` now binds it to live server
-   state; behavior is byte-identical.
+   state and keeps the restore running as a non-blocking boot task whose errors
+   are surfaced at the caller boundary.
 
 2. **Real relaunch e2e:**
    `packages/app-core/src/api/conversation-restore-relaunch.test.ts` drives the
