@@ -107,6 +107,10 @@ const shopifyView = {
   path: "/shopify",
   bundleUrl: "/api/views/shopify/bundle.js",
   viewType: "gui" as const,
+};
+
+const shopifyAgentSurfaceView = {
+  ...shopifyView,
   surface: { capabilities: ["agent-surface"] },
 };
 
@@ -150,6 +154,20 @@ const mockAvailableViews = [
   sharedCanvasView,
   documentsView,
 ];
+
+function resetMockAvailableViews() {
+  mockAvailableViews.splice(
+    0,
+    mockAvailableViews.length,
+    remoteLedgerView,
+    viewsManagerView,
+    viewsManagerTuiView,
+    shopifyView,
+    calendarView,
+    sharedCanvasView,
+    documentsView,
+  );
+}
 
 vi.mock("@capacitor/keyboard", () => ({
   Keyboard: { setScroll: vi.fn(async () => undefined) },
@@ -395,6 +413,7 @@ describe("App navigate-view event wiring", () => {
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.tab = "chat";
     desktopTabsState.tabs = [];
+    resetMockAvailableViews();
     appState.setTab.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
@@ -601,6 +620,9 @@ describe("App navigate-view event wiring", () => {
 
     const { getAllByTestId, getByTestId } = render(<App />);
 
+    const splitViews = [shopifyAgentSurfaceView, calendarView];
+    mockAvailableViews.splice(0, mockAvailableViews.length, ...splitViews);
+
     navigateView({
       action: "split-view",
       viewId: "shopify",
@@ -622,9 +644,12 @@ describe("App navigate-view event wiring", () => {
       "agent-surface",
     );
     expect(loaders[1]?.getAttribute("data-surface-capabilities")).toBe("");
-    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(shopifyView, {
-      pinned: false,
-    });
+    expect(desktopTabsMock.openTab).toHaveBeenCalledWith(
+      shopifyAgentSurfaceView,
+      {
+        pinned: false,
+      },
+    );
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
       pinned: false,
     });
