@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
 //
 // `useChatState` prepend coverage for the chat transcript's upward infinite
-// scroll. The regression case is a full retained thread plus an older page:
-// overflow must trim the newest tail, not discard the just-prepended page.
+// scroll. The regression case is a long thread plus an older page: prepending
+// must NEVER drop the newest tail (#13532) — dropping it stranded the true
+// latest out of state (breaking jumpToLatest) and made the scroll-anchor
+// restore yank the viewport downward once the thread crossed the old cap.
 
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ConversationMessage } from "../api";
-import {
-  CONVERSATION_MAX_RETAINED_MESSAGES,
-  useChatState,
-} from "./useChatState";
+import { useChatState } from "./useChatState";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -80,10 +79,10 @@ describe("useChatState prependConversationMessages", () => {
     expect(result.current.state.conversationMessages).toBe(before);
   });
 
-  it("keeps a prepended older page when the retained 500-message thread is full", () => {
+  it("retains the newest tail when a long thread pages older past the old 500 cap", () => {
     const { result } = renderHook(() => useChatState());
-    const cap = CONVERSATION_MAX_RETAINED_MESSAGES;
-    const newest = Array.from({ length: cap }, (_, i) =>
+    const newestCount = 500;
+    const newest = Array.from({ length: newestCount }, (_, i) =>
       msg(`new-${i}`, 1_000_000 + i),
     );
     act(() => {
@@ -96,11 +95,14 @@ describe("useChatState prependConversationMessages", () => {
     });
 
     const kept = result.current.state.conversationMessages;
-    expect(kept).toHaveLength(cap);
+    // No trim: 25 older prepended in front, every newest turn preserved.
+    expect(kept).toHaveLength(newestCount + 25);
     expect(kept[0].id).toBe("old-0");
     expect(kept[24].id).toBe("old-24");
     expect(kept[25].id).toBe("new-0");
-    expect(kept.some((m) => m.id === `new-${cap - 1}`)).toBe(false);
+    // The true latest — what jumpToLatest / bottom-follow must still reach —
+    // survives the prepend instead of being sliced off the tail.
+    expect(kept[kept.length - 1].id).toBe(`new-${newestCount - 1}`);
     expect(result.current.conversationMessagesRef.current).toEqual(kept);
   });
 });
