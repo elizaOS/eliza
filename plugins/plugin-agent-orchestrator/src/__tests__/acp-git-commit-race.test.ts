@@ -62,6 +62,10 @@ function gitAsync(
   });
 }
 
+function lockFile(repo: string): string {
+  return path.join(repo, ".git", "eliza-acp-commit.lock");
+}
+
 async function waitForFile(target: string, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -182,6 +186,81 @@ exit 0
       const parentCount = line.trim().split(/\s+/).filter(Boolean).length;
       expect(parentCount).toBeLessThanOrEqual(1);
     }
+  }, 30_000);
+
+  it("does not steal a live commit lock during a long critical section", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    const sessionA = await prepare(repo, "sess-live-owner-a", baselineSha);
+    const sessionB = await prepare(repo, "sess-live-owner-b", baselineSha);
+    expect(sessionA?.env.GIT_INDEX_FILE).toBeTruthy();
+    expect(sessionB?.env.GIT_INDEX_FILE).toBeTruthy();
+
+    writeFileSync(path.join(repo, "live-a.txt"), "from live owner a\n");
+    writeFileSync(path.join(repo, "live-b.txt"), "from live owner b\n");
+    git(repo, ["add", "live-a.txt"], sessionA?.env);
+    git(repo, ["add", "live-b.txt"], sessionB?.env);
+
+    const signalFile = path.join(tmpRoot, "a-live-lock-precommit");
+    const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
+    writeFileSync(
+      hookPath,
+      `#!/bin/sh
+if [ "$ACP_TEST_ROLE" = "A" ]; then
+  : > "${signalFile}"
+  sleep 0.8
+fi
+exit 0
+`,
+    );
+    chmodSync(hookPath, 0o755);
+
+    const lockRaceEnv = {
+      ACP_COMMIT_LOCK_POLL_MS: "5",
+      ACP_COMMIT_LOCK_STALE_MS: "120",
+      ACP_COMMIT_LOCK_WAIT_MS: "5000",
+    };
+    const envA = {
+      ...process.env,
+      ...sessionA?.env,
+      ...lockRaceEnv,
+      ACP_TEST_ROLE: "A",
+    };
+    const envB = {
+      ...process.env,
+      ...sessionB?.env,
+      ...lockRaceEnv,
+      ACP_TEST_ROLE: "B",
+    };
+
+    const commitA = gitAsync(repo, ["commit", "-m", "live owner a"], envA);
+    await waitForFile(signalFile, 10_000);
+    const commitB = gitAsync(repo, ["commit", "-m", "live waiter b"], envB);
+
+    const [resultA, resultB] = await Promise.all([commitA, commitB]);
+    expect(resultA.code, `session a failed: ${resultA.stderr}`).toBe(0);
+    expect(resultB.code, `session b failed: ${resultB.stderr}`).toBe(0);
+
+    const tree = git(repo, ["ls-tree", "--name-only", "-r", "HEAD"]);
+    expect(tree.split("\n").filter(Boolean).sort()).toEqual([
+      "README.md",
+      "live-a.txt",
+      "live-b.txt",
+    ]);
+
+    expect(Number(git(repo, ["rev-list", "--count", "HEAD"]))).toBe(3);
+    const parents = git(repo, ["log", "--pretty=%P", "HEAD"]).split("\n");
+    for (const line of parents) {
+      const parentCount = line.trim().split(/\s+/).filter(Boolean).length;
+      expect(parentCount).toBeLessThanOrEqual(1);
+    }
+    expect(existsSync(lockFile(repo))).toBe(false);
   }, 30_000);
 
   it("reclaims a stale commit lock without leaving reclaim artifacts", async () => {
