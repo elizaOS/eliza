@@ -156,6 +156,12 @@ resulting session. Until then, route coverage needs a backend that's already
 or pairing disabled in the test build. This is the one remaining wiring step to
 fully-green on-device route coverage.
 
+The repo-wide app test-auth contract lives in
+[`../../docs/TEST_AUTH.md`](../../docs/TEST_AUTH.md). It records which
+automated surface uses pairing-disabled local auth, renderer Steward-session
+seeding, or real Eliza Cloud credentials, and it defines how missing auth
+secrets must be reported in CI.
+
 ## Native plugin x WebView smoke
 
 `native-plugin-view-smoke.android.spec.ts` uses the same real WebView fixture as
