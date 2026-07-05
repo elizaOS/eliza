@@ -337,6 +337,7 @@ function appShellPageToViewEntry(
     viewKind: page.viewKind,
     order: page.order,
     group: page.group,
+    surface: page.surface,
     backgroundPolicy: page.backgroundPolicy,
     headerPolicy: page.headerPolicy,
     visibleInManager: true,

@@ -29,6 +29,10 @@ export const todosPlugin: Plugin = {
       path: "/todos",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "TodosView",
       tags: ["todos", "tasks", "productivity"],
       relatedActions: ["OWNER_TODOS"],

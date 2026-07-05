@@ -286,7 +286,7 @@ describe("DynamicViewLoader capability broker (real interact path #13452)", () =
     });
   });
 
-  it("a view granted the immersive-wallpaper manifest also gets agent-surface", async () => {
+  it("a view granted the immersive-wallpaper manifest does NOT get agent-surface — unrelated grants never unlock mutation", async () => {
     // IMMERSIVE_WALLPAPER_SURFACE grants wallpaper + background:apply but NOT
     // agent-surface — proving unrelated grants do not unlock mutation.
     const moduleInteract = vi.fn(async () => ({ moduleRan: true }));

@@ -31,6 +31,10 @@ export const appContactsPlugin: Plugin = {
       path: "/contacts",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "ContactsView",
       tags: ["contacts", "android", "address-book"],
       visibleInManager: true,

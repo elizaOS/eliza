@@ -18,6 +18,10 @@ const feedPlugin: Plugin = {
       path: "/feed",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "FeedView",
       capabilities: [
         { id: "get-state", description: "Return Feed terminal state" },

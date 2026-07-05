@@ -221,6 +221,10 @@ const taskCoordinatorPlugin: Plugin = {
       path: "/task-coordinator",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "TaskCoordinatorView",
       relatedActions: ["TASKS"],
       capabilities: [
@@ -280,6 +284,10 @@ const taskCoordinatorPlugin: Plugin = {
       path: "/orchestrator",
       modalities: ["gui", "xr", "tui"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "OrchestratorView",
       relatedActions: ["TASKS"],
       capabilities: ORCHESTRATOR_CAPABILITIES,
@@ -300,6 +308,10 @@ const taskCoordinatorPlugin: Plugin = {
       path: "/cockpit",
       modalities: ["gui", "xr"],
       bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
       componentExport: "CockpitRoute",
       // The cockpit drives the same orchestrator interact protocol (list /
       // open-task / create-task / add-agent / stop-agent …) as /orchestrator,
