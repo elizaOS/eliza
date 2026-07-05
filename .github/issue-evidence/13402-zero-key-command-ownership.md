@@ -28,6 +28,13 @@ known shared setup commands, and fails if any non-setup command appears more
 than once. `.github/workflows/test.yml` runs it in the existing `changes` job
 beside the other static CI contracts.
 
+The follow-up fix keeps static classifier/delegation jobs out of the command
+census and normalizes leading environment assignments before comparing suite
+commands, so an env-prefixed command cannot evade duplicate ownership. It also
+marks whole-workflow owned surfaces such as `ui-fixture-e2e.yml` explicitly, so
+their real suite commands are counted even when the job block itself does not
+repeat the keyless marker from the workflow header.
+
 ## Verification
 
 - `bun test packages/scripts/__tests__/ci-zero-key-command-ownership-contract.test.ts`

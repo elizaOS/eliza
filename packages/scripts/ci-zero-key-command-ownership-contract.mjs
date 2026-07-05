@@ -26,8 +26,13 @@ const OWNED_WORKFLOWS = [
   {
     file: ".github/workflows/keyless-harness-e2e.yml",
     owner: "keyless-harness",
+    includeAllJobs: true,
   },
-  { file: ".github/workflows/ui-fixture-e2e.yml", owner: "ui-fixture-e2e" },
+  {
+    file: ".github/workflows/ui-fixture-e2e.yml",
+    owner: "ui-fixture-e2e",
+    includeAllJobs: true,
+  },
 ];
 
 const ZERO_KEY_MARKER =
@@ -35,7 +40,15 @@ const ZERO_KEY_MARKER =
 
 const COMMAND_PREFIX = /^(bun|bunx|node|npm|pnpm|bash|cargo|python3?)\b/;
 const IGNORED_LINE =
-  /^(set |if |then$|else$|elif |fi$|for |do$|done$|while |case |esac$|echo |cat |sleep |exit |trap |cd |mkdir |rm |cp |mv |sudo |export |[A-Za-z_][A-Za-z0-9_]*=|[{}]$)/;
+  /^(set |if |then$|else$|elif |fi$|for |do$|done$|while |case |esac$|echo |cat |sleep |exit |trap |cd |mkdir |rm |cp |mv |sudo |export |[{}]$)/;
+const LEADING_ENV_ASSIGNMENT =
+  /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]*)\s*/;
+
+const STATIC_DELEGATION_JOBS = new Set([
+  ".github/workflows/test.yml#changes",
+  ".github/workflows/scenario-pr.yml#changes",
+  ".github/workflows/scenario-pr.yml#app-diagnostics",
+]);
 
 const ALLOWED_DUPLICATE_COMMANDS = new Set([
   "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
@@ -55,8 +68,22 @@ function stripInlineComment(line) {
   return line.replace(/\s+#.*$/, "").trim();
 }
 
+function stripLeadingEnvAssignments(line) {
+  let command = line.trim();
+  if (command.startsWith("env ")) {
+    command = command.slice(4).trimStart();
+  }
+  for (;;) {
+    const next = command.replace(LEADING_ENV_ASSIGNMENT, "").trimStart();
+    if (next === command) return command;
+    command = next;
+  }
+}
+
 function normalizeCommand(line) {
-  return stripInlineComment(line).replace(/\s+/g, " ").trim();
+  return stripLeadingEnvAssignments(stripInlineComment(line))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function extractJobBlocks(workflowText) {
@@ -122,8 +149,9 @@ export function collectZeroKeyCommands(repoRoot = DEFAULT_REPO_ROOT) {
   for (const workflow of OWNED_WORKFLOWS) {
     const text = readFileSync(resolve(repoRoot, workflow.file), "utf8");
     for (const job of extractJobBlocks(text)) {
+      if (STATIC_DELEGATION_JOBS.has(`${workflow.file}#${job.key}`)) continue;
       const includeJob =
-        workflow.file.includes("keyless") || ZERO_KEY_MARKER.test(job.text);
+        workflow.includeAllJobs || ZERO_KEY_MARKER.test(job.text);
       if (!includeJob) continue;
       for (const command of extractCommands(job.text)) {
         rows.push({

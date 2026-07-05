@@ -18,17 +18,19 @@ const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 function workflow({
   name,
+  jobKey = "checks",
   jobName,
   commands,
 }: {
   name: string;
+  jobKey?: string;
   jobName: string;
   commands: string[];
 }): string {
   return `name: ${name}
 on: [pull_request]
 jobs:
-  checks:
+  ${jobKey}:
     name: ${jobName}
     runs-on: ubuntu-24.04
     steps:
@@ -132,6 +134,87 @@ describe("ci-zero-key-command-ownership-contract", () => {
         const rows = collectZeroKeyCommands(root);
         expect(findDuplicateOwnedCommands(rows)).toEqual([]);
         expect(runContract(root).commandCount).toBe(6);
+      },
+    );
+  });
+
+  test("normalizes leading env assignments before ownership checks", () => {
+    withRepo(
+      {
+        "scenario-pr.yml": workflow({
+          name: "Scenario PR E2E",
+          jobName: "Zero-Key scenario",
+          commands: ["PLAYWRIGHT_WEBKIT=1 bun run test:server"],
+        }),
+      },
+      (root) => {
+        const rows = collectZeroKeyCommands(root);
+        expect(rows).toContainEqual(
+          expect.objectContaining({
+            workflow: ".github/workflows/scenario-pr.yml",
+            command: "bun run test:server",
+          }),
+        );
+        expect(() => runContract(root)).toThrow(
+          /Duplicate zero-key command ownership/,
+        );
+      },
+    );
+  });
+
+  test("ignores static classifier and delegation jobs that mention the contract", () => {
+    withRepo(
+      {
+        "test.yml": workflow({
+          name: "Tests",
+          jobKey: "changes",
+          jobName: "Classify changed paths",
+          commands: [
+            "node packages/scripts/ci-zero-key-command-ownership-contract.mjs",
+          ],
+        }),
+        "scenario-pr.yml": workflow({
+          name: "Scenario PR E2E",
+          jobKey: "app-diagnostics",
+          jobName: "Zero-Key app diagnostics",
+          commands: [
+            "node packages/scripts/ci-zero-key-command-ownership-contract.mjs",
+          ],
+        }),
+      },
+      (root) => {
+        const rows = collectZeroKeyCommands(root);
+        expect(rows).not.toContainEqual(
+          expect.objectContaining({
+            command:
+              "node packages/scripts/ci-zero-key-command-ownership-contract.mjs",
+          }),
+        );
+        expect(runContract(root).commandCount).toBe(2);
+      },
+    );
+  });
+
+  test("collects commands from explicitly owned fixture workflows without job markers", () => {
+    withRepo(
+      {
+        "ui-fixture-e2e.yml": workflow({
+          name: "UI Fixture E2E",
+          jobName: "Fixture e2e",
+          commands: ["bun run test:server"],
+        }),
+      },
+      (root) => {
+        const rows = collectZeroKeyCommands(root);
+        expect(rows).toContainEqual(
+          expect.objectContaining({
+            workflow: ".github/workflows/ui-fixture-e2e.yml",
+            command: "bun run test:server",
+          }),
+        );
+        expect(() => runContract(root)).toThrow(
+          /Duplicate zero-key command ownership/,
+        );
       },
     );
   });
