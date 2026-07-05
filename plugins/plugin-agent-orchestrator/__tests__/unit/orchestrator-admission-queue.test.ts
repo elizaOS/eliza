@@ -1,12 +1,12 @@
 /**
  * Real-engine admission-queue e2e (issue #13778 item 1).
  *
- * Drives N tasks through the REAL orchestrator → REAL AcpService admission
- * queue (added in #13772), not a fake ACP: `spawnAgentForTask` →
- * `runtime.getService(AcpService)` → `acp.spawnSession` → `reserveSessionSlot`
- * → `awaitSessionSlot`. Only the subprocess leaf (`NativeAcpClient`) is stubbed
- * (native transport), so every spawn deterministically reaches "ready" without
- * a live acp binary while the queue logic runs 100% real.
+ * Drives N tasks through the REAL orchestrator admission queue and REAL
+ * AcpService worker cap, not a fake ACP: `spawnAgentForTask` →
+ * `runtime.getService(AcpService)` → `acp.spawnSession` → `reserveSessionSlot`.
+ * Only the subprocess leaf (`NativeAcpClient`) is stubbed (native transport), so
+ * every admitted spawn deterministically reaches "ready" without a live acp
+ * binary while the queue logic runs 100% real.
  *
  * Asserts the WS2 admission-control decision: N > maxSessions spawns QUEUE
  * (they don't reject and no task is dropped), the cap is never overshot, and
@@ -17,10 +17,16 @@
  *  - the terminal `failed` producer (native mock resolves "ready"),
  *  - zero-leaked-workspace GC assertion (acp-scratch-gc.test.ts).
  */
-import type { AcpJsonRpcMessage, ApprovalPreset } from "../../src/services/types.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import type {
+  AcpJsonRpcMessage,
+  ApprovalPreset,
+} from "../../src/services/types.js";
 
-type NativeEventHandler = (event: AcpJsonRpcMessage, sessionId?: string) => void;
+type NativeEventHandler = (
+  event: AcpJsonRpcMessage,
+  sessionId?: string,
+) => void;
 type NativeOptions = {
   command: string;
   cwd: string;
@@ -62,7 +68,9 @@ function getNativeMockState(): NativeMockState {
 // Stub only the subprocess leaf so each spawn deterministically reaches "ready".
 vi.mock("../../src/services/acp-native-transport.js", () => {
   const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient implements MockNativeClient {
+  state.NativeAcpClient = class MockNativeAcpClient
+    implements MockNativeClient
+  {
     opts: NativeOptions;
     eventHandler?: NativeEventHandler;
     start = vi.fn(async () => {
@@ -199,53 +207,49 @@ describe("orchestrator admission queue — N tasks vs maxSessions (#13778)", () 
     const tasks = [];
     for (let i = 0; i < N; i++) {
       tasks.push(
-        await service.createTask({ title: `t-${i}`, goal: "Implement and verify" }),
+        await service.createTask({
+          title: `t-${i}`,
+          goal: "Implement and verify",
+        }),
       );
     }
 
-    // Fire all N spawns concurrently through the real orchestrator; they hit the
-    // reservation mutex near-simultaneously.
-    const settled: number[] = [];
-    const spawns = tasks.map((t, i) =>
-      service.spawnAgentForTask(t.id).then((r) => {
-        settled.push(i);
-        return r;
-      }),
+    // Fire all N spawns concurrently through the real orchestrator. The first
+    // CAP admit; the rest return queued task DTOs (not rejects, not drops).
+    const details = await Promise.all(
+      tasks.map((t) => service.spawnAgentForTask(t.id)),
+    );
+    expect(details.filter((detail) => detail?.admission).length).toBe(N - CAP);
+    expect(details.filter((detail) => detail && !detail.admission).length).toBe(
+      CAP,
     );
 
-    // Only CAP admit; the other N-CAP QUEUE (not reject, not dropped).
-    await poll(
-      async () =>
-        (await activeSessions()).length === CAP &&
-        acp.getAdmissionState().queuedSpawns === N - CAP,
-    );
+    await poll(async () => (await activeSessions()).length === CAP);
     expect((await activeSessions()).length).toBe(CAP);
-    expect(acp.getAdmissionState()).toEqual({
-      maxSessions: CAP,
-      queuedSpawns: N - CAP,
+    expect(await service.getAdmissionSnapshot()).toMatchObject({
+      queueDepth: N - CAP,
     });
-    expect(settled).toHaveLength(CAP);
 
     // Free slots one at a time; each freed slot admits exactly one queued spawn
     // and the cap is never overshot.
     for (let expectedQueued = N - CAP; expectedQueued > 0; expectedQueued--) {
       const active = await activeSessions();
       expect(active.length).toBeLessThanOrEqual(CAP);
-      await acp.cancelSession(active[0].id);
+      await acp.stopSession(active[0].id);
       await poll(
-        () => acp.getAdmissionState().queuedSpawns === expectedQueued - 1,
+        async () =>
+          (await service.getAdmissionSnapshot()).queueDepth ===
+          expectedQueued - 1,
       );
       expect((await activeSessions()).length).toBeLessThanOrEqual(CAP);
     }
 
-    // All N tasks eventually admit — nothing dropped, nothing rejected. (Assert
-    // the admitted SET; arrival order at the reservation mutex is not the task
-    // creation index.)
-    await Promise.all(spawns);
-    expect([...settled].sort((a, b) => a - b)).toEqual(
-      Array.from({ length: N }, (_, i) => i),
-    );
-    expect(acp.getAdmissionState().queuedSpawns).toBe(0);
+    // All N tasks eventually admitted exactly one session — nothing dropped,
+    // nothing rejected, and the worker cap was never overshot.
+    expect(await service.getAdmissionSnapshot()).toMatchObject({
+      queueDepth: 0,
+    });
+    expect(await acp.listSessions()).toHaveLength(N);
 
     await service.stop();
     await acp.stop();
