@@ -240,7 +240,14 @@ export function resolveSectionId(token: string | null): string | null {
 }
 
 const TRUE_VALUES = new Set(["on", "true", "enable", "enabled", "yes", "1"]);
-const FALSE_VALUES = new Set(["off", "false", "disable", "disabled", "no", "0"]);
+const FALSE_VALUES = new Set([
+	"off",
+	"false",
+	"disable",
+	"disabled",
+	"no",
+	"0",
+]);
 
 /** Parse a boolean setting value; null when the token is not a boolean word. */
 export function parseBooleanValue(value: string | null): boolean | null {
@@ -488,13 +495,17 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"LIST_SETTINGS",
 			"SETTINGS_WRITE",
 			"TOGGLE_SETTING",
+			"DISABLE_SHELL",
+			"ENABLE_SHELL",
+			"SHELL_ACCESS",
+			"TOGGLE_SHELL_ACCESS",
 		],
 		description:
 			"Read, change, or list built-in settings sections from chat. `action=list` names the sections that are changeable and how; `action=get` reports a section's current write capability; `action=set` changes an owned section (e.g. permissions shell access) or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→CONNECTOR, secrets→CREDENTIALS). Use this instead of filling settings fields directly.",
 		descriptionCompressed:
 			"settings get|set|list section/key/value — change a settings section from chat (routes owned sections; delegates model/background/identity/connectors/secrets to their dedicated actions)",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS: 'turn off shell access', 'disable shell', 'what settings can you change', 'list settings'. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. Opening/navigating to a settings page is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS: 'disable shell access', 'turn off shell access', 'turn shell back on', 'stop the agent running shell commands', 'what settings can you change', 'list settings'. Toggling the agent's shell access / permissions is a SETTINGS write (section=permissions key=shell), NOT navigation. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/theme is BACKGROUND, the agent identity is CHARACTER, connectors are CONNECTOR, secret/API keys are CREDENTIALS. Merely opening/navigating to a settings page (no value change) is VIEWS. SETTINGS never fills a form field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
