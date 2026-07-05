@@ -159,4 +159,43 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		expect(cliSdkFails).toHaveBeenCalledTimes(1);
 		expect(cloudOk).not.toHaveBeenCalled();
 	});
+
+	it("records the REAL provider that served the call for later stage recording (#13623)", async () => {
+		const runtime = makeRuntime();
+		const directApiOk = vi.fn(async () => "served-response");
+		runtime.registerModel(ModelType.TEXT_LARGE, directApiOk, "anthropic", 100);
+
+		// Before any call there is no resolved provider — undefined, not a
+		// fabricated "default".
+		expect(
+			runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE),
+		).toBeUndefined();
+
+		await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" });
+		expect(runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE)).toBe(
+			"anthropic",
+		);
+	});
+
+	it("records the provider that actually answered after a fallback rotation (#13623)", async () => {
+		const runtime = makeRuntime();
+		const primaryFails = vi.fn(async () => {
+			throw statusError(429, "you have hit your session limit");
+		});
+		const backupOk = vi.fn(async () => "backup-response");
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			primaryFails,
+			"claude-sdk",
+			100,
+		);
+		runtime.registerModel(ModelType.TEXT_LARGE, backupOk, "eliza-cloud", 10);
+
+		await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "hi" });
+		// The provider that actually served (after failover) is recorded, not the
+		// rate-limited primary.
+		expect(runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE)).toBe(
+			"eliza-cloud",
+		);
+	});
 });

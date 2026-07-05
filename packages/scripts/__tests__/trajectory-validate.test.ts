@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { computeCallCostUsd } from "../lib/cost-table";
 import {
   compareTrajectories,
+  deriveTrajectoryEvidenceGrade,
   type RecordedStage,
   type RecordedTrajectory,
   validateTrajectory,
@@ -251,6 +252,58 @@ describe("trajectory structural validation", () => {
     ].join("\n");
     const md = validateTrajectoryMarkdownReport(markdown, trajectory);
     expect(md.ok).toBe(true);
+  });
+
+  test("grades a live-provider trajectory as evidenceGrade='live' (#13623)", () => {
+    const result = validateTrajectory(completeTrajectory());
+    expect(result.evidenceGrade).toBe("live");
+    expect(deriveTrajectoryEvidenceGrade(completeTrajectory())).toBe("live");
+  });
+
+  test("grades a proxy-served trajectory as evidenceGrade='proxy' (#13623)", () => {
+    const proxied = completeTrajectory();
+    for (const stage of proxied.stages) {
+      if (stage.model) stage.model.provider = "deterministic-llm-proxy";
+    }
+    expect(deriveTrajectoryEvidenceGrade(proxied)).toBe("proxy");
+  });
+
+  test("grades a 'default'/empty-provider trajectory as evidenceGrade='mock' (#13623)", () => {
+    const mocked = completeTrajectory();
+    for (const stage of mocked.stages) {
+      if (stage.model) stage.model.provider = "default";
+    }
+    expect(deriveTrajectoryEvidenceGrade(mocked)).toBe("mock");
+  });
+
+  test("requireLiveProvider fails a proxy/default trajectory but passes a live one (#13623)", () => {
+    // Live trajectory: opting into requireLiveProvider does not add an error.
+    const live = validateTrajectory(completeTrajectory(), {
+      requireLiveProvider: true,
+    });
+    expect(live.evidenceGrade).toBe("live");
+    expect(
+      live.issues.some((issue) =>
+        issue.message.includes("requireLiveProvider"),
+      ),
+    ).toBe(false);
+
+    // Proxy trajectory: requireLiveProvider turns it into a hard error.
+    const proxied = completeTrajectory();
+    for (const stage of proxied.stages) {
+      if (stage.model) stage.model.provider = "deterministic-llm-proxy";
+    }
+    const gated = validateTrajectory(proxied, { requireLiveProvider: true });
+    expect(gated.ok).toBe(false);
+    expect(gated.evidenceGrade).toBe("proxy");
+    expect(gated.issues.map((issue) => issue.path)).toContain(
+      "$.stages[].model.provider",
+    );
+
+    // Without the opt-in, the same proxy trajectory validates structurally.
+    const ungated = validateTrajectory(proxied);
+    expect(ungated.ok).toBe(true);
+    expect(ungated.evidenceGrade).toBe("proxy");
   });
 
   test("compares cache, batching, and cost deltas", () => {

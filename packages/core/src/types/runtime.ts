@@ -885,6 +885,19 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		provider?: string,
 	): Promise<R>;
 
+	/**
+	 * The provider name that served the most recent successful `useModel` call
+	 * for `modelType`, or `undefined` if no such call has completed. Populated
+	 * by the runtime the moment a registration answers, so callers that can't
+	 * observe `useModel`'s internal resolution (e.g. the messageHandler /
+	 * factsAndRelationships trajectory stage recorders) can record the REAL
+	 * provider that answered instead of fabricating a `"default"` literal
+	 * (#13623). Returns `undefined` — never a fabricated value — when unknown.
+	 */
+	getLastResolvedModelProvider?(
+		modelType: TextGenerationModelType | string,
+	): string | undefined;
+
 	generateText(
 		input: string,
 		options?: GenerateTextOptions,

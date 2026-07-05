@@ -302,6 +302,46 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 	});
 
+	it("carries the provider that served THIS TEXT_LARGE call on the result (#13623)", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({ facts: ["a fact"], relationships: [], thought: "t" }),
+		);
+		// The facts stage must capture the provider synchronously at call time; the
+		// mock resolves TEXT_LARGE via "cerebras".
+		(
+			runtime as unknown as {
+				getLastResolvedModelProvider: (m: string) => string | undefined;
+			}
+		).getLastResolvedModelProvider = vi.fn((modelType: string) =>
+			modelType === ModelType.TEXT_LARGE ? "cerebras" : undefined,
+		);
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { facts: ["a fact"] },
+		});
+
+		expect(result.provider).toBe("cerebras");
+	});
+
+	it("leaves provider undefined (never fabricated) when the runtime can't report it (#13623)", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({ facts: ["a fact"], relationships: [], thought: "t" }),
+		);
+		// No getLastResolvedModelProvider on this runtime — the optional call must
+		// leave provider undefined, not fabricate a value.
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { facts: ["a fact"] },
+		});
+
+		expect(result.provider).toBeUndefined();
+	});
+
 	// #13196: room-entity grounding must come from getEntityDetails, NOT from
 	// scraping the Stage-1 provider state. Two prior defects made the old path
 	// dead: (1) it read state...providers.ENTITIES.data.entities but the ENTITIES

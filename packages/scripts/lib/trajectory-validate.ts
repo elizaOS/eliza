@@ -140,6 +140,40 @@ export interface TrajectoryRollup {
   toolResultFailures: number;
 }
 
+/**
+ * Machine-readable live-vs-fabricated grade for a trajectory's evidence,
+ * derived from the providers its model stages recorded (#13623):
+ * - `live`   — at least one model stage names a real provider (not the
+ *              deterministic proxy, not the `"default"` placeholder, not empty).
+ * - `proxy`  — every model stage was served by the deterministic LLM proxy.
+ * - `mock`   — no model stage names any real provider (all `"default"`/empty) and
+ *              no proxy stage either; the trajectory can't prove which model,
+ *              if any, answered.
+ * - `unknown`— there are no model stages to grade.
+ */
+export type TrajectoryEvidenceGrade = "live" | "proxy" | "mock" | "unknown";
+
+/**
+ * Provider name recorded by the scenario-runner's deterministic LLM proxy. A
+ * trajectory served entirely by it is NOT live evidence.
+ */
+export const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
+  "deterministic-llm-proxy" as const;
+
+/**
+ * Provider values that do NOT identify a real live model: the deterministic
+ * proxy, the `"default"` placeholder some stages used to hardcode, and
+ * empty/whitespace.
+ */
+function isNonLiveProviderName(provider: unknown): boolean {
+  if (typeof provider !== "string") return true;
+  const trimmed = provider.trim();
+  if (trimmed.length === 0) return true;
+  if (trimmed === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) return true;
+  if (trimmed === "default") return true;
+  return false;
+}
+
 export interface TrajectoryValidationResult {
   ok: boolean;
   errorCount: number;
@@ -148,6 +182,12 @@ export interface TrajectoryValidationResult {
   rollup: TrajectoryRollup;
   selectedContexts: string[];
   stageKinds: string[];
+  /**
+   * Live-vs-fabricated grade for this trajectory's evidence, derived from the
+   * providers its model stages recorded (#13623). CI/issue-evidence gates can
+   * read this instead of a human eyeballing `report.providerName`.
+   */
+  evidenceGrade: TrajectoryEvidenceGrade;
 }
 
 export interface ValidateTrajectoryOptions {
@@ -156,6 +196,15 @@ export interface ValidateTrajectoryOptions {
   costToleranceUsd?: number;
   requireMessageArrays?: boolean;
   requireContextEvidence?: boolean;
+  /**
+   * Opt-in live-provider gate (#13623). When true, a trajectory whose evidence
+   * grade is not `live` — i.e. every model stage was served by the
+   * deterministic proxy, `"default"`, or an empty provider — fails validation
+   * with an error. Off by default so structural validation is unchanged; the
+   * issue-evidence / CI convention turns it on to reject proxy-produced
+   * "proof".
+   */
+  requireLiveProvider?: boolean;
 }
 
 export interface CompareTrajectorySummary {
@@ -792,6 +841,33 @@ function validateMetrics(
   }
 }
 
+/**
+ * Grade a trajectory's evidence live-vs-proxy-vs-mock from its model stages'
+ * recorded providers (#13623). A stage counts as a "model stage" when it
+ * carries a `model` record.
+ */
+export function deriveTrajectoryEvidenceGrade(
+  trajectory: RecordedTrajectory,
+): TrajectoryEvidenceGrade {
+  let modelStages = 0;
+  let liveStages = 0;
+  let proxyStages = 0;
+  for (const stage of trajectory.stages ?? []) {
+    if (!stage.model) continue;
+    modelStages += 1;
+    const provider = stage.model.provider;
+    if (provider === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
+      proxyStages += 1;
+    } else if (!isNonLiveProviderName(provider)) {
+      liveStages += 1;
+    }
+  }
+  if (modelStages === 0) return "unknown";
+  if (liveStages > 0) return "live";
+  if (proxyStages > 0) return "proxy";
+  return "mock";
+}
+
 export function rollupTrajectory(
   trajectory: RecordedTrajectory,
 ): TrajectoryRollup {
@@ -1017,11 +1093,22 @@ export function validateTrajectory(
   const selectedContexts = extractSelectedContexts(trajectory.stages, issues);
   validateContextEvidence(trajectory.stages, selectedContexts, issues, opts);
 
+  const evidenceGrade = deriveTrajectoryEvidenceGrade(trajectory);
+  if (opts.requireLiveProvider && evidenceGrade !== "live") {
+    pushIssue(
+      issues,
+      "error",
+      "$.stages[].model.provider",
+      `requireLiveProvider: trajectory evidence grade is "${evidenceGrade}", not "live" — every model stage was served by the deterministic proxy, "default", or an empty provider`,
+    );
+  }
+
   return finalizeValidation(
     issues,
     computedRollup,
     selectedContexts,
     trajectory.stages.map((stage) => stage.kind),
+    evidenceGrade,
   );
 }
 
@@ -1030,6 +1117,7 @@ function finalizeValidation(
   rollup: TrajectoryRollup,
   selectedContexts: string[],
   stageKinds: string[],
+  evidenceGrade: TrajectoryEvidenceGrade = "unknown",
 ): TrajectoryValidationResult {
   const errorCount = issues.filter(
     (issue) => issue.severity === "error",
@@ -1045,6 +1133,7 @@ function finalizeValidation(
     rollup,
     selectedContexts,
     stageKinds,
+    evidenceGrade,
   };
 }
 
@@ -1142,6 +1231,7 @@ export function validateTrajectoryMarkdownReport(
     rollup,
     extractSelectedContexts(trajectory.stages, issues),
     trajectory.stages.map((stage) => stage.kind),
+    deriveTrajectoryEvidenceGrade(trajectory),
   );
 }
 

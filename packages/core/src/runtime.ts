@@ -905,6 +905,19 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	private pinnedEmbeddingProvider: string | undefined;
 	/**
+	 * The provider name that actually served the most recent successful
+	 * `useModel` call for each model type key. Populated the moment a
+	 * registration answers (before any streaming/return path), so a caller that
+	 * cannot see `useModel`'s internal resolution — e.g. the messageHandler /
+	 * factsAndRelationships trajectory stage recorders in `services/message.ts`,
+	 * which previously hardcoded the provider as the literal `"default"` — can
+	 * read the real provider that answered instead of fabricating one (#13623).
+	 * Keyed by the REQUESTED model type string so the recorder for a
+	 * RESPONSE_HANDLER / TEXT_LARGE stage reads the provider for that stage's
+	 * call, not some other model type's.
+	 */
+	private lastResolvedModelProviderByType = new Map<string, string>();
+	/**
 	 * Non-null while embedding generation is disabled because every registered
 	 * TEXT_EMBEDDING provider failed the dimension probe. While set, memory
 	 * writes skip vector generation entirely (see `addEmbeddingToMemory` /
@@ -4784,6 +4797,34 @@ export class AgentRuntime implements IAgentRuntime {
 	 * the override as a failover tail, so a rate-limited/exhausted override
 	 * provider falls to the registered backups instead of stranding the brain.
 	 */
+	/**
+	 * Record the provider that served a successful `useModel` call, keyed by the
+	 * requested model-type string. Only real (non-empty) provider names are
+	 * stored so a caller reading it back never sees a fabricated value (#13623).
+	 */
+	private noteResolvedModelProvider(
+		modelTypeKey: string,
+		provider: string | undefined,
+	): void {
+		if (typeof provider === "string" && provider.trim().length > 0) {
+			this.lastResolvedModelProviderByType.set(modelTypeKey, provider);
+		}
+	}
+
+	/**
+	 * The provider name that served the most recent successful `useModel` call
+	 * for the given model type, or `undefined` if no such call has completed
+	 * (so callers can fail-closed rather than fabricate a provider). Lets the
+	 * trajectory stage recorders in `services/message.ts` name the real provider
+	 * that answered the messageHandler / factsAndRelationships call instead of
+	 * the hardcoded `"default"` literal (#13623).
+	 */
+	getLastResolvedModelProvider(
+		modelType: ModelTypeName | string,
+	): string | undefined {
+		return this.lastResolvedModelProviderByType.get(String(modelType));
+	}
+
 	private resolveTextProviderOverride(): string | undefined {
 		const raw = this.getSetting("ELIZA_BRAIN_PROVIDER");
 		const override = typeof raw === "string" ? raw.trim() : "";
@@ -5880,6 +5921,15 @@ export class AgentRuntime implements IAgentRuntime {
 						piiSwapSession?.substituteInValue(resultRef.current) ??
 						resultRef.current;
 
+					// Record the provider that actually served this call so callers
+					// that can't see the internal resolution (message.ts stage
+					// recorders) can read the real provider instead of hardcoding
+					// "default" (#13623).
+					this.noteResolvedModelProvider(
+						requestedModelKey,
+						resolvedModel.provider,
+					);
+
 					this.logger.trace(
 						{
 							src: "agent",
@@ -5968,6 +6018,15 @@ export class AgentRuntime implements IAgentRuntime {
 				resultRef.current =
 					piiSwapSession?.substituteInValue(resultRef.current) ??
 					resultRef.current;
+
+				// Record the provider that actually served this call so callers
+				// that can't see the internal resolution (message.ts stage
+				// recorders) can read the real provider instead of hardcoding
+				// "default" (#13623).
+				this.noteResolvedModelProvider(
+					requestedModelKey,
+					resolvedModel.provider,
+				);
 
 				this.logger.trace(
 					{

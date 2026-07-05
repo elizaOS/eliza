@@ -6213,6 +6213,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
 		const messageHandlerEndedAt = Date.now();
+		// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
+		// right after it completes, before any later model call could overwrite the
+		// runtime-wide last-resolved-provider, so the recorded stage names the real
+		// provider instead of the fabricated "default" literal (#13623).
+		const messageHandlerProvider = args.runtime.getLastResolvedModelProvider?.(
+			ModelType.RESPONSE_HANDLER,
+		);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
@@ -6329,6 +6336,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				endedAt: messageHandlerEndedAt,
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 				prefixHash: stage1PrefixHash,
+				provider: messageHandlerProvider,
 				logger: args.runtime.logger,
 			});
 		}
@@ -7055,6 +7063,12 @@ async function recordMessageHandlerStage(args: {
 	endedAt: number;
 	segmentHashes?: string[];
 	prefixHash?: string;
+	/**
+	 * The provider that actually served the Stage-1 call (resolved from the
+	 * runtime after the call completed). Threaded so the recorded stage names
+	 * the real provider instead of the fabricated `"default"` literal (#13623).
+	 */
+	provider?: string;
 	logger?: IAgentRuntime["logger"];
 }): Promise<void> {
 	try {
@@ -7073,7 +7087,7 @@ async function recordMessageHandlerStage(args: {
 			model: {
 				modelType: String(ModelType.RESPONSE_HANDLER),
 				modelName,
-				provider: "default",
+				provider: resolveRecordedStageProvider(args.raw, args.provider),
 				messages: args.messages,
 				tools: args.tools,
 				toolChoice: args.toolChoice,
@@ -7111,6 +7125,10 @@ async function recordFactsAndRelationshipsStage(args: {
 }): Promise<void> {
 	try {
 		const { startedAt, endedAt, result, error } = args.outcome;
+		// The provider is carried WITH the facts call result (captured
+		// synchronously at call time) so a parallel/subsequent TEXT_LARGE call
+		// can't have overwritten it before this stage is recorded (#13623).
+		const factsProvider = result?.provider;
 		const candidates = extractCandidatesForRecording(result);
 		const kept = result?.parsed
 			? {
@@ -7131,7 +7149,10 @@ async function recordFactsAndRelationshipsStage(args: {
 			model: result?.rawResponse
 				? {
 						modelType: String(ModelType.TEXT_LARGE),
-						provider: "default",
+						provider: resolveRecordedStageProvider(
+							result.rawResponse,
+							factsProvider,
+						),
 						messages: result.messages,
 						tools: result.tools,
 						toolChoice: "required",
@@ -7195,6 +7216,51 @@ function extractCandidatesForRecording(
 		}
 	}
 	return { facts, relationships };
+}
+
+/**
+ * Read the provider name a model result attributes itself to, if the provider
+ * adapter surfaced one in `providerMetadata` (e.g. `{ provider }` or
+ * `{ providerName }`). Returns undefined when the result is a bare string or
+ * carries no self-reported provider — never a fabricated value.
+ */
+function extractStageResultProvider(
+	raw: string | GenerateTextResult | unknown,
+): string | undefined {
+	if (!raw || typeof raw !== "object") return undefined;
+	const meta = (raw as { providerMetadata?: unknown }).providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta))
+		return undefined;
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Resolve the provider name to record on a trajectory model stage. Prefers a
+ * provider the result self-reports, then the runtime-resolved provider that
+ * actually served the call, and only falls back to the `"default"` sentinel
+ * when neither is known. Before #13623 these stages hardcoded `"default"`,
+ * making the trajectory useless as a live-vs-proxy provenance signal.
+ */
+function resolveRecordedStageProvider(
+	raw: string | GenerateTextResult | unknown,
+	runtimeResolvedProvider?: string,
+): string {
+	const selfReported = extractStageResultProvider(raw);
+	if (selfReported) return selfReported;
+	if (
+		typeof runtimeResolvedProvider === "string" &&
+		runtimeResolvedProvider.trim().length > 0
+	) {
+		return runtimeResolvedProvider.trim();
+	}
+	return "default";
 }
 
 function extractMessageHandlerModelName(

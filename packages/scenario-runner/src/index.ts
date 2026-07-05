@@ -25,9 +25,11 @@ export {
   SCENARIO_NATIVE_EXPORT_SCHEMA,
   SCENARIO_NATIVE_EXPORT_VERSION,
 } from "./native-export.ts";
+export type { BuildAggregateOptions } from "./reporter.ts";
 export {
   buildAggregate,
   printStdoutSummary,
+  sumTrajectoryCostUsd,
   writeReport,
   writeScenarioRunViewer,
 } from "./reporter.ts";
