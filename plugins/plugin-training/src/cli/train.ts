@@ -9,6 +9,7 @@
  */
 
 import { parseArgs } from "node:util";
+import { readAliasedEnv } from "@elizaos/shared";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
 import { ALL_TRAINING_TASKS } from "../core/training-config.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
@@ -185,7 +186,7 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const os = await import("node:os");
       const stateDir =
         process.env.TRAINING_STATE_DIR?.trim() ||
-        process.env.ELIZA_STATE_DIR?.trim() ||
+        readAliasedEnv("ELIZA_STATE_DIR") ||
         path.join(os.homedir(), ".eliza");
       const promptTask = task === "context_routing" ? "should_respond" : task;
       const artifactPayload = {

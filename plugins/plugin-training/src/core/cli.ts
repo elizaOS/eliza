@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { readAliasedEnv } from "@elizaos/shared";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
@@ -483,7 +484,7 @@ async function cmdExportTrajectories(args: string[]) {
     values.input ??
     process.env.ELIZA_TRAJECTORY_DIR ??
     join(
-      process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza"),
+      readAliasedEnv("ELIZA_STATE_DIR") ?? join(homedir(), ".eliza"),
       "trajectories",
     );
   const outputDir = values.output ?? "./training-data";
@@ -1211,8 +1212,8 @@ async function cmdRollbackPrompt(args: string[]) {
     // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
     // operates on the same store the runtime + train CLI write to.
     const stateDir =
-      process.env.ELIZA_STATE_DIR?.trim() ||
-      process.env.ELIZA_STATE_DIR?.trim() ||
+      readAliasedEnv("ELIZA_STATE_DIR") ||
+      readAliasedEnv("ELIZA_STATE_DIR") ||
       join(homedir(), ".eliza");
     service.setStoreRoot(join(stateDir, "optimized-prompts"));
   }
