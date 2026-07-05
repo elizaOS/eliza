@@ -57,7 +57,7 @@ pytest openclaw-adapter/tests/ -v
 
 ## Notes
 
-- Binary resolution order: `OPENCLAW_BIN` env → `~/.eliza/agents/openclaw/manifest.json` → `~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw`.
+- Binary resolution order: `OPENCLAW_BIN` env → `~/.eliza/agents/openclaw/manifest.json` → an `openclaw` on `PATH` → `~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw`.
 - Set `OPENCLAW_DIRECT_OPENAI_COMPAT=1` (or pass `direct_openai_compatible=True`) to bypass the CLI for hermetic testing or native function-call benchmarks.
 - Set `OPENCLAW_USE_CLI=1` to force the production CLI path even when a direct path is also configured.
 - Native function-call benchmarks (BFCL etc.) must use the direct OpenAI-compatible path; the CLI path flattens `messages`/`tools` into a single `--message` string.

@@ -138,7 +138,17 @@ def _hermes_factory(model: str | None) -> AgentFactory:
 
 
 def _openclaw_factory(model: str | None) -> AgentFactory:
-    """One shared OpenClawClient; each task gets its own per-turn agent_fn."""
+    """One shared OpenClawClient; each task gets its own per-turn agent_fn.
+
+    Transport is CLI-native by default: the real ``openclaw agent --local``
+    path, resolving a custom OpenAI-compatible provider registered in the
+    openclaw config (``models.providers.<provider>`` with ``baseUrl`` +
+    ``api: openai-completions``; see the adapter README's "CLI-native provider
+    registration" section). Set ``OPENCLAW_DIRECT_OPENAI_COMPAT=1`` (without
+    ``OPENCLAW_USE_CLI=1``) to fall back to the direct-compat shim for a
+    keyless/offline smoke; that path is partial, not CLI-native tool-call
+    parity, and the report must disclose it.
+    """
     ensure_benchmark_adapter_importable("openclaw")
     from openclaw_adapter.client import OpenClawClient
     from openclaw_adapter.lifeops_bench import build_lifeops_bench_agent_fn
@@ -148,9 +158,13 @@ def _openclaw_factory(model: str | None) -> AgentFactory:
         or os.environ.get("ELIZA_PROVIDER")
         or "cerebras"
     ).strip().lower()
-    model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gemma-4-31b"
+    model_name = model or os.environ.get("BENCHMARK_MODEL_NAME") or "gpt-oss-120b"
+    direct_compat = (
+        os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        and os.environ.get("OPENCLAW_USE_CLI") != "1"
+    )
     shared_client = OpenClawClient(
-        provider=provider, model=model_name, direct_openai_compatible=True
+        provider=provider, model=model_name, direct_openai_compatible=direct_compat
     )
     shared_client.wait_until_ready(timeout=120)
 

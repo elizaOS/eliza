@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -875,7 +876,13 @@ def _resolve_default_binary() -> Path:
     Order:
       1. ``OPENCLAW_BIN`` env override.
       2. ``binary_path`` field of ``~/.eliza/agents/openclaw/manifest.json``.
-      3. ``~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw`` fallback.
+      3. an ``openclaw`` on ``PATH`` (a global ``npm i -g openclaw`` install).
+      4. ``~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw`` fallback.
+
+    The PATH lookup (3) comes before the pinned fallback (4) so a plain global
+    install resolves without an ``OPENCLAW_BIN`` export — the pinned path is a
+    version-specific artifact that is absent on a fresh machine, and stale
+    whenever the installed CLI version differs.
     """
     override = os.environ.get("OPENCLAW_BIN", "").strip()
     if override:
@@ -889,6 +896,9 @@ def _resolve_default_binary() -> Path:
                 return Path(binary).expanduser()
     except (OSError, json.JSONDecodeError):
         pass
+    on_path = shutil.which("openclaw")
+    if on_path:
+        return Path(on_path)
     return DEFAULT_BINARY_FALLBACK
 
 

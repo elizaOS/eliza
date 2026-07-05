@@ -64,6 +64,32 @@ CEREBRAS_API_KEY=... python -m multitask_bench --harness hermes --lanes 1,5,10 \
 
 Reports land at `results/multitask_<timestamp>.json`.
 
+### openclaw lane — CLI-native
+
+The openclaw lane runs the **real `openclaw agent` CLI** (not the direct-compat
+shim) once a Cerebras custom provider is registered in an isolated openclaw
+profile. This is a one-time setup — see
+[`openclaw-adapter/README.md`](../openclaw-adapter/README.md) §"CLI-native
+provider registration" for the exact key-free config
+(`openclaw-adapter/config/cerebras.openclaw.json5`):
+
+```bash
+openclaw --profile bench-cerebras config patch \
+    --file ../openclaw-adapter/config/cerebras.openclaw.json5
+export OPENAI_API_KEY="$CEREBRAS_API_KEY"
+export OPENAI_BASE_URL="https://api.cerebras.ai/v1"
+export OPENCLAW_CONFIG_PATH="$HOME/.openclaw-bench-cerebras/openclaw.json"
+export OPENCLAW_STATE_DIR="$HOME/.openclaw-bench-cerebras"
+export OPENCLAW_USE_CLI=1                       # forces the real CLI path
+CEREBRAS_API_KEY=... python -m multitask_bench --harness openclaw --lanes 1,5,10 \
+    --model gpt-oss-120b --output-dir results
+```
+
+Without `OPENCLAW_USE_CLI=1`, setting `OPENCLAW_DIRECT_OPENAI_COMPAT=1` falls
+back to the keyless/offline direct-compat shim — a **partial** transport, not
+CLI-native tool-call parity; the report discloses which transport each lane
+used.
+
 ## Tests
 
 ```bash

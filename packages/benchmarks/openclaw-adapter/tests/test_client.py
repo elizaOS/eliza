@@ -85,15 +85,33 @@ def test_client_init_uses_provided_binary(fake_binary: Path) -> None:
 
 
 def test_client_init_default_binary_falls_back(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """When no override and no manifest, the fallback path under
-    ~/.eliza/agents/openclaw/v2026.5.7/... is used."""
+    """With no override, no manifest, and no ``openclaw`` on PATH, resolution
+    lands on the pinned ~/.eliza/agents/openclaw/v2026.5.7/... fallback."""
     monkeypatch.delenv("OPENCLAW_BIN", raising=False)
     monkeypatch.setattr(
         "openclaw_adapter.client.DEFAULT_MANIFEST_PATH",
         tmp_path / "missing.json",
     )
+    monkeypatch.setattr("openclaw_adapter.client.shutil.which", lambda _name: None)
     c = OpenClawClient()
     assert c.binary_path.parts[-3:] == ("node_modules", ".bin", "openclaw")
+
+
+def test_client_init_resolves_openclaw_on_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A global ``openclaw`` on PATH is preferred over the pinned fallback, so
+    a plain ``npm i -g openclaw`` install works without an OPENCLAW_BIN export."""
+    monkeypatch.delenv("OPENCLAW_BIN", raising=False)
+    monkeypatch.setattr(
+        "openclaw_adapter.client.DEFAULT_MANIFEST_PATH",
+        tmp_path / "missing.json",
+    )
+    on_path = tmp_path / "bin" / "openclaw"
+    monkeypatch.setattr(
+        "openclaw_adapter.client.shutil.which",
+        lambda name: str(on_path) if name == "openclaw" else None,
+    )
+    c = OpenClawClient()
+    assert c.binary_path == on_path
 
 
 def test_client_init_reads_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
