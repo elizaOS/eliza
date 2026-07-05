@@ -40,8 +40,8 @@ const UI_SRC = path.join(REPO_ROOT, "packages/ui/src");
  *   1. `setPointerCapture(` — you only capture a pointer to run a drag/pan gesture.
  *   2. a custom touch registration — `onTouchStart` / `addEventListener("touchstart"`
  *      / `.on("touchstart"` (a hand-rolled touch gesture, not a click).
- *   3. a named gesture-engine hook — usePullGesture / useHorizontalPager /
- *      useConversationSwipeJank (definition or consumer).
+ *   3. a named gesture-engine hook — usePullGesture / useHorizontalPager
+ *      (definition or consumer).
  * A plain `onClick`/`onPointerDown` button is intentionally NOT a gesture site.
  */
 const GESTURE_MARKERS: readonly RegExp[] = [
@@ -49,7 +49,7 @@ const GESTURE_MARKERS: readonly RegExp[] = [
   /onTouchStart[=\s{]/,
   /addEventListener\(\s*["']touchstart/,
   /\bon\(\s*["']touchstart/,
-  /\buse(PullGesture|HorizontalPager|ConversationSwipeJank)\b/,
+  /\buse(PullGesture|HorizontalPager)\b/,
 ];
 
 /** `.test.`/`.fuzz.` specs, `__e2e__` fixtures, and this gate are not sites. */
@@ -139,15 +139,16 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 2,
-    interaction: "Conversation edge-swipe L/R (+ jank telemetry)",
-    sites: [
-      OVERLAY,
-      S("hooks/useConversationSwipeJank.ts"),
-      S("components/shell/use-pull-gesture.ts"),
-    ],
+    // #13531 collapsed the app to a single infinite thread: chat-to-chat
+    // edge-swipe is gone; the surviving vertical gesture is pull-to-maximize
+    // (over-pull past 80% viewport → edge-to-edge full-bleed) and its top-20%
+    // pull-down restore.
+    interaction: "Pull-to-maximize / top-pull-restore (full-bleed toggle)",
+    sites: [OVERLAY, S("components/shell/use-pull-gesture.ts")],
     tests: [
-      S("hooks/useConversationSwipeJank.test.ts"),
-      S("components/shell/__e2e__/run-conversation-swipe-e2e.mjs"),
+      S("components/shell/use-pull-gesture.test.ts"),
+      S("components/shell/__e2e__/run-chat-perf-gate.mjs"),
+      S("components/shell/__e2e__/run-perf-gate-e2e.mjs"),
     ],
   },
   {
@@ -295,7 +296,6 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/TopicGroup.tsx",
   "packages/ui/src/components/shell/use-pull-gesture.ts",
   "packages/ui/src/gestures/usePressAndHold.ts",
-  "packages/ui/src/hooks/useConversationSwipeJank.ts",
   "packages/ui/src/hooks/useHorizontalPager.ts",
   "packages/ui/src/hooks/usePushToTalk.ts",
 ];
