@@ -326,12 +326,22 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   const phoneNumber = session.platformUserId;
   if (!phoneNumber) return session;
 
-  try {
-    await elizaAppUserService.linkPhoneToUser(input.authenticatedUser.userId, phoneNumber);
-  } catch (error) {
-    logger.warn("[eliza-app onboarding] phone link after login failed", {
+  // linkPhoneToUser returns success:false only for the designed tenant-safety
+  // decline (the phone is already bound to a different account); a genuine
+  // DB/infra failure throws and must propagate — leaving a messaging identity
+  // silently unlinked is a broken pipeline this onboarding domain fails closed
+  // on. It runs on every eligible turn, so a transient throw self-heals on the
+  // next attempt once a boundary has surfaced it.
+  const linkResult = await elizaAppUserService.linkPhoneToUser(
+    input.authenticatedUser.userId,
+    phoneNumber,
+  );
+  if (!linkResult.success) {
+    // error-policy:J4 expected tenant-safety decline (phone owned by another
+    // account); onboarding continues without binding the identity.
+    logger.warn("[eliza-app onboarding] phone link declined", {
       userId: input.authenticatedUser.userId,
-      error: error instanceof Error ? error.message : String(error),
+      error: linkResult.error,
     });
   }
 
@@ -480,6 +490,9 @@ State:
     if (!sanitized) return fallbackReply(args);
     return args.requiresLogin ? ensureExactLoginUrl(sanitized, args.loginUrl) : sanitized;
   } catch (error) {
+    // error-policy:J4 the model is a non-essential enhancement over the always-
+    // valid deterministic fallbackReply; an LLM/transport failure degrades to
+    // that designed reply instead of failing the onboarding turn.
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -536,6 +549,8 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
     );
 
     if (!rememberResponse.ok) {
+      // error-policy:J6 best-effort read of the error body to enrich the error
+      // we throw next; a failed body read must not mask the non-ok status.
       const body = await rememberResponse.text().catch(() => "");
       throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
     }
@@ -550,6 +565,9 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
       copied: true,
     };
   } catch (error) {
+    // error-policy:J4 handoff copy is retried on every turn until it lands;
+    // returning copied:false keeps handoffComplete false — a distinguishable
+    // not-yet-copied state, never a fabricated success.
     logger.warn("[eliza-app onboarding] handoff memory copy failed", {
       agentId: session.agentId,
       error: error instanceof Error ? error.message : String(error),

@@ -91,8 +91,12 @@ class ElizaAppSessionService {
   }
 
   async validateSession(token: string): Promise<ValidatedSession | null> {
+    // Resolve the signing key outside the untrusted-input boundary: a missing
+    // JWT secret is a server misconfiguration that must surface (route J1 → 500),
+    // not be swallowed and returned as a null "invalid token" (which reads as 401).
+    const secretKey = this.getSecretKey();
     try {
-      const { payload } = await jwtVerify(token, this.getSecretKey(), {
+      const { payload } = await jwtVerify(token, secretKey, {
         issuer: JWT_ISSUER,
         audience: JWT_AUDIENCE,
       });
@@ -111,6 +115,9 @@ class ElizaAppSessionService {
         phoneNumber: payload.phoneNumber,
       };
     } catch (error) {
+      // error-policy:J3 untrusted bearer token — jwtVerify throws on expired,
+      // tampered, or malformed tokens; null is the explicit fail-closed "not a
+      // valid session" signal, distinct from the config failure raised above.
       logger.debug("[ElizaAppSession] Token validation failed", { error });
       return null;
     }

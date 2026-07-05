@@ -139,7 +139,18 @@ export async function ensureElizaAppProvisioning(params: {
         agentName: DEFAULT_AGENT_NAME,
       });
     } catch (err) {
-      await agentSandboxesRepository.delete(sandbox.id, params.organizationId);
+      // error-policy:J6 best-effort teardown of the just-created row so the reuse
+      // guard can't hand this job-less sandbox back forever. The compensating
+      // delete must never mask the real enqueue failure: the original error is
+      // always rethrown, and a failed cleanup is only logged.
+      await agentSandboxesRepository
+        .delete(sandbox.id, params.organizationId)
+        .catch((cleanupErr) => {
+          logger.error(
+            "[eliza-app provisioning] Failed to delete stranded sandbox row after enqueue failure",
+            { agentId: sandbox.id, orgId: params.organizationId, cleanupErr },
+          );
+        });
       throw err;
     }
   }
