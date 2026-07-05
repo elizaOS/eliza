@@ -47,6 +47,7 @@ let apiBase = "";
 let target: http.Server | null = null;
 let targetBase = "";
 const targetHits: TargetHit[] = [];
+const API_TOKEN = "gate-api-token";
 
 function writeConfig(config: Record<string, unknown>): void {
   fs.writeFileSync(
@@ -68,10 +69,14 @@ function remoteConfig(): Record<string, unknown> {
 async function request(
   method: string,
   pathname: string,
+  options: { authorized?: boolean } = {},
 ): Promise<{ status: number; body: string }> {
   const res = await fetch(apiBase + pathname, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(options.authorized ? { authorization: `Bearer ${API_TOKEN}` } : {}),
+    },
     body: method === "GET" || method === "OPTIONS" ? undefined : "{}",
   });
   return { status: res.status, body: await res.text() };
@@ -101,6 +106,8 @@ beforeAll(async () => {
         ELIZA_STATE_DIR: stateDir,
         ELIZA_CONFIG_PATH: "",
         ELIZA_API_PORT: "",
+        ELIZA_REQUIRE_LOCAL_AUTH: "1",
+        ELIZA_API_TOKEN: API_TOKEN,
         LOG_LEVEL: "error",
         NODE_ENV: "test",
       },
@@ -141,10 +148,20 @@ describe("bare agent server enforces the runtime-mode contract", () => {
     expect(res.body).not.toContain("catalog");
   });
 
-  it("remote mode forwards POST /api/cloud/login to the target with its access token", async () => {
+  it("remote mode rejects unauthenticated cloud mutations before forwarding", async () => {
     writeConfig(remoteConfig());
     targetHits.length = 0;
     const res = await request("POST", "/api/cloud/login");
+    expect(res.status).toBe(401);
+    expect(targetHits).toHaveLength(0);
+  });
+
+  it("remote mode forwards authorized POST /api/cloud/login to the target with its access token", async () => {
+    writeConfig(remoteConfig());
+    targetHits.length = 0;
+    const res = await request("POST", "/api/cloud/login", {
+      authorized: true,
+    });
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ forwardedToTarget: true });
     expect(targetHits).toHaveLength(1);
@@ -167,7 +184,9 @@ describe("bare agent server enforces the runtime-mode contract", () => {
 
   it("remote mode without a valid target rejects cloud mutations instead of running them locally", async () => {
     writeConfig({ deploymentTarget: { runtime: "remote" } });
-    const res = await request("POST", "/api/cloud/login");
+    const res = await request("POST", "/api/cloud/login", {
+      authorized: true,
+    });
     expect(res.status).toBe(400);
     expect(JSON.parse(res.body)).toEqual({
       error: "Remote target not configured",

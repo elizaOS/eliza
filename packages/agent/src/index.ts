@@ -114,7 +114,10 @@ export { RegistryService } from "./api/registry-service.ts";
 // forwarder). `api/server.ts` enforces it in its own dispatch; the app-core
 // compat pipeline calls the same pre-dispatch hook so every host shares one
 // gate.
-export { handleRuntimeModePreDispatch } from "./api/runtime-mode/pre-dispatch.ts";
+export {
+  handleRuntimeModePreDispatch,
+  handleRuntimeModeRemoteForward,
+} from "./api/runtime-mode/pre-dispatch.ts";
 export {
   forwardRemoteCloudMutation,
   shouldForwardToRemoteTarget,

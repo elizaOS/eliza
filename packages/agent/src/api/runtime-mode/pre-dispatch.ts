@@ -1,19 +1,15 @@
 /**
- * Runtime-mode pre-dispatch hook: the single entry point every HTTP host runs
- * before its route handlers. Applies the mode-visibility gate (hidden routes
- * respond 404) and, in `remote` mode, forwards cloud-settings mutations to the
- * controlled target instead of executing them locally.
+ * Runtime-mode request hooks shared by every HTTP host. The visibility hook
+ * runs before auth so hidden-in-mode routes return a plain 404 without making
+ * mode state probeable. The remote forwarder hook runs only after the normal
+ * auth gate has accepted the request, because it attaches the controller's
+ * target token and must never turn an unauthenticated caller into the target's
+ * owner.
  *
  * Both the bare `@elizaos/agent` server (`api/server.ts` request dispatch) and
- * the `@elizaos/app-core` compat pipeline call this, so the mode contract holds
- * no matter which host binds the port — the gate used to live only in app-core,
- * leaving `bun run start` (the bare agent) ungated.
- *
- * Returns `true` when the request was fully handled (gated or forwarded) and
- * the caller must stop dispatching. Running it twice on one request is safe:
- * the second pass resolves the same mode, and the forwarder only consumes the
- * request body when it actually forwards (in which case it already returned
- * `true` on the first pass).
+ * the `@elizaos/app-core` compat pipeline call these, so the mode contract
+ * holds no matter which host binds the port — the gate used to live only in
+ * app-core, leaving `bun run start` (the bare agent) ungated.
  */
 
 import type http from "node:http";
@@ -29,9 +25,12 @@ export async function handleRuntimeModePreDispatch(
   runtime?: RouteModeRuntimeLike | null,
 ): Promise<boolean> {
   const gate = applyRouteModeGuard(req, res, runtime);
-  if (gate.handled) return true;
-  if (gate.mode === "remote") {
-    return forwardRemoteCloudMutation(req, res);
-  }
-  return false;
+  return gate.handled;
+}
+
+export async function handleRuntimeModeRemoteForward(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<boolean> {
+  return forwardRemoteCloudMutation(req, res);
 }

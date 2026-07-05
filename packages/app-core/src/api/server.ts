@@ -29,6 +29,7 @@ import {
   handleCloudBillingRoute,
   handleCloudCompatRoute,
   handleRuntimeModePreDispatch,
+  handleRuntimeModeRemoteForward,
   isAllowedHost,
   isAuthorized,
   loadElizaConfig,
@@ -677,14 +678,12 @@ async function handleCompatRouteInner(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
-  // ── Mode visibility gate + remote-mode forward ────────────────────────
+  // ── Mode visibility gate ───────────────────────────────────────────────
   // Shared hook from @elizaos/agent (also enforced in the bare agent
   // server's own dispatch): cloud mode hides /api/local-inference/*,
   // local-only hides /api/cloud/* (hidden = 404, not 403, so callers cannot
-  // probe mode state), and remote mode forwards cloud mutations to the
-  // controlled target instead of the controller's own config. It must also
-  // run here because the compat chain below handles those routes before the
-  // request ever reaches the upstream agent listener.
+  // probe mode state). It must run here because the compat chain below handles
+  // some routes before the request ever reaches the upstream agent listener.
   if (await handleRuntimeModePreDispatch(req, res, state.current)) return true;
 
   const authPolicyDecision = await enforceCompatRouteAuthPolicy(
@@ -696,6 +695,11 @@ async function handleCompatRouteInner(
   );
   if (authPolicyDecision === "denied") return true;
   if (authPolicyDecision === "unmanaged") return false;
+
+  // Remote-mode cloud mutations forward only after compat auth allows the
+  // request; the forwarder attaches the controller's target token, so it must
+  // not run as a pre-auth bypass.
+  if (await handleRuntimeModeRemoteForward(req, res)) return true;
 
   // #12089 item 5: the compat route surface below used to be a ~30-branch
   // order-dependent if-chain (each branch `if (await handleX(...)) return true`)
