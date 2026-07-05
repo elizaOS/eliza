@@ -81,6 +81,7 @@ runs:
       shell: bash
       env:
         FORCE_PROTOC_GITHUB_FALLBACK: ${{ inputs.force-protoc-github-fallback }}
+        PROTOC_RUNNER_ARCH: ${{ runner.arch }}
       run: |
         if [ "${FORCE_PROTOC_GITHUB_FALLBACK}" != "true" ] && command -v protoc >/dev/null 2>&1; then
           echo "protoc already installed: $(protoc --version)"
@@ -118,13 +119,26 @@ runs:
           # build dependency from trusting an unauthenticated release asset.
           echo "apt unavailable/failed; installing protoc from GitHub release (sudo-free)"
           protoc_version=27.3
-          protoc_sha256=6dab2adab83f915126cab53540d48957c40e9e9023969c3e84d44bfb936c7741
+          case "${PROTOC_RUNNER_ARCH}" in
+            X64)
+              protoc_asset_arch=x86_64
+              protoc_sha256=6dab2adab83f915126cab53540d48957c40e9e9023969c3e84d44bfb936c7741
+              ;;
+            ARM64)
+              protoc_asset_arch=aarch_64
+              protoc_sha256=bdad36f3ad7472281d90568c4956ea2e203c216e0de005c6bd486f1920f2751c
+              ;;
+            *)
+              echo "unsupported Linux runner architecture for protoc fallback: ${PROTOC_RUNNER_ARCH}"
+              exit 1
+              ;;
+          esac
           dest="${RUNNER_TEMP:-/tmp}/protoc"
           rm -rf "$dest"
           mkdir -p "$dest"
           for attempt in 1 2 3; do
             if curl -fsSL --retry 5 --retry-all-errors -o "$dest/protoc.zip" \
-                "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-x86_64.zip"; then
+                "https://github.com/protocolbuffers/protobuf/releases/download/v${protoc_version}/protoc-${protoc_version}-linux-${protoc_asset_arch}.zip"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
