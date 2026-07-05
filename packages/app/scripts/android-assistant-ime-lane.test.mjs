@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ASSIST_SESSION_DEEPLINK,
+  assertSecureSetting,
   DEFAULT_IME_ID,
   DEFAULT_PACKAGE,
-  assertSecureSetting,
+  IME_SESSION_DEEPLINK,
   makeAdb,
   reapplyCommands,
   runLane,
@@ -34,11 +35,21 @@ describe("reapplyCommands", () => {
   it("emits the exact role + IME adb arg vectors", () => {
     const c = reapplyCommands("ai.elizaos.app", "ai.elizaos.app/.Ime");
     expect(c.role).toEqual([
-      "shell", "cmd", "role", "add-role-holder",
-      "android.app.role.ASSISTANT", "ai.elizaos.app",
+      "shell",
+      "cmd",
+      "role",
+      "add-role-holder",
+      "android.app.role.ASSISTANT",
+      "ai.elizaos.app",
     ]);
-    expect(c.imeEnable).toEqual(["shell", "ime", "enable", "ai.elizaos.app/.Ime"]);
+    expect(c.imeEnable).toEqual([
+      "shell",
+      "ime",
+      "enable",
+      "ai.elizaos.app/.Ime",
+    ]);
     expect(c.imeSet).toEqual(["shell", "ime", "set", "ai.elizaos.app/.Ime"]);
+    expect(DEFAULT_IME_ID).toBe("ai.elizaos.app/.ElizaVoiceInputMethodService");
   });
 });
 
@@ -53,7 +64,8 @@ describe("makeAdb", () => {
 });
 
 describe("assertSecureSetting", () => {
-  const adbWith = (out) => makeAdb("s", mockExec({ "shell settings get secure": out }));
+  const adbWith = (out) =>
+    makeAdb("s", mockExec({ "shell settings get secure": out }));
   it("passes when the value references the expected substring", () => {
     const r = assertSecureSetting(
       adbWith("ai.elizaos.app/.voice.ElizaVoiceInteractionService"),
@@ -63,10 +75,18 @@ describe("assertSecureSetting", () => {
     expect(r.ok).toBe(true);
   });
   it("fails on unset ('null'), empty, or a foreign value", () => {
-    expect(assertSecureSetting(adbWith("null"), "k", "ai.elizaos.app").ok).toBe(false);
-    expect(assertSecureSetting(adbWith(""), "k", "ai.elizaos.app").ok).toBe(false);
+    expect(assertSecureSetting(adbWith("null"), "k", "ai.elizaos.app").ok).toBe(
+      false,
+    );
+    expect(assertSecureSetting(adbWith(""), "k", "ai.elizaos.app").ok).toBe(
+      false,
+    );
     expect(
-      assertSecureSetting(adbWith("com.google.android.googlequicksearchbox"), "k", "ai.elizaos.app").ok,
+      assertSecureSetting(
+        adbWith("com.google.android.googlequicksearchbox"),
+        "k",
+        "ai.elizaos.app",
+      ).ok,
     ).toBe(false);
   });
 });
@@ -74,16 +94,29 @@ describe("assertSecureSetting", () => {
 describe("sessionLanded", () => {
   it("is true only when the deep-link AND MainActivity are both present", () => {
     expect(
-      sessionLanded(`I ActivityTaskManager: START ${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity`, ASSIST_SESSION_DEEPLINK),
+      sessionLanded(
+        `I ActivityTaskManager: START ${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity`,
+        ASSIST_SESSION_DEEPLINK,
+      ),
     ).toBe(true);
-    expect(sessionLanded(`START ${ASSIST_SESSION_DEEPLINK}`, ASSIST_SESSION_DEEPLINK)).toBe(false); // no MainActivity
-    expect(sessionLanded("MainActivity resumed", ASSIST_SESSION_DEEPLINK)).toBe(false); // no deep-link
+    expect(
+      sessionLanded(
+        `START ${ASSIST_SESSION_DEEPLINK}`,
+        ASSIST_SESSION_DEEPLINK,
+      ),
+    ).toBe(false); // no MainActivity
+    expect(sessionLanded("MainActivity resumed", ASSIST_SESSION_DEEPLINK)).toBe(
+      false,
+    ); // no deep-link
     expect(sessionLanded("", ASSIST_SESSION_DEEPLINK)).toBe(false);
   });
 });
 
 describe("runLane", () => {
-  const landedLog = `START u0 {act=android.intent.action.VIEW dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`;
+  const landedLog = [
+    `START u0 {act=android.intent.action.VIEW dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
+    `START u0 {act=android.intent.action.VIEW dat=${IME_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
+  ].join("\n");
 
   it("passes when role+IME applied and the assist session lands in MainActivity", async () => {
     const exec = mockExec({
@@ -103,6 +136,9 @@ describe("runLane", () => {
     expect(cmds).toContain(`shell ime set ${DEFAULT_IME_ID}`);
     expect(cmds).toContain("shell cmd voiceinteraction show");
     expect(cmds).toContain("shell input keyevent KEYCODE_ASSIST");
+    expect(cmds).toContain(
+      `shell am start -a android.intent.action.VIEW -d '${IME_SESSION_DEEPLINK}&action=voice&voice=1' ${DEFAULT_PACKAGE}/.MainActivity`,
+    );
   });
 
   it("canary: a renamed VIS (unset secure setting) turns the lane red", async () => {
@@ -126,5 +162,17 @@ describe("runLane", () => {
     const result = await runLane({ serial: "s", exec });
     expect(result.ok).toBe(false);
     expect(result.failures.join("\n")).toMatch(/did not route .*MainActivity/);
+  });
+
+  it("fails when the IME open-app path does not route into MainActivity", async () => {
+    const exec = mockExec({
+      "shell settings get secure voice_interaction_service":
+        "ai.elizaos.app/.ElizaVoiceInteractionService",
+      "shell settings get secure default_input_method": DEFAULT_IME_ID,
+      "logcat -d": `START u0 {dat=${ASSIST_SESSION_DEEPLINK} cmp=ai.elizaos.app/.MainActivity}`,
+    });
+    const result = await runLane({ serial: "s", exec });
+    expect(result.ok).toBe(false);
+    expect(result.failures.join("\n")).toMatch(/IME open-app path/);
   });
 });

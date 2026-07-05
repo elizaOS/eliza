@@ -284,7 +284,8 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
     surfacesRegistered: true,
     roleHeld: true,
     imeSelected: true,
-    assistLanded: true,
+    voiceinteractionLanded: true,
+    assistKeyLanded: true,
     imeLanded: true,
     asrOutcome: "committed",
   };
@@ -309,6 +310,27 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
   );
   assert.equal(roleMissing.pass, false);
   assert.match(roleMissing.failures.join(" "), /assistant role/);
+
+  const voiceinteractionMissing = summarizeLaneVerdict(
+    { ...green, voiceinteractionLanded: false },
+    false,
+  );
+  assert.equal(voiceinteractionMissing.pass, false);
+  assert.match(voiceinteractionMissing.failures.join(" "), /voiceinteraction/);
+
+  const assistKeyMissing = summarizeLaneVerdict(
+    { ...green, assistKeyLanded: false },
+    false,
+  );
+  assert.equal(assistKeyMissing.pass, false);
+  assert.match(assistKeyMissing.failures.join(" "), /KEYCODE_ASSIST/);
+
+  const unknownAsr = summarizeLaneVerdict(
+    { ...green, asrOutcome: "unknown" },
+    false,
+  );
+  assert.equal(unknownAsr.pass, false);
+  assert.match(unknownAsr.failures.join(" "), /unknown/);
 
   const notRegistered = summarizeLaneVerdict(
     { ...green, surfacesRegistered: false },

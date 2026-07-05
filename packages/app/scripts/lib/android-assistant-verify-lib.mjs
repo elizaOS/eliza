@@ -333,7 +333,8 @@ export function classifyImeAsrOutcome(logcatOutput) {
  * @param {boolean} results.surfacesRegistered
  * @param {boolean} results.roleHeld
  * @param {boolean} results.imeSelected
- * @param {boolean} results.assistLanded
+ * @param {boolean} results.voiceinteractionLanded
+ * @param {boolean} results.assistKeyLanded
  * @param {boolean} results.imeLanded
  * @param {string}  results.asrOutcome  from classifyImeAsrOutcome
  * @param {boolean} requireAgent        when true, engine must be up (committed/modelNotReady only)
@@ -344,10 +345,14 @@ export function summarizeLaneVerdict(results, requireAgent) {
     failures.push("assistant/IME surfaces not registered");
   if (!results.roleHeld) failures.push("assistant role not held by Eliza");
   if (!results.imeSelected) failures.push("Eliza IME not selected");
-  if (!results.assistLanded)
-    failures.push("assist invocation did not reach MainActivity");
+  if (!results.voiceinteractionLanded)
+    failures.push("cmd voiceinteraction show did not reach MainActivity");
+  if (!results.assistKeyLanded)
+    failures.push("KEYCODE_ASSIST did not reach MainActivity");
   if (!results.imeLanded)
     failures.push("IME invocation did not reach MainActivity");
+  if (results.asrOutcome === "unknown")
+    failures.push("IME ASR outcome was unknown");
   if (requireAgent && results.asrOutcome === "engineOff") {
     failures.push(
       "full engine required but ASR loopback was unreachable (ENGINE_OFF)",
