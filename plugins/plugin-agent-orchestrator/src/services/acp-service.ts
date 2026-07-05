@@ -17,9 +17,9 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
@@ -167,6 +167,24 @@ export function computeSessionWorkdir(
 ): string {
   return isolate ? resolve(base, `task-${sessionId}`) : resolve(base);
 }
+
+/**
+ * True iff `workdir` is a throwaway scratch dir AcpService itself created under
+ * its default temp root — a `task-<sessionId>` directory directly beneath
+ * DEFAULT_WORKDIR_ROOT (`$TMPDIR/eliza-acp`). This is the ownership guard for
+ * every destructive reclaim (teardown rm + startup GC): a self-checkout
+ * (`process.cwd()`), an explicit route/opt-in workdir, and a git-worktree
+ * workspace the service was handed all live elsewhere, so a reclaim keyed on
+ * this predicate can never delete a directory the service does not own. Pure +
+ * exported so the guarantee is unit-testable.
+ */
+export function isOwnedScratchDir(workdir: string): boolean {
+  const resolved = resolve(workdir);
+  return (
+    dirname(resolved) === resolve(DEFAULT_WORKDIR_ROOT) &&
+    basename(resolved).startsWith("task-")
+  );
+}
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
@@ -183,6 +201,13 @@ const ACP_MIDFLIGHT_SESSION_STATUSES: ReadonlySet<string> = new Set([
   "tool_running",
 ]);
 const ACP_STALE_LOCK_MAX_AGE_MS = 10 * 60_000;
+// Startup GC only reclaims an UNTRACKED `task-*` scratch dir (no owning session
+// in this instance's store) once it is older than this — a conservative floor
+// so a co-tenant AcpService sharing the same $TMPDIR/eliza-acp root never has
+// its live-but-idle scratch nuked. Dirs whose session IS terminal in this store
+// are unambiguously ours and reclaimed regardless of age. Overridable via
+// ELIZA_ACP_SCRATCH_GC_MAX_AGE_MS. 24h mirrors ACP_REVERSE_ORPHAN_MAX_AGE_MS.
+const ACP_SCRATCH_GC_MAX_AGE_MS = 24 * 60 * 60_000;
 // Untracked acpx stream files older than this get unlinked. Real spawns
 // finalize their store entry in seconds; 24h is grace for in-flight spawns.
 const ACP_REVERSE_ORPHAN_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -374,6 +399,7 @@ export class AcpService extends Service {
       defaultApprovalPreset: this.defaultApprovalPreset,
     });
     await this.reconcileOrphanedSessions();
+    await this.gcOrphanedScratchDirs();
     await this.cleanReverseOrphanedAcpxFiles();
     await this.cleanStaleLocks();
     this.healthCheckTimer = setInterval(() => {
@@ -560,6 +586,121 @@ export class AcpService extends Service {
         deleted,
         lingering,
         olderThanMs: ACP_REVERSE_ORPHAN_MAX_AGE_MS,
+      });
+    }
+  }
+
+  // Delete the per-session scratch dir spawnSession mkdir'd, but ONLY when it is
+  // one we own (a `task-<id>` dir under $TMPDIR/eliza-acp — see isOwnedScratchDir).
+  // A self-checkout cwd, a route/explicit workdir, or a handed-in git-worktree
+  // workspace is never touched. Best-effort: a failed rm on teardown must not
+  // block session close — the startup GC reclaims the dir on the next boot.
+  private async reclaimOwnedScratchDir(session: SessionInfo): Promise<void> {
+    if (!isOwnedScratchDir(session.workdir)) return;
+    try {
+      await rm(session.workdir, { recursive: true, force: true });
+      this.log("debug", "reclaimed session scratch dir", {
+        sessionId: session.id,
+        workdir: session.workdir,
+      });
+    } catch (err) {
+      // error-policy:J6 best-effort scratch reclaim on teardown; surface the
+      // failure so the leak is observable, then let the startup GC retry it.
+      this.log("warn", "failed to reclaim session scratch dir", {
+        sessionId: session.id,
+        workdir: session.workdir,
+        error: errorMessage(err),
+      });
+    }
+  }
+
+  // Reclaim `task-*` scratch dirs left under $TMPDIR/eliza-acp by sessions that
+  // never got a clean teardown — the SIGKILL-mid-run case that made this a
+  // 3.6TB-class leak (#13773). Runs once at startup, after reconcile has marked
+  // crashed orphans terminal, so a dir whose session is terminal in this store
+  // is reclaimed immediately; a live (non-terminal, possibly resumable) session
+  // keeps its workspace; an untracked dir is age-gated (co-tenant safety).
+  private async gcOrphanedScratchDirs(): Promise<void> {
+    const root = DEFAULT_WORKDIR_ROOT;
+    let entries: string[];
+    try {
+      entries = await readdir(root);
+    } catch {
+      // error-policy:J3 an absent scratch root is the expected empty shape →
+      // explicit zero-work result, not a masked read failure.
+      return;
+    }
+    const taskDirs = entries.filter((name) => name.startsWith("task-"));
+    if (taskDirs.length === 0) return;
+
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 store read failed; DATA-LOSS GUARD. A fabricated empty
+      // set would make every live session's scratch dir look orphaned and delete
+      // work out from under a running sub-agent. Surface and skip this pass; the
+      // next boot retries with real data.
+      this.runtime.reportError("AcpService.gcOrphanedScratchDirs", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "scratch GC: store read failed, skipping sweep", {
+        err,
+      });
+      return;
+    }
+    const sessionById = new Map(sessions.map((s) => [s.id, s] as const));
+    const maxAgeMs =
+      parsePositiveInt(this.setting("ELIZA_ACP_SCRATCH_GC_MAX_AGE_MS")) ??
+      ACP_SCRATCH_GC_MAX_AGE_MS;
+    const now = Date.now();
+    let reclaimed = 0;
+    let kept = 0;
+    await Promise.allSettled(
+      taskDirs.map(async (name) => {
+        const sessionId = name.slice("task-".length);
+        const session = sessionById.get(sessionId);
+        // A live (non-terminal) session is still using its workspace — never
+        // reclaim it; resumeOrphanedBusySessions may pick the work back up.
+        if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
+          kept++;
+          return;
+        }
+        const path = join(root, name);
+        // No owning session in THIS store: the dir may belong to a co-tenant
+        // AcpService sharing this tmp root, so gate removal on age. A dir whose
+        // session is terminal here is unambiguously ours → reclaim regardless.
+        if (!session) {
+          try {
+            const st = await stat(path);
+            if (now - st.mtimeMs <= maxAgeMs) {
+              kept++;
+              return;
+            }
+          } catch {
+            // error-policy:J6 vanished mid-scan — nothing left to reclaim.
+            return;
+          }
+        }
+        try {
+          await rm(path, { recursive: true, force: true });
+          reclaimed++;
+        } catch (err) {
+          // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
+          // the sweep continues and retries next boot.
+          this.log("warn", "scratch GC: failed to remove dir", {
+            path,
+            error: errorMessage(err),
+          });
+        }
+      }),
+    );
+    if (reclaimed > 0 || kept > 0) {
+      this.log("info", "reclaimed orphaned scratch dirs", {
+        reclaimed,
+        kept,
+        root,
+        olderThanMs: maxAgeMs,
       });
     }
   }
@@ -1112,6 +1253,7 @@ export class AcpService extends Service {
           this.nativeStoppingSessionIds.delete(sessionId);
         }
       }
+      await this.reclaimOwnedScratchDir(session);
       return;
     }
     await this.stopTrackedProcess(sessionId);
@@ -1137,6 +1279,7 @@ export class AcpService extends Service {
       sessionId,
       response: this.lastOutput(sessionId),
     });
+    await this.reclaimOwnedScratchDir(session);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
