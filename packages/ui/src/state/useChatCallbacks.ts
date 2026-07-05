@@ -32,6 +32,7 @@ import {
   isReservedLegacyChatTitle,
   normalizeConversationList,
 } from "./chat-conversation-guards";
+import { appendGreetingOnce } from "./greeting-dedupe";
 import type { AppState, LifecycleAction } from "./internal";
 import {
   type LoadConversationMessagesResult,
@@ -647,31 +648,24 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
             persisted: data.persisted === true,
           });
           if (stillActive) {
-            setConversationMessages((prev: ConversationMessage[]) => {
-              if (
-                prev.some(
-                  (message) =>
-                    message.role === "assistant" &&
-                    message.source === MESSAGE_SOURCE_AGENT_GREETING &&
-                    message.text === data.text,
-                )
-              ) {
-                return prev;
-              }
-              return [
-                ...prev,
-                {
-                  id: `greeting-${Date.now()}`,
-                  role: "assistant",
-                  text: data.text,
-                  timestamp: Date.now(),
-                  source: MESSAGE_SOURCE_AGENT_GREETING,
-                  ...(data.localInference
-                    ? { localInference: data.localInference }
-                    : {}),
-                },
-              ];
-            });
+            // Dedupe by SOURCE, not text: a create/fetch race can persist two
+            // random preset greetings with DIFFERENT text on the server, so a
+            // text-equality guard would let the second bubble through (the
+            // device-review duplicate-greeting defect). `appendGreetingOnce`
+            // keeps whatever greeting already seeded the thread and drops this
+            // late one, so the visible greeting never doubles or swaps.
+            setConversationMessages((prev: ConversationMessage[]) =>
+              appendGreetingOnce(prev, {
+                id: `greeting-${Date.now()}`,
+                role: "assistant",
+                text: data.text,
+                timestamp: Date.now(),
+                source: MESSAGE_SOURCE_AGENT_GREETING,
+                ...(data.localInference
+                  ? { localInference: data.localInference }
+                  : {}),
+              }),
+            );
             greetingFiredRef.current = true;
           }
           return stillActive;
