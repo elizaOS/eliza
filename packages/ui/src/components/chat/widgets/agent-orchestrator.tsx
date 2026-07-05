@@ -461,12 +461,14 @@ function AppRunsWidget({
   // effect run — the visibility-gated interval re-subscribes on every
   // foreground/background transition.
   const lastAppRunsKeyRef = useRef("");
+  const runsPollActiveRef = useRef(false);
 
   const refreshRuns = useCallback(async () => {
     if (!runsPollEnabled) return;
     try {
       const nextRuns = await client.listAppRuns();
       const nextRunsSafe = Array.isArray(nextRuns) ? nextRuns : [];
+      if (!runsPollActiveRef.current) return;
       setError(null);
       const nextKey = JSON.stringify(nextRunsSafe);
       const changed = nextKey !== lastAppRunsKeyRef.current;
@@ -477,6 +479,7 @@ function AppRunsWidget({
       });
     } catch (refreshError) {
       // error-policy:J4 load failure renders the widget's error state
+      if (!runsPollActiveRef.current) return;
       setError(
         getClientErrorMessage(
           refreshError,
@@ -486,7 +489,7 @@ function AppRunsWidget({
         ),
       );
     } finally {
-      setLoading(false);
+      if (runsPollActiveRef.current) setLoading(false);
     }
   }, [runsPollEnabled, setState, t]);
 
@@ -498,6 +501,7 @@ function AppRunsWidget({
       // guard — with any unstable dep this loops render→effect→render until
       // the worker OOMs (the #11107 WidgetHost test crash). Clear the change
       // key too so the first fetch after re-auth always repopulates AppContext.
+      runsPollActiveRef.current = false;
       lastAppRunsKeyRef.current = "";
       startTransition(() => {
         setRuns((prev) => (prev.length === 0 ? prev : []));
@@ -507,7 +511,11 @@ function AppRunsWidget({
       setLoading(false);
       return;
     }
+    runsPollActiveRef.current = true;
     void refreshRuns();
+    return () => {
+      runsPollActiveRef.current = false;
+    };
   }, [runsPollEnabled, refreshRuns, setState]);
 
   // Gate the recurring poll on document visibility so a backgrounded window
