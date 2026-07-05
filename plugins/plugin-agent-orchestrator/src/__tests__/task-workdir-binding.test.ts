@@ -136,6 +136,41 @@ describe("durable task→workdir binding (#13776)", () => {
       expect(acp.spawns.at(1)?.workdir).toBe(firstDir);
       const afterFollowUp = await store.getTask(taskId);
       expect(afterFollowUp?.task.boundWorkdir).toBe(firstDir);
+      process.env.ELIZA_ACP_WORKSPACE_ROOT = tmpRoot;
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
+  });
+
+  it("does not let a stale first-spawn binding overwrite an earlier successful binding", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const acp = makeWorkdirCapturingAcp();
+    const service = new OrchestratorTaskService(makeRuntime(acp.service), {
+      store,
+    });
+    await service.start();
+    try {
+      const taskId = await seedTask(store);
+      const stale = (await store.getTask(taskId))?.task;
+      expect(stale).toBeTruthy();
+      if (!stale) throw new Error("seeded task was not persisted");
+      const bindTaskWorkdir = (
+        service as unknown as {
+          bindTaskWorkdir: (
+            taskId: string,
+            current: typeof stale,
+            workdir: string,
+            repo: string | undefined,
+          ) => Promise<void>;
+        }
+      ).bindTaskWorkdir.bind(service);
+
+      await bindTaskWorkdir(taskId, stale, overrideDir, undefined);
+      await bindTaskWorkdir(taskId, stale, firstDir, undefined);
+
+      expect((await store.getTask(taskId))?.task.boundWorkdir).toBe(
+        overrideDir,
+      );
     } finally {
       await service.stop().catch(() => undefined);
     }

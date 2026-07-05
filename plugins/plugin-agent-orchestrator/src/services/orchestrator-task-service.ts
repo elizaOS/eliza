@@ -270,11 +270,12 @@ export interface SpawnAgentForTaskOptions {
   nestingDepth?: number;
 }
 
-/** Descriptor for an already-spawned ACP session that we want to bind to an
- *  existing task thread. Only what the attach path genuinely needs — identity,
- *  workdir + status from the spawn, and the caller's context that isn't
- *  discoverable from the SpawnResult (originalTask, model, providerSource,
- *  repo). See {@link OrchestratorTaskService.attachSession}. */
+/**
+ * Descriptor for an already-spawned ACP session that we want to bind to an
+ * existing task thread. Only what the attach path genuinely needs: identity,
+ * workdir and status from the spawn, plus caller context that is not
+ * discoverable from the SpawnResult.
+ */
 export interface AttachSessionInput {
   sessionId: string;
   agentType: string;
@@ -678,6 +679,7 @@ export class OrchestratorTaskService extends Service {
   protected override readonly runtime: RuntimeLike;
   private readonly store: OrchestratorTaskStore;
   private readonly sessionTaskIndex = new Map<string, string>();
+  private readonly taskWorkdirBindQueues = new Map<string, Promise<void>>();
   // Session ids whose event-recording has already logged a failure. A
   // degraded store (e.g. #11641's pglite lookup) would otherwise re-warn on
   // EVERY session event (`ready`, `tool_running`, ...) forever — one line per
@@ -3361,7 +3363,12 @@ export class OrchestratorTaskService extends Service {
       // Pin (or re-pin, on explicit override) the durable workdir/repo binding
       // from the workdir the session actually landed in, so subsequent
       // follow-up spawns of this task reuse it deterministically (#13776).
-      await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo);
+      await this.bindTaskWorkdir(taskId, doc.task, result.workdir, opts.repo, {
+        allowRebind:
+          Boolean(opts.workdir) &&
+          Boolean(doc.task.boundWorkdir) &&
+          doc.task.boundWorkdir !== result.workdir,
+      });
       await this.advanceTaskStatus(taskId, "session_active");
       return this.getTask(taskId);
     } catch (err) {
@@ -3408,15 +3415,34 @@ export class OrchestratorTaskService extends Service {
     current: OrchestratorTaskRecord,
     workdir: string | undefined,
     repo: string | undefined,
+    opts: { allowRebind?: boolean } = {},
   ): Promise<void> {
     if (!workdir) return;
-    const patch: Partial<OrchestratorTaskRecord> = {};
-    const workdirChanged = current.boundWorkdir !== workdir;
-    if (workdirChanged) patch.boundWorkdir = workdir;
-    if (repo && current.boundRepo !== repo) patch.boundRepo = repo;
-    else if (workdirChanged && current.boundRepo) patch.boundRepo = null;
-    if (Object.keys(patch).length === 0) return;
-    await this.store.updateTask(taskId, patch);
+    const previous =
+      this.taskWorkdirBindQueues.get(taskId)?.catch(() => undefined) ??
+      Promise.resolve();
+    const next = previous.then(async () => {
+      const latest = (await this.store.getTask(taskId))?.task ?? current;
+      const canSetWorkdir = !latest.boundWorkdir || opts.allowRebind === true;
+      const patch: Partial<OrchestratorTaskRecord> = {};
+      const workdirChanged = latest.boundWorkdir !== workdir;
+      if (canSetWorkdir && workdirChanged) patch.boundWorkdir = workdir;
+      if (canSetWorkdir && repo && latest.boundRepo !== repo) {
+        patch.boundRepo = repo;
+      } else if (canSetWorkdir && workdirChanged && latest.boundRepo) {
+        patch.boundRepo = null;
+      }
+      if (Object.keys(patch).length === 0) return;
+      await this.store.updateTask(taskId, patch);
+    });
+    this.taskWorkdirBindQueues.set(taskId, next);
+    try {
+      await next;
+    } finally {
+      if (this.taskWorkdirBindQueues.get(taskId) === next) {
+        this.taskWorkdirBindQueues.delete(taskId);
+      }
+    }
   }
 
   /**
@@ -3501,7 +3527,11 @@ export class OrchestratorTaskService extends Service {
     this.sessionTaskIndex.set(input.sessionId, taskId);
     // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
     // this task reuse it instead of re-resolving from routing env (#13776).
-    await this.bindTaskWorkdir(taskId, doc.task, input.workdir, input.repo);
+    await this.bindTaskWorkdir(taskId, doc.task, input.workdir, input.repo, {
+      allowRebind:
+        Boolean(doc.task.boundWorkdir) &&
+        doc.task.boundWorkdir !== input.workdir,
+    });
     // Only claim liveness if the session actually is live — a terminal-on-
     // arrival session (chat action's runPromptAndClose already stopped it) gets
     // indexed for history + future token attribution without falsely promoting
