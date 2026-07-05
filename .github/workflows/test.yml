@@ -79,7 +79,12 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs
 
+      - name: Install alias-read guard parser dependency
+        run: npm install --prefix "$RUNNER_TEMP/alias-read-guard-deps" --no-save --no-package-lock --ignore-scripts typescript@6.0.3
+
       - name: Validate brand-env alias-read guard self-test
+        env:
+          NODE_PATH: ${{ runner.temp }}/alias-read-guard-deps/node_modules
         run: node packages/scripts/alias-read-guard.mjs --self-test
 
       - name: Validate merge-gate robustness contract self-test
