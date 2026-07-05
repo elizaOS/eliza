@@ -528,13 +528,17 @@ $bmp.Dispose()`;
     this.frameCaptureActive = true;
 
     if (options?.gameUrl) {
-      return this.startGameCapture(
+      const result = await this.startGameCapture(
         options.gameUrl,
         fps,
         quality,
         endpoint,
         interval,
       );
+      if (!result.available) {
+        this.frameCaptureActive = false;
+      }
+      return result;
     }
 
     return this.startWebviewCapture(fps, quality, endpoint, interval);

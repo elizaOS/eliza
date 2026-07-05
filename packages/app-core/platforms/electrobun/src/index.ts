@@ -2100,7 +2100,9 @@ async function setupUpdater(): Promise<void> {
       return false;
     };
 
-    const handleAppEntryMenuAction = (action: string | undefined): boolean => {
+    const handleAppEntryMenuAction = async (
+      action: string | undefined,
+    ): Promise<boolean> => {
       if (!action?.startsWith("apps:") && !action?.startsWith("tray-app-")) {
         return false;
       }
@@ -2110,7 +2112,7 @@ async function setupUpdater(): Promise<void> {
       const entry = findAppMenuEntryBySlug(slug);
       if (!entry) return true;
       if (entry.hasDetailsPage) {
-        void restoreWindow();
+        await restoreWindow();
         sendToActiveRenderer("desktopAppDetailsRequested", {
           slug: entry.slug,
         });
@@ -2179,7 +2181,7 @@ async function setupUpdater(): Promise<void> {
       if (handleSettingsMenuAction(action)) return;
       if (handleSurfaceMenuAction(action)) return;
       if (handleStewardMenuAction(action)) return;
-      if (handleAppEntryMenuAction(action)) return;
+      if (await handleAppEntryMenuAction(action)) return;
       handleRuntimeMenuAction(action);
     };
 
@@ -2240,7 +2242,7 @@ async function handleDeepLink(url: string): Promise<void> {
       // review screen instead of a direct window so deep links and clicks
       // produce identical UX.
       if (entry.hasDetailsPage) {
-        void restoreWindow();
+        await restoreWindow();
         sendToActiveRenderer("desktopAppDetailsRequested", {
           slug: entry.slug,
         });
