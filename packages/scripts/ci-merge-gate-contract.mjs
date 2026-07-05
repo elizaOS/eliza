@@ -21,10 +21,11 @@
  *
  *   3. `ci-ok` needs the hosted quality gate. The merge queue's sole required
  *      context is `ci-ok`; before #13617 it needed only test lanes, so a lint /
- *      format / typecheck / secret regression (all required on `main`) could
- *      merge to develop. `ci-ok` must need `merge-quality-gate`, and that job
- *      must run lint + format:check + typecheck + a gitleaks secret scan on a
- *      hosted runner so it gates regardless of fleet health.
+ *      format / typecheck / stale-base / secret regression (all required on
+ *      `main`) could merge to develop. `ci-ok` must need `merge-quality-gate`,
+ *      and that job must run lint + format:check + typecheck + stale-base +
+ *      a gitleaks secret scan on a hosted runner so it gates regardless of
+ *      fleet health.
  *
  * Text-scans the workflow YAML (no yaml dependency, matching the sibling
  * ci-*-contract.mjs scripts). `--self-test` proves the checker against synthetic
@@ -81,19 +82,21 @@ function bareSelfHostedLines(text) {
 /** The `needs:` block for a named job as a set of job ids. */
 function jobNeeds(text, jobId) {
   const lines = text.split(/\r?\n/);
-  const header = lines.findIndex((l) => new RegExp(`^  ${jobId}:\\s*$`).test(l));
+  const header = lines.findIndex((l) =>
+    new RegExp(`^  ${jobId}:\\s*$`).test(l),
+  );
   if (header < 0) return null;
   const needs = new Set();
   let inNeeds = false;
   for (let i = header + 1; i < lines.length; i += 1) {
     const line = lines[i];
-    if (/^  \S/.test(line)) break; // next top-level job
-    if (/^    needs:\s*$/.test(line)) {
+    if (/^ {2}\S/.test(line)) break; // next top-level job
+    if (/^ {4}needs:\s*$/.test(line)) {
       inNeeds = true;
       continue;
     }
     if (inNeeds) {
-      const m = line.match(/^      - (\S+)\s*$/);
+      const m = line.match(/^ {6}- (\S+)\s*$/);
       if (m) {
         needs.add(m[1]);
         continue;
@@ -107,11 +110,13 @@ function jobNeeds(text, jobId) {
 /** The raw body of a named job (its lines up to the next top-level job). */
 function jobBody(text, jobId) {
   const lines = text.split(/\r?\n/);
-  const header = lines.findIndex((l) => new RegExp(`^  ${jobId}:\\s*$`).test(l));
+  const header = lines.findIndex((l) =>
+    new RegExp(`^  ${jobId}:\\s*$`).test(l),
+  );
   if (header < 0) return null;
   const body = [];
   for (let i = header + 1; i < lines.length; i += 1) {
-    if (/^  \S/.test(lines[i])) break;
+    if (/^ {2}\S/.test(lines[i])) break;
     body.push(lines[i]);
   }
   return body.join("\n");
@@ -163,7 +168,15 @@ function checkWorkflowText(fileName, text, problems) {
         { label: "lint", pattern: /bun run lint\b/ },
         { label: "format:check", pattern: /bun run format:check\b/ },
         { label: "typecheck", pattern: /bun run typecheck\b/ },
+        {
+          label: "stale-base guard",
+          pattern: /stale-base-guard\.mjs[\s\S]*--merge-base/,
+        },
         { label: "gitleaks secret scan", pattern: /gitleaks detect\b/ },
+        {
+          label: "merge-commit gitleaks patch scan",
+          pattern: /--log-opts "-m -p -1 \$\{CURRENT_SHA\}"/,
+        },
       ];
       for (const { label, pattern } of required) {
         if (!pattern.test(gate)) {
@@ -210,7 +223,8 @@ function selfTest() {
       - run: bun run lint
       - run: bun run format:check
       - run: bun run typecheck
-      - run: gitleaks detect --source .
+      - run: node packages/scripts/stale-base-guard.mjs --base "$BASE_SHA" --head "$CURRENT_SHA" --merge-base "$BASE_SHA"
+      - run: gitleaks detect --source . --log-opts "-m -p -1 \${CURRENT_SHA}"
   ci-ok:
     name: ci-ok
     needs:
@@ -229,7 +243,10 @@ function selfTest() {
   const badCases = [
     {
       name: "self-hosted classifier",
-      text: good.replace("runs-on: ubuntu-24.04\n    timeout-minutes", "runs-on: [self-hosted, hetzner-robot]\n    timeout-minutes"),
+      text: good.replace(
+        "runs-on: ubuntu-24.04\n    timeout-minutes",
+        "runs-on: [self-hosted, hetzner-robot]\n    timeout-minutes",
+      ),
     },
     {
       name: "bare self-hosted lane",
@@ -248,7 +265,18 @@ function selfTest() {
     },
     {
       name: "gate missing secret scan",
-      text: good.replace("      - run: gitleaks detect --source .\n", ""),
+      text: good.replace(/^ {6}- run: gitleaks detect .*\n/m, ""),
+    },
+    {
+      name: "gate missing stale-base guard",
+      text: good.replace(
+        '      - run: node packages/scripts/stale-base-guard.mjs --base "$BASE_SHA" --head "$CURRENT_SHA" --merge-base "$BASE_SHA"\n',
+        "",
+      ),
+    },
+    {
+      name: "gate gitleaks missing merge-commit patch mode",
+      text: good.replace(/--log-opts "-m -p -1 \$\{CURRENT_SHA\}"/, ""),
     },
   ];
   for (const { name, text } of badCases) {
@@ -258,7 +286,7 @@ function selfTest() {
       throw new Error(`self-test: invalid fixture '${name}' was not caught`);
     }
   }
-  console.log("ci-merge-gate-contract self-test: 6 cases passed");
+  console.log("ci-merge-gate-contract self-test: 8 cases passed");
 }
 
 function main() {

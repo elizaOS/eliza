@@ -4,9 +4,9 @@
 
 `.github/workflows/`:
 - **test.yml** — added hosted `merge-quality-gate` (lint + `format:check` +
-  repo-wide `typecheck` + gitleaks secret scan), made `ci-ok` need it; gave every
-  self-hosted lane the `HETZNER_FLEET_ONLINE` fleet-drain fallback; wired the new
-  contract self-test + check into the `changes` job.
+  repo-wide `typecheck` + stale-base guard + gitleaks secret scan), made `ci-ok`
+  need it; gave every self-hosted lane the `HETZNER_FLEET_ONLINE` fleet-drain
+  fallback; wired the new contract self-test + check into the `changes` job.
 - **scenario-pr / dev-smoke / docker-ci-smoke / mobile-build-smoke /
   windows-dev-smoke / windows-desktop-preload-smoke** — `Classify changed paths`
   classifier moved from `[self-hosted, hetzner-robot]` to `ubuntu-24.04` + timeout.
@@ -38,7 +38,7 @@ this environment. The full code path (hosted conclusion spine + toggle) is
 implemented and machine-verified by the contract; the drain itself is the one
 execution leg left to an operator.
 
-## Acceptance criterion 2 — lint + type + secret PR is refused
+## Acceptance criterion 2 — lint + type + stale-base + secret PR is refused
 
 Ran the exact tools `merge-quality-gate` invokes against deliberate violations:
 
@@ -56,16 +56,28 @@ proves it is not a blanket-fail. (`ghp_…`/`sk_live_…` are non-allowlisted to
 formats; the `AKIA…EXAMPLE` keys gitleaks ships as allowlisted did *not* trip it,
 confirming the repo's `.gitleaks.toml` allowlist is honored.)
 
+The merge-group gitleaks range now uses merge-commit patch mode. Local proof on
+a synthetic merge commit:
+
+```
+normal_has_secret=false
+merge_patch_has_secret=true
+```
+
+That demonstrates why plain `git log -p -1 <merge>` was insufficient and why
+`git log -m -p -1 <merge>` is required for queued merge commits.
+
 ## Contract self-test
 
 ```
-ci-merge-gate-contract self-test: 6 cases passed
+ci-merge-gate-contract self-test: 8 cases passed
 ci-merge-gate-contract: classifiers hosted, fleet-drain fallback present, ci-ok enforces the hosted quality gate.
 ```
 
-The self-test proves a valid fixture passes and each of 5 broken fixtures
+The self-test proves a valid fixture passes and each of 7 broken fixtures
 (self-hosted classifier, bare self-hosted lane, `ci-ok` missing the gate, gate
-missing typecheck, gate missing the secret scan) is caught.
+missing typecheck, gate missing the stale-base guard, gate missing the secret
+scan, gate secret scan missing merge-commit patch mode) is caught.
 
 ## N/A
 - UI screenshots / video / real-LLM trajectories / audio: no rendered UI, agent,

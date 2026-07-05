@@ -1307,6 +1307,27 @@ jobs:
       - name: Repo-wide typecheck
         run: bun run typecheck
 
+      - name: Stale base guard
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "${CURRENT_SHA}^" >/dev/null 2>&1; then
+            BASE_SHA="$(git rev-parse "${CURRENT_SHA}^1")"
+            node packages/scripts/stale-base-guard.self-test.mjs
+            node packages/scripts/stale-base-guard.mjs \
+              --base "$BASE_SHA" \
+              --head "$CURRENT_SHA" \
+              --merge-base "$BASE_SHA" \
+              --window 1200 \
+              --max-behind-commits 200 \
+              --max-behind-hours 72 \
+              --github \
+              --summary "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::notice::Current SHA has no parent; stale-base guard has no target branch parent to compare."
+          fi
+
       - name: Install gitleaks (OSS binary — no license required)
         run: |
           set -euo pipefail
@@ -1326,11 +1347,18 @@ jobs:
           set -euo pipefail
           # Scan the queue/tip commit only. New content is what the merge
           # introduces; a full-history re-scan re-flags long-known vendored
-          # artifacts (see gitleaks.yml for the same rationale).
-          if git rev-parse -q --verify "${CURRENT_SHA}^" >/dev/null 2>&1; then
+          # artifacts (see gitleaks.yml for the same rationale). Merge queue
+          # SHAs are merge commits, and `git log -p -1 <merge>` emits no patch
+          # by default, so use `-m -p` whenever the tip has multiple parents.
+          parent_count="$(git rev-list --parents -n 1 "$CURRENT_SHA" | wc -w | tr -d ' ')"
+          if [ "$parent_count" -gt 2 ]; then
+            RANGE_ARGS=(--log-opts "-m -p -1 ${CURRENT_SHA}")
+          elif [ "$parent_count" -eq 2 ]; then
             RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
           else
-            RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
+            echo "gitleaks: tip ${CURRENT_SHA} is an orphan/root baseline commit (no parent);"
+            echo "its content was already scanned incrementally on develop. Skipping full-tree re-scan."
+            exit 0
           fi
           gitleaks detect \
             --config .gitleaks.toml \
