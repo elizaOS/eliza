@@ -6,7 +6,11 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  assertSharedViewHeader,
+  VIEW_HEADER_TESTID,
+} from "../../../ui/src/components/shared/view-header-audit";
 import {
   type AestheticMetricBudget,
   type AestheticVerdictDebt,
@@ -142,6 +146,34 @@ interface AuditCase {
   path: string;
   viewType: "gui" | "tui";
   kind: "builtin" | "plugin";
+  headerPolicy: AuditHeaderPolicy;
+}
+
+type AuditHeaderPolicy = "normal" | "fullscreen" | "modal" | "immersive";
+
+// Until the app-shell registry carries headerPolicy through to this Playwright
+// fixture, keep the real-audit policy explicit. Header-backed routes are normal;
+// native/full-window surfaces own their chrome and are exempt.
+const NORMAL_BUILTIN_VIEW_SLUGS = new Set([
+  "builtin-character",
+  "builtin-documents",
+  "builtin-character-skills",
+  "builtin-experience",
+  "builtin-transcripts",
+  "builtin-relationships",
+  "builtin-memories",
+  "builtin-settings",
+  "builtin-help",
+]);
+
+function resolveAuditHeaderPolicy({
+  slug,
+  kind,
+  viewType,
+}: Pick<AuditCase, "slug" | "kind" | "viewType">): AuditHeaderPolicy {
+  if (viewType === "tui") return "fullscreen";
+  if (kind === "plugin") return "fullscreen";
+  return NORMAL_BUILTIN_VIEW_SLUGS.has(slug) ? "normal" : "fullscreen";
 }
 
 function buildAuditCases(): AuditCase[] {
@@ -152,6 +184,11 @@ function buildAuditCases(): AuditCase[] {
       path: viewPath,
       viewType: "gui",
       kind: "builtin",
+      headerPolicy: resolveAuditHeaderPolicy({
+        slug: `builtin-${id}`,
+        viewType: "gui",
+        kind: "builtin",
+      }),
     });
   }
   for (const view of VIEW_CASES) {
@@ -160,6 +197,11 @@ function buildAuditCases(): AuditCase[] {
       path: view.path,
       viewType: view.viewType,
       kind: "plugin",
+      headerPolicy: resolveAuditHeaderPolicy({
+        slug: `plugin-${view.id}-${view.viewType}`,
+        viewType: view.viewType,
+        kind: "plugin",
+      }),
     });
   }
   return cases;
@@ -307,6 +349,7 @@ interface ViewFinding {
   /** Buttons the hover probe could not drive (hover timeout / detach) — a
    * harness failure surfaced as a finding, not silently swallowed. */
   hoverFailures: string[];
+  sharedHeaderAuditFailures: string[];
   borderRadiusViolations: string[];
   overlayPresent: boolean;
   overlayClearanceIssues: string[];
@@ -330,6 +373,46 @@ interface ViewFinding {
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
+}
+
+function rootForSharedHeaderResult(hasSharedHeader: boolean): ParentNode {
+  return {
+    querySelector(selector: string): Element | null {
+      if (
+        hasSharedHeader &&
+        selector === `[data-testid="${VIEW_HEADER_TESTID}"]`
+      ) {
+        return {} as Element;
+      }
+      return null;
+    },
+  } as ParentNode;
+}
+
+async function collectSharedHeaderAuditFailures(
+  viewRoot: Locator,
+  view: AuditCase,
+): Promise<string[]> {
+  const hasSharedHeader =
+    (await viewRoot
+      .locator(`[data-testid="${VIEW_HEADER_TESTID}"]`)
+      .count()
+      .catch(() => 0)) > 0;
+
+  try {
+    assertSharedViewHeader({
+      viewId: view.slug,
+      headerPolicy: view.headerPolicy,
+      root: rootForSharedHeaderResult(hasSharedHeader),
+    });
+    return [];
+  } catch (error) {
+    return [
+      (error instanceof Error ? error.message : String(error))
+        .split("\n")[0]
+        .slice(0, 240),
+    ];
+  }
 }
 
 /**
@@ -849,6 +932,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
     `- **hover probe failures:** ${finding.hoverFailures.length ? finding.hoverFailures.join("; ") : "none"}`,
+    `- **shared ViewHeader audit:** ${finding.sharedHeaderAuditFailures.length ? finding.sharedHeaderAuditFailures.join("; ") : "pass"}`,
     `- **density probe failures:** ${finding.densityProbeFailures.length ? finding.densityProbeFailures.join("; ") : "none"}`,
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
@@ -1067,6 +1151,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const borderRadiusViolations = await collectBorderRadiusViolations(
           page,
         ).catch(() => []);
+        const sharedHeaderAuditFailures =
+          await collectSharedHeaderAuditFailures(viewRoot, view);
         const overlayClearanceIssues = overlayPresent
           ? await collectOverlayClearanceIssues(page, overlaySelector).catch(
               () => [],
@@ -1107,6 +1193,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           blueColors,
           hoverViolations,
           hoverFailures,
+          sharedHeaderAuditFailures,
           borderRadiusViolations,
           overlayPresent,
           overlayClearanceIssues,
@@ -1148,6 +1235,10 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           pageErrors,
           `${view.slug} ${vp.name} must not throw an uncaught page error`,
         ).toEqual([]);
+        expect(
+          sharedHeaderAuditFailures,
+          `${view.slug} ${vp.name} normal views must render the shared ViewHeader`,
+        ).toEqual([]);
       });
     }
   }
@@ -1166,6 +1257,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           `<td>${f.consoleErrors.length}</td><td>${f.blueColors.length}</td>` +
           `<td>${f.borderRadiusViolations.length}</td>` +
           `<td>${f.hoverViolations.length}${f.hoverFailures.length ? ` (+${f.hoverFailures.length} probe-failed)` : ""}</td><td>${f.overlayPresent ? "✓" : "✗"}</td>` +
+          `<td>${f.sharedHeaderAuditFailures.length ? f.sharedHeaderAuditFailures.join("<br>") : "✓"}</td>` +
           `<td>${f.overlayClearanceIssues.length}</td>` +
           `<td>${roundMetric(f.borderDividerDensity)}</td>` +
           `<td>${roundMetric(f.textDensity)}</td>` +
@@ -1179,7 +1271,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       `<!doctype html><meta charset="utf-8"><title>app aesthetic audit</title>` +
         `<table border="1" cellpadding="6"><tr><th>view</th><th>viewport</th>` +
         `<th>verdict</th><th>console</th><th>blue</th><th>radius</th><th>hover</th>` +
-        `<th>overlay</th><th>overlay clearance</th><th>border/divider density</th>` +
+        `<th>overlay</th><th>shared header</th><th>overlay clearance</th><th>border/divider density</th>` +
         `<th>text density</th><th>whitespace ratio</th><th>minimalism budget</th>` +
         `<th>minimalism ratchet</th></tr>` +
         `${rows}</table>`,
