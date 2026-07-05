@@ -48,6 +48,7 @@ import type {
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
@@ -3616,7 +3617,7 @@ export async function startApiServer(opts?: {
   // of 2138, so this change is transparent for non-desktop users.
   const port =
     opts?.port ??
-    (process.env.ELIZA_API_PORT
+    (readAliasedEnv("ELIZA_API_PORT")
       ? resolveDesktopApiPort(process.env)
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
@@ -4064,7 +4065,7 @@ export async function startApiServer(opts?: {
   const requestTimeoutEnvRaw =
     process.env.ELIZA_HTTP_REQUEST_TIMEOUT_MS?.trim() ?? "";
   const chatTimeoutEnvRaw =
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ?? "";
+    readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS") ?? "";
   const requestTimeoutMs = (() => {
     const explicit = Number.parseInt(requestTimeoutEnvRaw, 10);
     if (Number.isFinite(explicit) && explicit > 0) return explicit;

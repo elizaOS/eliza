@@ -4,6 +4,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { readAliasedEnv } from "@elizaos/shared";
 import type {
   WalletExportRejection,
   WalletExportRequestBody,
@@ -34,7 +35,7 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  const expected = readAliasedEnv("ELIZA_WALLET_EXPORT_TOKEN");
   if (!expected) {
     return {
       status: 403,

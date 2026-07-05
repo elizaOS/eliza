@@ -44,6 +44,7 @@ import {
   extractAssistantReplyText,
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
+  readAliasedEnv,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -1328,7 +1329,7 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
     return Math.max(1, Math.floor(explicit));
   }
 
-  const fromEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
+  const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
   if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
 
   const parsed = Number.parseInt(fromEnv, 10);
