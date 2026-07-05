@@ -86,3 +86,5 @@ export * from "./wallet-rpc.ts";
 export * from "./wallet-trading-profile.ts";
 export * from "./workbench-vfs-routes.ts";
 export * from "./zip-utils.ts";
+
+export * from "./conversation-restore.ts";

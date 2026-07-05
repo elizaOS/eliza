@@ -1,0 +1,55 @@
+ Info       [Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] DatabaseMigrationService initialized
+ Info       [PLUGIN:SQL] Plugin schemas discovered (schemasDiscovered=1, totalPlugins=2)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=1, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+ Info       [PLUGIN:SQL] Migration system initialized
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr7bt0ml)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=1)
+ Warn       [PLUGIN:SQL] [MessageSearch] pg_trgm unavailable; trigram acceleration disabled (FTS still active) (error=Failed query: CREATE EXTENSION IF NOT EXISTS pg_trgm
+ Info       [PLUGIN:SQL] [MessageSearch] full-text search objects applied (trigramAvailable=false)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ Warn       [PLUGIN:SQL] Ignoring non-UUID message/server identifier for world (serverId=test-server)
+ ✓ src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores a persisted conversation from DB truth after a relaunch and the marker message survives 16ms
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Initializing migration system
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Migration system initialized
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] DatabaseMigrationService initialized
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Plugin schemas discovered (schemasDiscovered=1, totalPlugins=2)
+ Info       [PLUGIN:SQL] Starting migrations (environment=DEVELOPMENT, pluginCount=1, dryRun=false)
+ Info       [PLUGIN:SQL] Starting migration for plugin (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] Initializing migration system
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Migration system initialized
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Executing SQL statements (pluginName=@elizaos/plugin-sql, statementCount=167)
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Recorded migration (pluginName=@elizaos/plugin-sql, tag=0000_@elizaos/plugin-sql_mr7bt1np)
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Migration completed successfully (pluginName=@elizaos/plugin-sql)
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Migration completed (pluginName=@elizaos/plugin-sql)
+ Info       [PLUGIN:SQL] All migrations completed successfully (successCount=1)
+stderr | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Warn       [PLUGIN:SQL] [MessageSearch] pg_trgm unavailable; trigram acceleration disabled (FTS still active) (error=Failed query: CREATE EXTENSION IF NOT EXISTS pg_trgm
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] [MessageSearch] full-text search objects applied (trigramAvailable=false)
+stdout | src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication)
+ Info       [PLUGIN:SQL] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)
+ ✓ src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > restores nothing into a fresh registry when no web-chat rooms are persisted (no fabrication) 1444ms
+ ✓ src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > ignores non-web-chat rooms and does not duplicate an already-loaded conversation 12ms
+ ✓ src/api/conversation-restore-relaunch.test.ts > web-chat conversation relaunch persistence — real DB (#13689) > never resurrects a conversation the operator deleted this session 6ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)

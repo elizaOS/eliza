@@ -38,9 +38,7 @@ import {
   ServiceType,
   sendJson,
   sendJsonError,
-  stringToUuid,
   tryHandleTrajectoryReadRoutes,
-  type UUID,
 } from "@elizaos/core";
 import type {
   AppManagerLike,
@@ -415,9 +413,9 @@ import {
   resolveMirroredAvatarPresetId,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
+import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import {
   createConnectorHealthMonitor,
-  extractConversationMetadataFromRoom,
   handleAccountsRoutes,
   handleAgentAdminRoutes,
   handleAgentLifecycleRoutes,
@@ -5147,72 +5145,19 @@ export async function startApiServer(opts?: {
   const statusInterval = setInterval(broadcastStatus, 5000);
 
   /**
-   * Restore the in-memory conversation list from the database.
-   * Web-chat rooms live in a deterministic world; we scan it for rooms
-   * whose channelId starts with "web-conv-" and reconstruct the metadata.
+   * Restore the in-memory conversation list from the database. The scan/rebuild
+   * logic lives in `./conversation-restore.ts` so the relaunch round-trip can be
+   * driven against a real DB in tests (#13689); here we just bind it to this
+   * server's live `state` + structured log sink.
    */
   const restoreConversationsFromDb = async (
     rt: AgentRuntime,
   ): Promise<void> => {
-    try {
-      const agentName = rt.character.name ?? "Eliza";
-      const worldId = stringToUuid(`${agentName}-web-chat-world`);
-      const rooms = await rt.getRoomsByWorld(worldId);
-      if (!rooms.length) return;
-
-      let restored = 0;
-      for (const room of rooms) {
-        // channelId is "web-conv-{uuid}" — extract the conversation id
-        const channelId =
-          typeof room.channelId === "string" ? room.channelId : "";
-        if (!channelId.startsWith("web-conv-")) continue;
-        const convId = channelId.replace("web-conv-", "");
-        if (!convId || state.conversations.has(convId)) continue;
-        if (state.deletedConversationIds.has(convId)) continue;
-
-        // Peek at the latest message to get a timestamp
-        let updatedAt = new Date().toISOString();
-        try {
-          const msgs = await rt.getMemories({
-            roomId: room.id as UUID,
-            tableName: "messages",
-            limit: 1,
-          });
-          if (msgs.length > 0 && msgs[0].createdAt) {
-            updatedAt = new Date(msgs[0].createdAt).toISOString();
-          }
-        } catch {
-          // non-fatal — use current time
-        }
-
-        const conversationMetadata = await extractConversationMetadataFromRoom(
-          room,
-          convId,
-        );
-
-        state.conversations.set(convId, {
-          id: convId,
-          title: room.name || "Chat",
-          roomId: room.id as UUID,
-          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
-          createdAt: updatedAt,
-          updatedAt,
-        });
-        restored++;
-      }
-      if (restored > 0) {
-        addLog(
-          "info",
-          `Restored ${restored} conversation(s) from database`,
-          "system",
-          ["system"],
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        `[eliza-api] Failed to restore conversations from DB: ${err instanceof Error ? err.message : err}`,
-      );
-    }
+    await restoreConversationsFromDbImpl(rt, {
+      conversations: state.conversations,
+      deletedConversationIds: state.deletedConversationIds,
+      log: (message) => addLog("info", message, "system", ["system"]),
+    });
   };
 
   const beginConversationRestore = (rt: AgentRuntime): Promise<void> => {
