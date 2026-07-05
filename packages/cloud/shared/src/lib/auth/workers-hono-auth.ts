@@ -13,6 +13,7 @@
  * NOT from `@/lib/auth`, which still pulls Next.
  */
 
+import { getCookie } from "hono/cookie";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
@@ -126,7 +127,7 @@ function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
 async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> {
   if (c.env.PLAYWRIGHT_TEST_AUTH !== "true") return null;
 
-  const token = readCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
+  const token = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
   if (!token) return null;
 
   const claims = verifyPlaywrightTestSessionToken(token, testAuthEnv(c.env));
