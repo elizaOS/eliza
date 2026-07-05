@@ -222,6 +222,7 @@ function simctl(device, args) {
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   } catch {
+    // error-policy:J3 optional simulator probes convert unavailable tools/domains into a typed empty readback.
     return "";
   }
 }
@@ -235,6 +236,7 @@ function bootedIosDevice() {
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
   } catch {
+    // error-policy:J3 absent xcrun or no booted simulator means the live-only assertion is invalid for this host.
     return null;
   }
   let udid = null;
@@ -250,6 +252,7 @@ function bootedIosDevice() {
       if (udid) break;
     }
   } catch {
+    // error-policy:J3 malformed simctl output is an invalid optional live-probe result, not a contract-test failure.
     return null;
   }
   if (!udid) return null;
@@ -266,6 +269,7 @@ function tryAppContainer(device, appId) {
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     ).trim();
   } catch {
+    // error-policy:J3 missing installed app makes the live simulator store probe inapplicable on this host.
     return "";
   }
 }
