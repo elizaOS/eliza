@@ -108,6 +108,9 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
       },
     });
   } catch (error) {
+    // error-policy:J1 outermost route boundary — translate any thrown error
+    // (auth, pricing lookup, fetch/transport) into a structured client failure
+    // response; never fabricates a success/empty result from the failure.
     return failureResponse(c, error);
   }
 }

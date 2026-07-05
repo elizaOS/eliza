@@ -132,6 +132,10 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
       },
     });
   } catch (error) {
+    // error-policy:J1 route boundary — translate any handler throw (auth
+    // rejection, pricing lookup, upstream fetch) into a structured failure
+    // response for the client. No success is fabricated: failureResponse emits
+    // { success: false, error, code } with an inferred 4xx/5xx status.
     return failureResponse(c, error);
   }
 }

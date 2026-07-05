@@ -180,6 +180,7 @@ export function createHandler(
         try {
           body = await request.json();
         } catch {
+          // error-policy:J3 malformed request body -> explicit 400 invalid, never a fake-valid default
           return Response.json({ error: "Invalid JSON" }, { status: 400 });
         }
       }
@@ -254,6 +255,8 @@ export function createHandler(
                     },
                   });
                 } catch (error) {
+                  // error-policy:J7 usage metering is fire-and-forget telemetry; the credit
+                  // reconcile already committed, so a failed usage write must not fail the served hit
                   logger.error("[Proxy Engine] Usage tracking failed (cache hit)", { error });
                 }
               })();
@@ -262,6 +265,8 @@ export function createHandler(
             }
           }
         } catch (error) {
+          // error-policy:J7 cache is a best-effort accelerator; a read failure degrades to a
+          // cache miss (the real upstream work below still runs and bills), never a fabricated hit
           logger.warn("[Proxy Engine] Cache read failed", { error });
         }
       }
@@ -270,6 +275,8 @@ export function createHandler(
       try {
         result = await work({ body, auth, searchParams });
       } catch (error) {
+        // error-policy:J2 refund the credit reservation on handler failure, then rethrow
+        // unchanged so the outer boundary surfaces it (never a fabricated success)
         await reservation.reconcile(0);
         throw error;
       }
@@ -350,12 +357,16 @@ export function createHandler(
             },
           });
         } catch (error) {
+          // error-policy:J7 usage metering is fire-and-forget telemetry; a failed write must not
+          // fail the already-served response (the credit reconcile above already committed)
           logger.error("[Proxy Engine] Usage tracking failed", { error });
         }
       })();
 
       return result.response;
     } catch (error) {
+      // error-policy:J1 outermost route boundary: translate thrown errors into structured HTTP
+      // failures (402/4xx/5xx). Every branch surfaces the failure; none fabricates a 2xx success.
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
           {

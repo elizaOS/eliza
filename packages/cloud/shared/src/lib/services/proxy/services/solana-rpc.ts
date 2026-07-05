@@ -61,7 +61,8 @@ const EXPENSIVE_METHODS = new Set([
  * Any method with an active pricing entry (is_active=true) is automatically allowed.
  *
  * This hardcoded list serves as:
- * 1. Emergency fallback if database is unreachable
+ * 1. Bootstrap fallback when the DB has zero active pricing rows (seed/partial-seed
+ *    state only — a DB/cache *failure* fails closed instead of using this list)
  * 2. Bootstrap/seed data reference
  * 3. Documentation of supported methods
  *
@@ -157,60 +158,44 @@ const ALLOWED_METHODS_CACHE_KEY = "solana-rpc:allowed-methods";
 const ALLOWED_METHODS_CACHE_TTL = 60;
 
 /**
- * Gets allowed methods from database (with caching)
+ * Resolves the authorization whitelist for solana-rpc, cached for 60s.
  *
- * Strategy:
- * 1. Check cache (60s TTL) - fast path for most requests
- * 2. Query database for active methods
- * 3. Fallback to hardcoded list if DB fails
- *
- * Performance:
- * - Cache hit: ~1ms (no DB query)
- * - Cache miss: ~10-50ms (DB query)
- * - DB failure: Falls back to hardcoded list immediately
+ * A DB/cache failure is a broken pipeline on an authorization+billing path, so it
+ * propagates (fail closed) — the proxy engine's J1 boundary turns it into a
+ * structured error before any credit is reserved. A DB that returns zero active
+ * rows is a *designed* bootstrap/seed state (distinct from a thrown failure) and
+ * degrades to the hardcoded whitelist. Swallowing the failure into that same
+ * fallback would fail open — re-permitting methods an admin disabled in the DB.
  *
  * @returns Set of allowed method names
  */
 async function getAllowedMethods(): Promise<Set<string>> {
-  try {
-    // Check cache first
-    const cached = await cache.get<string[]>(ALLOWED_METHODS_CACHE_KEY);
-    if (cached) {
-      logger.debug("[Solana RPC] Allowed methods cache hit");
-      return new Set(cached);
-    }
+  const cached = await cache.get<string[]>(ALLOWED_METHODS_CACHE_KEY);
+  if (cached) {
+    logger.debug("[Solana RPC] Allowed methods cache hit");
+    return new Set(cached);
+  }
 
-    logger.debug("[Solana RPC] Allowed methods cache miss, querying database");
+  logger.debug("[Solana RPC] Allowed methods cache miss, querying database");
 
-    // Query database for active methods
-    const pricingRecords = await servicePricingRepository.listByService("solana-rpc");
-    const activeMethods = pricingRecords
-      .filter((record) => record.is_active)
-      .map((record) => record.method);
+  const pricingRecords = await servicePricingRepository.listByService("solana-rpc");
+  const activeMethods = pricingRecords
+    .filter((record) => record.is_active)
+    .map((record) => record.method);
 
-    if (activeMethods.length === 0) {
-      logger.warn("[Solana RPC] No active methods in database, using fallback");
-      return HARDCODED_FALLBACK_METHODS;
-    }
-
-    // Cache the result
-    await cache.set(ALLOWED_METHODS_CACHE_KEY, activeMethods, ALLOWED_METHODS_CACHE_TTL);
-
-    logger.info("[Solana RPC] Loaded allowed methods from database", {
-      count: activeMethods.length,
-      cached_for: `${ALLOWED_METHODS_CACHE_TTL}s`,
-    });
-
-    return new Set(activeMethods);
-  } catch (error) {
-    // Database or cache failure - use hardcoded fallback
-    logger.error("[Solana RPC] Failed to load allowed methods from database, using fallback", {
-      error: error instanceof Error ? error.message : "Unknown error",
-      fallback_count: HARDCODED_FALLBACK_METHODS.size,
-    });
-
+  if (activeMethods.length === 0) {
+    logger.warn("[Solana RPC] No active methods in database, using fallback");
     return HARDCODED_FALLBACK_METHODS;
   }
+
+  await cache.set(ALLOWED_METHODS_CACHE_KEY, activeMethods, ALLOWED_METHODS_CACHE_TTL);
+
+  logger.info("[Solana RPC] Loaded allowed methods from database", {
+    count: activeMethods.length,
+    cached_for: `${ALLOWED_METHODS_CACHE_TTL}s`,
+  });
+
+  return new Set(activeMethods);
 }
 
 /**
@@ -528,6 +513,9 @@ export const solanaRpcHandler: ServiceHandler = async ({ body, searchParams }) =
       attempts: primary.fetchLogs.length,
     });
   } catch (error) {
+    // error-policy:J1 transport boundary — a primary timeout falls through to the
+    // fallback URL (and, absent one, is rethrown as "timeout" below); any
+    // non-timeout error propagates uncaught (fail closed).
     if (error instanceof Error && error.name === "TimeoutError") {
       primaryTimedOut = true;
       logger.error("[Solana RPC] Primary URL timed out after retries", {
@@ -564,6 +552,9 @@ export const solanaRpcHandler: ServiceHandler = async ({ body, searchParams }) =
         body: fallbackError,
       });
     } catch (fallbackErr) {
+      // error-policy:J1 transport boundary — with both upstreams exhausted the
+      // failure surfaces to the client as the 502 (or rethrown "timeout") below;
+      // this handler only records it before that fail-closed response is built.
       logger.error("[Solana RPC] Fallback error", {
         error: fallbackErr instanceof Error ? fallbackErr.message : "Unknown",
       });

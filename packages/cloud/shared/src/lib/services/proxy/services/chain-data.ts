@@ -190,6 +190,9 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
       });
 
       if (!response.ok) {
+        // error-policy:J1 boundary translation — an upstream Alchemy REST failure
+        // becomes a structured 502 for the client; the failing status is surfaced,
+        // never masked as a success.
         const errorBody = await response.text();
         logger.error("[Chain Data] REST API error", {
           method,
@@ -238,6 +241,9 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
     });
 
     if (!response.ok) {
+      // error-policy:J1 boundary translation — an upstream Alchemy JSON-RPC failure
+      // becomes a structured 502 for the client; the failing status is surfaced,
+      // never masked as a success.
       const errorBody = await response.text();
       logger.error("[Chain Data] JSON-RPC error", {
         method,
@@ -260,6 +266,10 @@ export const chainDataHandler: ServiceHandler = async ({ body }) => {
 
     return { response };
   } catch (error) {
+    // error-policy:J1 outbound Alchemy boundary — an infra timeout becomes the
+    // canonical "timeout" marker the proxy engine maps to 504 (engine.ts); every
+    // other error propagates unchanged so the engine surfaces it. No swallow, no
+    // fabricated success/default.
     if (error instanceof Error && error.name === "TimeoutError") {
       logger.error("[Chain Data] Timeout", { method, chain });
       throw new Error("timeout");
