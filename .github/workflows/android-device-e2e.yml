@@ -2,7 +2,9 @@ name: android-device-e2e
 
 # Real-device Android e2e: builds the WebView-debuggable APK, boots an emulator,
 # and drives the real app via Playwright's Android driver + the on-device agent
-# smoke. workflow_dispatch only (it boots an emulator and is slow/heavy).
+# smoke. A weekly host-backed schedule gives the lane unattended cadence without
+# burning an emulator on every PR; workflow_dispatch still exposes the full
+# backend selector for manual cloud/local investigations.
 #
 # IMPORTANT coverage note: the embedded on-device agent (bun + llama) runs on
 # real arm64 hardware but SIGSEGVs on a stock x86_64 emulator, so the LOCAL
@@ -14,6 +16,11 @@ name: android-device-e2e
 # real cloud agent.
 
 on:
+  schedule:
+    # Weekly hosted x86_64 emulator run, backend=host by default below. The
+    # self-hosted arm64 LOCAL route remains separate because bun+llama SIGSEGVs
+    # on the stock hosted x86_64 emulator (see coverage note above).
+    - cron: "17 9 * * 1"
   workflow_dispatch:
     inputs:
       backend:
@@ -39,8 +46,9 @@ concurrency:
 
 jobs:
   android-e2e:
-    # Full matrix runs on manual dispatch only (unchanged). Never on PR.
-    if: github.event_name == 'workflow_dispatch'
+    # Full lane runs on manual dispatch and on the weekly scheduled host-backed
+    # cadence. Never on PR; PRs use the label-gated minimal smoke below.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     env:
@@ -48,7 +56,7 @@ jobs:
       ELIZA_WEBVIEW_DEBUG: "1"
       ELIZA_BUN_RISCV64_OPTIONAL: "1"
       ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
-      ELIZA_ANDROID_BACKEND: ${{ github.event.inputs.backend }}
+      ELIZA_ANDROID_BACKEND: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.backend || 'host' }}
       ELIZA_CLOUD_AUTH_TOKEN: ${{ secrets.ELIZA_CLOUD_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +86,7 @@ jobs:
       - name: Route coverage on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: ${{ github.event.inputs.api-level }}
+          api-level: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.api-level || '34' }}
           arch: x86_64
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
@@ -119,8 +127,20 @@ jobs:
             ELIZA_ANDROID_REQUIRE_AGENT=1 \
               bun run --cwd packages/app test:e2e:android:onboarding
 
-            ELIZA_ANDROID_REQUIRE_AGENT=${{ github.event.inputs.backend == 'local' && '1' || '0' }} \
-              bun run --cwd packages/app test:e2e:android:routes || true
+            if [ "${ELIZA_ANDROID_BACKEND}" = "local" ]; then
+              # LOCAL route is still signal-only on hosted x86_64: the embedded
+              # bun+llama agent is known to require a self-hosted arm64 device
+              # runner. Keep surfacing the artifact, but do not make the hosted
+              # emulator falsely red for that known platform gap.
+              ELIZA_ANDROID_REQUIRE_AGENT=1 \
+                bun run --cwd packages/app test:e2e:android:routes || true
+            else
+              # Host/cloud route coverage is the scheduled unattended health
+              # signal. Fail red here instead of hiding regressions behind a
+              # permanent signal-only `|| true` leg.
+              ELIZA_ANDROID_REQUIRE_AGENT=0 \
+                bun run --cwd packages/app test:e2e:android:routes
+            fi
             ELIZA_ANDROID_BACKEND=host \
             ELIZA_ANDROID_REQUIRE_AGENT=1 \
               bun run --cwd packages/app test:e2e:android:native-plugin-view
