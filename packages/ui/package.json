@@ -52,6 +52,7 @@
     "test:view-screens": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./stories/view-screens-tui.config.ts && bunx playwright test --config ./stories/registered-views/registered-views.config.ts && bun stories/registered-views/build-index.mjs",
     "test:xr-sim": "bunx playwright test --config ./stories/xr/xr-sim.config.ts",
     "test:background-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs",
+    "test:chat-infinite-scroll-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-chat-infinite-scroll-e2e.mjs",
     "test:suggestions-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-suggestions-e2e.mjs",
     "test:launcher-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-launcher-e2e.mjs",
     "test:connectors-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-connectors-e2e.mjs",

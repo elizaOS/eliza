@@ -97,6 +97,14 @@ jobs:
       - name: Background view e2e
         run: bun run --cwd packages/ui test:background-e2e
 
+      # Infinite upward scroll (#13532): the REAL useLoadOlderOnScroll +
+      # loadOlderConversationMessages driven in Chromium — scroll-to-top fires a
+      # ?before= fetch, older rows prepend, the viewport anchor stays put, plus
+      # the empty-history (no fetch) and fetch-failure (no fabricated prepend, no
+      # retry storm) legs.
+      - name: Chat infinite-scroll e2e
+        run: bun run --cwd packages/ui test:chat-infinite-scroll-e2e
+
       # Launcher view: tiles, tap-launch, long-press edit, page-nav, telemetry.
       - name: Launcher e2e
         run: bun run --cwd packages/ui test:launcher-e2e
