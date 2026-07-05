@@ -86,8 +86,11 @@ FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 - **Discord**: the `isButton` handler in `discord-interactions.ts` decodes the
   `customId` with `decodeCallback` and dispatches via `messageService.handleMessage`.
 
-The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets
-(it routes assistant turns with blocks through `MessageContent`).
+The floating chat overlay (`ContinuousChatOverlay`) also renders these widgets.
+It does **not** route through `MessageContent`: it renders assistant turns via
+`InlineWidgetText` (which shares the same segment parser + inline registry and
+reuses `MessageContent`'s `[CONFIG]` / permission / UiSpec / code renderers), and
+mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
 
 ## Shipped
 

@@ -34,9 +34,13 @@ data streams (WebSocket / store), not by reply markers.
 | **ChatView** (full desktop) | `pages/ChatView.tsx` | `MessageContent` (full `ConversationMessage`) | routed view, inside the desktop layout wrapper |
 
 Both renderers share the inline registry, so inline widgets render on both.
-`MessageContent` additionally renders host-only segment kinds (`[CONFIG]`,
-permission / OAuth / secret cards, code blocks, GenUI ui-spec) that the overlay
-does not - see **Documented divergences**.
+Both also render the non-registry segment kinds (`[CONFIG]`, permission / OAuth
+/ secret cards, code blocks, GenUI ui-spec): `MessageContent` renders them
+directly, and the overlay renders the same ones through `InlineWidgetText`
+(plus `SensitiveRequestBlock` for the secret card, mounted by the overlay body
+itself). Parity is intentional so a flow triggered on mobile is completable on
+mobile — see **Documented divergences** for the few remaining ChatView-only
+affordances.
 
 ---
 
@@ -53,19 +57,21 @@ does not - see **Documented divergences**.
 
 (1) The Task widget is registered by `plugin-task-coordinator` (`registerTaskWidget()`), **not** auto-loaded in `inline-builtins`. It renders on both surfaces only when the orchestrator UI is loaded, by design (`MessageContent` knows nothing about tasks).
 
-### Host-only inline segments (rendered by `MessageContent`, not the overlay)
+### Non-registry inline segments (rendered on both surfaces)
 
-These are not registry widgets - they are hardcoded segment kinds in
-`MessageContent.tsx`. They are **producing-action-backed** but render only on
-ChatView today (see divergence D1).
+These are not registry widgets - they are hardcoded segment kinds. They are
+**producing-action-backed** and render on **both** surfaces: `MessageContent`
+renders them for ChatView, and `InlineWidgetText` renders the same segment kinds
+for the overlay (importing the same renderers from `MessageContent`). The
+`Overlay renderer` column names the symbol the overlay path uses.
 
-| Segment | Marker | Producing source | Renderer |
-|---|---|---|---|
-| Plugin config | `[CONFIG:<pluginId>]` | plugin-config flows | `InlinePluginConfig` |
-| Permission card | `__permission:...` | mobile/desktop permission requests | `PermissionCard` |
-| Secret / OAuth request | sensitive-request markers | credential/OAuth actions | sensitive-request renderers |
-| Code block | fenced ``` ``` ``` ``` | any | `CodeBlock` |
-| GenUI ui-spec | fenced JSON / JSONL patches | Chat-Mode / Generate-Mode GenUI | `UiRenderer` |
+| Segment | Marker | Producing source | ChatView renderer | Overlay renderer |
+|---|---|---|---|---|
+| Plugin config | `[CONFIG:<pluginId>]` | plugin-config flows | `InlinePluginConfig` | `InlinePluginConfig` (`InlineWidgetText.tsx` case `config`) |
+| Permission card | `__permission:...` | mobile/desktop permission requests | `MessagePermissionCard` | `MessagePermissionCard` (case `permission`) |
+| Secret / OAuth request | `message.secretRequest` passthrough | credential/OAuth actions | `SensitiveRequestBlock` | `SensitiveRequestBlock` (mounted by `ContinuousChatOverlay` body) |
+| Code block | fenced ``` ``` ``` ``` | any | `CodeBlock` | `CodeBlock` (case `code`) |
+| GenUI ui-spec | fenced JSON / JSONL patches | Chat-Mode / Generate-Mode GenUI | `MessageUiSpecBlock` (wraps `UiRenderer`) | `MessageUiSpecBlock` (case `ui-spec`) |
 
 ---
 
@@ -150,11 +156,13 @@ only navigation affordance).
 
 ## Documented divergences (intentional, not gaps)
 
-- **D1 - host-only segments.** `[CONFIG]`, permission/secret/OAuth cards, code
-  blocks, and GenUI render on ChatView (`MessageContent`) only; the overlay
-  (`InlineWidgetText`) renders prose + the four registry widgets. *Intended end
-  state:* the overlay should at minimum render the secret/OAuth card so a flow
-  triggered on mobile is completable on mobile. Tracked as follow-up.
+- **D1 - segment parity (resolved, no longer a divergence).** `[CONFIG]`,
+  permission, secret/OAuth, code blocks, and GenUI ui-spec now render on **both**
+  surfaces: the overlay's `InlineWidgetText` handles `config` / `ui-spec` /
+  `permission` / `code` and `ContinuousChatOverlay` mounts `SensitiveRequestBlock`
+  for `message.secretRequest`. The old "ChatView-only, mobile flow uncompletable"
+  gap is closed and pinned by tests — see the D1-parity rows under Coverage. Kept
+  here only as a pointer; there is no remaining segment-kind divergence.
 - **D2 - per-message rail.** ChatView owns edit/delete/speak/retry/suggest;
   the overlay exposes press-and-hold copy only (mobile-first). Intentional.
 - **D3 - topic chips / grouped transcript.** Overlay-only. Intentional.
@@ -183,7 +191,19 @@ only navigation affordance).
 | Topic chips bar | yes (added #9304) | yes | n/a |
 | Topic grouped transcript | yes (added #9304) | yes | n/a |
 | Home widgets (inbox/calendar/goals/finances/health/relationships) | yes + coverage gate | n/a | n/a |
+| Overlay `[CONFIG]` / code / UiSpec parity (D1) | yes, `InlineWidgetText.test.tsx` (`[CONFIG:…]`, code fence, UiSpec cases) | n/a | n/a |
+| Overlay secret-request parity (D1) | yes, `render-parity.contract.test.tsx` (asserts `[data-testid="sensitive-request"]` renders in the overlay body) | n/a | n/a |
 
 `widgets/widget-coverage.test.ts` gates that the home-slot and the inline
 registry never silently lose a widget (extended in #9304): dropping a gated
 widget fails CI.
+
+---
+
+_Last verified against code: this matrix was re-checked row-by-row against the
+current renderers for #14327. The load-bearing correction (D1: the overlay
+renders `[CONFIG]` / permission / secret / code / GenUI, not ChatView-only) is
+proven by `InlineWidgetText.tsx` (cases `config` / `ui-spec` / `permission` /
+`code`) + `ContinuousChatOverlay.tsx` (`SensitiveRequestBlock` on
+`message.secretRequest`), and pinned by `InlineWidgetText.test.tsx` +
+`render-parity.contract.test.tsx`._
