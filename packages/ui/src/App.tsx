@@ -10,6 +10,8 @@ import {
   type AppShellBackgroundPolicy,
   type EnabledViewKinds,
   isViewVisible,
+  resolveSurfaceBackgroundPolicy,
+  type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
 import { X } from "lucide-react";
@@ -803,10 +805,18 @@ function useCurrentNavigationPath(): string {
   return navigationPath;
 }
 
-function normalizeBackgroundPolicy(
-  policy: AppShellBackgroundPolicy | undefined,
+/**
+ * The resolved screen-background policy for a single view registration — the
+ * ONE seam the shell derives every view's background from (#13452). Reads the
+ * declared surface manifest first (`surface.background` gated by the `wallpaper`
+ * grant), then the legacy standalone `backgroundPolicy`, then defaults to
+ * opaque. A view that declares `shared` without the `wallpaper` grant resolves
+ * to opaque — the wallpaper cannot be opted into by accident.
+ */
+function viewRegistrationBackgroundPolicy(
+  decl: SurfaceManifestBearer | null | undefined,
 ): AppShellBackgroundPolicy {
-  return policy === "shared" ? "shared" : "opaque";
+  return resolveSurfaceBackgroundPolicy(decl);
 }
 
 function builtinRouteBackgroundPolicy(
@@ -837,7 +847,7 @@ function resolveActiveScreenBackgroundPolicy({
 
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (appShellPageForRoute) {
-    return normalizeBackgroundPolicy(appShellPageForRoute.backgroundPolicy);
+    return viewRegistrationBackgroundPolicy(appShellPageForRoute);
   }
 
   const appSlug =
@@ -850,13 +860,13 @@ function resolveActiveScreenBackgroundPolicy({
     tab,
     appSlug,
   );
-  if (remoteView) return normalizeBackgroundPolicy(remoteView.backgroundPolicy);
+  if (remoteView) return viewRegistrationBackgroundPolicy(remoteView);
 
   const appShellPageForTab = listAppShellPages().find(
     (entry) => entry.id === tab,
   );
   if (appShellPageForTab) {
-    return normalizeBackgroundPolicy(appShellPageForTab.backgroundPolicy);
+    return viewRegistrationBackgroundPolicy(appShellPageForTab);
   }
 
   const builtinPolicy = builtinRouteBackgroundPolicy(tab, navigationPath);
@@ -870,7 +880,7 @@ function resolveActiveScreenBackgroundPolicy({
         view.path === trimmedNavigationPath(navigationPath)),
   );
   if (registeredView) {
-    return normalizeBackgroundPolicy(registeredView.backgroundPolicy);
+    return viewRegistrationBackgroundPolicy(registeredView);
   }
 
   return "opaque";
@@ -977,6 +987,7 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
         componentExport={view.componentExport}
         viewId={view.id}
         viewType={view.viewType}
+        surface={view.surface}
       />
     </TabContentView>
   );

@@ -4,6 +4,7 @@
  */
 import type {
   AppShellBackgroundPolicy,
+  SurfaceManifest,
   ViewHeaderPolicy,
   ViewKind,
 } from "@elizaos/core";
@@ -56,12 +57,25 @@ export interface AppShellPageRegistration {
    * orchestrator workbench.
    */
   fullBleed?: boolean;
-  /** Screen background policy for this page. Defaults to `"opaque"`. */
+  /**
+   * Declared surface contract for this page (#13452) — background/header/
+   * isolation/lifecycle policy and capability grants. The single source of truth
+   * the shell derives surface decisions from; the standalone `backgroundPolicy`
+   * / `headerPolicy` below are the legacy fallback used only when the matching
+   * manifest field is absent. `surface.background: "shared"` paints the wallpaper
+   * only when `surface.capabilities` also grants `wallpaper`.
+   */
+  surface?: SurfaceManifest;
+  /**
+   * Screen background policy for this page. Defaults to `"opaque"`. Superseded
+   * by `surface.background` when a manifest is declared.
+   */
   backgroundPolicy?: AppShellBackgroundPolicy;
   /**
    * Top-bar framing policy (#13586). Defaults to `"normal"`; the shell enforces
    * the shared `ViewHeader` on every `normal` page. `fullscreen`/`modal`/
-   * `immersive` opt a page out of the uniform top bar.
+   * `immersive` opt a page out of the uniform top bar. Superseded by
+   * `surface.header` when a manifest is declared.
    */
   headerPolicy?: ViewHeaderPolicy;
   /**
