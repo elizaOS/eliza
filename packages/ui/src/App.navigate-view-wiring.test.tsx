@@ -352,7 +352,6 @@ vi.mock("./components/shell/AssistantOverlay", () => ({
   ),
 }));
 
-
 vi.mock("./components/shell/SystemWarningBanner", () => ({
   SystemWarningBanner: () => null,
 }));

@@ -114,7 +114,7 @@ export function resetFirstRunPersistGuard(): void {
  */
 async function persistFirstRun(
   plan: ReturnType<typeof buildFirstRunSubmitPlan>,
-  ports: FirstRunFinishPorts,
+  _ports: FirstRunFinishPorts,
   opts: { viaAppShellOrigin?: boolean } = {},
 ): Promise<void> {
   if (firstRunPersisted) return;

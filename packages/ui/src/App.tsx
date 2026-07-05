@@ -61,7 +61,6 @@ import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
-import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";

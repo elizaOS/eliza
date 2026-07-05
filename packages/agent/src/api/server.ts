@@ -3309,7 +3309,6 @@ async function handleRequest(
     return;
   }
 
-
   // ── Interaction reporting (/api/interactions/shortcut) ────────────────────
   if (
     await handleInteractionsRoutes({

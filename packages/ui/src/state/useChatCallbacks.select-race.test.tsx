@@ -500,7 +500,8 @@ describe("rapid conversation switching must never delete a real conversation", (
     // fires deleteConversation("draft-d"), which now rejects.
     await selectAndCommit(result, h, "draft-d", [greetingMessage()]);
     await act(async () => {
-      const selectB = result.current.callbacks.handleSelectConversation("conv-b");
+      const selectB =
+        result.current.callbacks.handleSelectConversation("conv-b");
       // Let the fire-and-forget delete's rejection propagate to its catch.
       await Promise.resolve();
       await Promise.resolve();

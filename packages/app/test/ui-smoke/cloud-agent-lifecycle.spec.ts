@@ -113,7 +113,8 @@ async function installAgentStoreRoutes(
         const body =
           (route.request().postDataJSON() as { agentName?: string } | null) ??
           {};
-        const id = `agent-${(store.nextId += 1)}`;
+        store.nextId += 1;
+        const id = `agent-${store.nextId}`;
         const agent: StoreAgent = {
           id,
           agentName: body.agentName || id,

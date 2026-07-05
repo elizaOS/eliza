@@ -219,9 +219,7 @@ test.describe("confused-user onboarding", () => {
     // re-offers the runtime CHOICE, and that re-offer must be UNLOCKED (a
     // second, fresh widget row — the greeting row locked itself on the first
     // pick).
-    const differentWay = page.getByTestId(
-      "choice-__first_run__:error:restart",
-    );
+    const differentWay = page.getByTestId("choice-__first_run__:error:restart");
     await expect(differentWay).toBeVisible({ timeout: 30_000 });
     await screenshot(page, "first-run-post-failed");
     await differentWay.click();
