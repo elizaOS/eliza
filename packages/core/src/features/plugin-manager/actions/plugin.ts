@@ -290,11 +290,23 @@ function readSourceOption(
 }
 
 /**
+ * Strip a trailing run of any of `chars` in a single linear pass. Used instead
+ * of `/[chars]+$/` because that anchored-quantifier regex is O(n²) on the
+ * free-form message text (the engine retries the run from every offset when the
+ * final character is not in the set) — a ReDoS vector on attacker-supplied text.
+ */
+function stripTrailingChars(value: string, chars: string): string {
+	let end = value.length;
+	while (end > 0 && chars.includes(value[end - 1] as string)) end--;
+	return value.slice(0, end);
+}
+
+/**
  * Machine extractor: pull a plugin package identifier (`@scope/plugin-x`,
  * `plugin-x`, or a bare name after an operation verb) out of free-form text.
  * Operates on plugin-identifier token shapes, not behavior-deciding NL.
  */
-function extractNameFromText(text: string): string | undefined {
+export function extractNameFromText(text: string): string | undefined {
 	const scoped = text.match(/@[\w-]+\/(plugin-[\w.-]+)/);
 	if (scoped) return scoped[0];
 	const bare = text.match(/\b(plugin-[\w.-]+)\b/);
@@ -302,7 +314,11 @@ function extractNameFromText(text: string): string | undefined {
 	const short = text.match(
 		/\b(?:install|eject|sync|reinject|enable|disable|activate|deactivate|turn\s+on|turn\s+off|load|unload|status|details?|info|describe)\s+(?:the\s+)?(?:plugin\s+)?([@\w][\w./-]*)\b/i,
 	);
-	const candidate = short?.[1]?.trim().replace(/[?.!,]+$/, "");
+	const trimmedShort = short?.[1]?.trim();
+	const candidate =
+		trimmedShort === undefined
+			? undefined
+			: stripTrailingChars(trimmedShort, "?.!,");
 	if (!candidate) return undefined;
 	const lower = candidate.toLowerCase();
 	if (
@@ -339,7 +355,7 @@ function normalizePluginNameInput(
 	return `plugin-${name}`;
 }
 
-function extractQueryFromText(text: string): string | undefined {
+export function extractQueryFromText(text: string): string | undefined {
 	const patterns = [
 		/search\s+for\s+plugins?\s+(?:that\s+)?(?:can\s+)?(.+)/i,
 		/find\s+plugins?\s+(?:for|that|to)\s+(.+)/i,
@@ -350,7 +366,7 @@ function extractQueryFromText(text: string): string | undefined {
 	for (const pattern of patterns) {
 		const m = text.match(pattern);
 		if (m?.[1]) {
-			const cleaned = m[1].trim().replace(/[?.!]+$/, "");
+			const cleaned = stripTrailingChars(m[1].trim(), "?.!");
 			if (cleaned.length > 2) return cleaned;
 		}
 	}

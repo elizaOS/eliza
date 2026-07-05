@@ -48,6 +48,7 @@ import {
 } from "react";
 import "../api/client-calendar.js";
 import type { CalendarClientMethods } from "../api/client-calendar.js";
+import { basicEmailValid } from "../internal/email.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;
 
@@ -190,10 +191,6 @@ function nextHalfHourIso(now = new Date()): string {
 
 function isoPlusMinutes(iso: string, minutes: number): string {
   return new Date(Date.parse(iso) + minutes * 60_000).toISOString();
-}
-
-function basicEmailValid(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 export type EventEditorMode = "create" | "edit";
