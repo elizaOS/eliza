@@ -18,6 +18,10 @@
  *
  * A committed baseline (eslint-style) records the existing render-time backlog
  * so the gate fails on NEW occurrences while the backlog is burned down.
+ * Baseline entries keep line numbers for human review, but comparison is
+ * line-independent: file + finding kind + occurrence count. Pure line drift
+ * from nearby edits must not create false regressions; adding another
+ * occurrence of the same kind in the same file still fails.
  * Regenerate with `--update-baseline`.
  *
  *   node packages/scripts/audit-ui-determinism.mjs            # gate
@@ -285,6 +289,48 @@ function scanFile(file, sourceText) {
   return findings;
 }
 
+function findingKindFromOccurrence(occurrence) {
+  const match = /^L\d+\s+(.+)$/.exec(String(occurrence));
+  return match ? match[1] : String(occurrence);
+}
+
+function countByKind(occurrences) {
+  const counts = new Map();
+  for (const occurrence of occurrences ?? []) {
+    const kind = findingKindFromOccurrence(occurrence);
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function selectNewOccurrences(currentOccurrences, baselineOccurrences) {
+  const remainingAllowed = countByKind(baselineOccurrences);
+  const fresh = [];
+  for (const occurrence of currentOccurrences) {
+    const kind = findingKindFromOccurrence(occurrence);
+    const allowed = remainingAllowed.get(kind) ?? 0;
+    if (allowed > 0) {
+      remainingAllowed.set(kind, allowed - 1);
+    } else {
+      fresh.push(occurrence);
+    }
+  }
+  return fresh;
+}
+
+function collectRegressions(renderTime, baseline) {
+  const regressions = {};
+  let regressionCount = 0;
+  for (const [file, occurrences] of Object.entries(renderTime)) {
+    const fresh = selectNewOccurrences(occurrences, baseline[file] || []);
+    if (fresh.length) {
+      regressions[file] = fresh;
+      regressionCount += fresh.length;
+    }
+  }
+  return { regressions, regressionCount };
+}
+
 // ---------------------------------------------------------------------------
 // self-test
 // ---------------------------------------------------------------------------
@@ -381,6 +427,63 @@ function runSelfTest() {
     console.error(`\nself-test FAILED (${failed})`);
     process.exit(1);
   }
+  const baseline = {
+    "component.tsx": ["L10 Date.now()", "L20 toLocaleString() [no locale]"],
+  };
+  const lineDrift = {
+    "component.tsx": ["L15 Date.now()", "L25 toLocaleString() [no locale]"],
+  };
+  const countIncrease = {
+    "component.tsx": [
+      "L15 Date.now()",
+      "L25 toLocaleString() [no locale]",
+      "L30 Date.now()",
+    ],
+  };
+  const differentKind = {
+    "component.tsx": [
+      "L15 Date.now()",
+      "L25 toLocaleString() [no locale]",
+      "L30 Math.random()",
+    ],
+  };
+  const driftResult = collectRegressions(lineDrift, baseline);
+  if (driftResult.regressionCount !== 0) {
+    failed++;
+    console.error(
+      `FAIL baseline line drift: expected no regressions, got ${JSON.stringify(driftResult.regressions)}`,
+    );
+  } else {
+    console.log("OK baseline line drift");
+  }
+  const countResult = collectRegressions(countIncrease, baseline);
+  if (
+    countResult.regressionCount !== 1 ||
+    countResult.regressions["component.tsx"]?.[0] !== "L30 Date.now()"
+  ) {
+    failed++;
+    console.error(
+      `FAIL baseline count increase: expected one Date.now regression, got ${JSON.stringify(countResult.regressions)}`,
+    );
+  } else {
+    console.log("OK baseline count increase");
+  }
+  const kindResult = collectRegressions(differentKind, baseline);
+  if (
+    kindResult.regressionCount !== 1 ||
+    kindResult.regressions["component.tsx"]?.[0] !== "L30 Math.random()"
+  ) {
+    failed++;
+    console.error(
+      `FAIL baseline new kind: expected one Math.random regression, got ${JSON.stringify(kindResult.regressions)}`,
+    );
+  } else {
+    console.log("OK baseline new kind");
+  }
+  if (failed) {
+    console.error(`\nself-test FAILED (${failed})`);
+    process.exit(1);
+  }
   console.log("\nself-test PASSED");
 }
 
@@ -438,18 +541,13 @@ function main() {
     baseline = {};
   }
 
-  // A regression = a render-time occurrence present now but not in baseline.
-  const regressions = {};
-  let regressionCount = 0;
-  for (const [file, occ] of Object.entries(renderTime)) {
-    const allowed = new Set(baseline[file] || []);
-    const now = new Set(occ);
-    const fresh = [...now].filter((o) => !allowed.has(o));
-    if (fresh.length) {
-      regressions[file] = fresh;
-      regressionCount += fresh.length;
-    }
-  }
+  // A regression = a render-time occurrence count present now but not in
+  // baseline. Lines are diagnostic context only; matching them makes the gate
+  // fail on harmless drift after nearby code moves.
+  const { regressions, regressionCount } = collectRegressions(
+    renderTime,
+    baseline,
+  );
 
   if (asJson) {
     console.log(
