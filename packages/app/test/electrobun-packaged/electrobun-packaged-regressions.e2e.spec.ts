@@ -9,6 +9,7 @@ import { expect, type TestInfo, test } from "@playwright/test";
 import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
 import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
+  type DesktopTestBridgeState,
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
@@ -17,6 +18,9 @@ import { hasPackagedRendererBootstrapRequests } from "./windows-bootstrap";
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
 type EvalResult<T> = EvalOk<T> | EvalErr;
+type ShellNotificationDiagnostic = NonNullable<
+  DesktopTestBridgeState["shell"]["notifications"]
+>["recent"][number];
 
 const SETTINGS_SELECTOR = '[data-testid="settings-shell"]';
 const PLUGINS_SELECTOR = '[data-testid="plugins-shell"]';
@@ -54,6 +58,15 @@ function getDesktopRpcExpression(): string {
     "window.__ELIZA_ELECTROBUN_RPC__",
     "window.__ELIZAOS_ELECTROBUN_RPC__",
   ].join(" ?? ");
+}
+
+function findShellNotification(
+  state: DesktopTestBridgeState,
+  title: string,
+): ShellNotificationDiagnostic | undefined {
+  return state.shell.notifications?.recent.find(
+    (notification) => notification.title === title,
+  );
 }
 
 function debugPackagedPhase(label: string): void {
@@ -1215,6 +1228,147 @@ test("packaged desktop shortcut bridge summons the main window", async ({
       "Expected shortcut bridge press to summon and focus the main window.",
       30_000,
     );
+  });
+});
+
+test("packaged desktop delivers renderer notifications while hidden and focused", async ({
+  browserName: _browserName,
+}) => {
+  void _browserName;
+  test.skip(
+    !isPackagedPlatform(),
+    "Packaged desktop regressions require a macOS, Windows, or Linux launcher.",
+  );
+
+  await withPackagedHarness(async ({ harness }) => {
+    const backgroundTitle = `Packaged hidden notification ${Date.now()}`;
+    const backgroundBody = "Hidden renderer notification reached native shell.";
+    const focusedTitle = `Packaged urgent notification ${Date.now()}`;
+    const focusedBody = "Focused urgent notification reached native shell.";
+
+    const scheduled = await harness.eval<
+      EvalResult<{ bridgePresent: boolean; scheduled: boolean }>
+    >(
+      `(() => {
+        try {
+          const rpc = ${getDesktopRpcExpression()};
+          const request = rpc?.request?.desktopShowNotification;
+          if (!request || !rpc?.request) {
+            return {
+              ok: false,
+              error: "Desktop notification RPC bridge is missing.",
+            };
+          }
+          window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ = {
+            ...(window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ ?? {}),
+            hiddenNotificationFired: false,
+          };
+          setTimeout(() => {
+            void request.call(rpc.request, {
+              title: ${JSON.stringify(backgroundTitle)},
+              body: ${JSON.stringify(backgroundBody)},
+              urgency: "normal",
+              silent: false,
+            }).then(
+              (result) => {
+                window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ = {
+                  ...(window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ ?? {}),
+                  hiddenNotificationFired: true,
+                  hiddenNotificationResult: result,
+                };
+              },
+              (error) => {
+                window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ = {
+                  ...(window.__ELIZA_PACKAGED_NOTIFICATION_TEST__ ?? {}),
+                  hiddenNotificationFired: false,
+                  hiddenNotificationError:
+                    error instanceof Error ? error.message : String(error),
+                };
+              },
+            );
+          }, 400);
+          return { ok: true, bridgePresent: true, scheduled: true };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      })()`,
+    );
+
+    expect(scheduled.ok, scheduled.ok ? undefined : scheduled.error).toBe(true);
+    await harness.hideMainWindow();
+
+    const hiddenState = await harness.waitForState(
+      (state) =>
+        state.shell.windowVisible === false &&
+        Boolean(findShellNotification(state, backgroundTitle)),
+      "Expected a hidden renderer notification to reach the native shell diagnostics.",
+      30_000,
+    );
+    expect(findShellNotification(hiddenState, backgroundTitle)).toMatchObject({
+      title: backgroundTitle,
+      body: backgroundBody,
+      urgency: "normal",
+      silent: false,
+    });
+
+    await harness.showMainWindow();
+    await harness.focusMainWindow();
+    await harness.waitForState(
+      (state) => state.shell.windowVisible === true,
+      "Expected the main window to be visible before focused urgent notification delivery.",
+      30_000,
+    );
+
+    const focusedResult = await harness.eval<EvalResult<{ id: string | null }>>(
+      `(async () => {
+        try {
+          const rpc = ${getDesktopRpcExpression()};
+          const request = rpc?.request?.desktopShowNotification;
+          if (!request || !rpc?.request) {
+            return {
+              ok: false,
+              error: "Desktop notification RPC bridge is missing.",
+            };
+          }
+          const result = await request.call(rpc.request, {
+            title: ${JSON.stringify(focusedTitle)},
+            body: ${JSON.stringify(focusedBody)},
+            urgency: "critical",
+            silent: false,
+          });
+          return {
+            ok: true,
+            id: typeof result?.id === "string" ? result.id : null,
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      })()`,
+    );
+
+    expect(
+      focusedResult.ok,
+      focusedResult.ok ? undefined : focusedResult.error,
+    ).toBe(true);
+    expect(focusedResult.ok ? focusedResult.id : null).toBeTruthy();
+
+    const focusedState = await harness.waitForState(
+      (state) => Boolean(findShellNotification(state, focusedTitle)),
+      "Expected a focused urgent renderer notification to reach native shell diagnostics.",
+      30_000,
+    );
+    expect(findShellNotification(focusedState, focusedTitle)).toMatchObject({
+      title: focusedTitle,
+      body: focusedBody,
+      urgency: "critical",
+      silent: false,
+    });
   });
 });
 

@@ -66,6 +66,16 @@ export interface DesktopTestBridgeState {
         height: number;
       } | null;
     };
+    notifications?: {
+      recent: Array<{
+        id: string;
+        title: string;
+        body?: string;
+        silent?: boolean;
+        urgency?: "normal" | "critical" | "low";
+        createdAt: string;
+      }>;
+    };
   };
 }
 
@@ -852,6 +862,16 @@ export class PackagedDesktopHarness {
 
   async showMainWindow(): Promise<void> {
     await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/main-window/show`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.bridgeToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async hideMainWindow(): Promise<void> {
+    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/main-window/hide`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.bridgeToken}`,

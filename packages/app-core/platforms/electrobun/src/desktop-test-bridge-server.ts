@@ -172,6 +172,18 @@ export async function startDesktopTestBridgeServer(): Promise<
         return;
       }
 
+      if (pathname === "/main-window/hide" && method === "POST") {
+        const desktop = getDesktopManager();
+        const shellState = await desktop.getShellDiagnosticsState();
+        if (!shellState.mainWindowPresent) {
+          json(res, 503, { error: "main window is not available" });
+          return;
+        }
+        await desktop.hideWindow();
+        json(res, 200, { ok: true });
+        return;
+      }
+
       if (pathname === "/main-window/focus" && method === "POST") {
         await getDesktopManager().focusWindow();
         json(res, 200, { ok: true });

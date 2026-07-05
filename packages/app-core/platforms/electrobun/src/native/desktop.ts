@@ -190,6 +190,16 @@ const MACOS_CGSESSION_PATH =
 const LINUX_IDLE_THRESHOLD_SECONDS = 60;
 const WINDOWS_IDLE_THRESHOLD_SECONDS = 60;
 const POWER_STATE_PROBE_TIMEOUT_MS = 1_500;
+const RECENT_NOTIFICATION_DIAGNOSTICS_LIMIT = 50;
+
+interface DesktopNotificationDiagnostic {
+  id: string;
+  title: string;
+  body?: string;
+  silent?: boolean;
+  urgency?: NotificationOptions["urgency"];
+  createdAt: string;
+}
 
 let activeDesktopManager: DesktopManager | null = null;
 let nativeContextMenuEventsInstalled = false;
@@ -329,6 +339,7 @@ export class DesktopManager {
   private trayPopoverBlurHideTimer: ReturnType<typeof setTimeout> | null = null;
   private shortcuts: Map<string, ShortcutOptions> = new Map();
   private notificationCounter = 0;
+  private recentNotificationDiagnostics: DesktopNotificationDiagnostic[] = [];
   private sendToWebview: SendToWebview | null = null;
   private _windowFocused = true;
   private _windowHidden = false;
@@ -429,6 +440,9 @@ export class DesktopManager {
       visible: boolean;
       lastAnchorBounds: Rect | null;
     };
+    notifications: {
+      recent: DesktopNotificationDiagnostic[];
+    };
   }> {
     return {
       trayPresent: Boolean(this.tray),
@@ -440,6 +454,9 @@ export class DesktopManager {
         accelerator: shortcut.accelerator,
       })),
       trayPopover: this.getTrayPopoverDiagnostics(),
+      notifications: {
+        recent: [...this.recentNotificationDiagnostics],
+      },
     };
   }
 
@@ -1465,6 +1482,26 @@ X-GNOME-Autostart-enabled=true
     options: NotificationOptions,
   ): Promise<{ id: string }> {
     const id = `notification_${++this.notificationCounter}`;
+    this.recentNotificationDiagnostics.push({
+      id,
+      title: options.title,
+      ...(typeof options.body === "string" ? { body: options.body } : {}),
+      ...(typeof options.silent === "boolean"
+        ? { silent: options.silent }
+        : {}),
+      ...(options.urgency ? { urgency: options.urgency } : {}),
+      createdAt: new Date().toISOString(),
+    });
+    if (
+      this.recentNotificationDiagnostics.length >
+      RECENT_NOTIFICATION_DIAGNOSTICS_LIMIT
+    ) {
+      this.recentNotificationDiagnostics.splice(
+        0,
+        this.recentNotificationDiagnostics.length -
+          RECENT_NOTIFICATION_DIAGNOSTICS_LIMIT,
+      );
+    }
 
     // Electrobun Utils.showNotification — fire-and-forget, no event callbacks
     Utils.showNotification({
