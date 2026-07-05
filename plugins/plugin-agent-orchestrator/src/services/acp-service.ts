@@ -17,9 +17,9 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
@@ -87,6 +87,13 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import { captureBaselineDirty, captureBaselineSha } from "./workspace-diff.js";
+import {
+  checkDiskBudget,
+  liveWorkspacePaths,
+  markWorkspaceTerminated,
+  registerWorkspace,
+  unregisterWorkspace,
+} from "./workspace-registry.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -148,7 +155,16 @@ const LEASE_REVOKE_EVENTS: ReadonlySet<SessionEventName> = new Set([
   "error",
   "cancelled",
 ]);
+// Fallback ACP scratch root when neither ELIZA_WORKSPACE_DIR nor the ACP-
+// specific overrides are configured. Under $TMPDIR so a host that never sets a
+// workspace dir still gets OS-managed cleanup, but resolveWorkdirRoot() prefers
+// ELIZA_WORKSPACE_DIR (aligning with workspace-service's resolveDefaultBaseDir)
+// so one setting governs BOTH mechanisms' roots.
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
+// Per-session scratch dirs older than this AND not in the live-session set are
+// reclaimed by the startup + periodic orphan GC. A day of grace covers a
+// long-running spawn whose store row was lost across a restart.
+const ACP_WORKSPACE_TTL_MS = 24 * 60 * 60_000;
 const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
@@ -376,6 +392,7 @@ export class AcpService extends Service {
     await this.reconcileOrphanedSessions();
     await this.cleanReverseOrphanedAcpxFiles();
     await this.cleanStaleLocks();
+    await this.gcOrphanedScratchDirs();
     this.healthCheckTimer = setInterval(() => {
       void this.runHealthCheck();
     }, ACP_HEALTH_CHECK_INTERVAL_MS);
@@ -502,6 +519,176 @@ export class AcpService extends Service {
 
   private acpxStateRoot(): string {
     return join(homedir(), ".acpx");
+  }
+
+  /**
+   * Resolved root under which `spawnSession` places isolated scratch dirs. This
+   * is the SAME resolution `workspace-service.ts:resolveDefaultBaseDir` uses for
+   * git workspaces, so one `ELIZA_WORKSPACE_DIR` governs both mechanisms; it
+   * falls back to `$TMPDIR/eliza-acp` only when nothing is configured. The
+   * teardown + GC guards below only ever delete paths strictly under this root,
+   * which is what makes them safe (never `process.cwd()`, never a caller dir).
+   */
+  private resolveWorkdirRoot(): string {
+    const configured = this.setting("ELIZA_WORKSPACE_DIR");
+    const trimmed = configured?.trim();
+    if (!trimmed) return DEFAULT_WORKDIR_ROOT;
+    if (trimmed.startsWith("~/")) return join(homedir(), trimmed.slice(2));
+    if (trimmed === "~") return homedir();
+    return resolve(trimmed);
+  }
+
+  /**
+   * True when `dir` is a per-session scratch dir this service created — i.e. a
+   * `task-*` child strictly BELOW the resolved workdir root. The strict-below
+   * check (root + sep prefix, and the immediate segment starts with `task-`) is
+   * the deletion safety gate: a cwd self-checkout (`{isolate:false}`) resolves
+   * to the root itself or an unrelated path and never matches, so terminal-event
+   * teardown and GC can never rm the runtime's own checkout.
+   */
+  private isReclaimableScratchDir(dir: string): boolean {
+    const root = this.resolveWorkdirRoot();
+    const resolvedRoot = resolve(root);
+    const resolvedDir = resolve(dir);
+    const prefix = resolvedRoot + sep;
+    if (!resolvedDir.startsWith(prefix)) return false;
+    if (resolvedDir === resolvedRoot) return false;
+    const relativeSegment = resolvedDir.slice(prefix.length).split(sep)[0];
+    return relativeSegment?.startsWith("task-") === true;
+  }
+
+  /**
+   * Delete a terminated session's scratch dir. Guarded three ways: only paths
+   * this service owns (`isReclaimableScratchDir` → under the resolved root, a
+   * `task-*` child, never `process.cwd()`), and the registry entry is dropped
+   * only after the rm succeeds so a failed delete stays visible to GC.
+   */
+  private async removeSessionScratchDir(session: SessionInfo): Promise<void> {
+    const dir = session.workdir;
+    markWorkspaceTerminated(dir);
+    if (!this.isReclaimableScratchDir(dir)) return;
+    try {
+      await rm(resolve(dir), { recursive: true, force: true });
+      unregisterWorkspace(dir);
+      this.log("debug", "removed terminated session scratch dir", {
+        sessionId: session.id.slice(0, 8),
+        dir,
+      });
+    } catch (err) {
+      // error-policy:J7 scratch-dir teardown is a disk-hygiene diagnostic, not
+      // the session's result; a stuck-open handle / EBUSY must not fail
+      // closeSession. The dir stays registered so the orphan GC reclaims it.
+      this.runtime.reportError("AcpService.removeSessionScratchDir", err, {
+        sessionId: session.id,
+        dir,
+      });
+      this.log("warn", "failed to remove session scratch dir", {
+        sessionId: session.id.slice(0, 8),
+        dir,
+        err,
+      });
+    }
+  }
+
+  /**
+   * Startup + periodic orphan GC for the ACP scratch root. Mirrors
+   * `gcOrphanedWorkspaces`: a `task-*` subdir older than the TTL AND not backed
+   * by a live session is reclaimed. The live set is the union of the store's
+   * non-terminal sessions and the shared registry's live paths, so a running
+   * session whose store row is momentarily unreadable is never deleted out from
+   * under it. Only ever touches `task-*` children of the resolved root.
+   */
+  private async gcOrphanedScratchDirs(): Promise<void> {
+    const root = resolve(this.resolveWorkdirRoot());
+    let entries: string[];
+    try {
+      entries = await readdir(root);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        // error-policy:J4 the scratch root not existing yet is the expected
+        // empty state → nothing to GC (documented no-op).
+        return;
+      }
+      // error-policy:J7 startup cleanup must not kill the service, but a root
+      // scan failure is diagnostic signal and must not masquerade as empty.
+      this.runtime.reportError("AcpService.gcOrphanedScratchDirs", err, {
+        phase: "readdir",
+        root,
+      });
+      this.log("warn", "scratch GC: root read failed, skipping pass", {
+        root,
+        err,
+      });
+      return;
+    }
+    const liveWorkdirs = new Set(liveWorkspacePaths());
+    try {
+      for (const s of await this.store.list()) {
+        if (!TERMINAL_SESSION_STATUSES.has(s.status)) {
+          liveWorkdirs.add(resolve(s.workdir));
+        }
+      }
+    } catch (err) {
+      // error-policy:J7 store read failed; deleting on a fabricated-empty live
+      // set could reap a running session's dir. Skip this GC pass entirely and
+      // let the next tick retry — a leaked dir is cheaper than a reaped one.
+      this.runtime.reportError("AcpService.gcOrphanedScratchDirs", err, {
+        phase: "store.list",
+      });
+      this.log("warn", "scratch GC: store read failed, skipping pass", { err });
+      return;
+    }
+    const now = Date.now();
+    let removed = 0;
+    await Promise.allSettled(
+      entries
+        .filter((name) => name.startsWith("task-"))
+        .map(async (name) => {
+          const dir = join(root, name);
+          if (liveWorkdirs.has(dir)) return;
+          try {
+            const st = await stat(dir);
+            if (!st.isDirectory()) return;
+            if (now - st.mtimeMs <= ACP_WORKSPACE_TTL_MS) return;
+            await rm(dir, { recursive: true, force: true });
+            unregisterWorkspace(dir);
+            removed++;
+          } catch (err) {
+            // error-policy:J6 best-effort per-dir GC; a vanished/locked dir is
+            // skipped so the sweep continues.
+            this.log("debug", "scratch GC: skipping dir", { dir, err });
+          }
+        }),
+    );
+    if (removed > 0) {
+      this.log("info", "startup scratch GC reclaimed orphaned dirs", {
+        removed,
+        root,
+        olderThanMs: ACP_WORKSPACE_TTL_MS,
+      });
+    }
+  }
+
+  /**
+   * Refuse (after one forced-GC retry) to create a new scratch dir when the
+   * total-workspace cap is hit or free disk is below the floor — the backpressure
+   * that stops the 3.6TB-class runaway. Over the cap, a GC pass may clear enough
+   * terminated dirs to proceed; a persistent low-disk / over-cap condition throws
+   * so the spawn fails loudly instead of filling the disk.
+   */
+  private async ensureDiskBudget(targetPath: string): Promise<void> {
+    let verdict = await checkDiskBudget(targetPath);
+    if (verdict.ok) return;
+    this.log("warn", "workspace disk budget exceeded, forcing GC", {
+      reason: verdict.reason,
+    });
+    await this.gcOrphanedScratchDirs();
+    verdict = await checkDiskBudget(targetPath);
+    if (verdict.ok) return;
+    throw new Error(
+      `Refusing to spawn: workspace disk budget exceeded (${verdict.reason}). ` +
+        "Terminated sessions did not free enough space; raise ELIZA_WORKSPACE_DIR capacity or clean the scratch root.",
+    );
   }
 
   private async cleanStaleLocks(): Promise<void> {
@@ -664,6 +851,7 @@ export class AcpService extends Service {
       });
     }
     await this.cleanReverseOrphanedAcpxFiles();
+    await this.gcOrphanedScratchDirs();
   }
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
@@ -714,7 +902,7 @@ export class AcpService extends Service {
       opts.workdir ??
       this.setting("ELIZA_ACP_WORKSPACE_ROOT") ??
       this.setting("ACPX_DEFAULT_CWD") ??
-      DEFAULT_WORKDIR_ROOT;
+      this.resolveWorkdirRoot();
     // Isolate concurrent sessions into a per-session subdir of a SHARED scratch
     // root so simultaneous projects never write into the same directory and
     // corrupt each other. Orchestrated callers opt in via opts.isolateWorkdir
@@ -724,7 +912,17 @@ export class AcpService extends Service {
     // otherwise share the configured root / DEFAULT_WORKDIR_ROOT.
     const isolate = opts.workdir ? opts.isolateWorkdir === true : true;
     const workdir = computeSessionWorkdir(baseWorkdir, id, isolate);
+    // Disk backpressure applies ONLY to isolated scratch dirs the orchestrator
+    // creates — never to a cwd self-checkout / caller-chosen dir, which the
+    // caller already owns. Over budget, force a GC pass and re-check once before
+    // refusing, so a backlog of terminated-but-unswept dirs self-clears.
+    if (isolate) {
+      const workdirRoot = dirname(workdir);
+      await mkdir(workdirRoot, { recursive: true });
+      await this.ensureDiskBudget(workdirRoot);
+    }
     await mkdir(workdir, { recursive: true });
+    if (isolate) registerWorkspace(workdir, id, "acp-scratch");
     // Give the sub-agent its eliza-context + non-interactive operating manual on
     // disk (where every backend reads it) — only when the workspace is bare, so
     // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
@@ -1112,6 +1310,7 @@ export class AcpService extends Service {
           this.nativeStoppingSessionIds.delete(sessionId);
         }
       }
+      await this.removeSessionScratchDir(session);
       return;
     }
     await this.stopTrackedProcess(sessionId);
@@ -1137,9 +1336,11 @@ export class AcpService extends Service {
       sessionId,
       response: this.lastOutput(sessionId),
     });
+    await this.removeSessionScratchDir(session);
   }
 
   async deleteSession(sessionId: string): Promise<void> {
+    const session = await this.store.get(sessionId);
     await this.closeSession(sessionId).catch((err: unknown) => {
       // error-policy:J6 best-effort close before delete; a teardown failure must
       // not block removing the session record + satellite maps below.
@@ -1151,6 +1352,9 @@ export class AcpService extends Service {
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
+    // closeSession already removed the scratch dir on the happy path; retry here
+    // so a session whose close() threw before teardown still gets reclaimed.
+    if (session) await this.removeSessionScratchDir(session);
   }
 
   async listSessions(): Promise<SessionInfo[]> {

@@ -84,6 +84,11 @@ import {
   gcOrphanedWorkspaces,
   removeScratchDir,
 } from "./workspace-lifecycle.js";
+import {
+  markWorkspaceTerminated,
+  registerWorkspace,
+  unregisterWorkspace,
+} from "./workspace-registry.js";
 
 export type {
   CodingWorkspaceConfig,
@@ -527,6 +532,10 @@ export class CodingWorkspaceService {
     };
 
     this.workspaces.set(workspace.id, result);
+    // Register into the shared workspace registry so the cross-mechanism disk
+    // budget (AcpService.ensureDiskBudget) counts git workspaces too — the same
+    // host disk backs both, so the cap must see the union.
+    registerWorkspace(workspace.path, workspace.id, "git-workspace");
     this.log(`Provisioned workspace ${workspace.id}`);
     return result;
   }
@@ -750,6 +759,7 @@ export class CodingWorkspaceService {
     if (workspace?.label) {
       this.labels.delete(workspace.label);
     }
+    if (workspace) unregisterWorkspace(workspace.path);
     this.workspaces.delete(workspaceId);
     this.log(`Removed workspace ${workspaceId}`);
   }
@@ -791,12 +801,14 @@ export class CodingWorkspaceService {
         : path.resolve(trimmedCodingDir)
       : undefined;
     const allowedDirs = codingDir ? [codingDir] : undefined;
-    return removeScratchDir(
+    markWorkspaceTerminated(dirPath);
+    await removeScratchDir(
       dirPath,
       this.serviceConfig.baseDir as string,
       (msg) => this.log(msg),
       allowedDirs,
     );
+    unregisterWorkspace(dirPath);
   }
 
   listScratchWorkspaces(): ScratchWorkspaceRecord[] {
