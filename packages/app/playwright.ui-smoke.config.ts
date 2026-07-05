@@ -95,6 +95,32 @@ const videoMode =
     : recording
       ? "on"
       : "retain-on-failure";
+const humanSlowMo = Number.parseInt(
+  process.env.ELIZA_UI_PLAYWRIGHT_SLOWMO || "0",
+  10,
+);
+const slowMoLaunchOptions =
+  Number.isFinite(humanSlowMo) && humanSlowMo > 0
+    ? { slowMo: humanSlowMo }
+    : {};
+
+function withLaunchOptions(options: Record<string, unknown> = {}): {
+  launchOptions?: Record<string, unknown>;
+} {
+  const launchOptions = { ...slowMoLaunchOptions, ...options };
+  return Object.keys(launchOptions).length > 0 ? { launchOptions } : {};
+}
+
+function withChromiumLaunchOptions(options: Record<string, unknown> = {}): {
+  launchOptions?: Record<string, unknown>;
+} {
+  return withLaunchOptions({
+    ...options,
+    ...(chromiumExecutablePath
+      ? { executablePath: chromiumExecutablePath }
+      : {}),
+  });
+}
 
 // Keep the app's API port env aligned with the live stack when the suite runs
 // on non-default ports.
@@ -136,9 +162,7 @@ export default defineConfig({
       ],
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
-          : {}),
+        ...withChromiumLaunchOptions(),
       },
     },
     ...DASHBOARD_E2E_DEVICE_MATRIX.map((viewport) => ({
@@ -149,9 +173,7 @@ export default defineConfig({
         viewport: viewport.viewport,
         isMobile: viewport.isMobile,
         hasTouch: viewport.hasTouch,
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
-          : {}),
+        ...withChromiumLaunchOptions(),
       },
     })),
     {
@@ -161,6 +183,7 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         permissions: ["microphone"],
         launchOptions: {
+          ...slowMoLaunchOptions,
           args: [
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
@@ -182,7 +205,7 @@ export default defineConfig({
       // Capacitor iOS/Android.
       testMatch:
         /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop)\.spec\.ts/,
-      use: { ...devices["Pixel 7"] },
+      use: { ...devices["Pixel 7"], ...withLaunchOptions() },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a
     // machine without the WebKit browser download never reds the default lane.
@@ -193,6 +216,7 @@ export default defineConfig({
             testMatch: WEBKIT_POINTER_FOCUS_SPEC,
             use: {
               ...devices["Desktop Safari"],
+              ...withLaunchOptions(),
               // Same parity as the desktop-webkit lane below: the PROD renderer
               // registers /sw.js (skipWaiting + clients.claim), and WebKit —
               // unlike Chromium — does NOT bypass a controlling service worker
@@ -218,6 +242,7 @@ export default defineConfig({
       testMatch: WEBKIT_SMOKE_SPECS,
       use: {
         ...devices["Desktop Safari"],
+        ...withLaunchOptions(),
         // Parity with the Chromium lanes, not an app change: Chromium
         // force-bypasses the registered service worker whenever page.route
         // interception is active; WebKit does not, so the app SW would
@@ -234,9 +259,7 @@ export default defineConfig({
       testMatch: AUDIT_APP_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
-          : {}),
+        ...withChromiumLaunchOptions(),
       },
     },
     {
@@ -249,9 +272,7 @@ export default defineConfig({
       testMatch: AUDIT_CLOUD_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
-          : {}),
+        ...withChromiumLaunchOptions(),
       },
     },
     {
@@ -263,9 +284,7 @@ export default defineConfig({
       testMatch: AUDIT_APP_DROPDOWN_SPEC,
       use: {
         ...devices["Desktop Chrome"],
-        ...(chromiumExecutablePath
-          ? { launchOptions: { executablePath: chromiumExecutablePath } }
-          : {}),
+        ...withChromiumLaunchOptions(),
       },
     },
   ],
