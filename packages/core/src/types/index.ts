@@ -74,6 +74,25 @@ export * from "./setup";
 export * from "./shortcut";
 export * from "./state";
 export * from "./streaming";
+export type {
+	ResolvedSurfaceManifest,
+	SurfaceCapability,
+	SurfaceIsolationLevel,
+	SurfaceLifecyclePolicy,
+	SurfaceManifest,
+	SurfaceManifestBearer,
+} from "./surface-manifest";
+// Explicit value re-exports: `plugin.ts` imports this module via `import type`,
+// so a bare `export *` gets tree-shaken to type-only — the same reason view-kind
+// below re-exports its runtime values explicitly.
+export {
+	IMMERSIVE_WALLPAPER_SURFACE,
+	resolveSurfaceBackgroundPolicy,
+	resolveSurfaceManifest,
+	SURFACE_CAPABILITIES,
+	SURFACE_ISOLATION_LEVELS,
+	surfaceGrants,
+} from "./surface-manifest";
 export * from "./swarm-coordinator";
 export * from "./task";
 export * from "./tee";
