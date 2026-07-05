@@ -136,15 +136,15 @@ const NATIVE_SLIPPAGE_BPS = 200;
 
 /**
  * Absolute ceiling on the slippage tolerance we will ever apply on the
- * native-coin verify path. 10_000 bps = 100%: no legitimate quote drift
- * needs more than this, and anything at/above it makes the accepted-payment
- * band meaningless (floor -> 0, ceiling -> 2x expected and beyond). The
- * canonical write path only ever stores {@link NATIVE_SLIPPAGE_BPS} (200) or
- * 0, so a value above this cap can only come from DB corruption, a tampered
+ * native-coin verify path. The canonical write path only ever stores
+ * {@link NATIVE_SLIPPAGE_BPS} (200) for native payments or 0 for stables, so a
+ * value above the native tolerance can only come from DB corruption, a tampered
  * metadata row, or a future non-canonical writer — all of which must FAIL
- * CLOSED (refuse to credit) rather than silently widen the band.
+ * CLOSED (refuse to credit) rather than silently widen the band. In particular,
+ * 10_000 bps would make the floor 0 and allow a zero-value native transfer to
+ * pass verification.
  */
-const MAX_DIRECT_SLIPPAGE_BPS = 10_000;
+const MAX_DIRECT_SLIPPAGE_BPS = NATIVE_SLIPPAGE_BPS;
 
 /**
  * Thrown when a stored `slippage_bps` metadata value cannot be trusted to

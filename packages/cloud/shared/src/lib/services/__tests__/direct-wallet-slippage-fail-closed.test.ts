@@ -24,9 +24,9 @@ describe("parseDirectWalletSlippageBps (fail-closed boundary)", () => {
     expect(parseDirectWalletSlippageBps("0")).toBe(0);
   });
 
-  test("accepts the boundary value (MAX = 10000 bps = 100%)", () => {
-    expect(parseDirectWalletSlippageBps(10_000)).toBe(10_000);
-    expect(parseDirectWalletSlippageBps("10000")).toBe(10_000);
+  test("accepts the boundary value (MAX = canonical native 200 bps)", () => {
+    expect(parseDirectWalletSlippageBps(200)).toBe(200);
+    expect(parseDirectWalletSlippageBps("200")).toBe(200);
   });
 
   // --- FAIL-OPEN REGRESSION GUARDS: each of these fed straight through the old
@@ -37,8 +37,11 @@ describe("parseDirectWalletSlippageBps (fail-closed boundary)", () => {
     // -> a gross overpayment (or near-zero underpayment) is credited.
     expect(() => parseDirectWalletSlippageBps(1_000_000)).toThrow(CorruptDirectWalletSlippageError);
     expect(() => parseDirectWalletSlippageBps("1000000")).toThrow(CorruptDirectWalletSlippageError);
-    // Just past the cap.
-    expect(() => parseDirectWalletSlippageBps(10_001)).toThrow(CorruptDirectWalletSlippageError);
+    // 10_000 bps makes the native floor zero, so it must be rejected too.
+    expect(() => parseDirectWalletSlippageBps(10_000)).toThrow(CorruptDirectWalletSlippageError);
+    expect(() => parseDirectWalletSlippageBps("10000")).toThrow(CorruptDirectWalletSlippageError);
+    // Just past the canonical native tolerance cap.
+    expect(() => parseDirectWalletSlippageBps(201)).toThrow(CorruptDirectWalletSlippageError);
   });
 
   test("REGRESSION: NaN / non-numeric string is REFUSED, not passed to BigInt(NaN)", () => {

@@ -695,6 +695,41 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(creditsLedger).toHaveLength(0);
     });
 
+    test("BNB native confirm refuses corrupted 10000 bps slippage before crediting zero-value tx", async () => {
+      await resetTable();
+      const { payment } = await service.createPayment(env, {
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        accountWalletAddress: null,
+        payerAddress: PAYER_EVM,
+        amountUsd: 60,
+        network: "bsc",
+        tokenSymbol: "BNB",
+      });
+      const receive = env.CRYPTO_DIRECT_BSC_RECEIVE_ADDRESS;
+      const zeroHash = `0x${"4".repeat(64)}`;
+      chainTxs.set(zeroHash, {
+        from: PAYER_EVM,
+        to: receive,
+        value: 0n,
+        status: "success",
+        receiveAddress: receive,
+      });
+      await trustPayerProof(payment);
+      await dbWrite.execute(
+        `UPDATE crypto_payments SET metadata = metadata || '{"slippage_bps":10000}'::jsonb WHERE id = '${payment.id}'`,
+      );
+
+      await expect(
+        service.confirmPayment(env, {
+          paymentId: payment.id,
+          txHash: zeroHash,
+          userId: USER_ID,
+        }),
+      ).rejects.toThrow(/invalid slippage_bps/);
+      expect(creditsLedger).toHaveLength(0);
+    });
+
     test("confirmPayment rejects a tampered quote_signature without touching the chain", async () => {
       await resetTable();
       const { payment } = await service.createPayment(env, {

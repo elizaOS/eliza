@@ -40,8 +40,11 @@ precisely the EVM native path.
 
 - New colocated `parseDirectWalletSlippageBps(rawValue)` + distinct
   `CorruptDirectWalletSlippageError`. Accepts only a finite, non-negative
-  **integer** in `[0, MAX_DIRECT_SLIPPAGE_BPS = 10_000]` (100%); missing/null is
-  the legitimate stable-token default of 0. Everything else throws.
+  **integer** in `[0, MAX_DIRECT_SLIPPAGE_BPS = 200]`, matching the canonical
+  native-token tolerance; missing/null is the legitimate stable-token default of
+  0. Everything else throws.
+- `10_000` bps is refused. At 100% tolerance the native floor becomes zero, so
+  a tampered metadata row could otherwise credit a zero-value native transfer.
 - `directMetadata()` now uses the parser. The throw propagates inside the
   `dbWrite.transaction` in `confirmPayment` / `verifyAndConfirmBroadcast`,
   rolling the tx back and refusing to credit — fail-closed, no fabricated
@@ -52,12 +55,13 @@ precisely the EVM native path.
 `__tests__/direct-wallet-slippage-fail-closed.test.ts` — 12/12 green under
 `bun test`:
 - parser boundary: undefined/null→0, 0/200 canonical, NUMERIC-string,
-  MAX=10000 boundary;
-- FAIL-OPEN REGRESSION guards: oversized (1e6 / 10001), NaN / non-numeric
+- FAIL-OPEN REGRESSION guards: oversized (1e6 / 10000 / 201), NaN / non-numeric
   string, Infinity, fractional, negative — all REFUSED;
 - distinct error type/message;
 - band math reproduced to prove an UNVALIDATED oversized slippage would have
   accepted a 100x overpayment (which the parser now refuses).
+- Native integration slice includes a corrupted `slippage_bps = 10000` payment
+  with an otherwise successful zero-value tx; confirm rejects before crediting.
 
 Sibling direct-wallet suites (confirm-atomic, payer-proof, integration): 9 pass
 / 0 fail (39 RPC-gated integration cases skip, pre-existing) — no regression.
