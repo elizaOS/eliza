@@ -189,6 +189,26 @@ describe("streaming chat — stream_options.include_usage usage frame", () => {
     expect(finalChunk.choices[0].finish_reason).toBe("stop");
   });
 
+  test("empty usage objects do not fabricate a zero-token usage frame", async () => {
+    streamTextDoubleWithFinish({});
+
+    const res = await callStreaming({
+      model: MODEL,
+      messages: [{ role: "user", content: "hello" }],
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const { jsonFrames } = await collectJsonFrames(res);
+
+    for (const frame of jsonFrames) {
+      expect(frame.usage ?? null).toBeNull();
+    }
+    const finalChunk = jsonFrames[jsonFrames.length - 1] as {
+      choices: Array<{ finish_reason: string | null }>;
+    };
+    expect(finalChunk.choices[0].finish_reason).toBe("stop");
+  });
+
   test("mid-stream provider error emits the terminal error chunk, never a usage frame", async () => {
     streamTextImpl = () => ({
       fullStream: (async function* () {

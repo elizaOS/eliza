@@ -688,13 +688,33 @@ function normalizeUsageTokens(usage: unknown): {
     completionTokens?: number;
     totalTokens?: number;
   };
-  const inputTokens = record.inputTokens ?? record.promptTokens ?? 0;
-  const outputTokens = record.outputTokens ?? record.completionTokens ?? 0;
+  const inputTokens = firstNumber(record.inputTokens, record.promptTokens) ?? 0;
+  const outputTokens =
+    firstNumber(record.outputTokens, record.completionTokens) ?? 0;
   return {
     inputTokens,
     outputTokens,
-    totalTokens: record.totalTokens ?? inputTokens + outputTokens,
+    totalTokens: firstNumber(record.totalTokens) ?? inputTokens + outputTokens,
   };
+}
+
+function hasReportedUsageTokens(usage: unknown): boolean {
+  const record = (usage ?? {}) as {
+    inputTokens?: number;
+    promptTokens?: number;
+    outputTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  };
+  return (
+    firstNumber(
+      record.inputTokens,
+      record.promptTokens,
+      record.outputTokens,
+      record.completionTokens,
+      record.totalTokens,
+    ) !== undefined
+  );
 }
 
 function firstNumber(...values: unknown[]): number | undefined {
@@ -2107,7 +2127,7 @@ async function handleStreamingRequest(
         // .include_usage. Only ever built from the SDK's reported usage — if
         // the finish part never arrived there is nothing honest to report, so
         // the frame is omitted rather than fabricated as zeros.
-        if (includeUsage && finishUsage !== undefined) {
+        if (includeUsage && hasReportedUsageTokens(finishUsage)) {
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
