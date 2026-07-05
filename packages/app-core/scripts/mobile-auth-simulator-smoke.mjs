@@ -583,6 +583,131 @@ function shellSingleQuote(value) {
   return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function xmlUnescape(value) {
+  return String(value)
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+export function readAndroidPreferenceValueFromXml(xml, key) {
+  const keyPattern = escapeRegExp(xmlEscape(key));
+  const match = String(xml).match(
+    new RegExp(`<string\\s+name="${keyPattern}">([\\s\\S]*?)<\\/string>`),
+  );
+  return match ? xmlUnescape(match[1]) : "";
+}
+
+function writeAndroidCapacitorPreferences(adb, serial, appId, entries) {
+  const xml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    ...Object.entries(entries).map(
+      ([key, value]) =>
+        `    <string name="${xmlEscape(key)}">${xmlEscape(value)}</string>`,
+    ),
+    "</map>",
+    "",
+  ].join("\n");
+  const encoded = Buffer.from(xml, "utf8").toString("base64");
+  const script = [
+    "mkdir -p shared_prefs",
+    `(printf %s ${encoded} | base64 -d > shared_prefs/CapacitorStorage.xml) || (printf %s ${encoded} | toybox base64 -d > shared_prefs/CapacitorStorage.xml)`,
+    "chmod 660 shared_prefs/CapacitorStorage.xml",
+  ].join(" && ");
+  runCommand(
+    adb,
+    [
+      "-s",
+      serial,
+      "shell",
+      `run-as ${shellSingleQuote(appId)} sh -c ${shellSingleQuote(script)}`,
+    ],
+    `Android auth callback preference seed for ${appId}`,
+  );
+}
+
+function readAndroidCapacitorPreference(adb, serial, appId, key) {
+  let xml = "";
+  try {
+    xml = runCommand(
+      adb,
+      [
+        "-s",
+        serial,
+        "shell",
+        `run-as ${shellSingleQuote(appId)} cat shared_prefs/CapacitorStorage.xml`,
+      ],
+      `Android auth callback preference read for ${appId}`,
+    );
+  } catch {
+    return "";
+  }
+  return readAndroidPreferenceValueFromXml(xml, key);
+}
+
+function armAndroidAuthCallbackSmoke(adb, serial, app, url) {
+  const expected = expectedAuthCallbackFromUrl(url);
+  writeAndroidCapacitorPreferences(adb, serial, app.appId, {
+    [IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY]: JSON.stringify({
+      expected,
+      armedAt: new Date().toISOString(),
+    }),
+    [IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY]: JSON.stringify({
+      ok: false,
+      phase: "requested",
+      expected,
+      updatedAt: new Date().toISOString(),
+    }),
+  });
+  return expected;
+}
+
+async function pollAndroidAuthCallbackSmoke(adb, serial, app, expected) {
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= IOS_AUTH_CALLBACK_ATTEMPTS; attempt += 1) {
+    lastRaw = readAndroidCapacitorPreference(
+      adb,
+      serial,
+      app.appId,
+      IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY,
+    );
+    if (lastRaw) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(lastRaw);
+      } catch {
+        parsed = null;
+      }
+      if (parsed?.phase === "failed" || parsed?.error) {
+        throw new Error(`Android auth callback smoke failed: ${lastRaw}`);
+      }
+      if (parsed?.ok === true) {
+        return assertAuthCallbackResult(
+          parsed,
+          expected,
+          "Android auth callback",
+        );
+      }
+    }
+    await sleep(IOS_AUTH_CALLBACK_DELAY_MS);
+  }
+  throw new Error(
+    `Android auth callback smoke timed out after ${IOS_AUTH_CALLBACK_ATTEMPTS} attempts. Last result: ${lastRaw || "<none>"}`,
+  );
+}
+
 // Parse the winning component from `cmd package resolve-activity` output.
 // We invoke it with `--brief`, which prints the resolved component as a bare
 // `<package>/<activity>` line (e.g. `ai.elizaos.app/.MainActivity`), or
@@ -659,7 +784,7 @@ function assertAndroidResolvesToPackage(adb, serial, app, url) {
   return resolvedName;
 }
 
-function runAndroidSimulator(app, url, options) {
+async function runAndroidSimulator(app, url, options) {
   const adb = resolveAdb();
   const serial = resolveAndroidSerial(adb, options.serial);
   // Preflight: the scheme must resolve to OUR package, not a consumer app
@@ -670,6 +795,7 @@ function runAndroidSimulator(app, url, options) {
     app,
     url,
   );
+  const expected = armAndroidAuthCallbackSmoke(adb, serial, app, url);
   runCommand(
     adb,
     [
@@ -708,11 +834,18 @@ function runAndroidSimulator(app, url, options) {
       `Android callback did not resolve to ${app.appId}. am start output:\n${output}`,
     );
   }
+  const handled = await pollAndroidAuthCallbackSmoke(
+    adb,
+    serial,
+    app,
+    expected,
+  );
   return {
     platform: "android",
     serial,
     openedUrl: url,
     resolvedActivity,
+    handled,
   };
 }
 
@@ -755,7 +888,7 @@ async function main() {
     simulatorResults.push(
       platform === "ios"
         ? await runIosSimulator(app, url, options)
-        : runAndroidSimulator(app, url, options),
+        : await runAndroidSimulator(app, url, options),
     );
   }
 

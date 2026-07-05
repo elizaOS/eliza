@@ -16,6 +16,7 @@ import {
   expectedAuthCallbackFromUrl,
   parseArgs,
   parseResolvedActivity,
+  readAndroidPreferenceValueFromXml,
   resolvedActivityMatchesApp,
   resolveTargetAppDir,
 } from "../../scripts/mobile-auth-simulator-smoke.mjs";
@@ -189,6 +190,36 @@ describe("mobile-auth-simulator-smoke: auth outcome assertion (#13693)", () => {
     expect(() =>
       assertAuthCallbackResult({ ...okResult, ok: false }, expected, "iOS"),
     ).toThrow(/did not report ok=true/);
+  });
+});
+
+describe("mobile-auth-simulator-smoke: Android auth outcome preferences (#13693)", () => {
+  it("reads the auth callback result from Capacitor Preferences XML", () => {
+    const result = JSON.stringify({
+      ok: true,
+      phase: "handled",
+      sessionEstablished: false,
+      path: "auth/callback",
+      state: "simulator-oauth-state",
+      code: "simulator-oauth-code",
+    });
+    const xml = [
+      "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+      "<map>",
+      `  <string name="eliza:auth-callback-smoke:result">${result.replaceAll('"', "&quot;")}</string>`,
+      "</map>",
+    ].join("\n");
+
+    expect(
+      readAndroidPreferenceValueFromXml(
+        xml,
+        "eliza:auth-callback-smoke:result",
+      ),
+    ).toBe(result);
+  });
+
+  it("returns empty string when the Android result key is absent", () => {
+    expect(readAndroidPreferenceValueFromXml("<map />", "missing")).toBe("");
   });
 });
 
