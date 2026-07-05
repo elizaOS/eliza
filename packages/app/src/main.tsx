@@ -3246,6 +3246,20 @@ function applyStoredDetachedShellTheme(): void {
   applyUiTheme(resolveUiTheme(loadUiThemeMode()));
 }
 
+/**
+ * Native vision bridges (renderer-pulled screen-capture + OCR) are OFF by
+ * default. Each opens a 1.2s poll loop against the agent's `/api/vision/*`
+ * routes the instant the app boots — before the local agent is reachable that
+ * is pure churn (503 spam, device-bridge flap, wasted battery/network) and it
+ * buys nothing until the vision feature is actually in use. Opt in per build
+ * with `VITE_ELIZA_VISION_BRIDGES=1`.
+ */
+function initVisionBridgesIfEnabled(): void {
+  if (import.meta.env.VITE_ELIZA_VISION_BRIDGES !== "1") return;
+  initScreenCaptureBridge();
+  initOcrBridge();
+}
+
 async function main(): Promise<void> {
   markStartup("main-start");
   registerViewServiceWorker();
@@ -3342,8 +3356,7 @@ async function main(): Promise<void> {
     // capture requests and serve frames via the Capacitor ScreenCapture
     // plugin. Idempotent + native-gated; runs only after the local-agent
     // fetch bridge is installed so `/api/...` routes resolve to the agent.
-    initScreenCaptureBridge();
-    initOcrBridge();
+    initVisionBridgesIfEnabled();
     // On-device AEC acoustic-loop evidence harness (#11373): exposes
     // window.__aecLoop and the tap-free `elizaos://aec-loop?...` trigger so
     // the real speaker→mic echo loop can be driven + captured on hardware.
@@ -3356,8 +3369,7 @@ async function main(): Promise<void> {
     // capture requests and serve frames via the Capacitor ScreenCapture
     // plugin. Idempotent + native-gated; runs only after the Android fetch
     // bridge is installed so `/api/...` routes resolve to the agent.
-    initScreenCaptureBridge();
-    initOcrBridge();
+    initVisionBridgesIfEnabled();
     // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
     // window.__jniVoice (the in-process JNI voice pipeline — the four fused
     // voice classifiers running IN the bionic app process via the ElizaVoice
