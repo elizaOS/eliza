@@ -91,23 +91,30 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 };
 
 /**
- * The curated "Ember Night" gradient as a code-free SVG data URL — the boot
- * default's image source. `gradientDataUrl` is a hoisted function declaration
- * (defined below with the catalog), so calling it here at module-eval time is
- * safe. Kept in sync with the `ember-night` catalog entry's palette.
+ * The curated "Ember Night" default wallpaper: a warm sunset in the clouds,
+ * served as a same-origin static asset from `packages/app/public`. It renders
+ * BOTH the boot default AND the matching `ember-night` gallery tile, so the two
+ * stay in sync (#13538). A served, code-free, same-origin image the apply
+ * channel already trusts (same class as the gradient data URLs and the
+ * `/api/media/<hash>` uploads) — it carries no GLSL source or preset id, so the
+ * confinement invariants (#11088 / #13523) hold. The bytes live in `public/`
+ * (served, cacheable), never in the JS bundle. When the image is cleared or
+ * fails to load the shell falls back to the shader field
+ * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}).
  */
-const EMBER_NIGHT_DATA_URL = gradientDataUrl(["#0a0603", "#160d07", "#3a1f0d"]);
+const SUNSET_WALLPAPER_URL = "/bg-sunset.jpg";
 
 /**
  * The boot default background. #13538 asks the app to boot to "a nice natural
  * (or interesting curated) default, not a flat color." We ship the curated
- * "Ember Night" gradient (a code-free SVG data URL, so it paints instantly with
- * no fetch and no bundled binary).
+ * "Ember Night" sunset-in-the-clouds wallpaper (a served same-origin image); the
+ * shader field ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}) stays the fallback
+ * when the image is cleared or fails to load.
  */
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "image",
   color: DEFAULT_BACKGROUND_COLOR,
-  imageUrl: EMBER_NIGHT_DATA_URL,
+  imageUrl: SUNSET_WALLPAPER_URL,
 };
 
 /** A named default background — a curated shader color the user can pick. */
@@ -219,13 +226,15 @@ export const BACKGROUND_CATALOG: readonly BackgroundCatalogEntry[] =
         author: "curated",
       };
     }
-    // image: a code-free gradient data URL from the palette. Ember Night reuses
-    // the shared boot-default URL so the default and its catalog tile match.
+    // image: a served same-origin asset for the default (the sunset wallpaper),
+    // a code-free gradient data URL from the palette for the rest. Ember Night
+    // reuses the shared boot-default URL so the default and its catalog tile
+    // match ({@link DEFAULT_BACKGROUND_CONFIG}).
     return {
       ...meta,
       source:
         meta.id === SHARED_DEFAULT_BACKGROUND_CATALOG_ID
-          ? EMBER_NIGHT_DATA_URL
+          ? SUNSET_WALLPAPER_URL
           : gradientDataUrl(meta.palette),
       author: "curated",
     };

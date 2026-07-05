@@ -38,14 +38,24 @@ describe("background catalog (#13538)", () => {
     }
   });
 
-  it("commits NO bundled binary — image sources are code-free data/served URLs", () => {
+  it("image sources are same-origin, code-free (data / served asset / media) URLs", () => {
     for (const e of BACKGROUND_CATALOG) {
       if (e.kind === "image") {
+        // The curated default is a served same-origin static asset (the sunset
+        // wallpaper). Every OTHER image entry stays a tiny code-free gradient
+        // data URL (#13538: no per-entry bundled binary bloat). All three
+        // classes are same-origin and carry no GLSL source / preset id, so the
+        // apply-channel confinement invariants (#11088 / #13523) hold.
+        const isServedAsset =
+          e.id === DEFAULT_BACKGROUND_CATALOG_ID && e.source.startsWith("/");
         expect(
           e.source.startsWith("data:image/svg+xml") ||
-            e.source.startsWith("/api/media/"),
+            e.source.startsWith("/api/media/") ||
+            isServedAsset,
         ).toBe(true);
-        // The whole gradient stays tiny (well under any binary threshold).
+        // A served-asset reference is a short same-origin path; the gradient
+        // data URLs stay tiny too. Either way the STRING is well under any
+        // binary threshold (the bytes live in public/, never in the source).
         expect(e.source.length).toBeLessThan(2048);
       }
       if (e.kind === "glsl") {
@@ -58,11 +68,14 @@ describe("background catalog (#13538)", () => {
 
   it("the boot default is a curated natural image, not a flat color", () => {
     expect(DEFAULT_BACKGROUND_CONFIG.mode).toBe("image");
-    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toContain("data:image/svg+xml");
+    // The default wallpaper is the served sunset asset (a same-origin path),
+    // not a flat color and not an inline data URL.
+    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/bg-sunset.jpg");
     const def = BACKGROUND_CATALOG.find(
       (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
     );
     expect(def?.kind).toBe("image");
+    // The boot default and its gallery tile resolve to the same source.
     expect(def?.source).toBe(DEFAULT_BACKGROUND_CONFIG.imageUrl);
   });
 
