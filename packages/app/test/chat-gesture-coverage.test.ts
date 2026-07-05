@@ -236,9 +236,9 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 13,
-    interaction: "Auto-scroll at bottom vs reading-scrollback",
+    interaction: "Auto-scroll at bottom, reading-scrollback, jump-to-latest",
     sites: [OVERLAY],
-    tests: [CHAT_SHEET_RUNNER],
+    tests: [S("hooks/useThreadAutoScroll.test.tsx"), CHAT_SHEET_RUNNER],
   },
   {
     id: 14,
