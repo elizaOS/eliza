@@ -745,6 +745,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  app-diagnostics:
+    name: Zero-Key app diagnostics
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The required test.yml gate owns the app-diagnostics suite commands. Keep
+      # this status name alive as a real delegation check so rulesets and the
+      # scenario aggregate do not point at a deleted job, without running the
+      # same diagnostics suites twice on PRs (#13402).
+      - name: Validate zero-key command ownership delegation
+        run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
+
   scenario-runner-e2e:
     name: Zero-Key scenario runner E2E
     needs: changes
