@@ -386,8 +386,8 @@ function Harness(): React.JSX.Element {
         : null,
     messages,
     // Mirrors the real controller: true once the latest assistant turn carries
-    // `failureKind: "no_provider"`. Drives the overlay to suppress the forever
-    // "Waking …" boot banner and swap the composer placeholder for a Settings
+    // `failureKind: "no_provider"`. Drives the overlay to keep boot trouble
+    // out of floating chrome and swap the composer placeholder for a Settings
     // hint (the in-transcript no_provider gate is the error surface).
     noProviderConfigured:
       !forceNoProviderOff &&
