@@ -53,6 +53,7 @@ import {
   getAiProviderConfigurationError,
   getLanguageModel,
   hasLanguageModelProviderConfigured,
+  isProviderConfigurationError,
   type PooledLanguageModelCredential,
   resolveAiProviderSource,
   resolvePooledDirectProviderForModel,
@@ -889,6 +890,9 @@ export async function handleChatCompletionsPOST(
   let settleReservation:
     | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
     | null = null;
+  // Hoisted so the catch below can echo the requested model in the sanitized
+  // provider-configuration error; set right after the body parses.
+  let model = "";
 
   try {
     // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
@@ -992,7 +996,7 @@ export async function handleChatCompletionsPOST(
     // Collapse decorated Cerebras ids (e.g. "openai/gpt-oss-120b:nitro" emitted
     // by dedicated agents) to the bare Cerebras id so pricing, routing, and
     // billing all agree and route to cerebras-direct instead of OpenRouter.
-    const model = canonicalizeCerebrasModelId(request.model);
+    model = canonicalizeCerebrasModelId(request.model);
     const pooledCredential = await selectPooledInferenceCredential({
       model,
       organizationId: user.organization_id,
@@ -1475,6 +1479,25 @@ export async function handleChatCompletionsPOST(
           ? String((error.cause as Error).message ?? error.cause)
           : undefined,
     });
+    // Provider-configuration failures (missing/invalid provider keys) carry
+    // internal setup guidance ("... AI_GATEWAY_API_KEY ...") that must never
+    // reach a direct API caller; the raw detail is already in the log above.
+    // To the caller the deterministic truth is that this deployment cannot
+    // serve the requested model.
+    if (isProviderConfigurationError(error)) {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: modelNotAvailableMessage(model),
+              type: "invalid_request_error",
+              code: "model_not_available",
+            },
+          },
+          { status: 400 },
+        ),
+      );
+    }
     const isDbError =
       rawMessage.startsWith("Failed query:") ||
       rawMessage.includes("insert into") ||
@@ -1502,6 +1525,15 @@ export async function handleChatCompletionsPOST(
       ),
     );
   }
+}
+
+/**
+ * Client-facing message for a provider-configuration failure. The requested
+ * model id is the only detail safe to echo back — the underlying errors name
+ * internal env vars and setup steps, which stay in server logs only.
+ */
+function modelNotAvailableMessage(model: string): string {
+  return `model '${model}' is not available on this deployment`;
 }
 
 /**
@@ -2074,12 +2106,33 @@ async function handleStreamingRequest(
           await refundStreamingReservationOnce();
           await recordPooledInferenceFailure(pooledCredential, error);
         }
-        const status =
-          getRecoverableProviderErrorStatus(error) ?? getErrorStatusCode(error);
+        // Same sanitization as the non-streaming path: a provider-
+        // configuration failure surfacing mid-stream (e.g. the gateway's
+        // request-time auth error) names internal env vars — log it, send the
+        // caller the clean model-not-available form. onError does not always
+        // fire before this catch, so the log here is the guaranteed record.
+        const isConfigError = isProviderConfigurationError(error);
+        if (isConfigError) {
+          logger.error(
+            "[Chat Completions] Provider configuration error during stream",
+            {
+              model,
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+        const status = isConfigError
+          ? 400
+          : (getRecoverableProviderErrorStatus(error) ??
+            getErrorStatusCode(error));
         try {
           const errorChunk = {
             error: {
-              message: error instanceof Error ? error.message : String(error),
+              message: isConfigError
+                ? modelNotAvailableMessage(model)
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
