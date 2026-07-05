@@ -192,7 +192,7 @@ describe("ConsoleShell", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /qa@e\.test/i }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: /qa@e\.test/i }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /sign out/i }));
 
     expect(stewardSessionMock.clearStoredStewardToken).toHaveBeenCalledTimes(1);
