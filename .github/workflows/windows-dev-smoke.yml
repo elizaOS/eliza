@@ -20,6 +20,9 @@ permissions:
 jobs:
   changes:
     name: Classify changed paths
+    # Path classifier is a git-diff + node script: no self-hosted resources.
+    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
+    # queued indefinitely and pile up runs (#13617/#8501).
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
